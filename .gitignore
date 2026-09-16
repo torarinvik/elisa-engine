@@ -1,2 +1,5 @@
 /dependencies.md
 /dependencies
+/build/
+.DS_Store
+docs/tail-return-validation.md

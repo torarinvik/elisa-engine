@@ -1,0 +1,24 @@
+include "../src/entity_id.elisa"
+
+def main() -> i32:
+    allocator: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_INVALID}
+    #Will most likely need to catch the error from the entity_id_allocate
+    first: i64 = entity_id_allocate(&allocator)
+    second: i64 = entity_id_allocate(&allocator)
+    if first != 1 or second != 2 or allocator.last_issued != 2:
+        return 1
+
+    edge: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_MAX - 1}
+    final_id: i64 = entity_id_allocate(&edge)
+    failed: i64 = entity_id_allocate(&edge)
+    failed_again: i64 = entity_id_allocate(&edge)
+    if final_id != ENTITY_ID_MAX or failed != ENTITY_ID_INVALID or failed_again != ENTITY_ID_INVALID:
+        return 2
+    if edge.last_issued != ENTITY_ID_MAX:
+        return 3
+
+    invalid: mutable EntityIdAllocator = EntityIdAllocator{last_issued: -1}
+    rejected: i64 = entity_id_allocate(&invalid)
+    if rejected != ENTITY_ID_INVALID or invalid.last_issued != -1:
+        return 4
+    0

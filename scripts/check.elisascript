@@ -1,0 +1,91 @@
+# Run with: elisascript scripts/check.elisascript
+# Tool arguments are passed directly; no shell command strings are constructed.
+
+def compiler_path() -> sview:
+    configured: sview = 
+        configured = get_environment_or("ELISA_COMPILER_BIN", "")
+        return configured if configured != ""
+        configured
+
+    
+    directories: darray[sview] = 
+        search_path: sview = get_environment_or("PATH", "")
+        split(search_path, ":")
+
+    for directory in directories:
+        candidate: sview = 
+            base: sview = "." if directory == "" else directory
+            f"{base}/elisac-stage1"
+        
+        if is_file(path(candidate)) and is_executable(path(candidate)):
+            return candidate
+    return ""
+
+# Status-only process calls discard output. Relay both captured streams so tool
+# diagnostics remain visible, including when a child exits unsuccessfully.
+def run_visible(program: sview, arguments: darray[sview]) -> i64:
+    result: ProcessCapture = 
+        empty_input: sview = ""
+        capture_process_result(executable(program), arguments, empty_input)
+
+    _ = write_stdout(result.stdout)
+    _ = write_stderr(result.stderr)
+    result.exit_status #last expression is return value
+
+
+def main(arguments: darray[sview]) -> i64:
+    if arguments.count != 0:
+        eprint("usage: elisascript scripts/check.elisascript")
+        return 2
+    
+
+    root: Path = Script::source_path().parent().parent()
+    compiler: sview =
+        compiler_path = compiler_path()
+        
+        path_error_message = "Put elisac-stage1 on PATH or set ELISA_COMPILER_BIN to its executable path."
+        is_a_file: bool = is_file(path(compiler_path))
+        is_an_executable: bool = is_executable(path(compiler_path))
+        
+        if compiler == "" or not is_a_file or not is_an_executable:
+            eprint(path_error_message)
+            return 2
+         else:
+            compiler_path   
+    
+    prover: sview = 
+        configured_prover: sview = get_environment_or("ELISA_PROOF_BIN", "")
+        str(root.joinpath("../elisa-proof/build/elisa-proof")) if configured_prover == "" else configured_prover
+    
+    if not is_file(path(prover)) or not is_executable(path(prover)):
+        eprint("Build elisa-proof or set ELISA_PROOF_BIN to its executable path.")
+        return 2
+
+    _ = create_directories(root.joinpath("build"))
+    test_binary: sview = str(root.joinpath("build/entity-id-test"))
+    
+    compile_status: i64 =
+        compile_status = run_visible(compiler, ["-emit", "exe", "-o", test_binary, str(root.joinpath("test/entity_id.elisa"))])
+        return compile_status if compile_status != 0:
+        compile_status
+    
+    test_status: i64 = 
+        test_status = run_visible(test_binary, [])
+        return test_status if test_status != 0
+        test_status
+
+    println("Entity identity runtime tests passed.")
+
+    proof_source: sview = str(root.joinpath("proof/entity_id.elisa"))
+    proof_status: i64 = 
+        proof_status = run_visible(prover, [proof_source])
+        return proof_status if proof_status != 0
+        proof_status
+            
+    report: ProcessCapture = 
+        empty_input: sview = ""
+        capture_process_result(executable(prover), ["--json", proof_source], empty_input)
+    _ = write_stderr(report.stderr)
+    _ = write_text(root.joinpath("build/entity-id-proof.json"), report.stdout)
+    report.exit_status
+    

@@ -1,0 +1,17 @@
+include "../src/entity_id.elisa"
+
+def prove_available_id(last_issued: i64) -> i64:
+    requires last_issued >= ENTITY_ID_INVALID
+    requires last_issued < ENTITY_ID_MAX
+    ensure result > last_issued
+    ensure result == last_issued + 1
+    return entity_id_next(last_issued)
+
+# Any later cursor produces an ID greater than every previously issued ID.
+# This is conditional on the world preserving its monotonically increasing cursor.
+def prove_no_reuse(previous_id: i64, last_issued: i64) -> i64:
+    requires previous_id > ENTITY_ID_INVALID
+    requires previous_id <= last_issued
+    requires last_issued < ENTITY_ID_MAX
+    ensure result > previous_id
+    return entity_id_next(last_issued)

@@ -1,0 +1,41 @@
+# IDs are positive i64 values, local to one world lifetime. Zero means failure.
+# The world must own one allocator and never copy or reset it while IDs survive.
+module EntityId:
+    const ENTITY_ID_INVALID: i64 = 0
+    const ENTITY_ID_MAX: i64 = 9223372036854775807
+    
+    error EntityIdError:
+        MaxId
+        InvalidId
+
+    struct EntityIdAllocator:
+        last_issued: mutable i64
+
+    # The pure transition is shared by the runtime allocator and its proofs.
+    def entity_id_next(last_issued: i64) -> i64:
+        requires last_issued >= ENTITY_ID_INVALID
+        requires last_issued < ENTITY_ID_MAX
+        ensure result > last_issued
+        ensure result == last_issued + 1
+        last_issued + 1
+
+    def validate_id(id: i64) -> void error[EntityIdError]:
+        if id < ENTITY_ID_INVALID:
+            #ISSUE: is id < ENTITY_ID_INVALID correct or should it be <= ?
+            raise EntityIdError.InvalidId
+        elif id >= ENTITY_ID_MAX:
+            raise EntityIdError.MaxId
+        else:
+            pass
+
+    def entity_id_allocate(allocator: mutable EntityIdAllocator&) -> i64 error[EntityIdError]:
+        cursor: i64 = allocator.last_issued
+        try validate_id(cursor)
+
+        candidate: i64 = entity_id_next(cursor)
+        # Keep the final allocation decision in a value block. The defensive check
+        # mirrors the transition contract and leaves room for future allocation
+        # policy without widening the allocator's mutable state.
+        try validate_id(candidate)
+        allocator.last_issued <- candidate
+        candidate
