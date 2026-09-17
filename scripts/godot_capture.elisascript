@@ -94,6 +94,15 @@ def main(arguments: darray[sview]) -> i64:
 
     println("Godot frame verified: dimensions, determinism, Elisa topology.")
 
+    # Measured frame time against the fixture budget: median and p95.
+    _ =
+        status: i64 = run_visible(python, [compare, "perf", str(root.joinpath("build/godot-frame-stats.txt")), manifest])
+        if status != 0:
+            return status
+        status
+
+    println("Godot frame time within budget.")
+
     if not is_file(path(native_frame)):
         eprint("Native frame missing; run scripts/wicked_probe.elisascript first.")
         return 2

@@ -12,6 +12,10 @@ camera_z=-5.0
 viewport_width=320
 viewport_height=200
 commands=create,update,destroy
+# Per-frame CPU budget for the host, the plan's 60 Hz target (16667 us).
+# scripts/record_validation.py rejects a larger or non-positive value, and
+# scripts/compare_renders.py perf gates each host's measured median and p95.
+frame_budget_us=16667
 # Player cell after the scripted mid-game snapshot in examples/maze/trace.elisa,
 # which test/maze.elisa pins (three moves, not yet won). object_x/object_y are
 # that cell in the shared world mapping (col * 0.6 - 2.1) and object_z places

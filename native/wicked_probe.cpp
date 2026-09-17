@@ -7,6 +7,8 @@
 #include "wiScene.h"
 #include "wiVersion.h"
 #include <SDL2/SDL.h>
+#include <algorithm>
+#include <chrono>
 #include <SDL2/SDL_syswm.h>
 #include <cmath>
 #include <cstdio>
@@ -317,10 +319,32 @@ int main(int argc, char** argv) {
     // Settle loop: pipeline states compile in the background on first use
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
-    for (int frame = 0; frame < 30; ++frame) {
+    // Frame timing: the plan asks for measured frame time with median and
+    // tail, not a "zero overhead" claim. These are hidden, trivial frames,
+    // so the numbers are a floor for this scene, not a performance promise;
+    // the runner still gates the median against the fixture's frame budget.
+    // Warm-up frames are excluded on purpose: shader permutation creation and
+    // history buffers make the first frames unrepresentative, and the plan
+    // asks for steady-state median and tail, not start-up cost.
+    const int warmup_frames = 5;
+    const int measured_frames = 30;
+    std::vector<int64_t> frame_micros;
+    frame_micros.reserve(measured_frames);
+    for (int frame = 0; frame < warmup_frames + measured_frames; ++frame) {
+        const auto frame_start = std::chrono::steady_clock::now();
         application.Run();
+        const auto frame_stop = std::chrono::steady_clock::now();
+        if (frame >= warmup_frames) {
+            frame_micros.push_back(std::chrono::duration_cast<std::chrono::microseconds>(frame_stop - frame_start).count());
+        }
         wi::helper::Sleep(1000);
     }
+    std::sort(frame_micros.begin(), frame_micros.end());
+    const int64_t median_micros = frame_micros[frame_micros.size() / 2];
+    const int64_t p95_micros = frame_micros[(frame_micros.size() * 95) / 100];
+    const int64_t worst_micros = frame_micros.back();
+    std::fprintf(stdout, "frame stats: samples=%u median_us=%lld p95_us=%lld worst_us=%lld\n",
+        (unsigned)frame_micros.size(), (long long)median_micros, (long long)p95_micros, (long long)worst_micros);
     // Metal work is asynchronous: without draining the queue the backbuffer
     // still holds cleared memory when it is read below, no matter how many
     // frames were submitted.
@@ -399,6 +423,16 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::fprintf(stdout, "scene screenshot saved\n");
+    {
+        const std::filesystem::path stats_path = std::filesystem::path(screenshot_path).parent_path() / "frame-stats.txt";
+        std::ofstream stats_out(stats_path);
+        if (stats_out) {
+            stats_out << "samples=" << frame_micros.size() << "\n"
+                      << "median_us=" << median_micros << "\n"
+                      << "p95_us=" << p95_micros << "\n"
+                      << "worst_us=" << worst_micros << "\n";
+        }
+    }
     {
         // Render-target inventory: dimensions and sample counts pin down
         // the MSAA-resolve and sizing theories without downloading anything

@@ -188,6 +188,12 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         hazard_cells.append((x, y))
     if len(hazard_cells) != 2:
         raise ValueError(f"scene manifest hazard count drift: {len(hazard_cells)}, expected 2")
+    try:
+        budget = int(values.get("frame_budget_us", ""))
+    except ValueError:
+        raise ValueError(f"scene manifest frame_budget_us is not an integer: {values.get('frame_budget_us')!r}")
+    if budget <= 0 or budget > 16667:
+        raise ValueError(f"scene manifest frame_budget_us out of range: {budget}")
     hunter = cell_of("hunter", "1,1")
     if hunter == (player_x, player_y):
         raise ValueError("scene manifest hunter overlaps the player")
@@ -202,7 +208,7 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError("scene manifest player_final overlaps a marker")
     return {"sha256": sha256_file(manifest), "fields": len(values),
             "wall_cells": len(wall_cells), "occluded_cells": len(occluded),
-            "markers": len(markers)}
+            "markers": len(markers), "frame_budget_us": budget}
 
 
 def main(arguments: list[str]) -> int:

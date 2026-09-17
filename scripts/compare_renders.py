@@ -347,6 +347,43 @@ def main(arguments):
         found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells, resolve_occluded(arguments[5]), resolve_markers(arguments[5]))
         print(f"topology mismatches={found} allowed={allowed}")
         return 0 if found <= allowed else 1
+    if command == "perf":
+        # Gate measured frame time against the fixture's budget. Reads the
+        # stats the host wrote (samples/median/p95/worst in microseconds) and
+        # takes the budget either as a number or from a scene manifest.
+        if len(arguments) != 4:
+            print("usage: compare_renders.py perf <stats-file> <budget-us|manifest>", file=sys.stderr)
+            return 2
+        stats = {}
+        for line in open(arguments[2], encoding="utf-8").read().splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                stats[key.strip()] = value.strip()
+        budget_arg = arguments[3]
+        if os.path.exists(budget_arg):
+            budget = 0
+            for line in open(budget_arg, encoding="utf-8").read().splitlines():
+                if line.strip().startswith("frame_budget_us="):
+                    budget = int(line.strip().split("=", 1)[1])
+            if budget <= 0:
+                print("manifest has no frame_budget_us", file=sys.stderr)
+                return 1
+        else:
+            budget = int(budget_arg)
+        try:
+            samples = int(stats["samples"])
+            median = int(stats["median_us"])
+            p95 = int(stats["p95_us"])
+            worst = int(stats["worst_us"])
+        except (KeyError, ValueError):
+            print(f"frame stats incomplete: {stats}", file=sys.stderr)
+            return 1
+        print(f"frame time: samples={samples} median={median}us p95={p95}us worst={worst}us budget={budget}us")
+        if samples < 5 or median > budget or p95 > budget:
+            print("frame time exceeds the fixture budget", file=sys.stderr)
+            return 1
+        print("frame time within budget")
+        return 0
     if command == "verify":
         # One invocation for every claim about a host frame: dimensions,
         # non-blank, run-to-run determinism, and topology agreement. Kept as

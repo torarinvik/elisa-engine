@@ -127,9 +127,28 @@ func _run_capture() -> void:
     camera.look_at(Vector3(0.0, 0.0, 3.0), Vector3.UP)
     camera.current = true
 
-    # Let the renderer produce real frames before reading the viewport back.
-    for _frame in range(8):
+    # Let the renderer produce real frames before reading the viewport back,
+    # and time them: the plan asks for measured frame time with a tail, not a
+    # "zero overhead" claim.
+    # Warm-up frames are excluded on purpose: shader permutation creation and
+    # history buffers make the first frames unrepresentative, and the plan
+    # asks for steady-state median and tail, not start-up cost.
+    # Wall time around await process_frame measures the display frame boundary
+    # (vsync) unless vsync is disabled, in which case it measures the host's
+    # own per-frame work, which is the comparable quantity to the native
+    # host's measured frame cost. Performance.TIME_PROCESS rounds to zero for
+    # a scene this small, so it is not used.
+    DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+    var warmup := 5
+    var measured := 30
+    var frame_micros: Array[int] = []
+    for _frame in range(warmup + measured):
+        var frame_start := Time.get_ticks_usec()
         await process_frame
+        var elapsed := Time.get_ticks_usec() - frame_start
+        if _frame >= warmup:
+            frame_micros.append(elapsed)
+    frame_micros.sort()
 
     var image: Image = root.get_texture().get_image()
     if image == null:
@@ -139,6 +158,16 @@ func _run_capture() -> void:
     if status != OK:
         _fail("capture save failed")
         return
+    var stats_path: String = arguments[1].get_basename() + "-stats.txt"
+    var stats_file := FileAccess.open(stats_path, FileAccess.WRITE)
+    if stats_file == null:
+        _fail("frame stats cannot be written")
+        return
+    stats_file.store_line("samples=%d" % frame_micros.size())
+    stats_file.store_line("median_us=%d" % frame_micros[frame_micros.size() / 2])
+    stats_file.store_line("p95_us=%d" % frame_micros[(frame_micros.size() * 95) / 100])
+    stats_file.store_line("worst_us=%d" % frame_micros[frame_micros.size() - 1])
+    stats_file.close()
     var visible_walls := 0
     for child in scene_root.get_children():
         if child is MeshInstance3D and child.name.begins_with("ElisaWall"):

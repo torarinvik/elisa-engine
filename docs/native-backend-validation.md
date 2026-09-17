@@ -256,6 +256,24 @@ draw the character with its own colour, which the checker verifies.
 What remains for this character is skeletal animation and unloading,
 which need the ozz integration; navigation itself is done and gated.
 
+## Measured frame time (2026-09-18)
+
+Both hosts now report measured frame time instead of a "zero overhead"
+claim, and each runner gates it against the fixture's
+`frame_budget_us=16667` (the plan's 60 Hz target) using
+`compare_renders.py perf`, which rejects a median or p95 over budget.
+Measurements on this workstation: the native host medians around 1.3 ms
+with p95 near 4.2 ms; Godot medians around 0.4 ms with p95 near 0.9 ms.
+Method matters and is stated so the numbers are not overread: five
+warm-up frames are excluded because shader-permutation creation makes the
+first frames unrepresentative; the native host times `application.Run()`
+with a steady clock; the Godot host disables vsync before timing, because
+otherwise `await process_frame` measures the display frame boundary
+rather than the host's own work (Godot's `TIME_PROCESS` monitor rounds to
+zero for a scene this small and is not used). These are trivial, mostly
+hidden frames, so the figures are a floor for this scene, not a
+performance promise for a full game.
+
 ## Toward pixel comparison (status: both hosts captured)
 
 `src/backend/image_compare.elisa` defines the tolerance policy
