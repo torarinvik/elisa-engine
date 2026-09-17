@@ -342,6 +342,29 @@ func _run_capture() -> void:
         if child is MeshInstance3D and child.name.begins_with("ElisaWall"):
             visible_walls += 1
     print("godot capture: %dx%d walls=%d hidden=%d markers=%d" % [image.get_width(), image.get_height(), visible_walls, walls_hidden, marker_count])
+
+    # Unload audit: free every Elisa geometry node and the physics body, then
+    # require the scene root to return to just its environment node. A missed
+    # free would leave a child behind, and a freed node must report invalid
+    # rather than dangling. This is the Godot half of the Phase 4 teardown
+    # guarantee the native host asserts with its component counts.
+    var tracked: Array[Node] = []
+    for child in scene_root.get_children():
+        if child == environment_node:
+            continue
+        tracked.append(child)
+    var freed_count := tracked.size()
+    for node in tracked:
+        node.queue_free()
+    await process_frame
+    await process_frame
+    var remaining := scene_root.get_child_count()
+    var environment_alive := is_instance_valid(environment_node)
+    var dangling := is_instance_valid(tracked[0]) if freed_count > 0 else false
+    print("godot unload: freed=%d remaining=%d environment_alive=%s dangling=%s" % [freed_count, remaining, str(environment_alive), str(dangling)])
+    if remaining != 1 or not environment_alive or dangling:
+        _fail("godot unload audit failed")
+        return
     quit(0)
 
 func _fail(message: String) -> void:

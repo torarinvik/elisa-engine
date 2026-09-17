@@ -546,3 +546,14 @@ Method note: this is wall-clock create/remove against the live scene, not a
 frame time, and the batch is deliberately small so the measurement stays a
 churn cost rather than a render cost. It is one recorded workload, not a
 performance promise.
+
+## Godot teardown audit (2026-09-18)
+
+`backends/godot/capture.gd` now frees every Elisa geometry node and the
+physics body after capturing, waits two frames, and requires the scene root to
+return to just its environment node: a missed free leaves a child behind, and a
+freed node must report invalid rather than dangling. A run on this workstation
+reported `freed=19 remaining=1 environment_alive=true dangling=false`, so the
+Phase 4 teardown guarantee ("despawn, restart, and unload must not produce
+accumulating resources or dangling references") is now checked on both hosts,
+not just natively.
