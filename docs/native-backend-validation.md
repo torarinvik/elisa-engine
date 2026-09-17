@@ -181,17 +181,46 @@ drifts by a couple of cells near the interior, so the frame is checked
 for structure, not yet for exact per-cell correspondence; a projective
 check belongs with the eventual Godot capture.
 
-## Toward pixel comparison (status: Wicked side done)
+## Godot rendered capture (2026-09-18)
+
+Godot is no longer command-lifecycle only. `backends/godot/capture.gd`
+consumes the same `backends/scene_manifest.txt`, builds the same 8x8
+wall map and entity cube, and reads the root viewport back to PNG.
+`--headless` cannot do this — it forces Godot's dummy rendering driver —
+so `scripts/godot_capture.elisascript` runs Godot with the real display
+driver, which works here (Metal-backed OpenGL compatibility device) and
+needs a window server, unlike the main gate's headless probe.
+
+The runner gates four things and all pass: the capture is non-blank
+(320x200), two captures are byte-identical (`peak=0.0000 mean=0.0000`),
+the frame encodes the Elisa wall topology by sampling each projected
+grid cell (two samples allowed because the foreground entity cube
+occludes two wall centres from this camera), and the Godot and Wicked
+frames produce identical topology grids. That last check is the plan's
+"scene semantics agree across backends" made executable, and it compares
+structure rather than raw colour, since the two renderers shade
+differently.
+
+## Handedness correction (2026-09-18)
+
+Building that comparison surfaced a real convention defect: the native
+frame was the mirror of the Godot frame. Elisa's math is right-handed
+with -Z forward (`src/math/geometry.elisa`) and Godot matches it, but
+Wicked is left-handed, so its screen-right is Elisa's +X. The native
+bridge now negates X when handing positions to Wicked (`to_wicked_space`
+in `native/wicked_probe.cpp`), which is the RH-to-LH conversion at the
+boundary the plan calls for. Evidence: before the fix the two topology
+grids disagreed on interior walls; after it they are identical and each
+matches the Elisa wall list exactly on the maze-only fixture.
+
+## Toward pixel comparison (status: both hosts captured)
 
 `src/backend/image_compare.elisa` defines the tolerance policy
-(per-channel peak plus mean bound), and since first light a backend
-screenshot reaches it: `scripts/compare_renders.py` (stdlib-only PNG,
-dimension scale check, blank detection, tolerance compare) gates the
-Wicked driver's `build/wicked-frame.png`, and two independent runs
-compare byte-identical. What remains is the Godot side: `--headless` forces the dummy
-rendering driver (per `godot --help`), so a capture there would be
-blank by construction, and no virtual framebuffer exists on this
-workstation to run a headed equivalent. Until a display environment
-is available, cross-backend rendering equivalence is probed at the
-command-lifecycle level on the Godot side and at the pixel level on
-the native side.
+(per-channel peak plus mean bound). `scripts/compare_renders.py`
+gates both hosts: it parses PNG with the standard library, checks
+dimensions, detects blank frames, compares pixels with tolerances, and
+samples the projected maze grid for cross-host structural agreement.
+The remaining gap is raw colour agreement: the two renderers use
+different tonemapping and colour spaces, so a per-pixel colour compare
+is not yet meaningful and is not gated. The structural comparison is
+the current cross-backend evidence.

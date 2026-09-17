@@ -46,6 +46,17 @@ bool load_manifest(const char* filename, std::map<std::string, std::string>& val
     return true;
 }
 
+// Elisa math is right-handed with +Y up and -Z forward (see
+// src/math/geometry.elisa), and so is the Godot host. Wicked is a
+// left-handed renderer, so its screen-right is Elisa's +X. Negating X at
+// this boundary is the RH->LH conversion that keeps both hosts showing the
+// same world instead of a mirrored one. Verified by sampling projected
+// maze cells in both frames: without this the native image is the mirror
+// of the Godot image.
+XMFLOAT3 to_wicked_space(float x, float y, float z) {
+    return XMFLOAT3(-x, y, z);
+}
+
 // "x,y;x,y;..." grid cells from the Elisa maze topology. Empty when the
 // manifest has no wall line, which keeps single-cube hosts working.
 std::vector<std::pair<int, int>> parse_walls(const std::string& spec) {
@@ -163,7 +174,7 @@ int main(int argc, char** argv) {
         if (wall_transform == nullptr) {
             continue;
         }
-        wall_transform->translation_local = XMFLOAT3(
+        wall_transform->translation_local = to_wicked_space(
             (float)cell.first * 0.6f - 2.1f, (float)cell.second * 0.6f - 2.1f, 1.0f);
         wall_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
         wall_transform->UpdateTransform();
@@ -200,13 +211,13 @@ int main(int argc, char** argv) {
     // to light transport versus fragment submission.
     cube_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
     cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
-    lamp_transform->translation_local = XMFLOAT3(2.0f, 3.0f, -2.0f);
+    lamp_transform->translation_local = to_wicked_space(2.0f, 3.0f, -2.0f);
     lamp_transform->UpdateTransform();
 
-    object_transform->translation_local = XMFLOAT3(object_x, object_y, object_z);
+    object_transform->translation_local = to_wicked_space(object_x, object_y, object_z);
     object_transform->UpdateTransform();
     const auto object_position = object_transform->GetPosition();
-    if (!check(std::fabs(object_position.x - object_x) < 0.0001f &&
+    if (!check(std::fabs(object_position.x - (-object_x)) < 0.0001f &&
         std::fabs(object_position.y - object_y) < 0.0001f &&
         std::fabs(object_position.z - object_z) < 0.0001f, "cube transform update")) {
         return 1;
@@ -214,7 +225,7 @@ int main(int argc, char** argv) {
     std::fprintf(stdout, "cube world row=(%.2f,%.2f,%.2f,%.2f)\n",
         object_transform->world.m[3][0], object_transform->world.m[3][1],
         object_transform->world.m[3][2], object_transform->world.m[3][3]);
-    camera_transform->translation_local = XMFLOAT3(camera_x, camera_y, camera_z);
+    camera_transform->translation_local = to_wicked_space(camera_x, camera_y, camera_z);
     // Default orientation already faces +Z toward the cube; leave it alone.
     camera_transform->UpdateTransform();
     camera_component->TransformCamera(*camera_transform);

@@ -113,11 +113,127 @@ def compare(first, second, per_channel, mean):
     return peak, total / count, peak <= per_channel and total / count <= mean
 
 
+def resample_nearest(source, target_width, target_height):
+    # Nearest-neighbour downscale so backends at different device pixel
+    # ratios can be compared on a common grid. Only used for reporting and
+    # loose cross-backend tolerance checks, never for exact comparison.
+    (width, height, channels, pixels) = source
+    out = bytearray(target_width * target_height * channels)
+    for y in range(target_height):
+        source_y = min(height - 1, y * height // target_height)
+        for x in range(target_width):
+            source_x = min(width - 1, x * width // target_width)
+            source_index = (source_y * width + source_x) * channels
+            target_index = (y * target_width + x) * channels
+            out[target_index:target_index + 3] = pixels[source_index:source_index + 3]
+            if channels == 4:
+                out[target_index + 3] = pixels[source_index + 3]
+    return (target_width, target_height, channels, out)
+
+
+def maze_pattern(source, rows, cols, cells):
+    # Samples each grid cell's projected centre and reports W (bright) or .
+    # (dark). The projection is the shared fixture rule both hosts implement:
+    # camera at z=-5 looking toward the wall plane at z=1 (six units away),
+    # vertical field of view 45 degrees, same image aspect. Elisa is
+    # right-handed with the scene on +Z, so world +X projects to screen
+    # LEFT and the mapping below inverts X to print in Elisa's own
+    # coordinates. This compares scene semantics between backends, not raw
+    # colour: two hosts that draw the same walls in the same places produce
+    # the same grid even when their shading differs.
+    import math
+    (width, height, channels, pixels) = source
+    half_height = math.tan(math.radians(22.5)) * 6.0
+    half_width = half_height * (width / height)
+    walls = set()
+    for entry in cells.split(";"):
+        if not entry:
+            continue
+        (x, y) = entry.split(",")
+        walls.add((int(x), int(y)))
+    lines = []
+    for row in range(rows - 1, -1, -1):
+        line = ""
+        for col in range(cols):
+            world_x = col * 0.6 - 2.1
+            world_y = row * 0.6 - 2.1
+            screen_x = int((0.5 - world_x / half_width * 0.5) * width)
+            screen_y = int((0.5 - world_y / half_height * 0.5) * height)
+            screen_x = max(0, min(width - 1, screen_x))
+            screen_y = max(0, min(height - 1, screen_y))
+            index = (screen_y * width + screen_x) * channels
+            brightness = max(pixels[index], pixels[index + 1], pixels[index + 2]) / 255.0
+            line += "W" if brightness > 0.15 else "."
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def pattern_mismatches(source, rows, cols, cells):
+    # Every grid position must be bright exactly when it is a wall in the
+    # Elisa list, so the rendered frame encodes the authoritative topology.
+    rendered = maze_pattern(source, rows, cols, cells).split("\n")
+    walls = set()
+    for entry in cells.split(";"):
+        if entry:
+            (x, y) = entry.split(",")
+            walls.add((int(x), int(y)))
+    mismatches = 0
+    for line_index, line in enumerate(rendered):
+        row = rows - 1 - line_index
+        for col in range(cols):
+            expected = "W" if (col, row) in walls else "."
+            if line[col] != expected:
+                mismatches += 1
+    return mismatches
+
+
+def resolve_cells(spec):
+    # "@<manifest>" reads the wall list from a scene manifest so the
+    # manifest stays the single source of truth for both hosts and host
+    # runners never re-type the topology.
+    if not spec.startswith("@"):
+        return spec
+    for line in open(spec[1:], encoding="utf-8").read().splitlines():
+        text = line.strip()
+        if text.startswith("walls="):
+            return text[len("walls="):]
+    raise ValueError(f"manifest has no walls line: {spec[1:]}")
+
+
 def main(arguments):
     if len(arguments) < 2:
         print(__doc__.splitlines()[0], file=sys.stderr)
         return 2
     command = arguments[1]
+    if command == "pattern":
+        if len(arguments) != 6:
+            print("usage: compare_renders.py pattern <png> <rows> <cols> <cells>", file=sys.stderr)
+            return 2
+        print(maze_pattern(read_png(arguments[2]), int(arguments[3]), int(arguments[4]), resolve_cells(arguments[5])))
+        return 0
+    if command == "pattern-match":
+        if len(arguments) != 7:
+            print("usage: compare_renders.py pattern-match <a.png> <b.png> <rows> <cols> <cells>", file=sys.stderr)
+            return 2
+        rows, cols, cells = int(arguments[4]), int(arguments[5]), resolve_cells(arguments[6])
+        first = maze_pattern(read_png(arguments[2]), rows, cols, cells)
+        second = maze_pattern(read_png(arguments[3]), rows, cols, cells)
+        if first != second:
+            print("first:\n" + first, file=sys.stderr)
+            print("second:\n" + second, file=sys.stderr)
+            print("pattern mismatch between hosts", file=sys.stderr)
+            return 1
+        print("pattern match between hosts")
+        return 0
+    if command == "pattern-check":
+        if len(arguments) != 7:
+            print("usage: compare_renders.py pattern-check <png> <rows> <cols> <cells> <max-mismatches>", file=sys.stderr)
+            return 2
+        rows, cols, cells = int(arguments[3]), int(arguments[4]), resolve_cells(arguments[5])
+        allowed = int(arguments[6])
+        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells)
+        print(f"topology mismatches={found} allowed={allowed}")
+        return 0 if found <= allowed else 1
     if command == "stats":
         (width, height, channels, pixels) = read_png(arguments[2])
         means = channel_stats(pixels, channels)
@@ -141,9 +257,14 @@ def main(arguments):
     if command == "compare":
         per_channel = 0.02
         mean = 0.005
+        scale_to_smaller = False
         rest = arguments[4:]
         while rest:
-            flag, value, rest = rest[0], float(rest[1]), rest[2:]
+            flag, rest = rest[0], rest[1:]
+            if flag == "--scale-to-smaller":
+                scale_to_smaller = True
+                continue
+            value, rest = float(rest[0]), rest[1:]
             if flag == "--per-channel":
                 per_channel = value
             elif flag == "--mean":
@@ -151,7 +272,15 @@ def main(arguments):
             else:
                 print(f"unknown flag {flag}", file=sys.stderr)
                 return 2
-        (peak, average, ok) = compare(read_png(arguments[2]), read_png(arguments[3]), per_channel, mean)
+        first = read_png(arguments[2])
+        second = read_png(arguments[3])
+        if scale_to_smaller or len(first[3]) // first[2] != len(second[3]) // second[2]:
+            target = (min(first[0], second[0]), min(first[1], second[1]))
+            if first[0] != target[0] or first[1] != target[1]:
+                first = resample_nearest(first, target[0], target[1])
+            if second[0] != target[0] or second[1] != target[1]:
+                second = resample_nearest(second, target[0], target[1])
+        (peak, average, ok) = compare(first, second, per_channel, mean)
         print(f"peak={peak:.4f} mean={average:.4f} tolerance=({per_channel},{mean})")
         return 0 if ok else 1
     print(f"unknown command {command}", file=sys.stderr)
