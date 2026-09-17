@@ -1,0 +1,94 @@
+# Replication wire format. The transport moves bytes; Elisa owns what those
+# bytes mean. Frames are fixed size and little-endian so an encode/decode
+# round trip is exact, and every field is an unsigned integer at the
+# boundary: coordinates are biased so a signed gameplay value never needs a
+# signed cast into the byte layer.
+#
+# Frames are built and returned by value rather than passed by reference:
+# array-reference parameters across calls trip the backend's LLVM signature
+# for this shape, and a fixed 33-byte value is cheap to return.
+include "./replication.elisa"
+
+module Wire:
+    private:
+        const module Format:
+            FRAME_BYTES: usize = 33
+            OWNER_SERVER: u8 = 0
+            OWNER_CLIENT: u8 = 1
+            BYTE_MASK: u64 = 255
+            BIAS: i64 = 1000000
+
+    public:
+        error WireError:
+            ShortFrame
+            LongFrame
+            UnknownOwner
+            Unrepresentable
+            InvalidRecord
+
+        def wire_frame_bytes() -> usize:
+            Format::FRAME_BYTES
+
+        def wire_bias() -> i64:
+            Format::BIAS
+
+        def encode(record: Net::ReplRecord&) -> u8[33] error[WireError]:
+            raise WireError.InvalidRecord if not Net::record_valid(record)
+            raise WireError.Unrepresentable if record.x + Format::BIAS < 0 or record.y + Format::BIAS < 0
+            out: mutable u8[33] = zeroed
+            persistent: u64 = record.persistent
+            x_bits: u64 = (record.x + Format::BIAS).u64()
+            y_bits: u64 = (record.y + Format::BIAS).u64()
+            revision_bits: u64 = record.revision.u64()
+            out[0] <- (persistent & Format::BYTE_MASK).u8()
+            out[1] <- ((persistent >> 8) & Format::BYTE_MASK).u8()
+            out[2] <- ((persistent >> 16) & Format::BYTE_MASK).u8()
+            out[3] <- ((persistent >> 24) & Format::BYTE_MASK).u8()
+            out[4] <- ((persistent >> 32) & Format::BYTE_MASK).u8()
+            out[5] <- ((persistent >> 40) & Format::BYTE_MASK).u8()
+            out[6] <- ((persistent >> 48) & Format::BYTE_MASK).u8()
+            out[7] <- ((persistent >> 56) & Format::BYTE_MASK).u8()
+            out[8] <- (x_bits & Format::BYTE_MASK).u8()
+            out[9] <- ((x_bits >> 8) & Format::BYTE_MASK).u8()
+            out[10] <- ((x_bits >> 16) & Format::BYTE_MASK).u8()
+            out[11] <- ((x_bits >> 24) & Format::BYTE_MASK).u8()
+            out[12] <- ((x_bits >> 32) & Format::BYTE_MASK).u8()
+            out[13] <- ((x_bits >> 40) & Format::BYTE_MASK).u8()
+            out[14] <- ((x_bits >> 48) & Format::BYTE_MASK).u8()
+            out[15] <- ((x_bits >> 56) & Format::BYTE_MASK).u8()
+            out[16] <- (y_bits & Format::BYTE_MASK).u8()
+            out[17] <- ((y_bits >> 8) & Format::BYTE_MASK).u8()
+            out[18] <- ((y_bits >> 16) & Format::BYTE_MASK).u8()
+            out[19] <- ((y_bits >> 24) & Format::BYTE_MASK).u8()
+            out[20] <- ((y_bits >> 32) & Format::BYTE_MASK).u8()
+            out[21] <- ((y_bits >> 40) & Format::BYTE_MASK).u8()
+            out[22] <- ((y_bits >> 48) & Format::BYTE_MASK).u8()
+            out[23] <- ((y_bits >> 56) & Format::BYTE_MASK).u8()
+            out[24] <- (revision_bits & Format::BYTE_MASK).u8()
+            out[25] <- ((revision_bits >> 8) & Format::BYTE_MASK).u8()
+            out[26] <- ((revision_bits >> 16) & Format::BYTE_MASK).u8()
+            out[27] <- ((revision_bits >> 24) & Format::BYTE_MASK).u8()
+            out[28] <- ((revision_bits >> 32) & Format::BYTE_MASK).u8()
+            out[29] <- ((revision_bits >> 40) & Format::BYTE_MASK).u8()
+            out[30] <- ((revision_bits >> 48) & Format::BYTE_MASK).u8()
+            out[31] <- ((revision_bits >> 56) & Format::BYTE_MASK).u8()
+            out[32] <- Format::OWNER_SERVER if record.owner == Net::Owner.Server else Format::OWNER_CLIENT
+            out
+
+        def decode(frame: u8[33], count: usize) -> Net::ReplRecord error[WireError]:
+            raise WireError.ShortFrame if count < Format::FRAME_BYTES
+            raise WireError.LongFrame if count > Format::FRAME_BYTES
+            raise WireError.UnknownOwner if frame[32] != Format::OWNER_SERVER and frame[32] != Format::OWNER_CLIENT
+            persistent: u64 = frame[0].u64() + (frame[1].u64() << 8) + (frame[2].u64() << 16) + (frame[3].u64() << 24) + (frame[4].u64() << 32) + (frame[5].u64() << 40) + (frame[6].u64() << 48) + (frame[7].u64() << 56)
+            x_bits: u64 = frame[8].u64() + (frame[9].u64() << 8) + (frame[10].u64() << 16) + (frame[11].u64() << 24) + (frame[12].u64() << 32) + (frame[13].u64() << 40) + (frame[14].u64() << 48) + (frame[15].u64() << 56)
+            y_bits: u64 = frame[16].u64() + (frame[17].u64() << 8) + (frame[18].u64() << 16) + (frame[19].u64() << 24) + (frame[20].u64() << 32) + (frame[21].u64() << 40) + (frame[22].u64() << 48) + (frame[23].u64() << 56)
+            revision_bits: u64 = frame[24].u64() + (frame[25].u64() << 8) + (frame[26].u64() << 16) + (frame[27].u64() << 24) + (frame[28].u64() << 32) + (frame[29].u64() << 40) + (frame[30].u64() << 48) + (frame[31].u64() << 56)
+            owner: Net::Owner =
+                Net::Owner.Server if frame[32] == Format::OWNER_SERVER else Net::Owner.Client
+            Net::ReplRecord{
+                persistent: persistent,
+                x: x_bits.i64() - Format::BIAS,
+                y: y_bits.i64() - Format::BIAS,
+                revision: revision_bits.i64(),
+                owner: owner,
+            }

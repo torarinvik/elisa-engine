@@ -1,6 +1,107 @@
 include "../src/net/session.elisa"
+include "../src/net/loopback.elisa"
 using Net
 using Session
+using Wire
+using Loopback
+
+def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
+    ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
+
+def empty_record() -> ReplRecord:
+    ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Owner.Server}
+
+def wire_test() -> i32:
+    record: ReplRecord = sample(Owner.Server, 7, 3, 0 - 4)
+    frame: u8[33] =
+        catch encode(&record):
+            value: value
+            error failure: zeroed
+    restored: ReplRecord =
+        catch decode(frame, wire_frame_bytes()):
+            value: value
+            error failure: empty_record()
+    return 40 if restored.persistent != 99 or restored.revision != 7 or restored.owner != Owner.Server
+    return 41 if restored.x != 3 or restored.y != 0 - 4
+    short: i32 = catch decode(frame, 32):
+        value: 1
+        WireError.ShortFrame: 0
+        error failure: 2
+    return 42 if short != 0
+    long: i32 = catch decode(frame, 34):
+        value: 1
+        WireError.LongFrame: 0
+        error failure: 2
+    return 43 if long != 0
+    corrupt: mutable u8[33] = frame
+    corrupt[32] <- 9
+    bad_owner: i32 = catch decode(corrupt, wire_frame_bytes()):
+        value: 1
+        WireError.UnknownOwner: 0
+        error failure: 2
+    return 44 if bad_owner != 0
+    invalid: ReplRecord = ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
+    rejected: i32 = catch encode(&invalid):
+        value: 1
+        WireError.InvalidRecord: 0
+        error failure: 2
+    return 45 if rejected != 0
+    0
+
+def loopback_test() -> i32:
+    link: mutable Link = link_new(2, 1)
+    first: ReplRecord = sample(Owner.Server, 1, 10, 0)
+    second: ReplRecord = sample(Owner.Server, 2, 20, 0)
+    third: ReplRecord = sample(Owner.Server, 3, 30, 0)
+    fourth: ReplRecord = sample(Owner.Server, 4, 40, 0)
+    early: i32 = catch link_send(&link, &first, 0):
+        value: value
+        error failure: 99
+    second_seq: i32 = catch link_send(&link, &second, 1):
+        value: value
+        error failure: 99
+    third_seq: i32 = catch link_send(&link, &third, 2):
+        value: value
+        error failure: 99
+    fourth_seq: i32 = catch link_send(&link, &fourth, 3):
+        value: value
+        error failure: 99
+    return 50 if early != 0 or second_seq != 1 or third_seq != 2 or fourth_seq != 3
+    # Nothing has arrived yet: the link delay holds every packet back.
+    too_soon: i32 = catch link_receive(&link, 0):
+        value: 1
+        LinkError.UnknownPacket: 0
+        error failure: 2
+    return 51 if too_soon != 0
+    # By tick 4 all four have arrived; the loss pattern drops the even
+    # sequences, so the newest survivor is revision 4.
+    arrived: ReplRecord =
+        catch link_receive(&link, 4):
+            value: value
+            error failure: empty_record()
+    return 52 if arrived.revision != 4 or arrived.x != 40
+    return 53 if link_delivered(&link) != 2 or link_dropped(&link) != 2
+    drained: i32 = catch link_receive(&link, 5):
+        value: 1
+        LinkError.UnknownPacket: 0
+        error failure: 2
+    return 54 if drained != 0
+
+    # A reliable link delivers the newest immediately, so loss is what the
+    # policy says and not an accident of the double.
+    reliable: mutable Link = link_new(0, 0)
+    _ = catch link_send(&reliable, &first, 0):
+        value: value
+        error failure: 99
+    _ = catch link_send(&reliable, &fourth, 0):
+        value: value
+        error failure: 99
+    latest: ReplRecord =
+        catch link_receive(&reliable, 0):
+            value: value
+            error failure: empty_record()
+    return 55 if latest.revision != 4 or link_dropped(&reliable) != 0
+    0
 
 def main() -> i32:
     session: mutable NetSession = session_new()
@@ -27,4 +128,9 @@ def main() -> i32:
 
     session_close(&session)
     return 18 if session.stage != SessionStage.Closed or session_live(&session)
+
+    wired: i32 = wire_test()
+    return wired if wired != 0
+    looped: i32 = loopback_test()
+    return looped if looped != 0
     0

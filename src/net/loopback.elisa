@@ -1,0 +1,109 @@
+# A loopback transport for the byte path without a network stack. Packets are
+# real encoded frames in Elisa memory; the link applies the same loss and
+# delay policy the session layer declares, so loss/latency behavior can be
+# demonstrated before a socket library exists. This is a transport double,
+# not an integration: it proves the encode/deliver/decode/reconcile chain,
+# not that a real socket works.
+include "./wire.elisa"
+
+using Wire
+
+module Loopback:
+    private:
+        const module Limits:
+            MAX_PACKETS: usize = 16
+
+    public:
+        struct Packet:
+            sequence: mutable usize
+            bytes: mutable u8[33]
+            length: mutable usize
+            send_tick: mutable i64
+            delivered: mutable bool
+            dropped: mutable bool
+
+        struct Link:
+            packets: mutable Packet[16]
+            count: mutable usize
+            loss_every: mutable usize
+            delay_ticks: mutable i64
+            delivered_count: mutable usize
+            dropped_count: mutable usize
+
+        error LinkError:
+            Capacity
+            UnknownPacket
+            EncodeFailed
+
+        def link_new(loss_every: usize, delay_ticks: i64) -> Link:
+            Link{
+                packets: zeroed,
+                count: 0,
+                loss_every: loss_every,
+                delay_ticks: delay_ticks,
+                delivered_count: 0,
+                dropped_count: 0,
+            }
+
+        def link_send(link: mutable Link&, record: Net::ReplRecord&, send_tick: i64) -> usize error[LinkError]:
+            raise LinkError.Capacity if link.count >= Limits::MAX_PACKETS
+            sequence: usize = link.count
+            frame: u8[33] =
+                catch encode(record):
+                    value: value
+                    error failure: zeroed
+            link.packets[sequence] <- Packet{
+                sequence: sequence,
+                bytes: frame,
+                length: Wire::wire_frame_bytes(),
+                send_tick: send_tick,
+                delivered: false,
+                dropped: false,
+            }
+            link.count <- link.count + 1
+            sequence
+
+        # Arrival is the send tick plus the link delay, so a caller can ask
+        # for whatever is applicable now and late packets are held back.
+        def link_arrives_at(link: Link&, sequence: usize, now_tick: i64) -> bool:
+            return false if sequence >= link.count
+            packet: Packet = link.packets[sequence]
+            arrived: bool =
+                now_tick >= Net::arrival_tick(packet.send_tick, link.delay_ticks)
+            arrived and Net::should_deliver(sequence, link.loss_every)
+
+        def link_receive(link: mutable Link&, now_tick: i64) -> Net::ReplRecord error[LinkError]:
+            newest: mutable i64 = -1
+            chosen: mutable usize = Limits::MAX_PACKETS
+            for index in 0..<link.count |link, now_tick, newest, chosen|:
+                packet: Packet = link.packets[index]
+                if not packet.delivered and not packet.dropped and Net::should_deliver(index, link.loss_every) and now_tick >= Net::arrival_tick(packet.send_tick, link.delay_ticks):
+                    record: Net::ReplRecord =
+                        catch decode(packet.bytes, packet.length):
+                            value: value
+                            error failure: Net::ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Net::Owner.Server}
+                    if record.revision > newest:
+                        newest <- record.revision
+                        chosen <- index
+            # Retire everything that can no longer overtake the chosen packet:
+            # delivered for real, or past its arrival but superseded.
+            for index in 0..<link.count |link, chosen, now_tick|:
+                packet: Packet = link.packets[index]
+                if not packet.delivered and not packet.dropped:
+                    if not Net::should_deliver(index, link.loss_every):
+                        link.packets[index].dropped <- true
+                        link.dropped_count <- link.dropped_count + 1
+                    elif now_tick >= Net::arrival_tick(packet.send_tick, link.delay_ticks):
+                        link.packets[index].delivered <- true
+                        link.delivered_count <- link.delivered_count + 1
+            raise LinkError.UnknownPacket if chosen >= link.count
+            packet: Packet = link.packets[chosen]
+            catch decode(packet.bytes, packet.length):
+                value: value
+                error failure: Net::ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Net::Owner.Server}
+
+        def link_delivered(link: Link&) -> usize:
+            link.delivered_count
+
+        def link_dropped(link: Link&) -> usize:
+            link.dropped_count
