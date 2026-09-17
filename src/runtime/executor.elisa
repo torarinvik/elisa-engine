@@ -28,6 +28,17 @@ module Executor:
         struct Work:
             runs: mutable i64[8]
 
+        # What a dispatched system may touch, plus the executor's own record of
+        # the order it ran. Keeping the trace here makes execution observable
+        # without the executor knowing anything about the systems.
+        struct FrameState:
+            visits: mutable i64[8]
+            trace: mutable i64[8]
+            length: mutable usize
+
+        def frame_state_new() -> FrameState:
+            FrameState{visits: zeroed, trace: zeroed, length: 0}
+
         def plan_new() -> Plan:
             Plan{order: zeroed, group: zeroed, count: 0, group_count: 0}
 
@@ -84,6 +95,37 @@ module Executor:
                         ok: true
                         error failure: false
                 _ = ran
+
+        # Serial execution order derived from the groups: groups in order, and
+        # within a group the systems in declared order. A host or a test can
+        # read this without executing anything.
+        def plan_sequence(plan: Plan&) -> i64[8]:
+            groups: mutable usize[8] = plan.group
+            count: mutable usize = plan.count
+            group_count: mutable usize = plan.group_count
+            sequence: mutable i64[8] = zeroed
+            slot: mutable usize = 0
+            for group in 0..<group_count |groups, count, group_count, sequence, slot|:
+                for index in 0..<count |groups, sequence, slot, group|:
+                    if groups[index] == group and slot < 8:
+                        sequence[slot] <- index.i64()
+                        slot <- slot + 1
+            sequence
+
+        # Execute the plan for real: dispatch is called once per system in the
+        # sequence above, and the executor records the order it actually ran.
+        # Function-value arrays are not supported by the compiler, so a single
+        # dispatcher receives the system index rather than one callback per
+        # system; that keeps the executor independent of what systems do.
+        def plan_execute(plan: Plan&, state: mutable FrameState&, dispatch: fn(mutable FrameState&, usize) -> void) -> void error[ExecError]:
+            raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
+            sequence: i64[8] = plan_sequence(plan)
+            for slot in 0..<plan.count |state, sequence, dispatch|:
+                system: usize = sequence[slot].usize()
+                dispatch(state, system)
+                if state.length < 8:
+                    state.trace[state.length] <- system.i64()
+                    state.length <- state.length + 1
 
         def run_count(work: Work&, system: usize) -> i64:
             return -1 if system >= Limits::MAX_SYSTEMS

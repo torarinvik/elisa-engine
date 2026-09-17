@@ -15,6 +15,9 @@ def render() -> System:
 def audio() -> System:
     with_read(system_empty(3), Resource.Transforms)
 
+def dispatch(state: mutable FrameState&, system: usize) -> void:
+    state.visits[system] <- state.visits[system] + 1
+
 def main() -> i32:
     return 1 if resource_count() != 4 or resource_index(Resource.Cues) != 3
     play: System = gameplay()
@@ -57,6 +60,27 @@ def main() -> i32:
             value: value
             error failure: plan_new()
     return 21 if plan_valid(&bad_plan, systems)
+
+    # Grouping changes execution order, and the executor runs systems for real.
+    # Here the two readers share group 1 while physics is deferred to group 2,
+    # so the serial order is 0, 2, 3, 1 rather than the declared 0, 1, 2, 3.
+    grouped: usize[8] = [0, 2, 1, 1, 0, 0, 0, 0]
+    grouped_plan: Plan =
+        catch plan_from_groups(grouped, 4):
+            value: value
+            error failure: plan_new()
+    return 22 if not plan_valid(&grouped_plan, systems)
+    seq: i64[8] = plan_sequence(&grouped_plan)
+    return 23 if seq[0] != 0 or seq[1] != 2 or seq[2] != 3 or seq[3] != 1
+    state: mutable FrameState = frame_state_new()
+    dispatched: i32 =
+        catch plan_execute(&grouped_plan, &state, dispatch):
+            ok: 0
+            error failure: 1
+    return 24 if dispatched != 0
+    return 25 if state.trace[0] != 0 or state.trace[1] != 2 or state.trace[2] != 3 or state.trace[3] != 1
+    return 26 if state.visits[0] != 1 or state.visits[1] != 1 or state.visits[2] != 1 or state.visits[3] != 1
+    return 27 if state.length != 4
     work: mutable Work = work_new()
     ran: i32 =
         catch plan_run(&plan, &work, 3):
