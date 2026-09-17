@@ -108,7 +108,9 @@ Gameplay-adjacent ownership lives in small policy modules, each gated by
 tests: `src/physics/policy.elisa` (one solver per body, kinematic from
 Elisa, dynamic from the solver, tick-boundary commits),
 `src/runtime/schedule.elisa` (declared read/write sets, conflict ordering,
-parallel pairs), `src/animation/state.elisa` plus `src/animation/codec.elisa`
+parallel pairs) plus `src/runtime/executor.elisa` (runs a system plan in
+flat groups and records how often each system executed; the serial
+reference a parallel executor must match), `src/animation/state.elisa` plus `src/animation/codec.elisa`
 (Elisa-owned clips, blends, events, root motion; benchmarked codec choice;
 `examples/maze/hunter.elisa` drives the walking character's animation from
 its movement, so one walked step is one Walk tick and arriving switches to

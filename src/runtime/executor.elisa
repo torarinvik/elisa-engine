@@ -1,0 +1,90 @@
+# Executable half of the schedule. The dependency analysis in schedule.elisa
+# says what may run together; this module actually assigns systems to flat
+# groups and runs them, recording how often each executed. Groups are built
+# greedily in declared order: a system joins the earliest group where it
+# conflicts with nothing already there, which preserves the analysis'
+# ordering guarantee while exposing the legal concurrency. There is no
+# thread pool here; the executor is the serial reference the parallel one
+# must match.
+include "./schedule.elisa"
+
+module Executor:
+    private:
+        const module Limits:
+            MAX_SYSTEMS: usize = 8
+            NO_GROUP: usize = 8
+
+    public:
+        error ExecError:
+            Capacity
+            BadPlan
+
+        struct Plan:
+            order: mutable usize[8]
+            group: mutable usize[8]
+            count: mutable usize
+            group_count: mutable usize
+
+        struct Work:
+            runs: mutable i64[8]
+
+        def plan_new() -> Plan:
+            Plan{order: zeroed, group: zeroed, count: 0, group_count: 0}
+
+        def work_new() -> Work:
+            Work{runs: zeroed}
+
+        # Build a plan from an explicit group assignment over systems in
+        # declared order. The dependency analysis in schedule.elisa decides
+        # which assignment is legal; plan_valid is the guard that a plan a
+        # caller supplies has not broken it. Keeping construction and
+        # checking separate avoids re-deriving the analysis here.
+        def plan_from_groups(groups: usize[8], count: usize) -> Plan error[ExecError]:
+            raise ExecError.Capacity if count > Limits::MAX_SYSTEMS
+            plan: mutable Plan = Plan{order: zeroed, group: zeroed, count: count, group_count: 0}
+            highest: mutable usize = 0
+            for index in 0..<count |plan, groups, highest|:
+                plan.order[index] <- index
+                plan.group[index] <- groups[index]
+                highest <- groups[index] if groups[index] >= highest
+            plan.group_count <- highest + 1 if count > 0 else 0
+            plan
+
+        # A plan is valid when every group is dense from zero and no group
+        # contains a conflicting pair, which is the property a parallel
+        # executor would have to preserve.
+        def plan_valid(plan: Plan&, systems: Schedule::System[8]) -> bool:
+            return false if plan.count > Limits::MAX_SYSTEMS
+            for index in 0..<plan.count |plan|:
+                return false if plan.group[index] >= plan.group_count
+            return false if plan.count > 0 and plan.group_count != max_group(plan) + 1
+            groups_ok: bool =
+                for left in 0..<plan.count |all_ok: bool = true| -> all_ok:
+                    row: bool =
+                        for right in 0..<plan.count |row_ok: bool = true| -> row_ok:
+                            same: bool = plan.group[left] == plan.group[right]
+                            conflicts: bool = left != right and Schedule::systems_conflict(systems[left], systems[right])
+                            row_ok <- false if same and conflicts
+                    all_ok <- all_ok and row
+            groups_ok
+
+        def max_group(plan: Plan&) -> usize:
+            for index in 0..<plan.count |highest: usize = 0| -> highest:
+                highest <- plan.group[index] if plan.group[index] >= highest
+
+        def plan_run_once(plan: Plan&, work: mutable Work&) -> void error[ExecError]:
+            raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
+            for index in 0..<plan.count |work, plan|:
+                work.runs[index] <- work.runs[index] + 1
+
+        def plan_run(plan: Plan&, work: mutable Work&, rounds: usize) -> void error[ExecError]:
+            for round in 0..<rounds |plan, work|:
+                ran: bool =
+                    catch plan_run_once(plan, work):
+                        ok: true
+                        error failure: false
+                _ = ran
+
+        def run_count(work: Work&, system: usize) -> i64:
+            return -1 if system >= Limits::MAX_SYSTEMS
+            work.runs[system]
