@@ -11,6 +11,12 @@ module Backend:
             INVALID_SLOT: usize = MAX_COMMANDS
             DEAD: u8 = 0
             LIVE: u8 = 1
+            # Fixed serialized size of one scene command: the reference
+            # (two i64), the transform (ten f32), the visual asset (two
+            # 128-bit ids), and the kind discriminator. This is a proxy for
+            # bytes a backend would consume, pinned so the counter is a
+            # recorded workload rather than a guess.
+            COMMAND_BYTES: i64 = 80
 
     public:
         enum SceneCommandKind:
@@ -113,6 +119,11 @@ module Backend:
         # to prove resources return to baseline rather than accumulate.
         def recorder_live_count(recorder: SceneRecorder&) -> usize:
             Recording::live_count(recorder)
+
+        # Submitted bytes as a recorded workload: commands queued times the
+        # fixed command size. A budget can gate this separately from frame time.
+        def recorder_submitted_bytes(recorder: SceneRecorder&) -> i64:
+            recorder.command_count.i64() * Backend::Limits::COMMAND_BYTES
 
         def can_submit_updates(recorder: SceneRecorder&, reference: World::EntityRef, count: usize) -> bool:
             recorder_is_live(recorder, reference) and recorder.command_count <= Backend::Limits::MAX_COMMANDS and count <= Backend::Limits::MAX_COMMANDS - recorder.command_count

@@ -17,12 +17,14 @@ module Inspector:
             live_entities: usize
             registry_slots: usize
             queued_commands: usize
+            queued_bytes: i64
             frame_micros: i64
             errors: usize
 
         struct PerfBudget:
             max_frame_micros: i64
             max_queued_commands: usize
+            max_queued_bytes: i64
             max_live_entities: usize
 
         struct PerfCounters:
@@ -34,7 +36,7 @@ module Inspector:
             sample_count: mutable usize
 
         def default_budget() -> PerfBudget:
-            PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_live_entities: 256}
+            PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_queued_bytes: 20480, max_live_entities: 256}
 
         def counters_new() -> PerfCounters:
             PerfCounters{frames: 0, total_micros: 0, worst_micros: 0, over_budget: 0, samples: zeroed, sample_count: 0}
@@ -42,14 +44,15 @@ module Inspector:
         def snapshot_valid(view: Snapshot&) -> bool:
             return false if view.tick < 0 or view.frame_micros < 0 or view.errors > Bounds::MAX_ERRORS
             return false if view.live_entities > view.registry_slots or view.registry_slots > 256
+            return false if view.queued_bytes < 0
             view.queued_commands <= 256
 
         def budget_valid(budget: PerfBudget&) -> bool:
-            budget.max_frame_micros > 0 and budget.max_live_entities > 0 and budget.max_live_entities <= 256 and budget.max_queued_commands <= 256
+            budget.max_frame_micros > 0 and budget.max_queued_bytes > 0 and budget.max_live_entities > 0 and budget.max_live_entities <= 256 and budget.max_queued_commands <= 256
 
         def snapshot_within_budget(view: Snapshot&, budget: PerfBudget&) -> bool:
             return false if not snapshot_valid(view) or not budget_valid(budget)
-            view.frame_micros <= budget.max_frame_micros and view.queued_commands <= budget.max_queued_commands and view.live_entities <= budget.max_live_entities
+            view.frame_micros <= budget.max_frame_micros and view.queued_commands <= budget.max_queued_commands and view.queued_bytes <= budget.max_queued_bytes and view.live_entities <= budget.max_live_entities
 
         def mean_frame_micros(counters: PerfCounters&) -> i64:
             return 0 if counters.frames == 0
@@ -75,6 +78,7 @@ module Inspector:
                         live_entities: world.live_count,
                         registry_slots: world.registry_count,
                         queued_commands: recorder.command_count,
+                        queued_bytes: Backend::recorder_submitted_bytes(recorder),
                         frame_micros: frame_micros,
                         errors: errors,
                     }

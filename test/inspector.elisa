@@ -34,6 +34,13 @@ def main() -> i32:
     return 6 if not snapshot_valid(&view) or view.live_entities != 1 or view.queued_commands != 1
     return 7 if view.tick != 7 or view.frame_micros != 1500
     return 8 if not snapshot_within_budget(&view, &budget)
+    # Submitted bytes are a recorded workload: one command is the fixed size,
+    # and the default byte budget covers the full command queue.
+    return 15 if view.queued_bytes != 80 or recorder_submitted_bytes(&recorder) != 80
+    return 16 if budget.max_queued_bytes != 20480
+
+    tight: PerfBudget = PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_queued_bytes: 40, max_live_entities: 256}
+    return 17 if not budget_valid(&tight) or snapshot_within_budget(&view, &tight)
 
     slow: Snapshot = snapshot_from_world(&world, &recorder, 8, 20000, 0)
     return 9 if snapshot_within_budget(&slow, &budget)
