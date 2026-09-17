@@ -143,15 +143,37 @@ with the CMake libraries. Those edits and flags are deliberately kept outside
 this repository; the command above is the reproducible acceptance gate for the
 native scene path.
 
-## Toward pixel comparison
+## First light (2026-09-18)
 
-`src/backend/image_compare.elisa` already defines the tolerance policy
-(per-channel peak plus mean bound), but no backend screenshot reaches it
-yet. The probe only checks `GetRenderResult3D().IsValid()`. Wicked offers
-`RenderPath3D::CreateScreenshotWithAlphaBackground`, which returns a GPU
-texture; turning that into a comparable image still needs a staging
-download to CPU pixels plus a file encoder, and no in-repo consumer
-demonstrates that chain today. Godot-side capture is likewise unwritten.
-Until both captures exist, cross-backend rendering equivalence is probed
-at the command-lifecycle level only; pixel comparison stays policy
-without evidence.
+The black frame is resolved: the `build-elisa-arm-o0` tree was linking
+stale `wiRenderer.cpp` objects that predated the checked-out sources
+(the `WickedEngine_ext_shaders` target, not `WickedEngine_common`,
+owns that translation unit — asking cmake for the wrong target name
+reports success while building nothing). Temporary in-upstream prints
+(not committed, reverted afterward with the checkout verified back to
+its four documented compat edits) showed the per-batch path reached
+with a missing pipeline; after a genuine rebuild from pristine
+sources the same probe renders a centered bright rectangle
+(x 223-416, y 103-296 of the 640x400 frame) and exits 0 through the
+tolerance check. Two runs — one against the instrumented library, one
+pristine — produce byte-identical PNGs (peak and mean error both
+0.0000), so the renderer is deterministic for this scene and the fix
+is permanent, not timing luck. Lessons: always verify a rebuild by
+object timestamp rather than a bare exit code, and distrust implied
+target names. The upstream checkout itself is untouched by the fix;
+only its build products were stale.
+
+## Toward pixel comparison (status: Wicked side done)
+
+`src/backend/image_compare.elisa` defines the tolerance policy
+(per-channel peak plus mean bound), and since first light a backend
+screenshot reaches it: `scripts/compare_renders.py` (stdlib-only PNG,
+dimension scale check, blank detection, tolerance compare) gates the
+Wicked driver's `build/wicked-frame.png`, and two independent runs
+compare byte-identical. What remains is the Godot side: `--headless` forces the dummy
+rendering driver (per `godot --help`), so a capture there would be
+blank by construction, and no virtual framebuffer exists on this
+workstation to run a headed equivalent. Until a display environment
+is available, cross-backend rendering equivalence is probed at the
+command-lifecycle level on the Godot side and at the pixel level on
+the native side.

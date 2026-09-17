@@ -131,6 +131,11 @@ int main(int argc, char** argv) {
     // Emissive sky-blue like the Godot probe albedo: if these pixels show,
     // rasterization works and only light transport is in question.
     cube_material->emissiveColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
+    // Unlit bypass in the same run: no lights, shadows, or exposure can
+    // hide an unlit base color, so any pixels at all isolate the failure
+    // to light transport versus fragment submission.
+    cube_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+    cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
     lamp_transform->translation_local = XMFLOAT3(2.0f, 3.0f, -2.0f);
     lamp_transform->UpdateTransform();
 
@@ -161,6 +166,9 @@ int main(int argc, char** argv) {
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);
+    std::fprintf(stdout, "pre-frames aabb=%u matrices=%u objects=%u\n",
+        (unsigned)scene.aabb_objects.size(), (unsigned)scene.matrix_objects.size(),
+        (unsigned)scene.objects.GetCount());
     // Pump platform events first: on macOS a window that never sees its
     // event queue may never finish mapping its Metal layer.
     for (int pump = 0; pump < 60; ++pump) {
@@ -173,8 +181,12 @@ int main(int argc, char** argv) {
     // changed nothing versus the 0.0 default, so depth convention is not
     // the sole gate. The forcing lines were removed again to leave
     // engine state at defaults.
+    // Settle loop: pipeline states compile in the background on first use
+    // and draws using them are skipped until ready, so give the queue wall
+    // time between frames instead of only counting frames.
     for (int frame = 0; frame < 30; ++frame) {
         application.Run();
+        wi::helper::Sleep(1000);
     }
     // Metal work is asynchronous: without draining the queue the backbuffer
     // still holds cleared memory when it is read below, no matter how many
@@ -235,6 +247,12 @@ int main(int argc, char** argv) {
             std::fprintf(stdout, "aabb0 min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) layer=%u\n",
                 bounds._min.x, bounds._min.y, bounds._min.z,
                 bounds._max.x, bounds._max.y, bounds._max.z, bounds.layerMask);
+        }
+        std::fprintf(stdout, "instance matrices=%u\n", (unsigned)scene.matrix_objects.size());
+        if (!scene.matrix_objects.empty()) {
+            const auto& instance = scene.matrix_objects[0];
+            std::fprintf(stdout, "instance0 row=(%.2f,%.2f,%.2f,%.2f)\n",
+                instance.m[3][0], instance.m[3][1], instance.m[3][2], instance.m[3][3]);
         }
     }
     // Capture the composited swapchain image, not an intermediate target:
