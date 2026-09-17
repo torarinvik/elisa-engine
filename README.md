@@ -158,6 +158,9 @@ than extrapolating).
 `examples/maze/character.elisa` composes these into one playable enemy: it is
 an owning World entity that navigates, animates, carries an IK-corrected leg
 pose, and unloads with its identity removed first.
+`examples/maze/studio.elisa` is the play-in-editor surface: a running game with
+an undo/redo history over its settings, stepped through the real game API, and
+an asset-catalogue check that rejects a stale package generation.
 `src/math/geometry.elisa` supplies a Newton square root, lengths,
 normalization, quaternion multiply/rotate, and transform composition, so
 rotation stays engine-owned instead of a vendor type.

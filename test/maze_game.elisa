@@ -1,6 +1,10 @@
-include "../examples/maze/game.elisa"
+include "../examples/maze/studio.elisa"
 using Maze
 using MazeGame
+using MazeStudio
+using Editor
+using Assets
+using AssetCatalogue
 
 def main() -> i32:
     game: mutable MazeGame = game_new()
@@ -100,4 +104,38 @@ def main() -> i32:
 
     game_quit(&game)
     return 30 if game.status != GameStatus.Exited
+
+    # Play-in-editor: a running game with an undo history over its settings,
+    # and asset-catalogue validation that rejects a stale generation.
+    studio: mutable Studio = studio_new()
+    return 37 if not studio_valid(&studio) or not studio.game.settings.fog or not studio.game.settings.audio
+    studio_start(&studio)
+    return 38 if studio.game.status != GameStatus.Playing
+    fog_off_edit: bool = studio_apply(&studio, false, true)
+    return 39 if not fog_off_edit or studio.game.settings.fog or not history_can_undo(&studio.history)
+    stepped: bool = studio_step(&studio, MazeMove.East)
+    return 40 if not stepped or studio.game.grid.player_x != 2
+    reverted: bool = studio_undo(&studio)
+    return 41 if not reverted or not studio.game.settings.fog or studio.game.grid.player_x != 2
+    reapplied: bool = studio_redo(&studio)
+    return 42 if not reapplied or studio.game.settings.fog
+    no_change: bool = studio_apply(&studio, false, true)
+    return 43 if not no_change
+    quiet_edit: bool = studio_apply(&studio, true, false)
+    return 44 if not quiet_edit or studio.game.settings.audio or not studio_valid(&studio)
+    catalog: mutable Catalogue = catalogue_new()
+    tile: AssetId = AssetId{high: 23, low: 1}
+    content_one: AssetId = AssetId{high: 40, low: 1}
+    content_two: AssetId = AssetId{high: 40, low: 2}
+    registered: bool = catch catalogue_register(&catalog, tile, content_one, 128):
+        ok: true
+        error failure: false
+    return 45 if not registered or not catalogue_valid(&catalog) or entry_count(&catalog) != 1
+    return 46 if not package_fresh(&catalog, tile, content_one, 0) or package_fresh(&catalog, tile, content_two, 1)
+    return 47 if not studio_tile_fresh(&studio, &catalog, content_one, 0)
+    recooked: bool = catch catalogue_recook(&catalog, tile, content_two):
+        ok: true
+        error failure: false
+    return 48 if not recooked or lookup_generation(&catalog, tile) != 1
+    return 49 if not studio_tile_fresh(&studio, &catalog, content_two, 1) or studio_tile_fresh(&studio, &catalog, content_one, 0)
     0

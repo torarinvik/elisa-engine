@@ -1,0 +1,78 @@
+# Play-in-editor for the maze game: a running game plus an undo history over
+# its settings, and asset-catalogue validation so a recooked package is either
+# current or rejected. An ordinary content change is authored, validated, and
+# tested here without editing engine internals. This is game-level tooling; the
+# engine keeps only the generic history and catalogue.
+include "./game.elisa"
+include "../../src/tooling/editor.elisa"
+include "../../src/assets/database.elisa"
+
+module MazeStudio:
+    private:
+        const module Tune:
+            SETTINGS_TARGET: i64 = 0
+
+    public:
+        struct Studio:
+            game: mutable MazeGame::MazeGame
+            history: mutable Editor::History
+            tile: Assets::AssetId
+
+        # Settings are packed into one integer so the generic history, which
+        # records a single target/value pair, can rewind them.
+        def settings_from_code(code: i64) -> MazeGame::GameSettings:
+            MazeGame::GameSettings{fog: code / 1 % 2 == 1, audio: code / 2 % 2 == 1}
+
+        def settings_code(settings: MazeGame::GameSettings) -> i64:
+            fog_part: i64 = 1 if settings.fog else 0
+            audio_part: i64 = 2 if settings.audio else 0
+            fog_part + audio_part
+
+        def studio_new() -> Studio:
+            Studio{
+                game: MazeGame::game_new(),
+                history: Editor::history_new(),
+                tile: Assets::AssetId{high: 23, low: 1},
+            }
+
+        def studio_start(studio: mutable Studio&) -> void:
+            MazeGame::game_start(&studio.game)
+
+        # Apply a settings change through the history: record it, apply it, and
+        # roll back if the game rejects the result. A change that does not move
+        # the settings is not recorded.
+        def studio_apply(studio: mutable Studio&, fog: bool, audio: bool) -> bool:
+            before: i64 = settings_code(studio.game.settings)
+            updated: MazeGame::GameSettings = MazeGame::GameSettings{fog: fog, audio: audio}
+            after: i64 = settings_code(updated)
+            return true if after == before
+            MazeGame::game_apply_settings(&studio.game, updated)
+            if not MazeGame::game_valid(&studio.game):
+                MazeGame::game_apply_settings(&studio.game, settings_from_code(before))
+                return false
+            Editor::history_push(&studio.history, Tune::SETTINGS_TARGET, before, after)
+
+        def studio_undo(studio: mutable Studio&) -> bool:
+            result: Editor::UndoResult = Editor::history_undo(&studio.history)
+            return false if not result.applied
+            MazeGame::game_apply_settings(&studio.game, settings_from_code(result.value))
+            true
+
+        def studio_redo(studio: mutable Studio&) -> bool:
+            result: Editor::UndoResult = Editor::history_redo(&studio.history)
+            return false if not result.applied
+            MazeGame::game_apply_settings(&studio.game, settings_from_code(result.value))
+            true
+
+        def studio_step(studio: mutable Studio&, direction: Maze::MazeMove) -> bool:
+            MazeGame::game_step(&studio.game, direction)
+
+        def studio_valid(studio: Studio&) -> bool:
+            MazeGame::game_valid(&studio.game) and Editor::history_valid(&studio.history)
+
+        # Asset browsing: the studio's tile is usable only when the catalogue's
+        # current content hash and generation match. A recook moves the
+        # generation, so the old package becomes stale rather than silently
+        # reused.
+        def studio_tile_fresh(studio: Studio&, catalogue: AssetCatalogue::Catalogue&, content: Assets::AssetId, generation: i64) -> bool:
+            AssetCatalogue::package_fresh(catalogue, studio.tile, content, generation)
