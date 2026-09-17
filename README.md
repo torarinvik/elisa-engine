@@ -141,6 +141,9 @@ Idle),
 knee placement from the triangle projection without inverse trig) and
 `src/animation/pose.elisa` (local-to-model pose evaluation, normalized-linear
 blending, root-motion extraction, and a column-major skinning payload).
+`examples/maze/character.elisa` composes these into one playable enemy: it is
+an owning World entity that navigates, animates, carries an IK-corrected leg
+pose, and unloads with its identity removed first.
 `src/math/geometry.elisa` supplies a Newton square root, lengths,
 normalization, quaternion multiply/rotate, and transform composition, so
 rotation stays engine-owned instead of a vendor type.

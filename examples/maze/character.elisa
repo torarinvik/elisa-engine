@@ -1,0 +1,104 @@
+# A maze enemy that is an owning World entity. This is the Phase 5 composition
+# in one playable thing: identity and liveness come from the checked World,
+# navigation from Nav (through the hunter), animation state from Anim, and a
+# two-bone IK-corrected leg pose from the engine animation modules. The
+# character never decides existence, and no backend touches its pose.
+include "./hunter.elisa"
+include "../../src/world/world.elisa"
+include "../../src/animation/pose.elisa"
+
+using World
+using Pose
+using MazeHunter
+using MazeLayout
+using Geometry
+
+module MazeCharacter:
+    private:
+        const module Tune:
+            CELL: f32 = 0.6
+            ORIGIN: f32 = 2.1
+            HIP_HEIGHT: f32 = 0.9
+            LEG: f32 = 0.5
+            ZERO: f32 = 0.0
+
+    public:
+        error CharacterError:
+            IdentityFailure
+            PoseFailure
+
+        struct Character:
+            entity: World::EntityRef
+            hunter: mutable MazeHunter::Hunter
+            leg: mutable Pose::Pose
+
+    private:
+        def cell_x(cell: i64) -> f32:
+            cell.f32() * Tune::CELL - Tune::ORIGIN
+
+        # One three-joint leg: hip above the cell, knee and foot below it. The
+        # foot is IK-corrected to the ground with a forward bend axis, so the
+        # knee follows from the triangle rather than a stored animation.
+        def leg_pose(x: i64, y: i64) -> Pose::Pose:
+            centre_x: f32 = cell_x(x)
+            centre_z: f32 = cell_x(y)
+            skeleton: mutable Pose::Skeleton = skeleton_new()
+            _ = skeleton_add(&skeleton, -1, Geometry::Transform{position: Geometry::Vec3{x: centre_x, y: Tune::HIP_HEIGHT, z: centre_z}, rotation: quat_identity(), scale: vec3_one()})
+            _ = skeleton_add(&skeleton, 0, Geometry::Transform{position: Geometry::Vec3{x: Tune::ZERO, y: Tune::ZERO - Tune::LEG, z: Tune::ZERO}, rotation: quat_identity(), scale: vec3_one()})
+            _ = skeleton_add(&skeleton, 1, Geometry::Transform{position: Geometry::Vec3{x: Tune::ZERO, y: Tune::ZERO - Tune::LEG, z: Tune::ZERO}, rotation: quat_identity(), scale: vec3_one()})
+            pose: mutable Pose::Pose = catch pose_evaluate(&skeleton):
+                value: value
+                error failure: Pose::Pose{models: zeroed, count: 0}
+            ground: Geometry::Vec3 = Geometry::Vec3{x: centre_x, y: Tune::ZERO, z: centre_z}
+            bend: Geometry::Vec3 = Geometry::Vec3{x: Tune::ZERO, y: Tune::ZERO, z: Tune::ZERO - 1.0}
+            corrected: bool = catch pose_correct_two_bone(&pose, 0, ground, Tune::LEG, Tune::LEG, bend):
+                value: value
+                error failure: false
+            return pose if corrected
+            Pose::Pose{models: zeroed, count: 0}
+
+    public:
+        def character_spawn(world: mutable World::World&, x: i64, y: i64) -> Character error[CharacterError]:
+            # The pose is built and checked before any identity is issued, so a
+            # failed spawn cannot publish a partially initialized entity.
+            leg: Pose::Pose = leg_pose(x, y)
+            raise CharacterError.PoseFailure if not pose_valid(&leg)
+            entity: World::EntityRef = catch world_spawn(world, World::Enemy.Guard):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise CharacterError.IdentityFailure if entity.id == 0
+            Character{entity: entity, hunter: hunter_new(x, y), leg: leg}
+
+        # One navigation step; the leg pose is re-derived from the new cell so
+        # the IK follows gameplay instead of running on its own clock.
+        def character_step(character: mutable Character&, target_x: i64, target_y: i64) -> bool:
+            moved: bool = hunter_step(&character.hunter, target_x, target_y)
+            return false if not moved
+            character.leg <- leg_pose(character.hunter.x, character.hunter.y)
+            true
+
+        def character_valid(character: Character&) -> bool:
+            return false if not pose_valid(&character.leg) or pose_joint_count(&character.leg) != 3
+            hunter_valid(&character.hunter, maze_walls())
+
+        def character_cell_x(character: Character&) -> i64:
+            character.hunter.x
+
+        def character_cell_y(character: Character&) -> i64:
+            character.hunter.y
+
+        def character_knee_y(character: Character&) -> f32:
+            return 0.0 if pose_joint_count(&character.leg) < 2
+            character.leg.models[1].position.y
+
+        def character_hip_y(character: Character&) -> f32:
+            return 0.0 if pose_joint_count(&character.leg) < 1
+            character.leg.models[0].position.y
+
+        # Unload removes liveness first; backend cleanup may finish later, and
+        # the reference is dead immediately.
+        def character_unload(world: mutable World::World&, entity: World::EntityRef) -> bool:
+            removed: bool = catch world_despawn(world, entity):
+                ok: true
+                error failure: false
+            removed

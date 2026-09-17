@@ -496,3 +496,20 @@ trigonometry: a unit chain reaching one unit gives projection 0.5 and height
 limb. Tests pin the 90-degree quaternion turn, composition, the identity and
 rotated matrix payloads, the pose blend, root motion, and the IK correction in
 the gated geometry and animation suites.
+
+## Character composition and unload (2026-09-18)
+
+`examples/maze/character.elisa` is the Phase 5 composition the plan asks for:
+each capability is used by a playable thing rather than declared alone. The
+enemy owns a World identity and liveness, navigates with the hunter's route,
+animates through `Anim`, and carries a three-joint leg pose whose foot is
+placed by `Pose::pose_correct_two_bone`; the pose is re-derived from the new
+cell on every step. Unloading despawns the entity, so a stale reference is
+rejected and the world returns to zero live entities. `test/maze.elisa` pins
+the spawn, the hip/knee heights, the move, and the unload.
+
+One backend rule cost time here and is recorded for the next author: a
+*qualified* call to an erroring function inside a module (`World::world_spawn`)
+is declined with "could not produce a linkable unit; declined N: ... (control
+expression)". The same call unqualified after a `using World` lowers cleanly.
+Qualified type names are fine; qualified erroring calls are not.

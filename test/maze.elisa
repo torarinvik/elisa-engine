@@ -2,11 +2,14 @@ include "../examples/maze/maze.elisa"
 include "../examples/maze/layout.elisa"
 include "../examples/maze/trace.elisa"
 include "../examples/maze/hunter.elisa"
+include "../examples/maze/character.elisa"
 using Maze
 using MazeLayout
 using MazeGame
 using MazeTrace
 using MazeHunter
+using MazeCharacter
+using World
 using Nav
 
 def main() -> i32:
@@ -63,6 +66,29 @@ def main() -> i32:
     return 47 if maze_cell_visible(1, 4, 5, 4)
     return 36 if game_status_code(GameStatus.Won) != 3 or game_status_code(GameStatus.Lost) != 4
     return 37 if game_status_code(GameStatus.Menu) != 0 or game_status_code(GameStatus.Paused) != 2
+
+    # Phase 5 composition: the navigating, animating enemy is an owning World
+    # entity. It moves and keeps a valid IK-corrected leg pose, and unloading it
+    # removes liveness first with no partial entity left behind.
+    world: mutable World = catch world_new():
+        value: value
+        error failure: return 48
+    character: mutable Character = catch character_spawn(&world, hunter_spawn_x(), hunter_spawn_y()):
+        value: value
+        error failure: return 49
+    return 50 if world.live_count != 1 or not world_is_valid(&world) or not character_valid(&character)
+    return 51 if character_hip_y(&character) < 0.899 or character_hip_y(&character) > 0.901
+    return 52 if character_knee_y(&character) < 0.449 or character_knee_y(&character) > 0.451
+    moved_character: bool = character_step(&character, 2, 6)
+    return 53 if not moved_character or character_cell_x(&character) != 2 or character_cell_y(&character) != 1
+    return 54 if not character_valid(&character)
+    removed_character: bool = character_unload(&world, character.entity)
+    return 55 if not removed_character or world.live_count != 0 or not world_is_valid(&world)
+    dangling_character: i32 = catch world_lookup(&world, character.entity):
+        value: 1
+        WorldError.InvalidReference: 0
+        error failure: 2
+    return 56 if dangling_character != 0
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0
