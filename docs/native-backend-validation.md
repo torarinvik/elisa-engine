@@ -513,3 +513,21 @@ One backend rule cost time here and is recorded for the next author: a
 is declined with "could not produce a linkable unit; declined N: ... (control
 expression)". The same call unqualified after a `using World` lowers cleanly.
 Qualified type names are fine; qualified erroring calls are not.
+
+## Reproducible release packaging (2026-09-18)
+
+`scripts/package_release.py` builds the packaged headless game, collects the
+cooked asset package and the canonical fixture, writes a `release.json` pinning
+the engine commit, dirty flag, platform, and per-file hashes, then produces a
+byte-deterministic `.tar.gz` (sorted entries, zeroed mtime/uid/gid, gzip
+`mtime=0`). It archives the collected bytes twice and fails unless the two
+archives are identical. `scripts/record_validation.py` runs it as part of the
+gate and records the archive hash under `release` in `build/validation.json`,
+adding `release_packaging` to the checked list.
+
+This is archive reproducibility given the collected inputs, which is the honest
+scope: the per-file hashes pin the inputs, while byte-identical compiler output
+from source is not claimed. The summary names the supported platform
+(`macos-arm64` here) and lists the platforms deliberately left untested
+(windows, linux, android, ios), so support is not inferred from a dependency's
+platform list.

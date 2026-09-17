@@ -271,6 +271,23 @@ def cook_asset(root: Path) -> dict:
     return {"package": package.name, "sha256": sha256_file(package), "bytes": package.stat().st_size}
 
 
+def release_package(root: Path, compiler: str) -> dict:
+    # A release is only recorded if the packager proved the archive
+    # reproducible. The summary pins the archive hash and the platform, and
+    # carries the platforms that are deliberately untested rather than
+    # implying support from a dependency's own platform list.
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts/package_release.py"), str(root), compiler],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"release packaging failed: {result.stderr.strip() or result.stdout.strip()}")
+    summary = json.loads((root / "build/release/release.json").read_text(encoding="utf-8"))
+    if not summary.get("reproducible"):
+        raise ValueError("release package did not prove reproducibility")
+    return summary
+
+
 def main(arguments: list[str]) -> int:
     if len(arguments) != 4:
         print("usage: record_validation.py ENGINE_ROOT COMPILER PROVER ELISASCRIPT", file=sys.stderr)
@@ -284,6 +301,7 @@ def main(arguments: list[str]) -> int:
             "world": verified_proof(engine / "build/world-proof.json"),
         }
         cooked = cook_asset(engine)
+        release = release_package(engine, compiler)
         compiler_path = Path(compiler).resolve(strict=True)
         compiler_product = compiler_path.parent.parent / "bin/elisac-stage1" if compiler_path.name == "elisac_stage1.sh" else compiler_path
         report = {
@@ -298,7 +316,8 @@ def main(arguments: list[str]) -> int:
             "proofs": proofs,
             "scene_manifest": scene_manifest_matches_bridge(engine),
             "cooked_asset": cooked,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "scene_manifest_link", "affine_copy_rejections"],
+            "release": release,
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

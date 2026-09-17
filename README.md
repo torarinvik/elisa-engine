@@ -113,9 +113,19 @@ the native probe.
 hiding geometry outside the player's radius.
 
 `examples/maze/main.elisa` is the packaged headless entry point: it
-starts, refuses input until playing, wins the scripted route, restarts,
-pauses and resumes, and exits, reporting each step through its exit
-status. `scripts/maze_game.elisascript` compiles and runs it.
+starts, refuses input until playing, wins the scripted route, plays the
+losing route to the last life, restarts, pauses and resumes, and exits,
+reporting each step through its exit status.
+`scripts/maze_game.elisascript` compiles and runs it.
+
+`scripts/package_release.py` assembles a deterministic release for the
+validated platform: it builds the packaged game, collects the cooked asset
+package and the canonical fixture, writes a `release.json` pinning the engine
+commit and every file hash, and produces a byte-deterministic `.tar.gz`. It
+packages twice and fails if the archives differ, and the validation report only
+records a release whose reproducibility was proved. Platforms that have not
+been run are listed as untested rather than implied from a dependency's
+platform list.
 
 `examples/maze/` holds the first complete game as Elisa-owned rules: grid
 topology with walls, hazards, a locked door plus key, goal, lives, fog-of-war
