@@ -85,6 +85,36 @@ def verified_proof(path: Path) -> dict:
     return {"sha256": sha256_file(path), "obligations": count, "replayed": replay["replayed"]}
 
 
+def scene_manifest_matches_bridge(root: Path) -> dict:
+    # The only machine-checked link between the static host fixture and the
+    # Elisa canonical scene: these constants must equal
+    # SceneBridge::canonical_fixture_epoch/object/camera, manifest_version,
+    # and the default viewport. Positions stay scenario data and are not
+    # pinned here. Drift fails the gate instead of letting the two probes
+    # and the Elisa bridge tests silently diverge.
+    expected = {
+        "version": "1",
+        "epoch": "7",
+        "entity": "3",
+        "camera_entity": "4",
+        "viewport_width": "320",
+        "viewport_height": "200",
+        "commands": "create,update,destroy",
+    }
+    manifest = root / "backends/scene_manifest.txt"
+    values = {}
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        values[key.strip()] = value.strip()
+    for key, want in expected.items():
+        if values.get(key) != want:
+            raise ValueError(f"scene manifest drift: {key}={values.get(key)!r}, expected {want!r}")
+    return {"sha256": sha256_file(manifest), "fields": len(values)}
+
+
 def main(arguments: list[str]) -> int:
     if len(arguments) != 4:
         print("usage: record_validation.py ENGINE_ROOT COMPILER PROVER ELISASCRIPT", file=sys.stderr)
@@ -109,7 +139,8 @@ def main(arguments: list[str]) -> int:
                 "elisascript": tool_identity(launcher),
             },
             "proofs": proofs,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "affine_copy_rejections"],
+            "scene_manifest": scene_manifest_matches_bridge(engine),
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

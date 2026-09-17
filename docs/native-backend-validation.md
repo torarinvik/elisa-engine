@@ -37,6 +37,19 @@ one-shot process because this Wicked revision has no public shutdown API for
 its global worker systems; it still checks Elisa-side despawn before exit. This
 is a real Metal frame smoke test, not yet a complete GDExtension or game loop.
 
+Executed 2026-09-18 on this workstation with defaults
+(`WICKED_ROOT`/`WICKED_BUILD` unset, resolving to the sibling checkout and
+`build-elisa-arm-o0`): wicked 0.72.114, `GraphicsDevice_Metal` created,
+Jolt 5.6.0 / Lua 5.4.8 / FAudio 25.1.0 initialized, `scene
+create/update/render passed`, `scene despawn passed`, exit 0. This is the
+first in-session executed evidence for the native path; earlier records
+described the setup without a fresh run.
+
+The manifest the probe consumes (`backends/scene_manifest.txt`) is pinned
+to the Elisa canonical scene by `scripts/record_validation.py`, which
+rejects drift in version, epoch, entity, camera, viewport, and command
+sequence. Positions remain scenario data and are intentionally unpinned.
+
 When the external checkout has been built as `build-elisa-arm-o0`, run:
 
 ```sh
@@ -55,3 +68,16 @@ also passes `WI_UNORDERED_MAP_TYPE=2` and `WICKED_CMAKE_BUILD` so its ABI agrees
 with the CMake libraries. Those edits and flags are deliberately kept outside
 this repository; the command above is the reproducible acceptance gate for the
 native scene path.
+
+## Toward pixel comparison
+
+`src/backend/image_compare.elisa` already defines the tolerance policy
+(per-channel peak plus mean bound), but no backend screenshot reaches it
+yet. The probe only checks `GetRenderResult3D().IsValid()`. Wicked offers
+`RenderPath3D::CreateScreenshotWithAlphaBackground`, which returns a GPU
+texture; turning that into a comparable image still needs a staging
+download to CPU pixels plus a file encoder, and no in-repo consumer
+demonstrates that chain today. Godot-side capture is likewise unwritten.
+Until both captures exist, cross-backend rendering equivalence is probed
+at the command-lifecycle level only; pixel comparison stays policy
+without evidence.
