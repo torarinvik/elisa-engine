@@ -25,6 +25,12 @@ player_final=1,4
 # Fog radius, from MazeGame rows. Hosts hide walls outside it from the player
 # and the checker expects exactly those; test/maze.elisa pins the predicate.
 fog_radius=3
+# Authored source asset, loaded by the host rather than built in bridge code.
+# Triangle count is an authoring property, so it survives importer vertex
+# splitting and is a stable thing for a host to verify. The native host has
+# no model importer in the built library yet; the Godot host loads it.
+mesh_asset=examples/maze/assets/maze_tile.gltf
+mesh_triangles=12
 # Game markers from the MazeGame rules. test/maze.elisa pins each coordinate
 # against is_key/is_door/is_hazard and checks they are open cells, so the
 # fixture cannot drift from the rules that place them.

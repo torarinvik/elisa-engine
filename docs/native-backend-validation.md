@@ -293,7 +293,25 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
-## Fog of war in the hosts (2026-09-18)
+## Authored asset loading (2026-09-18)
+
+The hosts no longer rely only on geometry built in bridge code.
+`examples/maze/assets/maze_tile.gltf` is an authored source asset (a cube
+written as glTF with positions, normals, and indices), the fixture names
+it with `mesh_asset` and pins `mesh_triangles=12`, and the validator
+checks the file exists and the count is positive. The Godot host loads it
+through `GLTFDocument` and verifies the imported triangle count —
+triangles rather than vertices, because importers split vertices by
+normal and UV, so a vertex count is not a stable authoring property.
+Observed: `mesh asset: triangles=12 expected=12`.
+
+The native host does not load it yet: the built Wicked library exposes no
+model importer (`ImportModel`/glTF), so the native path needs an importer
+integration (the plan names cgltf) before it can consume the same file.
+That is a missing integration, not a design change, and the fixture
+already carries what it needs.
+
+## Fog of war in the hosts (2026-09-18)## Fog of war in the hosts (2026-09-18)
 
 Both hosts hide level geometry outside the player's visible radius, using
 the rule the game owns. `examples/maze/game.elisa` publishes

@@ -218,6 +218,15 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError(f"scene manifest fog_radius is not an integer: {values.get('fog_radius')!r}")
     if fog_radius <= 0 or fog_radius > 8:
         raise ValueError(f"scene manifest fog_radius out of range: {fog_radius}")
+    asset_rel = values.get("mesh_asset", "")
+    if not asset_rel or not (root / asset_rel).is_file():
+        raise ValueError(f"scene manifest mesh_asset is missing: {asset_rel!r}")
+    try:
+        mesh_triangles = int(values.get("mesh_triangles", ""))
+    except ValueError:
+        raise ValueError(f"scene manifest mesh_triangles is not an integer: {values.get('mesh_triangles')!r}")
+    if mesh_triangles <= 0:
+        raise ValueError(f"scene manifest mesh_triangles out of range: {mesh_triangles}")
     allowed_status = ("menu", "playing", "paused", "won", "lost", "exited")
     if values.get("game_status") not in allowed_status:
         raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")
@@ -241,7 +250,7 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError("scene manifest player_final overlaps a marker")
     return {"sha256": sha256_file(manifest), "fields": len(values),
             "wall_cells": len(wall_cells), "occluded_cells": len(occluded),
-            "markers": len(markers), "frame_budget_us": budget, "audio_cues": audio_cues, "fog_radius": fog_radius}
+            "markers": len(markers), "frame_budget_us": budget, "audio_cues": audio_cues, "fog_radius": fog_radius, "mesh_triangles": mesh_triangles}
 
 
 def main(arguments: list[str]) -> int:

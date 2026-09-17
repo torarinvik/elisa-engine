@@ -180,6 +180,35 @@ func _run_capture() -> void:
     scene_root.add_child(physics_box)
     var physics_start_y: float = physics_box.position.y
 
+    # Authored source asset, loaded through Godot's own importer instead of
+    # being built in bridge code. The triangle count is exercised rather than
+    # the vertex count, because importers split vertices by normal and UV.
+    var mesh_triangles := 0
+    if manifest.has("mesh_asset") and manifest.has("mesh_triangles"):
+        var manifest_dir := arguments[0].get_base_dir()
+        var asset_path: String = manifest_dir.path_join("..").path_join(String(manifest["mesh_asset"])).simplify_path()
+        var gltf := GLTFDocument.new()
+        var state := GLTFState.new()
+        var load_error := gltf.append_from_file(asset_path, state)
+        if load_error != OK:
+            _fail("mesh asset could not be loaded: %s" % asset_path)
+            return
+        var imported := gltf.generate_scene(state)
+        if imported == null:
+            _fail("mesh asset produced no scene")
+            return
+        for child in imported.get_children():
+            if child is MeshInstance3D and child.mesh != null:
+                var mesh: Mesh = child.mesh
+                if mesh.get_surface_count() > 0:
+                    mesh_triangles += mesh.surface_get_array_index_len(0) / 3
+        imported.queue_free()
+        var expected_triangles: int = int(manifest["mesh_triangles"])
+        print("mesh asset: triangles=%d expected=%d" % [mesh_triangles, expected_triangles])
+        if mesh_triangles != expected_triangles:
+            _fail("mesh asset triangle count mismatch")
+            return
+
     var camera := Camera3D.new()
     camera.name = "ElisaCamera"
     camera.position = camera_position

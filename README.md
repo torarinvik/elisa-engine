@@ -98,6 +98,11 @@ updates the transform, renders one hidden Metal frame through Wicked's
 `RenderPath3D`, and checks despawn against the external static libraries without
 copying WickedEngine into this repository.
 
+`examples/maze/assets/maze_tile.gltf` is the first authored source
+asset; the Godot host loads it through its own glTF importer and the
+fixture pins its triangle count. The native host needs an importer
+integration (cgltf) before it can read the same file.
+
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
 hiding geometry outside the player's radius.
