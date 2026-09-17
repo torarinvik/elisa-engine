@@ -1,0 +1,24 @@
+include "../src/animation/codec.elisa"
+using Codec
+
+def main() -> i32:
+    return 1 if codec_id(CodecKind.Ozz) != 1 or codec_id(CodecKind.Acl) != 2
+    ozz: Benchmark = default_benchmark()
+    return 2 if ozz.codec != CodecKind.Ozz or not benchmark_valid(&ozz)
+    bad: Benchmark = Benchmark{codec: CodecKind.Acl, micros_per_pose: 0, bytes_per_clip: 10}
+    return 3 if benchmark_valid(&bad)
+
+    fast_acl: Benchmark = Benchmark{codec: CodecKind.Acl, micros_per_pose: 5, bytes_per_clip: 4096}
+    picked: CodecChoice = choose_codec(ozz, fast_acl)
+    return 4 if picked.active != CodecKind.Acl or not choice_valid(&picked)
+    return 5 if picked.evidence.micros_per_pose != 5
+
+    slow_acl: Benchmark = Benchmark{codec: CodecKind.Acl, micros_per_pose: 20, bytes_per_clip: 1024}
+    kept: CodecChoice = choose_codec(ozz, slow_acl)
+    return 6 if kept.active != CodecKind.Ozz or kept.evidence.micros_per_pose != 8
+
+    bloated_acl: Benchmark = Benchmark{codec: CodecKind.Acl, micros_per_pose: 7, bytes_per_clip: 9000}
+    stayed: CodecChoice = choose_codec(ozz, bloated_acl)
+    return 7 if stayed.active != CodecKind.Ozz
+    return 8 if acl_faster(ozz, fast_acl) == false or acl_faster(ozz, slow_acl)
+    0

@@ -1,0 +1,75 @@
+# Audio ownership: exactly one device, playback first, spatial later.
+# miniaudio supplies plain playback; Steam Audio adds spatial acoustics as
+# an explicit opt-in behind the same voice budget. Two devices, two worlds
+# stepping one listener, or two players writing one voice are all rejected
+# here instead of debugged inside a native mixer.
+module AudioPolicy:
+    private:
+        const module Tune:
+            MAX_VOICES: usize = 8
+            MAX_LISTENERS: usize = 1
+
+    public:
+        enum VoiceKind:
+            Ui
+            Effect
+            Ambience
+            Spatial
+
+        enum AudioError:
+            Capacity
+            SpatialNotEnabled
+            UnknownVoice
+            DuplicateVoice
+
+        struct Device:
+            spatial: mutable bool
+            voices: mutable i64[8]
+            kinds: mutable VoiceKind[8]
+            count: mutable usize
+
+        def device_new(spatial: bool) -> Device:
+            Device{spatial: spatial, voices: zeroed, kinds: [VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui], count: 0}
+
+        def device_valid(device: Device&) -> bool:
+            return false if device.count > Tune::MAX_VOICES
+            for index in 0..<device.count |unique: bool = true| -> unique:
+                row_ok: bool =
+                    for earlier in 0..<index |inner_ok: bool = true| -> inner_ok:
+                        inner_ok <- false if device.voices[index] == device.voices[earlier]
+                unique <- unique and row_ok
+
+        def voice_live(device: Device&, id: i64) -> bool:
+            for index in 0..<device.count |held: bool = false| -> held:
+                held <- true if device.voices[index] == id
+
+        def spatial_required(kind: VoiceKind) -> bool:
+            kind == VoiceKind.Spatial
+
+    private:
+        module Voices:
+            public:
+                def open(device: mutable Device&, id: i64, kind: VoiceKind) -> void error[AudioError]:
+                    raise AudioError.SpatialNotEnabled if AudioPolicy::spatial_required(kind) and not device.spatial
+                    raise AudioError.Capacity if device.count >= AudioPolicy::Tune::MAX_VOICES
+                    raise AudioError.DuplicateVoice if AudioPolicy::voice_live(device, id)
+                    device.voices[device.count] <- id
+                    device.kinds[device.count] <- kind
+                    device.count <- device.count + 1
+
+                def halt(device: mutable Device&, id: i64) -> void error[AudioError]:
+                    slot: mutable usize = 8
+                    for index in 0..<device.count |device, id, slot|:
+                        slot <- index if device.voices[index] == id
+                    raise AudioError.UnknownVoice if slot >= device.count
+                    for shift in slot..<device.count - 1 |device|:
+                        device.voices[shift] <- device.voices[shift + 1]
+                        device.kinds[shift] <- device.kinds[shift + 1]
+                    device.count <- device.count - 1
+
+    public:
+        def voice_open(device: mutable Device&, id: i64, kind: VoiceKind) -> void error[AudioError]:
+            try Voices::open(device, id, kind)
+
+        def voice_halt(device: mutable Device&, id: i64) -> void error[AudioError]:
+            try Voices::halt(device, id)

@@ -1,0 +1,86 @@
+# Asset catalogue and packaging: SQLite-style records plus zstd-style
+# compressed blobs stay in tooling; the shipped runtime only opens
+# versioned packages whose content IDs already match the catalogue.
+# Untrusted import bytes are bounded and converted offline, never parsed
+# by the runtime. Runtime pointers and backend handles are never stored.
+include "./descriptor.elisa"
+
+module AssetCatalogue:
+    private:
+        const module Tune:
+            MAX_ENTRIES: usize = 16
+            MAX_BLOB_BYTES: i64 = 1048576
+
+    public:
+        error CatalogueError:
+            Capacity
+            DuplicateEntry
+            UnknownEntry
+            OversizedBlob
+            StalePackage
+
+        struct Entry:
+            id: Assets::AssetId
+            content: mutable Assets::AssetId
+            blob_bytes: i64
+            cooked_generation: mutable i64
+
+        struct Catalogue:
+            entries: mutable Entry[16]
+            count: mutable usize
+
+        def catalogue_new() -> Catalogue:
+            Catalogue{entries: zeroed, count: 0}
+
+        def catalogue_valid(catalogue: Catalogue&) -> bool:
+            return false if catalogue.count > Tune::MAX_ENTRIES
+            for index in 0..<catalogue.count |unique: bool = true| -> unique:
+                row_ok: bool =
+                    for earlier in 0..<index |inner_ok: bool = true| -> inner_ok:
+                        inner_ok <- false if Assets::same_asset_id(catalogue.entries[index].id, catalogue.entries[earlier].id)
+                unique <- unique and row_ok
+
+        def entry_count(catalogue: Catalogue&) -> usize:
+            catalogue.count
+
+        def lookup_generation(catalogue: Catalogue&, id: Assets::AssetId) -> i64:
+            found: i64 =
+                for index in 0..<catalogue.count |best: i64 = -1| -> best:
+                    best <- catalogue.entries[index].cooked_generation if Assets::same_asset_id(catalogue.entries[index].id, id)
+            found
+
+        def package_fresh(catalogue: Catalogue&, id: Assets::AssetId, content: Assets::AssetId, generation: i64) -> bool:
+            return false if not Assets::asset_id_valid(id) or not Assets::asset_id_valid(content)
+            for index in 0..<catalogue.count |fresh: bool = false| -> fresh:
+                entry: Entry = catalogue.entries[index]
+                fresh <- true if Assets::same_asset_id(entry.id, id) and Assets::same_asset_id(entry.content, content) and entry.cooked_generation == generation
+
+    private:
+        module Records:
+            public:
+                def register(catalogue: mutable Catalogue&, id: Assets::AssetId, content: Assets::AssetId, blob_bytes: i64) -> void error[CatalogueError]:
+                    raise CatalogueError.OversizedBlob if blob_bytes < 0 or blob_bytes > AssetCatalogue::Tune::MAX_BLOB_BYTES
+                    slot: mutable usize = 16
+                    for index in 0..<catalogue.count |catalogue, id, slot|:
+                        slot <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
+                    if slot >= catalogue.count:
+                        raise CatalogueError.Capacity if catalogue.count >= AssetCatalogue::Tune::MAX_ENTRIES
+                        catalogue.entries[catalogue.count] <- AssetCatalogue::Entry{id: id, content: content, blob_bytes: blob_bytes, cooked_generation: 0}
+                        catalogue.count <- catalogue.count + 1
+                        return
+                    raise CatalogueError.DuplicateEntry if not Assets::same_asset_id(catalogue.entries[slot].content, content)
+
+                def recook(catalogue: mutable Catalogue&, id: Assets::AssetId, content: Assets::AssetId) -> void error[CatalogueError]:
+                    slot: mutable usize = 16
+                    for index in 0..<catalogue.count |catalogue, id, slot|:
+                        slot <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
+                    raise CatalogueError.UnknownEntry if slot >= catalogue.count
+                    catalogue.entries[slot].content <- content
+                    catalogue.entries[slot].cooked_generation <- catalogue.entries[slot].cooked_generation + 1
+
+    public:
+        def catalogue_register(catalogue: mutable Catalogue&, id: Assets::AssetId, content: Assets::AssetId, blob_bytes: i64) -> void error[CatalogueError]:
+            try Records::register(catalogue, id, content, blob_bytes)
+
+        def catalogue_recook(catalogue: mutable Catalogue&, id: Assets::AssetId, content: Assets::AssetId) -> void error[CatalogueError]:
+            try Records::recook(catalogue, id, content)

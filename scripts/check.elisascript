@@ -497,6 +497,51 @@ def main(arguments: darray[sview]) -> i64:
 
     println("Maze bundle manifest tests passed.")
 
+    audio_test_binary: sview = str(root.joinpath("build/audio-policy-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", audio_test_binary, str(root.joinpath("test/audio_policy.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(audio_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Audio ownership tests passed.")
+
+    codec_test_binary: sview = str(root.joinpath("build/anim-codec-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", codec_test_binary, str(root.joinpath("test/anim_codec.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(codec_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Animation codec selection tests passed.")
+
+    catalogue_test_binary: sview = str(root.joinpath("build/catalogue-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", catalogue_test_binary, str(root.joinpath("test/catalogue.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(catalogue_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Asset catalogue tests passed.")
+
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
     if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/allocator_copy.elisa")), rejection_output):
         return 1

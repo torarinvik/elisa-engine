@@ -1,0 +1,49 @@
+include "../src/audio/policy.elisa"
+using AudioPolicy
+
+def main() -> i32:
+    return 1 if not spatial_required(VoiceKind.Spatial) or spatial_required(VoiceKind.Ui)
+    plain: mutable Device = device_new(false)
+    room: mutable Device = device_new(true)
+    return 2 if not device_valid(&plain) or not voice_live(&plain, 5) == false
+
+    opened: i32 = catch voice_open(&plain, 5, VoiceKind.Effect):
+        ok: 0
+        error failure: 1
+    return 3 if opened != 0 or not voice_live(&plain, 5)
+    spatial_denied: i32 = catch voice_open(&plain, 6, VoiceKind.Spatial):
+        value: 1
+        AudioError.SpatialNotEnabled: 0
+        error failure: 2
+    return 4 if spatial_denied != 0
+    spatial_ok: i32 = catch voice_open(&room, 6, VoiceKind.Spatial):
+        ok: 0
+        error failure: 1
+    return 5 if spatial_ok != 0
+
+    double: i32 = catch voice_open(&plain, 5, VoiceKind.Ui):
+        value: 1
+        AudioError.DuplicateVoice: 0
+        error failure: 2
+    return 6 if double != 0
+    for extra in 0..<7 |plain|:
+        added: i32 = catch voice_open(&plain, 10 + extra.i64(), VoiceKind.Ui):
+            ok: 0
+            error failure: 1
+        return 7 if added != 0
+    full: i32 = catch voice_open(&plain, 99, VoiceKind.Ui):
+        value: 1
+        AudioError.Capacity: 0
+        error failure: 2
+    return 8 if full != 0
+
+    halted: i32 = catch voice_halt(&plain, 5):
+        ok: 0
+        error failure: 1
+    return 9 if halted != 0 or voice_live(&plain, 5) or not device_valid(&plain)
+    missing: i32 = catch voice_halt(&plain, 5):
+        value: 1
+        AudioError.UnknownVoice: 0
+        error failure: 2
+    return 10 if missing != 0
+    0

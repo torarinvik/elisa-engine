@@ -1,0 +1,55 @@
+# Animation codec path: one shared sampling pipeline, with ACL as a
+# benchmarked alternative rather than an automatic second decoder. Elisa
+# owns the sampling request and the blend; either decoder answers the same
+# pose query. A codec switch requires measured evidence recorded here, and
+# animation behavior never lives inside a decoder.
+module Codec:
+    private:
+        const module Tune:
+            MAX_CODECS: usize = 2
+            OZZ_ID: i64 = 1
+            ACL_ID: i64 = 2
+
+    public:
+        enum CodecKind:
+            Ozz
+            Acl
+
+        struct Benchmark:
+            codec: CodecKind
+            micros_per_pose: i64
+            bytes_per_clip: i64
+
+        struct CodecChoice:
+            active: CodecKind
+            evidence: Benchmark
+
+        def codec_id(kind: CodecKind) -> i64:
+            return Tune::OZZ_ID if kind == CodecKind.Ozz
+            Tune::ACL_ID
+
+        def default_benchmark() -> Benchmark:
+            Benchmark{codec: CodecKind.Ozz, micros_per_pose: 8, bytes_per_clip: 4096}
+
+        def benchmark_valid(sample: Benchmark&) -> bool:
+            sample.micros_per_pose > 0 and sample.bytes_per_clip > 0
+
+        def choice_valid(choice: CodecChoice&) -> bool:
+            return false if not benchmark_valid(choice.evidence)
+            choice.evidence.codec == choice.active
+
+        def acl_faster(ozz: Benchmark&, acl: Benchmark&) -> bool:
+            return false if ozz.codec != CodecKind.Ozz or acl.codec != CodecKind.Acl
+            return false if not benchmark_valid(ozz) or not benchmark_valid(acl)
+            acl.micros_per_pose < ozz.micros_per_pose and acl.bytes_per_clip <= ozz.bytes_per_clip * 2
+
+    private:
+        module Select:
+            public:
+                def choose(ozz: Codec::Benchmark, acl: Codec::Benchmark) -> Codec::CodecChoice:
+                    evidence: Codec::Benchmark = acl if Codec::acl_faster(ozz, acl) else ozz
+                    Codec::CodecChoice{active: evidence.codec, evidence: evidence}
+
+    public:
+        def choose_codec(ozz: Benchmark, acl: Benchmark) -> CodecChoice:
+            Select::choose(ozz, acl)

@@ -110,6 +110,15 @@ printf 'Net session tests passed.\n'
 "$COMPILER" -emit exe -o "$ENGINE_ROOT/build/maze-bundle-test" "$ENGINE_ROOT/test/maze_bundle.elisa"
 "$ENGINE_ROOT/build/maze-bundle-test"
 printf 'Maze bundle manifest tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/audio-policy-test" "$ENGINE_ROOT/test/audio_policy.elisa"
+"$ENGINE_ROOT/build/audio-policy-test"
+printf 'Audio ownership tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/anim-codec-test" "$ENGINE_ROOT/test/anim_codec.elisa"
+"$ENGINE_ROOT/build/anim-codec-test"
+printf 'Animation codec selection tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/catalogue-test" "$ENGINE_ROOT/test/catalogue.elisa"
+"$ENGINE_ROOT/build/catalogue-test"
+printf 'Asset catalogue tests passed.\n'
 rejects_ownership_copy() {
     local diagnostic status=0
     diagnostic="$("$COMPILER" -emit obj -o "$ENGINE_ROOT/build/ownership-negative.o" "$1" 2>&1)" || status=$?
@@ -167,6 +176,9 @@ with tempfile.TemporaryDirectory(prefix='engine script parity ') as td:
     (project / 'test/editor.elisa').touch()
     (project / 'test/session.elisa').touch()
     (project / 'test/maze_bundle.elisa').touch()
+    (project / 'test/audio_policy.elisa').touch()
+    (project / 'test/anim_codec.elisa').touch()
+    (project / 'test/catalogue.elisa').touch()
     (project / 'test/negative/allocator_copy.elisa').touch()
     (project / 'test/negative/world_copy.elisa').touch()
     (project / 'test/negative/recorder_copy.elisa').touch()

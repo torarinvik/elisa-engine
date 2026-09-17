@@ -1,0 +1,54 @@
+include "../src/assets/database.elisa"
+using Assets
+using AssetCatalogue
+
+def wall_id() -> AssetId:
+    AssetId{high: 11, low: 19}
+
+def wall_content() -> AssetId:
+    AssetId{high: 77, low: 1}
+
+def main() -> i32:
+    catalogue: mutable Catalogue = catalogue_new()
+    return 1 if not catalogue_valid(&catalogue) or entry_count(&catalogue) != 0
+    return 2 if lookup_generation(&catalogue, wall_id()) != -1
+
+    registered: i32 = catch catalogue_register(&catalogue, wall_id(), wall_content(), 4096):
+        ok: 0
+        error failure: 1
+    return 3 if registered != 0 or entry_count(&catalogue) != 1
+    return 4 if lookup_generation(&catalogue, wall_id()) != 0
+    return 5 if not package_fresh(&catalogue, wall_id(), wall_content(), 0)
+
+    same_again: i32 = catch catalogue_register(&catalogue, wall_id(), wall_content(), 4096):
+        ok: 0
+        error failure: 1
+    return 6 if same_again != 0 or entry_count(&catalogue) != 1
+
+    changed: AssetId = AssetId{high: 77, low: 2}
+    conflict: i32 = catch catalogue_register(&catalogue, wall_id(), changed, 100):
+        value: 1
+        CatalogueError.DuplicateEntry: 0
+        error failure: 2
+    return 7 if conflict != 0
+
+    recooked: i32 = catch catalogue_recook(&catalogue, wall_id(), changed):
+        ok: 0
+        error failure: 1
+    return 8 if recooked != 0 or lookup_generation(&catalogue, wall_id()) != 1
+    return 9 if package_fresh(&catalogue, wall_id(), wall_content(), 0)
+    return 10 if not package_fresh(&catalogue, wall_id(), changed, 1)
+
+    oversized: i32 = catch catalogue_register(&catalogue, AssetId{high: 1, low: 1}, wall_content(), 2097152):
+        value: 1
+        CatalogueError.OversizedBlob: 0
+        error failure: 2
+    return 11 if oversized != 0
+    unknown: i32 = catch catalogue_recook(&catalogue, AssetId{high: 1, low: 1}, changed):
+        value: 1
+        CatalogueError.UnknownEntry: 0
+        error failure: 2
+    return 12 if unknown != 0
+    stale: bool = package_fresh(&catalogue, AssetId{high: 1, low: 1}, wall_content(), 0)
+    return 13 if stale
+    0
