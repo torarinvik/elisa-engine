@@ -1,5 +1,8 @@
 include "../src/animation/state.elisa"
+include "../src/animation/ik.elisa"
 using Anim
+using Ik
+using Geometry
 
 def main() -> i32:
     return 1 if clip_length(Clip.Idle) != 60 or clip_length(Clip.Walk) != 30
@@ -28,4 +31,21 @@ def main() -> i32:
     return 12 if state.clip != Clip.Idle or state.blend_left != 4
     anim_tick(&state)
     return 13 if state.blend != 0.25
+
+    # Two-bone IK: unit segments and a target one unit away give a knee
+    # cosine of exactly 0.5 by the law of cosines; farther than reach clamps
+    # to a straight limb (cosine -1), and a target at the root folds it
+    # (cosine 1).
+    one_unit: TwoBoneSolution = two_bone_solve(1.0, 1.0, Vec3{x: 1.0, y: 0.0, z: 0.0})
+    return 14 if one_unit.knee_cosine < 0.4999 or one_unit.knee_cosine > 0.5001
+    return 15 if not one_unit.reachable or one_unit.collapsed or not two_bone_solution_valid(&one_unit)
+    far: TwoBoneSolution = two_bone_solve(1.0, 1.0, Vec3{x: 3.0, y: 0.0, z: 0.0})
+    return 16 if far.knee_cosine != -1.0 or far.reachable
+    folded: TwoBoneSolution = two_bone_solve(1.0, 1.0, vec3_zero())
+    return 17 if folded.knee_cosine != 1.0 or not folded.collapsed
+    unused: TwoBoneSolution = two_bone_solve(0.0, 1.0, Vec3{x: 1.0, y: 0.0, z: 0.0})
+    return 18 if two_bone_solution_valid(&unused)
+    return 19 if aim_cosine(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 2.0, y: 0.0, z: 0.0}) < 0.9999
+    return 20 if aim_cosine(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 0.0, y: 1.0, z: 0.0}) != 0.0
+    return 21 if aim_cosine(vec3_zero(), Vec3{x: 1.0, y: 0.0, z: 0.0}) != -1.0
     0

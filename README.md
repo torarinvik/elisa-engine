@@ -137,6 +137,9 @@ match), `src/animation/state.elisa` plus `src/animation/codec.elisa`
 its movement, so one walked step is one Walk tick and arriving switches to
 Idle),
 `src/nav/grid.elisa` (BFS waypoints; the path is Elisa's decision),
+`src/animation/ik.elisa` (two-bone IK and aim constraints solved with engine
+math: `src/math/geometry.elisa` now supplies a Newton square root, lengths,
+normalization, and normalized dot products),
 `src/audio/policy.elisa` (one device, playback first, spatial opt-in),
 `src/tooling/inspector.elisa` plus `src/tooling/editor.elisa` (read-only
 snapshots, perf budgets, undo/redo, reload generations), and

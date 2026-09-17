@@ -72,3 +72,30 @@ module Geometry:
 
         def ray3_at(ray: Ray3, distance: f32) -> Vec3:
             vec3_add(ray.origin, vec3_scale(ray.direction, distance))
+
+        # Square root by Newton iteration. The engine keeps its math in Elisa
+        # rather than exposing a vendor type, and the language has no square
+        # root yet, so a bounded fixed iteration count is used: 24 steps is
+        # well past f32 convergence and keeps the function deterministic.
+        def sqrt_f32(value: f32) -> f32:
+            return Scalar::ZERO if value <= Scalar::ZERO
+            guess: mutable f32 = value if value >= Scalar::ONE else Scalar::ONE
+            for step in 0..<24 |guess, value|:
+                guess <- (guess + value / guess) * 0.5
+            guess
+
+        def vec3_length(value: Vec3) -> f32:
+            sqrt_f32(vec3_length_squared(value))
+
+        def vec3_distance(left: Vec3, right: Vec3) -> f32:
+            vec3_length(vec3_sub(left, right))
+
+        # A zero-length vector normalizes to zero rather than producing a NaN;
+        # callers that need a direction must treat that as a failure.
+        def vec3_normalize(value: Vec3) -> Vec3:
+            length: f32 = vec3_length(value)
+            return vec3_zero() if length <= Scalar::ZERO
+            vec3_scale(value, Scalar::ONE / length)
+
+        def vec3_dot_normalized(left: Vec3, right: Vec3) -> f32:
+            vec3_dot(vec3_normalize(left), vec3_normalize(right))

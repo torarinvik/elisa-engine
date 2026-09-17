@@ -1,0 +1,64 @@
+# Two-bone IK, solved analytically in Elisa. The engine owns animation and IK
+# policy: a sampler library supplies poses, but the constraint that bends a
+# limb toward a target is engine math. The solver reports the knee's cosine
+# rather than an angle, because the language has no inverse cosine and a
+# cosine is exactly what the law of cosines produces. A caller that needs an
+# angle can compare against its own table; a caller that feeds a sampler can
+# use the cosine directly.
+include "../math/geometry.elisa"
+
+module Ik:
+    private:
+        const module Tune:
+            LIMIT: f32 = 1.0
+
+    public:
+        struct TwoBoneSolution:
+            knee_cosine: f32
+            effective_distance: f32
+            reach: f32
+            reachable: bool
+            collapsed: bool
+
+        def two_bone_solution_valid(solution: TwoBoneSolution&) -> bool:
+            return false if solution.knee_cosine < 0.0 - Tune::LIMIT or solution.knee_cosine > Tune::LIMIT
+            return false if solution.effective_distance < 0.0 or solution.reach <= 0.0
+            # A limb is never both fully folded and fully stretched; "reachable"
+            # means the target needed no clamping, so a folded target inside the
+            # minimum span is still reachable.
+            return false if solution.collapsed and solution.effective_distance >= solution.reach
+            true
+
+        # upper_len and lower_len are segment lengths; target is the desired
+        # end position relative to the joint root. Unreachable targets extend
+        # the limb fully (cosine -1); targets inside the minimum span collapse
+        # it (cosine 1). Both are exact f32 values, so tests need no tolerance
+        # for them.
+        def two_bone_solve(upper_len: f32, lower_len: f32, target: Geometry::Vec3) -> TwoBoneSolution:
+            return TwoBoneSolution{knee_cosine: 0.0, effective_distance: 0.0, reach: 0.0, reachable: false, collapsed: true} if upper_len <= 0.0 or lower_len <= 0.0
+            span: f32 = upper_len - lower_len if upper_len >= lower_len else lower_len - upper_len
+            reach: f32 = upper_len + lower_len
+            distance: f32 = Geometry::vec3_length(target)
+            extended: bool = distance >= reach
+            collapsed: bool = distance <= span
+            effective: f32 =
+                reach if extended else span if collapsed else distance
+            numerator: f32 = upper_len * upper_len + lower_len * lower_len - effective * effective
+            denominator: f32 = 2.0 * upper_len * lower_len
+            raw_cosine: f32 = numerator / denominator
+            cosine: f32 =
+                Tune::LIMIT if raw_cosine > Tune::LIMIT else 0.0 - Tune::LIMIT if raw_cosine < 0.0 - Tune::LIMIT else raw_cosine
+            TwoBoneSolution{
+                knee_cosine: cosine,
+                effective_distance: effective,
+                reach: reach,
+                reachable: not extended,
+                collapsed: collapsed,
+            }
+
+        # Aim constraint as a cosine: 1 when the limb already points at the
+        # target, 0 when it is perpendicular. A zero-length input gives -1 so
+        # a caller cannot mistake "no direction" for "aligned".
+        def aim_cosine(forward: Geometry::Vec3, target_direction: Geometry::Vec3) -> f32:
+            return 0.0 - Tune::LIMIT if Geometry::vec3_length(forward) <= 0.0 or Geometry::vec3_length(target_direction) <= 0.0
+            Geometry::vec3_dot_normalized(forward, target_direction)

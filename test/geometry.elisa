@@ -25,4 +25,15 @@ def main() -> i32:
     ray: Ray3 = Ray3{origin: origin, direction: Vec3{x: 0.0, y: 0.0, z: -1.0}}
     hit: Vec3 = ray3_at(ray, 5.0)
     return 7 if hit.x != 0.0 or hit.y != 0.0 or hit.z != -5.0
+
+    # Newton square root, then the length operations built on it.
+    return 8 if sqrt_f32(4.0) < 1.999 or sqrt_f32(4.0) > 2.001 or sqrt_f32(0.0) != 0.0
+    three_four: Vec3 = Vec3{x: 3.0, y: 4.0, z: 0.0}
+    return 9 if vec3_length(three_four) < 4.999 or vec3_length(three_four) > 5.001
+    unit_vector: Vec3 = vec3_normalize(three_four)
+    return 10 if unit_vector.x < 0.599 or unit_vector.x > 0.601 or unit_vector.y < 0.799 or unit_vector.y > 0.801
+    # A zero-length vector has no direction; normalizing yields zero, not NaN.
+    return 11 if vec3_length(vec3_normalize(vec3_zero())) != 0.0
+    return 12 if vec3_distance(three_four, three_four) != 0.0
+    return 13 if vec3_dot_normalized(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 0.0, y: 1.0, z: 0.0}) != 0.0
     0
