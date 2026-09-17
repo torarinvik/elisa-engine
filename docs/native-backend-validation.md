@@ -293,6 +293,15 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
+The native host also records how frame time scales with the live entity
+count: it adds off-camera cubes at 16, 128, and 512 entities, measures
+twelve frames at each size, prints the median and tail, removes them
+again, and **fails the run if the largest median exceeds the fixture's
+frame budget**. Observed medians around 1.7 ms, 2.3 ms, and 3.1 ms
+respectively — a clear but sub-linear rise, all inside the 16.7 ms
+budget. The sweep lives in `native/perf_sweep.h`. This is measured
+scaling for one small scene, not a claim about a full game's workload.
+
 ## Offline asset cooking (2026-09-18)
 
 The pipeline's cooking stage now runs offline, as the plan intends

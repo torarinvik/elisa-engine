@@ -25,6 +25,7 @@
 #include "probe_support.h"
 #include "asset_import.h"
 #include "package_load.h"
+#include "perf_sweep.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -478,6 +479,11 @@ int main(int argc, char** argv) {
                       << "worst_us=" << worst_micros << "\n";
         }
     }
+    // Measured scaling sweep lives in native/perf_sweep.h.
+    if (!run_perf_sweep(application, scene, manifest)) {
+        return 1;
+    }
+
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);
     scene.Entity_Remove(lamp);
