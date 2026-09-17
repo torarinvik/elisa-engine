@@ -124,7 +124,37 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         parts = entry.split(",")
         if len(parts) != 2 or not all(part.lstrip("-").isdigit() for part in parts):
             raise ValueError(f"scene manifest wall cell malformed: {entry!r}")
-    return {"sha256": sha256_file(manifest), "fields": len(values), "wall_cells": len(wall_cells)}
+    # The entity host object must sit where the Elisa scripted game run ended.
+    # 6,6 is the goal, pinned by test/maze.elisa via maze_play_script (won in
+    # ten moves) and maze_goal_x/y, and 0.6/-2.1 is the shared world mapping
+    # the hosts and scripts/compare_renders.py both use.
+    if values.get("player_final") != "6,6":
+        raise ValueError(f"scene manifest player_final drift: {values.get('player_final')!r}")
+    final_x = 6 * 0.6 - 2.1
+    final_y = 6 * 0.6 - 2.1
+    for key, expected in (("object_x", final_x), ("object_y", final_y)):
+        if abs(float(values.get(key, "nan")) - expected) > 1e-6:
+            raise ValueError(f"scene manifest {key} drift: {values.get(key)!r}, expected {expected}")
+    # Declared occluded cells must be in-grid and open (the entity stands on
+    # an open cell); otherwise the topology check would hide real drift.
+    wall_set = set()
+    for entry in wall_cells:
+        (x, y) = entry.split(",")
+        wall_set.add((int(x), int(y)))
+    occluded = [entry for entry in values.get("occluded", "").split(";") if entry]
+    if not occluded:
+        raise ValueError("scene manifest has no occluded cell declaration")
+    for entry in occluded:
+        parts = entry.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"scene manifest occluded cell malformed: {entry!r}")
+        (x, y) = int(parts[0]), int(parts[1])
+        if not (0 <= x < 8 and 0 <= y < 8):
+            raise ValueError(f"scene manifest occluded cell out of grid: {entry!r}")
+        if (x, y) in wall_set:
+            raise ValueError(f"scene manifest occluded cell is a wall: {entry!r}")
+    return {"sha256": sha256_file(manifest), "fields": len(values),
+            "wall_cells": len(wall_cells), "occluded_cells": len(occluded)}
 
 
 def main(arguments: list[str]) -> int:

@@ -108,12 +108,11 @@ def main(arguments: darray[sview]) -> i64:
         return run_result.exit_status
 
     python: sview = get_environment_or("PYTHON_BIN", "python3")
-    compare_status: i64 = run_visible(python, [str(root.joinpath("scripts/compare_renders.py")), "check", screenshot, "320", "200"])
-    if compare_status != 0:
-        return compare_status
+    compare: sview = str(root.joinpath("scripts/compare_renders.py"))
+    manifest_spec: sview = str(manifest)
 
-    # Determinism: the same static scene must render identical pixels
-    # across runs. Replay and rollback determinism build on this; a
+    # Determinism: the same static scene must render identical pixels on a
+    # second run. Replay and rollback determinism build on this, so a
     # nondeterministic renderer fails here first, loudly.
     rerun_screenshot: sview = str(root.joinpath("build/wicked-frame-rerun.png"))
     rerun_result: ProcessCapture =
@@ -124,5 +123,12 @@ def main(arguments: darray[sview]) -> i64:
     if rerun_result.exit_status != 0:
         return rerun_result.exit_status
 
-    determinism_status: i64 = run_visible(python, [str(root.joinpath("scripts/compare_renders.py")), "compare", screenshot, rerun_screenshot, "--per-channel", "0.0", "--mean", "0.0"])
-    determinism_status
+    # One verification pass over the frame and its rerun: dimensions,
+    # non-blank, determinism, and that the frame encodes the Elisa wall list
+    # (ignoring only the cells the manifest declares the object covers).
+    verify_status: i64 = run_visible(python, [compare, "verify", screenshot, rerun_screenshot, "320", "200", "8", "8", manifest_spec])
+    if verify_status != 0:
+        return verify_status
+
+    println("Native frame verified: dimensions, determinism, Elisa topology.")
+    0

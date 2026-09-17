@@ -213,6 +213,25 @@ boundary the plan calls for. Evidence: before the fix the two topology
 grids disagreed on interior walls; after it they are identical and each
 matches the Elisa wall list exactly on the maze-only fixture.
 
+## Gameplay drives the rendered object (2026-09-18)
+
+The host object now sits where the Elisa game says the player ended up,
+not at a hand-written coordinate. `examples/maze/trace.elisa` plays a
+scripted ten-move win path through the real `MazeGame`, so collision, the
+key, the locked door, and the goal are resolved by engine rules; the
+column-1 route avoids the hazard at (2,5) that resets a naive path.
+`test/maze.elisa` pins the outcome (won, ten steps, final cell equals the
+goal). `backends/scene_manifest.txt` carries `player_final=6,6` and the
+matching world position in `object_x/object_y`, and
+`scripts/record_validation.py` rejects drift in either, so neither host
+chooses where the entity is.
+
+The topology check also stopped carrying slack: the fixture declares the
+four projected cells the foreground object covers (`occluded=`) and the
+checker now requires exact agreement on every other cell. Both hosts
+produce zero mismatches, and the validator rejects an `occluded` entry
+that is out of grid or names a wall.
+
 ## Toward pixel comparison (status: both hosts captured)
 
 `src/backend/image_compare.elisa` defines the tolerance policy

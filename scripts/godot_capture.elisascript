@@ -74,41 +74,25 @@ def main(arguments: darray[sview]) -> i64:
     if first_capture.exit_status != 0:
         return first_capture.exit_status
 
-    _ =
-        status: i64 = run_visible(python, [compare, "check", frame, "320", "200"])
-        if status != 0:
-            return status
-        status
-
-    println("Godot rendered frame is non-blank.")
-
     # Determinism: the same scene must capture identical pixels twice.
-    second_capture: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(godot), ["--path", project, "--script", "res://capture.gd", "--", manifest, rerun], empty_input)
-    _ = write_stdout(second_capture.stdout)
-    _ = write_stderr(second_capture.stderr)
-    if second_capture.exit_status != 0:
-        return second_capture.exit_status
-
     _ =
-        status: i64 = run_visible(python, [compare, "compare", frame, rerun, "--per-channel", "0.0", "--mean", "0.0"])
+        status: i64 = run_visible(godot, ["--path", project, "--script", "res://capture.gd", "--", manifest, rerun])
         if status != 0:
             return status
         status
 
-    println("Godot capture is deterministic across runs.")
-
-    # The rendered frame must encode the Elisa wall topology. Two samples
-    # are allowed because the foreground entity cube occludes two interior
-    # wall centres from this camera; the maze-only fixture proves zero.
+    # One verification pass over the frame and its rerun: dimensions,
+    # non-blank, determinism, and that the frame encodes the Elisa wall list
+    # (ignoring only the cells the manifest declares the object covers).
+    # Godot's --headless mode forces the dummy rendering driver, so this
+    # runner needs a real display session, unlike the main gate's probe.
     _ =
-        status: i64 = run_visible(python, [compare, "pattern-check", frame, "8", "8", f"@{manifest}", "2"])
+        status: i64 = run_visible(python, [compare, "verify", frame, rerun, "320", "200", "8", "8", manifest])
         if status != 0:
             return status
         status
 
-    println("Godot frame encodes the Elisa maze topology.")
+    println("Godot frame verified: dimensions, determinism, Elisa topology.")
 
     if not is_file(path(native_frame)):
         eprint("Native frame missing; run scripts/wicked_probe.elisascript first.")

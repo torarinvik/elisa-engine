@@ -31,6 +31,14 @@ subsystem proves nothing about it.
   a whole-file context sensitivity whose root cause is not isolated
   after ~20 probes. The gate therefore stays monolithic until the
   verifier explains itself; no further suites land before the split.
+- Further script-authoring limits found while adding host drivers: an
+  f-string whose interpolation is itself a call, as in
+  `f"@{str(path)}"`, aborts the launcher with exit 133 and no output
+  (a literal or a plain variable works, so the trigger is the nested
+  call, not the process-helper count). Host drivers therefore build
+  argument strings with plain bindings, and each driver verifies a frame
+  with one `compare_renders.py verify` call covering dimensions,
+  determinism, and topology instead of stacking several checker calls.
 
 ## Evidence
 

@@ -10,6 +10,7 @@ Usage:
   compare_renders.py compare <a.png> <b.png> [--per-channel T] [--mean T]
 """
 
+import os
 import struct
 import sys
 import zlib
@@ -168,7 +169,25 @@ def maze_pattern(source, rows, cols, cells):
     return "\n".join(lines)
 
 
-def pattern_mismatches(source, rows, cols, cells):
+def resolve_occluded(spec):
+    # "@<manifest>" also yields the cells the fixture declares as covered by
+    # the foreground entity object, so the topology check can require exact
+    # agreement everywhere else instead of carrying a slack allowance.
+    path = manifest_path_of(spec)
+    if path is None:
+        return set()
+    ignored = set()
+    for line in open(path, encoding="utf-8").read().splitlines():
+        text = line.strip()
+        if text.startswith("occluded="):
+            for entry in text[len("occluded="):].split(";"):
+                if entry:
+                    (x, y) = entry.split(",")
+                    ignored.add((int(x), int(y)))
+    return ignored
+
+
+def pattern_mismatches(source, rows, cols, cells, ignore=None):
     # Every grid position must be bright exactly when it is a wall in the
     # Elisa list, so the rendered frame encodes the authoritative topology.
     rendered = maze_pattern(source, rows, cols, cells).split("\n")
@@ -177,27 +196,40 @@ def pattern_mismatches(source, rows, cols, cells):
         if entry:
             (x, y) = entry.split(",")
             walls.add((int(x), int(y)))
+    covered = ignore or set()
     mismatches = 0
     for line_index, line in enumerate(rendered):
         row = rows - 1 - line_index
         for col in range(cols):
+            if (col, row) in covered:
+                continue
             expected = "W" if (col, row) in walls else "."
             if line[col] != expected:
                 mismatches += 1
     return mismatches
 
 
+def manifest_path_of(spec):
+    # A spec is a manifest when it is "@<path>" or an existing file; host
+    # runners pass the manifest path directly, which keeps them free of
+    # f-string nesting that the ElisaScript launcher aborts on.
+    if spec.startswith("@"):
+        return spec[1:]
+    return spec if os.path.exists(spec) else None
+
+
 def resolve_cells(spec):
-    # "@<manifest>" reads the wall list from a scene manifest so the
-    # manifest stays the single source of truth for both hosts and host
-    # runners never re-type the topology.
-    if not spec.startswith("@"):
+    # Reads the wall list from a scene manifest so the manifest stays the
+    # single source of truth for both hosts and host runners never re-type
+    # the topology.
+    path = manifest_path_of(spec)
+    if path is None:
         return spec
-    for line in open(spec[1:], encoding="utf-8").read().splitlines():
+    for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
         if text.startswith("walls="):
             return text[len("walls="):]
-    raise ValueError(f"manifest has no walls line: {spec[1:]}")
+    raise ValueError(f"manifest has no walls line: {path}")
 
 
 def main(arguments):
@@ -231,9 +263,41 @@ def main(arguments):
             return 2
         rows, cols, cells = int(arguments[3]), int(arguments[4]), resolve_cells(arguments[5])
         allowed = int(arguments[6])
-        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells)
+        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells, resolve_occluded(arguments[5]))
         print(f"topology mismatches={found} allowed={allowed}")
         return 0 if found <= allowed else 1
+    if command == "verify":
+        # One invocation for every claim about a host frame: dimensions,
+        # non-blank, run-to-run determinism, and topology agreement. Kept as
+        # a single process call because the ElisaScript launcher aborts when
+        # a driver script accumulates further process-helper calls.
+        if len(arguments) != 9:
+            print("usage: compare_renders.py verify <frame> <rerun> <width> <height> <rows> <cols> <cells>", file=sys.stderr)
+            return 2
+        frame = read_png(arguments[2])
+        rerun = read_png(arguments[3])
+        want = (int(arguments[4]), int(arguments[5]))
+        rows, cols = int(arguments[6]), int(arguments[7])
+        cells_spec = arguments[8]
+        if frame[0] % want[0] != 0 or frame[1] % want[1] != 0 or frame[0] // want[0] != frame[1] // want[1]:
+            print(f"dimensions {frame[0]}x{frame[1]} are not an integer scale of {want[0]}x{want[1]}", file=sys.stderr)
+            return 1
+        if frame_range(frame[3], frame[2]) < 0.01:
+            print("frame is blank", file=sys.stderr)
+            return 1
+        print(f"frame ok: {frame[0]}x{frame[1]} scale={frame[0] // want[0]} range={frame_range(frame[3], frame[2]):.4f}")
+        (peak, average, ok) = compare(frame, rerun, 0.0, 0.0)
+        if not ok:
+            print(f"frame is not deterministic: peak={peak:.4f} mean={average:.4f}", file=sys.stderr)
+            return 1
+        print(f"deterministic: peak={peak:.4f} mean={average:.4f}")
+        cells = resolve_cells(cells_spec)
+        found = pattern_mismatches(frame, rows, cols, cells, resolve_occluded(cells_spec))
+        if found != 0:
+            print(f"topology mismatches={found}", file=sys.stderr)
+            return 1
+        print("topology ok: frame encodes the Elisa wall list")
+        return 0
     if command == "stats":
         (width, height, channels, pixels) = read_png(arguments[2])
         means = channel_stats(pixels, channels)

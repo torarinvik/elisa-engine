@@ -1,0 +1,43 @@
+# Elisa-owned gameplay trace. A scripted input sequence is played through
+# the real maze game, so collision, the locked door, hazards, and the win
+# condition are exercised by engine rules. Hosts render the resulting
+# state; they never re-derive movement. test/maze.elisa pins this trace's
+# outcome, and backends/scene_manifest.txt carries the final cell to both
+# hosts so neither host chooses where the player ends up.
+include "./game.elisa"
+
+module MazeTrace:
+    private:
+        const module Script:
+            STEPS: usize = 10
+
+    public:
+        struct TraceResult:
+            player_x: mutable i64
+            player_y: mutable i64
+            moves: mutable usize
+            won: mutable bool
+            steps: mutable usize
+
+        # Five South down the open first column, then five East to the goal
+        # via the key cell and the locked door. The column-1 route is the
+        # one that avoids the hazard at (2,5); test/maze_game.elisa uses the
+        # same path, and this module keeps the two in step.
+        def maze_win_script() -> MazeMove[10]:
+            [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East]
+
+        def maze_play_script() -> TraceResult:
+            game: mutable MazeGame = game_new()
+            game_start(&game)
+            script: MazeMove[10] = maze_win_script()
+            steps: usize =
+                for index in 0..<Script::STEPS |count: usize = 0, game| -> count:
+                    moved: bool = game_step(&game, script[index])
+                    count <- count + 1 if moved
+            TraceResult{
+                player_x: game.grid.player_x,
+                player_y: game.grid.player_y,
+                moves: game.grid.moves,
+                won: game_won(&game),
+                steps: steps,
+            }
