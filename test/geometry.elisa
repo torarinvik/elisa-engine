@@ -1,0 +1,28 @@
+include "../src/math/geometry.elisa"
+using Geometry
+
+def main() -> i32:
+    origin: Vec3 = vec3_zero()
+    unit: Vec3 = vec3_one()
+    return 1 if vec3_dot(origin, unit) != 0.0 or vec3_length_squared(unit) != 3.0
+
+    displacement: Vec3 = Vec3{x: 2.0, y: -3.0, z: 4.0}
+    position: Vec3 = vec3_add(unit, displacement)
+    return 2 if position.x != 3.0 or position.y != -2.0 or position.z != 5.0
+    recovered: Vec3 = vec3_sub(position, displacement)
+    return 3 if recovered.x != unit.x or recovered.y != unit.y or recovered.z != unit.z
+
+    transform: Transform = transform_translate(transform_identity(), displacement)
+    return 4 if transform.position.z != displacement.z or transform.rotation.w != 1.0 or transform.scale.x != 1.0
+
+    bounds: Bounds3 = Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}}
+    touching: Bounds3 = Bounds3{minimum: Vec3{x: 1.0, y: 0.0, z: 0.0}, maximum: Vec3{x: 2.0, y: 1.0, z: 1.0}}
+    separated: Bounds3 = Bounds3{minimum: Vec3{x: 2.0, y: 0.0, z: 0.0}, maximum: Vec3{x: 3.0, y: 1.0, z: 1.0}}
+    reversed: Bounds3 = Bounds3{minimum: unit, maximum: origin}
+    return 5 if not bounds3_contains(bounds, origin) or not bounds3_overlaps(bounds, touching)
+    return 6 if bounds3_overlaps(bounds, separated) or bounds3_valid(reversed) or bounds3_contains(reversed, origin)
+
+    ray: Ray3 = Ray3{origin: origin, direction: Vec3{x: 0.0, y: 0.0, z: -1.0}}
+    hit: Vec3 = ray3_at(ray, 5.0)
+    return 7 if hit.x != 0.0 or hit.y != 0.0 or hit.z != -5.0
+    0

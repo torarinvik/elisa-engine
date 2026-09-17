@@ -1,0 +1,3 @@
+# This proof covers the pure provenance predicate used by World. Mutable
+# registry/storage invariants are exercised by runtime lifecycle tests.
+include "../src/world/reference.elisa"

@@ -1,0 +1,86 @@
+include "../src/runtime/headless_game.elisa"
+using HeadlessGame
+using World
+using Backend
+using Runtime
+using Input
+using Assets
+
+def main() -> i32:
+    first_world: mutable World = catch world_new():
+        value: value
+        error failure: return 1
+    second_world: mutable World = catch world_new():
+        value: value
+        error failure: return 2
+    first_recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    second_recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    first_clock: mutable StepClock = step_clock_new()
+    second_clock: mutable StepClock = step_clock_new()
+    visual: VisualAsset = VisualAsset{
+        mesh: AssetId{high: 23, low: 1},
+        material: AssetId{high: 23, low: 2},
+        local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}},
+    }
+    first: mutable PlayerState = catch spawn_player(&first_world, &first_recorder, visual):
+        value: value
+        error failure: return 3
+    second: mutable PlayerState = catch spawn_player(&second_world, &second_recorder, visual):
+        value: value
+        error failure: return 4
+
+    mapping: InputMap = default_input_map()
+    buttons: Button[4] = [Button.KeyW, Button.PadRight, Button.Unbound, Button.KeyA]
+    elapsed: i64[4] = [fixed_step_micros(), fixed_step_micros() * 2, 0, fixed_step_micros()]
+    for frame in 0..<4 |first, second, first_clock, second_clock, first_recorder, second_recorder|:
+        action: Action = action_for(mapping, buttons[frame])
+        first_steps: usize = catch advance_player(&first, &first_clock, &first_recorder, action, elapsed[frame]):
+            value: value
+            error failure: return 5
+        second_steps: usize = catch advance_player(&second, &second_clock, &second_recorder, action, elapsed[frame]):
+            value: value
+            error failure: return 6
+        return 7 if first_steps != second_steps
+
+    return 8 if first_clock.tick_count != 4 or first_recorder.command_count != 5
+    return 9 if first.transform.position.x != 0.25 or first.transform.position.z != -0.25
+    return 10 if not world_is_live(&first_world, first.player) or not world_is_valid(&first_world)
+
+    for index in 0..<first_recorder.command_count |first_recorder, second_recorder|:
+        left: SceneCommand = catch recorded_command(&first_recorder, index):
+            value: value
+            error failure: return 11
+        right: SceneCommand = catch recorded_command(&second_recorder, index):
+            value: value
+            error failure: return 12
+        return 13 if left.kind != right.kind or left.reference.id != right.reference.id or left.transform.position.x != right.transform.position.x or left.transform.position.z != right.transform.position.z or not same_asset_id(left.visual.mesh, right.visual.mesh)
+
+    before: usize = first_recorder.command_count
+    invalid: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, -1):
+        value: 1
+        GameError.ClockFailure: 0
+        error failure: 2
+    return 14 if invalid != 0 or first_recorder.command_count != before
+
+    for index in before..<256 |first_recorder|:
+        filled: i32 = catch submit_update(&first_recorder, first.player, first.transform):
+            ok: 0
+            error failure: 1
+        return 15 if filled != 0
+    prior_ticks: i64 = first_clock.tick_count
+    prior_z: f32 = first.transform.position.z
+    full: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, fixed_step_micros()):
+        value: 1
+        GameError.RecordingFailure: 0
+        error failure: 2
+    return 16 if full != 0 or first_clock.tick_count != prior_ticks or first.transform.position.z != prior_z or first_recorder.command_count != 256
+
+    third_world: mutable World = catch world_new():
+        value: value
+        error failure: return 17
+    rejected_spawn: i32 = catch spawn_player(&third_world, &first_recorder, visual):
+        value: 1
+        GameError.RecordingFailure: 0
+        error failure: 2
+    return 18 if rejected_spawn != 0 or third_world.live_count != 0 or third_world.allocator.last_issued != 1 or not world_is_valid(&third_world)
+    0

@@ -1,0 +1,265 @@
+# The first checked world keeps identity, liveness, and storage ownership in one
+# value.  The registry is deliberately bounded and serial for this milestone;
+# later phases can replace the physical stores without changing EntityRef.
+
+include "../entity_id.elisa"
+include "./reference.elisa"
+
+module World:
+    public:
+        # Entity is an upward-composed hierarchy.  Actor and Enemy refine the
+        # root; callers match the leaf while the world stores the root type.
+        enum Entity:
+            Unknown
+
+        enum Actor is Entity:
+            Player
+
+        enum Enemy is Actor:
+            Guard
+
+        error WorldError:
+            EpochExhausted
+            IdentityExhausted
+            IdentityInvalid
+            Capacity
+            InvalidKind
+            InvalidReference
+
+    private:
+        const module Bounds:
+            WORLD_MAX_ENTITIES: usize = 256
+            WORLD_FIRST_EPOCH: i64 = 1
+            WORLD_MAX_EPOCH: i64 = 9223372036854775807
+
+        const module Sentinel:
+            WORLD_INVALID_SLOT: usize = Bounds::WORLD_MAX_ENTITIES
+
+        global mutable next_world_epoch: i64 = 0
+
+    public:
+        enum StorageKind:
+            None
+            Actor
+            Enemy
+
+        struct ActorRecord:
+            id: i64
+            live: bool
+            health: i64
+
+        struct EnemyRecord:
+            id: i64
+            live: bool
+            threat: i64
+
+        struct RegistryRow:
+            id: i64
+            kind: Entity
+            live: bool
+            storage: StorageKind
+
+    private:
+        def entity_storage_kind(kind: Entity) -> StorageKind:
+            match kind:
+                Actor.Player:
+                    StorageKind.Actor
+                Enemy.Guard:
+                    StorageKind.Enemy
+                _:
+                    StorageKind.None
+
+        def entity_kind_is_spawnable(kind: Entity) -> bool:
+            entity_storage_kind(kind) != StorageKind.None
+
+        def next_epoch() -> i64 error[WorldError]:
+            if next_world_epoch >= Bounds::WORLD_MAX_EPOCH:
+                raise WorldError.EpochExhausted
+            if next_world_epoch == 0:
+                next_world_epoch <- Bounds::WORLD_FIRST_EPOCH
+            else:
+                next_world_epoch <- next_world_epoch + 1
+            next_world_epoch
+
+        def registry_slot(world: World&, reference: EntityRef) -> usize:
+            return Sentinel::WORLD_INVALID_SLOT if not WorldReference::epoch_matches(world.epoch, reference.world_epoch) or reference.id <= EntityId::ENTITY_ID_INVALID
+            for index in 0..<world.registry_count:
+                return index if world.registry[index].live and world.registry[index].id == reference.id
+            Sentinel::WORLD_INVALID_SLOT
+
+        def free_registry_slot(world: World&) -> usize:
+            for index in 0..<world.registry_count:
+                return index if not world.registry[index].live
+            world.registry_count if world.registry_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT
+
+        def free_actor_slot(world: World&) -> usize:
+            for index in 0..<world.actor_count:
+                return index if not world.actors[index].live
+            world.actor_count if world.actor_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT
+
+        def free_enemy_slot(world: World&) -> usize:
+            for index in 0..<world.enemy_count:
+                return index if not world.enemies[index].live
+            world.enemy_count if world.enemy_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT
+
+        def mark_actor_dead(world: mutable World&, id: i64) -> bool:
+            for index in 0..<world.actor_count |condition=false, world| -> condition:
+                if world.actors[index].live and world.actors[index].id == id:
+                    world.actors[index].live <- false
+                    break true
+
+        def mark_enemy_dead(world: mutable World&, id: i64) -> bool:
+            for index in 0..<world.enemy_count |condition=false, world| -> condition:
+                if world.enemies[index].live and world.enemies[index].id == id:
+                    world.enemies[index].live <- false
+                    break true
+
+        def live_actor_matches(world: World&, id: i64) -> usize:
+            for index in 0..<world.actor_count |matches: usize = 0| -> matches:
+                matches <- matches + 1 if world.actors[index].live and world.actors[index].id == id
+
+        def live_enemy_matches(world: World&, id: i64) -> usize:
+            for index in 0..<world.enemy_count |matches: usize = 0| -> matches:
+                matches <- matches + 1 if world.enemies[index].live and world.enemies[index].id == id
+
+        def compact_registry(world: mutable World&) -> void:
+            write: mutable usize = 0
+            for read in 0..<world.registry_count:
+                if world.registry[read].live:
+                    world.registry[write] <- world.registry[read]
+                    write <- write + 1
+            for index in write..<world.registry_count:
+                world.registry[index].live <- false
+            world.registry_count <- write
+
+        def compact_actors(world: mutable World&) -> void:
+            write: mutable usize = 0
+            for read in 0..<world.actor_count:
+                if world.actors[read].live:
+                    world.actors[write] <- world.actors[read]
+                    write <- write + 1
+            for index in write..<world.actor_count:
+                world.actors[index].live <- false
+            world.actor_count <- write
+
+        def compact_enemies(world: mutable World&) -> void:
+            write: mutable usize = 0
+            for read in 0..<world.enemy_count:
+                if world.enemies[read].live:
+                    world.enemies[write] <- world.enemies[read]
+                    write <- write + 1
+            for index in write..<world.enemy_count:
+                world.enemies[index].live <- false
+            world.enemy_count <- write
+
+    public:
+        struct EntityRef:
+            world_epoch: i64
+            id: i64
+
+        struct EntityLookup:
+            reference: EntityRef
+            kind: Entity
+
+        affine struct World:
+            # The allocator is only advanced by world_spawn.  World is affine
+            # so callers cannot copy the owner while references remain live.
+            allocator: mutable EntityId::EntityIdAllocator
+            epoch: i64
+            registry: mutable RegistryRow[Bounds::WORLD_MAX_ENTITIES]
+            registry_count: mutable usize
+            live_count: mutable usize
+            actors: mutable ActorRecord[Bounds::WORLD_MAX_ENTITIES]
+            actor_count: mutable usize
+            enemies: mutable EnemyRecord[Bounds::WORLD_MAX_ENTITIES]
+            enemy_count: mutable usize
+
+        def world_new() -> World error[WorldError]:
+            epoch: i64 = try next_epoch()
+            World{
+                allocator: EntityId::EntityIdAllocator{last_issued: EntityId::ENTITY_ID_INVALID},
+                epoch: epoch,
+                registry: zeroed,
+                registry_count: 0,
+                live_count: 0,
+                actors: zeroed,
+                actor_count: 0,
+                enemies: zeroed,
+                enemy_count: 0,
+            }
+
+        def world_spawn(world: mutable World&, kind: Entity) -> EntityRef error[WorldError]:
+            raise WorldError.InvalidKind if not entity_kind_is_spawnable(kind)
+            registry_index: usize = free_registry_slot(world)
+            raise WorldError.Capacity if registry_index == Sentinel::WORLD_INVALID_SLOT
+            storage: StorageKind = entity_storage_kind(kind)
+            storage_index: usize =
+                free_actor_slot(world) if storage == StorageKind.Actor else free_enemy_slot(world)
+            raise WorldError.Capacity if storage_index == Sentinel::WORLD_INVALID_SLOT
+            cursor: i64 = world.allocator.last_issued
+            raise WorldError.IdentityInvalid if cursor < EntityId::ENTITY_ID_INVALID
+            raise WorldError.IdentityExhausted if cursor >= EntityId::ENTITY_ID_MAX
+            id: i64 = EntityId::entity_id_next(cursor)
+            world.allocator.last_issued <- id
+            world.registry[registry_index] <- RegistryRow{id: id, kind: kind, live: true, storage: storage}
+            world.registry_count <- world.registry_count + 1 if registry_index == world.registry_count
+            if storage == StorageKind.Actor:
+                world.actors[storage_index] <- ActorRecord{id: id, live: true, health: 100}
+                world.actor_count <- world.actor_count + 1 if storage_index == world.actor_count
+            else:
+                world.enemies[storage_index] <- EnemyRecord{id: id, live: true, threat: 1}
+                world.enemy_count <- world.enemy_count + 1 if storage_index == world.enemy_count
+            world.live_count <- world.live_count + 1
+            EntityRef{world_epoch: world.epoch, id: id}
+
+        def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
+            index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            storage: StorageKind = world.registry[index].storage
+            removed: bool = mark_actor_dead(world, reference.id) if storage == StorageKind.Actor else mark_enemy_dead(world, reference.id)
+            raise WorldError.InvalidReference if not removed
+            world.registry[index].live <- false
+            world.live_count <- world.live_count - 1
+
+        def world_lookup(world: World&, reference: EntityRef) -> EntityLookup error[WorldError]:
+            index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            EntityLookup{reference: reference, kind: world.registry[index].kind}
+
+        def world_is_live(world: World&, reference: EntityRef) -> bool:
+            registry_slot(world, reference) != Sentinel::WORLD_INVALID_SLOT
+
+        def world_compact(world: mutable World&) -> void:
+            compact_registry(world)
+            compact_actors(world)
+            compact_enemies(world)
+
+        def world_reference_epoch_matches(world_epoch: i64, reference_epoch: i64) -> bool:
+            WorldReference::epoch_matches(world_epoch, reference_epoch)
+
+        def world_is_valid(world: World&) -> bool:
+            return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > Bounds::WORLD_MAX_ENTITIES or world.actor_count > Bounds::WORLD_MAX_ENTITIES or world.enemy_count > Bounds::WORLD_MAX_ENTITIES or world.live_count > world.registry_count
+            live: mutable usize = 0
+            actor_rows: mutable usize = 0
+            enemy_rows: mutable usize = 0
+            for index in 0..<world.registry_count:
+                row: RegistryRow = world.registry[index]
+                if row.live:
+                    live <- live + 1
+                    return false if row.id <= EntityId::ENTITY_ID_INVALID or row.id > world.allocator.last_issued or not entity_kind_is_spawnable(row.kind)
+                    return false if row.storage != entity_storage_kind(row.kind)
+                    if row.storage == StorageKind.Actor:
+                        actor_rows <- actor_rows + 1
+                        return false if live_actor_matches(world, row.id) != 1
+                    else:
+                        enemy_rows <- enemy_rows + 1
+                        return false if live_enemy_matches(world, row.id) != 1
+                    for other in 0..<index:
+                        return false if world.registry[other].live and world.registry[other].id == row.id
+            live_actors: usize =
+                for index in 0..<world.actor_count |count: usize = 0| -> count:
+                    count <- count + 1 if world.actors[index].live
+            live_enemies: usize =
+                for index in 0..<world.enemy_count |count: usize = 0| -> count:
+                    count <- count + 1 if world.enemies[index].live
+            live == world.live_count and actor_rows == live_actors and enemy_rows == live_enemies

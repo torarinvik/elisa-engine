@@ -1,0 +1,43 @@
+# SDL3 platform boundary. The renderer remains outside this module: SDL owns
+# the window and event subsystem while Elisa owns startup/shutdown sequencing.
+module Sdl3:
+    private:
+        const module Flags:
+            EVENTS: u32 = 16384
+            VIDEO: u32 = 32
+            HIDDEN_WINDOW: u64 = 8
+
+        extern resource SDLWindow
+
+        @callconv(c)
+        extern SDL_Init(flags: u32) -> bool
+
+        @callconv(c)
+        extern SDL_Quit() -> void
+
+        @callconv(c)
+        extern SDL_CreateWindow(title: cstr, width: i32, height: i32, flags: u64) -> SDLWindow?
+
+        @callconv(c)
+        extern SDL_DestroyWindow(window: SDLWindow) -> void
+
+    public:
+        error SdlError:
+            InitializationFailed
+            WindowCreationFailed
+
+        def __drop__(self: SDLWindow) -> void:
+            SDL_DestroyWindow(move self)
+
+        def sdl3_probe_events() -> bool:
+            initialized: bool = SDL_Init(Flags::EVENTS)
+            SDL_Quit()
+            initialized
+
+        def sdl3_try_hidden_window() -> bool:
+            return false if not SDL_Init(Flags::VIDEO)
+            created: bool =
+                window: SDLWindow = get SDL_CreateWindow("Elisa Engine", 320, 200, Flags::HIDDEN_WINDOW) else false
+                true
+            SDL_Quit()
+            created

@@ -1,0 +1,14 @@
+# Portable host fixture emitted from the Elisa scene contract.
+version=1
+epoch=7
+entity=3
+camera_entity=4
+object_x=0.0
+object_y=0.0
+object_z=1.0
+camera_x=0.0
+camera_y=0.0
+camera_z=-5.0
+viewport_width=320
+viewport_height=200
+commands=create,update,destroy

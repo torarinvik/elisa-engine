@@ -1,0 +1,6 @@
+include "../../src/world/world.elisa"
+using World
+
+def copy_world(world: World&) -> i64:
+    duplicate: World = world
+    duplicate.epoch

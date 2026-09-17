@@ -1,0 +1,6 @@
+include "../../src/backend/recording.elisa"
+using Backend
+
+def copy_recorder(recorder: SceneRecorder&) -> usize:
+    duplicate: SceneRecorder = recorder
+    duplicate.command_count

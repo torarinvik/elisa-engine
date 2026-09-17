@@ -1,0 +1,80 @@
+include "../src/backend/fake_bridge.elisa"
+using FakeBridge
+
+def main() -> i32:
+    bridge: mutable Bridge = bridge_new()
+    failed: i32 = catch resource_create(&bridge, true):
+        value: 1
+        BridgeError.CreateFailed: 0
+        error failure: 1
+    return 1 if failed != 0
+    created_after_failure: ResourceHandle = catch resource_create(&bridge, false):
+        value: value
+        error failure: ResourceHandle{slot: 16, generation: 0}
+    return 2 if not resource_is_live(&bridge, created_after_failure)
+
+    empty: i32 = catch upload_submit(&bridge, created_after_failure, 0):
+        value: 1
+        BridgeError.EmptyUpload: 0
+        error failure: 2
+    return 3 if empty != 0
+    upload: UploadTicket = catch upload_submit(&bridge, created_after_failure, 64):
+        value: value
+        error failure: UploadTicket{slot: 16, generation: 0}
+    return 4 if not upload_is_pending(&bridge, upload)
+
+    blocked_destroy: i32 = catch resource_destroy(&bridge, created_after_failure):
+        ok: 1
+        BridgeError.UploadPending: 0
+        error failure: 2
+    return 5 if blocked_destroy != 0 or not resource_is_live(&bridge, created_after_failure)
+
+    completed: i32 = catch upload_complete(&bridge, upload):
+        ok: 0
+        error failure: 1
+    return 6 if completed != 0 or upload_is_pending(&bridge, upload)
+    repeated: i32 = catch upload_complete(&bridge, upload):
+        ok: 1
+        BridgeError.InvalidUpload: 0
+        error failure: 2
+    return 7 if repeated != 0
+
+    callback: CallbackHandle = catch callback_register(&bridge):
+        value: value
+        error failure: CallbackHandle{slot: 16, generation: 0}
+    callback_started: i32 = catch callback_begin(&bridge, callback):
+        ok: 0
+        error failure: 1
+    return 8 if callback_started != 0
+    blocked_unregister: i32 = catch callback_unregister(&bridge, callback):
+        ok: 1
+        BridgeError.CallbackInFlight: 0
+        error failure: 2
+    return 9 if blocked_unregister != 0 or not callback_is_registered(&bridge, callback)
+    callback_finished: i32 = catch callback_end(&bridge, callback):
+        ok: 0
+        error failure: 1
+    return 10 if callback_finished != 0
+    unregistered: i32 = catch callback_unregister(&bridge, callback):
+        ok: 0
+        error failure: 1
+    return 11 if unregistered != 0 or callback_is_registered(&bridge, callback)
+
+    destroyed: i32 = catch resource_destroy(&bridge, created_after_failure):
+        ok: 0
+        error failure: 1
+    return 12 if destroyed != 0 or resource_is_live(&bridge, created_after_failure)
+    reused: ResourceHandle = catch resource_create(&bridge, false):
+        value: value
+        error failure: ResourceHandle{slot: 16, generation: 0}
+    return 13 if reused.slot != created_after_failure.slot or reused.generation == created_after_failure.generation
+    stale: i32 = catch upload_submit(&bridge, created_after_failure, 4):
+        value: 1
+        BridgeError.InvalidResource: 0
+        error failure: 2
+    return 14 if stale != 0
+    reused_destroyed: i32 = catch resource_destroy(&bridge, reused):
+        ok: 0
+        error failure: 1
+    return 15 if reused_destroyed != 0
+    0

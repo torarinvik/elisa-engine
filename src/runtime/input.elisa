@@ -1,0 +1,48 @@
+# Backends translate device-specific codes to these portable button values.
+# Gameplay consumes actions and never depends on keyboard or controller codes.
+module Input:
+    private:
+        const module Limits:
+            BINDING_COUNT: usize = 6
+
+    public:
+        enum Button:
+            Unbound
+            KeyA
+            KeyD
+            KeyW
+            PadLeft
+            PadRight
+            PadUp
+
+        enum Action:
+            Idle
+            Left
+            Right
+            Forward
+
+        struct InputMap:
+            left_key: Button
+            right_key: Button
+            forward_key: Button
+            left_pad: Button
+            right_pad: Button
+            forward_pad: Button
+
+        def default_input_map() -> InputMap:
+            InputMap{left_key: Button.KeyA, right_key: Button.KeyD, forward_key: Button.KeyW, left_pad: Button.PadLeft, right_pad: Button.PadRight, forward_pad: Button.PadUp}
+
+        def input_map_valid(map: InputMap) -> bool:
+            return false if map.left_key == Button.Unbound or map.right_key == Button.Unbound or map.forward_key == Button.Unbound or map.left_pad == Button.Unbound or map.right_pad == Button.Unbound or map.forward_pad == Button.Unbound
+            buttons: Button[Limits::BINDING_COUNT] = [map.left_key, map.right_key, map.forward_key, map.left_pad, map.right_pad, map.forward_pad]
+            for index in 0..<Limits::BINDING_COUNT |buttons|:
+                for earlier in 0..<index:
+                    return false if buttons[index] == buttons[earlier]
+            true
+
+        def action_for(map: InputMap, button: Button) -> Action:
+            return Action.Idle if button == Button.Unbound or not input_map_valid(map)
+            return Action.Left if button == map.left_key or button == map.left_pad
+            return Action.Right if button == map.right_key or button == map.right_pad
+            return Action.Forward if button == map.forward_key or button == map.forward_pad
+            Action.Idle

@@ -1,0 +1,76 @@
+# Portable backend selection policy. Profiles describe what a host actually
+# supplies; they do not claim that a native library is integrated.
+module Capabilities:
+    private:
+        const module Bounds:
+            MAX_FEATURES: usize = 8
+
+    public:
+        enum BackendKind:
+            Headless
+            Native
+            Godot
+
+        enum BackendFeature:
+            Input
+            Rendering
+            Physics
+            Audio
+            NativeWindow
+            AsyncUpload
+            Callbacks
+            AssetLoading
+
+        struct BackendCapabilities:
+            input: bool
+            rendering: bool
+            physics: bool
+            audio: bool
+            native_window: bool
+            async_upload: bool
+            callbacks: bool
+            asset_loading: bool
+
+        struct BackendProfile:
+            kind: BackendKind
+            capabilities: BackendCapabilities
+
+        def backend_supports(profile: BackendProfile, feature: BackendFeature) -> bool:
+            match feature:
+                BackendFeature.Input:
+                    profile.capabilities.input
+                BackendFeature.Rendering:
+                    profile.capabilities.rendering
+                BackendFeature.Physics:
+                    profile.capabilities.physics
+                BackendFeature.Audio:
+                    profile.capabilities.audio
+                BackendFeature.NativeWindow:
+                    profile.capabilities.native_window
+                BackendFeature.AsyncUpload:
+                    profile.capabilities.async_upload
+                BackendFeature.Callbacks:
+                    profile.capabilities.callbacks
+                BackendFeature.AssetLoading:
+                    profile.capabilities.asset_loading
+
+        def backend_requirements_met(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> bool:
+            return false if count > Bounds::MAX_FEATURES
+            for index in 0..<count:
+                return false if not backend_supports(profile, required[index])
+            true
+
+        def headless_profile() -> BackendProfile:
+            BackendProfile{
+                kind: BackendKind.Headless,
+                capabilities: BackendCapabilities{
+                    input: true,
+                    rendering: false,
+                    physics: false,
+                    audio: false,
+                    native_window: false,
+                    async_upload: false,
+                    callbacks: false,
+                    asset_loading: false,
+                },
+            }

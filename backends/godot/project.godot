@@ -1,0 +1,15 @@
+; Minimal headless Godot host for the Elisa backend contract probe.
+; The Elisa world remains authoritative; this project only consumes portable commands.
+config_version=5
+
+[application]
+config/name="Elisa Godot Backend Probe"
+run/main_scene=""
+
+[display]
+window/size/viewport_width=320
+window/size/viewport_height=200
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

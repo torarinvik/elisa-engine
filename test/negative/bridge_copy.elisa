@@ -1,0 +1,10 @@
+include "../../src/backend/fake_bridge.elisa"
+using FakeBridge
+
+def copy_bridge(bridge: Bridge) -> Bridge:
+    bridge
+
+def main() -> i32:
+    original: Bridge = bridge_new()
+    copied: Bridge = copy_bridge(original)
+    return 0 if copied.resources[0].live == 0 else 1

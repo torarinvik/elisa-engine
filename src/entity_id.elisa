@@ -8,7 +8,7 @@ module EntityId:
         MaxId
         InvalidId
 
-    struct EntityIdAllocator:
+    affine struct EntityIdAllocator:
         last_issued: mutable i64
 
     # The pure transition is shared by the runtime allocator and its proofs.

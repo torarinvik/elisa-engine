@@ -1,0 +1,74 @@
+# Engine-facing math uses metres, a right-handed frame, +Y up, and -Z forward.
+# Quaternion components are (x, y, z, w). No backend-native layout is exposed.
+module Geometry:
+    private:
+        const module Scalar:
+            ZERO: f32 = 0.0
+            ONE: f32 = 1.0
+
+    public:
+        struct Vec3:
+            x: f32
+            y: f32
+            z: f32
+
+        struct Quat:
+            x: f32
+            y: f32
+            z: f32
+            w: f32
+
+        struct Transform:
+            position: Vec3
+            rotation: Quat
+            scale: Vec3
+
+        struct Bounds3:
+            minimum: Vec3
+            maximum: Vec3
+
+        struct Ray3:
+            origin: Vec3
+            direction: Vec3
+
+        def vec3_zero() -> Vec3:
+            Vec3{x: Scalar::ZERO, y: Scalar::ZERO, z: Scalar::ZERO}
+
+        def vec3_one() -> Vec3:
+            Vec3{x: Scalar::ONE, y: Scalar::ONE, z: Scalar::ONE}
+
+        def vec3_add(left: Vec3, right: Vec3) -> Vec3:
+            Vec3{x: left.x + right.x, y: left.y + right.y, z: left.z + right.z}
+
+        def vec3_sub(left: Vec3, right: Vec3) -> Vec3:
+            Vec3{x: left.x - right.x, y: left.y - right.y, z: left.z - right.z}
+
+        def vec3_scale(value: Vec3, factor: f32) -> Vec3:
+            Vec3{x: value.x * factor, y: value.y * factor, z: value.z * factor}
+
+        def vec3_dot(left: Vec3, right: Vec3) -> f32:
+            left.x * right.x + left.y * right.y + left.z * right.z
+
+        def vec3_length_squared(value: Vec3) -> f32:
+            vec3_dot(value, value)
+
+        def quat_identity() -> Quat:
+            Quat{x: Scalar::ZERO, y: Scalar::ZERO, z: Scalar::ZERO, w: Scalar::ONE}
+
+        def transform_identity() -> Transform:
+            Transform{position: vec3_zero(), rotation: quat_identity(), scale: vec3_one()}
+
+        def transform_translate(value: Transform, offset: Vec3) -> Transform:
+            Transform{position: vec3_add(value.position, offset), rotation: value.rotation, scale: value.scale}
+
+        def bounds3_valid(bounds: Bounds3) -> bool:
+            bounds.minimum.x <= bounds.maximum.x and bounds.minimum.y <= bounds.maximum.y and bounds.minimum.z <= bounds.maximum.z
+
+        def bounds3_contains(bounds: Bounds3, point: Vec3) -> bool:
+            bounds3_valid(bounds) and point.x >= bounds.minimum.x and point.x <= bounds.maximum.x and point.y >= bounds.minimum.y and point.y <= bounds.maximum.y and point.z >= bounds.minimum.z and point.z <= bounds.maximum.z
+
+        def bounds3_overlaps(left: Bounds3, right: Bounds3) -> bool:
+            bounds3_valid(left) and bounds3_valid(right) and left.minimum.x <= right.maximum.x and right.minimum.x <= left.maximum.x and left.minimum.y <= right.maximum.y and right.minimum.y <= left.maximum.y and left.minimum.z <= right.maximum.z and right.minimum.z <= left.maximum.z
+
+        def ray3_at(ray: Ray3, distance: f32) -> Vec3:
+            vec3_add(ray.origin, vec3_scale(ray.direction, distance))

@@ -1,0 +1,179 @@
+include "../src/world/world.elisa"
+using World
+using EntityId
+
+def world_error_code(failure: WorldError) -> i64:
+    match failure:
+        WorldError.EpochExhausted:
+            1
+        WorldError.IdentityExhausted:
+            2
+        WorldError.IdentityInvalid:
+            3
+        WorldError.Capacity:
+            4
+        WorldError.InvalidKind:
+            5
+        WorldError.InvalidReference:
+            6
+
+def invalid_world() -> World:
+    World{
+        allocator: EntityIdAllocator{last_issued: EntityId::ENTITY_ID_INVALID},
+        epoch: -1,
+        registry: zeroed,
+        registry_count: 0,
+        live_count: 0,
+        actors: zeroed,
+        actor_count: 0,
+        enemies: zeroed,
+        enemy_count: 0,
+    }
+
+def invalid_reference() -> EntityRef:
+    EntityRef{world_epoch: -1, id: -1}
+
+def invalid_lookup(reference: EntityRef) -> EntityLookup:
+    EntityLookup{reference: reference, kind: Entity.Unknown}
+
+def churn_test() -> i32:
+    world: mutable World = catch world_new():
+        value: value
+        error failure: invalid_world()
+    return 20 if world.epoch < 1
+    references: mutable EntityRef[64] = zeroed
+    expected_actor: mutable bool[64] = zeroed
+    random_state: i64 =
+        for step in 0..<64 |seed: i64 = 17, world, references, expected_actor| -> seed:
+            seed <- (seed * 37 + 17) % 997
+            kind: Entity = Actor.Player if seed % 2 == 0 else Enemy.Guard
+            reference: EntityRef = catch world_spawn(&world, kind):
+                value: value
+                error failure: invalid_reference()
+            return 21 if reference.id != step.i64() + 1
+            references[step] <- reference
+            expected_actor[step] <- seed % 2 == 0
+            return 22 if not world_is_valid(&world)
+    return 23 if random_state < 0
+    for step in 0..<64 |world, references|:
+        if step % 3 == 0:
+            removed: bool = catch world_despawn(&world, references[step]):
+                ok: true
+                error failure: false
+            return 24 if not removed or world_is_live(&world, references[step])
+    world_compact(&world)
+    return 25 if not world_is_valid(&world)
+    for step in 0..<64 |world, references, expected_actor|:
+        expected_live: bool = step % 3 != 0
+        return 26 if world_is_live(&world, references[step]) != expected_live
+        if expected_live:
+            lookup: EntityLookup = catch world_lookup(&world, references[step]):
+                value: value
+                error failure: invalid_lookup(references[step])
+            return 28 if (lookup.kind is Actor.Player) != expected_actor[step]
+    replacement: EntityRef = catch world_spawn(&world, Actor.Player):
+        value: value
+        error failure: invalid_reference()
+    return 27 if replacement.id != 65 or not world_is_live(&world, replacement)
+    0
+
+def corruption_test() -> i32:
+    world: mutable World = catch world_new():
+        value: value
+        error failure: invalid_world()
+    reference: EntityRef = catch world_spawn(&world, Actor.Player):
+        value: value
+        error failure: invalid_reference()
+    return 40 if not world_is_valid(&world)
+    world.actors[0].id <- reference.id + 1
+    return 41 if world_is_valid(&world)
+    world.actors[0].id <- reference.id
+    return 42 if not world_is_valid(&world)
+    world.registry[0].storage <- StorageKind.Enemy
+    return 43 if world_is_valid(&world)
+    0
+
+def capacity_test() -> i32:
+    world: mutable World = catch world_new():
+        value: value
+        error failure: invalid_world()
+    for step in 0..<256 |world|:
+        reference: EntityRef = catch world_spawn(&world, Actor.Player):
+            value: value
+            error failure: invalid_reference()
+        return 30 if reference.id != step.i64() + 1
+    return 31 if world.live_count != 256 or not world_is_valid(&world)
+    rejected: i32 = catch world_spawn(&world, Actor.Player):
+        value: 32
+        WorldError.Capacity: 0
+        error failure: 33
+    return 34 if rejected != 0 or world.live_count != 256 or world.allocator.last_issued != 256
+    0
+
+def main() -> i32:
+    world: World =
+        catch world_new():
+            value: value
+            error failure: invalid_world()
+    return 11 if world.epoch < 1
+
+    first: EntityRef =
+        catch world_spawn(&world, Actor.Player):
+            value: value
+            error failure: invalid_reference()
+    second: EntityRef =
+        catch world_spawn(&world, Enemy.Guard):
+            value: value
+            error failure: invalid_reference()
+    return 1 if first.id != 1 or second.id != 2 or first.world_epoch == 0 or first.world_epoch != second.world_epoch
+    return 2 if not world_is_live(&world, first) or not world_is_live(&world, second)
+    return 3 if not world_is_valid(&world)
+
+    first_lookup: EntityLookup =
+        catch world_lookup(&world, first):
+            value: value
+            error failure: invalid_lookup(first)
+    return 4 if not (first_lookup.kind is Actor.Player)
+
+    despawned: bool =
+        catch world_despawn(&world, first):
+            ok:
+                true
+            error failure:
+                false
+    return 5 if not despawned or world_is_live(&world, first)
+    dead: i32 = catch world_lookup(&world, first):
+        value: 7
+        WorldError.InvalidReference: 0
+        error failure: 7
+    return dead if dead != 0
+
+    other: World =
+        catch world_new():
+            value: value
+            error failure: invalid_world()
+    wrong_world: i32 = catch world_lookup(&other, second):
+        value: 8
+        WorldError.InvalidReference: 0
+        error failure: 8
+    return wrong_world if wrong_world != 0
+
+    third: EntityRef =
+        catch world_spawn(&world, Actor.Player):
+            value: value
+            error failure: invalid_reference()
+    return 6 if third.id != 3
+    world_compact(&world)
+    return 7 if not world_is_live(&world, second) or not world_is_live(&world, third)
+    return 8 if not world_is_valid(&world)
+    compact_lookup: EntityLookup =
+        catch world_lookup(&world, second):
+            value: value
+            error failure: invalid_lookup(second)
+    return 9 if not (compact_lookup.kind is Enemy.Guard)
+    return 10 if not world_reference_epoch_matches(first.world_epoch, second.world_epoch)
+    churn: i32 = churn_test()
+    return churn if churn != 0
+    capacity: i32 = capacity_test()
+    return capacity if capacity != 0
+    corruption_test()

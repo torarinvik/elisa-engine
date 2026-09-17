@@ -1,0 +1,20 @@
+include "../src/assets/descriptor.elisa"
+using Assets
+using Geometry
+
+def main() -> i32:
+    empty: AssetId = AssetId{high: 0, low: 0}
+    mesh: AssetId = AssetId{high: 11, low: 19}
+    material: AssetId = AssetId{high: 11, low: 20}
+    return 1 if asset_id_valid(empty) or not asset_id_valid(mesh) or same_asset_id(mesh, material)
+    source: SourceAsset = SourceAsset{id: mesh, path: "models/player.gltf", format: SourceFormat.Gltf}
+    return 2 if not source_asset_valid(source)
+    blank_source: SourceAsset = SourceAsset{id: mesh, path: "", format: SourceFormat.Gltf}
+    return 3 if source_asset_valid(blank_source)
+
+    bounds: Bounds3 = Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}}
+    visual: VisualAsset = VisualAsset{mesh: mesh, material: material, local_bounds: bounds}
+    return 4 if not visual_asset_valid(visual)
+    invalid_visual: VisualAsset = VisualAsset{mesh: mesh, material: mesh, local_bounds: bounds}
+    return 5 if visual_asset_valid(invalid_visual)
+    0

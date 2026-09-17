@@ -1,0 +1,6 @@
+include "../../src/entity_id.elisa"
+using EntityId
+
+def copy_allocator(allocator: EntityIdAllocator&) -> i64:
+    duplicate: EntityIdAllocator = allocator
+    duplicate.last_issued

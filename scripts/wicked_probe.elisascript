@@ -1,0 +1,95 @@
+# Build and run the optional WickedEngine scene bridge probe.
+# The WickedEngine checkout and build stay outside this repository.
+
+def main(arguments: darray[sview]) -> i64:
+    if arguments.count != 0:
+        eprint("usage: elisascript scripts/wicked_probe.elisascript")
+        return 2
+
+    root: Path = Script::source_path().parent().parent()
+    wicked_root: Path =
+        configured: sview = get_environment_or("WICKED_ROOT", "")
+        path(configured) if configured != "" else root.joinpath("../WickedEngine")
+    wicked_build: Path =
+        configured: sview = get_environment_or("WICKED_BUILD", "")
+        path(configured) if configured != "" else wicked_root.joinpath("build-elisa-arm-o0")
+    wicked_source: Path = wicked_root.joinpath("WickedEngine")
+    utility: Path = wicked_source.joinpath("Utility")
+    library_root: Path = wicked_build.joinpath("WickedEngine")
+    source: Path = root.joinpath("native/wicked_probe.cpp")
+    manifest: Path = root.joinpath("backends/scene_manifest.txt")
+    helper: Path = wicked_source.joinpath("wiAppleHelper.mm")
+    input_helper: Path = wicked_source.joinpath("wiInput_Apple.mm")
+    output: Path = root.joinpath("build/wicked-native-probe")
+
+    if not is_file(path(str(source))):
+        eprint("Missing Wicked probe source")
+        return 2
+    if not is_file(path(str(manifest))):
+        eprint("Missing shared scene manifest")
+        return 2
+    if not is_file(path(str(helper))):
+        eprint("Missing Wicked Apple helper")
+        return 2
+    if not is_file(path(str(input_helper))):
+        eprint("Missing Wicked Apple input helper")
+        return 2
+    if not is_file(path(str(wicked_source.joinpath("libdxcompiler.dylib")))):
+        eprint("Missing Wicked shader compiler")
+        return 2
+    if not is_file(path(str(library_root.joinpath("libWickedEngine.a")))):
+        eprint("Missing WickedEngine library")
+        return 2
+    if not is_file(path(str(library_root.joinpath("libJolt.a")))):
+        eprint("Missing Jolt library")
+        return 2
+
+    _ = create_directories(root.joinpath("build"))
+    cxx: sview = get_environment_or("CXX", "c++")
+    sdl_include: sview = get_environment_or("WICKED_SDL_INCLUDE_DIR", "/opt/homebrew/include")
+    sdl_library: sview = get_environment_or("WICKED_SDL_LIB_DIR", "/opt/homebrew/lib")
+    sdl_subinclude: sview = str(path(sdl_include).joinpath("SDL2"))
+    utility_lib: Path = library_root.joinpath("Utility/libUtility.a")
+    faudio_lib: Path = library_root.joinpath("Utility/FAudio/libFAudio.a")
+    lua_lib: Path = library_root.joinpath("LUA/libLUA.a")
+    if not is_file(path(str(utility_lib))):
+        eprint("Missing Utility library")
+        return 2
+    if not is_file(path(str(faudio_lib))):
+        eprint("Missing FAudio library")
+        return 2
+    if not is_file(path(str(lua_lib))):
+        eprint("Missing Lua library")
+        return 2
+
+    compile_arguments: darray[sview] = [
+        "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
+        "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
+        "-I", str(wicked_source), "-I", str(utility),
+        "-I", str(utility.joinpath("metal")),
+        "-I", sdl_include, "-I", sdl_subinclude,
+        str(source), str(helper), str(input_helper),
+        str(library_root.joinpath("libWickedEngine.a")),
+        str(library_root.joinpath("libJolt.a")), str(utility_lib),
+        str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",
+        "-framework", "Foundation", "-framework", "CoreFoundation",
+        "-framework", "CoreGraphics", "-framework", "CoreText", "-framework", "ImageIO",
+        "-framework", "Metal", "-framework", "QuartzCore", "-framework", "AppKit",
+        "-framework", "IOKit", "-framework", "GameController", "-framework", "AudioToolbox",
+        "-framework", "CoreAudio", "-framework", "AVFoundation", "-framework", "VideoToolbox",
+        "-framework", "Cocoa", "-o", str(output)
+    ]
+    compile_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(cxx), compile_arguments, empty_input)
+    _ = write_stdout(compile_result.stdout)
+    _ = write_stderr(compile_result.stderr)
+    if compile_result.exit_status != 0:
+        return compile_result.exit_status
+
+    run_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(str(output)), [str(wicked_source), str(manifest)], empty_input)
+    _ = write_stdout(run_result.stdout)
+    _ = write_stderr(run_result.stderr)
+    run_result.exit_status

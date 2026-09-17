@@ -1,0 +1,95 @@
+# Reviewed metadata for the first native bridge operations. This describes the
+# boundary; it does not make an arbitrary C pointer safe or retain borrowed data.
+module Contracts:
+    private:
+        const module Rules:
+            POINTER_ALIGNMENT: usize = 8
+            NO_BYTES: usize = 0
+
+    public:
+        enum Operation:
+            ReadOnlyInput
+            InPlaceOutput
+            AsyncUpload
+            ResourceCreate
+            CallbackRegister
+            Destroy
+
+        enum Ownership:
+            None
+            SharedBorrow
+            UniqueBorrow
+            Owned
+            CompletionOwned
+            CallbackContext
+            HandleOwner
+
+        enum Retention:
+            NoRetention
+            UntilReturn
+            UntilCompletion
+            UntilUnregister
+            ExplicitOwner
+
+        enum Thread:
+            Any
+            Simulation
+            Render
+            Backend
+
+        enum Failure:
+            NoFailure
+            ErrorValue
+
+        struct FfiContract:
+            operation: Operation
+            input_shape: sview
+            output_shape: sview
+            byte_alignment: usize
+            input_ownership: Ownership
+            output_ownership: Ownership
+            retention: Retention
+            thread: Thread
+            failure: Failure
+            destroys_partial: bool
+            completion_required: bool
+
+        def contract_valid(contract: FfiContract) -> bool:
+            return false if contract.input_shape == "" or contract.output_shape == "" or contract.byte_alignment == 0 or contract.byte_alignment % Rules::POINTER_ALIGNMENT != 0
+            match contract.operation:
+                Operation.ReadOnlyInput:
+                    contract.input_ownership == Ownership.SharedBorrow and contract.output_ownership == Ownership.None and contract.retention == Retention.NoRetention and contract.thread == Thread.Render and contract.failure == Failure.ErrorValue and not contract.completion_required and not contract.destroys_partial
+                Operation.InPlaceOutput:
+                    contract.input_ownership == Ownership.UniqueBorrow and contract.output_ownership == Ownership.UniqueBorrow and contract.retention == Retention.UntilReturn and contract.thread == Thread.Render and contract.failure == Failure.ErrorValue and not contract.completion_required and not contract.destroys_partial
+                Operation.AsyncUpload:
+                    contract.input_ownership == Ownership.CompletionOwned and contract.output_ownership == Ownership.None and contract.retention == Retention.UntilCompletion and contract.thread == Thread.Render and contract.failure == Failure.ErrorValue and contract.completion_required and not contract.destroys_partial
+                Operation.ResourceCreate:
+                    contract.input_ownership == Ownership.SharedBorrow and contract.output_ownership == Ownership.HandleOwner and contract.retention == Retention.ExplicitOwner and contract.thread == Thread.Backend and contract.failure == Failure.ErrorValue and not contract.completion_required and contract.destroys_partial
+                Operation.CallbackRegister:
+                    contract.input_ownership == Ownership.CallbackContext and contract.output_ownership == Ownership.None and contract.retention == Retention.UntilUnregister and contract.thread == Thread.Backend and contract.failure == Failure.ErrorValue and not contract.completion_required and not contract.destroys_partial
+                Operation.Destroy:
+                    contract.input_ownership == Ownership.HandleOwner and contract.output_ownership == Ownership.None and contract.retention == Retention.NoRetention and contract.thread == Thread.Backend and contract.failure == Failure.ErrorValue and not contract.completion_required and not contract.destroys_partial
+
+        def read_only_contract() -> FfiContract:
+            FfiContract{operation: Operation.ReadOnlyInput, input_shape: "shared view[f32]", output_shape: "void", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.SharedBorrow, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Render, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+
+        def in_place_contract() -> FfiContract:
+            FfiContract{operation: Operation.InPlaceOutput, input_shape: "mutable unique view[f32]", output_shape: "written extent", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.UniqueBorrow, output_ownership: Ownership.UniqueBorrow, retention: Retention.UntilReturn, thread: Thread.Render, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+
+        def async_upload_contract() -> FfiContract:
+            FfiContract{operation: Operation.AsyncUpload, input_shape: "owned upload bytes", output_shape: "completion token", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.CompletionOwned, output_ownership: Ownership.None, retention: Retention.UntilCompletion, thread: Thread.Render, failure: Failure.ErrorValue, destroys_partial: false, completion_required: true}
+
+        def resource_create_contract() -> FfiContract:
+            FfiContract{operation: Operation.ResourceCreate, input_shape: "shared descriptor", output_shape: "owned handle", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.SharedBorrow, output_ownership: Ownership.HandleOwner, retention: Retention.ExplicitOwner, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: true, completion_required: false}
+
+        def callback_register_contract() -> FfiContract:
+            FfiContract{operation: Operation.CallbackRegister, input_shape: "callback context", output_shape: "registration handle", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.CallbackContext, output_ownership: Ownership.None, retention: Retention.UntilUnregister, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+
+        def destroy_contract() -> FfiContract:
+            FfiContract{operation: Operation.Destroy, input_shape: "owned handle", output_shape: "void", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.HandleOwner, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+
+        def all_contracts_valid() -> bool:
+            contracts: FfiContract[6] = [read_only_contract(), in_place_contract(), async_upload_contract(), resource_create_contract(), callback_register_contract(), destroy_contract()]
+            for index in 0..<6 |contracts|:
+                return false if not contract_valid(contracts[index])
+            true

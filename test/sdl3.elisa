@@ -1,0 +1,7 @@
+include "../src/backend/sdl3.elisa"
+using Sdl3
+
+def main() -> i32:
+    return 1 if not sdl3_probe_events()
+    _ = sdl3_try_hidden_window()
+    0

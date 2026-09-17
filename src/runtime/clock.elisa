@@ -1,0 +1,46 @@
+# Simulation time is integer microseconds. Presentation can interpolate between
+# completed ticks; elapsed time beyond the catch-up budget is discarded.
+module Runtime:
+    private:
+        const module Timing:
+            STEP_MICROS: i64 = 16667
+            MAX_STEPS: usize = 4
+            MAX_STEPS_I64: i64 = 4
+            MAX_ACCUMULATED: i64 = STEP_MICROS * MAX_STEPS_I64
+            MAX_TICKS: i64 = 9223372036854775807
+
+    public:
+        error ClockError:
+            NegativeElapsed
+            InvalidState
+            TickExhausted
+
+        struct StepClock:
+            accumulated_micros: mutable i64
+            tick_count: mutable i64
+
+        def step_clock_new() -> StepClock:
+            StepClock{accumulated_micros: 0, tick_count: 0}
+
+        def fixed_step_micros() -> i64:
+            Timing::STEP_MICROS
+
+        def max_catch_up_steps() -> usize:
+            Timing::MAX_STEPS
+
+        def advance(clock: mutable StepClock&, elapsed_micros: i64) -> usize error[ClockError]:
+            raise ClockError.NegativeElapsed if elapsed_micros < 0
+            raise ClockError.InvalidState if clock.tick_count < 0 or clock.accumulated_micros < 0 or clock.accumulated_micros >= Timing::STEP_MICROS
+            candidate_accumulated: i64 =
+                capped_elapsed: i64 = Timing::MAX_ACCUMULATED if elapsed_micros >= Timing::MAX_ACCUMULATED else elapsed_micros
+                Timing::MAX_ACCUMULATED if clock.accumulated_micros >= Timing::MAX_ACCUMULATED - capped_elapsed else clock.accumulated_micros + capped_elapsed
+            planned_steps: i64 = candidate_accumulated / Timing::STEP_MICROS
+            raise ClockError.TickExhausted if clock.tick_count > Timing::MAX_TICKS - planned_steps
+            clock.accumulated_micros <- candidate_accumulated
+            while clock.accumulated_micros >= Timing::STEP_MICROS |steps: usize = 0, clock| -> steps:
+                clock.accumulated_micros <- clock.accumulated_micros - Timing::STEP_MICROS
+                clock.tick_count <- clock.tick_count + 1
+                steps <- steps + 1
+
+        def interpolation_fraction(clock: StepClock&) -> f32:
+            clock.accumulated_micros.f32() / Timing::STEP_MICROS.f32()

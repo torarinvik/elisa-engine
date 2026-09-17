@@ -1,0 +1,6 @@
+# Pure world-reference provenance, shared by runtime lookup and its proof.
+module WorldReference:
+    public:
+        def epoch_matches(world_epoch: i64, reference_epoch: i64) -> bool:
+            ensure result == (world_epoch == reference_epoch)
+            world_epoch == reference_epoch

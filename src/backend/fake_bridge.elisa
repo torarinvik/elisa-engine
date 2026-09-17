@@ -1,0 +1,160 @@
+# A deterministic Elisa-side fake for adversarial bridge tests. It models
+# ownership and completion state without exposing a native pointer or claiming
+# that a C library has been integrated.
+module FakeBridge:
+    private:
+        const module Limits:
+            MAX_RESOURCES: usize = 16
+            MAX_UPLOADS: usize = 16
+            MAX_CALLBACKS: usize = 16
+            INVALID_SLOT: usize = 16
+            FIRST_GENERATION: i64 = 1
+            MAX_GENERATION: i64 = 9223372036854775807
+
+    private:
+        struct ResourceState:
+            live: u8
+            generation: i64
+            pending_uploads: usize
+
+        struct UploadState:
+            live: u8
+            generation: i64
+            resource_slot: usize
+
+        struct CallbackState:
+            live: u8
+            generation: i64
+            in_flight: usize
+
+    public:
+        error BridgeError:
+            Capacity
+            InvalidResource
+            InvalidUpload
+            InvalidCallback
+            EmptyUpload
+            CreateFailed
+            GenerationExhausted
+            UploadPending
+            CallbackInFlight
+            CallbackAlreadyUnregistered
+
+        struct ResourceHandle:
+            slot: usize
+            generation: i64
+
+        struct UploadTicket:
+            slot: usize
+            generation: i64
+
+        struct CallbackHandle:
+            slot: usize
+            generation: i64
+
+        affine struct Bridge:
+            resources: mutable ResourceState[FakeBridge::Limits::MAX_RESOURCES]
+            uploads: mutable UploadState[FakeBridge::Limits::MAX_UPLOADS]
+            callbacks: mutable CallbackState[FakeBridge::Limits::MAX_CALLBACKS]
+
+    private:
+        module State:
+            private:
+                def next_generation(current: i64) -> i64 error[BridgeError]:
+                    raise BridgeError.GenerationExhausted if current >= FakeBridge::Limits::MAX_GENERATION
+                    FakeBridge::Limits::FIRST_GENERATION if current == 0 else current + 1
+
+                def free_resource_slot(bridge: Bridge&) -> usize:
+                    for index in 0..<FakeBridge::Limits::MAX_RESOURCES:
+                        return index if bridge.resources[index].live == 0
+                    FakeBridge::Limits::INVALID_SLOT
+
+                def free_upload_slot(bridge: Bridge&) -> usize:
+                    for index in 0..<FakeBridge::Limits::MAX_UPLOADS:
+                        return index if bridge.uploads[index].live == 0
+                    FakeBridge::Limits::INVALID_SLOT
+
+                def free_callback_slot(bridge: Bridge&) -> usize:
+                    for index in 0..<FakeBridge::Limits::MAX_CALLBACKS:
+                        return index if bridge.callbacks[index].live == 0
+                    FakeBridge::Limits::INVALID_SLOT
+
+                def resource_valid(bridge: Bridge&, handle: ResourceHandle) -> bool:
+                    handle.slot < FakeBridge::Limits::MAX_RESOURCES and bridge.resources[handle.slot].live != 0 and bridge.resources[handle.slot].generation == handle.generation
+
+                def upload_valid(bridge: Bridge&, ticket: UploadTicket) -> bool:
+                    ticket.slot < FakeBridge::Limits::MAX_UPLOADS and bridge.uploads[ticket.slot].live != 0 and bridge.uploads[ticket.slot].generation == ticket.generation
+
+                def callback_valid(bridge: Bridge&, handle: CallbackHandle) -> bool:
+                    handle.slot < FakeBridge::Limits::MAX_CALLBACKS and bridge.callbacks[handle.slot].live != 0 and bridge.callbacks[handle.slot].generation == handle.generation
+
+    public:
+        def bridge_new() -> Bridge:
+            Bridge{resources: zeroed, uploads: zeroed, callbacks: zeroed}
+
+        def resource_create(bridge: mutable Bridge&, fail_after_allocation: bool) -> ResourceHandle error[BridgeError]:
+            slot: usize = State::free_resource_slot(bridge)
+            raise BridgeError.Capacity if slot == FakeBridge::Limits::INVALID_SLOT
+            generation: i64 = try State::next_generation(bridge.resources[slot].generation)
+            bridge.resources[slot].generation <- generation
+            bridge.resources[slot].pending_uploads <- 0
+            bridge.resources[slot].live <- 1
+            if fail_after_allocation:
+                bridge.resources[slot].live <- 0
+                raise BridgeError.CreateFailed
+            ResourceHandle{slot: slot, generation: generation}
+
+        def upload_submit(bridge: mutable Bridge&, resource: ResourceHandle, byte_count: usize) -> UploadTicket error[BridgeError]:
+            raise BridgeError.InvalidResource if not State::resource_valid(bridge, resource)
+            raise BridgeError.EmptyUpload if byte_count == 0
+            slot: usize = State::free_upload_slot(bridge)
+            raise BridgeError.Capacity if slot == FakeBridge::Limits::INVALID_SLOT
+            generation: i64 = try State::next_generation(bridge.uploads[slot].generation)
+            bridge.uploads[slot].generation <- generation
+            bridge.uploads[slot].resource_slot <- resource.slot
+            bridge.uploads[slot].live <- 1
+            bridge.resources[resource.slot].pending_uploads <- bridge.resources[resource.slot].pending_uploads + 1
+            UploadTicket{slot: slot, generation: generation}
+
+        def upload_complete(bridge: mutable Bridge&, ticket: UploadTicket) -> void error[BridgeError]:
+            raise BridgeError.InvalidUpload if not State::upload_valid(bridge, ticket)
+            resource_slot: usize = bridge.uploads[ticket.slot].resource_slot
+            bridge.uploads[ticket.slot].live <- 0
+            bridge.resources[resource_slot].pending_uploads <- bridge.resources[resource_slot].pending_uploads - 1
+
+        def resource_destroy(bridge: mutable Bridge&, resource: ResourceHandle) -> void error[BridgeError]:
+            raise BridgeError.InvalidResource if not State::resource_valid(bridge, resource)
+            raise BridgeError.UploadPending if bridge.resources[resource.slot].pending_uploads != 0
+            bridge.resources[resource.slot].live <- 0
+
+        def callback_register(bridge: mutable Bridge&) -> CallbackHandle error[BridgeError]:
+            slot: usize = State::free_callback_slot(bridge)
+            raise BridgeError.Capacity if slot == FakeBridge::Limits::INVALID_SLOT
+            generation: i64 = try State::next_generation(bridge.callbacks[slot].generation)
+            bridge.callbacks[slot].generation <- generation
+            bridge.callbacks[slot].in_flight <- 0
+            bridge.callbacks[slot].live <- 1
+            CallbackHandle{slot: slot, generation: generation}
+
+        def callback_begin(bridge: mutable Bridge&, callback: CallbackHandle) -> void error[BridgeError]:
+            raise BridgeError.InvalidCallback if not State::callback_valid(bridge, callback)
+            bridge.callbacks[callback.slot].in_flight <- bridge.callbacks[callback.slot].in_flight + 1
+
+        def callback_end(bridge: mutable Bridge&, callback: CallbackHandle) -> void error[BridgeError]:
+            raise BridgeError.InvalidCallback if not State::callback_valid(bridge, callback)
+            raise BridgeError.CallbackAlreadyUnregistered if bridge.callbacks[callback.slot].in_flight == 0
+            bridge.callbacks[callback.slot].in_flight <- bridge.callbacks[callback.slot].in_flight - 1
+
+        def callback_unregister(bridge: mutable Bridge&, callback: CallbackHandle) -> void error[BridgeError]:
+            raise BridgeError.InvalidCallback if not State::callback_valid(bridge, callback)
+            raise BridgeError.CallbackInFlight if bridge.callbacks[callback.slot].in_flight != 0
+            bridge.callbacks[callback.slot].live <- 0
+
+        def resource_is_live(bridge: Bridge&, resource: ResourceHandle) -> bool:
+            State::resource_valid(bridge, resource)
+
+        def upload_is_pending(bridge: Bridge&, ticket: UploadTicket) -> bool:
+            State::upload_valid(bridge, ticket)
+
+        def callback_is_registered(bridge: Bridge&, callback: CallbackHandle) -> bool:
+            State::callback_valid(bridge, callback)

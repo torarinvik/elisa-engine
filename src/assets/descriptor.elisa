@@ -1,0 +1,40 @@
+# Authored asset IDs are stable across World lifetimes. They are neither entity
+# IDs nor backend handles. Paths describe source inputs, not runtime pointers.
+include "../math/geometry.elisa"
+
+module Assets:
+    private:
+        const module Sentinel:
+            ZERO: u64 = 0
+
+    public:
+        struct AssetId:
+            high: u64
+            low: u64
+
+        enum SourceFormat:
+            Gltf
+            Png
+            Wav
+
+        struct SourceAsset:
+            id: AssetId
+            path: sview
+            format: SourceFormat
+
+        struct VisualAsset:
+            mesh: AssetId
+            material: AssetId
+            local_bounds: Geometry::Bounds3
+
+        def asset_id_valid(id: AssetId) -> bool:
+            id.high != Sentinel::ZERO or id.low != Sentinel::ZERO
+
+        def same_asset_id(left: AssetId, right: AssetId) -> bool:
+            left.high == right.high and left.low == right.low
+
+        def source_asset_valid(source: SourceAsset) -> bool:
+            asset_id_valid(source.id) and source.path != ""
+
+        def visual_asset_valid(visual: VisualAsset) -> bool:
+            asset_id_valid(visual.mesh) and asset_id_valid(visual.material) and not same_asset_id(visual.mesh, visual.material) and Geometry::bounds3_valid(visual.local_bounds)

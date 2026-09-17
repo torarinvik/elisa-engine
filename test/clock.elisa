@@ -1,0 +1,47 @@
+include "../src/runtime/clock.elisa"
+using Runtime
+
+def main() -> i32:
+    clock: mutable StepClock = step_clock_new()
+    step: i64 = fixed_step_micros()
+    return 1 if step <= 0 or max_catch_up_steps() != 4
+
+    first: usize = catch advance(&clock, step - 1):
+        value: value
+        error failure: 99
+    return 2 if first != 0 or clock.tick_count != 0 or interpolation_fraction(&clock) <= 0.0
+
+    second: usize = catch advance(&clock, 1):
+        value: value
+        error failure: 99
+    return 3 if second != 1 or clock.tick_count != 1 or clock.accumulated_micros != 0
+
+    negative: i32 = catch advance(&clock, -1):
+        value: 1
+        ClockError.NegativeElapsed: 0
+        error failure: 2
+    return 4 if negative != 0 or clock.tick_count != 1
+
+    capped: usize = catch advance(&clock, step * 100):
+        value: value
+        error failure: 99
+    return 5 if capped != max_catch_up_steps() or clock.tick_count != 5 or clock.accumulated_micros != 0
+
+    clock.tick_count <- 9223372036854775806
+    final_tick: usize = catch advance(&clock, step):
+        value: value
+        error failure: 99
+    return 6 if final_tick != 1 or clock.tick_count != 9223372036854775807
+    overflow: i32 = catch advance(&clock, step):
+        value: 1
+        ClockError.TickExhausted: 0
+        error failure: 2
+    return 7 if overflow != 0 or clock.tick_count != 9223372036854775807
+
+    clock.accumulated_micros <- -1
+    corrupt: i32 = catch advance(&clock, 0):
+        value: 1
+        ClockError.InvalidState: 0
+        error failure: 2
+    return 8 if corrupt != 0 or clock.accumulated_micros != -1
+    0

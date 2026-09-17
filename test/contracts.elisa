@@ -1,0 +1,29 @@
+include "../src/backend/contracts.elisa"
+using Contracts
+
+def main() -> i32:
+    return 1 if not all_contracts_valid()
+    read: FfiContract = read_only_contract()
+    return 2 if read.input_ownership != Ownership.SharedBorrow or read.retention != Retention.NoRetention or read.thread != Thread.Render
+    output: FfiContract = in_place_contract()
+    return 3 if output.input_ownership != Ownership.UniqueBorrow or output.output_ownership != Ownership.UniqueBorrow or output.output_shape != "written extent"
+    upload: FfiContract = async_upload_contract()
+    return 4 if upload.retention != Retention.UntilCompletion or not upload.completion_required
+    create: FfiContract = resource_create_contract()
+    return 5 if create.output_ownership != Ownership.HandleOwner or not create.destroys_partial
+    callback: FfiContract = callback_register_contract()
+    return 6 if callback.input_ownership != Ownership.CallbackContext or callback.retention != Retention.UntilUnregister
+    destroy: FfiContract = destroy_contract()
+    return 7 if destroy.input_ownership != Ownership.HandleOwner or destroy.retention != Retention.NoRetention
+
+    invalid_alignment: FfiContract = FfiContract{operation: Operation.ReadOnlyInput, input_shape: "shared view[f32]", output_shape: "void", byte_alignment: 4, input_ownership: Ownership.SharedBorrow, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Render, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+    return 8 if contract_valid(invalid_alignment)
+    invalid_retention: FfiContract = FfiContract{operation: Operation.AsyncUpload, input_shape: "owned upload bytes", output_shape: "completion token", byte_alignment: 8, input_ownership: Ownership.CompletionOwned, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Render, failure: Failure.ErrorValue, destroys_partial: false, completion_required: true}
+    return 9 if contract_valid(invalid_retention)
+    invalid_cleanup: FfiContract = FfiContract{operation: Operation.ResourceCreate, input_shape: "shared descriptor", output_shape: "owned handle", byte_alignment: 8, input_ownership: Ownership.SharedBorrow, output_ownership: Ownership.HandleOwner, retention: Retention.ExplicitOwner, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+    return 10 if contract_valid(invalid_cleanup)
+    invalid_thread: FfiContract = FfiContract{operation: Operation.ReadOnlyInput, input_shape: "shared view[f32]", output_shape: "void", byte_alignment: 8, input_ownership: Ownership.SharedBorrow, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Simulation, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+    return 11 if contract_valid(invalid_thread)
+    invalid_output: FfiContract = FfiContract{operation: Operation.Destroy, input_shape: "owned handle", output_shape: "", byte_alignment: 8, input_ownership: Ownership.HandleOwner, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
+    return 12 if contract_valid(invalid_output)
+    0

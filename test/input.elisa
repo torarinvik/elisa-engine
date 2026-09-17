@@ -1,0 +1,16 @@
+include "../src/runtime/input.elisa"
+using Input
+
+def main() -> i32:
+    mapping: InputMap = default_input_map()
+    return 1 if not input_map_valid(mapping)
+    return 2 if action_for(mapping, Button.KeyA) != Action.Left or action_for(mapping, Button.PadLeft) != Action.Left
+    return 3 if action_for(mapping, Button.KeyD) != Action.Right or action_for(mapping, Button.PadRight) != Action.Right
+    return 4 if action_for(mapping, Button.KeyW) != Action.Forward or action_for(mapping, Button.PadUp) != Action.Forward
+    return 5 if action_for(mapping, Button.Unbound) != Action.Idle
+
+    duplicate: InputMap = InputMap{left_key: Button.KeyA, right_key: Button.KeyA, forward_key: Button.KeyW, left_pad: Button.PadLeft, right_pad: Button.PadRight, forward_pad: Button.PadUp}
+    return 6 if input_map_valid(duplicate) or action_for(duplicate, Button.KeyA) != Action.Idle
+    missing: InputMap = InputMap{left_key: Button.Unbound, right_key: Button.KeyD, forward_key: Button.KeyW, left_pad: Button.PadLeft, right_pad: Button.PadRight, forward_pad: Button.PadUp}
+    return 7 if input_map_valid(missing) or action_for(missing, Button.KeyD) != Action.Idle
+    0

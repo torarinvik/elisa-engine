@@ -21,6 +21,26 @@ def compiler_path() -> sview:
             return candidate
     ""
 
+def godot_path() -> sview:
+    _ =
+        configured: sview = get_environment_or("GODOT_BIN", "")
+        if configured != "":
+            return configured
+        configured
+
+    directories: darray[sview] =
+        search_path: sview = get_environment_or("PATH", "")
+        split(search_path, ":")
+
+    for directory in directories:
+        candidate: sview =
+            base: sview = "." if directory == "" else directory
+            f"{base}/godot"
+
+        if is_file(path(candidate)) and is_executable(path(candidate)):
+            return candidate
+    ""
+
 # Status-only process calls discard output. Relay both captured streams so tool
 # diagnostics remain visible, including when a child exits unsuccessfully.
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
@@ -31,6 +51,20 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     _ = write_stdout(result.stdout)
     _ = write_stderr(result.stderr)
     result.exit_status
+
+
+def rejects_ownership_copy(compiler: sview, source: sview, output: sview) -> bool:
+    rejection: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(compiler), ["-emit", "obj", "-o", output, source], empty_input)
+    if rejection.exit_status == 0:
+        eprint("An affine owner was copied without a compiler error.")
+        return false
+    if not ("linear value" in rejection.stderr):
+        _ = write_stderr(rejection.stderr)
+        eprint("The negative ownership fixture failed for another reason.")
+        return false
+    true
 
 
 def main(arguments: darray[sview]) -> i64:
@@ -54,6 +88,10 @@ def main(arguments: darray[sview]) -> i64:
         return 2
 
     _ = create_directories(root.joinpath("build"))
+    # A failed later step must not leave an older success report looking current.
+    _ = root.joinpath("build/entity-id-proof.json").unlink()
+    _ = root.joinpath("build/world-proof.json").unlink()
+    _ = root.joinpath("build/validation.json").unlink()
     test_binary: sview = str(root.joinpath("build/entity-id-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", test_binary, str(root.joinpath("test/entity_id.elisa"))])
@@ -69,9 +107,209 @@ def main(arguments: darray[sview]) -> i64:
 
     println("Entity identity runtime tests passed.")
 
+    world_test_binary: sview = str(root.joinpath("build/world-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", world_test_binary, str(root.joinpath("test/world.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(world_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Checked world lifecycle tests passed.")
+
+    geometry_test_binary: sview = str(root.joinpath("build/geometry-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", geometry_test_binary, str(root.joinpath("test/geometry.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(geometry_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Geometry value tests passed.")
+
+    asset_test_binary: sview = str(root.joinpath("build/assets-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_test_binary, str(root.joinpath("test/assets.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(asset_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Portable asset descriptor tests passed.")
+
+    input_test_binary: sview = str(root.joinpath("build/input-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", input_test_binary, str(root.joinpath("test/input.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(input_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Portable input mapping tests passed.")
+
+    capabilities_test_binary: sview = str(root.joinpath("build/capabilities-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", capabilities_test_binary, str(root.joinpath("test/capabilities.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(capabilities_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Backend capability tests passed.")
+
+    fake_bridge_test_binary: sview = str(root.joinpath("build/fake-bridge-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", fake_bridge_test_binary, str(root.joinpath("test/fake_bridge.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(fake_bridge_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Fake native bridge lifecycle tests passed.")
+
+    sdl3_test_binary: sview = str(root.joinpath("build/sdl3-test"))
+    sdl3_library_dir: sview = get_environment_or("ELISA_SDL3_LIB_DIR", "/opt/homebrew/lib")
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", sdl3_test_binary, "-L", sdl3_library_dir, "-l", "SDL3", str(root.joinpath("test/sdl3.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(sdl3_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("SDL3 platform probe passed.")
+
+    godot_binary: sview = godot_path()
+    if godot_binary == "" or not is_file(path(godot_binary)) or not is_executable(path(godot_binary)):
+        eprint("Install Godot or set GODOT_BIN to its executable path.")
+        return 2
+    godot_project: sview = str(root.joinpath("backends/godot"))
+    godot_probe: sview = str(root.joinpath("backends/godot/probe.gd"))
+    scene_manifest: sview = str(root.joinpath("backends/scene_manifest.txt"))
+    _ =
+        status: i64 = run_visible(godot_binary, ["--headless", "--path", godot_project, "--script", godot_probe, "--", scene_manifest])
+        if status != 0:
+            return status
+        status
+
+    println("Godot backend scene probe passed.")
+
+    contracts_test_binary: sview = str(root.joinpath("build/contracts-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", contracts_test_binary, str(root.joinpath("test/contracts.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(contracts_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("FFI ownership contract tests passed.")
+
+    recording_test_binary: sview = str(root.joinpath("build/recording-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", recording_test_binary, str(root.joinpath("test/recording.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(recording_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Recording backend command tests passed.")
+
+    clock_test_binary: sview = str(root.joinpath("build/clock-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", clock_test_binary, str(root.joinpath("test/clock.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(clock_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Fixed-step clock tests passed.")
+
+    headless_test_binary: sview = str(root.joinpath("build/headless-game-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", headless_test_binary, str(root.joinpath("test/headless_game.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(headless_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Deterministic headless game tests passed.")
+
+    rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
+    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/allocator_copy.elisa")), rejection_output):
+        return 1
+    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/world_copy.elisa")), rejection_output):
+        return 1
+    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/recorder_copy.elisa")), rejection_output):
+        return 1
+    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/bridge_copy.elisa")), rejection_output):
+        return 1
+
+    println("Affine owner copy rejection tests passed.")
+
     proof_source: sview = str(root.joinpath("proof/entity_id.elisa"))
     _ =
         status: i64 = run_visible(prover, [proof_source])
+        if status != 0:
+            return status
+        status
+
+    world_proof_source: sview = str(root.joinpath("proof/world.elisa"))
+    _ =
+        status: i64 = run_visible(prover, [world_proof_source])
         if status != 0:
             return status
         status
@@ -81,4 +319,16 @@ def main(arguments: darray[sview]) -> i64:
         capture_process_result(executable(prover), ["--json", proof_source], empty_input)
     _ = write_stderr(report.stderr)
     _ = write_text(root.joinpath("build/entity-id-proof.json"), report.stdout)
-    report.exit_status
+    return report.exit_status if report.exit_status != 0
+
+    world_report: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(prover), ["--json", world_proof_source], empty_input)
+    _ = write_stderr(world_report.stderr)
+    _ = write_text(root.joinpath("build/world-proof.json"), world_report.stdout)
+    return world_report.exit_status if world_report.exit_status != 0
+
+    python: sview = get_environment_or("PYTHON_BIN", "python3")
+    launcher: sview = get_environment_or("ELISASCRIPT_BIN", "elisascript")
+    validation_status: i64 = run_visible(python, [str(root.joinpath("scripts/record_validation.py")), str(root), compiler, prover, launcher])
+    validation_status

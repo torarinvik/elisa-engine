@@ -1,0 +1,30 @@
+include "../src/backend/capabilities.elisa"
+using Capabilities
+
+def main() -> i32:
+    headless: BackendProfile = headless_profile()
+    return 1 if headless.kind != BackendKind.Headless
+    return 2 if not backend_supports(headless, BackendFeature.Input)
+    return 3 if backend_supports(headless, BackendFeature.Rendering)
+
+    required: BackendFeature[8] = [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Physics, BackendFeature.Audio, BackendFeature.NativeWindow, BackendFeature.AsyncUpload, BackendFeature.Callbacks, BackendFeature.AssetLoading]
+    return 4 if not backend_requirements_met(headless, required, 1)
+    return 5 if backend_requirements_met(headless, required, 2)
+    return 6 if backend_requirements_met(headless, required, 9)
+
+    native: BackendProfile = BackendProfile{
+        kind: BackendKind.Native,
+        capabilities: BackendCapabilities{
+            input: true,
+            rendering: true,
+            physics: true,
+            audio: false,
+            native_window: true,
+            async_upload: true,
+            callbacks: true,
+            asset_loading: true,
+        },
+    }
+    return 7 if not backend_requirements_met(native, required, 3)
+    return 8 if backend_requirements_met(native, required, 8)
+    0
