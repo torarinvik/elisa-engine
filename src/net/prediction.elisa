@@ -1,0 +1,73 @@
+# Client-side prediction with reconciliation. A client applies its own input
+# immediately so it feels responsive, keeps those inputs until the server
+# confirms them, and replays the unacknowledged ones on top of each authority
+# snapshot. The transport and the server stay authoritative; this module only
+# decides how the local guess is rebuilt, and counts corrections so a caller can
+# see how often the guess was wrong.
+include "./replication.elisa"
+
+module Predict:
+    private:
+        const module Tune:
+            MAX_PENDING: usize = 16
+
+    public:
+        error PredictError:
+            Capacity
+            InvalidServer
+            UnknownPending
+
+        struct Prediction:
+            confirmed: mutable Net::ReplRecord
+            predicted: mutable Net::ReplRecord
+            pending: mutable i64[16]
+            pending_count: mutable usize
+            corrections: mutable usize
+
+        def prediction_new(owner: Net::Owner) -> Prediction:
+            server: Net::ReplRecord = Net::ReplRecord{persistent: 99, x: 0, y: 0, revision: 0, owner: owner}
+            Prediction{confirmed: server, predicted: server, pending: zeroed, pending_count: 0, corrections: 0}
+
+        def prediction_valid(state: Prediction&) -> bool:
+            return false if state.pending_count > Tune::MAX_PENDING
+            return false if Net::record_valid(&state.confirmed) == false or Net::record_valid(&state.predicted) == false
+            state.confirmed.persistent == state.predicted.persistent
+
+        # Apply local input now: the predicted position moves and the input is
+        # retained so reconciliation can replay it over the next snapshot.
+        def predict_input(state: mutable Prediction&, delta_x: i64) -> void error[PredictError]:
+            raise PredictError.Capacity if state.pending_count >= Tune::MAX_PENDING
+            state.pending[state.pending_count] <- delta_x
+            state.pending_count <- state.pending_count + 1
+            state.predicted.x <- state.predicted.x + delta_x
+
+        # On an authority snapshot, the confirmed state becomes the server's and
+        # the predicted state is the server's plus every unacknowledged input,
+        # replayed in order. A changed prediction is a correction.
+        def predict_reconcile(state: mutable Prediction&, server: Net::ReplRecord) -> void error[PredictError]:
+            raise PredictError.InvalidServer if not Net::record_valid(&server)
+            raise PredictError.InvalidServer if server.persistent != state.confirmed.persistent
+            before: i64 = state.predicted.x
+            rebuilt: mutable Net::ReplRecord = server
+            for index in 0..<state.pending_count |rebuilt, state|:
+                rebuilt.x <- rebuilt.x + state.pending[index]
+            state.confirmed <- server
+            state.predicted <- rebuilt
+            state.corrections <- state.corrections + 1 if rebuilt.x != before
+
+        # The server confirms the oldest count inputs; drop exactly those. A
+        # count larger than what is pending is an explicit error rather than a
+        # silent clamp.
+        def predict_ack(state: mutable Prediction&, count: usize) -> void error[PredictError]:
+            raise PredictError.UnknownPending if count > state.pending_count
+            remaining: usize = state.pending_count - count
+            for index in 0..<remaining |state, count|:
+                state.pending[index] <- state.pending[index + count]
+            state.pending_count <- remaining
+
+        # How far the local guess runs ahead of the last authority snapshot.
+        def prediction_error(state: Prediction&) -> i64:
+            state.predicted.x - state.confirmed.x
+
+        def prediction_pending(state: Prediction&) -> usize:
+            state.pending_count

@@ -162,12 +162,13 @@ rotation stays engine-owned instead of a vendor type.
 snapshots, perf budgets, undo/redo, reload generations), and
 `src/net/replication.elisa` plus `src/net/session.elisa` (authority,
 interpolation data, deterministic loss profile, rollback, sessions with
-recovery), and `src/net/wire.elisa`, `src/net/loopback.elisa`, and
-`src/net/peer.elisa` (a fixed little-endian replication frame with an
-exact encode/decode round trip; an in-memory loopback link applying the
-declared loss and delay policy; and a peer that accepts only authorized,
-newer writes and converges on the server's final state over that lossy
-link). The loopback is a transport double: it proves the
+recovery), and `src/net/wire.elisa`, `src/net/loopback.elisa`,
+`src/net/peer.elisa`, and `src/net/prediction.elisa` (a fixed little-endian
+replication frame with an exact encode/decode round trip; an in-memory loopback
+link applying the declared loss and delay policy; a peer that accepts only
+authorized, newer writes and converges on the server's final state over that
+lossy link; and client-side prediction that applies input immediately, replays
+unacknowledged inputs over each authority snapshot, and counts corrections). The loopback is a transport double: it proves the
 encode/deliver/decode/reconcile chain under loss and latency, not that a
 real socket works. None of these link their native libraries yet; they
 establish the contracts those integrations must satisfy.

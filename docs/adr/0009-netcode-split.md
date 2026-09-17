@@ -32,3 +32,14 @@ game-state agreement produces silent divergence.
 
 Transport integration, loss/latency chaos runs, demonstrated multiplayer
 session, authority migration, snapshot compression.
+
+## Client prediction (2026-09-18)
+
+`src/net/prediction.elisa` adds the client half above the transport. Local
+input applies to the predicted record immediately and is retained; each
+authority snapshot becomes the confirmed record, and the predicted record is
+rebuilt as the snapshot plus every unacknowledged input replayed in order. A
+rebuilt position that differs counts as a correction, and acknowledging more
+inputs than are pending is an explicit error. `test/replication.elisa` pins the
+ahead-of-server error, the reconciliation, the correction count, the ack, and
+the invalid-snapshot rejection.

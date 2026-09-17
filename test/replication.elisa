@@ -1,5 +1,6 @@
-include "../src/net/replication.elisa"
+include "../src/net/prediction.elisa"
 using Net
+using Predict
 
 def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
     ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
@@ -39,4 +40,43 @@ def main() -> i32:
 
     bad: ReplRecord = ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
     return 16 if record_valid(&bad) or may_write(&bad, Owner.Server) or needs_rollback(&bad, &remote)
+
+    # Client prediction: input applies immediately, the unacknowledged inputs
+    # replay over each authority snapshot, and a changed guess is counted. The
+    # server stays authoritative even when the client ran ahead of it.
+    prediction: mutable Prediction = prediction_new(Owner.Server)
+    return 17 if not prediction_valid(&prediction) or prediction_error(&prediction) != 0
+    for step in 0..<3 |prediction|:
+        applied: bool = catch predict_input(&prediction, 1):
+            ok: true
+            error failure: false
+        return 18 if not applied
+    return 19 if prediction.predicted.x != 3 or prediction.confirmed.x != 0 or prediction_error(&prediction) != 3
+    return 20 if prediction_pending(&prediction) != 3
+    ack_one: bool = catch predict_reconcile(&prediction, sample(Owner.Server, 1, 1, 0)):
+        ok: true
+        error failure: false
+    return 21 if not ack_one or prediction.confirmed.x != 1 or prediction.predicted.x != 4 or prediction.corrections != 1
+    consumed: bool = catch predict_ack(&prediction, 3):
+        ok: true
+        error failure: false
+    return 22 if not consumed or prediction_pending(&prediction) != 0 or prediction_error(&prediction) != 3
+    ahead: bool = catch predict_input(&prediction, 2):
+        ok: true
+        error failure: false
+    return 23 if not ahead or prediction.predicted.x != 6
+    corrected: bool = catch predict_reconcile(&prediction, sample(Owner.Server, 2, 3, 0)):
+        ok: true
+        error failure: false
+    return 24 if not corrected or prediction.confirmed.x != 3 or prediction.predicted.x != 5 or prediction.corrections != 2
+    over_ack: i32 = catch predict_ack(&prediction, 9):
+        value: 0
+        PredictError.UnknownPending: 1
+        error failure: 2
+    return 25 if over_ack != 1 or prediction_pending(&prediction) != 1
+    reject: i32 = catch predict_reconcile(&prediction, bad):
+        value: 0
+        PredictError.InvalidServer: 1
+        error failure: 2
+    return 26 if reject != 1 or not prediction_valid(&prediction)
     0
