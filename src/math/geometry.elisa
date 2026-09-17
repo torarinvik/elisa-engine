@@ -5,6 +5,7 @@ module Geometry:
         const module Scalar:
             ZERO: f32 = 0.0
             ONE: f32 = 1.0
+            TWO: f32 = 2.0
 
     public:
         struct Vec3:
@@ -49,8 +50,21 @@ module Geometry:
         def vec3_dot(left: Vec3, right: Vec3) -> f32:
             left.x * right.x + left.y * right.y + left.z * right.z
 
+        def vec3_mul(left: Vec3, right: Vec3) -> Vec3:
+            Vec3{x: left.x * right.x, y: left.y * right.y, z: left.z * right.z}
+
+        def vec3_cross(left: Vec3, right: Vec3) -> Vec3:
+            Vec3{
+                x: left.y * right.z - left.z * right.y,
+                y: left.z * right.x - left.x * right.z,
+                z: left.x * right.y - left.y * right.x,
+            }
+
         def vec3_length_squared(value: Vec3) -> f32:
             vec3_dot(value, value)
+
+        def vec3_is_finite(value: Vec3) -> bool:
+            value.x - value.x == Scalar::ZERO and value.y - value.y == Scalar::ZERO and value.z - value.z == Scalar::ZERO
 
         def quat_identity() -> Quat:
             Quat{x: Scalar::ZERO, y: Scalar::ZERO, z: Scalar::ZERO, w: Scalar::ONE}
@@ -60,6 +74,76 @@ module Geometry:
 
         def transform_translate(value: Transform, offset: Vec3) -> Transform:
             Transform{position: vec3_add(value.position, offset), rotation: value.rotation, scale: value.scale}
+
+        def quat_is_finite(value: Quat) -> bool:
+            value.x - value.x == Scalar::ZERO and value.y - value.y == Scalar::ZERO and value.z - value.z == Scalar::ZERO and value.w - value.w == Scalar::ZERO
+
+        def quat_conjugate(value: Quat) -> Quat:
+            Quat{x: Scalar::ZERO - value.x, y: Scalar::ZERO - value.y, z: Scalar::ZERO - value.z, w: value.w}
+
+        def quat_length(value: Quat) -> f32:
+            sqrt_f32(value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w)
+
+        # Normalizing a degenerate quaternion yields the identity: an imported
+        # clip that lost its length must not poison the pose with NaN.
+        def quat_normalize(value: Quat) -> Quat:
+            length: f32 = quat_length(value)
+            return quat_identity() if length <= Scalar::ZERO
+            Quat{x: value.x / length, y: value.y / length, z: value.z / length, w: value.w / length}
+
+        def quat_mul(left: Quat, right: Quat) -> Quat:
+            Quat{
+                x: left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,
+                y: left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
+                z: left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w,
+                w: left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z,
+            }
+
+        # Rotate a vector by a unit quaternion: v' = v + 2w(q x v) + 2(q x (q x v)).
+        def quat_rotate(rotation: Quat, value: Vec3) -> Vec3:
+            axis: Vec3 = Vec3{x: rotation.x, y: rotation.y, z: rotation.z}
+            first: Vec3 = vec3_scale(vec3_cross(axis, value), Scalar::TWO)
+            vec3_add(value, vec3_add(vec3_scale(first, rotation.w), vec3_cross(axis, first)))
+
+        # Parent-space composition: a child local transform placed inside a
+        # parent takes the parent's rotation and scale before its own.
+        def transform_compose(parent: Transform, child: Transform) -> Transform:
+            scaled_local: Vec3 = vec3_mul(parent.scale, child.position)
+            Transform{
+                position: vec3_add(parent.position, quat_rotate(parent.rotation, scaled_local)),
+                rotation: quat_normalize(quat_mul(parent.rotation, child.rotation)),
+                scale: vec3_mul(parent.scale, child.scale),
+            }
+
+        def transform_apply_point(value: Transform, point: Vec3) -> Vec3:
+            vec3_add(value.position, quat_rotate(value.rotation, vec3_mul(value.scale, point)))
+
+        # Column-major 4x4, the layout a renderer's instance buffer consumes.
+        # The engine owns this layout; a backend adapts it, not the reverse.
+        def transform_to_matrix(value: Transform) -> f32[16]:
+            rotation: Quat = quat_normalize(value.rotation)
+            x: f32 = rotation.x
+            y: f32 = rotation.y
+            z: f32 = rotation.z
+            w: f32 = rotation.w
+            xx: f32 = x * x
+            yy: f32 = y * y
+            zz: f32 = z * z
+            xy: f32 = x * y
+            xz: f32 = x * z
+            yz: f32 = y * z
+            wx: f32 = w * x
+            wy: f32 = w * y
+            wz: f32 = w * z
+            sx: f32 = value.scale.x
+            sy: f32 = value.scale.y
+            sz: f32 = value.scale.z
+            [
+                (Scalar::ONE - Scalar::TWO * (yy + zz)) * sx, Scalar::TWO * (xy + wz) * sx, Scalar::TWO * (xz - wy) * sx, Scalar::ZERO,
+                Scalar::TWO * (xy - wz) * sy, (Scalar::ONE - Scalar::TWO * (xx + zz)) * sy, Scalar::TWO * (yz + wx) * sy, Scalar::ZERO,
+                Scalar::TWO * (xz + wy) * sz, Scalar::TWO * (yz - wx) * sz, (Scalar::ONE - Scalar::TWO * (xx + yy)) * sz, Scalar::ZERO,
+                value.position.x, value.position.y, value.position.z, Scalar::ONE,
+            ]
 
         def bounds3_valid(bounds: Bounds3) -> bool:
             bounds.minimum.x <= bounds.maximum.x and bounds.minimum.y <= bounds.maximum.y and bounds.minimum.z <= bounds.maximum.z

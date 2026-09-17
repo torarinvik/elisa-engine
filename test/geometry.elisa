@@ -36,4 +36,24 @@ def main() -> i32:
     return 11 if vec3_length(vec3_normalize(vec3_zero())) != 0.0
     return 12 if vec3_distance(three_four, three_four) != 0.0
     return 13 if vec3_dot_normalized(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 0.0, y: 1.0, z: 0.0}) != 0.0
+
+    # Quaternion transforms: a 90-degree turn about +Y takes +X to -Z and +Z
+    # to +X in the engine's right-handed frame, and composition places a child
+    # inside its parent's rotation and translation.
+    half: f32 = 0.70710678
+    y90: Quat = Quat{x: 0.0, y: half, z: 0.0, w: half}
+    turned: Vec3 = quat_rotate(y90, Vec3{x: 1.0, y: 0.0, z: 0.0})
+    return 14 if turned.x < -0.001 or turned.x > 0.001 or turned.z < -1.001 or turned.z > -0.999
+    pointed: Vec3 = quat_rotate(y90, Vec3{x: 0.0, y: 0.0, z: 1.0})
+    return 15 if pointed.x < 0.999 or pointed.z < -0.001 or pointed.z > 0.001
+    parent: Transform = Transform{position: Vec3{x: 1.0, y: 0.0, z: 0.0}, rotation: y90, scale: vec3_one()}
+    child: Transform = Transform{position: Vec3{x: 1.0, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()}
+    composed: Transform = transform_compose(parent, child)
+    return 16 if composed.position.x < 0.999 or composed.position.x > 1.001 or composed.position.z < -1.001 or composed.position.z > -0.999
+    identity_matrix: f32[16] = transform_to_matrix(transform_identity())
+    return 17 if identity_matrix[0] != 1.0 or identity_matrix[5] != 1.0 or identity_matrix[10] != 1.0 or identity_matrix[15] != 1.0
+    parent_matrix: f32[16] = transform_to_matrix(parent)
+    return 18 if parent_matrix[2] < -1.001 or parent_matrix[2] > -0.999 or parent_matrix[8] < 0.999 or parent_matrix[8] > 1.001
+    return 19 if parent_matrix[12] < 0.999 or parent_matrix[12] > 1.001
+    return 20 if quat_normalize(Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0}).w != 1.0
     0

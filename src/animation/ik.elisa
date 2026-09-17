@@ -11,6 +11,19 @@ module Ik:
     private:
         const module Tune:
             LIMIT: f32 = 1.0
+            EPSILON: f32 = 0.0001
+
+        # Unit vector perpendicular to direction as close as possible to the
+        # bend hint; falls back to a stable axis when the hint is parallel to
+        # the limb. The engine has no inverse trig, so the solver works in the
+        # projection/height plane directly.
+        def perpendicular_unit(direction: Geometry::Vec3, hint: Geometry::Vec3) -> Geometry::Vec3:
+            projected: Geometry::Vec3 = Geometry::vec3_sub(hint, Geometry::vec3_scale(direction, Geometry::vec3_dot(direction, hint)))
+            candidate: Geometry::Vec3 = Geometry::vec3_normalize(projected)
+            return candidate if Geometry::vec3_length(candidate) > Tune::EPSILON
+            fallback: Geometry::Vec3 = Geometry::vec3_normalize(Geometry::vec3_cross(direction, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}))
+            return fallback if Geometry::vec3_length(fallback) > Tune::EPSILON
+            Geometry::vec3_normalize(Geometry::vec3_cross(direction, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}))
 
     public:
         struct TwoBoneSolution:
@@ -62,3 +75,24 @@ module Ik:
         def aim_cosine(forward: Geometry::Vec3, target_direction: Geometry::Vec3) -> f32:
             return 0.0 - Tune::LIMIT if Geometry::vec3_length(forward) <= 0.0 or Geometry::vec3_length(target_direction) <= 0.0
             Geometry::vec3_dot_normalized(forward, target_direction)
+
+        # Place the middle joint of a two-bone chain. The knee lies in the
+        # plane spanned by the root-to-target direction and the supplied bend
+        # axis: its projection along the direction and its perpendicular height
+        # come straight from the triangle, so no inverse trig is needed and an
+        # unreachable target straightens the limb while a collapsed one folds
+        # it onto the bend axis.
+        def two_bone_knee(root: Geometry::Vec3, target: Geometry::Vec3, upper_len: f32, lower_len: f32, bend_axis: Geometry::Vec3) -> Geometry::Vec3:
+            return Geometry::vec3_add(root, Geometry::vec3_scale(bend_axis, upper_len)) if upper_len <= 0.0 or lower_len <= 0.0
+            offset: Geometry::Vec3 = Geometry::vec3_sub(target, root)
+            distance: f32 = Geometry::vec3_length(offset)
+            return Geometry::vec3_add(root, Geometry::vec3_scale(bend_axis, upper_len)) if distance <= Tune::EPSILON
+            span: f32 = upper_len - lower_len if upper_len >= lower_len else lower_len - upper_len
+            reach: f32 = upper_len + lower_len
+            clamped: f32 = reach if distance >= reach else span if distance <= span else distance
+            direction: Geometry::Vec3 = Geometry::vec3_scale(offset, 1.0 / distance)
+            projection: f32 = (upper_len * upper_len + clamped * clamped - lower_len * lower_len) / (2.0 * clamped)
+            height_squared: f32 = upper_len * upper_len - projection * projection
+            height: f32 = Geometry::sqrt_f32(height_squared if height_squared > 0.0 else 0.0)
+            perpendicular: Geometry::Vec3 = perpendicular_unit(direction, bend_axis)
+            Geometry::vec3_add(root, Geometry::vec3_add(Geometry::vec3_scale(direction, projection), Geometry::vec3_scale(perpendicular, height)))

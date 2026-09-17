@@ -480,3 +480,19 @@ compaction), identities strictly increase (a recycled slot never resurrects
 an old identity), and a second destroy of the same reference is refused. The
 packaged maze session (`examples/maze/main.elisa`) plays the win route, then
 the losing route to the last life, restarts, pauses, resumes, and exits.
+
+## Engine pose evaluation (2026-09-18)
+
+`src/math/geometry.elisa` gained quaternion multiply/rotate/normalize and
+transform composition plus a column-major matrix export, so rotation is
+engine-owned rather than a vendor type. `src/animation/pose.elisa` evaluates
+local-to-model joint transforms, blends two poses by normalized-linear
+interpolation, extracts root motion as a position delta, emits a per-joint
+skinning payload, and corrects a three-joint chain with `Ik::two_bone_knee`.
+
+The knee solver works in the projection/height plane, so it needs no inverse
+trigonometry: a unit chain reaching one unit gives projection 0.5 and height
+`sqrt(1 - 0.25)`, and unreachable or collapsed targets straighten or fold the
+limb. Tests pin the 90-degree quaternion turn, composition, the identity and
+rotated matrix payloads, the pose blend, root motion, and the IK correction in
+the gated geometry and animation suites.

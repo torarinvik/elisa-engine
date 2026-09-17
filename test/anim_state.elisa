@@ -1,8 +1,14 @@
 include "../src/animation/state.elisa"
-include "../src/animation/ik.elisa"
+include "../src/animation/pose.elisa"
 using Anim
 using Ik
+using Pose
 using Geometry
+
+def near(value: f32, expected: f32) -> bool:
+    diff: f32 = value - expected
+    adjusted: f32 = 0.0 - diff if diff < 0.0 else diff
+    adjusted < 0.002
 
 def main() -> i32:
     return 1 if clip_length(Clip.Idle) != 60 or clip_length(Clip.Walk) != 30
@@ -48,4 +54,65 @@ def main() -> i32:
     return 19 if aim_cosine(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 2.0, y: 0.0, z: 0.0}) < 0.9999
     return 20 if aim_cosine(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 0.0, y: 1.0, z: 0.0}) != 0.0
     return 21 if aim_cosine(vec3_zero(), Vec3{x: 1.0, y: 0.0, z: 0.0}) != -1.0
+
+    # Knee placement uses the triangle directly, so no inverse trig is needed:
+    # a one-unit reach at unit lengths gives projection 0.5 and height
+    # sqrt(1 - 0.25).
+    bend: Vec3 = Vec3{x: 0.0, y: 0.0, z: 1.0}
+    knee: Vec3 = two_bone_knee(vec3_zero(), Vec3{x: 1.0, y: 0.0, z: 0.0}, 1.0, 1.0, bend)
+    return 22 if not near(knee.x, 0.5) or not near(knee.z, 0.866)
+    straight: Vec3 = two_bone_knee(vec3_zero(), Vec3{x: 5.0, y: 0.0, z: 0.0}, 1.0, 1.0, bend)
+    return 23 if not near(straight.x, 1.0) or not near(straight.z, 0.0)
+    folded_knee: Vec3 = two_bone_knee(vec3_zero(), vec3_zero(), 1.0, 1.0, bend)
+    return 24 if not near(folded_knee.z, 1.0)
+
+    # Local-to-model evaluation: a child one unit along +X under a root moved
+    # by 0.4 lands at 1.4; root motion is the difference between two poses.
+    chain: mutable Skeleton = skeleton_new()
+    return 25 if not skeleton_add(&chain, -1, transform_identity())
+    return 26 if not skeleton_add(&chain, 0, Transform{position: Vec3{x: 1.0, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
+    return 27 if not skeleton_add(&chain, 1, Transform{position: Vec3{x: 1.0, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
+    return 28 if skeleton_add(&chain, 4, transform_identity()) or not skeleton_valid(&chain)
+    chain_pose: mutable Pose = catch pose_evaluate(&chain):
+        value: value
+        error failure: return 29
+    return 30 if not pose_valid(&chain_pose) or pose_joint_count(&chain_pose) != 3
+    end: Transform = catch pose_model(&chain_pose, 2):
+        value: value
+        error failure: return 31
+    return 32 if not near(end.position.x, 2.0)
+    return 33 if not near(pose_root_position(&chain_pose).x, 0.0)
+    shifted: mutable Skeleton = skeleton_new()
+    _ = skeleton_add(&shifted, -1, Transform{position: Vec3{x: 0.4, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
+    shifted_pose: Pose = catch pose_evaluate(&shifted):
+        value: value
+        error failure: return 34
+    return 35 if not near(pose_root_motion(&chain_pose, &shifted_pose).x, 0.4)
+
+    # Blending a pose with itself must reproduce it; the matrix payload marks
+    # successful submission and an out-of-range joint is an explicit error.
+    blended: Pose = catch pose_blend(&chain_pose, &chain_pose, 0.5):
+        value: value
+        error failure: return 36
+    blended_end: Transform = catch pose_model(&blended, 2):
+        value: value
+        error failure: return 37
+    return 38 if not near(blended_end.position.x, 2.0)
+    matrix: f32[16] = catch pose_matrix(&chain_pose, 0):
+        value: value
+        error failure: return 39
+    return 40 if matrix[15] != 1.0 or not near(matrix[12], 0.0)
+    oob: i32 = catch pose_matrix(&chain_pose, 9):
+        value: 0
+        PoseError.JointOutOfBounds: 1
+        error failure: 2
+    return 41 if oob != 1
+
+    # IK correction over the chain writes the solved knee into the render pose.
+    corrected: bool = catch pose_correct_two_bone(&chain_pose, 0, Vec3{x: 1.0, y: 0.0, z: 0.0}, 1.0, 1.0, bend):
+        value: value
+        error failure: false
+    return 42 if not corrected
+    return 43 if not near(chain_pose.models[1].position.z, 0.866)
+    return 44 if not near(chain_pose.models[2].position.x, 1.0) or not pose_valid(&chain_pose)
     0

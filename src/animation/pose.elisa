@@ -1,0 +1,149 @@
+# Skeletal pose evaluation. This is the Elisa half of the plan's animation
+# pipeline: local-to-model transform evaluation, pose blending, root-motion
+# extraction, and a backend-neutral skinning payload. A sampler (ozz or any
+# other) only produces the local transforms; the composition order, the blend,
+# and the root-motion decision stay engine code. No backend advances a pose.
+include "../math/geometry.elisa"
+include "./ik.elisa"
+
+module Pose:
+    private:
+        const module Tune:
+            MAX_JOINTS: usize = 16
+            FULL: f32 = 1.0
+            NONE: f32 = 0.0
+
+        def lerp_f32(start: f32, finish: f32, weight: f32) -> f32:
+            start + (finish - start) * weight
+
+        def lerp_vec3(start: Geometry::Vec3, finish: Geometry::Vec3, weight: f32) -> Geometry::Vec3:
+            Geometry::Vec3{
+                x: lerp_f32(start.x, finish.x, weight),
+                y: lerp_f32(start.y, finish.y, weight),
+                z: lerp_f32(start.z, finish.z, weight),
+            }
+
+        # Normalized linear interpolation takes the shortest arc; the engine
+        # has no inverse cosine, and a short blend does not need slerp's
+        # constant speed. A zero dot means opposite rotations, where nlerp is
+        # ill-defined, so the right side is flipped by its sign.
+        def nlerp_quat(start: Geometry::Quat, finish: Geometry::Quat, weight: f32) -> Geometry::Quat:
+            dot: f32 = start.x * finish.x + start.y * finish.y + start.z * finish.z + start.w * finish.w
+            sign: f32 = Tune::FULL if dot >= Tune::NONE else Tune::NONE - Tune::FULL
+            blended: Geometry::Quat = Geometry::Quat{
+                x: lerp_f32(start.x, finish.x * sign, weight),
+                y: lerp_f32(start.y, finish.y * sign, weight),
+                z: lerp_f32(start.z, finish.z * sign, weight),
+                w: lerp_f32(start.w, finish.w * sign, weight),
+            }
+            Geometry::quat_normalize(blended)
+
+    public:
+        error PoseError:
+            InvalidSkeleton
+            ShapeMismatch
+            JointOutOfBounds
+
+        struct Joint:
+            parent: i64
+            local: Geometry::Transform
+
+        struct Skeleton:
+            joints: mutable Joint[16]
+            count: mutable usize
+
+        struct Pose:
+            models: mutable Geometry::Transform[16]
+            count: mutable usize
+
+        def skeleton_new() -> Skeleton:
+            Skeleton{joints: zeroed, count: 0}
+
+        # Joints are appended in parenting order, so a parent index is always
+        # already evaluated when local-to-model evaluation reaches the child.
+        def skeleton_add(skeleton: mutable Skeleton&, parent: i64, local: Geometry::Transform) -> bool:
+            return false if skeleton.count >= Tune::MAX_JOINTS
+            return false if parent < -1 or parent >= skeleton.count.i64()
+            skeleton.joints[skeleton.count] <- Joint{parent: parent, local: local}
+            skeleton.count <- skeleton.count + 1
+            true
+
+        def skeleton_valid(skeleton: Skeleton&) -> bool:
+            return false if skeleton.count > Tune::MAX_JOINTS
+            for index in 0..<skeleton.count |ordered: bool = true| -> ordered:
+                parent: i64 = skeleton.joints[index].parent
+                ordered <- false if parent < -1 or parent >= index.i64()
+            true
+
+        def skeleton_joint_count(skeleton: Skeleton&) -> usize:
+            skeleton.count
+
+        def pose_evaluate(skeleton: Skeleton&) -> Pose error[PoseError]:
+            raise PoseError.InvalidSkeleton if not skeleton_valid(skeleton)
+            models: mutable Geometry::Transform[16] = zeroed
+            for index in 0..<skeleton.count |models, skeleton|:
+                parent: i64 = skeleton.joints[index].parent
+                local: Geometry::Transform = skeleton.joints[index].local
+                composed: Geometry::Transform =
+                    local if parent < 0 else Geometry::transform_compose(models[parent.usize()], local)
+                models[index] <- composed
+            Pose{models: models, count: skeleton.count}
+
+        def pose_blend(left: Pose&, right: Pose&, weight: f32) -> Pose error[PoseError]:
+            raise PoseError.ShapeMismatch if left.count != right.count
+            raise PoseError.InvalidSkeleton if left.count > Tune::MAX_JOINTS
+            clamped: f32 = Tune::FULL if weight > Tune::FULL else Tune::NONE if weight < Tune::NONE else weight
+            models: mutable Geometry::Transform[16] = zeroed
+            for index in 0..<left.count |models, left, right, clamped|:
+                start_model: Geometry::Transform = left.models[index]
+                finish_model: Geometry::Transform = right.models[index]
+                models[index] <- Geometry::Transform{
+                    position: lerp_vec3(start_model.position, finish_model.position, clamped),
+                    rotation: nlerp_quat(start_model.rotation, finish_model.rotation, clamped),
+                    scale: lerp_vec3(start_model.scale, finish_model.scale, clamped),
+                }
+            Pose{models: models, count: left.count}
+
+        def pose_joint_count(pose: Pose&) -> usize:
+            pose.count
+
+        def pose_model(pose: Pose&, index: usize) -> Geometry::Transform error[PoseError]:
+            raise PoseError.JointOutOfBounds if index >= pose.count
+            pose.models[index]
+
+        def pose_root_position(pose: Pose&) -> Geometry::Vec3:
+            return Geometry::vec3_zero() if pose.count == 0
+            pose.models[0].position
+
+        # Root motion is the delta a character controller consumes; animation
+        # drives movement through the movement policy rather than competing
+        # with a second controller.
+        def pose_root_motion(previous: Pose&, current: Pose&) -> Geometry::Vec3:
+            Geometry::vec3_sub(pose_root_position(current), pose_root_position(previous))
+
+        # Backend-neutral skinning payload: one column-major 4x4 per joint in
+        # model space. A renderer adapts this layout; it never sees Elisa types.
+        def pose_matrix(pose: Pose&, index: usize) -> f32[16] error[PoseError]:
+            raise PoseError.JointOutOfBounds if index >= pose.count
+            Geometry::transform_to_matrix(pose.models[index])
+
+        def pose_valid(pose: Pose&) -> bool:
+            return false if pose.count > Tune::MAX_JOINTS
+            for index in 0..<pose.count |finite: bool = true| -> finite:
+                model: Geometry::Transform = pose.models[index]
+                finite <- false if not Geometry::vec3_is_finite(model.position) or not Geometry::vec3_is_finite(model.scale) or not Geometry::quat_is_finite(model.rotation)
+            true
+
+        # Two-bone IK correction over a three-joint chain: the root stays put,
+        # the middle joint moves to the solved knee, and the end joint lands on
+        # the target. This writes model-space translations, which is the final
+        # render pose a translation-driven skinning path consumes; recomputing
+        # local rotations from the correction is deferred with the rotational
+        # rig.
+        def pose_correct_two_bone(pose: mutable Pose&, root_index: usize, target: Geometry::Vec3, upper_len: f32, lower_len: f32, bend_axis: Geometry::Vec3) -> bool error[PoseError]:
+            raise PoseError.JointOutOfBounds if root_index + 2 >= pose.count
+            root: Geometry::Vec3 = pose.models[root_index].position
+            knee: Geometry::Vec3 = Ik::two_bone_knee(root, target, upper_len, lower_len, bend_axis)
+            pose.models[root_index + 1].position <- knee
+            pose.models[root_index + 2].position <- target
+            true
