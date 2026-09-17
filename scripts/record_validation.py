@@ -271,6 +271,32 @@ def cook_asset(root: Path) -> dict:
     return {"package": package.name, "sha256": sha256_file(package), "bytes": package.stat().st_size}
 
 
+MAX_SOURCE_LINES = 600
+SOURCE_TREES = ("src", "test", "examples", "proof", "scripts", "native", "backends")
+SOURCE_SUFFIXES = (".elisa", ".py", ".gd", ".cpp", ".h", ".mm", ".elisascript")
+
+
+def source_length_policy(root: Path) -> dict:
+    # The project keeps every source file within 600 lines so a subsystem stays
+    # readable and reviewable. This is a hard gate, not an aspiration: drift
+    # fails validation instead of being noticed later.
+    largest = 0
+    largest_file = ""
+    count = 0
+    for tree in SOURCE_TREES:
+        for path in sorted((root / tree).rglob("*")):
+            if not path.is_file() or "__pycache__" in path.parts or path.suffix not in SOURCE_SUFFIXES:
+                continue
+            count += 1
+            lines = len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+            if lines > largest:
+                largest = lines
+                largest_file = path.relative_to(root).as_posix()
+    if largest > MAX_SOURCE_LINES:
+        raise ValueError(f"source file exceeds {MAX_SOURCE_LINES} lines: {largest_file} has {largest}")
+    return {"max_lines": largest, "max_file": largest_file, "files": count, "limit": MAX_SOURCE_LINES}
+
+
 def release_package(root: Path, compiler: str) -> dict:
     # A release is only recorded if the packager proved the archive
     # reproducible. The summary pins the archive hash and the platform, and
@@ -315,9 +341,10 @@ def main(arguments: list[str]) -> int:
             },
             "proofs": proofs,
             "scene_manifest": scene_manifest_matches_bridge(engine),
+            "source_length_policy": source_length_policy(engine),
             "cooked_asset": cooked,
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

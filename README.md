@@ -199,7 +199,10 @@ reports in `build/entity-id-proof.json` and `build/world-proof.json`, then write
 diagnostics, complete certificate replay, and independent kernel replay. That
 validation record includes SHA-256 identities for the engine source manifest,
 compiler entry/product, prover, and ElisaScript launcher. It does not rebuild
-either toolchain.
+either toolchain. The same record enforces the 600-line source-file limit
+(`source_length_policy`) and records a reproducible release archive
+(`release`), so a release is only reported when the packager proved its two
+archives byte-identical.
 
 - `test/`: executable checks for identity edges, geometry and asset values, input mapping, backend capability selection, SDL3 platform initialization, Godot host command ordering, fake bridge retention/callback lifecycles, FFI ownership contracts, recording command order, fixed stepping, scripted headless gameplay, canonical scene bridging, tolerance image comparison, asset cooking and catalogue generations, maze topology and the complete maze game (win/loss, door/key, hazards, fog, settings), animation state and codec choice, grid navigation, inspector snapshots and perf counters, replication scope and net sessions, physics authority, scheduler ordering, editor undo/reload, and the shippable bundle manifest, plus World lifecycle, including
   deterministic churn, compaction, capacity rejection, and corrupted-store detection;
