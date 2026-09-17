@@ -109,89 +109,6 @@ func _run_capture() -> void:
     # so it must be declared before the marker loop runs.
     var cooked_goal_mesh: ArrayMesh = null
 
-    var status_colors := {
-        "playing": Color(0.1, 0.85, 0.9, 1.0),
-        "paused": Color(0.95, 0.85, 0.1, 1.0),
-        "won": Color(0.1, 0.9, 0.2, 1.0),
-        "lost": Color(0.95, 0.15, 0.1, 1.0),
-    }
-    var hunter_marker: MeshInstance3D = null
-    var marker_count := 0
-    if manifest.has("game_status") and manifest.has("status_cell"):
-        var status_color: Color = status_colors.get(String(manifest["game_status"]), Color(0.9, 0.9, 0.9, 1.0))
-        for cell in String(manifest["status_cell"]).split(";"):
-            if cell.is_empty():
-                continue
-            var parts := cell.split(",")
-            var cell_x := int(parts[0])
-            var cell_y := int(parts[1])
-            var status_marker := MeshInstance3D.new()
-            status_marker.name = "ElisaStatus_%d_%d" % [cell_x, cell_y]
-            var status_mesh := BoxMesh.new()
-            status_mesh.size = Vector3(0.52, 0.52, 0.52)
-            var status_material := StandardMaterial3D.new()
-            status_material.albedo_color = status_color
-            status_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-            status_mesh.material = status_material
-            status_marker.mesh = status_mesh
-            status_marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
-            scene_root.add_child(status_marker)
-            marker_count += 1
-    for spec in marker_specs:
-        if not manifest.has(spec["field"]):
-            continue
-        for cell in String(manifest[spec["field"]]).split(";"):
-            if cell.is_empty():
-                continue
-            var parts := cell.split(",")
-            if parts.size() != 2:
-                _fail("marker cell malformed")
-                return
-            var cell_x := int(parts[0])
-            var cell_y := int(parts[1])
-            var marker := MeshInstance3D.new()
-            marker.name = "%s_%d_%d" % [spec["name"], cell_x, cell_y]
-            # The goal marker is built from the cooked package's geometry when
-            # one loaded, so the authored asset reaches the screen through the
-            # pipeline; otherwise the procedural box is used.
-            var use_cooked: bool = String(spec["field"]) == "goal" and cooked_goal_mesh != null
-            if use_cooked:
-                marker.mesh = cooked_goal_mesh
-                marker.scale = Vector3(0.13, 0.13, 0.13)
-            else:
-                var box_mesh := BoxMesh.new()
-                box_mesh.size = Vector3(0.52, 0.52, 0.52)
-                marker.mesh = box_mesh
-            var marker_material := StandardMaterial3D.new()
-            marker_material.albedo_color = spec["color"]
-            marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-            marker.material_override = marker_material
-            marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
-            scene_root.add_child(marker)
-            if String(spec["field"]) == "hunter":
-                hunter_marker = marker
-            marker_count += 1
-
-    # Physics: one dynamic body, far off-camera at x=20 so it cannot occlude
-    # any projected marker or wall sample. Each host runs exactly one solver
-    # for a body (the native host uses Jolt through Wicked; this host uses
-    # Godot physics), and never both at once.
-    var physics_box := RigidBody3D.new()
-    physics_box.name = "ElisaPhysicsBox"
-    var physics_shape := CollisionShape3D.new()
-    var physics_box_shape := BoxShape3D.new()
-    physics_box_shape.size = Vector3(0.6, 0.6, 0.6)
-    physics_shape.shape = physics_box_shape
-    physics_box.add_child(physics_shape)
-    var physics_mesh := MeshInstance3D.new()
-    var physics_box_mesh := BoxMesh.new()
-    physics_box_mesh.size = Vector3(0.6, 0.6, 0.6)
-    physics_mesh.mesh = physics_box_mesh
-    physics_box.add_child(physics_mesh)
-    physics_box.position = Vector3(20.0, 5.0, 0.0)
-    scene_root.add_child(physics_box)
-    var physics_start_y: float = physics_box.position.y
-
     # Authored source asset, loaded through Godot's own importer instead of
     # being built in bridge code. The triangle count is exercised rather than
     # the vertex count, because importers split vertices by normal and UV.
@@ -259,6 +176,132 @@ func _run_capture() -> void:
         cooked_goal_mesh = ArrayMesh.new()
         cooked_goal_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
         print("cooked package: mesh vertices=%d indices=%d" % [vertices.size(), index_ints.size()])
+
+    var status_colors := {
+        "playing": Color(0.1, 0.85, 0.9, 1.0),
+        "paused": Color(0.95, 0.85, 0.1, 1.0),
+        "won": Color(0.1, 0.9, 0.2, 1.0),
+        "lost": Color(0.95, 0.15, 0.1, 1.0),
+    }
+    var hunter_marker: MeshInstance3D = null
+    var goal_marker: MeshInstance3D = null
+    var goal_used_cooked := false
+    var marker_count := 0
+    if manifest.has("game_status") and manifest.has("status_cell"):
+        var status_color: Color = status_colors.get(String(manifest["game_status"]), Color(0.9, 0.9, 0.9, 1.0))
+        for cell in String(manifest["status_cell"]).split(";"):
+            if cell.is_empty():
+                continue
+            var parts := cell.split(",")
+            var cell_x := int(parts[0])
+            var cell_y := int(parts[1])
+            var status_marker := MeshInstance3D.new()
+            status_marker.name = "ElisaStatus_%d_%d" % [cell_x, cell_y]
+            var status_mesh := BoxMesh.new()
+            status_mesh.size = Vector3(0.52, 0.52, 0.52)
+            var status_material := StandardMaterial3D.new()
+            status_material.albedo_color = status_color
+            status_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+            status_mesh.material = status_material
+            status_marker.mesh = status_mesh
+            status_marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
+            scene_root.add_child(status_marker)
+            marker_count += 1
+    for spec in marker_specs:
+        if not manifest.has(spec["field"]):
+            continue
+        for cell in String(manifest[spec["field"]]).split(";"):
+            if cell.is_empty():
+                continue
+            var parts := cell.split(",")
+            if parts.size() != 2:
+                _fail("marker cell malformed")
+                return
+            var cell_x := int(parts[0])
+            var cell_y := int(parts[1])
+            var marker := MeshInstance3D.new()
+            marker.name = "%s_%d_%d" % [spec["name"], cell_x, cell_y]
+            # The goal marker is built from the cooked package's geometry when
+            # one loaded, so the authored asset reaches the screen through the
+            # pipeline; otherwise the procedural box is used.
+            var use_cooked: bool = String(spec["field"]) == "goal" and cooked_goal_mesh != null
+            if use_cooked:
+                marker.mesh = cooked_goal_mesh
+                marker.scale = Vector3(0.13, 0.13, 0.13)
+            else:
+                var box_mesh := BoxMesh.new()
+                box_mesh.size = Vector3(0.52, 0.52, 0.52)
+                marker.mesh = box_mesh
+            var marker_material := StandardMaterial3D.new()
+            marker_material.albedo_color = spec["color"]
+            marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+            marker.material_override = marker_material
+            marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
+            scene_root.add_child(marker)
+            if String(spec["field"]) == "hunter":
+                hunter_marker = marker
+            if String(spec["field"]) == "goal":
+                goal_marker = marker
+                goal_used_cooked = use_cooked
+            marker_count += 1
+
+    # The authored asset must reach the screen through the pipeline: when a
+    # package loaded, the goal marker has to be built from that mesh rather
+    # than the procedural fallback. This was previously ordered wrong, so the
+    # check guards the fix instead of trusting the comment.
+    print("goal marker: cooked_mesh=%s scale=%s" % [str(goal_used_cooked), str(goal_marker.scale) if goal_marker != null else "none"])
+    if cooked_goal_mesh != null and (not goal_used_cooked or goal_marker == null):
+        _fail("goal marker did not use the cooked package mesh")
+        return
+
+    # Audio: build the same short clip the native host decodes and queue one
+    # player per cue the Elisa game emitted. As natively, the real check is the
+    # decoded sample information; the cue count must agree with the fixture.
+    var audio_samples := 400
+    var audio_rate := 8000
+    var audio_bytes := PackedByteArray()
+    audio_bytes.resize(audio_samples * 2)
+    for audio_index in range(audio_samples):
+        audio_bytes.encode_s16(audio_index * 2, int(sin(TAU * 440.0 * float(audio_index) / float(audio_rate)) * 8000.0))
+    var audio_stream := AudioStreamWAV.new()
+    audio_stream.format = AudioStreamWAV.FORMAT_16_BITS
+    audio_stream.mix_rate = audio_rate
+    audio_stream.stereo = false
+    audio_stream.data = audio_bytes
+    var audio_ok := audio_stream.data.size() == audio_samples * 2 and audio_stream.mix_rate == audio_rate and audio_stream.format == AudioStreamWAV.FORMAT_16_BITS and not audio_stream.stereo
+    var expected_cues := int(manifest.get("audio_cues", 0))
+    var cue_players := 0
+    for cue_index in range(expected_cues):
+        var cue_player := AudioStreamPlayer.new()
+        cue_player.name = "ElisaCue_%d" % cue_index
+        cue_player.stream = audio_stream
+        scene_root.add_child(cue_player)
+        cue_player.play()
+        cue_players += 1
+    print("godot audio: decoded_bytes=%d rate=%d cues=%d expected=%d" % [audio_stream.data.size(), audio_stream.mix_rate, cue_players, expected_cues])
+    if not audio_ok or cue_players != expected_cues:
+        _fail("godot audio cue check failed")
+        return
+
+    # Physics: one dynamic body, far off-camera at x=20 so it cannot occlude
+    # any projected marker or wall sample. Each host runs exactly one solver
+    # for a body (the native host uses Jolt through Wicked; this host uses
+    # Godot physics), and never both at once.
+    var physics_box := RigidBody3D.new()
+    physics_box.name = "ElisaPhysicsBox"
+    var physics_shape := CollisionShape3D.new()
+    var physics_box_shape := BoxShape3D.new()
+    physics_box_shape.size = Vector3(0.6, 0.6, 0.6)
+    physics_shape.shape = physics_box_shape
+    physics_box.add_child(physics_shape)
+    var physics_mesh := MeshInstance3D.new()
+    var physics_box_mesh := BoxMesh.new()
+    physics_box_mesh.size = Vector3(0.6, 0.6, 0.6)
+    physics_mesh.mesh = physics_box_mesh
+    physics_box.add_child(physics_mesh)
+    physics_box.position = Vector3(20.0, 5.0, 0.0)
+    scene_root.add_child(physics_box)
+    var physics_start_y: float = physics_box.position.y
 
     var camera := Camera3D.new()
     camera.name = "ElisaCamera"

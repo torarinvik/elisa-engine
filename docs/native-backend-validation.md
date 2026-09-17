@@ -271,9 +271,10 @@ Both hosts colour a cell-sized indicator by status (playing cyan, paused
 yellow, won green, lost red, otherwise neutral), and `compare_renders.py`
 verifies the fixture's status colour at that cell, so a host that ignored
 the status field would show the neutral default and fail. This is the
-menu/state half of Phase 4 made executable without a UI toolkit; audio
-cues remain data the game emits but no host plays yet, and packaging for
-the validated targets is still outstanding.
+menu/state half of Phase 4 made executable without a UI toolkit. Audio cues
+are consumed by the native host (decoded clip plus one play per cue) and now by
+the Godot host as well; packaging for the validated target is recorded beneath
+("Reproducible release packaging").
 
 ## Measured frame time (2026-09-18)
 
@@ -557,3 +558,20 @@ reported `freed=19 remaining=1 environment_alive=true dangling=false`, so the
 Phase 4 teardown guarantee ("despawn, restart, and unload must not produce
 accumulating resources or dangling references") is now checked on both hosts,
 not just natively.
+
+## Godot goal mesh and audio parity (2026-09-18)
+
+Two Godot-host defects/gaps were closed here:
+
+- The Godot host declared `cooked_goal_mesh` before the marker loop but loaded
+  the cooked package *after* it, so `use_cooked` was always false and the goal
+  marker was the procedural box. This contradicted the README's "both hosts
+  build the goal marker's mesh from that package". The package load now runs
+  before the marker loop, and a self-check fails the capture unless the goal
+  marker actually used the cooked mesh. A run reported
+  `goal marker: cooked_mesh=true scale=(0.13, 0.13, 0.13)`.
+- The Godot host had no audio at all. It now builds the same short clip the
+  native host decodes, verifies the decoded sample information, and queues one
+  player per cue the fixture declares, failing if the count disagrees. A run
+  reported `godot audio: decoded_bytes=800 rate=8000 cues=4 expected=4`, so
+  simple audio now runs on both hosts, not just natively.
