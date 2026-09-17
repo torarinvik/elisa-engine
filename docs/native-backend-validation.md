@@ -305,11 +305,17 @@ triangles rather than vertices, because importers split vertices by
 normal and UV, so a vertex count is not a stable authoring property.
 Observed: `mesh asset: triangles=12 expected=12`.
 
-The native host does not load it yet: the built Wicked library exposes no
-model importer (`ImportModel`/glTF), so the native path needs an importer
-integration (the plan names cgltf) before it can consume the same file.
-That is a missing integration, not a design change, and the fixture
-already carries what it needs.
+The native host loads the same file through cgltf, the importer the plan
+names. Wicked's built library exposes no model importer, so the dependency
+is fetched and hash-pinned by `scripts/fetch_dependencies.py` into
+`dependencies/` (git-ignored), which keeps third-party code out of the
+Elisa-owned tree; `scripts/wicked_probe.elisascript` refuses to build
+without it and says how to fetch it. Observed: `mesh asset:
+triangles=12 expected=12 positions=24`, matching the Godot host's count.
+This is the pipeline's import stage — source bytes to validated
+normalized counts. Creating renderer meshes from that data and cooking a
+runtime package remain open, as does Elisa-side emission of a cooked
+manifest, which needs a file IO capability `elisac` code does not have.
 
 ## Fog of war in the hosts (2026-09-18)## Fog of war in the hosts (2026-09-18)
 

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "probe_support.h"
+#include "asset_import.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -333,6 +334,25 @@ int main(int argc, char** argv) {
     // Settle loop: pipeline states compile in the background on first use
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
+    // Authored asset: import the same glTF the Godot host loads, through
+    // cgltf, and verify its triangle count. This is the pipeline's import
+    // stage (normalized counts); renderer mesh creation is a later step.
+    {
+        const auto asset_it = manifest.find("mesh_asset");
+        const auto triangles_it = manifest.find("mesh_triangles");
+        if (asset_it != manifest.end() && triangles_it != manifest.end()) {
+            const std::filesystem::path manifest_dir = std::filesystem::path(argv[2]).parent_path();
+            const std::filesystem::path asset_path = (manifest_dir / ".." / asset_it->second).lexically_normal();
+            const int expected_triangles = std::stoi(triangles_it->second);
+            const AssetSummary summary = import_gltf_triangles(asset_path.string());
+            std::fprintf(stdout, "mesh asset: triangles=%d expected=%d positions=%d\n",
+                summary.triangles, expected_triangles, summary.positions);
+            if (!check(summary.ok && summary.triangles == expected_triangles, "mesh asset triangle count")) {
+                return 1;
+            }
+        }
+    }
+
     // Audio: decode a generated clip and play one instance per cue the Elisa
     // game emitted. The check itself lives in native/audio_probe.h.
     if (!probe_audio(manifest)) {

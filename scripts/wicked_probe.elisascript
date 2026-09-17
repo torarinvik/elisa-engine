@@ -73,8 +73,13 @@ def main(arguments: darray[sview]) -> i64:
         eprint("Missing Lua library")
         return 2
 
+    dependencies: Path = root.joinpath("dependencies/cgltf")
+    if not is_file(path(str(dependencies.joinpath("cgltf.h")))):
+        eprint("Missing cgltf; run python3 scripts/fetch_dependencies.py first.")
+        return 2
     compile_arguments: darray[sview] = [
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
+        "-I", str(dependencies),
         "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
