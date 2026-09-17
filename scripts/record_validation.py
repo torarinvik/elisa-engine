@@ -253,6 +253,24 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             "markers": len(markers), "frame_budget_us": budget, "audio_cues": audio_cues, "fog_radius": fog_radius, "mesh_triangles": mesh_triangles}
 
 
+def cook_asset(root: Path) -> dict:
+    # Offline cooking runs as part of validation: the source asset is turned
+    # into a versioned package with a content hash, and a mismatch between the
+    # cooked counts and the fixture fails the whole run rather than producing a
+    # package that disagrees with what the hosts verified.
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts/cook_assets.py"), str(root)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"asset cooking failed: {result.stderr.strip() or result.stdout.strip()}")
+    packages = sorted((root / "build/cooked").glob("*.pkg"))
+    if not packages:
+        raise ValueError("asset cooking produced no package")
+    package = packages[0]
+    return {"package": package.name, "sha256": sha256_file(package), "bytes": package.stat().st_size}
+
+
 def main(arguments: list[str]) -> int:
     if len(arguments) != 4:
         print("usage: record_validation.py ENGINE_ROOT COMPILER PROVER ELISASCRIPT", file=sys.stderr)
@@ -265,6 +283,7 @@ def main(arguments: list[str]) -> int:
             "entity_id": verified_proof(engine / "build/entity-id-proof.json"),
             "world": verified_proof(engine / "build/world-proof.json"),
         }
+        cooked = cook_asset(engine)
         compiler_path = Path(compiler).resolve(strict=True)
         compiler_product = compiler_path.parent.parent / "bin/elisac-stage1" if compiler_path.name == "elisac_stage1.sh" else compiler_path
         report = {
@@ -278,6 +297,7 @@ def main(arguments: list[str]) -> int:
             },
             "proofs": proofs,
             "scene_manifest": scene_manifest_matches_bridge(engine),
+            "cooked_asset": cooked,
             "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")

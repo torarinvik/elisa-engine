@@ -293,6 +293,24 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
+## Offline asset cooking (2026-09-18)
+
+The pipeline's cooking stage now runs offline, as the plan intends
+("keep complex importers out of the shipped runtime"). The validation
+workflow invokes `scripts/cook_assets.py`, which parses the fixture's
+`mesh_asset`, refuses to produce a package whose normalized counts
+disagree with the fixture, and writes `build/cooked/maze_tile.pkg` — a
+versioned package (`format=elisa-cooked-v1`) carrying the source path, a
+SHA-256 of the source bytes, triangle and position counts, and bounds.
+`record_validation.py` refuses to write a validation record if cooking
+fails and stores the package name, hash, and size in
+`build/validation.json`. Verified both ways: changing the fixture's
+`mesh_triangles` to 99 makes cooking exit 1 with
+`cooked triangles 12 disagree with the fixture's 99`, and restoring it
+cooks cleanly. What remains is a runtime loader that consumes the package
+(the hosts still read the source asset directly) and Elisa-side emission
+of the fixture, which needs the file IO capability `elisac` lacks.
+
 ## Authored asset loading (2026-09-18)
 
 The hosts no longer rely only on geometry built in bridge code.

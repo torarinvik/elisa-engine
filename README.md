@@ -101,9 +101,10 @@ copying WickedEngine into this repository.
 `examples/maze/assets/maze_tile.gltf` is the first authored source
 asset; the Godot host loads it through its own glTF importer and the
 native host imports it through cgltf, both verified against the
-fixture's pinned triangle count. Fetch the pinned dependency with
-`python3 scripts/fetch_dependencies.py` before building the native
-probe.
+fixture's pinned triangle count. `scripts/cook_assets.py` then cooks the source into a versioned,
+hash-carrying package as part of the validation run. Fetch the pinned
+dependency with `python3 scripts/fetch_dependencies.py` before building
+the native probe.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
