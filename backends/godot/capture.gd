@@ -89,7 +89,34 @@ func _run_capture() -> void:
         {"field": "hazards", "name": "ElisaHazard", "color": Color(0.95, 0.15, 0.1, 1.0)},
         {"field": "hunter", "name": "ElisaHunter", "color": Color(1.0, 0.55, 0.1, 1.0)},
     ]
+    # Status indicator: the host draws the game's state as a coloured cell.
+    var status_colors := {
+        "playing": Color(0.1, 0.85, 0.9, 1.0),
+        "paused": Color(0.95, 0.85, 0.1, 1.0),
+        "won": Color(0.1, 0.9, 0.2, 1.0),
+        "lost": Color(0.95, 0.15, 0.1, 1.0),
+    }
     var marker_count := 0
+    if manifest.has("game_status") and manifest.has("status_cell"):
+        var status_color: Color = status_colors.get(String(manifest["game_status"]), Color(0.9, 0.9, 0.9, 1.0))
+        for cell in String(manifest["status_cell"]).split(";"):
+            if cell.is_empty():
+                continue
+            var parts := cell.split(",")
+            var cell_x := int(parts[0])
+            var cell_y := int(parts[1])
+            var status_marker := MeshInstance3D.new()
+            status_marker.name = "ElisaStatus_%d_%d" % [cell_x, cell_y]
+            var status_mesh := BoxMesh.new()
+            status_mesh.size = Vector3(0.52, 0.52, 0.52)
+            var status_material := StandardMaterial3D.new()
+            status_material.albedo_color = status_color
+            status_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+            status_mesh.material = status_material
+            status_marker.mesh = status_mesh
+            status_marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
+            scene_root.add_child(status_marker)
+            marker_count += 1
     for spec in marker_specs:
         if not manifest.has(spec["field"]):
             continue

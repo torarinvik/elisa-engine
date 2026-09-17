@@ -198,7 +198,7 @@ def resolve_markers(spec):
     lit = set()
     for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
-        for field in ("goal", "key", "door", "player_final", "hunter"):
+        for field in ("goal", "key", "door", "player_final", "hunter", "status_cell"):
             if text.startswith(field + "="):
                 (x, y) = text[len(field) + 1:].split(",")
                 lit.add((int(x), int(y)))
@@ -219,7 +219,7 @@ def resolve_marker_fields(spec):
     fields = {}
     for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
-        for field in ("goal", "key", "door", "hazards", "player_final", "hunter"):
+        for field in ("goal", "key", "door", "hazards", "player_final", "hunter", "status_cell"):
             if text.startswith(field + "="):
                 fields[field] = text[len(field) + 1:]
     return fields
@@ -253,6 +253,11 @@ def marker_colour_failures(source, rows, cols, spec, margin=0.03):
         ("hunter", lambda r, g, b: r > g + margin and g > b + margin),
         ("player_final", lambda r, g, b: b > r + margin and b > g + margin),
     ]
+    status = fields.get("game_status", "")
+    if "status_cell" in fields and status == "playing":
+        # The fixture's status is Playing, which the hosts must draw cyan;
+        # a host that ignored the status would show the neutral default.
+        rules.append(("status_cell", lambda r, g, b: b > r + margin and g > r + margin))
     for field, matches in rules:
         if field not in fields:
             continue

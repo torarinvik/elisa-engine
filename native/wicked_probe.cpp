@@ -245,6 +245,32 @@ int main(int argc, char** argv) {
             marker_entities.push_back(marker);
         }
     }
+    // Status indicator: the host draws the game's state as a coloured cell,
+    // so a captured frame carries the status the Elisa game reported.
+    {
+        const auto status_it = manifest.find("game_status");
+        const auto status_cell_it = manifest.find("status_cell");
+        if (status_it != manifest.end() && status_cell_it != manifest.end()) {
+            float status_r = 0.9f;
+            float status_g = 0.9f;
+            float status_b = 0.9f;
+            const std::string status = status_it->second;
+            if (status == "playing") { status_r = 0.1f; status_g = 0.85f; status_b = 0.9f; }
+            else if (status == "paused") { status_r = 0.95f; status_g = 0.85f; status_b = 0.1f; }
+            else if (status == "won") { status_r = 0.1f; status_g = 0.9f; status_b = 0.2f; }
+            else if (status == "lost") { status_r = 0.95f; status_g = 0.15f; status_b = 0.1f; }
+            for (const auto& cell : parse_walls(status_cell_it->second)) {
+                const auto marker = create_cell_marker(scene,
+                    "elisa_status_" + std::to_string(cell.first) + "_" + std::to_string(cell.second),
+                    cell.first, cell.second, status_r, status_g, status_b);
+                if (marker == wi::ecs::INVALID_ENTITY) {
+                    return 1;
+                }
+                marker_entities.push_back(marker);
+            }
+            std::fprintf(stdout, "game status consumed=%s\n", status.c_str());
+        }
+    }
     std::fprintf(stdout, "markers created=%u\n", (unsigned)marker_entities.size());
 
     auto* object_transform = scene.transforms.GetComponent(object);

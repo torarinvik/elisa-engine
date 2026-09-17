@@ -58,3 +58,13 @@ module MazeTrace:
 
         def maze_fixture_state() -> TraceResult:
             maze_play(maze_fixture_script(), Script::FIXTURE_STEPS)
+
+        # Portable status code of the mid-game snapshot, so the scene fixture
+        # can carry the game's state as data for the hosts to consume.
+        def maze_fixture_status() -> i64:
+            game: mutable MazeGame = game_new()
+            game_start(&game)
+            script: MazeMove[10] = maze_fixture_script()
+            for index in 0..<Script::FIXTURE_STEPS:
+                moved: bool = game_step(&game, script[index])
+            game_status_code(game.status)

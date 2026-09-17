@@ -79,6 +79,17 @@ module MazeGame:
         # and the goal from these cells, so a backend never re-derives where
         # the rules put them. test/maze.elisa checks each against the
         # predicate that owns it.
+        # Ordinal of a status, for the portable fixture: the scene carries a
+        # small integer rather than an enum name so a host never has to know
+        # the engine's enum spelling. test/maze.elisa pins the mapping.
+        def game_status_code(status: GameStatus) -> i64:
+            return 0 if status == GameStatus.Menu
+            return 1 if status == GameStatus.Playing
+            return 2 if status == GameStatus.Paused
+            return 3 if status == GameStatus.Won
+            return 4 if status == GameStatus.Lost
+            5
+
         def maze_key_x() -> i64:
             Tune::KEY_X
 

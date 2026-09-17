@@ -256,6 +256,25 @@ draw the character with its own colour, which the checker verifies.
 What remains for this character is skeletal animation and unloading,
 which need the ozz integration; navigation itself is done and gated.
 
+## Game status as portable data (2026-09-18)
+
+The hosts also consume the game's state, not just its geometry.
+`examples/maze/game.elisa` publishes `game_status_code`, mapping the
+`GameStatus` enum to a small integer so a host never needs the engine's
+enum spelling; `examples/maze/trace.elisa` publishes the mid-game
+snapshot's status, and `test/maze.elisa` pins the mapping (Playing is 1,
+Won 3, Lost 4, and so on). The fixture carries `game_status=playing` and
+a `status_cell`; the validator rejects an unknown status name or a
+status cell that is out of grid, a wall, or overlapping another marker.
+
+Both hosts colour a cell-sized indicator by status (playing cyan, paused
+yellow, won green, lost red, otherwise neutral), and `compare_renders.py`
+verifies the fixture's status colour at that cell, so a host that ignored
+the status field would show the neutral default and fail. This is the
+menu/state half of Phase 4 made executable without a UI toolkit; audio
+cues remain data the game emits but no host plays yet, and packaging for
+the validated targets is still outstanding.
+
 ## Measured frame time (2026-09-18)
 
 Both hosts now report measured frame time instead of a "zero overhead"

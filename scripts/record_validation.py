@@ -195,9 +195,13 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
     if budget <= 0 or budget > 16667:
         raise ValueError(f"scene manifest frame_budget_us out of range: {budget}")
     hunter = cell_of("hunter", "1,1")
+    allowed_status = ("menu", "playing", "paused", "won", "lost", "exited")
+    if values.get("game_status") not in allowed_status:
+        raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")
+    status_cell = cell_of("status_cell", "6,1")
     if hunter == (player_x, player_y):
         raise ValueError("scene manifest hunter overlaps the player")
-    markers = [goal, key_cell, door, hunter] + hazard_cells
+    markers = [goal, key_cell, door, hunter, status_cell] + hazard_cells
     if len(set(markers)) != len(markers):
         raise ValueError("scene manifest markers overlap")
     # The snapshot must leave the player on an empty cell so every marker is
