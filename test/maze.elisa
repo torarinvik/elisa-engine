@@ -54,6 +54,7 @@ def main() -> i32:
     return 33 if halted != 0 or stuck.arrived or stuck.x != 1 or stuck.y != 1
     return 34 if not hunter_valid(&stuck, walls)
     return 35 if maze_fixture_status() != 1
+    return 42 if maze_fixture_cue_count() != 4
     return 36 if game_status_code(GameStatus.Won) != 3 or game_status_code(GameStatus.Lost) != 4
     return 37 if game_status_code(GameStatus.Menu) != 0 or game_status_code(GameStatus.Paused) != 2
 

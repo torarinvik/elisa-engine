@@ -293,6 +293,25 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
+## Native audio decode and cue playback (2026-09-18)
+
+The native host now exercises the audio path the game's cues need, without
+any asset file. It builds a 16-bit mono 8 kHz WAV in memory, decodes it
+through `wi::audio::CreateSound`, and asserts the decoded sample count,
+rate, and channel count — evidence that real audio bytes were processed,
+not merely that a call returned. It then creates and plays one sound
+instance per cue the Elisa game emitted for the fixture
+(`audio_cues=4`, pinned by `test/maze.elisa` via
+`maze_fixture_cue_count` and re-checked by the validator). Observed:
+`decoded samples=400 rate=8000 channels=1 cue plays=4`.
+
+The Godot host does not play cues yet; only the native side has audio
+integration, and playback is verified structurally (decode plus one play
+call per cue), not by listening. The native probe is now 592 lines of the
+600-line file limit, so it must be split before further native features
+land, exactly as `scripts/check.elisascript` must be split before another
+suite.
+
 ## Toward pixel comparison (status: both hosts captured)
 
 `src/backend/image_compare.elisa` defines the tolerance policy

@@ -36,6 +36,9 @@ hunter=1,1
 # test/maze.elisa pins the code (Playing) and game_status_code's mapping.
 game_status=playing
 status_cell=6,1
+# Audio cues the game emitted for this snapshot (start click + one per move).
+# test/maze.elisa pins the count; the host decodes that many sound plays.
+audio_cues=4
 # Wall cells in the Elisa maze topology, row-major (x,y). The count is pinned
 # by test/maze.elisa (maze_wall_count == 34) and re-checked by
 # scripts/record_validation.py; test/maze_layout.elisa pins the Elisa-side

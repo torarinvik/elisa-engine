@@ -199,6 +199,12 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
     if values.get("game_status") not in allowed_status:
         raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")
     status_cell = cell_of("status_cell", "6,1")
+    try:
+        audio_cues = int(values.get("audio_cues", ""))
+    except ValueError:
+        raise ValueError(f"scene manifest audio_cues is not an integer: {values.get('audio_cues')!r}")
+    if audio_cues <= 0 or audio_cues > 64:
+        raise ValueError(f"scene manifest audio_cues out of range: {audio_cues}")
     if hunter == (player_x, player_y):
         raise ValueError("scene manifest hunter overlaps the player")
     markers = [goal, key_cell, door, hunter, status_cell] + hazard_cells
@@ -212,7 +218,7 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError("scene manifest player_final overlaps a marker")
     return {"sha256": sha256_file(manifest), "fields": len(values),
             "wall_cells": len(wall_cells), "occluded_cells": len(occluded),
-            "markers": len(markers), "frame_budget_us": budget}
+            "markers": len(markers), "frame_budget_us": budget, "audio_cues": audio_cues}
 
 
 def main(arguments: list[str]) -> int:

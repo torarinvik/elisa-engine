@@ -1,4 +1,5 @@
 #include "wiApplication.h"
+#include "wiAudio.h"
 #include "wiArguments.h"
 #include "wiHelper.h"
 #include "wiInitializer.h"
@@ -103,6 +104,46 @@ wi::ecs::Entity create_cell_marker(wi::scene::Scene& scene, const std::string& n
         material->baseColor = XMFLOAT4(red, green, blue, 1.0f);
     }
     return entity;
+}
+}
+
+namespace {
+
+// A tiny PCM WAV in memory: 16-bit mono at 8 kHz for 50 ms. No asset file is
+// needed to prove the audio path decodes bytes and reports real sample
+// information, which is stronger evidence than "a play call returned".
+std::vector<uint8_t> make_test_wav(int sample_count, int sample_rate) {
+    const int data_bytes = sample_count * 2;
+    const int file_bytes = 44 + data_bytes;
+    std::vector<uint8_t> wav(file_bytes, 0);
+    auto put16 = [&wav](int offset, int value) {
+        wav[offset] = (uint8_t)(value & 0xFF);
+        wav[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
+    };
+    auto put32 = [&wav](int offset, int value) {
+        wav[offset] = (uint8_t)(value & 0xFF);
+        wav[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
+        wav[offset + 2] = (uint8_t)((value >> 16) & 0xFF);
+        wav[offset + 3] = (uint8_t)((value >> 24) & 0xFF);
+    };
+    wav[0] = 'R'; wav[1] = 'I'; wav[2] = 'F'; wav[3] = 'F';
+    put32(4, file_bytes - 8);
+    wav[8] = 'W'; wav[9] = 'A'; wav[10] = 'V'; wav[11] = 'E';
+    wav[12] = 'f'; wav[13] = 'm'; wav[14] = 't'; wav[15] = ' ';
+    put32(16, 16);
+    put16(20, 1);
+    put16(22, 1);
+    put32(24, sample_rate);
+    put32(28, sample_rate * 2);
+    put16(32, 2);
+    put16(34, 16);
+    wav[36] = 'd'; wav[37] = 'a'; wav[38] = 't'; wav[39] = 'a';
+    put32(40, data_bytes);
+    for (int i = 0; i < sample_count; ++i) {
+        const int sample = (i % 32 < 16) ? 4000 : -4000;
+        put16(44 + i * 2, sample & 0xFFFF);
+    }
+    return wav;
 }
 }
 
@@ -345,6 +386,46 @@ int main(int argc, char** argv) {
     // Settle loop: pipeline states compile in the background on first use
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
+    // Audio: decode a generated clip and play one instance per cue the Elisa
+    // game emitted. Verifying decoded sample information is the real check;
+    // playback is one call per cue.
+    {
+        const int wav_samples = 400;
+        const int wav_rate = 8000;
+        const std::vector<uint8_t> wav = make_test_wav(wav_samples, wav_rate);
+        wi::audio::Sound sound;
+        if (!check(wi::audio::CreateSound(wav.data(), wav.size(), &sound), "audio sound decode") ||
+            !check(sound.IsValid(), "audio sound valid")) {
+            return 1;
+        }
+        const wi::audio::SampleInfo info = wi::audio::GetSampleInfo(&sound);
+        if (!check(info.sample_count == (size_t)wav_samples && info.sample_rate == wav_rate && info.channel_count == 1,
+                "audio sample information")) {
+            return 1;
+        }
+        int cue_count = 0;
+        const auto cues_it = manifest.find("audio_cues");
+        if (cues_it != manifest.end()) {
+            cue_count = std::stoi(cues_it->second);
+        }
+        int played = 0;
+        for (int cue = 0; cue < cue_count; ++cue) {
+            wi::audio::SoundInstance instance;
+            instance.SetLooped(false);
+            if (!check(wi::audio::CreateSoundInstance(&sound, &instance), "audio instance") ||
+                !check(instance.IsValid(), "audio instance valid")) {
+                return 1;
+            }
+            wi::audio::Play(&instance);
+            ++played;
+        }
+        std::fprintf(stdout, "audio: decoded samples=%u rate=%d channels=%u cue plays=%d\n",
+            (unsigned)info.sample_count, info.sample_rate, info.channel_count, played);
+        if (cue_count > 0 && played != cue_count) {
+            return 1;
+        }
+    }
+
     // Frame timing: the plan asks for measured frame time with median and
     // tail, not a "zero overhead" claim. These are hidden, trivial frames,
     // so the numbers are a floor for this scene, not a performance promise;
