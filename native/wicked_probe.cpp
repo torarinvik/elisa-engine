@@ -192,8 +192,10 @@ int main(int argc, char** argv) {
     {
         const XMFLOAT3 eye = camera_component->Eye;
         const XMFLOAT3 at = camera_component->At;
-        std::fprintf(stdout, "camera eye=(%.2f,%.2f,%.2f) at=(%.2f,%.2f,%.2f)\n",
-            eye.x, eye.y, eye.z, at.x, at.y, at.z);
+        std::fprintf(stdout, "camera eye=(%.2f,%.2f,%.2f) at=(%.2f,%.2f,%.2f) wh=(%.1f,%.1f) near=%.3f far=%.1f fov=%.3f\n",
+            eye.x, eye.y, eye.z, at.x, at.y, at.z,
+            camera_component->width, camera_component->height,
+            camera_component->zNearP, camera_component->zFarP, camera_component->fov);
         std::fprintf(stdout, "scene objects=%u lights=%u visible objects=%u visible lights=%u\n",
             (unsigned)scene.objects.GetCount(), (unsigned)scene.lights.GetCount(),
             (unsigned)render_path.visibility_main.visibleObjects.size(),

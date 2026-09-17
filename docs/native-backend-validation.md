@@ -83,14 +83,23 @@ object render flags and mesh-index linkage (all drawable), close-range
 framing (a frame-filling cube changes nothing), and a realistic-sky
 control (still black, so the failure is in the shared path, not scene
 setup). A Metal System Trace of the probe shows exactly one
-probe-owned shader (a compute entry) and zero graphics shaders, and a
-full run under Metal API validation exits clean: the API usage is
-valid, the draws are simply never submitted. Even the depth prepass
-leaves no silhouette. So no scene fragment is reaching any target;
-look next at the per-instance submit path (render queue, PSO and
-material bind), viewport binding values, depth function versus clear
-value, tonemap exposure input, light-grid upload, and the HDR
-compositing branch. Two methodological notes: `saveTextureToMemory`
+probe-owned shader (a compute entry) and no runtime shader compiles.
+That alone proves little either way: the checkout ships hundreds of
+prebuilt object permutations, so draws could be served silently from
+binaries. What constrains the failure instead is elimination across
+independent controls: a frame-filling close-range cube, a realistic-sky
+background (which needs no objects, lights, or culling), and white
+versus emissive materials all produce byte-identical near-black, while
+CPU state is verified correct at every level (camera 640x400 physical
+with sane near/far/fov, cube world matrix exact, AABB exact,
+visibility 1+1 with correct index linkage, valid depth/MSAA targets,
+uploaded buffers, sane object flags). A setup defect would move at
+least one of those controls; none moves. So the draw is either never
+submitted or fully discarded downstream of submission: look next at the
+per-instance submit path (render queue, PSO and material bind),
+viewport binding values, depth function versus clear value, tonemap
+exposure input, light-grid upload, and the HDR compositing branch. Two
+methodological notes: `saveTextureToMemory`
 must never be pointed at a depth target (Depth32Float_Stencil8 to
 buffer trips validation outright), and the probe binary must receive
 the inner `WickedEngine/WickedEngine` directory — the outer checkout
