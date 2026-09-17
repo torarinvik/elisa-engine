@@ -1,4 +1,6 @@
 #include "wiApplication.h"
+#include "wiArguments.h"
+#include "wiHelper.h"
 #include "wiInitializer.h"
 #include "wiRenderPath3D.h"
 #include "wiRenderer.h"
@@ -44,10 +46,14 @@ bool load_manifest(const char* filename, std::map<std::string, std::string>& val
 }
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::fprintf(stderr, "usage: wicked_probe <wicked-source-directory> <scene-manifest>\n");
+    if (argc < 3 || argc > 5) {
+        std::fprintf(stderr, "usage: wicked_probe <wicked-source-directory> <scene-manifest> [screenshot-png] [alwaysactive]\n");
         return 2;
     }
+    // Forward flags such as "alwaysactive" to the engine argument table.
+    // The hidden probe window is never active, so without "alwaysactive"
+    // Application::Run returns before drawing a single pixel.
+    wi::arguments::Parse(argc, argv);
     std::map<std::string, std::string> manifest;
     if (!check(load_manifest(argv[2], manifest), "scene manifest")) {
         return 1;
@@ -98,8 +104,12 @@ int main(int argc, char** argv) {
     wi::scene::Scene scene;
     const auto object = scene.Entity_CreateCube("elisa_cube_" + std::to_string(entity_id));
     const auto camera = scene.Entity_CreateCamera("elisa_camera_" + std::to_string(camera_id), width, height);
+    // A point lamp: without any light the standard material shades black and
+    // the captured frame carries no evidence that anything was drawn.
+    const auto lamp = scene.Entity_CreateLight("elisa_light", XMFLOAT3(2.0f, 3.0f, -2.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), 30.0f, 60.0f);
     if (!check(object != wi::ecs::INVALID_ENTITY, "cube entity") ||
-        !check(camera != wi::ecs::INVALID_ENTITY, "camera entity")) {
+        !check(camera != wi::ecs::INVALID_ENTITY, "camera entity") ||
+        !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
         return 1;
     }
 
@@ -107,11 +117,20 @@ int main(int argc, char** argv) {
     auto* mesh = scene.meshes.GetComponent(object);
     auto* camera_transform = scene.transforms.GetComponent(camera);
     auto* camera_component = scene.cameras.GetComponent(camera);
+    auto* lamp_transform = scene.transforms.GetComponent(lamp);
+    auto* cube_material = scene.materials.GetComponent(object);
     if (!check(object_transform != nullptr, "cube transform") ||
         !check(mesh != nullptr && !mesh->subsets.empty(), "cube material subset") ||
-        !check(camera_transform != nullptr && camera_component != nullptr, "camera components")) {
+        !check(camera_transform != nullptr && camera_component != nullptr, "camera components") ||
+        !check(lamp_transform != nullptr, "lamp transform") ||
+        !check(cube_material != nullptr, "cube material")) {
         return 1;
     }
+    // Emissive sky-blue like the Godot probe albedo: if these pixels show,
+    // rasterization works and only light transport is in question.
+    cube_material->emissiveColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
+    lamp_transform->translation_local = XMFLOAT3(2.0f, 3.0f, -2.0f);
+    lamp_transform->UpdateTransform();
 
     object_transform->translation_local = XMFLOAT3(object_x, object_y, object_z);
     object_transform->UpdateTransform();
@@ -122,24 +141,76 @@ int main(int argc, char** argv) {
         return 1;
     }
     camera_transform->translation_local = XMFLOAT3(camera_x, camera_y, camera_z);
+    // Default orientation already faces +Z toward the cube; leave it alone.
     camera_transform->UpdateTransform();
     camera_component->TransformCamera(*camera_transform);
+    // TransformCamera only refreshes view matrices; the frustum used for
+    // culling is rebuilt here, otherwise everything stays culled forever.
+    camera_component->UpdateCamera();
 
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
     render_path.camera = camera_component;
     application.ActivatePath(&render_path);
-    application.Run();
+    // Several frames: the first frames after path activation still warm
+    // up async shader compilation and postprocess history, so a single
+    // Run() can leave an empty target behind.
+    for (int frame = 0; frame < 5; ++frame) {
+        application.Run();
+    }
+    // Metal work is asynchronous: without draining the queue the backbuffer
+    // still holds cleared memory when it is read below, no matter how many
+    // frames were submitted.
+    wi::graphics::GetDevice()->WaitForGPU();
     if (!check(render_path.GetRenderResult3D().IsValid(), "render target")) {
         return 1;
     }
     std::fprintf(stdout, "scene create/update/render passed\n");
 
+    // Capture the rendered frame to PNG while the scene is still live. The
+    // pixels are evidence, not authority: identity and lifecycle were
+    // already established by Elisa-side checks above. A failed capture
+    // fails the probe loudly instead of passing silently without pixels.
+    const char* screenshot_path = argc >= 4 ? argv[3] : "wicked-frame.png";
+    // Ground-truth diagnostics: eye/at, lamp/object positions, and the
+    // visibility set the renderer actually computed. Pixels alone cannot
+    // distinguish "camera faces away" from "light missing" from "culled".
+    {
+        const XMFLOAT3 eye = camera_component->Eye;
+        const XMFLOAT3 at = camera_component->At;
+        std::fprintf(stdout, "camera eye=(%.2f,%.2f,%.2f) at=(%.2f,%.2f,%.2f)\n",
+            eye.x, eye.y, eye.z, at.x, at.y, at.z);
+        std::fprintf(stdout, "scene objects=%u lights=%u visible objects=%u visible lights=%u\n",
+            (unsigned)scene.objects.GetCount(), (unsigned)scene.lights.GetCount(),
+            (unsigned)render_path.visibility_main.visibleObjects.size(),
+            (unsigned)render_path.visibility_main.visibleLights.size());
+        std::fprintf(stdout, "aabb streams=%u\n", (unsigned)scene.aabb_objects.size());
+        if (!scene.aabb_objects.empty()) {
+            const auto& bounds = scene.aabb_objects[0];
+            std::fprintf(stdout, "aabb0 min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) layer=%u\n",
+                bounds._min.x, bounds._min.y, bounds._min.z,
+                bounds._max.x, bounds._max.y, bounds._max.z, bounds.layerMask);
+        }
+    }
+    // Capture the composited swapchain image, not an intermediate target:
+    // the postprocess result is only written when post effects run, so it
+    // can sit stale while the presented frame is correct.
+    const wi::graphics::Texture presented = wi::graphics::GetDevice()->GetBackBuffer(&application.swapChain);
+    if (!check(presented.IsValid(), "presented frame")) {
+        return 1;
+    }
+    if (!check(wi::helper::saveTextureToFile(presented, screenshot_path), "frame encode")) {
+        return 1;
+    }
+    std::fprintf(stdout, "scene screenshot saved\n");
+
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);
+    scene.Entity_Remove(lamp);
     if (!check(scene.objects.GetComponent(object) == nullptr, "cube despawn") ||
         !check(scene.meshes.GetComponent(object) == nullptr, "mesh despawn") ||
-        !check(scene.cameras.GetComponent(camera) == nullptr, "camera despawn")) {
+        !check(scene.cameras.GetComponent(camera) == nullptr, "camera despawn") ||
+        !check(scene.lights.GetComponent(lamp) == nullptr, "lamp despawn")) {
         return 1;
     }
     std::fprintf(stdout, "scene despawn passed\n");

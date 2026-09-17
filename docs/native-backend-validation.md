@@ -45,6 +45,44 @@ create/update/render passed`, `scene despawn passed`, exit 0. This is the
 first in-session executed evidence for the native path; earlier records
 described the setup without a fresh run.
 
+## Frame capture (in progress, currently red)
+
+`native/wicked_probe.cpp` now saves its frame to
+`build/wicked-frame.png` and `scripts/wicked_probe.elisascript` checks it
+with `scripts/compare_renders.py` (stdlib-only PNG parse, dimension scale
+check, blank detection, peak-plus-mean tolerance compare mirroring
+`src/backend/image_compare.elisa`). The plumbing is verified end to end;
+the pixels are not there yet, and the driver fails loudly on that fact.
+
+Ground truths established by probe diagnostics so far (all printed by the
+probe on every run):
+
+- Argless `Run()` on a hidden window draws nothing: the window is never
+  active, so the driver passes an `alwaysactive` flag through
+  `wi::arguments::Parse`, and runs five frames plus `WaitForGPU`.
+- `CameraComponent::At` is a facing *direction*, not a target point; the
+  default orientation already faces +Z toward the cube, and a 180-degree
+  flip was tried and reverted after the frustum dump proved it wrong.
+- `TransformCamera` refreshes view matrices only; without an explicit
+  `UpdateCamera` the frustum stays stale and culls everything. With it,
+  visibility reports 1 object and 1 light, and the cube AABB is exactly
+  min=(-1,-1,0) max=(1,1,2).
+- `CreateScreenshotWithAlphaBackground` re-renders the *postprocess*
+  result, which sits stale when no post effects run; the probe captures
+  the swapchain backbuffer via `saveTextureToFile` instead.
+- The captured frame is 640x400 (Retina 2x of the 320x200 manifest
+  viewport), so the dimension check accepts integer scales.
+
+Ruled out by invariant pixels across runs: lamp existence and intensity
+(4 to 30), lamp transform commit, camera orientation both ways, one
+versus five frames, GPU drain, white versus sky-blue emissive material.
+An emissive cube inside a correct frustum with passing visibility still
+produces a black frame, so no scene fragment is reaching the target;
+suspects left standing are depth/stencil state, viewport setup,
+MSAA-resolve handling, and the HDR compositing branch. That is the next
+debugging step, not a new policy: the capture, compare, and gate
+plumbing is done and waiting for first light.
+
 The manifest the probe consumes (`backends/scene_manifest.txt`) is pinned
 to the Elisa canonical scene by `scripts/record_validation.py`, which
 rejects drift in version, epoch, entity, camera, viewport, and command
