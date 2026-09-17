@@ -152,10 +152,11 @@ int main(int argc, char** argv) {
     render_path.scene = &scene;
     render_path.camera = camera_component;
     application.ActivatePath(&render_path);
-    // Several frames: the first frames after path activation still warm
-    // up async shader compilation and postprocess history, so a single
-    // Run() can leave an empty target behind.
-    for (int frame = 0; frame < 5; ++frame) {
+    // Many frames: the first frames after path activation still warm
+    // up async shader compilation and postprocess history. Runtime shader
+    // compiles take seconds, so a handful of fast frames can all run
+    // before the object shaders exist and every draw is skipped.
+    for (int frame = 0; frame < 30; ++frame) {
         application.Run();
     }
     // Metal work is asynchronous: without draining the queue the backbuffer
@@ -185,6 +186,11 @@ int main(int argc, char** argv) {
             (unsigned)render_path.visibility_main.visibleObjects.size(),
             (unsigned)render_path.visibility_main.visibleLights.size());
         std::fprintf(stdout, "aabb streams=%u\n", (unsigned)scene.aabb_objects.size());
+        std::fprintf(stdout, "mesh verts=%u idx-valid=%d pos-valid=%d indices=%u subset-count=%u\n",
+            (unsigned)mesh->vertex_positions.size(),
+            mesh->ib.IsValid() ? 1 : 0, mesh->vb_pos_wind.IsValid() ? 1 : 0,
+            (unsigned)mesh->indices.size(),
+            mesh->subsets.empty() ? 0u : (unsigned)mesh->subsets[0].indexCount);
         if (!scene.aabb_objects.empty()) {
             const auto& bounds = scene.aabb_objects[0];
             std::fprintf(stdout, "aabb0 min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) layer=%u\n",
@@ -203,6 +209,29 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::fprintf(stdout, "scene screenshot saved\n");
+    {
+        // Temporary diagnostic: is the scene landing in the MSAA target
+        // while the resolve never runs?
+        wi::vector<uint8_t> msaa_png;
+        std::fprintf(stdout, "rtMain %ux%u samples=%u msaa %ux%u samples=%u\n",
+            render_path.rtMain.desc.width, render_path.rtMain.desc.height,
+            render_path.rtMain.desc.sample_count,
+            render_path.rtMain_render.desc.width, render_path.rtMain_render.desc.height,
+            render_path.rtMain_render.desc.sample_count);
+        {
+            const wi::graphics::Texture* depth = render_path.GetDepthStencil();
+            if (depth == nullptr || !depth->IsValid()) {
+                std::fprintf(stdout, "depth target MISSING\n");
+            } else {
+                std::fprintf(stdout, "depth %ux%u fmt=%d\n",
+                    depth->desc.width, depth->desc.height, (int)depth->desc.format);
+            }
+        }
+        if (wi::helper::saveTextureToMemoryFile(render_path.rtMain_render, "PNG", msaa_png)) {
+            std::ofstream msaa_out("/tmp/wicked-msaa.png", std::ios::binary);
+            msaa_out.write((const char*)msaa_png.data(), (std::streamsize)msaa_png.size());
+        }
+    }
 
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);

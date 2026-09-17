@@ -75,11 +75,14 @@ probe on every run):
 
 Ruled out by invariant pixels across runs: lamp existence and intensity
 (4 to 30), lamp transform commit, camera orientation both ways, one
-versus five frames, GPU drain, white versus sky-blue emissive material.
-An emissive cube inside a correct frustum with passing visibility still
-produces a black frame, so no scene fragment is reaching the target;
-suspects left standing are depth/stencil state, viewport setup,
-MSAA-resolve handling, and the HDR compositing branch. That is the next
+versus thirty frames, GPU drain, white versus sky-blue emissive material,
+MSAA resolve (aliased at 1x), depth target validity (640x400 present),
+mesh upload (24 verts, 36 indices, buffers valid), and shader compile
+health (zero failures in the log). An emissive cube inside a correct
+frustum with passing visibility still produces a black frame, so no scene
+fragment is reaching the target; suspects left standing are viewport and
+scissor binding, depth function versus clear value, exposure and
+light-grid upload, and the HDR compositing branch. That is the next
 debugging step, not a new policy: the capture, compare, and gate
 plumbing is done and waiting for first light.
 
