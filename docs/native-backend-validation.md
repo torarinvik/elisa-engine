@@ -307,10 +307,14 @@ instance per cue the Elisa game emitted for the fixture
 
 The Godot host does not play cues yet; only the native side has audio
 integration, and playback is verified structurally (decode plus one play
-call per cue), not by listening. The native probe is now 592 lines of the
-600-line file limit, so it must be split before further native features
-land, exactly as `scripts/check.elisascript` must be split before another
-suite.
+call per cue), not by listening.
+
+The probe reached 592 of the 600-line file limit, so its support code
+(fixture parsing, the right-handed to Wicked-space conversion, cell
+markers, and the generated test WAV) moved to `native/probe_support.h`.
+`native/wicked_probe.cpp` is now 471 lines and the header 137, both with
+headroom, and the split was verified by rerunning the driver unchanged.
+`scripts/check.elisascript` remains unsplit at its own limit.
 
 ## Toward pixel comparison (status: both hosts captured)
 
