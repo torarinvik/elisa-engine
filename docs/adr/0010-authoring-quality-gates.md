@@ -22,8 +22,15 @@ subsystem proves nothing about it.
 - Toolchains move as snapshots with recorded revisions: stage1
   a950b5cd could not emit `catch` over `void`, so the snapshot moved to
   76230afa with the minimized repro documented. Script-authoring limits
-  found by bisection are recorded: `println` is main-scoped, and
-  process-spawning effects do not nest two helpers deep.
+  found by bisection are recorded: `println` is main-scoped, process
+  effects do not nest two helpers deep, and `main` must end with a value
+  tail (ending on a `_ =` statement reports `"main" must return a value`).
+  A `run_suite` dedup helper and a driver-plus-parts split were both
+  attempted and reverted: byte-identical suite blocks verify inside the
+  full 588-line gate and fail bare `VerificationFailed` in short files,
+  a whole-file context sensitivity whose root cause is not isolated
+  after ~20 probes. The gate therefore stays monolithic until the
+  verifier explains itself; no further suites land before the split.
 
 ## Evidence
 
