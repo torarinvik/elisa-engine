@@ -54,6 +54,8 @@ int main(int argc, char** argv) {
     // The hidden probe window is never active, so without "alwaysactive"
     // Application::Run returns before drawing a single pixel.
     wi::arguments::Parse(argc, argv);
+    std::fprintf(stdout, "probe argc=%d alwaysactive=%d\n",
+        argc, wi::arguments::HasArgument("alwaysactive") ? 1 : 0);
     std::map<std::string, std::string> manifest;
     if (!check(load_manifest(argv[2], manifest), "scene manifest")) {
         return 1;
@@ -152,10 +154,18 @@ int main(int argc, char** argv) {
     render_path.scene = &scene;
     render_path.camera = camera_component;
     application.ActivatePath(&render_path);
-    // Many frames: the first frames after path activation still warm
+    // Several frames: the first frames after path activation still warm
     // up async shader compilation and postprocess history. Runtime shader
     // compiles take seconds, so a handful of fast frames can all run
     // before the object shaders exist and every draw is skipped.
+    // Pump platform events first: on macOS a window that never sees its
+    // event queue may never finish mapping its Metal layer.
+    for (int pump = 0; pump < 60; ++pump) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+        }
+        wi::helper::Sleep(16);
+    }
     for (int frame = 0; frame < 30; ++frame) {
         application.Run();
     }
@@ -186,11 +196,23 @@ int main(int argc, char** argv) {
             (unsigned)render_path.visibility_main.visibleObjects.size(),
             (unsigned)render_path.visibility_main.visibleLights.size());
         std::fprintf(stdout, "aabb streams=%u\n", (unsigned)scene.aabb_objects.size());
+        {
+            XMUINT2 internal = render_path.GetInternalResolution();
+            std::fprintf(stdout, "internal resolution=%ux%u\n", internal.x, internal.y);
+        }
         std::fprintf(stdout, "mesh verts=%u idx-valid=%d pos-valid=%d indices=%u subset-count=%u\n",
             (unsigned)mesh->vertex_positions.size(),
             mesh->ib.IsValid() ? 1 : 0, mesh->vb_pos_wind.IsValid() ? 1 : 0,
             (unsigned)mesh->indices.size(),
             mesh->subsets.empty() ? 0u : (unsigned)mesh->subsets[0].indexCount);
+        {
+            const auto* drawable = scene.objects.GetComponent(object);
+            std::fprintf(stdout, "object renderable=%d foreground=%d hide-main=%d filtermask=%u\n",
+                (drawable != nullptr && drawable->IsRenderable()) ? 1 : 0,
+                (drawable != nullptr && drawable->IsForeground()) ? 1 : 0,
+                (drawable != nullptr && drawable->IsNotVisibleInMainCamera()) ? 1 : 0,
+                drawable != nullptr ? drawable->GetFilterMask() : 0u);
+        }
         if (!scene.aabb_objects.empty()) {
             const auto& bounds = scene.aabb_objects[0];
             std::fprintf(stdout, "aabb0 min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) layer=%u\n",
@@ -227,8 +249,8 @@ int main(int argc, char** argv) {
                     depth->desc.width, depth->desc.height, (int)depth->desc.format);
             }
         }
-        if (wi::helper::saveTextureToMemoryFile(render_path.rtMain_render, "PNG", msaa_png)) {
-            std::ofstream msaa_out("/tmp/wicked-msaa.png", std::ios::binary);
+        if (wi::helper::saveTextureToMemoryFile(*render_path.GetDepthStencil(), "PNG", msaa_png)) {
+            std::ofstream msaa_out("/tmp/wicked-depth.png", std::ios::binary);
             msaa_out.write((const char*)msaa_png.data(), (std::streamsize)msaa_png.size());
         }
     }

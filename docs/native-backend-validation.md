@@ -75,16 +75,24 @@ probe on every run):
 
 Ruled out by invariant pixels across runs: lamp existence and intensity
 (4 to 30), lamp transform commit, camera orientation both ways, one
-versus thirty frames, GPU drain, white versus sky-blue emissive material,
-MSAA resolve (aliased at 1x), depth target validity (640x400 present),
-mesh upload (24 verts, 36 indices, buffers valid), and shader compile
-health (zero failures in the log). An emissive cube inside a correct
-frustum with passing visibility still produces a black frame, so no scene
-fragment is reaching the target; suspects left standing are viewport and
-scissor binding, depth function versus clear value, exposure and
-light-grid upload, and the HDR compositing branch. That is the next
-debugging step, not a new policy: the capture, compare, and gate
-plumbing is done and waiting for first light.
+versus thirty frames, event pumping, GPU drain, white versus sky-blue
+emissive material, MSAA resolve (aliased at 1x), depth target validity
+(640x400 present), mesh upload (24 verts, 36 indices, buffers valid),
+internal resolution (640x400, so the scissor path is not degenerate),
+and shader compile health (zero failures in the log — which cuts the
+other way too, see below). An emissive cube inside a correct frustum
+with passing visibility still produces a black frame, so no scene
+fragment is reaching the target.
+
+The sharpest remaining facts: no object-shader permutation ever
+compiles (a first draw attempt would demand one), and even the depth
+prepass leaves no silhouette (its download encodes as a degenerate
+1-bit file). So the draw is never attempted, not merely unlit: suspects
+left standing are the main-pass viewport binding values, the depth
+function versus clear value, the tonemap exposure input, light-grid
+upload, and the HDR compositing branch. That is the next debugging
+step, not a new policy: the capture, compare, and gate plumbing is done
+and waiting for first light.
 
 The manifest the probe consumes (`backends/scene_manifest.txt`) is pinned
 to the Elisa canonical scene by `scripts/record_validation.py`, which
