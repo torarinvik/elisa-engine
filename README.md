@@ -5,6 +5,8 @@ numeric identity, and specialist engine libraries. SDL3 and headless Godot and
 Wicked host probes are now exercised; the full Godot GDExtension and Wicked
 renderer remain planned. [Native backend validation](docs/native-backend-validation.md)
 records the pinned external Wicked checkout and its macOS build notes.
+Binding architecture decisions live in [docs/adr/](docs/adr/); anything the
+ADRs mark as not covered is not claimed anywhere else in this file.
 
 ## Current foundation: identity and checked world
 
@@ -46,8 +48,12 @@ callback registration, and destruction. The metadata is validated as data and
 does not claim to make unverified C pointers safe.
 
 The asset module separates authored asset IDs from world-local entity IDs and
-backend handles. It validates source descriptors and portable visual references;
-it does not yet import, cook, or load asset bytes. `src/runtime/input.elisa`
+backend handles. It validates source descriptors and portable visual references,
+cooks validated visuals into content-hashed packages, tracks catalogue
+generations with stale-package rejection, and binds everything into a
+shippable maze bundle (assets, scene identity, required capabilities,
+determinism scope, frame budget). Byte-level importers, transcoding, and
+streaming remain future work. `src/runtime/input.elisa`
 maps portable keyboard/controller buttons to gameplay actions and rejects
 ambiguous bindings. A host still needs to translate platform-specific events
 to those button values.
@@ -64,6 +70,10 @@ allowing the allocated ID to remain burned.
 profile and checks a game's required feature list before startup. The headless
 profile intentionally supplies input only; native and Godot hosts must publish
 their actual capabilities when those integrations exist.
+`src/backend/scene_bridge.elisa` validates the one canonical command stream
+both hosts consume (epoch, identity, create/update/destroy order, viewport),
+and `src/backend/image_compare.elisa` compares rendered output under an
+explicit per-channel plus mean tolerance instead of byte equality.
 
 `src/backend/fake_bridge.elisa` is a deterministic bridge test double. It checks
 partial-create cleanup, generation-checked handles, asynchronous upload
@@ -87,6 +97,27 @@ optional native Wicked scene probe. It creates an Elisa-named cube and camera,
 updates the transform, renders one hidden Metal frame through Wicked's
 `RenderPath3D`, and checks despawn against the external static libraries without
 copying WickedEngine into this repository.
+
+`examples/maze/` holds the first complete game as Elisa-owned rules: grid
+topology with walls, hazards, a locked door plus key, goal, lives, fog-of-war
+visibility, audio cues as data, menu flow, restart, and saved settings.
+Backends render derived transforms and play cue IDs; they never decide
+movement or win/loss.
+
+Gameplay-adjacent ownership lives in small policy modules, each gated by
+tests: `src/physics/policy.elisa` (one solver per body, kinematic from
+Elisa, dynamic from the solver, tick-boundary commits),
+`src/runtime/schedule.elisa` (declared read/write sets, conflict ordering,
+parallel pairs), `src/animation/state.elisa` plus `src/animation/codec.elisa`
+(Elisa-owned clips, blends, events, root motion; benchmarked codec choice),
+`src/nav/grid.elisa` (BFS waypoints; the path is Elisa's decision),
+`src/audio/policy.elisa` (one device, playback first, spatial opt-in),
+`src/tooling/inspector.elisa` plus `src/tooling/editor.elisa` (read-only
+snapshots, perf budgets, undo/redo, reload generations), and
+`src/net/replication.elisa` plus `src/net/session.elisa` (authority,
+interpolation data, deterministic loss profile, rollback, sessions with
+recovery). None of these link their native libraries yet; they establish
+the contracts those integrations must satisfy.
 
 The current stage1 compiler rejects direct copies of the affine allocator,
 World, and scene recorder from borrowed parameters; the check script verifies those rejection
@@ -116,7 +147,7 @@ validation record includes SHA-256 identities for the engine source manifest,
 compiler entry/product, prover, and ElisaScript launcher. It does not rebuild
 either toolchain.
 
-- `test/`: executable checks for identity edges, geometry and asset values, input mapping, backend capability selection, SDL3 platform initialization, Godot host command ordering, fake bridge retention/callback lifecycles, FFI ownership contracts, recording command order, fixed stepping, scripted headless gameplay, and World lifecycle, including
+- `test/`: executable checks for identity edges, geometry and asset values, input mapping, backend capability selection, SDL3 platform initialization, Godot host command ordering, fake bridge retention/callback lifecycles, FFI ownership contracts, recording command order, fixed stepping, scripted headless gameplay, canonical scene bridging, tolerance image comparison, asset cooking and catalogue generations, maze topology and the complete maze game (win/loss, door/key, hazards, fog, settings), animation state and codec choice, grid navigation, inspector snapshots and perf counters, replication scope and net sessions, physics authority, scheduler ordering, editor undo/reload, and the shippable bundle manifest, plus World lifecycle, including
   deterministic churn, compaction, capacity rejection, and corrupted-store detection;
   negative compilation fixtures reject direct copies of all three affine owners.
 - `proof/`: Elisa Proof checks importing the actual implementation. They establish
@@ -130,9 +161,13 @@ postconditions.
 
 ## Next milestone
 
-Complete allocator encapsulation and the remaining World ownership checks. Add
-asset loading/cooking and service ownership contracts before connecting either
-renderer.
+Packaged per-target maze binaries running through both backend families,
+a screenshot-driven pixel comparison using the declared tolerance, native
+solver linkage behind the physics authority policy, and an editor surface
+over the inspector/undo/reload foundation. `scripts/check.elisascript`
+stands at 588 of the 600-line file limit and must be split before further
+suites land. The project license is still explicitly undecided and blocks
+any distribution.
 
 ### ElisaScript migration status
 
@@ -150,6 +185,15 @@ On 2026-09-17 the extended check also passed the World lifecycle binary,
 verified affine ownership rejection diagnostics, replayed both World
 epoch-predicate proof obligations, and wrote the hashed validation record. The
 fake-tool comparison now covers 15 cases.
+
+On 2026-09-18 the gate grew to 31 runtime suites plus proofs: canonical
+scene bridge, tolerance image comparison, asset cooking and catalogue,
+maze topology and the complete game, animation state and codec choice,
+grid navigation, inspector and perf counters, replication scope and net
+sessions, physics authority, scheduler ordering, editor undo/reload, and
+the shippable bundle manifest. The compiler snapshot moved from a950b5cd
+to 76230afa after the older snapshot declined `catch` over `void`; the
+minimized repro is documented in the sibling compiler history.
 
 ElisaScript and its native compiler required integration fixes. Build identities,
 regressions, and scope are recorded in the sibling
