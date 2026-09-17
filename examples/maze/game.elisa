@@ -75,6 +75,34 @@ module MazeGame:
         def door_blocked(game: MazeGame&, x: i64, y: i64) -> bool:
             is_door(x, y) and not game.has_key
 
+        # Public marker coordinates. Hosts render hazards, the key, the door,
+        # and the goal from these cells, so a backend never re-derives where
+        # the rules put them. test/maze.elisa checks each against the
+        # predicate that owns it.
+        def maze_key_x() -> i64:
+            Tune::KEY_X
+
+        def maze_key_y() -> i64:
+            Tune::KEY_Y
+
+        def maze_door_x() -> i64:
+            Tune::DOOR_X
+
+        def maze_door_y() -> i64:
+            Tune::DOOR_Y
+
+        def maze_hazard_a_x() -> i64:
+            Tune::HAZARD_AX
+
+        def maze_hazard_a_y() -> i64:
+            Tune::HAZARD_AY
+
+        def maze_hazard_b_x() -> i64:
+            Tune::HAZARD_BX
+
+        def maze_hazard_b_y() -> i64:
+            Tune::HAZARD_BY
+
         def is_visible(game: MazeGame&, x: i64, y: i64) -> bool:
             return true if x < 0 or y < 0 or x >= Maze::maze_width().i64() or y >= Maze::maze_height().i64()
             return true if not game.settings.fog

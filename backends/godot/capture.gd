@@ -70,7 +70,7 @@ func _run_capture() -> void:
     var object := MeshInstance3D.new()
     object.name = "ElisaObject"
     var object_mesh := BoxMesh.new()
-    object_mesh.size = Vector3(2.0, 2.0, 2.0)
+    object_mesh.size = Vector3(0.6, 0.6, 0.6)
     var object_material := StandardMaterial3D.new()
     object_material.albedo_color = Color(0.2, 0.7, 1.0, 1.0)
     object_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -78,6 +78,41 @@ func _run_capture() -> void:
     object.mesh = object_mesh
     object.position = object_position
     scene_root.add_child(object)
+
+    # Game markers the Elisa rules place: key, door, hazards, goal. Each is a
+    # cell-sized unlit cube so a captured frame can be checked for the right
+    # object at the right cell.
+    var marker_specs := [
+        {"field": "goal", "name": "ElisaGoal", "color": Color(0.1, 0.9, 0.2, 1.0)},
+        {"field": "key", "name": "ElisaKey", "color": Color(0.95, 0.85, 0.1, 1.0)},
+        {"field": "door", "name": "ElisaDoor", "color": Color(0.85, 0.2, 0.9, 1.0)},
+        {"field": "hazards", "name": "ElisaHazard", "color": Color(0.95, 0.15, 0.1, 1.0)},
+    ]
+    var marker_count := 0
+    for spec in marker_specs:
+        if not manifest.has(spec["field"]):
+            continue
+        for cell in String(manifest[spec["field"]]).split(";"):
+            if cell.is_empty():
+                continue
+            var parts := cell.split(",")
+            if parts.size() != 2:
+                _fail("marker cell malformed")
+                return
+            var cell_x := int(parts[0])
+            var cell_y := int(parts[1])
+            var marker := MeshInstance3D.new()
+            marker.name = "%s_%d_%d" % [spec["name"], cell_x, cell_y]
+            var marker_mesh := BoxMesh.new()
+            marker_mesh.size = Vector3(0.52, 0.52, 0.52)
+            var marker_material := StandardMaterial3D.new()
+            marker_material.albedo_color = spec["color"]
+            marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+            marker_mesh.material = marker_material
+            marker.mesh = marker_mesh
+            marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
+            scene_root.add_child(marker)
+            marker_count += 1
 
     var camera := Camera3D.new()
     camera.name = "ElisaCamera"
@@ -107,7 +142,7 @@ func _run_capture() -> void:
     for child in scene_root.get_children():
         if child is MeshInstance3D and child.name.begins_with("ElisaWall"):
             visible_walls += 1
-    print("godot capture: %dx%d walls=%d" % [image.get_width(), image.get_height(), visible_walls])
+    print("godot capture: %dx%d walls=%d markers=%d" % [image.get_width(), image.get_height(), visible_walls, marker_count])
     quit(0)
 
 func _fail(message: String) -> void:

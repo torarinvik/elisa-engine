@@ -187,7 +187,86 @@ def resolve_occluded(spec):
     return ignored
 
 
-def pattern_mismatches(source, rows, cols, cells, ignore=None):
+def resolve_markers(spec):
+    # Marker cells the fixture says should be lit: the game's key, door,
+    # hazards, goal, and the player. The topology check expects brightness
+    # exactly on walls and markers, so an open cell that is accidentally lit
+    # (or a wall that is dark) still fails.
+    path = manifest_path_of(spec)
+    if path is None:
+        return set()
+    lit = set()
+    for line in open(path, encoding="utf-8").read().splitlines():
+        text = line.strip()
+        for field in ("goal", "key", "door", "player_final"):
+            if text.startswith(field + "="):
+                (x, y) = text[len(field) + 1:].split(",")
+                lit.add((int(x), int(y)))
+        if text.startswith("hazards="):
+            for entry in text[len("hazards="):].split(";"):
+                if entry:
+                    (x, y) = entry.split(",")
+                    lit.add((int(x), int(y)))
+    return lit
+
+
+def resolve_marker_fields(spec):
+    # Per-kind marker cells, so a check can assert the goal is green and the
+    # hazards are red rather than only that *something* is lit there.
+    path = manifest_path_of(spec)
+    if path is None:
+        return {}
+    fields = {}
+    for line in open(path, encoding="utf-8").read().splitlines():
+        text = line.strip()
+        for field in ("goal", "key", "door", "hazards", "player_final"):
+            if text.startswith(field + "="):
+                fields[field] = text[len(field) + 1:]
+    return fields
+
+
+def sample_rgb(source, rows, cols, cell_x, cell_y):
+    import math
+    (width, height, channels, pixels) = source
+    half_height = math.tan(math.radians(22.5)) * 6.0
+    half_width = half_height * (width / height)
+    world_x = cell_x * 0.6 - 2.1
+    world_y = cell_y * 0.6 - 2.1
+    screen_x = max(0, min(width - 1, int((0.5 - world_x / half_width * 0.5) * width)))
+    screen_y = max(0, min(height - 1, int((0.5 - world_y / half_height * 0.5) * height)))
+    index = (screen_y * width + screen_x) * channels
+    # Both probes write RGBA PNGs (the encoder normalises channel order), so
+    # the first three bytes are red, green, blue.
+    return (pixels[index] / 255.0, pixels[index + 1] / 255.0, pixels[index + 2] / 255.0)
+
+
+def marker_colour_failures(source, rows, cols, spec, margin=0.03):
+    # Each game object must show its own dominant channel at its own cell, so
+    # a host that draws the right *shape* in the wrong place or colour fails.
+    fields = resolve_marker_fields(spec)
+    failures = []
+    rules = [
+        ("goal", lambda r, g, b: g > r + margin and g > b + margin),
+        ("key", lambda r, g, b: r > b + margin and g > b + margin),
+        ("door", lambda r, g, b: r > g + margin and b > g + margin),
+        ("hazards", lambda r, g, b: r > g + margin and r > b + margin),
+        ("player_final", lambda r, g, b: b > r + margin and b > g + margin),
+    ]
+    for field, matches in rules:
+        if field not in fields:
+            continue
+        cells = fields[field].split(";") if field == "hazards" else [fields[field]]
+        for cell in cells:
+            if not cell:
+                continue
+            (cell_x, cell_y) = (int(part) for part in cell.split(","))
+            (r, g, b) = sample_rgb(source, rows, cols, cell_x, cell_y)
+            if not matches(r, g, b):
+                failures.append(f"{field}@{cell} rgb=({r:.2f},{g:.2f},{b:.2f})")
+    return failures
+
+
+def pattern_mismatches(source, rows, cols, cells, ignore=None, markers=None):
     # Every grid position must be bright exactly when it is a wall in the
     # Elisa list, so the rendered frame encodes the authoritative topology.
     rendered = maze_pattern(source, rows, cols, cells).split("\n")
@@ -197,13 +276,14 @@ def pattern_mismatches(source, rows, cols, cells, ignore=None):
             (x, y) = entry.split(",")
             walls.add((int(x), int(y)))
     covered = ignore or set()
+    lit = walls | (markers or set())
     mismatches = 0
     for line_index, line in enumerate(rendered):
         row = rows - 1 - line_index
         for col in range(cols):
             if (col, row) in covered:
                 continue
-            expected = "W" if (col, row) in walls else "."
+            expected = "W" if (col, row) in lit else "."
             if line[col] != expected:
                 mismatches += 1
     return mismatches
@@ -263,7 +343,7 @@ def main(arguments):
             return 2
         rows, cols, cells = int(arguments[3]), int(arguments[4]), resolve_cells(arguments[5])
         allowed = int(arguments[6])
-        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells, resolve_occluded(arguments[5]))
+        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells, resolve_occluded(arguments[5]), resolve_markers(arguments[5]))
         print(f"topology mismatches={found} allowed={allowed}")
         return 0 if found <= allowed else 1
     if command == "verify":
@@ -292,11 +372,16 @@ def main(arguments):
             return 1
         print(f"deterministic: peak={peak:.4f} mean={average:.4f}")
         cells = resolve_cells(cells_spec)
-        found = pattern_mismatches(frame, rows, cols, cells, resolve_occluded(cells_spec))
+        found = pattern_mismatches(frame, rows, cols, cells, resolve_occluded(cells_spec), resolve_markers(cells_spec))
         if found != 0:
             print(f"topology mismatches={found}", file=sys.stderr)
             return 1
         print("topology ok: frame encodes the Elisa wall list")
+        failures = marker_colour_failures(frame, rows, cols, cells_spec)
+        if failures:
+            print("marker colour mismatch: " + "; ".join(failures), file=sys.stderr)
+            return 1
+        print("markers ok: each game object shows its own colour at its own cell")
         return 0
     if command == "stats":
         (width, height, channels, pixels) = read_png(arguments[2])

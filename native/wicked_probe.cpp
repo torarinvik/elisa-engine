@@ -77,6 +77,31 @@ std::vector<std::pair<int, int>> parse_walls(const std::string& spec) {
     }
     return cells;
 }
+
+// A small unlit cube marking one game cell: player-facing evidence that the
+// host draws the Elisa game's objects (key, door, hazards, goal), not just
+// walls. Same RH->LH conversion as every other position.
+wi::ecs::Entity create_cell_marker(wi::scene::Scene& scene, const std::string& name,
+    int cell_x, int cell_y, float red, float green, float blue) {
+    const auto entity = scene.Entity_CreateCube(name);
+    if (entity == wi::ecs::INVALID_ENTITY) {
+        return entity;
+    }
+    auto* transform = scene.transforms.GetComponent(entity);
+    auto* material = scene.materials.GetComponent(entity);
+    if (transform == nullptr) {
+        return wi::ecs::INVALID_ENTITY;
+    }
+    transform->translation_local = to_wicked_space(
+        (float)cell_x * 0.6f - 2.1f, (float)cell_y * 0.6f - 2.1f, 1.0f);
+    transform->scale_local = XMFLOAT3(0.26f, 0.26f, 0.26f);
+    transform->UpdateTransform();
+    if (material != nullptr) {
+        material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+        material->baseColor = XMFLOAT4(red, green, blue, 1.0f);
+    }
+    return entity;
+}
 }
 
 int main(int argc, char** argv) {
@@ -190,6 +215,35 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Game markers the Elisa rules place: key, door, hazards, goal. Zones
+    // carry their own unlit colour so a captured frame can be checked for
+    // the right object at the right cell.
+    std::vector<wi::ecs::Entity> marker_entities;
+    const auto marker_cells = [&manifest](const char* key) {
+        const auto it = manifest.find(key);
+        return it == manifest.end()
+            ? std::vector<std::pair<int, int>>{}
+            : parse_walls(it->second);
+    };
+    const struct { const char* field; const char* name; float r; float g; float b; } marker_specs[] = {
+        {"goal", "elisa_goal", 0.1f, 0.9f, 0.2f},
+        {"key", "elisa_key", 0.95f, 0.85f, 0.1f},
+        {"door", "elisa_door", 0.85f, 0.2f, 0.9f},
+        {"hazards", "elisa_hazard", 0.95f, 0.15f, 0.1f},
+    };
+    for (const auto& spec : marker_specs) {
+        for (const auto& cell : marker_cells(spec.field)) {
+            const auto marker = create_cell_marker(scene,
+                std::string(spec.name) + "_" + std::to_string(cell.first) + "_" + std::to_string(cell.second),
+                cell.first, cell.second, spec.r, spec.g, spec.b);
+            if (marker == wi::ecs::INVALID_ENTITY) {
+                return 1;
+            }
+            marker_entities.push_back(marker);
+        }
+    }
+    std::fprintf(stdout, "markers created=%u\n", (unsigned)marker_entities.size());
+
     auto* object_transform = scene.transforms.GetComponent(object);
     auto* mesh = scene.meshes.GetComponent(object);
     auto* camera_transform = scene.transforms.GetComponent(camera);
@@ -215,6 +269,9 @@ int main(int argc, char** argv) {
     lamp_transform->UpdateTransform();
 
     object_transform->translation_local = to_wicked_space(object_x, object_y, object_z);
+    // One maze cell wide, so the player occupies exactly its own cell on the
+    // marker plane instead of hiding neighbouring game objects.
+    object_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
     object_transform->UpdateTransform();
     const auto object_position = object_transform->GetPosition();
     if (!check(std::fabs(object_position.x - (-object_x)) < 0.0001f &&
@@ -372,6 +429,9 @@ int main(int argc, char** argv) {
     // the same object/mesh teardown guarantee the entity cube gets.
     for (const auto& wall : wall_entities) {
         scene.Entity_Remove(wall);
+    }
+    for (const auto& marker : marker_entities) {
+        scene.Entity_Remove(marker);
     }
     if (!check(scene.objects.GetComponent(object) == nullptr, "cube despawn") ||
         !check(scene.meshes.GetComponent(object) == nullptr, "mesh despawn") ||

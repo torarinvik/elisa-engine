@@ -213,24 +213,35 @@ boundary the plan calls for. Evidence: before the fix the two topology
 grids disagreed on interior walls; after it they are identical and each
 matches the Elisa wall list exactly on the maze-only fixture.
 
-## Gameplay drives the rendered object (2026-09-18)
+## Gameplay drives the rendered scene (2026-09-18)
 
-The host object now sits where the Elisa game says the player ended up,
-not at a hand-written coordinate. `examples/maze/trace.elisa` plays a
-scripted ten-move win path through the real `MazeGame`, so collision, the
-key, the locked door, and the goal are resolved by engine rules; the
-column-1 route avoids the hazard at (2,5) that resets a naive path.
-`test/maze.elisa` pins the outcome (won, ten steps, final cell equals the
-goal). `backends/scene_manifest.txt` carries `player_final=6,6` and the
-matching world position in `object_x/object_y`, and
-`scripts/record_validation.py` rejects drift in either, so neither host
-chooses where the entity is.
+Both hosts render the Elisa game, not just geometry.
+`examples/maze/trace.elisa` plays scripted input through the real
+`MazeGame`, so collision, the key, the locked door, hazards, and the goal
+are resolved by engine rules. It publishes two runs: the ten-move win
+path, pinned by `test/maze.elisa` as won, and a three-move mid-game
+snapshot used by the fixture so every marker is still ahead of the player
+and therefore visible. The column-1 route avoids the hazard at (2,5) that
+resets a naive path.
 
-The topology check also stopped carrying slack: the fixture declares the
-four projected cells the foreground object covers (`occluded=`) and the
-checker now requires exact agreement on every other cell. Both hosts
-produce zero mismatches, and the validator rejects an `occluded` entry
-that is out of grid or names a wall.
+`examples/maze/game.elisa` now publishes the marker coordinates
+(`maze_key_x/y`, `maze_door_x/y`, `maze_hazard_a/b_x/y`); the test checks
+each against the predicate that owns it (`is_key`, `is_door`,
+`is_hazard`) and that none is a wall. `backends/scene_manifest.txt`
+carries `player_final`, `goal`, `key`, `door`, and `hazards`, and
+`scripts/record_validation.py` rejects drift in any of them, an
+out-of-grid cell, a marker on a wall, overlapping markers, or a player
+standing on a marker.
+
+The native and Godot hosts each draw the player cell-sized on the marker
+plane plus one unlit cube per game object, and `compare_renders.py verify`
+now gates four claims per host: dimensions, non-blank, run-to-run
+determinism, topology agreement, and finally that each game object shows
+its own dominant channel at its own cell (goal green, key yellow, door
+magenta, hazards red, player blue) so a right-shape-wrong-place or
+wrong-colour host fails. Both hosts pass. A note for future readers: both
+probes emit RGBA PNGs even though the native swapchain is BGRA, so the
+checker reads red first.
 
 ## Toward pixel comparison (status: both hosts captured)
 

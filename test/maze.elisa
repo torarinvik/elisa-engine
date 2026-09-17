@@ -21,6 +21,15 @@ def main() -> i32:
     result: TraceResult = maze_play_script()
     return 20 if not result.won or result.steps != 10 or result.moves != 10
     return 21 if result.player_x != maze_goal_x() or result.player_y != maze_goal_y()
+    return 22 if not is_key(maze_key_x(), maze_key_y()) or not is_door(maze_door_x(), maze_door_y())
+    return 23 if not is_hazard(maze_hazard_a_x(), maze_hazard_a_y())
+    return 24 if not is_hazard(maze_hazard_b_x(), maze_hazard_b_y())
+    return 25 if is_wall(maze_key_x(), maze_key_y()) or is_wall(maze_door_x(), maze_door_y())
+    return 26 if is_wall(maze_hazard_a_x(), maze_hazard_a_y()) or is_wall(maze_hazard_b_x(), maze_hazard_b_y())
+    fixture: TraceResult = maze_fixture_state()
+    return 27 if fixture.won or fixture.steps != 3 or fixture.moves != 3
+    return 28 if fixture.player_x != 1 or fixture.player_y != 4
+    return 29 if is_wall(fixture.player_x, fixture.player_y)
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0

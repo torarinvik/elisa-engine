@@ -3,26 +3,28 @@ version=1
 epoch=7
 entity=3
 camera_entity=4
-object_x=1.5
-object_y=1.5
-object_z=3.0
+object_x=-1.5
+object_y=0.3
+object_z=1.2
 camera_x=0.0
 camera_y=0.0
 camera_z=-5.0
 viewport_width=320
 viewport_height=200
 commands=create,update,destroy
-# Final player cell after the scripted win path in examples/maze/trace.elisa,
-# which test/maze.elisa pins (10 moves, reached the goal). object_x/object_y
-# are that cell in the shared world mapping (col * 0.6 - 2.1), so the entity
-# host object sits where the Elisa game says the player ended up; hosts do
-# not choose it.
-player_final=6,6
-# Cells whose projected centres the foreground entity object overlaps from
-# this camera. Both hosts occlude exactly these four, so the topology check
-# requires exact agreement everywhere else rather than a slack allowance.
-# scripts/record_validation.py checks these are real open cells.
-occluded=5,5;5,6;6,5;6,6
+# Player cell after the scripted mid-game snapshot in examples/maze/trace.elisa,
+# which test/maze.elisa pins (three moves, not yet won). object_x/object_y are
+# that cell in the shared world mapping (col * 0.6 - 2.1) and object_z places
+# the cell-sized entity just in front of the wall plane, so the entity host
+# object sits where the Elisa game says the player is; hosts do not choose it.
+player_final=1,4
+# Game markers from the MazeGame rules. test/maze.elisa pins each coordinate
+# against is_key/is_door/is_hazard and checks they are open cells, so the
+# fixture cannot drift from the rules that place them.
+goal=6,6
+key=2,6
+door=5,6
+hazards=5,2;2,5
 # Wall cells in the Elisa maze topology, row-major (x,y). The count is pinned
 # by test/maze.elisa (maze_wall_count == 34) and re-checked by
 # scripts/record_validation.py; test/maze_layout.elisa pins the Elisa-side

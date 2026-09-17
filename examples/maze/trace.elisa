@@ -1,15 +1,19 @@
-# Elisa-owned gameplay trace. A scripted input sequence is played through
+# Elisa-owned gameplay trace. Scripted input sequences are played through
 # the real maze game, so collision, the locked door, hazards, and the win
 # condition are exercised by engine rules. Hosts render the resulting
-# state; they never re-derive movement. test/maze.elisa pins this trace's
-# outcome, and backends/scene_manifest.txt carries the final cell to both
-# hosts so neither host chooses where the player ends up.
+# state; they never re-derive movement.
+#
+# Two runs are published: the full win path, which test/maze.elisa pins as
+# won in ten moves, and a short mid-game snapshot the scene fixture uses so
+# every marker (key, door, hazards, goal) is still ahead of the player and
+# therefore visible in a captured frame.
 include "./game.elisa"
 
 module MazeTrace:
     private:
         const module Script:
             STEPS: usize = 10
+            FIXTURE_STEPS: usize = 3
 
     public:
         struct TraceResult:
@@ -26,18 +30,31 @@ module MazeTrace:
         def maze_win_script() -> MazeMove[10]:
             [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East]
 
-        def maze_play_script() -> TraceResult:
+        # The first moves of that route: three South, leaving the player at
+        # (1,4) with every marker still ahead.
+        def maze_fixture_script() -> MazeMove[10]:
+            [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle]
+
+        def maze_play(script: MazeMove[10], steps: usize) -> TraceResult:
             game: mutable MazeGame = game_new()
             game_start(&game)
-            script: MazeMove[10] = maze_win_script()
-            steps: usize =
-                for index in 0..<Script::STEPS |count: usize = 0, game| -> count:
-                    moved: bool = game_step(&game, script[index])
+            # Value blocks thread mutable bindings only, so the read-only
+            # script parameter is copied into a mutable local first.
+            moves: mutable MazeMove[10] = script
+            taken: usize =
+                for index in 0..<steps |count: usize = 0, game, moves| -> count:
+                    moved: bool = game_step(&game, moves[index])
                     count <- count + 1 if moved
             TraceResult{
                 player_x: game.grid.player_x,
                 player_y: game.grid.player_y,
                 moves: game.grid.moves,
                 won: game_won(&game),
-                steps: steps,
+                steps: taken,
             }
+
+        def maze_play_script() -> TraceResult:
+            maze_play(maze_win_script(), Script::STEPS)
+
+        def maze_fixture_state() -> TraceResult:
+            maze_play(maze_fixture_script(), Script::FIXTURE_STEPS)

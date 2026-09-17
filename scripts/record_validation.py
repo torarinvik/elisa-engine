@@ -124,14 +124,17 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         parts = entry.split(",")
         if len(parts) != 2 or not all(part.lstrip("-").isdigit() for part in parts):
             raise ValueError(f"scene manifest wall cell malformed: {entry!r}")
-    # The entity host object must sit where the Elisa scripted game run ended.
-    # 6,6 is the goal, pinned by test/maze.elisa via maze_play_script (won in
-    # ten moves) and maze_goal_x/y, and 0.6/-2.1 is the shared world mapping
-    # the hosts and scripts/compare_renders.py both use.
-    if values.get("player_final") != "6,6":
+    # The entity host object must sit where the Elisa scripted run left the
+    # player. 1,4 is the mid-game snapshot pinned by test/maze.elisa via
+    # maze_fixture_state (three moves, not yet won), and 0.6/-2.1 is the
+    # shared world mapping the hosts and scripts/compare_renders.py both use.
+    if values.get("player_final") != "1,4":
         raise ValueError(f"scene manifest player_final drift: {values.get('player_final')!r}")
-    final_x = 6 * 0.6 - 2.1
-    final_y = 6 * 0.6 - 2.1
+    (player_x, player_y) = (int(part) for part in values["player_final"].split(","))
+    if not (0 <= player_x < 8 and 0 <= player_y < 8):
+        raise ValueError(f"scene manifest player_final out of grid: {values['player_final']!r}")
+    final_x = player_x * 0.6 - 2.1
+    final_y = player_y * 0.6 - 2.1
     for key, expected in (("object_x", final_x), ("object_y", final_y)):
         if abs(float(values.get(key, "nan")) - expected) > 1e-6:
             raise ValueError(f"scene manifest {key} drift: {values.get(key)!r}, expected {expected}")
@@ -141,9 +144,10 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
     for entry in wall_cells:
         (x, y) = entry.split(",")
         wall_set.add((int(x), int(y)))
+    # Optional: cells the fixture declares as hidden behind the foreground
+    # object. The checker skips exactly these, so they must be real open
+    # cells; an empty list just means nothing is occluded.
     occluded = [entry for entry in values.get("occluded", "").split(";") if entry]
-    if not occluded:
-        raise ValueError("scene manifest has no occluded cell declaration")
     for entry in occluded:
         parts = entry.split(",")
         if len(parts) != 2:
@@ -153,8 +157,49 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             raise ValueError(f"scene manifest occluded cell out of grid: {entry!r}")
         if (x, y) in wall_set:
             raise ValueError(f"scene manifest occluded cell is a wall: {entry!r}")
+    # Game markers must match the MazeGame rules. The literals here mirror the
+    # ones test/maze.elisa pins via is_key/is_door/is_hazard and the goal
+    # accessors; the Elisa test is the source of truth and this catches
+    # fixture drift.
+    def cell_of(key, expected):
+        value = values.get(key, "")
+        if value != expected:
+            raise ValueError(f"scene manifest {key} drift: {value!r}, expected {expected!r}")
+        (x, y) = (int(part) for part in value.split(","))
+        if not (0 <= x < 8 and 0 <= y < 8):
+            raise ValueError(f"scene manifest {key} out of grid: {value!r}")
+        if (x, y) in wall_set:
+            raise ValueError(f"scene manifest {key} is a wall: {value!r}")
+        return (x, y)
+
+    goal = cell_of("goal", "6,6")
+    key_cell = cell_of("key", "2,6")
+    door = cell_of("door", "5,6")
+    hazard_cells = []
+    for entry in [part for part in values.get("hazards", "").split(";") if part]:
+        parts = entry.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"scene manifest hazard cell malformed: {entry!r}")
+        (x, y) = int(parts[0]), int(parts[1])
+        if not (0 <= x < 8 and 0 <= y < 8):
+            raise ValueError(f"scene manifest hazard out of grid: {entry!r}")
+        if (x, y) in wall_set:
+            raise ValueError(f"scene manifest hazard is a wall: {entry!r}")
+        hazard_cells.append((x, y))
+    if len(hazard_cells) != 2:
+        raise ValueError(f"scene manifest hazard count drift: {len(hazard_cells)}, expected 2")
+    markers = [goal, key_cell, door] + hazard_cells
+    if len(set(markers)) != len(markers):
+        raise ValueError("scene manifest markers overlap")
+    # The snapshot must leave the player on an empty cell so every marker is
+    # still visible in a captured frame, and no marker may sit on the player.
+    if (player_x, player_y) in wall_set:
+        raise ValueError("scene manifest player_final is a wall")
+    if (player_x, player_y) in markers:
+        raise ValueError("scene manifest player_final overlaps a marker")
     return {"sha256": sha256_file(manifest), "fields": len(values),
-            "wall_cells": len(wall_cells), "occluded_cells": len(occluded)}
+            "wall_cells": len(wall_cells), "occluded_cells": len(occluded),
+            "markers": len(markers)}
 
 
 def main(arguments: list[str]) -> int:
