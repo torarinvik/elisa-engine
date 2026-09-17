@@ -188,12 +188,55 @@ int main(int argc, char** argv) {
         {"hazards", "elisa_hazard", 0.95f, 0.15f, 0.1f},
         {"hunter", "elisa_hunter", 1.0f, 0.55f, 0.1f},
     };
+    // Authored asset: import the same glTF the Godot host loads, through
+    // cgltf, and verify its triangle count. This is the pipeline's import
+    // stage (normalized counts); renderer mesh creation is a later step.
+    CookedPackage cooked_package;
+    {
+        const auto asset_it = manifest.find("mesh_asset");
+        const auto triangles_it = manifest.find("mesh_triangles");
+        if (asset_it != manifest.end() && triangles_it != manifest.end()) {
+            const std::filesystem::path manifest_dir = std::filesystem::path(argv[2]).parent_path();
+            const std::filesystem::path asset_path = (manifest_dir / ".." / asset_it->second).lexically_normal();
+            const int expected_triangles = std::stoi(triangles_it->second);
+            const AssetSummary summary = import_gltf_triangles(asset_path.string());
+            std::fprintf(stdout, "mesh asset: triangles=%d expected=%d positions=%d\n",
+                summary.triangles, expected_triangles, summary.positions);
+            if (!check(summary.ok && summary.triangles == expected_triangles, "mesh asset triangle count")) {
+                return 1;
+            }
+            // Load the cooked package the offline tool produced and require it
+            // to agree with this host's own import. The runtime reads the
+            // package, not the source, so a disagreement is a pipeline defect.
+            const std::filesystem::path package_path =
+                manifest_dir / ".." / "build" / "cooked" / (asset_path.stem().string() + ".pkg");
+            const CookedPackage package = load_cooked_package(package_path.lexically_normal().string());
+            cooked_package = package;
+            std::fprintf(stdout, "cooked package: loaded=%d format=%s triangles=%lld positions=%lld\n",
+                package.loaded ? 1 : 0, package.format.c_str(), package.triangles, package.positions);
+            if (!check(package.loaded, "cooked package format") ||
+                !check(package.triangles == summary.triangles && package.positions == summary.positions,
+                    "cooked package counts match the import")) {
+                return 1;
+            }
+        }
+    }
+
+
     wi::ecs::Entity hunter_marker = wi::ecs::INVALID_ENTITY;
     for (const auto& spec : marker_specs) {
         for (const auto& cell : marker_cells(spec.field)) {
-            const auto marker = create_cell_marker(scene,
-                std::string(spec.name) + "_" + std::to_string(cell.first) + "_" + std::to_string(cell.second),
-                cell.first, cell.second, spec.r, spec.g, spec.b);
+            const std::string marker_name =
+                std::string(spec.name) + "_" + std::to_string(cell.first) + "_" + std::to_string(cell.second);
+            // The goal marker is built from the cooked package's geometry, so
+            // the authored asset reaches the screen through the pipeline. If
+            // no package loaded, fall back to the procedural cube.
+            const bool use_cooked = std::string(spec.field) == "goal" && cooked_package.loaded;
+            const auto marker = use_cooked
+                ? create_cooked_mesh(scene, marker_name, cooked_package,
+                    to_wicked_space((float)cell.first * 0.6f - 2.1f, (float)cell.second * 0.6f - 2.1f, 1.0f),
+                    0.13f, XMFLOAT4(spec.r, spec.g, spec.b, 1.0f))
+                : create_cell_marker(scene, marker_name, cell.first, cell.second, spec.r, spec.g, spec.b);
             if (marker == wi::ecs::INVALID_ENTITY) {
                 return 1;
             }
@@ -335,38 +378,6 @@ int main(int argc, char** argv) {
     // Settle loop: pipeline states compile in the background on first use
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
-    // Authored asset: import the same glTF the Godot host loads, through
-    // cgltf, and verify its triangle count. This is the pipeline's import
-    // stage (normalized counts); renderer mesh creation is a later step.
-    {
-        const auto asset_it = manifest.find("mesh_asset");
-        const auto triangles_it = manifest.find("mesh_triangles");
-        if (asset_it != manifest.end() && triangles_it != manifest.end()) {
-            const std::filesystem::path manifest_dir = std::filesystem::path(argv[2]).parent_path();
-            const std::filesystem::path asset_path = (manifest_dir / ".." / asset_it->second).lexically_normal();
-            const int expected_triangles = std::stoi(triangles_it->second);
-            const AssetSummary summary = import_gltf_triangles(asset_path.string());
-            std::fprintf(stdout, "mesh asset: triangles=%d expected=%d positions=%d\n",
-                summary.triangles, expected_triangles, summary.positions);
-            if (!check(summary.ok && summary.triangles == expected_triangles, "mesh asset triangle count")) {
-                return 1;
-            }
-            // Load the cooked package the offline tool produced and require it
-            // to agree with this host's own import. The runtime reads the
-            // package, not the source, so a disagreement is a pipeline defect.
-            const std::filesystem::path package_path =
-                manifest_dir / ".." / "build" / "cooked" / (asset_path.stem().string() + ".pkg");
-            const CookedPackage package = load_cooked_package(package_path.lexically_normal().string());
-            std::fprintf(stdout, "cooked package: loaded=%d format=%s triangles=%lld positions=%lld\n",
-                package.loaded ? 1 : 0, package.format.c_str(), package.triangles, package.positions);
-            if (!check(package.loaded, "cooked package format") ||
-                !check(package.triangles == summary.triangles && package.positions == summary.positions,
-                    "cooked package counts match the import")) {
-                return 1;
-            }
-        }
-    }
-
     // Audio: decode a generated clip and play one instance per cue the Elisa
     // game emitted. The check itself lives in native/audio_probe.h.
     if (!probe_audio(manifest)) {

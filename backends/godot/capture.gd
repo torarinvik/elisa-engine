@@ -105,6 +105,10 @@ func _run_capture() -> void:
         {"field": "hunter", "name": "ElisaHunter", "color": Color(1.0, 0.55, 0.1, 1.0)},
     ]
     # Status indicator: the host draws the game's state as a coloured cell.
+    # Built later from the cooked package's geometry, used by the goal marker,
+    # so it must be declared before the marker loop runs.
+    var cooked_goal_mesh: ArrayMesh = null
+
     var status_colors := {
         "playing": Color(0.1, 0.85, 0.9, 1.0),
         "paused": Color(0.95, 0.85, 0.1, 1.0),
@@ -147,13 +151,21 @@ func _run_capture() -> void:
             var cell_y := int(parts[1])
             var marker := MeshInstance3D.new()
             marker.name = "%s_%d_%d" % [spec["name"], cell_x, cell_y]
-            var marker_mesh := BoxMesh.new()
-            marker_mesh.size = Vector3(0.52, 0.52, 0.52)
+            # The goal marker is built from the cooked package's geometry when
+            # one loaded, so the authored asset reaches the screen through the
+            # pipeline; otherwise the procedural box is used.
+            var use_cooked: bool = String(spec["field"]) == "goal" and cooked_goal_mesh != null
+            if use_cooked:
+                marker.mesh = cooked_goal_mesh
+                marker.scale = Vector3(0.13, 0.13, 0.13)
+            else:
+                var box_mesh := BoxMesh.new()
+                box_mesh.size = Vector3(0.52, 0.52, 0.52)
+                marker.mesh = box_mesh
             var marker_material := StandardMaterial3D.new()
             marker_material.albedo_color = spec["color"]
             marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-            marker_mesh.material = marker_material
-            marker.mesh = marker_mesh
+            marker.material_override = marker_material
             marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
             scene_root.add_child(marker)
             if String(spec["field"]) == "hunter":
@@ -224,9 +236,29 @@ func _run_capture() -> void:
             package[text.left(text.find("="))] = text.substr(text.find("=") + 1).strip_edges()
         print("cooked package: loaded=%s format=%s triangles=%s" % [
             package.has("format"), package.get("format", ""), package.get("triangles", "")])
-        if package.get("format", "") != "elisa-cooked-v1" or int(package.get("triangles", "-1")) != mesh_triangles:
+        if package.get("format", "") != "elisa-cooked-v2" or int(package.get("triangles", "-1")) != mesh_triangles:
             _fail("cooked package does not match the import")
             return
+        # Build a renderable mesh from the cooked geometry, so the authored
+        # asset reaches the screen through the pipeline rather than from a
+        # source format.
+        var position_floats := Marshalls.base64_to_raw(package["positions_b64"]).to_float32_array()
+        var normal_floats := Marshalls.base64_to_raw(package["normals_b64"]).to_float32_array()
+        var index_ints := Marshalls.base64_to_raw(package["indices_b64"]).to_int32_array()
+        var vertices := PackedVector3Array()
+        for index in range(position_floats.size() / 3):
+            vertices.append(Vector3(position_floats[index * 3], position_floats[index * 3 + 1], position_floats[index * 3 + 2]))
+        var normals := PackedVector3Array()
+        for index in range(normal_floats.size() / 3):
+            normals.append(Vector3(normal_floats[index * 3], normal_floats[index * 3 + 1], normal_floats[index * 3 + 2]))
+        var arrays := []
+        arrays.resize(Mesh.ARRAY_MAX)
+        arrays[Mesh.ARRAY_VERTEX] = vertices
+        arrays[Mesh.ARRAY_NORMAL] = normals
+        arrays[Mesh.ARRAY_INDEX] = index_ints
+        cooked_goal_mesh = ArrayMesh.new()
+        cooked_goal_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+        print("cooked package: mesh vertices=%d indices=%d" % [vertices.size(), index_ints.size()])
 
     var camera := Camera3D.new()
     camera.name = "ElisaCamera"

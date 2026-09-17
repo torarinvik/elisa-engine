@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 
-PACKAGE_FORMAT = "elisa-cooked-v1"
+PACKAGE_FORMAT = "elisa-cooked-v2"
 
 
 def read_manifest(root: Path) -> dict:
@@ -52,6 +52,24 @@ def source_bytes(root: Path, document: dict) -> bytes:
     return base64.b64decode(uri.split(";base64,", 1)[1])
 
 
+def accessor_bytes(document: dict, buffer: bytes, accessor_index: int) -> bytes:
+    accessor = document["accessors"][accessor_index]
+    view = document["bufferViews"][accessor["bufferView"]]
+    component_sizes = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}
+    components = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[accessor["type"]]
+    element = component_sizes[accessor["componentType"]] * components
+    stride = view.get("byteStride", element)
+    start = view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+    count = accessor["count"]
+    if stride == element:
+        return buffer[start:start + element * count]
+    packed = bytearray()
+    for index in range(count):
+        offset = start + index * stride
+        packed += buffer[offset:offset + element]
+    return bytes(packed)
+
+
 def normalized_counts(document: dict) -> dict:
     triangles = 0
     positions = 0
@@ -72,6 +90,38 @@ def normalized_counts(document: dict) -> dict:
     return {"triangles": triangles, "positions": positions, "bounds": bounds}
 
 
+def normalized_geometry(document: dict, buffer: bytes):
+    # Geometry in the shapes a runtime can upload directly: float32 positions
+    # and uint32 indices. Other component types are converted here, offline,
+    # so the runtime never has to know a source format's encodings.
+    for mesh in document.get("meshes", []):
+        for primitive in mesh.get("primitives", []):
+            attributes = primitive.get("attributes", {})
+            indices_ref = primitive.get("indices")
+            if indices_ref is None or "POSITION" not in attributes:
+                continue
+            position_accessor = document["accessors"][attributes["POSITION"]]
+            if position_accessor["componentType"] != 5126 or position_accessor["type"] != "VEC3":
+                raise ValueError("only float32 VEC3 positions are cooked")
+            positions = accessor_bytes(document, buffer, attributes["POSITION"])
+            index_accessor = document["accessors"][indices_ref]
+            if index_accessor["componentType"] not in (5123, 5125):
+                raise ValueError("only 16- or 32-bit indices are cooked")
+            normals = b""
+            if "NORMAL" in attributes:
+                normal_accessor = document["accessors"][attributes["NORMAL"]]
+                if normal_accessor["componentType"] == 5126 and normal_accessor["type"] == "VEC3":
+                    normals = accessor_bytes(document, buffer, attributes["NORMAL"])
+            raw_indices = accessor_bytes(document, buffer, indices_ref)
+            import struct
+            if index_accessor["componentType"] == 5123:
+                converted = b"".join(struct.pack("<I", value) for (value,) in struct.iter_unpack("<H", raw_indices))
+            else:
+                converted = raw_indices
+            return {"positions": positions, "normals": normals, "indices": converted}
+    raise ValueError("no primitive with positions and indices")
+
+
 def cook(root: Path) -> Path:
     manifest = read_manifest(root)
     asset_rel = manifest.get("mesh_asset", "")
@@ -88,6 +138,7 @@ def cook(root: Path) -> Path:
     if counts["positions"] <= 0 or counts["bounds"] is None:
         raise ValueError("cooked positions or bounds are missing")
     digest = hashlib.sha256(data).hexdigest()
+    geometry = normalized_geometry(document, source_bytes(root, document))
 
     package_dir = root / "build/cooked"
     package_dir.mkdir(parents=True, exist_ok=True)
@@ -100,6 +151,11 @@ def cook(root: Path) -> Path:
         f"positions={counts['positions']}",
         "bounds_min=" + ",".join(str(v) for v in counts["bounds"][0]),
         "bounds_max=" + ",".join(str(v) for v in counts["bounds"][1]),
+        "position_stride=12",
+        "index_stride=4",
+        "positions_b64=" + base64.b64encode(geometry["positions"]).decode(),
+        "normals_b64=" + base64.b64encode(geometry["normals"]).decode(),
+        "indices_b64=" + base64.b64encode(geometry["indices"]).decode(),
     ]
     package.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"cooked {asset_rel} -> {package} ({counts['triangles']} triangles, sha256 {digest[:12]})")

@@ -307,16 +307,19 @@ fails and stores the package name, hash, and size in
 `build/validation.json`. Verified both ways: changing the fixture's
 `mesh_triangles` to 99 makes cooking exit 1 with
 `cooked triangles 12 disagree with the fixture's 99`, and restoring it
-cooks cleanly. Both hosts now cook then load: each driver runs the cooker before
-starting its host, and each host loads `build/cooked/maze_tile.pkg`,
-requires the known format, and refuses a package whose counts disagree
-with its own import. Observed in both: `cooked package: loaded=true
-format=elisa-cooked-v1 triangles=12`, matching the cgltf import and the
-Godot import. The runtime therefore reads normalized, versioned data
-rather than a source format. What remains is a package that carries
-vertex data (so a host can build meshes from it alone), Elisa-side
-emission of the fixture, and Elisa-side cooking — the last two need the
-file IO capability `elisac` lacks.
+cooks cleanly. The package has since grown to `elisa-cooked-v2`, which carries geometry:
+float32 positions and normals plus uint32 indices, so a host can build a
+mesh from normalized data alone. Both hosts do exactly that — the native
+host rebuilds its mesh component and re-uploads, and the Godot host builds
+an `ArrayMesh` — and both use it for the goal marker, so the authored
+asset is *visible* and verified by the existing goal colour check rather
+than by a separate printout. Observed: native `cooked package: loaded=1
+format=elisa-cooked-v2 triangles=12 positions=24`, Godot `mesh vertices=24
+indices=36`, with topology, marker, fog, and route checks all still exact.
+The runtime therefore reads normalized, versioned geometry rather than a
+source format. What remains is Elisa-side emission and cooking, which need
+the file IO capability `elisac` lacks, and a package that carries a full
+scene rather than one mesh.
 
 ## Authored asset loading (2026-09-18)
 
