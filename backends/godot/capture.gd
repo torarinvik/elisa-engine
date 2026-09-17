@@ -208,6 +208,25 @@ func _run_capture() -> void:
         if mesh_triangles != expected_triangles:
             _fail("mesh asset triangle count mismatch")
             return
+        # Load the cooked package the offline tool produced and require it to
+        # agree with this host's own import: the runtime reads the package,
+        # not the source format.
+        var package_path: String = manifest_dir.path_join("..").path_join("build/cooked").path_join(
+            asset_path.get_file().get_basename() + ".pkg").simplify_path()
+        if not FileAccess.file_exists(package_path):
+            _fail("cooked package is missing: %s" % package_path)
+            return
+        var package := {}
+        for line in FileAccess.get_file_as_string(package_path).split("\n"):
+            var text := line.strip_edges()
+            if text.is_empty() or text.find("=") < 1:
+                continue
+            package[text.left(text.find("="))] = text.substr(text.find("=") + 1).strip_edges()
+        print("cooked package: loaded=%s format=%s triangles=%s" % [
+            package.has("format"), package.get("format", ""), package.get("triangles", "")])
+        if package.get("format", "") != "elisa-cooked-v1" or int(package.get("triangles", "-1")) != mesh_triangles:
+            _fail("cooked package does not match the import")
+            return
 
     var camera := Camera3D.new()
     camera.name = "ElisaCamera"

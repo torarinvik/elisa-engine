@@ -55,6 +55,12 @@ def main(arguments: darray[sview]) -> i64:
         eprint("Missing Jolt library")
         return 2
 
+    # Cook authored assets before the host runs, so the host loads a package
+    # rather than the source format.
+    cook_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/cook_assets.py")), str(root)])
+    if cook_status != 0:
+        return cook_status
+
     _ = create_directories(root.joinpath("build"))
     cxx: sview = get_environment_or("CXX", "c++")
     sdl_include: sview = get_environment_or("WICKED_SDL_INCLUDE_DIR", "/opt/homebrew/include")

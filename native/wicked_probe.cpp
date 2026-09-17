@@ -24,6 +24,7 @@
 
 #include "probe_support.h"
 #include "asset_import.h"
+#include "package_load.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -348,6 +349,19 @@ int main(int argc, char** argv) {
             std::fprintf(stdout, "mesh asset: triangles=%d expected=%d positions=%d\n",
                 summary.triangles, expected_triangles, summary.positions);
             if (!check(summary.ok && summary.triangles == expected_triangles, "mesh asset triangle count")) {
+                return 1;
+            }
+            // Load the cooked package the offline tool produced and require it
+            // to agree with this host's own import. The runtime reads the
+            // package, not the source, so a disagreement is a pipeline defect.
+            const std::filesystem::path package_path =
+                manifest_dir / ".." / "build" / "cooked" / (asset_path.stem().string() + ".pkg");
+            const CookedPackage package = load_cooked_package(package_path.lexically_normal().string());
+            std::fprintf(stdout, "cooked package: loaded=%d format=%s triangles=%lld positions=%lld\n",
+                package.loaded ? 1 : 0, package.format.c_str(), package.triangles, package.positions);
+            if (!check(package.loaded, "cooked package format") ||
+                !check(package.triangles == summary.triangles && package.positions == summary.positions,
+                    "cooked package counts match the import")) {
                 return 1;
             }
         }

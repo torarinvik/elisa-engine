@@ -66,6 +66,14 @@ def main(arguments: darray[sview]) -> i64:
             return 2
         candidate
 
+    # Cook authored assets before the host runs, so the host loads a package
+    # rather than the source format.
+    _ =
+        cook_status: i64 = run_visible(python, [str(root.joinpath("scripts/cook_assets.py")), str(root)])
+        if cook_status != 0:
+            return cook_status
+        cook_status
+
     first_capture: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(godot), ["--path", project, "--script", "res://capture.gd", "--", manifest, frame], empty_input)
