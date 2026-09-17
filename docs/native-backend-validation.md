@@ -173,13 +173,12 @@ listed); `backends/scene_manifest.txt` carries the list to the probe as
 a `walls=` line whose count `scripts/record_validation.py` re-checks
 against the same 34 the Elisa test pins; and `native/wicked_probe.cpp`
 builds one unlit cube per cell on a vertical plane the default frustum
-contains. The captured 640x400 frame shows the maze wall pattern
-(verified by sampling projected cell centers), and the driver now runs
-the probe twice and requires a strict zero-tolerance pixel compare, so
-render determinism is gated rather than asserted. Sample projection
-drifts by a couple of cells near the interior, so the frame is checked
-for structure, not yet for exact per-cell correspondence; a projective
-check belongs with the eventual Godot capture.
+contains. The driver runs the probe twice, requires a strict
+zero-tolerance pixel compare, and then verifies the frame cell by cell:
+every projected grid position must be bright exactly when it is a wall
+or a declared game marker, and dark otherwise. The earlier
+structure-only sampling and its interior drift are gone; the check is
+now exact and the markers are colour-checked separately.
 
 ## Godot rendered capture (2026-09-18)
 
@@ -191,15 +190,14 @@ so `scripts/godot_capture.elisascript` runs Godot with the real display
 driver, which works here (Metal-backed OpenGL compatibility device) and
 needs a window server, unlike the main gate's headless probe.
 
-The runner gates four things and all pass: the capture is non-blank
-(320x200), two captures are byte-identical (`peak=0.0000 mean=0.0000`),
-the frame encodes the Elisa wall topology by sampling each projected
-grid cell (two samples allowed because the foreground entity cube
-occludes two wall centres from this camera), and the Godot and Wicked
-frames produce identical topology grids. That last check is the plan's
-"scene semantics agree across backends" made executable, and it compares
-structure rather than raw colour, since the two renderers shade
-differently.
+The runner gates the same claims as the native driver and all pass:
+non-blank (320x200), byte-identical across two captures
+(`peak=0.0000 mean=0.0000`), exact topology agreement cell by cell, each
+game marker in its own colour at its own cell, and identical topology
+grids between the Godot and Wicked frames. That last check is the plan's
+"scene semantics agree across backends" made executable; it compares
+structure and per-marker colour, not per-pixel shading, since the two
+renderers tonemap differently.
 
 ## Handedness correction (2026-09-18)
 
@@ -242,6 +240,21 @@ magenta, hazards red, player blue) so a right-shape-wrong-place or
 wrong-colour host fails. Both hosts pass. A note for future readers: both
 probes emit RGBA PNGs even though the native swapchain is BGRA, so the
 checker reads red first.
+
+## Navigating character (2026-09-18)
+
+`examples/maze/hunter.elisa` adds the gameplay half of Phase 5's
+"moves, collides, navigates": a character that asks the navigation
+module for a fresh shortest path over the maze walls each step and takes
+one cell at a time. It can never cross a wall, it reports a bounded
+deterministic run (start at (1,1), reach (2,6) in six steps), and a
+walled target yields no route so it does not move at all. The spawn cell
+is published (`hunter_spawn_x/y`) and the test pins it to a valid open
+cell; `backends/scene_manifest.txt` carries `hunter=1,1`, the validator
+rejects drift or a spawn on the player/another marker, and both hosts
+draw the character with its own colour, which the checker verifies.
+What remains for this character is skeletal animation and unloading,
+which need the ozz integration; navigation itself is done and gated.
 
 ## Toward pixel comparison (status: both hosts captured)
 

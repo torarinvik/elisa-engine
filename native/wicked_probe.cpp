@@ -230,6 +230,7 @@ int main(int argc, char** argv) {
         {"key", "elisa_key", 0.95f, 0.85f, 0.1f},
         {"door", "elisa_door", 0.85f, 0.2f, 0.9f},
         {"hazards", "elisa_hazard", 0.95f, 0.15f, 0.1f},
+        {"hunter", "elisa_hunter", 1.0f, 0.55f, 0.1f},
     };
     for (const auto& spec : marker_specs) {
         for (const auto& cell : marker_cells(spec.field)) {

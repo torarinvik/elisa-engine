@@ -1,10 +1,13 @@
 include "../examples/maze/maze.elisa"
 include "../examples/maze/layout.elisa"
 include "../examples/maze/trace.elisa"
+include "../examples/maze/hunter.elisa"
 using Maze
 using MazeLayout
 using MazeGame
 using MazeTrace
+using MazeHunter
+using Nav
 
 def main() -> i32:
     return 1 if maze_width() != 8 or maze_height() != 8
@@ -30,6 +33,17 @@ def main() -> i32:
     return 27 if fixture.won or fixture.steps != 3 or fixture.moves != 3
     return 28 if fixture.player_x != 1 or fixture.player_y != 4
     return 29 if is_wall(fixture.player_x, fixture.player_y)
+    walls: bool[64] = maze_walls()
+    hunter: mutable Hunter = hunter_new(hunter_spawn_x(), hunter_spawn_y())
+    return 30 if not hunter_valid(&hunter, walls) or hunter_spawn_x() != 1 or hunter_spawn_y() != 1
+    taken: usize = hunter_chase(&hunter, 2, 6)
+    return 31 if not hunter.arrived or hunter.x != 2 or hunter.y != 6
+    return 32 if taken != 6 or not hunter_valid(&hunter, walls)
+    # A walled target has no route, so the hunter must not move at all.
+    stuck: mutable Hunter = hunter_new(hunter_spawn_x(), hunter_spawn_y())
+    halted: usize = hunter_chase(&stuck, 3, 3)
+    return 33 if halted != 0 or stuck.arrived or stuck.x != 1 or stuck.y != 1
+    return 34 if not hunter_valid(&stuck, walls)
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0

@@ -198,7 +198,7 @@ def resolve_markers(spec):
     lit = set()
     for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
-        for field in ("goal", "key", "door", "player_final"):
+        for field in ("goal", "key", "door", "player_final", "hunter"):
             if text.startswith(field + "="):
                 (x, y) = text[len(field) + 1:].split(",")
                 lit.add((int(x), int(y)))
@@ -219,7 +219,7 @@ def resolve_marker_fields(spec):
     fields = {}
     for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
-        for field in ("goal", "key", "door", "hazards", "player_final"):
+        for field in ("goal", "key", "door", "hazards", "player_final", "hunter"):
             if text.startswith(field + "="):
                 fields[field] = text[len(field) + 1:]
     return fields
@@ -250,6 +250,7 @@ def marker_colour_failures(source, rows, cols, spec, margin=0.03):
         ("key", lambda r, g, b: r > b + margin and g > b + margin),
         ("door", lambda r, g, b: r > g + margin and b > g + margin),
         ("hazards", lambda r, g, b: r > g + margin and r > b + margin),
+        ("hunter", lambda r, g, b: r > g + margin and g > b + margin),
         ("player_final", lambda r, g, b: b > r + margin and b > g + margin),
     ]
     for field, matches in rules:

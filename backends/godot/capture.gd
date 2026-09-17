@@ -87,6 +87,7 @@ func _run_capture() -> void:
         {"field": "key", "name": "ElisaKey", "color": Color(0.95, 0.85, 0.1, 1.0)},
         {"field": "door", "name": "ElisaDoor", "color": Color(0.85, 0.2, 0.9, 1.0)},
         {"field": "hazards", "name": "ElisaHazard", "color": Color(0.95, 0.15, 0.1, 1.0)},
+        {"field": "hunter", "name": "ElisaHunter", "color": Color(1.0, 0.55, 0.1, 1.0)},
     ]
     var marker_count := 0
     for spec in marker_specs:

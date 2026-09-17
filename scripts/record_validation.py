@@ -188,7 +188,10 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         hazard_cells.append((x, y))
     if len(hazard_cells) != 2:
         raise ValueError(f"scene manifest hazard count drift: {len(hazard_cells)}, expected 2")
-    markers = [goal, key_cell, door] + hazard_cells
+    hunter = cell_of("hunter", "1,1")
+    if hunter == (player_x, player_y):
+        raise ValueError("scene manifest hunter overlaps the player")
+    markers = [goal, key_cell, door, hunter] + hazard_cells
     if len(set(markers)) != len(markers):
         raise ValueError("scene manifest markers overlap")
     # The snapshot must leave the player on an empty cell so every marker is

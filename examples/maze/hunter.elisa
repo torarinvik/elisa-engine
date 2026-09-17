@@ -1,0 +1,66 @@
+# A navigating maze character. Elisa owns the path decision: the hunter asks
+# the navigation module for a route over the maze walls and takes one cell
+# per step, so it can never walk through a wall or teleport. This is the
+# backend-independent gameplay half of Phase 5's "moves, collides,
+# navigates"; presentation only draws the resulting cell.
+include "./layout.elisa"
+include "../../src/nav/grid.elisa"
+
+module MazeHunter:
+    private:
+        const module Tune:
+            MAX_STEPS: usize = 64
+            SPAWN_X: i64 = 1
+            SPAWN_Y: i64 = 1
+
+    public:
+        struct Hunter:
+            x: mutable i64
+            y: mutable i64
+            steps: mutable usize
+            arrived: mutable bool
+
+        def hunter_new(x: i64, y: i64) -> Hunter:
+            Hunter{x: x, y: y, steps: 0, arrived: false}
+
+        # Published spawn cell: hosts draw the character where Elisa puts it,
+        # and test/maze.elisa checks the spawn is a valid open cell.
+        def hunter_spawn_x() -> i64:
+            Tune::SPAWN_X
+
+        def hunter_spawn_y() -> i64:
+            Tune::SPAWN_Y
+
+        def hunter_valid(hunter: Hunter&, walls: bool[64]) -> bool:
+            return false if hunter.x < 0 or hunter.y < 0 or hunter.x >= 8 or hunter.y >= 8
+            return false if walls[hunter.y * 8 + hunter.x]
+            hunter.steps <= Tune::MAX_STEPS
+
+        # One step along a freshly computed shortest path. Returns false when
+        # there is nothing to do: already arrived, no route, or the route is
+        # degenerate. Freshly computing each step keeps the decision purely a
+        # function of the current state.
+        def hunter_step(hunter: mutable Hunter&, target_x: i64, target_y: i64) -> bool:
+            walls: bool[64] = MazeLayout::maze_walls()
+            return false if not hunter_valid(hunter, walls)
+            return false if hunter.x == target_x and hunter.y == target_y
+            path: Path = find_path(walls, hunter.x, hunter.y, target_x, target_y)
+            return false if not path_found(&path) or path_length(&path) < 2
+            next: i64 = path_cell(&path, 1)
+            hunter.x <- next - next / 8 * 8
+            hunter.y <- next / 8
+            hunter.steps <- hunter.steps + 1
+            hunter.arrived <- hunter.x == target_x and hunter.y == target_y
+            true
+
+        # Chases until arrival or the step budget runs out; returns the number
+        # of steps taken, so a caller can assert a bounded, deterministic run.
+        def hunter_chase(hunter: mutable Hunter&, target_x: i64, target_y: i64) -> usize:
+            # The parameter is already a mutable reference, so it is passed on
+            # directly rather than address-taken again.
+            taken: usize =
+                for step in 0..<Tune::MAX_STEPS |count: usize = 0, hunter| -> count:
+                    moved: bool = hunter_step(hunter, target_x, target_y)
+                    break count if not moved
+                    count <- count + 1
+            taken
