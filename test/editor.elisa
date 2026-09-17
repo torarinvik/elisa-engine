@@ -1,0 +1,38 @@
+include "../src/tooling/editor.elisa"
+using Editor
+
+def main() -> i32:
+    history: mutable History = history_new()
+    return 1 if not history_valid(&history) or history_can_undo(&history) or history_can_redo(&history)
+
+    pushed: bool = history_push(&history, 7, 10, 20)
+    return 2 if not pushed or not history_can_undo(&history)
+    undone: UndoResult = history_undo(&history)
+    return 3 if not undone.applied or undone.value != 10 or history_can_undo(&history)
+    redone: UndoResult = history_redo(&history)
+    return 4 if not redone.applied or redone.value != 20 or history_can_redo(&history)
+
+    branched: bool = history_push(&history, 7, 20, 30)
+    return 5 if not branched or history_can_redo(&history)
+    back: UndoResult = history_undo(&history)
+    return 6 if not back.applied or back.value != 20
+    back_again: UndoResult = history_undo(&history)
+    return 7 if not back_again.applied or back_again.value != 10
+
+    for step in 0..<16 |history|:
+        filled: bool = history_push(&history, step.i64(), step.i64(), step.i64())
+        return 8 if not filled
+    return 9 if history.length != 16
+    overflow: bool = history_push(&history, 99, 1, 2)
+    return 10 if overflow or not history_valid(&history)
+
+    reloads: mutable Reloads = reloads_new()
+    return 11 if not reloads_valid(&reloads) or current_generation(&reloads, 5) != -1
+    first: bool = note_asset_reload(&reloads, 5)
+    return 12 if not first or current_generation(&reloads, 5) != 0 or not reloads_valid(&reloads)
+    second: bool = note_asset_reload(&reloads, 5)
+    return 13 if not second or current_generation(&reloads, 5) != 1
+    return 14 if not is_stale(&reloads, 5, 0) or is_stale(&reloads, 5, 1)
+    rejected: bool = note_asset_reload(&reloads, 0)
+    return 15 if rejected
+    0

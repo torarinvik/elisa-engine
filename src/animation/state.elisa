@@ -1,0 +1,93 @@
+# Elisa-owned animation state: clips, transitions, events, and root motion.
+# Sampling, blending, and pose evaluation inputs stay in Elisa; ozz or any
+# other sampler only consumes (clip, time, weight) and returns joint deltas.
+# The render or physics backend never advances animation state itself.
+module Anim:
+    private:
+        const module Tune:
+            IDLE_LEN: i64 = 60
+            WALK_LEN: i64 = 30
+            WIN_LEN: i64 = 45
+            HURT_LEN: i64 = 20
+            BLEND_TICKS: i64 = 4
+            MAX_EVENTS: usize = 8
+            WALK_HALF: i64 = 15
+            STRIDE: f32 = 0.03125
+            FULL_BLEND: f32 = 1.0
+            NO_BLEND: f32 = 0.0
+            EVENT_LOOP: i64 = 1
+            EVENT_STEP: i64 = 2
+
+    public:
+        enum Clip:
+            Idle
+            Walk
+            Win
+            Hurt
+
+        struct AnimState:
+            clip: mutable Clip
+            tick: mutable i64
+            blend: mutable f32
+            blend_left: mutable i64
+            distance: mutable f32
+            events: mutable i64[8]
+            event_count: mutable usize
+
+        def anim_new() -> AnimState:
+            AnimState{clip: Clip.Idle, tick: 0, blend: Tune::FULL_BLEND, blend_left: 0, distance: 0.0, events: zeroed, event_count: 0}
+
+        def clip_length(clip: Clip) -> i64:
+            return Tune::IDLE_LEN if clip == Clip.Idle
+            return Tune::WALK_LEN if clip == Clip.Walk
+            return Tune::WIN_LEN if clip == Clip.Win
+            Tune::HURT_LEN
+
+        def anim_valid(state: AnimState&) -> bool:
+            return false if state.tick < 0 or state.tick >= clip_length(state.clip)
+            return false if state.blend < Tune::NO_BLEND or state.blend > Tune::FULL_BLEND
+            return false if state.blend_left < 0 or state.blend_left > Tune::BLEND_TICKS
+            return false if state.event_count > Tune::MAX_EVENTS
+            true
+
+        def anim_event_at(state: AnimState&, index: usize) -> i64:
+            return -1 if index >= state.event_count
+            state.events[index]
+
+    private:
+        module Playback:
+            private:
+                def push_event(state: mutable AnimState&, id: i64) -> void:
+                    return if state.event_count >= Anim::Tune::MAX_EVENTS
+                    state.events[state.event_count] <- id
+                    state.event_count <- state.event_count + 1
+
+            public:
+                def play(state: mutable AnimState&, clip: Anim::Clip) -> void:
+                    return if state.clip == clip
+                    state.clip <- clip
+                    state.tick <- 0
+                    state.blend <- Anim::Tune::NO_BLEND
+                    state.blend_left <- Anim::Tune::BLEND_TICKS
+
+                def tick(state: mutable AnimState&) -> void:
+                    length: i64 = Anim::clip_length(state.clip)
+                    return if length <= 0
+                    next: mutable i64 = state.tick + 1
+                    wrapped: bool = next >= length
+                    next <- 0 if wrapped
+                    state.tick <- next
+                    push_event(state, Anim::Tune::EVENT_LOOP) if wrapped
+                    push_event(state, Anim::Tune::EVENT_STEP) if state.clip == Anim::Clip.Walk and next == Anim::Tune::WALK_HALF
+                    state.distance <- state.distance + Anim::Tune::STRIDE if state.clip == Anim::Clip.Walk
+                    return if state.blend_left <= 0
+                    state.blend_left <- state.blend_left - 1
+                    done: i64 = Anim::Tune::BLEND_TICKS - state.blend_left
+                    state.blend <- done.f32() / Anim::Tune::BLEND_TICKS.f32()
+
+    public:
+        def anim_play(state: mutable AnimState&, clip: Clip) -> void:
+            Playback::play(state, clip)
+
+        def anim_tick(state: mutable AnimState&) -> void:
+            Playback::tick(state)

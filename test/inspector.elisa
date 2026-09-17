@@ -1,0 +1,51 @@
+include "../src/tooling/inspector.elisa"
+using World
+using Backend
+using Geometry
+using Assets
+using Inspector
+
+def sample_visual() -> VisualAsset:
+    VisualAsset{
+        mesh: AssetId{high: 3, low: 1},
+        material: AssetId{high: 3, low: 2},
+        local_bounds: Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}},
+    }
+
+def main() -> i32:
+    budget: PerfBudget = default_budget()
+    return 1 if not budget_valid(&budget) or budget.max_frame_micros != 16667
+    counters: mutable PerfCounters = counters_new()
+    return 2 if mean_frame_micros(&counters) != 0
+
+    world: mutable World = catch world_new():
+        value: value
+        error failure: return 3
+    object: EntityRef = catch world_spawn(&world, Actor.Player):
+        value: value
+        error failure: return 4
+    recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    created: i32 = catch submit_create(&recorder, object, transform_identity(), sample_visual()):
+        ok: 0
+        error failure: 1
+    return 5 if created != 0
+
+    view: Snapshot = snapshot_from_world(&world, &recorder, 7, 1500, 0)
+    return 6 if not snapshot_valid(&view) or view.live_entities != 1 or view.queued_commands != 1
+    return 7 if view.tick != 7 or view.frame_micros != 1500
+    return 8 if not snapshot_within_budget(&view, &budget)
+
+    slow: Snapshot = snapshot_from_world(&world, &recorder, 8, 20000, 0)
+    return 9 if snapshot_within_budget(&slow, &budget)
+
+    record_frame(&counters, 1500, false)
+    record_frame(&counters, 20000, true)
+    record_frame(&counters, 1000, false)
+    return 10 if counters.frames != 3 or counters.over_budget != 1
+    return 11 if mean_frame_micros(&counters) != 7500 or counters.worst_micros != 20000
+    return 12 if counters.sample_count != 3
+
+    samples: i64[16] = [1500, 20000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+    return 13 if worst_sample(samples, 3) != 20000 or frames_over_budget(samples, 3, 16667) != 1
+    return 14 if worst_sample(samples, 0) != 0 or frames_over_budget(samples, 17, 16667) != 0
+    0

@@ -1,0 +1,141 @@
+# Canonical scene bridge: one Elisa-owned command stream feeds both hosts.
+# The Godot and Wicked probes consume the same epoch/entity/transform/viewport
+# contract validated here. Neither host may invent gameplay identity.
+include "../world/world.elisa"
+include "../math/geometry.elisa"
+include "../assets/descriptor.elisa"
+include "./recording.elisa"
+
+module SceneBridge:
+    private:
+        const module Limits:
+            MANIFEST_VERSION: i64 = 1
+            VIEWPORT_WIDTH: i32 = 320
+            VIEWPORT_HEIGHT: i32 = 200
+            MAX_SCENE_COMMANDS: usize = 256
+
+    public:
+        error BridgeError:
+            InvalidEpoch
+            IdentityMismatch
+            MissingCreate
+            MissingUpdate
+            MissingDestroy
+            UnexpectedCommand
+            InvalidViewport
+            Capacity
+
+        struct CanonicalScene:
+            epoch: i64
+            object: World::EntityRef
+            camera: World::EntityRef
+            object_position: Geometry::Vec3
+            camera_position: Geometry::Vec3
+            viewport_width: i32
+            viewport_height: i32
+            saw_create: bool
+            saw_update: bool
+            saw_destroy: bool
+
+        def manifest_version() -> i64:
+            Limits::MANIFEST_VERSION
+
+        def default_viewport_width() -> i32:
+            Limits::VIEWPORT_WIDTH
+
+        def default_viewport_height() -> i32:
+            Limits::VIEWPORT_HEIGHT
+
+        def viewport_valid(width: i32, height: i32) -> bool:
+            width > 0 and height > 0 and width <= 8192 and height <= 8192
+
+        def scene_valid(scene: CanonicalScene&) -> bool:
+            return false if scene.epoch <= 0 or scene.object.world_epoch != scene.epoch or scene.camera.world_epoch != scene.epoch
+            return false if scene.object.id <= 0 or scene.camera.id <= 0 or scene.object.id == scene.camera.id
+            return false if not viewport_valid(scene.viewport_width, scene.viewport_height)
+            scene.saw_create and scene.saw_update and scene.saw_destroy
+
+        def scene_lifecycle_complete(scene: CanonicalScene&) -> bool:
+            scene.saw_create and scene.saw_update and scene.saw_destroy and scene_valid(scene)
+
+        def scene_object_matches(scene: CanonicalScene&, reference: World::EntityRef) -> bool:
+            scene.object.world_epoch == reference.world_epoch and scene.object.id == reference.id
+
+    private:
+        module Build:
+            private:
+                def refs_equal(left: World::EntityRef, right: World::EntityRef) -> bool:
+                    left.world_epoch == right.world_epoch and left.id == right.id
+
+                def ref_valid(reference: World::EntityRef) -> bool:
+                    reference.world_epoch > 0 and reference.id > 0
+
+                def object_command_count(recorder: Backend::SceneRecorder&, object: World::EntityRef) -> usize:
+                    for index in 0..<recorder.command_count |count: usize = 0| -> count:
+                        command: Backend::SceneCommand = recorder.commands[index]
+                        count <- count + 1 if command.reference.world_epoch == object.world_epoch and command.reference.id == object.id
+
+                def camera_command_count(recorder: Backend::SceneRecorder&, camera: World::EntityRef) -> usize:
+                    for index in 0..<recorder.command_count |count: usize = 0| -> count:
+                        command: Backend::SceneCommand = recorder.commands[index]
+                        count <- count + 1 if command.reference.world_epoch == camera.world_epoch and command.reference.id == camera.id
+
+            public:
+                def from_recorder(recorder: Backend::SceneRecorder&, object: World::EntityRef, camera: World::EntityRef, camera_position: Geometry::Vec3, viewport_width: i32, viewport_height: i32) -> CanonicalScene error[BridgeError]:
+                    raise BridgeError.InvalidEpoch if not ref_valid(object) or not ref_valid(camera)
+                    raise BridgeError.IdentityMismatch if object.world_epoch != camera.world_epoch or object.id == camera.id
+                    raise BridgeError.InvalidViewport if viewport_width <= 0 or viewport_height <= 0 or viewport_width > 8192 or viewport_height > 8192
+                    raise BridgeError.Capacity if recorder.command_count > SceneBridge::Limits::MAX_SCENE_COMMANDS
+                    raise BridgeError.UnexpectedCommand if camera_command_count(recorder, camera) != 0
+                    raise BridgeError.MissingCreate if object_command_count(recorder, object) < 3
+                    saw_create: mutable bool = false
+                    saw_update: mutable bool = false
+                    saw_destroy: mutable bool = false
+                    order_ok: mutable bool = true
+                    last_position: mutable Geometry::Vec3 = Geometry::vec3_zero()
+                    for index in 0..<recorder.command_count |recorder, object, saw_create, saw_update, saw_destroy, order_ok, last_position|:
+                        command: Backend::SceneCommand = recorder.commands[index]
+                        is_object: bool = refs_equal(command.reference, object)
+                        if not is_object:
+                            order_ok <- false
+                        if is_object:
+                            if command.kind == Backend::SceneCommandKind.Create:
+                                order_ok <- false if saw_create
+                                saw_create <- true
+                                last_position <- command.transform.position
+                            if command.kind == Backend::SceneCommandKind.Update:
+                                order_ok <- false if not saw_create or saw_destroy
+                                saw_update <- true
+                                last_position <- command.transform.position
+                            if command.kind == Backend::SceneCommandKind.Destroy:
+                                order_ok <- false if not saw_create or saw_destroy
+                                saw_destroy <- true
+                    raise BridgeError.UnexpectedCommand if not order_ok
+                    raise BridgeError.MissingCreate if not saw_create
+                    raise BridgeError.MissingUpdate if not saw_update
+                    raise BridgeError.MissingDestroy if not saw_destroy
+                    CanonicalScene{
+                        epoch: object.world_epoch,
+                        object: object,
+                        camera: camera,
+                        object_position: last_position,
+                        camera_position: camera_position,
+                        viewport_width: viewport_width,
+                        viewport_height: viewport_height,
+                        saw_create: saw_create,
+                        saw_update: saw_update,
+                        saw_destroy: saw_destroy,
+                    }
+
+    public:
+        def scene_from_recorder(recorder: Backend::SceneRecorder&, object: World::EntityRef, camera: World::EntityRef, camera_position: Geometry::Vec3, viewport_width: i32, viewport_height: i32) -> CanonicalScene error[BridgeError]:
+            try Build::from_recorder(recorder, object, camera, camera_position, viewport_width, viewport_height)
+
+        def canonical_fixture_epoch() -> i64:
+            7
+
+        def canonical_fixture_object() -> World::EntityRef:
+            World::EntityRef{world_epoch: canonical_fixture_epoch(), id: 3}
+
+        def canonical_fixture_camera() -> World::EntityRef:
+            World::EntityRef{world_epoch: canonical_fixture_epoch(), id: 4}

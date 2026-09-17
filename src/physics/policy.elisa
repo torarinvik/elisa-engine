@@ -1,0 +1,86 @@
+# Physics authority: a delegated simulation, never a second game world.
+# Elisa chooses exactly one solver per body, supplies inputs, steps once,
+# and commits returned poses and events at a defined boundary. Kinematic
+# bodies receive motion from Elisa; dynamic bodies receive it from the
+# solver result. Two solvers never advance the same authoritative object.
+module Physics:
+    private:
+        const module Tune:
+            MAX_BODIES: usize = 8
+
+    public:
+        enum SolverKind:
+            None
+            Jolt
+            GodotPhysics
+
+        enum BodyKind:
+            Static
+            Kinematic
+            Dynamic
+
+        enum Mover:
+            Elisa
+            Solver
+
+        error ClaimError:
+            Capacity
+            WrongKind
+            AlreadyClaimed
+            SolverMismatch
+            UnknownBody
+
+        struct SolverClaim:
+            solver: mutable SolverKind
+            bodies: mutable i64[8]
+            count: mutable usize
+
+        def mover_for(kind: BodyKind) -> Mover:
+            Mover.Solver if kind == BodyKind.Dynamic else Mover.Elisa
+
+        def select_solver(want_jolt: bool, godot_ready: bool) -> SolverKind:
+            return SolverKind.Jolt if want_jolt
+            return SolverKind.GodotPhysics if godot_ready
+            SolverKind.None
+
+        def claim_new(solver: SolverKind) -> SolverClaim:
+            SolverClaim{solver: solver, bodies: zeroed, count: 0}
+
+        def claim_valid(claim: SolverClaim&) -> bool:
+            return false if claim.count > Tune::MAX_BODIES
+            return false if claim.count > 0 and claim.solver == SolverKind.None
+            true
+
+        def claim_holds(claim: SolverClaim&, id: i64) -> bool:
+            for index in 0..<claim.count |held: bool = false| -> held:
+                held <- true if claim.bodies[index] == id
+
+        def commit_order_ok(last_tick: i64, tick: i64) -> bool:
+            tick == last_tick + 1
+
+    private:
+        module Claims:
+            public:
+                def insert(claim: mutable SolverClaim&, id: i64, kind: BodyKind) -> void error[ClaimError]:
+                    raise ClaimError.WrongKind if kind != BodyKind.Dynamic
+                    raise ClaimError.SolverMismatch if claim.solver == SolverKind.None
+                    raise ClaimError.Capacity if claim.count >= Physics::Tune::MAX_BODIES
+                    raise ClaimError.AlreadyClaimed if Physics::claim_holds(claim, id)
+                    claim.bodies[claim.count] <- id
+                    claim.count <- claim.count + 1
+
+                def release(claim: mutable SolverClaim&, id: i64) -> void error[ClaimError]:
+                    slot: mutable usize = 8
+                    for index in 0..<claim.count |claim, id, slot|:
+                        slot <- index if claim.bodies[index] == id
+                    raise ClaimError.UnknownBody if slot >= claim.count
+                    for shift in slot..<claim.count - 1 |claim|:
+                        claim.bodies[shift] <- claim.bodies[shift + 1]
+                    claim.count <- claim.count - 1
+
+    public:
+        def claim_body(claim: mutable SolverClaim&, id: i64, kind: BodyKind) -> void error[ClaimError]:
+            try Claims::insert(claim, id, kind)
+
+        def release_body(claim: mutable SolverClaim&, id: i64) -> void error[ClaimError]:
+            try Claims::release(claim, id)

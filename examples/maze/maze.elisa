@@ -1,0 +1,93 @@
+# Maze vertical slice foundation: topology is a discrete grid, visuals stay
+# separate. Elisa owns player existence, movement policy, collision, goal, and
+# restart. Backends render derived transforms; they never decide movement.
+module Maze:
+    private:
+        const module Grid:
+            WIDTH: usize = 8
+            HEIGHT: usize = 8
+            START_X: i64 = 1
+            START_Y: i64 = 1
+            GOAL_X: i64 = 6
+            GOAL_Y: i64 = 6
+            MAX_MOVES: usize = 1024
+
+    public:
+        enum MazeMove:
+            Idle
+            North
+            South
+            West
+            East
+
+        struct MazeState:
+            player_x: i64
+            player_y: i64
+            moves: usize
+
+        def maze_width() -> usize:
+            Grid::WIDTH
+
+        def maze_height() -> usize:
+            Grid::HEIGHT
+
+        def maze_start() -> MazeState:
+            MazeState{player_x: Grid::START_X, player_y: Grid::START_Y, moves: 0}
+
+        def maze_new() -> MazeState:
+            maze_start()
+
+        def is_wall(x: i64, y: i64) -> bool:
+            return true if x < 0 or y < 0 or x >= maze_width().i64() or y >= maze_height().i64()
+            return true if x == 0 or y == 0 or x + 1 == maze_width().i64() or y + 1 == maze_height().i64()
+            return true if x == 3 and y >= 2 and y <= 5
+            return true if y == 4 and x >= 5 and x <= 6
+            false
+
+        def maze_valid(state: MazeState&) -> bool:
+            return false if state.player_x < 0 or state.player_y < 0 or state.player_x >= maze_width().i64() or state.player_y >= maze_height().i64() or state.moves > Grid::MAX_MOVES
+            not is_wall(state.player_x, state.player_y)
+
+        def maze_goal_x() -> i64:
+            Grid::GOAL_X
+
+        def maze_goal_y() -> i64:
+            Grid::GOAL_Y
+
+        def maze_at_goal(state: MazeState&) -> bool:
+            state.player_x == Grid::GOAL_X and state.player_y == Grid::GOAL_Y
+
+        def maze_wall_count() -> usize:
+            total: usize =
+                for y in 0..<Grid::HEIGHT |row_total: usize = 0| -> row_total:
+                    row: usize =
+                        for x in 0..<Grid::WIDTH |cell_total: usize = 0| -> cell_total:
+                            cell_total <- cell_total + 1 if is_wall(x.i64(), y.i64())
+                    row_total <- row_total + row
+            total
+
+    private:
+        module Steps:
+            private:
+                def delta_x(direction: MazeMove) -> i64:
+                    -1 if direction == MazeMove.West else 1 if direction == MazeMove.East else 0
+
+                def delta_y(direction: MazeMove) -> i64:
+                    -1 if direction == MazeMove.North else 1 if direction == MazeMove.South else 0
+
+            public:
+                def next_position(state: MazeState&, direction: MazeMove) -> MazeState:
+                    nx: i64 = state.player_x + delta_x(direction)
+                    ny: i64 = state.player_y + delta_y(direction)
+                    blocked: bool = direction == MazeMove.Idle or is_wall(nx, ny)
+                    MazeState{player_x: state.player_x, player_y: state.player_y, moves: state.moves} if blocked else MazeState{player_x: nx, player_y: ny, moves: state.moves + 1}
+
+    public:
+        def maze_try_move(state: mutable MazeState&, direction: MazeMove) -> bool:
+            next: MazeState = Steps::next_position(state, direction)
+            moved: bool = next.player_x != state.player_x or next.player_y != state.player_y
+            state <- next if moved
+            moved
+
+        def maze_restart(state: mutable MazeState&) -> void:
+            state <- maze_start()

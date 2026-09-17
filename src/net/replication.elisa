@@ -1,0 +1,82 @@
+# Replication above the transport: schemas, authority, interpolation and
+# prediction data, recovery, and rollback policy. GameNetworkingSockets (or
+# any transport) only moves bytes; Elisa owns who may write what, which
+# snapshots interpolate, and when a client re-simulates. Strict replay needs
+# the same solver and build; anything else is explicitly out of scope.
+module Net:
+    private:
+        const module Tune:
+            MAX_LOG: usize = 16
+            MAX_REVISION: i64 = 9223372036854775807
+
+    public:
+        enum Owner:
+            Server
+            Client
+
+        struct ReplRecord:
+            persistent: u64
+            x: i64
+            y: i64
+            revision: i64
+            owner: Owner
+
+        struct Snap:
+            tick: i64
+            x: i64
+            y: i64
+            high_water: i64
+
+        struct Determinism:
+            solver: i64
+            build: i64
+
+        def record_valid(record: ReplRecord&) -> bool:
+            return false if record.persistent == 0 or record.revision < 0 or record.revision > Tune::MAX_REVISION
+            true
+
+        def may_write(record: ReplRecord&, writer: Owner) -> bool:
+            return false if not record_valid(record)
+            record.owner == writer
+
+        def same_scope(left: Determinism, right: Determinism) -> bool:
+            left.solver == right.solver and left.build == right.build
+
+        def needs_rollback(local: ReplRecord&, remote: ReplRecord&) -> bool:
+            return false if not record_valid(local) or not record_valid(remote)
+            return false if local.persistent != remote.persistent
+            remote.revision > local.revision and (remote.x != local.x or remote.y != local.y)
+
+        def rollback_snapshot(record: ReplRecord&, tick: i64, high_water: i64) -> Snap:
+            Snap{tick: tick, x: record.x, y: record.y, high_water: high_water}
+
+        def interp_axis(older: i64, newer: i64, first_half: bool) -> i64:
+            older if first_half else (older + newer) / 2
+
+        def interp_position(older: ReplRecord&, newer: ReplRecord&, first_half: bool) -> ReplRecord:
+            ReplRecord{
+                persistent: newer.persistent,
+                x: interp_axis(older.x, newer.x, first_half),
+                y: interp_axis(older.y, newer.y, first_half),
+                revision: newer.revision,
+                owner: newer.owner,
+            }
+
+        def should_deliver(sequence: usize, loss_every: usize) -> bool:
+            return true if loss_every == 0
+            sequence % loss_every != 0
+
+        def arrival_tick(send_tick: i64, delay_ticks: i64) -> i64:
+            send_tick + delay_ticks
+
+        def delivered_in_window(first_sequence: usize, count: usize, loss_every: usize) -> usize:
+            return 0 if count > Net::Tune::MAX_LOG
+            for offset in 0..<count |delivered: usize = 0| -> delivered:
+                delivered <- delivered + 1 if should_deliver(first_sequence + offset, loss_every)
+
+        def last_acked_sequence(acks: bool[16], count: usize) -> i64:
+            return -1 if count > Net::Tune::MAX_LOG
+            found: i64 =
+                for index in 0..<count |last: i64 = -1| -> last:
+                    last <- index.i64() if acks[index]
+            found

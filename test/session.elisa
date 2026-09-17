@@ -1,0 +1,30 @@
+include "../src/net/session.elisa"
+using Net
+using Session
+
+def main() -> i32:
+    session: mutable NetSession = session_new()
+    return 1 if not session_valid(&session) or session_live(&session)
+    return 2 if session_open(&session) == false or session.stage != SessionStage.Handshake
+    return 3 if session_begin_live(&session)
+    return 4 if not session_admit(&session, 11) or not session_admit(&session, 11)
+    return 5 if not client_known(&session, 11) or client_known(&session, 0)
+    return 6 if not session_admit(&session, 12) or session.client_count != 2
+    return 7 if not session_begin_live(&session) or not session_live(&session)
+
+    return 8 if not session_grant(&session, 99, Owner.Client) or not owns_identity(&session, 99)
+    return 9 if session_grant(&session, 100, Owner.Server) or owns_identity(&session, 100)
+    return 10 if session_grant(&session, 0, Owner.Client)
+
+    return 11 if not session_set_profile(&session, 4, 2) or not degraded_ok(&session)
+    return 12 if session_set_profile(&session, 2, 9)
+    return 13 if not session_set_profile(&session, 2, 1) or degraded_ok(&session)
+
+    return 14 if not session_drop(&session, 11) or session.client_count != 1
+    return 15 if session.stage != SessionStage.Recovering or session.reconnects != 1
+    return 16 if session_live(&session) or not session_recover(&session) or not session_live(&session)
+    return 17 if session_drop(&session, 77)
+
+    session_close(&session)
+    return 18 if session.stage != SessionStage.Closed or session_live(&session)
+    0

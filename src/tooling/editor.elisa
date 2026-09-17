@@ -1,0 +1,105 @@
+# Authoring support: bounded undo/redo for inspector edits and explicit
+# asset reload generations. Content changes validate through ordinary
+# checks before they reach the running game; a stale generation never
+# resurrects an unloaded value. Code reload stays out of scope until
+# quiescence, callback draining, and state migration are demonstrated.
+module Editor:
+    private:
+        const module Tune:
+            MAX_EDITS: usize = 16
+            MAX_ASSETS: usize = 8
+
+    public:
+        struct Edit:
+            target: i64
+            before: i64
+            after: i64
+
+        struct History:
+            edits: mutable Edit[16]
+            length: mutable usize
+            position: mutable usize
+
+        struct UndoResult:
+            value: i64
+            applied: bool
+
+        struct Reloads:
+            assets: mutable u64[8]
+            generations: mutable i64[8]
+            count: mutable usize
+
+        def history_new() -> History:
+            History{edits: zeroed, length: 0, position: 0}
+
+        def history_valid(history: History&) -> bool:
+            history.position <= history.length and history.length <= Tune::MAX_EDITS
+
+        def history_can_undo(history: History&) -> bool:
+            history.position > 0
+
+        def history_can_redo(history: History&) -> bool:
+            history.position < history.length
+
+        def reloads_new() -> Reloads:
+            Reloads{assets: zeroed, generations: zeroed, count: 0}
+
+        def reloads_valid(state: Reloads&) -> bool:
+            return false if state.count > Tune::MAX_ASSETS
+            for index in 0..<state.count |seen_ok: bool = true| -> seen_ok:
+                seen_ok <- false if state.generations[index] < 0
+
+        def current_generation(state: Reloads&, asset: u64) -> i64:
+            found: i64 =
+                for index in 0..<state.count |best: i64 = -1| -> best:
+                    best <- state.generations[index] if state.assets[index] == asset
+            found
+
+        def is_stale(state: Reloads&, asset: u64, generation: i64) -> bool:
+            current_generation(state, asset) != generation
+
+    private:
+        module Changes:
+            public:
+                def append(history: mutable Editor::History&, target: i64, before: i64, after: i64) -> bool:
+                    return false if history.length >= Editor::Tune::MAX_EDITS
+                    history.edits[history.position] <- Editor::Edit{target: target, before: before, after: after}
+                    history.position <- history.position + 1
+                    history.length <- history.position
+                    true
+
+                def step_back(history: mutable Editor::History&) -> Editor::UndoResult:
+                    return Editor::UndoResult{value: 0, applied: false} if history.position == 0
+                    history.position <- history.position - 1
+                    Editor::UndoResult{value: history.edits[history.position].before, applied: true}
+
+                def step_forward(history: mutable Editor::History&) -> Editor::UndoResult:
+                    return Editor::UndoResult{value: 0, applied: false} if history.position >= history.length
+                    result: Editor::UndoResult = Editor::UndoResult{value: history.edits[history.position].after, applied: true}
+                    history.position <- history.position + 1
+                    result
+
+                def note_reload(state: mutable Editor::Reloads&, asset: u64) -> bool:
+                    return false if asset == 0
+                    for index in 0..<state.count |state, asset|:
+                        if state.assets[index] == asset:
+                            state.generations[index] <- state.generations[index] + 1
+                            return true
+                    return false if state.count >= Editor::Tune::MAX_ASSETS
+                    state.assets[state.count] <- asset
+                    state.generations[state.count] <- 0
+                    state.count <- state.count + 1
+                    true
+
+    public:
+        def history_push(history: mutable History&, target: i64, before: i64, after: i64) -> bool:
+            Changes::append(history, target, before, after)
+
+        def history_undo(history: mutable History&) -> UndoResult:
+            Changes::step_back(history)
+
+        def history_redo(history: mutable History&) -> UndoResult:
+            Changes::step_forward(history)
+
+        def note_asset_reload(state: mutable Reloads&, asset: u64) -> bool:
+            Changes::note_reload(state, asset)

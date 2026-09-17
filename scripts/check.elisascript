@@ -66,7 +66,6 @@ def rejects_ownership_copy(compiler: sview, source: sview, output: sview) -> boo
         return false
     true
 
-
 def main(arguments: darray[sview]) -> i64:
     if arguments.count != 0:
         eprint("usage: elisascript scripts/check.elisascript")
@@ -287,6 +286,216 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Deterministic headless game tests passed.")
+
+    bridge_scene_test_binary: sview = str(root.joinpath("build/scene-bridge-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", bridge_scene_test_binary, str(root.joinpath("test/scene_bridge.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(bridge_scene_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Canonical scene bridge tests passed.")
+
+    image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(image_compare_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Tolerance image comparison tests passed.")
+
+    package_test_binary: sview = str(root.joinpath("build/package-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", package_test_binary, str(root.joinpath("test/package.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(package_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Asset cooking tests passed.")
+
+    maze_test_binary: sview = str(root.joinpath("build/maze-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", maze_test_binary, str(root.joinpath("test/maze.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(maze_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Maze vertical slice tests passed.")
+
+    maze_game_test_binary: sview = str(root.joinpath("build/maze-game-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", maze_game_test_binary, str(root.joinpath("test/maze_game.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(maze_game_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Complete maze game tests passed.")
+
+    anim_test_binary: sview = str(root.joinpath("build/anim-state-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", anim_test_binary, str(root.joinpath("test/anim_state.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(anim_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Animation state tests passed.")
+
+    nav_test_binary: sview = str(root.joinpath("build/grid-nav-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", nav_test_binary, str(root.joinpath("test/grid_nav.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(nav_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Grid navigation tests passed.")
+
+    inspector_test_binary: sview = str(root.joinpath("build/inspector-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", inspector_test_binary, str(root.joinpath("test/inspector.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(inspector_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Inspector and performance counter tests passed.")
+
+    replication_test_binary: sview = str(root.joinpath("build/replication-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", replication_test_binary, str(root.joinpath("test/replication.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(replication_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Replication and determinism scope tests passed.")
+
+    physics_test_binary: sview = str(root.joinpath("build/physics-policy-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", physics_test_binary, str(root.joinpath("test/physics_policy.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(physics_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Physics authority tests passed.")
+
+    schedule_test_binary: sview = str(root.joinpath("build/schedule-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", schedule_test_binary, str(root.joinpath("test/schedule.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(schedule_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Runtime scheduler tests passed.")
+
+    editor_test_binary: sview = str(root.joinpath("build/editor-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", editor_test_binary, str(root.joinpath("test/editor.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(editor_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Editor undo and reload tests passed.")
+
+    session_test_binary: sview = str(root.joinpath("build/session-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", session_test_binary, str(root.joinpath("test/session.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(session_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Net session tests passed.")
+
+    bundle_test_binary: sview = str(root.joinpath("build/maze-bundle-test"))
+    _ =
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", bundle_test_binary, str(root.joinpath("test/maze_bundle.elisa"))])
+        if status != 0:
+            return status
+        status
+
+    _ =
+        status: i64 = run_visible(bundle_test_binary, [])
+        if status != 0:
+            return status
+        status
+
+    println("Maze bundle manifest tests passed.")
 
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
     if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/allocator_copy.elisa")), rejection_output):

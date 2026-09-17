@@ -1,0 +1,36 @@
+include "../src/backend/image_compare.elisa"
+using ImageCompare
+
+def solid(color: Rgba) -> Rgba[16]:
+    [color, color, color, color, color, color, color, color, color, color, color, color, color, color, color, color]
+
+def main() -> i32:
+    return 1 if max_pixels() != 16
+    loose: ImageTolerance = default_tolerance()
+    strict: ImageTolerance = strict_tolerance()
+    return 2 if not tolerance_valid(loose) or not tolerance_valid(strict)
+    return 3 if loose.per_channel != 0.02 or loose.mean_allowance != 0.005
+
+    black: Rgba = Rgba{r: 0.0, g: 0.0, b: 0.0, a: 1.0}
+    white: Rgba = Rgba{r: 1.0, g: 1.0, b: 1.0, a: 1.0}
+    return 4 if not pixel_valid(black) or not pixel_valid(white)
+    return 5 if channel_diff(0.0, 1.0) != 1.0 or channel_diff(0.75, 0.25) != 0.5
+    return 6 if not channel_within(0.0, 0.25, 0.5) or channel_within(0.0, 0.75, 0.5)
+    return 7 if not pixels_match(black, black, 0.0) or pixels_match(black, white, 0.02)
+    return 8 if pixel_max_error(black, black) != 0.0 or pixel_max_error(black, white) != 1.0
+
+    first: Rgba[16] = solid(black)
+    second: Rgba[16] = solid(black)
+    return 9 if not images_match(first, second, 4, strict) or mean_pixel_error(first, second, 4) != 0.0
+
+    near: Rgba = Rgba{r: 0.0078125, g: 0.0, b: 0.0, a: 1.0}
+    third: Rgba[16] = solid(black)
+    third[1] <- near
+    return 10 if not images_match(first, third, 2, loose)
+    return 11 if images_match(first, third, 2, strict)
+    return 12 if mean_pixel_error(first, third, 0) != 0.0 or images_match(first, third, 17, loose)
+
+    far: Rgba[16] = solid(white)
+    return 13 if images_match(first, far, 4, loose)
+    return 14 if tolerance_valid(ImageTolerance{per_channel: -1.0, mean_allowance: 0.0})
+    0

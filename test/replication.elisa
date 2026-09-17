@@ -1,0 +1,42 @@
+include "../src/net/replication.elisa"
+using Net
+
+def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
+    ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
+
+def main() -> i32:
+    det: Determinism = Determinism{solver: 7, build: 21}
+    other_solver: Determinism = Determinism{solver: 8, build: 21}
+    return 1 if not same_scope(det, det) or same_scope(det, other_solver)
+
+    local: ReplRecord = sample(Owner.Server, 3, 1, 1)
+    remote: ReplRecord = sample(Owner.Server, 4, 2, 1)
+    stale: ReplRecord = sample(Owner.Server, 2, 9, 9)
+    return 2 if not record_valid(&local) or not may_write(&local, Owner.Server)
+    return 3 if may_write(&local, Owner.Client)
+    return 4 if not needs_rollback(&local, &remote) or needs_rollback(&local, &stale)
+    same_pos: ReplRecord = sample(Owner.Server, 5, 1, 1)
+    return 6 if needs_rollback(&local, &same_pos)
+
+    snap: Snap = rollback_snapshot(&remote, 40, 128)
+    return 7 if snap.tick != 40 or snap.x != 2 or snap.high_water != 128
+
+    older: ReplRecord = sample(Owner.Server, 4, 0, 0)
+    newer: ReplRecord = sample(Owner.Server, 5, 4, 2)
+    at_old: ReplRecord = interp_position(&older, &newer, true)
+    at_mid: ReplRecord = interp_position(&older, &newer, false)
+    return 8 if at_old.x != 0 or at_old.y != 0 or at_old.revision != 5
+    return 9 if at_mid.x != 2 or at_mid.y != 1
+    return 10 if interp_axis(1, 2, false) != 1
+
+    return 11 if not should_deliver(1, 0) or not should_deliver(1, 3) or should_deliver(3, 3)
+    return 12 if arrival_tick(10, 2) != 12
+    return 13 if delivered_in_window(1, 6, 3) != 4
+
+    acks: bool[16] = [true, true, false, true, false, false, false, false, false, false, false, false, false, false, false, false]
+    return 14 if last_acked_sequence(acks, 4) != 3 or last_acked_sequence(acks, 0) != -1
+    return 15 if last_acked_sequence(acks, 17) != -1
+
+    bad: ReplRecord = ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
+    return 16 if record_valid(&bad) or may_write(&bad, Owner.Server) or needs_rollback(&bad, &remote)
+    0

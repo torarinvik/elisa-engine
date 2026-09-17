@@ -1,0 +1,73 @@
+# Asset cooking: source files plus import settings become validated,
+# normalized runtime packages. IDs stay stable across World lifetimes;
+# runtime pointers, backend handles, and compiler ordinals are never stored.
+include "./descriptor.elisa"
+include "../math/geometry.elisa"
+
+module AssetPackage:
+    private:
+        const module Cook:
+            PACKAGE_VERSION: i64 = 1
+            HASH_ADD: u64 = 7
+            HASH_MUL: u64 = 31
+
+    public:
+        error PackageError:
+            InvalidSource
+            DuplicateId
+            InvalidBounds
+            UnsupportedFormat
+
+        struct CookedPackage:
+            version: i64
+            mesh: Assets::AssetId
+            material: Assets::AssetId
+            content: Assets::AssetId
+            bounds: Geometry::Bounds3
+
+        def package_version() -> i64:
+            Cook::PACKAGE_VERSION
+
+        def package_valid(package: CookedPackage&) -> bool:
+            return false if package.version != Cook::PACKAGE_VERSION
+            return false if not Assets::asset_id_valid(package.mesh) or not Assets::asset_id_valid(package.material) or not Assets::asset_id_valid(package.content)
+            return false if Assets::same_asset_id(package.mesh, package.material)
+            Geometry::bounds3_valid(package.bounds)
+
+        def package_content_matches(package: CookedPackage&, mesh: Assets::AssetId, material: Assets::AssetId) -> bool:
+            Assets::same_asset_id(package.mesh, mesh) and Assets::same_asset_id(package.material, material)
+
+    private:
+        module Build:
+            private:
+                def combine_content(mesh: Assets::AssetId, material: Assets::AssetId) -> Assets::AssetId:
+                    Assets::AssetId{
+                        high: mesh.high + material.high + 1,
+                        low: mesh.low * AssetPackage::Cook::HASH_MUL + material.low + AssetPackage::Cook::HASH_ADD,
+                    }
+
+                def mesh_format_ok(source: Assets::SourceAsset) -> bool:
+                    source.format == Assets::SourceFormat.Gltf
+
+                def material_format_ok(source: Assets::SourceAsset) -> bool:
+                    source.format == Assets::SourceFormat.Gltf or source.format == Assets::SourceFormat.Png
+
+            public:
+                def cook(mesh_source: Assets::SourceAsset, material_source: Assets::SourceAsset, bounds: Geometry::Bounds3) -> CookedPackage error[PackageError]:
+                    raise PackageError.InvalidSource if not Assets::source_asset_valid(mesh_source) or not Assets::source_asset_valid(material_source)
+                    raise PackageError.UnsupportedFormat if not mesh_format_ok(mesh_source) or not material_format_ok(material_source)
+                    raise PackageError.DuplicateId if Assets::same_asset_id(mesh_source.id, material_source.id)
+                    raise PackageError.InvalidBounds if not Geometry::bounds3_valid(bounds)
+                    content: Assets::AssetId = combine_content(mesh_source.id, material_source.id)
+                    raise PackageError.DuplicateId if not Assets::asset_id_valid(content)
+                    CookedPackage{
+                        version: AssetPackage::package_version(),
+                        mesh: mesh_source.id,
+                        material: material_source.id,
+                        content: content,
+                        bounds: bounds,
+                    }
+
+    public:
+        def cook_package(mesh_source: Assets::SourceAsset, material_source: Assets::SourceAsset, bounds: Geometry::Bounds3) -> CookedPackage error[PackageError]:
+            try Build::cook(mesh_source, material_source, bounds)

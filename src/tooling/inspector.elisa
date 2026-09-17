@@ -1,0 +1,96 @@
+# Runtime inspector and measured performance counters. The inspector reads
+# authoritative Elisa state (world registry, recorder backlog, tick, timing)
+# without mutating it. Budgets are explicit data; regressions are attributed
+# to recorded workloads, never to a bare "zero overhead" claim.
+include "../world/world.elisa"
+include "../backend/recording.elisa"
+
+module Inspector:
+    private:
+        const module Bounds:
+            MAX_FRAMES: usize = 16
+            MAX_ERRORS: usize = 8
+
+    public:
+        struct Snapshot:
+            tick: i64
+            live_entities: usize
+            registry_slots: usize
+            queued_commands: usize
+            frame_micros: i64
+            errors: usize
+
+        struct PerfBudget:
+            max_frame_micros: i64
+            max_queued_commands: usize
+            max_live_entities: usize
+
+        struct PerfCounters:
+            frames: mutable usize
+            total_micros: mutable i64
+            worst_micros: mutable i64
+            over_budget: mutable usize
+            samples: mutable i64[16]
+            sample_count: mutable usize
+
+        def default_budget() -> PerfBudget:
+            PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_live_entities: 256}
+
+        def counters_new() -> PerfCounters:
+            PerfCounters{frames: 0, total_micros: 0, worst_micros: 0, over_budget: 0, samples: zeroed, sample_count: 0}
+
+        def snapshot_valid(view: Snapshot&) -> bool:
+            return false if view.tick < 0 or view.frame_micros < 0 or view.errors > Bounds::MAX_ERRORS
+            return false if view.live_entities > view.registry_slots or view.registry_slots > 256
+            view.queued_commands <= 256
+
+        def budget_valid(budget: PerfBudget&) -> bool:
+            budget.max_frame_micros > 0 and budget.max_live_entities > 0 and budget.max_live_entities <= 256 and budget.max_queued_commands <= 256
+
+        def snapshot_within_budget(view: Snapshot&, budget: PerfBudget&) -> bool:
+            return false if not snapshot_valid(view) or not budget_valid(budget)
+            view.frame_micros <= budget.max_frame_micros and view.queued_commands <= budget.max_queued_commands and view.live_entities <= budget.max_live_entities
+
+        def mean_frame_micros(counters: PerfCounters&) -> i64:
+            return 0 if counters.frames == 0
+            counters.total_micros / counters.frames.i64()
+
+        def worst_sample(samples: i64[16], count: usize) -> i64:
+            return 0 if count == 0 or count > Inspector::Bounds::MAX_FRAMES
+            for index in 0..<count |worst: i64 = 0| -> worst:
+                candidate: i64 = samples[index]
+                worst <- candidate if candidate > worst
+
+        def frames_over_budget(samples: i64[16], count: usize, budget_micros: i64) -> usize:
+            return 0 if count > Inspector::Bounds::MAX_FRAMES
+            for index in 0..<count |over: usize = 0| -> over:
+                over <- over + 1 if samples[index] > budget_micros
+
+    private:
+        module Build:
+            public:
+                def snapshot(world: World::World&, recorder: Backend::SceneRecorder&, tick: i64, frame_micros: i64, errors: usize) -> Inspector::Snapshot:
+                    Inspector::Snapshot{
+                        tick: tick,
+                        live_entities: world.live_count,
+                        registry_slots: world.registry_count,
+                        queued_commands: recorder.command_count,
+                        frame_micros: frame_micros,
+                        errors: errors,
+                    }
+
+                def note_frame(counters: mutable Inspector::PerfCounters&, frame_micros: i64, over: bool) -> void:
+                    counters.frames <- counters.frames + 1
+                    counters.total_micros <- counters.total_micros + frame_micros
+                    counters.worst_micros <- frame_micros if frame_micros > counters.worst_micros
+                    counters.over_budget <- counters.over_budget + 1 if over
+                    return if counters.sample_count >= Inspector::Bounds::MAX_FRAMES
+                    counters.samples[counters.sample_count] <- frame_micros
+                    counters.sample_count <- counters.sample_count + 1
+
+    public:
+        def snapshot_from_world(world: World::World&, recorder: Backend::SceneRecorder&, tick: i64, frame_micros: i64, errors: usize) -> Snapshot:
+            Build::snapshot(world, recorder, tick, frame_micros, errors)
+
+        def record_frame(counters: mutable PerfCounters&, frame_micros: i64, over: bool) -> void:
+            Build::note_frame(counters, frame_micros, over)

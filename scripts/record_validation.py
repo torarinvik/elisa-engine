@@ -39,7 +39,7 @@ def git_state(path: Path) -> Optional[dict]:
 
 def source_manifest(root: Path) -> dict:
     paths = [root / name for name in ("README.md", "dependencies.md", "Elisa_Engine_Architecture_and_Plan.md")]
-    for directory in ("src", "test", "proof", "scripts", "docs"):
+    for directory in ("src", "test", "proof", "scripts", "docs", "examples"):
         paths.extend(path for path in (root / directory).rglob("*") if path.is_file())
     files = {}
     digest = hashlib.sha256()
@@ -109,7 +109,7 @@ def main(arguments: list[str]) -> int:
                 "elisascript": tool_identity(launcher),
             },
             "proofs": proofs,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

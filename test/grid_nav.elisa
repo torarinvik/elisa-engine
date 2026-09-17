@@ -1,0 +1,44 @@
+include "../src/nav/grid.elisa"
+include "../examples/maze/maze.elisa"
+using Nav
+using Maze
+
+def build_walls() -> bool[64]:
+    walls: mutable bool[64] = zeroed
+    for y in 0..<8 |walls|:
+        for x in 0..<8 |walls|:
+            walls[y * 8 + x] <- is_wall(x.i64(), y.i64())
+    walls
+
+def adjacent(a: i64, b: i64) -> bool:
+    dx: i64 = a - b
+    adx: i64 = 0 - dx if dx < 0 else dx
+    adx == 8 or adx == 1 and a / 8 == b / 8
+
+def main() -> i32:
+    return 1 if nav_width() != 8 or nav_height() != 8
+    return 2 if cell_index(1, 1) != 9 or cell_index(6, 6) != 54 or cell_index(-1, 0) != 64
+    walls: bool[64] = build_walls()
+    return 3 if not walls[0] or walls[9] or not walls[27]
+
+    path: Path = find_path(walls, 1, 1, 6, 6)
+    return 4 if not path_found(&path) or path_length(&path) == 0 or path_length(&path) > 20
+    return 5 if path_cell(&path, 0) != 9 or path_cell(&path, path_length(&path) - 1) != 54
+    for step in 0..<path_length(&path) |path, walls|:
+        cell: i64 = path_cell(&path, step)
+        return 6 if cell < 0 or cell >= 64 or walls[cell.usize()]
+        return 7 if step > 0 and not adjacent(path_cell(&path, step - 1), cell)
+
+    same: Path = find_path(walls, 2, 1, 2, 1)
+    return 8 if not path_found(&same) or path_length(&same) != 1 or path_cell(&same, 0) != 10
+
+    blocked_goal: Path = find_path(walls, 1, 1, 3, 3)
+    return 9 if path_found(&blocked_goal)
+
+    blocked_start: Path = find_path(walls, 0, 0, 6, 6)
+    return 10 if path_found(&blocked_start)
+
+    open: bool[64] = zeroed
+    direct: Path = find_path(open, 0, 0, 2, 0)
+    return 11 if not path_found(&direct) or path_length(&direct) != 3
+    0

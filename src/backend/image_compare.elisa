@@ -1,0 +1,90 @@
+# Rendered-output comparison with an explicit tolerance.
+# Backends must not demand byte-identical pixels: different shader compilers,
+# texture compression, and GPU rounding produce small per-channel differences.
+# The policy here is portable: a per-channel peak bound plus a mean bound.
+# Games declare the tolerance they need; unsupported configurations fail clearly.
+module ImageCompare:
+    private:
+        const module Limits:
+            MAX_PIXELS: usize = 16
+            CHANNEL_LO: f32 = 0.0
+            CHANNEL_HI: f32 = 1.0
+
+    public:
+        struct Rgba:
+            r: f32
+            g: f32
+            b: f32
+            a: f32
+
+        struct ImageTolerance:
+            per_channel: f32
+            mean_allowance: f32
+
+        def max_pixels() -> usize:
+            Limits::MAX_PIXELS
+
+        def default_tolerance() -> ImageTolerance:
+            ImageTolerance{per_channel: 0.02, mean_allowance: 0.005}
+
+        def strict_tolerance() -> ImageTolerance:
+            ImageTolerance{per_channel: 0.0, mean_allowance: 0.0}
+
+        def channel_diff(first: f32, second: f32) -> f32:
+            diff: f32 = first - second
+            0.0 - diff if diff < Limits::CHANNEL_LO else diff
+
+        def channel_within(first: f32, second: f32, tolerance: f32) -> bool:
+            return false if tolerance < Limits::CHANNEL_LO
+            channel_diff(first, second) <= tolerance
+
+        def pixel_valid(pixel: Rgba) -> bool:
+            pixel.r >= Limits::CHANNEL_LO and pixel.r <= Limits::CHANNEL_HI and pixel.g >= Limits::CHANNEL_LO and pixel.g <= Limits::CHANNEL_HI and pixel.b >= Limits::CHANNEL_LO and pixel.b <= Limits::CHANNEL_HI and pixel.a >= Limits::CHANNEL_LO and pixel.a <= Limits::CHANNEL_HI
+
+        def pixels_match(first: Rgba, second: Rgba, tolerance: f32) -> bool:
+            channel_within(first.r, second.r, tolerance) and channel_within(first.g, second.g, tolerance) and channel_within(first.b, second.b, tolerance) and channel_within(first.a, second.a, tolerance)
+
+        def pixel_max_error(first: Rgba, second: Rgba) -> f32:
+            dr: f32 = channel_diff(first.r, second.r)
+            dg: f32 = channel_diff(first.g, second.g)
+            db: f32 = channel_diff(first.b, second.b)
+            da: f32 = channel_diff(first.a, second.a)
+            rg: f32 = dr if dr > dg else dg
+            ba: f32 = db if db > da else da
+            rg if rg > ba else ba
+
+        def tolerance_valid(tolerance: ImageTolerance) -> bool:
+            tolerance.per_channel >= Limits::CHANNEL_LO and tolerance.per_channel <= Limits::CHANNEL_HI and tolerance.mean_allowance >= Limits::CHANNEL_LO and tolerance.mean_allowance <= Limits::CHANNEL_HI
+
+    private:
+        module Compare:
+            private:
+                def mismatch_count(first: Rgba[16], second: Rgba[16], count: usize, per_channel: f32) -> usize:
+                    for index in 0..<count |mismatches: usize = 0| -> mismatches:
+                        first_pixel: Rgba = first[index]
+                        second_pixel: Rgba = second[index]
+                        mismatches <- mismatches + 1 if not ImageCompare::pixels_match(first_pixel, second_pixel, per_channel)
+
+                def total_max_error(first: Rgba[16], second: Rgba[16], count: usize) -> f32:
+                    for index in 0..<count |total: f32 = 0.0| -> total:
+                        left: Rgba = first[index]
+                        right: Rgba = second[index]
+                        total <- total + ImageCompare::pixel_max_error(left, right)
+
+            public:
+                def mean_error(first: Rgba[16], second: Rgba[16], count: usize) -> f32:
+                    return 0.0 if count == 0
+                    total: f32 = total_max_error(first, second, count)
+                    total / count.i64().f32()
+
+                def within(first: Rgba[16], second: Rgba[16], count: usize, tolerance: ImageTolerance) -> bool:
+                    return false if count > ImageCompare::max_pixels() or not ImageCompare::tolerance_valid(tolerance)
+                    return false if mismatch_count(first, second, count, tolerance.per_channel) != 0
+                    mean_error(first, second, count) <= tolerance.mean_allowance
+
+    public:
+        def images_match(first: Rgba[16], second: Rgba[16], count: usize, tolerance: ImageTolerance) -> bool:
+            Compare::within(first, second, count, tolerance)
+
+        def mean_pixel_error(first: Rgba[16], second: Rgba[16], count: usize) -> f32:
+            Compare::mean_error(first, second, count)

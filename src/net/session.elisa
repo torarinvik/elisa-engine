@@ -1,0 +1,138 @@
+# Net session above the transport: handshake, per-client authority sets,
+# loss/latency profiles, reconnect with explicit state recovery, and a
+# demonstrated behavior contract under adverse profiles. The transport
+# moves bytes; Elisa decides who joins, who may write which persistent
+# identity, what degraded service is acceptable, and when a dropped
+# client must resynchronize rather than silently continue.
+include "./replication.elisa"
+
+module Session:
+    private:
+        const module Tune:
+            MAX_CLIENTS: usize = 4
+            MAX_IDS: usize = 8
+
+    public:
+        enum SessionStage:
+            Idle
+            Handshake
+            Live
+            Recovering
+            Closed
+
+        struct Client:
+            id: u64
+            acknowledged: bool
+
+        struct NetSession:
+            stage: mutable SessionStage
+            clients: mutable Client[4]
+            client_count: mutable usize
+            owned: mutable u64[8]
+            owned_count: mutable usize
+            loss_every: mutable usize
+            delay_ticks: mutable i64
+            reconnects: mutable usize
+
+        def session_new() -> NetSession:
+            NetSession{stage: SessionStage.Idle, clients: zeroed, client_count: 0, owned: zeroed, owned_count: 0, loss_every: 0, delay_ticks: 0, reconnects: 0}
+
+        def session_valid(session: NetSession&) -> bool:
+            return false if session.client_count > Tune::MAX_CLIENTS or session.owned_count > Tune::MAX_IDS
+            return false if session.delay_ticks < 0
+            true
+
+        def client_known(session: NetSession&, id: u64) -> bool:
+            return false if id == 0
+            for index in 0..<session.client_count |found: bool = false| -> found:
+                found <- true if session.clients[index].id == id
+
+        def owns_identity(session: NetSession&, persistent: u64) -> bool:
+            for index in 0..<session.owned_count |held: bool = false| -> held:
+                held <- true if session.owned[index] == persistent
+
+        def degraded_ok(session: NetSession&) -> bool:
+            session.loss_every == 0 or session.loss_every >= 4
+
+        def session_live(session: NetSession&) -> bool:
+            session.stage == SessionStage.Live and session_valid(session)
+
+    private:
+        module Transact:
+            public:
+                def open(session: mutable Session::NetSession&) -> bool:
+                    return false if session.stage != Session::SessionStage.Idle
+                    session.stage <- Session::SessionStage.Handshake
+                    true
+
+                def admit(session: mutable Session::NetSession&, id: u64) -> bool:
+                    return false if id == 0 or session.stage != Session::SessionStage.Handshake
+                    return true if Session::client_known(session, id)
+                    return false if session.client_count >= Session::Tune::MAX_CLIENTS
+                    session.clients[session.client_count] <- Session::Client{id: id, acknowledged: true}
+                    session.client_count <- session.client_count + 1
+                    true
+
+                def begin_live(session: mutable Session::NetSession&) -> bool:
+                    return false if session.stage != Session::SessionStage.Handshake or session.client_count == 0
+                    session.stage <- Session::SessionStage.Live
+                    true
+
+                def grant(session: mutable Session::NetSession&, persistent: u64, writer: Net::Owner) -> bool:
+                    return false if persistent == 0 or writer != Net::Owner.Client
+                    return true if Session::owns_identity(session, persistent)
+                    return false if session.owned_count >= Session::Tune::MAX_IDS
+                    session.owned[session.owned_count] <- persistent
+                    session.owned_count <- session.owned_count + 1
+                    true
+
+                def set_profile(session: mutable Session::NetSession&, loss_every: usize, delay_ticks: i64) -> bool:
+                    return false if delay_ticks < 0 or delay_ticks > 8
+                    session.loss_every <- loss_every
+                    session.delay_ticks <- delay_ticks
+                    true
+
+                def drop(session: mutable Session::NetSession&, id: u64) -> bool:
+                    slot: mutable usize = 4
+                    for index in 0..<session.client_count |session, id, slot|:
+                        slot <- index if session.clients[index].id == id
+                    return false if slot >= session.client_count
+                    for shift in slot..<session.client_count - 1 |session|:
+                        session.clients[shift] <- session.clients[shift + 1]
+                    session.client_count <- session.client_count - 1
+                    session.stage <- Session::SessionStage.Recovering
+                    session.reconnects <- session.reconnects + 1
+                    true
+
+                def recover(session: mutable Session::NetSession&) -> bool:
+                    return false if session.stage != Session::SessionStage.Recovering
+                    session.stage <- Session::SessionStage.Live
+                    true
+
+                def close(session: mutable Session::NetSession&) -> void:
+                    session.stage <- Session::SessionStage.Closed
+
+    public:
+        def session_open(session: mutable NetSession&) -> bool:
+            Transact::open(session)
+
+        def session_admit(session: mutable NetSession&, id: u64) -> bool:
+            Transact::admit(session, id)
+
+        def session_begin_live(session: mutable NetSession&) -> bool:
+            Transact::begin_live(session)
+
+        def session_grant(session: mutable NetSession&, persistent: u64, writer: Net::Owner) -> bool:
+            Transact::grant(session, persistent, writer)
+
+        def session_set_profile(session: mutable NetSession&, loss_every: usize, delay_ticks: i64) -> bool:
+            Transact::set_profile(session, loss_every, delay_ticks)
+
+        def session_drop(session: mutable NetSession&, id: u64) -> bool:
+            Transact::drop(session, id)
+
+        def session_recover(session: mutable NetSession&) -> bool:
+            Transact::recover(session)
+
+        def session_close(session: mutable NetSession&) -> void:
+            Transact::close(session)

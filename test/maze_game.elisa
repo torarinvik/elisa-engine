@@ -1,0 +1,83 @@
+include "../examples/maze/game.elisa"
+using Maze
+using MazeGame
+
+def main() -> i32:
+    game: mutable MazeGame = game_new()
+    return 1 if game.lives != 3 or game.has_key or game.cue_count != 0
+    return 2 if game.status != GameStatus.Menu or not game_valid(&game)
+    early: bool = game_step(&game, MazeMove.East)
+    return 3 if early or game.grid.player_x != 1
+
+    game_start(&game)
+    return 4 if game.status != GameStatus.Playing or game.cue_count != 1 or cue_at(&game, 0) != 8
+    blocked: bool = game_step(&game, MazeMove.West)
+    return 5 if blocked or game.grid.player_x != 1 or cue_at(&game, 1) != 2
+
+    game_restart(&game)
+    South5: MazeMove[5] = [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South]
+    for step in 0..<5 |game|:
+        moved: bool = game_step(&game, South5[step])
+        return 6 if not moved
+    return 7 if game.grid.player_x != 1 or game.grid.player_y != 6
+    to_key: bool = game_step(&game, MazeMove.East)
+    return 8 if not to_key or not game.has_key or game.grid.player_x != 2
+    return 9 if not game_valid(&game)
+
+    locked: mutable MazeGame = game_new()
+    game_start(&locked)
+    east3: MazeMove[3] = [MazeMove.East, MazeMove.East, MazeMove.East]
+    for step in 0..<3 |locked|:
+        moved: bool = game_step(&locked, east3[step])
+        return 10 if not moved
+    return 11 if locked.grid.player_x != 4 or locked.grid.player_y != 1
+    for step in 0..<5 |locked|:
+        moved: bool = game_step(&locked, South5[step])
+        return 12 if not moved
+    return 13 if locked.grid.player_x != 4 or locked.grid.player_y != 6 or locked.has_key
+    door_shut: bool = game_step(&locked, MazeMove.East)
+    return 14 if door_shut or locked.grid.player_x != 4 or cue_at(&locked, locked.cue_count - 1) != 4
+
+    danger: mutable MazeGame = game_new()
+    game_start(&danger)
+    east4: MazeMove[4] = [MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East]
+    for step in 0..<4 |danger|:
+        moved: bool = game_step(&danger, east4[step])
+        return 15 if not moved
+    return 16 if danger.grid.player_x != 5 or danger.grid.player_y != 1
+    hit: bool = game_step(&danger, MazeMove.South)
+    return 17 if not hit or danger.lives != 2 or danger.grid.player_x != 1 or danger.grid.player_y != 1
+    return 18 if not game_valid(&danger)
+
+    game_pause(&game)
+    return 19 if game.status != GameStatus.Paused
+    frozen: bool = game_step(&game, MazeMove.East)
+    return 20 if frozen
+    game_resume(&game)
+    return 21 if game.status != GameStatus.Playing
+
+    finish_east: MazeMove[4] = [MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East]
+    for step in 0..<4 |game|:
+        moved: bool = game_step(&game, finish_east[step])
+        return 22 if not moved
+    return 23 if game.grid.player_x != 6 or not game_won(&game) or game.status != GameStatus.Won
+    return 24 if cue_at(&game, game.cue_count - 1) != 6
+    after: bool = game_step(&game, MazeMove.West)
+    return 25 if after
+
+    game_restart(&game)
+    return 26 if game.status != GameStatus.Playing or game.lives != 3 or game.has_key or game_won(&game)
+
+    fog_off: GameSettings = GameSettings{fog: false, audio: true}
+    game_apply_settings(&game, fog_off)
+    return 27 if game.settings.fog or visible_count(&game) != 64
+    fog_on: GameSettings = GameSettings{fog: true, audio: false}
+    game_apply_settings(&game, fog_on)
+    return 28 if not game.settings.fog or visible_count(&game) != 17
+    quiet: usize = game.cue_count
+    moved_quiet: bool = game_step(&game, MazeMove.East)
+    return 29 if not moved_quiet or game.cue_count != quiet
+
+    game_quit(&game)
+    return 30 if game.status != GameStatus.Exited
+    0

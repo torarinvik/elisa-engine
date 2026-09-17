@@ -1,0 +1,58 @@
+# Shippable maze bundle: one versioned manifest proving the same game can
+# ship on a backend. It binds stable asset IDs, the canonical scene identity
+# and viewport, the required backend capabilities, the determinism scope of
+# the host, and the frame budget. A backend that cannot meet the manifest
+# fails clearly before gameplay starts; gameplay itself never branches on
+# which backend survived the check.
+include "../../src/assets/descriptor.elisa"
+include "../../src/backend/capabilities.elisa"
+include "../../src/net/replication.elisa"
+
+module MazeBundle:
+    private:
+        const module Tune:
+            BUNDLE_VERSION: i64 = 1
+            VIEW_MAX: i32 = 8192
+            FRAME_BUDGET: i64 = 16667
+            REQUIRED_FEATURES: usize = 2
+
+    public:
+        struct Bundle:
+            version: i64
+            mesh: Assets::AssetId
+            material: Assets::AssetId
+            content: Assets::AssetId
+            epoch: i64
+            object_id: i64
+            camera_id: i64
+            viewport_width: i32
+            viewport_height: i32
+            required: Capabilities::BackendFeature[8]
+            scope: Net::Determinism
+            host_scope: Net::Determinism
+            max_frame_micros: i64
+
+        def bundle_version() -> i64:
+            Tune::BUNDLE_VERSION
+
+        def required_feature_count() -> usize:
+            Tune::REQUIRED_FEATURES
+
+        def default_required() -> Capabilities::BackendFeature[8]:
+            [Capabilities::BackendFeature.Rendering, Capabilities::BackendFeature.Input, Capabilities::BackendFeature.Input, Capabilities::BackendFeature.Input, Capabilities::BackendFeature.Input, Capabilities::BackendFeature.Input, Capabilities::BackendFeature.Input, Capabilities::BackendFeature.Input]
+
+        def bundle_valid(bundle: Bundle&) -> bool:
+            return false if bundle.version != Tune::BUNDLE_VERSION
+            return false if not Assets::asset_id_valid(bundle.mesh) or not Assets::asset_id_valid(bundle.material) or not Assets::asset_id_valid(bundle.content)
+            return false if Assets::same_asset_id(bundle.mesh, bundle.material)
+            return false if bundle.epoch <= 0 or bundle.object_id <= 0 or bundle.camera_id <= 0 or bundle.object_id == bundle.camera_id
+            return false if bundle.viewport_width <= 0 or bundle.viewport_height <= 0 or bundle.viewport_width > Tune::VIEW_MAX or bundle.viewport_height > Tune::VIEW_MAX
+            return false if bundle.scope.solver <= 0 or bundle.scope.build <= 0 or bundle.host_scope.solver <= 0 or bundle.host_scope.build <= 0
+            return false if bundle.max_frame_micros <= 0 or bundle.max_frame_micros > Tune::FRAME_BUDGET
+            true
+
+        def bundle_shippable(bundle: Bundle&, profile: Capabilities::BackendProfile) -> bool:
+            return false if not bundle_valid(bundle)
+            return false if not Capabilities::backend_requirements_met(profile, bundle.required, Tune::REQUIRED_FEATURES)
+            return false if not Net::same_scope(bundle.scope, bundle.host_scope)
+            true

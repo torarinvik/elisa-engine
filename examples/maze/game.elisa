@@ -1,0 +1,218 @@
+# Complete maze vertical slice: hazards, locked door plus key, goal, lives,
+# fog-of-war visibility, audio cues as data, menu flow, and saved settings.
+# Elisa owns all rules. Backends render derived transforms and play cue IDs;
+# they never decide movement, collision, visibility, or win/loss.
+include "./maze.elisa"
+
+module MazeGame:
+    private:
+        const module Tune:
+            START_LIVES: i64 = 3
+            MAX_CUES: usize = 16
+            FOG_RADIUS: i64 = 3
+            CUE_STEP: i64 = 1
+            CUE_BLOCKED: i64 = 2
+            CUE_KEY: i64 = 3
+            CUE_DOOR: i64 = 4
+            CUE_HAZARD: i64 = 5
+            CUE_WIN: i64 = 6
+            CUE_LOSE: i64 = 7
+            CUE_CLICK: i64 = 8
+            KEY_X: i64 = 2
+            KEY_Y: i64 = 6
+            DOOR_X: i64 = 5
+            DOOR_Y: i64 = 6
+            HAZARD_AX: i64 = 5
+            HAZARD_AY: i64 = 2
+            HAZARD_BX: i64 = 2
+            HAZARD_BY: i64 = 5
+
+    public:
+        enum GameStatus:
+            Menu
+            Playing
+            Paused
+            Won
+            Lost
+            Exited
+
+        struct GameSettings:
+            fog: bool
+            audio: bool
+
+        struct MazeGame:
+            grid: mutable Maze::MazeState
+            lives: mutable i64
+            status: mutable GameStatus
+            has_key: mutable bool
+            settings: mutable GameSettings
+            cues: mutable i64[16]
+            cue_count: mutable usize
+
+        def default_settings() -> GameSettings:
+            GameSettings{fog: true, audio: true}
+
+        def game_new() -> MazeGame:
+            MazeGame{
+                grid: Maze::maze_start(),
+                lives: Tune::START_LIVES,
+                status: GameStatus.Menu,
+                has_key: false,
+                settings: default_settings(),
+                cues: zeroed,
+                cue_count: 0,
+            }
+
+        def is_hazard(x: i64, y: i64) -> bool:
+            x == Tune::HAZARD_AX and y == Tune::HAZARD_AY or x == Tune::HAZARD_BX and y == Tune::HAZARD_BY
+
+        def is_key(x: i64, y: i64) -> bool:
+            x == Tune::KEY_X and y == Tune::KEY_Y
+
+        def is_door(x: i64, y: i64) -> bool:
+            x == Tune::DOOR_X and y == Tune::DOOR_Y
+
+        def door_blocked(game: MazeGame&, x: i64, y: i64) -> bool:
+            is_door(x, y) and not game.has_key
+
+        def is_visible(game: MazeGame&, x: i64, y: i64) -> bool:
+            return true if x < 0 or y < 0 or x >= Maze::maze_width().i64() or y >= Maze::maze_height().i64()
+            return true if not game.settings.fog
+            dx: i64 = x - game.grid.player_x
+            dy: i64 = y - game.grid.player_y
+            adx: i64 = 0 - dx if dx < 0 else dx
+            ady: i64 = 0 - dy if dy < 0 else dy
+            adx + ady <= Tune::FOG_RADIUS
+
+        def visible_count(game: MazeGame&) -> usize:
+            total: usize =
+                for y in 0..<Maze::maze_height() |row_total: usize = 0| -> row_total:
+                    row: usize =
+                        for x in 0..<Maze::maze_width() |cell_total: usize = 0| -> cell_total:
+                            cell_total <- cell_total + 1 if is_visible(game, x.i64(), y.i64())
+                    row_total <- row_total + row
+            total
+
+        def game_valid(game: MazeGame&) -> bool:
+            return false if game.lives < 0 or game.lives > Tune::START_LIVES or game.cue_count > Tune::MAX_CUES
+            return false if not Maze::maze_valid(game.grid)
+            return false if game.status == GameStatus.Playing and Maze::maze_at_goal(game.grid)
+            true
+
+        def game_won(game: MazeGame&) -> bool:
+            game.status == GameStatus.Won
+
+        def game_lost(game: MazeGame&) -> bool:
+            game.status == GameStatus.Lost
+
+        def cue_at(game: MazeGame&, index: usize) -> i64:
+            return -1 if index >= game.cue_count
+            game.cues[index]
+
+    private:
+        module Flow:
+            private:
+                def push_cue(game: mutable MazeGame&, id: i64) -> void:
+                    return if not game.settings.audio
+                    return if game.cue_count >= MazeGame::Tune::MAX_CUES
+                    game.cues[game.cue_count] <- id
+                    game.cue_count <- game.cue_count + 1
+
+            public:
+                def start(game: mutable MazeGame&) -> void:
+                    game.grid <- Maze::maze_start()
+                    game.lives <- MazeGame::Tune::START_LIVES
+                    game.has_key <- false
+                    game.status <- MazeGame::GameStatus.Playing
+                    game.cue_count <- 0
+                    push_cue(game, MazeGame::Tune::CUE_CLICK)
+
+                def pause(game: mutable MazeGame&) -> void:
+                    return if game.status != MazeGame::GameStatus.Playing
+                    game.status <- MazeGame::GameStatus.Paused
+                    push_cue(game, MazeGame::Tune::CUE_CLICK)
+
+                def resume(game: mutable MazeGame&) -> void:
+                    return if game.status != MazeGame::GameStatus.Paused
+                    game.status <- MazeGame::GameStatus.Playing
+                    push_cue(game, MazeGame::Tune::CUE_CLICK)
+
+                def quit(game: mutable MazeGame&) -> void:
+                    game.status <- MazeGame::GameStatus.Exited
+                    push_cue(game, MazeGame::Tune::CUE_CLICK)
+
+                def restart(game: mutable MazeGame&) -> void:
+                    keep: MazeGame::GameSettings = game.settings
+                    game.grid <- Maze::maze_start()
+                    game.lives <- MazeGame::Tune::START_LIVES
+                    game.has_key <- false
+                    game.status <- MazeGame::GameStatus.Playing
+                    game.settings <- keep
+                    game.cue_count <- 0
+                    push_cue(game, MazeGame::Tune::CUE_CLICK)
+
+                def apply_settings(game: mutable MazeGame&, settings: MazeGame::GameSettings) -> void:
+                    game.settings <- settings
+                    push_cue(game, MazeGame::Tune::CUE_CLICK)
+
+                def step(game: mutable MazeGame&, direction: Maze::MazeMove) -> bool:
+                    return false if game.status != MazeGame::GameStatus.Playing
+                    tent: mutable Maze::MazeState = Maze::MazeState{player_x: game.grid.player_x, player_y: game.grid.player_y, moves: game.grid.moves}
+                    moved: bool = Maze::maze_try_move(&tent, direction)
+                    return push_blocked(game) if not moved
+                    return push_door(game) if MazeGame::door_blocked(game, tent.player_x, tent.player_y)
+                    game.grid <- tent
+                    on_key: bool = MazeGame::is_key(game.grid.player_x, game.grid.player_y)
+                    game.has_key <- true if on_key and not game.has_key
+                    push_cue(game, MazeGame::Tune::CUE_KEY) if on_key and game.has_key
+                    return on_hazard(game) if MazeGame::is_hazard(game.grid.player_x, game.grid.player_y)
+                    return on_goal(game) if Maze::maze_at_goal(game.grid)
+                    push_cue(game, MazeGame::Tune::CUE_STEP)
+                    true
+
+                def push_blocked(game: mutable MazeGame&) -> bool:
+                    push_cue(game, MazeGame::Tune::CUE_BLOCKED)
+                    false
+
+                def push_door(game: mutable MazeGame&) -> bool:
+                    push_cue(game, MazeGame::Tune::CUE_DOOR)
+                    false
+
+                def on_hazard(game: mutable MazeGame&) -> bool:
+                    game.lives <- game.lives - 1
+                    push_cue(game, MazeGame::Tune::CUE_HAZARD)
+                    return on_lose(game) if game.lives <= 0
+                    game.grid <- Maze::maze_start()
+                    true
+
+                def on_goal(game: mutable MazeGame&) -> bool:
+                    game.status <- MazeGame::GameStatus.Won
+                    push_cue(game, MazeGame::Tune::CUE_WIN)
+                    true
+
+                def on_lose(game: mutable MazeGame&) -> bool:
+                    game.status <- MazeGame::GameStatus.Lost
+                    push_cue(game, MazeGame::Tune::CUE_LOSE)
+                    true
+
+    public:
+        def game_start(game: mutable MazeGame&) -> void:
+            Flow::start(game)
+
+        def game_pause(game: mutable MazeGame&) -> void:
+            Flow::pause(game)
+
+        def game_resume(game: mutable MazeGame&) -> void:
+            Flow::resume(game)
+
+        def game_quit(game: mutable MazeGame&) -> void:
+            Flow::quit(game)
+
+        def game_restart(game: mutable MazeGame&) -> void:
+            Flow::restart(game)
+
+        def game_apply_settings(game: mutable MazeGame&, settings: GameSettings) -> void:
+            Flow::apply_settings(game, settings)
+
+        def game_step(game: mutable MazeGame&, direction: Maze::MazeMove) -> bool:
+            Flow::step(game, direction)

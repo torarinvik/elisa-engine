@@ -1,0 +1,44 @@
+include "../src/assets/package.elisa"
+using Assets
+using Geometry
+using AssetPackage
+
+def main() -> i32:
+    return 1 if package_version() != 1
+    bounds: Bounds3 = Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}}
+    mesh: SourceAsset = SourceAsset{id: AssetId{high: 11, low: 19}, path: "models/wall.gltf", format: SourceFormat.Gltf}
+    material: SourceAsset = SourceAsset{id: AssetId{high: 11, low: 20}, path: "models/wall.png", format: SourceFormat.Png}
+    cooked: CookedPackage = catch cook_package(mesh, material, bounds):
+        value: value
+        error failure: return 2
+    return 3 if not package_valid(&cooked) or not package_content_matches(&cooked, mesh.id, material.id)
+    return 4 if cooked.version != 1 or same_asset_id(cooked.mesh, cooked.material)
+
+    duplicate: SourceAsset = SourceAsset{id: mesh.id, path: "models/other.gltf", format: SourceFormat.Gltf}
+    dup_rejected: i32 = catch cook_package(mesh, duplicate, bounds):
+        value: 1
+        PackageError.DuplicateId: 0
+        error failure: 2
+    return 5 if dup_rejected != 0
+
+    bad_audio: SourceAsset = SourceAsset{id: AssetId{high: 9, low: 9}, path: "audio/hit.wav", format: SourceFormat.Wav}
+    format_rejected: i32 = catch cook_package(mesh, bad_audio, bounds):
+        value: 1
+        PackageError.UnsupportedFormat: 0
+        error failure: 2
+    return 6 if format_rejected != 0
+
+    bad_bounds: Bounds3 = Bounds3{minimum: Vec3{x: 1.0, y: 0.0, z: 0.0}, maximum: Vec3{x: 0.0, y: 1.0, z: 1.0}}
+    bounds_rejected: i32 = catch cook_package(mesh, material, bad_bounds):
+        value: 1
+        PackageError.InvalidBounds: 0
+        error failure: 2
+    return 7 if bounds_rejected != 0
+
+    empty: SourceAsset = SourceAsset{id: mesh.id, path: "", format: SourceFormat.Gltf}
+    source_rejected: i32 = catch cook_package(empty, material, bounds):
+        value: 1
+        PackageError.InvalidSource: 0
+        error failure: 2
+    return 8 if source_rejected != 0
+    0

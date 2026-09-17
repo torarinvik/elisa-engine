@@ -1,0 +1,37 @@
+include "../examples/maze/maze.elisa"
+using Maze
+
+def main() -> i32:
+    return 1 if maze_width() != 8 or maze_height() != 8
+    return 2 if maze_goal_x() != 6 or maze_goal_y() != 6
+    state: mutable MazeState = maze_new()
+    return 3 if state.player_x != 1 or state.player_y != 1 or state.moves != 0
+    return 4 if not maze_valid(&state) or maze_at_goal(&state)
+    return 5 if not is_wall(0, 1) or is_wall(1, 1) or not is_wall(3, 3) or is_wall(2, 2)
+    return 6 if maze_wall_count() != 34
+
+    blocked: bool = maze_try_move(&state, MazeMove.West)
+    return 7 if blocked or state.player_x != 1 or state.moves != 0
+    idle: bool = maze_try_move(&state, MazeMove.Idle)
+    return 8 if idle or state.moves != 0
+
+    first: bool = maze_try_move(&state, MazeMove.East)
+    return 9 if not first or state.player_x != 2 or state.moves != 1
+    down_one: bool = maze_try_move(&state, MazeMove.South)
+    return 10 if not down_one or state.player_y != 2
+    down_two: bool = maze_try_move(&state, MazeMove.South)
+    return 11 if not down_two or state.player_y != 3
+    into_wall: bool = maze_try_move(&state, MazeMove.East)
+    return 12 if into_wall or state.player_x != 2 or state.player_y != 3
+
+    maze_restart(&state)
+    return 13 if state.player_x != 1 or state.player_y != 1 or state.moves != 0
+
+    path: MazeMove[9] = [MazeMove.East, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East, MazeMove.East, MazeMove.East]
+    for step in 0..<9 |state|:
+        moved: bool = maze_try_move(&state, path[step])
+        return 14 if not moved
+    return 15 if state.player_x != 5 or state.player_y != 6 or not maze_valid(&state)
+    final: bool = maze_try_move(&state, MazeMove.East)
+    return 16 if not final or not maze_at_goal(&state)
+    0

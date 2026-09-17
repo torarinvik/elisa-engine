@@ -1,0 +1,31 @@
+include "../src/animation/state.elisa"
+using Anim
+
+def main() -> i32:
+    return 1 if clip_length(Clip.Idle) != 60 or clip_length(Clip.Walk) != 30
+    return 2 if clip_length(Clip.Win) != 45 or clip_length(Clip.Hurt) != 20
+    state: mutable AnimState = anim_new()
+    return 3 if state.clip != Clip.Idle or state.tick != 0 or state.blend != 1.0
+    return 4 if not anim_valid(&state)
+
+    anim_play(&state, Clip.Walk)
+    return 5 if state.clip != Clip.Walk or state.tick != 0 or state.blend != 0.0
+    anim_play(&state, Clip.Walk)
+    return 6 if state.tick != 0
+
+    for step in 0..<15 |state|:
+        anim_tick(&state)
+    return 7 if state.tick != 15 or anim_event_at(&state, 0) != 2
+    return 8 if state.blend != 1.0 or not anim_valid(&state)
+    return 9 if state.distance != 0.46875
+
+    for step in 0..<15 |state|:
+        anim_tick(&state)
+    return 10 if state.tick != 0 or anim_event_at(&state, state.event_count - 1) != 1
+    return 11 if state.distance != 0.9375
+
+    anim_play(&state, Clip.Idle)
+    return 12 if state.clip != Clip.Idle or state.blend_left != 4
+    anim_tick(&state)
+    return 13 if state.blend != 0.25
+    0

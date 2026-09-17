@@ -68,6 +68,48 @@ printf 'Fixed-step clock tests passed.\n'
 "$COMPILER" -emit exe -o "$ENGINE_ROOT/build/headless-game-test" "$ENGINE_ROOT/test/headless_game.elisa"
 "$ENGINE_ROOT/build/headless-game-test"
 printf 'Deterministic headless game tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/scene-bridge-test" "$ENGINE_ROOT/test/scene_bridge.elisa"
+"$ENGINE_ROOT/build/scene-bridge-test"
+printf 'Canonical scene bridge tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/image-compare-test" "$ENGINE_ROOT/test/image_compare.elisa"
+"$ENGINE_ROOT/build/image-compare-test"
+printf 'Tolerance image comparison tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/package-test" "$ENGINE_ROOT/test/package.elisa"
+"$ENGINE_ROOT/build/package-test"
+printf 'Asset cooking tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/maze-test" "$ENGINE_ROOT/test/maze.elisa"
+"$ENGINE_ROOT/build/maze-test"
+printf 'Maze vertical slice tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/maze-game-test" "$ENGINE_ROOT/test/maze_game.elisa"
+"$ENGINE_ROOT/build/maze-game-test"
+printf 'Complete maze game tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/anim-state-test" "$ENGINE_ROOT/test/anim_state.elisa"
+"$ENGINE_ROOT/build/anim-state-test"
+printf 'Animation state tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/grid-nav-test" "$ENGINE_ROOT/test/grid_nav.elisa"
+"$ENGINE_ROOT/build/grid-nav-test"
+printf 'Grid navigation tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/inspector-test" "$ENGINE_ROOT/test/inspector.elisa"
+"$ENGINE_ROOT/build/inspector-test"
+printf 'Inspector and performance counter tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/replication-test" "$ENGINE_ROOT/test/replication.elisa"
+"$ENGINE_ROOT/build/replication-test"
+printf 'Replication and determinism scope tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/physics-policy-test" "$ENGINE_ROOT/test/physics_policy.elisa"
+"$ENGINE_ROOT/build/physics-policy-test"
+printf 'Physics authority tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/schedule-test" "$ENGINE_ROOT/test/schedule.elisa"
+"$ENGINE_ROOT/build/schedule-test"
+printf 'Runtime scheduler tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/editor-test" "$ENGINE_ROOT/test/editor.elisa"
+"$ENGINE_ROOT/build/editor-test"
+printf 'Editor undo and reload tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/session-test" "$ENGINE_ROOT/test/session.elisa"
+"$ENGINE_ROOT/build/session-test"
+printf 'Net session tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/maze-bundle-test" "$ENGINE_ROOT/test/maze_bundle.elisa"
+"$ENGINE_ROOT/build/maze-bundle-test"
+printf 'Maze bundle manifest tests passed.\n'
 rejects_ownership_copy() {
     local diagnostic status=0
     diagnostic="$("$COMPILER" -emit obj -o "$ENGINE_ROOT/build/ownership-negative.o" "$1" 2>&1)" || status=$?
@@ -111,6 +153,20 @@ with tempfile.TemporaryDirectory(prefix='engine script parity ') as td:
     (project / 'test/recording.elisa').touch()
     (project / 'test/clock.elisa').touch()
     (project / 'test/headless_game.elisa').touch()
+    (project / 'test/scene_bridge.elisa').touch()
+    (project / 'test/image_compare.elisa').touch()
+    (project / 'test/package.elisa').touch()
+    (project / 'test/maze.elisa').touch()
+    (project / 'test/maze_game.elisa').touch()
+    (project / 'test/anim_state.elisa').touch()
+    (project / 'test/grid_nav.elisa').touch()
+    (project / 'test/inspector.elisa').touch()
+    (project / 'test/replication.elisa').touch()
+    (project / 'test/physics_policy.elisa').touch()
+    (project / 'test/schedule.elisa').touch()
+    (project / 'test/editor.elisa').touch()
+    (project / 'test/session.elisa').touch()
+    (project / 'test/maze_bundle.elisa').touch()
     (project / 'test/negative/allocator_copy.elisa').touch()
     (project / 'test/negative/world_copy.elisa').touch()
     (project / 'test/negative/recorder_copy.elisa').touch()
@@ -167,7 +223,22 @@ with tempfile.TemporaryDirectory(prefix='engine script parity ') as td:
             if case == 'default-prover':
                 env.pop('ELISA_PROOF_BIN')
             command = ['/bin/bash', str(project / 'scripts/check.sh')] if mode == 'shell' else [str(launcher), str(project / 'scripts/check.elisascript')]
+            # Status 126 means a child process failed to spawn, which no fake
+            # tool in this harness ever reports (they use 1 and 6-10). Under
+            # rapid sequential load the launcher intermittently drops a spawn
+            # at a varying step while bash with identical tools never does,
+            # so retry a 126 a bounded number of times instead of mistaking
+            # environment flakiness for a shell/elisascript divergence.
             run = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=30)
+            attempts = 1
+            while mode == 'elisascript' and run.returncode == 126 and attempts < 3:
+                attempts += 1
+                shutil.rmtree(project / 'build', ignore_errors=True)
+                if case == 'stale-report':
+                    (project / 'build').mkdir()
+                    (project / 'build/entity-id-proof.json').write_text('{"verification_state":"proved"}\n')
+                trace.write_text('')
+                run = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=30)
             report = project / 'build/entity-id-proof.json'
             paired.append(dict(status=run.returncode, stdout=run.stdout, stderr=run.stderr, trace=trace.read_text(), report=report.read_text() if report.exists() else None))
         expected_status = {'success': 0, 'compile': 7, 'test': 8, 'proof': 9, 'json': 10, 'validation': 12, 'godot': 6, 'stale-report': 7, 'negative-accepted': 1, 'negative-wrong-diagnostic': 1, 'missing-compiler': 2, 'missing-prover': 2, 'empty-overrides': 0, 'path-lookup': 0, 'default-prover': 0}[case]

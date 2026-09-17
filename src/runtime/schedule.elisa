@@ -1,0 +1,84 @@
+# Explicit simulation schedule: systems declare read/write sets over a
+# fixed resource universe, Elisa derives ordering and legal concurrency.
+# Two readers share data; a writer orders against every reader and writer
+# of the same resource unless disjointness is established. Effects name
+# the legal parallelism; task size and backend affinity decide whether it
+# pays. Nested parallelism is capped by construction: phases are flat.
+module Schedule:
+    private:
+        const module Tune:
+            RESOURCES: usize = 4
+            MAX_SYSTEMS: usize = 8
+
+    public:
+        enum Resource:
+            Transforms
+            Bodies
+            Commands
+            Cues
+
+        struct System:
+            id: i64
+            reads: bool[4]
+            writes: bool[4]
+
+        def resource_count() -> usize:
+            Tune::RESOURCES
+
+        def resource_index(resource: Resource) -> usize:
+            return 0 if resource == Resource.Transforms
+            return 1 if resource == Resource.Bodies
+            return 2 if resource == Resource.Commands
+            3
+
+        def system_empty(id: i64) -> System:
+            System{id: id, reads: [false, false, false, false], writes: [false, false, false, false]}
+
+        def with_read(sys: System, resource: Resource) -> System:
+            out: mutable System = System{id: sys.id, reads: sys.reads, writes: sys.writes}
+            out.reads[resource_index(resource)] <- true
+            out
+
+        def with_write(sys: System, resource: Resource) -> System:
+            out: mutable System = System{id: sys.id, reads: sys.reads, writes: sys.writes}
+            out.writes[resource_index(resource)] <- true
+            out
+
+        def systems_conflict(left: System&, right: System&) -> bool:
+            for r in 0..<Tune::RESOURCES |clash: bool = false| -> clash:
+                left_writes: bool = left.writes[r]
+                right_writes: bool = right.writes[r]
+                clash <- true if left_writes and (right.reads[r] or right_writes) or right_writes and left.reads[r]
+
+        def can_run_together(left: System&, right: System&) -> bool:
+            not systems_conflict(left, right)
+
+        def parallel_pair_count(systems: System[8], count: usize) -> usize:
+            return 0 if count > Tune::MAX_SYSTEMS
+            total: usize =
+                for i in 0..<count |outer: usize = 0| -> outer:
+                    inner: usize =
+                        for j in 0..<count |pairs: usize = 0| -> pairs:
+                            pairs <- pairs + 1 if j > i and can_run_together(systems[i], systems[j])
+                    outer <- outer + inner
+            total
+
+    private:
+        module Order:
+            public:
+                def position_of(order: usize[8], count: usize, id: usize) -> usize:
+                    for slot in 0..<count |found: usize = 8| -> found:
+                        found <- slot if order[slot] == id
+
+                def respects(order: usize[8], systems: System[8], count: usize) -> bool:
+                    return false if count > Schedule::Tune::MAX_SYSTEMS
+                    for i in 0..<count |ok: bool = true| -> ok:
+                        row_ok: bool =
+                            for j in 0..<count |inner_ok: bool = true| -> inner_ok:
+                                conflict: bool = i != j and Schedule::systems_conflict(systems[i], systems[j]) and systems[i].id < systems[j].id
+                                inner_ok <- false if conflict and position_of(order, count, i) > position_of(order, count, j)
+                        ok <- ok and row_ok
+
+    public:
+        def schedule_respects(order: usize[8], systems: System[8], count: usize) -> bool:
+            Order::respects(order, systems, count)
