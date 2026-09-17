@@ -142,6 +142,26 @@ func _run_capture() -> void:
             scene_root.add_child(marker)
             marker_count += 1
 
+    # Physics: one dynamic body, far off-camera at x=20 so it cannot occlude
+    # any projected marker or wall sample. Each host runs exactly one solver
+    # for a body (the native host uses Jolt through Wicked; this host uses
+    # Godot physics), and never both at once.
+    var physics_box := RigidBody3D.new()
+    physics_box.name = "ElisaPhysicsBox"
+    var physics_shape := CollisionShape3D.new()
+    var physics_box_shape := BoxShape3D.new()
+    physics_box_shape.size = Vector3(0.6, 0.6, 0.6)
+    physics_shape.shape = physics_box_shape
+    physics_box.add_child(physics_shape)
+    var physics_mesh := MeshInstance3D.new()
+    var physics_box_mesh := BoxMesh.new()
+    physics_box_mesh.size = Vector3(0.6, 0.6, 0.6)
+    physics_mesh.mesh = physics_box_mesh
+    physics_box.add_child(physics_mesh)
+    physics_box.position = Vector3(20.0, 5.0, 0.0)
+    scene_root.add_child(physics_box)
+    var physics_start_y: float = physics_box.position.y
+
     var camera := Camera3D.new()
     camera.name = "ElisaCamera"
     camera.position = camera_position
@@ -176,6 +196,17 @@ func _run_capture() -> void:
         if _frame >= warmup:
             frame_micros.append(elapsed)
     frame_micros.sort()
+
+    # Physics needs wall time, not just frames: Godot advances its solver
+    # from real delta, so a settle loop with real timers lets gravity act.
+    for _settle in range(30):
+        await create_timer(0.02).timeout
+    var physics_end_y: float = physics_box.position.y
+    print("physics: start_y=%.3f end_y=%.3f" % [physics_start_y, physics_end_y])
+    if physics_start_y - physics_end_y < 0.2:
+        _fail("physics box did not fall under gravity")
+        return
+    physics_box.queue_free()
 
     var image: Image = root.get_texture().get_image()
     if image == null:

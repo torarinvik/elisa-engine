@@ -306,7 +306,13 @@ does not drop at least 0.2 units. The game-side policy stays in Elisa
 (`src/physics/policy.elisa`: one solver per body, kinematic motion from
 Elisa, dynamic motion from the solver result, commits at a tick
 boundary); this proves the native solver actually moves a dynamic body.
-The Godot host has no physics wiring yet.
+
+The Godot host matches it with one `RigidBody3D` off-camera (observed
+`start_y=5.000 end_y=2.130`), settled with real timers because Godot also
+advances physics from real delta. Each host therefore runs exactly one
+solver for a body — Jolt through Wicked on the native side, Godot physics
+on the other — never both for the same body, and the image checks stay
+exact because the body is outside the frustum.
 
 ## Native audio decode and cue playback (2026-09-18)
 
