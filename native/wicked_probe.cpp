@@ -26,6 +26,7 @@
 #include "asset_import.h"
 #include "package_load.h"
 #include "perf_sweep.h"
+#include "churn_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -481,6 +482,10 @@ int main(int argc, char** argv) {
     }
     // Measured scaling sweep lives in native/perf_sweep.h.
     if (!run_perf_sweep(application, scene, manifest)) {
+        return 1;
+    }
+    // Spawn/despawn churn lives in native/churn_probe.h.
+    if (!run_churn_probe(scene, manifest)) {
         return 1;
     }
 

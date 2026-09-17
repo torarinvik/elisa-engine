@@ -531,3 +531,18 @@ from source is not claimed. The summary names the supported platform
 (`macos-arm64` here) and lists the platforms deliberately left untested
 (windows, linux, android, ios), so support is not inferred from a dependency's
 platform list.
+
+## Native spawn/despawn churn (2026-09-18)
+
+`native/churn_probe.h` adds the plan's spawn/despawn churn benchmark to the
+native host. Eight rounds each create 64 cubes and remove them; every round
+asserts the scene's object, mesh, and transform counts return to the pre-batch
+baseline, so a leak fails the probe rather than being reported. On this
+workstation the round medians were around 2.5-3.4 ms with p95 near 2.8-4.5 ms,
+recorded from a `baseline_objects=18` scene. `scripts/wicked_probe.elisascript`
+ran end to end: frame verified, frame time within budget, churn passed.
+
+Method note: this is wall-clock create/remove against the live scene, not a
+frame time, and the batch is deliberately small so the measurement stays a
+churn cost rather than a render cost. It is one recorded workload, not a
+performance promise.
