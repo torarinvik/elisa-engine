@@ -98,6 +98,11 @@ updates the transform, renders one hidden Metal frame through Wicked's
 `RenderPath3D`, and checks despawn against the external static libraries without
 copying WickedEngine into this repository.
 
+`examples/maze/main.elisa` is the packaged headless entry point: it
+starts, refuses input until playing, wins the scripted route, restarts,
+pauses and resumes, and exits, reporting each step through its exit
+status. `scripts/maze_game.elisascript` compiles and runs it.
+
 `examples/maze/` holds the first complete game as Elisa-owned rules: grid
 topology with walls, hazards, a locked door plus key, goal, lives, fog-of-war
 visibility, audio cues as data, menu flow, restart, and saved settings.

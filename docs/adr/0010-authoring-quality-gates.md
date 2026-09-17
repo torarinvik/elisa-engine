@@ -39,6 +39,12 @@ subsystem proves nothing about it.
   argument strings with plain bindings, and each driver verifies a frame
   with one `compare_renders.py verify` call covering dimensions,
   determinism, and topology instead of stacking several checker calls.
+- A helper whose body calls filesystem or environment host functions can
+  fail verification when the caller does not feed its result straight into
+  a process call; `scripts/maze_game.elisascript` sidesteps this by naming
+  the compiler (the launcher resolves an executable name through PATH)
+  instead of scanning for it. The packaging driver is separate from
+  `scripts/check.elisascript` because that script is at its 600-line limit.
 
 ## Evidence
 

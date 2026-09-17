@@ -1,0 +1,41 @@
+# Run with: elisascript scripts/maze_game.elisascript
+#
+# Compiles and runs the packaged maze game entry point
+# (examples/maze/main.elisa) on the headless target. This is deliberately a
+# separate driver rather than a block in scripts/check.elisascript: that
+# script is at its 600-line limit, so a new suite cannot be added without
+# splitting it first (see docs/adr/0010). The game's exit status is its
+# report, because Elisa has no text output channel.
+#
+# The compiler is named rather than discovered: the shared launcher resolves
+# an executable name through PATH itself (the check script already relies on
+# this for python3), and a filesystem-scanning helper trips the script
+# verifier when its result is not consumed by a process call.
+
+def main(arguments: darray[sview]) -> i64:
+    if arguments.count != 0:
+        eprint("usage: elisascript scripts/maze_game.elisascript")
+        return 2
+    root: Path = Script::source_path().parent().parent()
+    compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
+    _ = create_directories(root.joinpath("build"))
+    binary: sview = str(root.joinpath("build/maze-game"))
+    compile_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(compiler), ["-emit", "exe", "-o", binary, str(root.joinpath("examples/maze/main.elisa"))], empty_input)
+    _ = write_stdout(compile_result.stdout)
+    _ = write_stderr(compile_result.stderr)
+    if compile_result.exit_status != 0:
+        return compile_result.exit_status
+
+    session_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(binary), [], empty_input)
+    _ = write_stdout(session_result.stdout)
+    _ = write_stderr(session_result.stderr)
+    if session_result.exit_status != 0:
+        eprint("Packaged maze game failed; exit status identifies the step.")
+        return session_result.exit_status
+
+    println("Packaged maze game session passed: start, play, win, restart, pause, resume, exit.")
+    0

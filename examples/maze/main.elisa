@@ -1,0 +1,38 @@
+# Packaged maze game, headless target. This is an application entry point,
+# not a library test: it starts the game, refuses input before it is playing,
+# wins the scripted route, restarts, pauses and resumes, and exits, all
+# through the public game API. Exit status is the report (0 = every step
+# behaved); Elisa has no text output channel, so distinct nonzero codes
+# identify the failing step and scripts/maze_game.elisascript runs it.
+include "./game.elisa"
+include "./trace.elisa"
+using Maze
+using MazeGame
+using MazeTrace
+
+def main() -> i32:
+    game: mutable MazeGame = game_new()
+    return 1 if game.status != GameStatus.Menu or game.lives != 3
+    # A menu is not a game: input must be refused until start.
+    early: bool = game_step(&game, MazeMove.East)
+    return 2 if early
+    game_start(&game)
+    return 3 if game.status != GameStatus.Playing or game.lives != 3 or game.has_key
+
+    script: MazeMove[10] = maze_win_script()
+    for index in 0..<10 |game, script|:
+        moved: bool = game_step(&game, script[index])
+        return 4 if not moved
+    return 5 if not game_won(&game) or not maze_at_goal(&game.grid)
+
+    game_restart(&game)
+    return 6 if game.status != GameStatus.Playing or game.lives != 3 or game.has_key
+    game_pause(&game)
+    return 7 if game.status != GameStatus.Paused
+    frozen: bool = game_step(&game, MazeMove.East)
+    return 8 if frozen or game.status != GameStatus.Paused
+    game_resume(&game)
+    return 9 if game.status != GameStatus.Playing
+    game_quit(&game)
+    return 10 if game.status != GameStatus.Exited
+    0
