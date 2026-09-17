@@ -195,6 +195,23 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
     if budget <= 0 or budget > 16667:
         raise ValueError(f"scene manifest frame_budget_us out of range: {budget}")
     hunter = cell_of("hunter", "1,1")
+    route_cells = [entry for entry in values.get("hunter_route", "").split(";") if entry]
+    if len(route_cells) != 4:
+        raise ValueError(f"scene manifest hunter_route count drift: {len(route_cells)}, expected 4")
+    route_points = []
+    for entry in route_cells:
+        (rx, ry) = (int(part) for part in entry.split(","))
+        if not (0 <= rx < 8 and 0 <= ry < 8) or (rx, ry) in wall_set:
+            raise ValueError(f"scene manifest hunter_route cell invalid: {entry!r}")
+        if route_points:
+            (px, py) = route_points[-1]
+            if abs(px - rx) + abs(py - ry) != 1:
+                raise ValueError(f"scene manifest hunter_route is not contiguous: {entry!r}")
+        route_points.append((rx, ry))
+    if route_points[0] != (1, 1) or route_points[-1] != (4, 1):
+        raise ValueError("scene manifest hunter_route endpoints drift")
+    if route_points[0] != (1, 1):
+        raise ValueError("scene manifest hunter_route does not start at the spawn")
     allowed_status = ("menu", "playing", "paused", "won", "lost", "exited")
     if values.get("game_status") not in allowed_status:
         raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")

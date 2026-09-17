@@ -155,6 +155,7 @@ int main(int argc, char** argv) {
         {"hazards", "elisa_hazard", 0.95f, 0.15f, 0.1f},
         {"hunter", "elisa_hunter", 1.0f, 0.55f, 0.1f},
     };
+    wi::ecs::Entity hunter_marker = wi::ecs::INVALID_ENTITY;
     for (const auto& spec : marker_specs) {
         for (const auto& cell : marker_cells(spec.field)) {
             const auto marker = create_cell_marker(scene,
@@ -162,6 +163,9 @@ int main(int argc, char** argv) {
                 cell.first, cell.second, spec.r, spec.g, spec.b);
             if (marker == wi::ecs::INVALID_ENTITY) {
                 return 1;
+            }
+            if (std::string(spec.field) == "hunter") {
+                hunter_marker = marker;
             }
             marker_entities.push_back(marker);
         }
@@ -214,6 +218,17 @@ int main(int argc, char** argv) {
     physics_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
     physics_transform->UpdateTransform();
     const float physics_start_y = physics_transform->GetPosition().y;
+
+    // Gameplay over time: walk the character along the route Elisa published,
+    // one cell per frame, so the host shows movement rather than a teleport.
+    // The route itself is Elisa's pathfinding result, not the host's.
+    std::vector<std::pair<int, int>> hunter_route;
+    {
+        const auto route_it = manifest.find("hunter_route");
+        if (route_it != manifest.end()) {
+            hunter_route = parse_walls(route_it->second);
+        }
+    }
 
     auto* object_transform = scene.transforms.GetComponent(object);
     auto* mesh = scene.meshes.GetComponent(object);
@@ -341,6 +356,19 @@ int main(int argc, char** argv) {
     for (int frame = 0; frame < warmup_frames + measured_frames; ++frame) {
         const auto frame_start = std::chrono::steady_clock::now();
         application.Run();
+        if (hunter_marker != wi::ecs::INVALID_ENTITY and not hunter_route.empty()) {
+            const std::size_t step = std::min((std::size_t)frame, hunter_route.size() - 1);
+            auto* walk_transform = scene.transforms.GetComponent(hunter_marker);
+            if (walk_transform != nullptr) {
+                walk_transform->translation_local = to_wicked_space(
+                    (float)hunter_route[step].first * 0.6f - 2.1f,
+                    (float)hunter_route[step].second * 0.6f - 2.1f, 1.0f);
+                // Writing translation_local does not mark the transform dirty,
+                // so UpdateTransform would keep the stale world matrix.
+                walk_transform->SetDirty();
+                walk_transform->UpdateTransform();
+            }
+        }
         const auto frame_stop = std::chrono::steady_clock::now();
         if (frame >= warmup_frames) {
             frame_micros.push_back(std::chrono::duration_cast<std::chrono::microseconds>(frame_stop - frame_start).count());
@@ -361,6 +389,11 @@ int main(int argc, char** argv) {
     }
     const float physics_end_y = scene.transforms.GetComponent(physics_box)->GetPosition().y;
     std::fprintf(stdout, "physics: start_y=%.3f end_y=%.3f\n", physics_start_y, physics_end_y);
+    if (hunter_marker != wi::ecs::INVALID_ENTITY) {
+        const auto hunter_pos = scene.transforms.GetComponent(hunter_marker)->GetPosition();
+        std::fprintf(stdout, "hunter replayed route=%u end=(%.2f,%.2f)\n",
+            (unsigned)hunter_route.size(), hunter_pos.x, hunter_pos.y);
+    }
     if (!check(physics_start_y - physics_end_y >= 0.2f, "physics box fell under gravity")) {
         return 1;
     }

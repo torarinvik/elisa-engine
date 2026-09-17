@@ -96,6 +96,7 @@ func _run_capture() -> void:
         "won": Color(0.1, 0.9, 0.2, 1.0),
         "lost": Color(0.95, 0.15, 0.1, 1.0),
     }
+    var hunter_marker: MeshInstance3D = null
     var marker_count := 0
     if manifest.has("game_status") and manifest.has("status_cell"):
         var status_color: Color = status_colors.get(String(manifest["game_status"]), Color(0.9, 0.9, 0.9, 1.0))
@@ -140,6 +141,8 @@ func _run_capture() -> void:
             marker.mesh = marker_mesh
             marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
             scene_root.add_child(marker)
+            if String(spec["field"]) == "hunter":
+                hunter_marker = marker
             marker_count += 1
 
     # Physics: one dynamic body, far off-camera at x=20 so it cannot occlude
@@ -188,10 +191,23 @@ func _run_capture() -> void:
     DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
     var warmup := 5
     var measured := 30
+    # Gameplay over time: walk the character along the route Elisa published,
+    # one cell per frame, so the host shows movement rather than a teleport.
+    var hunter_route: Array[Vector2i] = []
+    if manifest.has("hunter_route"):
+        for cell in String(manifest["hunter_route"]).split(";"):
+            if cell.is_empty():
+                continue
+            var parts := cell.split(",")
+            hunter_route.append(Vector2i(int(parts[0]), int(parts[1])))
     var frame_micros: Array[int] = []
     for _frame in range(warmup + measured):
         var frame_start := Time.get_ticks_usec()
         await process_frame
+        if hunter_marker != null and not hunter_route.is_empty():
+            var step: int = min(_frame, hunter_route.size() - 1)
+            hunter_marker.position = Vector3(
+                hunter_route[step].x * 0.6 - 2.1, hunter_route[step].y * 0.6 - 2.1, 1.0)
         var elapsed := Time.get_ticks_usec() - frame_start
         if _frame >= warmup:
             frame_micros.append(elapsed)

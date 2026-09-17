@@ -13,6 +13,8 @@ module MazeHunter:
             MAX_STEPS: usize = 64
             SPAWN_X: i64 = 1
             SPAWN_Y: i64 = 1
+            PURSUIT_X: i64 = 4
+            PURSUIT_Y: i64 = 1
 
     public:
         struct Hunter:
@@ -63,6 +65,20 @@ module MazeHunter:
 
         # Chases until arrival or the step budget runs out; returns the number
         # of steps taken, so a caller can assert a bounded, deterministic run.
+        # The route the host replays: a path from the spawn to a fixed pursuit
+        # cell in the open first row, chosen so it crosses no marker cell.
+        # Publishing the whole route (not just the endpoint) is what lets a host
+        # show the character walking over time instead of teleporting.
+        def hunter_pursuit_x() -> i64:
+            Tune::PURSUIT_X
+
+        def hunter_pursuit_y() -> i64:
+            Tune::PURSUIT_Y
+
+        def hunter_pursuit_route() -> Path:
+            walls: bool[64] = MazeLayout::maze_walls()
+            find_path(walls, Tune::SPAWN_X, Tune::SPAWN_Y, Tune::PURSUIT_X, Tune::PURSUIT_Y)
+
         def hunter_distance(hunter: Hunter&) -> f32:
             hunter.anim.distance
 

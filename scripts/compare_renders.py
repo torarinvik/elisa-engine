@@ -187,31 +187,8 @@ def resolve_occluded(spec):
     return ignored
 
 
-def resolve_markers(spec):
-    # Marker cells the fixture says should be lit: the game's key, door,
-    # hazards, goal, and the player. The topology check expects brightness
-    # exactly on walls and markers, so an open cell that is accidentally lit
-    # (or a wall that is dark) still fails.
-    path = manifest_path_of(spec)
-    if path is None:
-        return set()
-    lit = set()
-    for line in open(path, encoding="utf-8").read().splitlines():
-        text = line.strip()
-        for field in ("goal", "key", "door", "player_final", "hunter", "status_cell"):
-            if text.startswith(field + "="):
-                (x, y) = text[len(field) + 1:].split(",")
-                lit.add((int(x), int(y)))
-        if text.startswith("hazards="):
-            for entry in text[len("hazards="):].split(";"):
-                if entry:
-                    (x, y) = entry.split(",")
-                    lit.add((int(x), int(y)))
-    return lit
-
-
 def resolve_marker_fields(spec):
-    # Per-kind marker cells, so a check can assert the goal is green and the
+    # Per-kind marker values, so checks can assert the goal is green and the
     # hazards are red rather than only that *something* is lit there.
     path = manifest_path_of(spec)
     if path is None:
@@ -219,10 +196,37 @@ def resolve_marker_fields(spec):
     fields = {}
     for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
-        for field in ("goal", "key", "door", "hazards", "player_final", "hunter", "status_cell"):
+        for field in ("goal", "key", "door", "hazards", "player_final", "hunter", "hunter_route", "status_cell"):
             if text.startswith(field + "="):
                 fields[field] = text[len(field) + 1:]
     return fields
+
+
+def resolve_markers(spec):
+    # Cells the fixture says should be lit: the game's key, door, hazards,
+    # goal, status indicator, and the player. A route supersedes the bare
+    # spawn: the character ends at the last route cell, so that is the lit
+    # cell and the spawn is expected to be empty.
+    fields = resolve_marker_fields(spec)
+    lit = set()
+    for field in ("goal", "key", "door", "player_final", "status_cell"):
+        if field in fields:
+            (x, y) = fields[field].split(",")
+            lit.add((int(x), int(y)))
+    if "hazards" in fields:
+        for entry in fields["hazards"].split(";"):
+            if entry:
+                (x, y) = entry.split(",")
+                lit.add((int(x), int(y)))
+    if "hunter_route" in fields:
+        route = [e for e in fields["hunter_route"].split(";") if e]
+        if route:
+            (x, y) = route[-1].split(",")
+            lit.add((int(x), int(y)))
+    elif "hunter" in fields:
+        (x, y) = fields["hunter"].split(",")
+        lit.add((int(x), int(y)))
+    return lit
 
 
 def sample_rgb(source, rows, cols, cell_x, cell_y):
@@ -235,16 +239,20 @@ def sample_rgb(source, rows, cols, cell_x, cell_y):
     screen_x = max(0, min(width - 1, int((0.5 - world_x / half_width * 0.5) * width)))
     screen_y = max(0, min(height - 1, int((0.5 - world_y / half_height * 0.5) * height)))
     index = (screen_y * width + screen_x) * channels
-    # Both probes write RGBA PNGs (the encoder normalises channel order), so
-    # the first three bytes are red, green, blue.
+    # Both probes write RGBA PNGs, so the first three bytes are red, green,
+    # blue even though the native swapchain is BGRA.
     return (pixels[index] / 255.0, pixels[index + 1] / 255.0, pixels[index + 2] / 255.0)
 
 
 def marker_colour_failures(source, rows, cols, spec, margin=0.03):
     # Each game object must show its own dominant channel at its own cell, so
-    # a host that draws the right *shape* in the wrong place or colour fails.
+    # a host that draws the right shape in the wrong place or colour fails.
+    # The character is checked at its route end, where it finished walking.
     fields = resolve_marker_fields(spec)
-    failures = []
+    if "hunter_route" in fields:
+        route = [e for e in fields["hunter_route"].split(";") if e]
+        if route:
+            fields["hunter"] = route[-1]
     rules = [
         ("goal", lambda r, g, b: g > r + margin and g > b + margin),
         ("key", lambda r, g, b: r > b + margin and g > b + margin),
@@ -253,11 +261,11 @@ def marker_colour_failures(source, rows, cols, spec, margin=0.03):
         ("hunter", lambda r, g, b: r > g + margin and g > b + margin),
         ("player_final", lambda r, g, b: b > r + margin and b > g + margin),
     ]
-    status = fields.get("game_status", "")
-    if "status_cell" in fields and status == "playing":
-        # The fixture's status is Playing, which the hosts must draw cyan;
-        # a host that ignored the status would show the neutral default.
+    if fields.get("game_status") == "playing" and "status_cell" in fields:
+        # Playing must be drawn cyan; a host that ignored the status field
+        # would show the neutral default.
         rules.append(("status_cell", lambda r, g, b: b > r + margin and g > r + margin))
+    failures = []
     for field, matches in rules:
         if field not in fields:
             continue
@@ -425,6 +433,19 @@ def main(arguments):
             print("marker colour mismatch: " + "; ".join(failures), file=sys.stderr)
             return 1
         print("markers ok: each game object shows its own colour at its own cell")
+        # The character walked the published route, so its spawn cell must be
+        # empty in the captured frame; a host that teleported (or ignored the
+        # route) would leave the spawn lit.
+        fields = resolve_marker_fields(cells_spec)
+        if "hunter_route" in fields:
+            route = [e for e in fields["hunter_route"].split(";") if e]
+            if route:
+                (sx, sy) = (int(part) for part in route[0].split(","))
+                (r, g, b) = sample_rgb(frame, rows, cols, sx, sy)
+                if max(r, g, b) > 0.15:
+                    print(f"hunter spawn still lit at {route[0]}", file=sys.stderr)
+                    return 1
+                print("route ok: character left its spawn and reached the route end")
         return 0
     if command == "stats":
         (width, height, channels, pixels) = read_png(arguments[2])

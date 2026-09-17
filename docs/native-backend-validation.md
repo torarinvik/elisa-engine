@@ -293,6 +293,26 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
+## Gameplay over time in the hosts (2026-09-18)
+
+The hosts no longer draw a static arrangement; they replay an Elisa
+route. `examples/maze/hunter.elisa` publishes the path from the
+character's spawn to a fixed pursuit cell in the open first row
+(`hunter_pursuit_route`), chosen so it crosses no marker cell, and
+`test/maze.elisa` pins its four cells. The fixture carries
+`hunter_route`, and both hosts walk it one cell per frame, so the
+captured frame shows the character at the route end and its spawn empty.
+`compare_renders.py` now checks exactly that: the character's colour at
+the route end, and that the spawn cell is dark. A host that ignored the
+route would leave the spawn lit and fail, so "movement" is gated, not
+merely asserted.
+
+One Wicked detail cost real debugging time and is worth recording:
+writing `translation_local` directly does not mark the transform dirty,
+so `UpdateTransform()` keeps the stale world matrix and the object never
+moves. The fix is to call `SetDirty()` before `UpdateTransform()` when
+mutating a transform outside the scene's own systems.
+
 ## Native physics integration (2026-09-18)
 
 The native host now drives a real Jolt simulation. The probe enables
