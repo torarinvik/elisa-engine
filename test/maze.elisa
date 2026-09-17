@@ -36,9 +36,18 @@ def main() -> i32:
     walls: bool[64] = maze_walls()
     hunter: mutable Hunter = hunter_new(hunter_spawn_x(), hunter_spawn_y())
     return 30 if not hunter_valid(&hunter, walls) or hunter_spawn_x() != 1 or hunter_spawn_y() != 1
+    return 31 if not hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
+    one: bool = hunter_step(&hunter, 2, 6)
+    return 38 if not one or hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
     taken: usize = hunter_chase(&hunter, 2, 6)
-    return 31 if not hunter.arrived or hunter.x != 2 or hunter.y != 6
-    return 32 if taken != 6 or not hunter_valid(&hunter, walls)
+    return 32 if taken != 5 or not hunter.arrived or hunter.x != 2 or hunter.y != 6
+    # Arriving switches to Idle, and the six walked steps left root motion at
+    # exactly six strides of 1/32. Animation follows movement; it never drives it.
+    return 39 if not hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
+    if hunter_distance(&hunter) != 0.1875:
+        return 40
+    if not hunter_valid(&hunter, walls):
+        return 41
     # A walled target has no route, so the hunter must not move at all.
     stuck: mutable Hunter = hunter_new(hunter_spawn_x(), hunter_spawn_y())
     halted: usize = hunter_chase(&stuck, 3, 3)

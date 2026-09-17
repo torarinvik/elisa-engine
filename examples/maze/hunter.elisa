@@ -5,6 +5,7 @@
 # navigates"; presentation only draws the resulting cell.
 include "./layout.elisa"
 include "../../src/nav/grid.elisa"
+include "../../src/animation/state.elisa"
 
 module MazeHunter:
     private:
@@ -19,9 +20,10 @@ module MazeHunter:
             y: mutable i64
             steps: mutable usize
             arrived: mutable bool
+            anim: mutable Anim::AnimState
 
         def hunter_new(x: i64, y: i64) -> Hunter:
-            Hunter{x: x, y: y, steps: 0, arrived: false}
+            Hunter{x: x, y: y, steps: 0, arrived: false, anim: Anim::anim_new()}
 
         # Published spawn cell: hosts draw the character where Elisa puts it,
         # and test/maze.elisa checks the spawn is a valid open cell.
@@ -51,10 +53,25 @@ module MazeHunter:
             hunter.y <- next / 8
             hunter.steps <- hunter.steps + 1
             hunter.arrived <- hunter.x == target_x and hunter.y == target_y
+            # Animation follows gameplay: one walked step is one Walk tick,
+            # which also accumulates root-motion distance. Arriving switches
+            # to Idle. The animation subsystem never decides movement.
+            Anim::anim_play(&hunter.anim, Anim::Clip.Walk)
+            Anim::anim_tick(&hunter.anim)
+            Anim::anim_play(&hunter.anim, Anim::Clip.Idle) if hunter.arrived
             true
 
         # Chases until arrival or the step budget runs out; returns the number
         # of steps taken, so a caller can assert a bounded, deterministic run.
+        def hunter_distance(hunter: Hunter&) -> f32:
+            hunter.anim.distance
+
+        def hunter_animating(hunter: Hunter&) -> bool:
+            Anim::anim_valid(&hunter.anim)
+
+        def hunter_clip_idle(hunter: Hunter&) -> bool:
+            hunter.anim.clip == Anim::Clip.Idle
+
         def hunter_chase(hunter: mutable Hunter&, target_x: i64, target_y: i64) -> usize:
             # The parameter is already a mutable reference, so it is passed on
             # directly rather than address-taken again.

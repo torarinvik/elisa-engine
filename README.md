@@ -109,7 +109,10 @@ tests: `src/physics/policy.elisa` (one solver per body, kinematic from
 Elisa, dynamic from the solver, tick-boundary commits),
 `src/runtime/schedule.elisa` (declared read/write sets, conflict ordering,
 parallel pairs), `src/animation/state.elisa` plus `src/animation/codec.elisa`
-(Elisa-owned clips, blends, events, root motion; benchmarked codec choice),
+(Elisa-owned clips, blends, events, root motion; benchmarked codec choice;
+`examples/maze/hunter.elisa` drives the walking character's animation from
+its movement, so one walked step is one Walk tick and arriving switches to
+Idle),
 `src/nav/grid.elisa` (BFS waypoints; the path is Elisa's decision),
 `src/audio/policy.elisa` (one device, playback first, spatial opt-in),
 `src/tooling/inspector.elisa` plus `src/tooling/editor.elisa` (read-only
