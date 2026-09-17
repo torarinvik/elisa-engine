@@ -1,4 +1,4 @@
-# IDs are positive i64 values, local to one world lifetime. Zero means failure.
+# IDs are positive i64 values, local to one world lifetime. Zero is unissued.
 # The world must own one allocator and never copy or reset it while IDs survive.
 module EntityId:
     const ENTITY_ID_INVALID: i64 = 0
@@ -19,23 +19,15 @@ module EntityId:
         ensure result == last_issued + 1
         last_issued + 1
 
-    def validate_id(id: i64) -> void error[EntityIdError]:
-        if id < ENTITY_ID_INVALID:
-            #ISSUE: is id < ENTITY_ID_INVALID correct or should it be <= ?
-            raise EntityIdError.InvalidId
-        elif id >= ENTITY_ID_MAX:
-            raise EntityIdError.MaxId
-        else:
-            pass
-
     def entity_id_allocate(allocator: mutable EntityIdAllocator&) -> i64 error[EntityIdError]:
         cursor: i64 = allocator.last_issued
-        try validate_id(cursor)
-
-        candidate: i64 = entity_id_next(cursor)
-        # Keep the final allocation decision in a value block. The defensive check
-        # mirrors the transition contract and leaves room for future allocation
-        # policy without widening the allocator's mutable state.
-        try validate_id(candidate)
-        allocator.last_issued <- candidate
-        candidate
+        # Zero is the valid initial cursor. The maximum ID is issued when the
+        # cursor is one below it; a cursor already at the maximum is exhausted.
+        if cursor < ENTITY_ID_INVALID:
+            raise EntityIdError.InvalidId
+        elif cursor >= ENTITY_ID_MAX:
+            raise EntityIdError.MaxId
+        else:
+            candidate: i64 = entity_id_next(cursor)
+            allocator.last_issued <- candidate
+            candidate

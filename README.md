@@ -6,10 +6,14 @@ backend are planned; neither is implemented yet.
 
 ## First milestone: entity identity
 
-`src/entity_id.elisa` supplies a world-local numeric identity allocator. Initialize
-`EntityIdAllocator{last_issued: ENTITY_ID_INVALID}` and call `entity_id_allocate(&allocator)`.
+`src/entity_id.elisa` supplies the `EntityId` module's world-local numeric identity
+allocator. Import it with `using EntityId`, initialize
+`EntityIdAllocator{last_issued: ENTITY_ID_INVALID}`, and call
+`entity_id_allocate(&allocator)` with `catch` to handle its error union.
 Successful allocation returns IDs from 1 through `ENTITY_ID_MAX`.
-`ENTITY_ID_INVALID` (zero) means allocation failed. Exhaustion and negative allocator state leave the cursor unchanged.
+`ENTITY_ID_INVALID` (zero) is the unissued initial cursor, not a failure result.
+Exhaustion raises `EntityIdError.MaxId`; negative allocator state raises
+`EntityIdError.InvalidId`. Both errors leave the cursor unchanged.
 The initial representation uses positive `i64` values; a packed handle ABI is not fixed.
 
 IDs are never recycled within one allocator lifetime. The future world must own one
@@ -34,7 +38,7 @@ compilation, runtime test, or proof failure. It saves the proof
 report in `build/entity-id-proof.json`. It does not rebuild either toolchain.
 
 - `test/`: executable checks for initial allocation, distinct successive IDs, the
-  final valid ID, repeated exhaustion, and invalid allocator state.
+  final valid ID, repeated `MaxId` errors, and the `InvalidId` error.
 - `proof/`: Elisa Proof checks importing the actual implementation. They establish
   that a valid cursor advances by one and produces an ID greater than every earlier
   ID bounded by that cursor. Imported runtime code is checked as well.

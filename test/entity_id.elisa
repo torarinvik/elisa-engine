@@ -1,11 +1,15 @@
 include "../src/entity_id.elisa"
+using EntityId
 
 def main() -> i32:
     initial: i32 =
         allocator: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_INVALID}
-        #Will most likely need to catch the error from the entity_id_allocate
-        first: i64 = entity_id_allocate(&allocator)
-        second: i64 = entity_id_allocate(&allocator)
+        first: i64 = catch entity_id_allocate(&allocator):
+            value: value
+            error failure: ENTITY_ID_INVALID
+        second: i64 = catch entity_id_allocate(&allocator):
+            value: value
+            error failure: ENTITY_ID_INVALID
         if first != 1 or second != 2 or allocator.last_issued != 2:
             1
         else:
@@ -14,10 +18,18 @@ def main() -> i32:
 
     edge_code: i32 =
         edge: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_MAX - 1}
-        final_id: i64 = entity_id_allocate(&edge)
-        failed: i64 = entity_id_allocate(&edge)
-        failed_again: i64 = entity_id_allocate(&edge)
-        if final_id != ENTITY_ID_MAX or failed != ENTITY_ID_INVALID or failed_again != ENTITY_ID_INVALID:
+        final_id: i64 = catch entity_id_allocate(&edge):
+            value: value
+            error failure: ENTITY_ID_INVALID
+        exhausted: i32 = catch entity_id_allocate(&edge):
+            value: 2
+            EntityIdError.MaxId: 0
+            EntityIdError.InvalidId: 2
+        exhausted_again: i32 = catch entity_id_allocate(&edge):
+            value: 2
+            EntityIdError.MaxId: 0
+            EntityIdError.InvalidId: 2
+        if final_id != ENTITY_ID_MAX or exhausted != 0 or exhausted_again != 0:
             2
         elif edge.last_issued != ENTITY_ID_MAX:
             3
@@ -27,8 +39,11 @@ def main() -> i32:
 
     invalid_code: i32 =
         invalid: mutable EntityIdAllocator = EntityIdAllocator{last_issued: -1}
-        rejected: i64 = entity_id_allocate(&invalid)
-        if rejected != ENTITY_ID_INVALID or invalid.last_issued != -1:
+        rejected: i32 = catch entity_id_allocate(&invalid):
+            value: 4
+            EntityIdError.InvalidId: 0
+            EntityIdError.MaxId: 4
+        if rejected != 0 or invalid.last_issued != -1:
             4
         else:
             0
