@@ -1,0 +1,12 @@
+struct K:
+    tick: i64
+    x: f32
+def add(track: mutable K[4], i: usize, tick: i64, x: f32) -> bool:
+    track[i] <- K{tick: tick, x: x}
+    true
+def main() -> i32:
+    ks: mutable K[4] = zeroed
+    _ = add(&ks, 0, 0, 0.0)
+    _ = add(&ks, 1, 10, 2.0)
+    return 83 if ks[1].x < 1.5 or ks[1].x > 2.5
+    0

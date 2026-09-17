@@ -1,8 +1,9 @@
+include "../src/animation/sampler.elisa"
 include "../src/animation/state.elisa"
-include "../src/animation/pose.elisa"
 using Anim
 using Ik
 using Pose
+using Sampler
 using Geometry
 
 def near(value: f32, expected: f32) -> bool:
@@ -10,7 +11,60 @@ def near(value: f32, expected: f32) -> bool:
     adjusted: f32 = 0.0 - diff if diff < 0.0 else diff
     adjusted < 0.002
 
+def keyed(x: f32) -> Transform:
+    Transform{position: Vec3{x: x, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()}
+
+def clip_tests() -> i32:
+    # Clip sampling: two keys ten ticks apart interpolate at the midpoint, a
+    # tick outside the range holds the end key rather than extrapolating, and a
+    # joint with no keys keeps the skeleton's own local transform.
+    clip: mutable ClipData = clip_new(10)
+    return 45 if not clip_valid(&clip) or clip_key_count(&clip, 0) != 0
+    return 46 if not clip_add_key(&clip, 0, 0, keyed(0.0)) or not clip_add_key(&clip, 0, 10, keyed(2.0))
+    return 47 if not clip_add_key(&clip, 1, 0, keyed(0.0)) or not clip_add_key(&clip, 1, 10, keyed(4.0))
+    return 48 if clip_add_key(&clip, 0, 11, keyed(1.0)) or clip_add_key(&clip, 0, 5, keyed(9.0))
+    return 49 if clip_key_count(&clip, 0) != 2 or clip_key_count(&clip, 1) != 2
+    midpoint: Transform = catch clip_sample_local(&clip, 0, 5, keyed(-1.0)):
+        value: value
+        error failure: return 50
+    return 51 if not near(midpoint.position.x, 1.0)
+    held_before: Transform = catch clip_sample_local(&clip, 0, -5, keyed(-1.0)):
+        value: value
+        error failure: return 52
+    return 53 if not near(held_before.position.x, 0.0)
+    held_after: Transform = catch clip_sample_local(&clip, 0, 99, keyed(-1.0)):
+        value: value
+        error failure: return 54
+    return 55 if not near(held_after.position.x, 2.0)
+    fallback_local: Transform = catch clip_sample_local(&clip, 3, 5, keyed(7.0)):
+        value: value
+        error failure: return 56
+    return 57 if not near(fallback_local.position.x, 7.0)
+    bad_joint: i32 = catch clip_sample_local(&clip, 40, 5, keyed(0.0)):
+        value: 0
+        ClipError.InvalidTrack: 1
+        error failure: 2
+    return 58 if bad_joint != 1
+    clip_skeleton: mutable Skeleton = skeleton_new()
+    _ = skeleton_add(&clip_skeleton, -1, keyed(0.0))
+    _ = skeleton_add(&clip_skeleton, 0, keyed(0.0))
+    _ = skeleton_add(&clip_skeleton, 1, keyed(0.0))
+    sampled_pose: Pose = catch clip_sample_pose(&clip, 5, &clip_skeleton):
+        value: value
+        error failure: return 59
+    return 60 if not pose_valid(&sampled_pose) or not near(sampled_pose.models[1].position.x, 3.0)
+    start_pose: Pose = catch clip_sample_pose(&clip, 0, &clip_skeleton):
+        value: value
+        error failure: return 61
+    end_pose: Pose = catch clip_sample_pose(&clip, 10, &clip_skeleton):
+        value: value
+        error failure: return 62
+    return 63 if not near(pose_root_motion(&start_pose, &end_pose).x, 2.0)
+    0
+
 def main() -> i32:
+    first_clip: i32 = clip_tests()
+    return first_clip if first_clip != 0
     return 1 if clip_length(Clip.Idle) != 60 or clip_length(Clip.Walk) != 30
     return 2 if clip_length(Clip.Win) != 45 or clip_length(Clip.Hurt) != 20
     state: mutable AnimState = anim_new()

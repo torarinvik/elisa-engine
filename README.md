@@ -151,7 +151,10 @@ Idle),
 `src/animation/ik.elisa` (two-bone IK and aim constraints, including exact
 knee placement from the triangle projection without inverse trig) and
 `src/animation/pose.elisa` (local-to-model pose evaluation, normalized-linear
-blending, root-motion extraction, and a column-major skinning payload).
+blending, root-motion extraction, and a column-major skinning payload) and
+`src/animation/sampler.elisa` (keyframe clips stored as flat parallel columns;
+sampling interpolates a local transform at a tick and holds the end keys rather
+than extrapolating).
 `examples/maze/character.elisa` composes these into one playable enemy: it is
 an owning World entity that navigates, animates, carries an IK-corrected leg
 pose, and unloads with its identity removed first.

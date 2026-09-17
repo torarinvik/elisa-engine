@@ -58,3 +58,23 @@ Editing UI surface, play-in-editor, code reload (needs quiescence,
 callback draining, migration — explicitly deferred), gate-script split
 (required: `scripts/check.elisascript` is at 588/600 lines), license
 choice (requires owner decision).
+
+## Backend lowering fragility found while sampling clips (2026-09-18)
+
+Two compiler/backend behaviours were found while pinning the keyframe sampler
+and are recorded because they are easy to hit again:
+
+- Repeated nested struct-array reads can lower incorrectly. Reading
+  `clip.keys[1].value.position.x` twice in one condition produced a value that
+  disagreed with a single read of the same field. The sampler now stores keys
+  as flat parallel columns (ticks, positions, rotations, scales), which keeps
+  hot reads flat and reliable; it also matches the plan's preference for
+  compact typed stores over records in arrays.
+- Include order changes codegen. Sampling returned the last key instead of the
+  interpolated midpoint when `state.elisa` was included before `sampler.elisa`,
+  and the correct midpoint when the order was reversed. `test/anim_state.elisa`
+  includes the sampler first and pins the interpolated value, so a regression
+  would be caught rather than silently mis-sampled.
+
+Neither workaround relaxes a safety check; both are recorded as open compiler
+issues that the responsible repository should receive as minimized reports.

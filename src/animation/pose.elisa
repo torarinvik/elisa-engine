@@ -89,19 +89,23 @@ module Pose:
                 models[index] <- composed
             Pose{models: models, count: skeleton.count}
 
+        # One local-transform interpolation, shared by pose blending and clip
+        # sampling so a keyframe and a cross-fade use the same shortest-arc
+        # rotation blend.
+        def transform_lerp(start: Geometry::Transform, finish: Geometry::Transform, weight: f32) -> Geometry::Transform:
+            clamped: f32 = Tune::FULL if weight > Tune::FULL else Tune::NONE if weight < Tune::NONE else weight
+            Geometry::Transform{
+                position: lerp_vec3(start.position, finish.position, clamped),
+                rotation: nlerp_quat(start.rotation, finish.rotation, clamped),
+                scale: lerp_vec3(start.scale, finish.scale, clamped),
+            }
+
         def pose_blend(left: Pose&, right: Pose&, weight: f32) -> Pose error[PoseError]:
             raise PoseError.ShapeMismatch if left.count != right.count
             raise PoseError.InvalidSkeleton if left.count > Tune::MAX_JOINTS
-            clamped: f32 = Tune::FULL if weight > Tune::FULL else Tune::NONE if weight < Tune::NONE else weight
             models: mutable Geometry::Transform[16] = zeroed
-            for index in 0..<left.count |models, left, right, clamped|:
-                start_model: Geometry::Transform = left.models[index]
-                finish_model: Geometry::Transform = right.models[index]
-                models[index] <- Geometry::Transform{
-                    position: lerp_vec3(start_model.position, finish_model.position, clamped),
-                    rotation: nlerp_quat(start_model.rotation, finish_model.rotation, clamped),
-                    scale: lerp_vec3(start_model.scale, finish_model.scale, clamped),
-                }
+            for index in 0..<left.count |models, left, right, weight|:
+                models[index] <- transform_lerp(left.models[index], right.models[index], weight)
             Pose{models: models, count: left.count}
 
         def pose_joint_count(pose: Pose&) -> usize:

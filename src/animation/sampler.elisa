@@ -1,0 +1,116 @@
+# Keyframe clip sampling. This is the "sample clips" stage of the plan's
+# animation pipeline: a clip holds per-joint keys, sampling interpolates a
+# local transform at a tick, and the sampled locals feed the pose evaluator so
+# the same composition runs for a keyframe and a cross-fade. A sampler library
+# (ozz or any other) would return the same local deltas; the state machine,
+# blending, root motion, and IK around it stay engine code.
+#
+# Keys are stored as flat parallel columns (ticks, positions, rotations,
+# scales) rather than as records in an array. That keeps hot sampling reads flat
+# and avoids a backend fragility: repeated nested struct-array reads can lower
+# incorrectly, while flat column reads are reliable. It also matches the plan's
+# advice to begin with compact typed stores.
+include "../math/geometry.elisa"
+include "./pose.elisa"
+
+using Pose
+
+module Sampler:
+    private:
+        const module Tune:
+            MAX_JOINTS: usize = 16
+            MAX_KEYS: usize = 8
+            STRIDE: usize = 8
+
+        def transform_of(clip: ClipData&, index: usize) -> Geometry::Transform:
+            Geometry::Transform{
+                position: clip.positions[index],
+                rotation: clip.rotations[index],
+                scale: clip.scales[index],
+            }
+
+    public:
+        error ClipError:
+            Capacity
+            InvalidTrack
+            InvalidSkeleton
+
+        struct ClipData:
+            length: i64
+            key_counts: mutable usize[16]
+            ticks: mutable i64[128]
+            positions: mutable Geometry::Vec3[128]
+            rotations: mutable Geometry::Quat[128]
+            scales: mutable Geometry::Vec3[128]
+
+        def clip_new(length: i64) -> ClipData:
+            ClipData{length: length if length >= 0 else 0, key_counts: zeroed, ticks: zeroed, positions: zeroed, rotations: zeroed, scales: zeroed}
+
+        def clip_valid(clip: ClipData&) -> bool:
+            return false if clip.length < 0
+            for joint in 0..<Tune::MAX_JOINTS |ordered: bool = true| -> ordered:
+                count: usize = clip.key_counts[joint]
+                ordered <- false if count > Tune::MAX_KEYS
+                for slot in 0..<count |inner: bool = true| -> inner:
+                    tick: i64 = clip.ticks[joint * Tune::STRIDE + slot]
+                    inner <- false if tick < 0 or tick > clip.length
+                    inner <- false if slot > 0 and tick < clip.ticks[joint * Tune::STRIDE + slot - 1]
+            true
+
+        # Keys are appended in non-decreasing tick order; a caller that adds an
+        # out-of-order key gets false rather than a silently unsorted track.
+        def clip_add_key(clip: mutable ClipData&, joint: usize, tick: i64, value: Geometry::Transform) -> bool:
+            return false if joint >= Tune::MAX_JOINTS or tick < 0 or tick > clip.length
+            count: usize = clip.key_counts[joint]
+            return false if count >= Tune::MAX_KEYS
+            return false if count > 0 and tick < clip.ticks[joint * Tune::STRIDE + count - 1]
+            index: usize = joint * Tune::STRIDE + count
+            clip.ticks[index] <- tick
+            clip.positions[index] <- value.position
+            clip.rotations[index] <- value.rotation
+            clip.scales[index] <- value.scale
+            clip.key_counts[joint] <- count + 1
+            true
+
+        def clip_key_count(clip: ClipData&, joint: usize) -> usize:
+            return 0 if joint >= Tune::MAX_JOINTS
+            clip.key_counts[joint]
+
+        # Non-erroring sampling used by pose construction: an out-of-range
+        # joint or a joint with no keys yields the supplied fallback. Ticks
+        # before the first key or after the last hold that key rather than
+        # extrapolating.
+        def clip_sample_local_or(clip: ClipData&, joint: usize, tick: i64, fallback: Geometry::Transform) -> Geometry::Transform:
+            return fallback if joint >= Tune::MAX_JOINTS
+            count: usize = clip.key_counts[joint]
+            return fallback if count == 0
+            base: usize = joint * Tune::STRIDE
+            first_tick: i64 = clip.ticks[base]
+            last_tick: i64 = clip.ticks[base + count - 1]
+            return transform_of(clip, base) if tick <= first_tick
+            return transform_of(clip, base + count - 1) if tick >= last_tick
+            lower_slot: usize =
+                for slot in 0..<(count - 1) |found: usize = 0| -> found:
+                    found <- slot if tick >= clip.ticks[base + slot]
+            lower: usize = base + lower_slot
+            upper: usize = lower + 1
+            span: i64 = clip.ticks[upper] - clip.ticks[lower]
+            weight: f32 = 0.0 if span <= 0 else (tick - clip.ticks[lower]).f32() / span.f32()
+            transform_lerp(transform_of(clip, lower), transform_of(clip, upper), weight)
+
+        def clip_sample_local(clip: ClipData&, joint: usize, tick: i64, fallback: Geometry::Transform) -> Geometry::Transform error[ClipError]:
+            raise ClipError.InvalidTrack if joint >= Tune::MAX_JOINTS
+            clip_sample_local_or(clip, joint, tick, fallback)
+
+        def clip_sample_pose(clip: ClipData&, tick: i64, skeleton: Pose::Skeleton&) -> Pose::Pose error[ClipError]:
+            raise ClipError.InvalidSkeleton if not Pose::skeleton_valid(skeleton)
+            sampled: mutable Pose::Skeleton = Pose::skeleton_new()
+            for index in 0..<skeleton.count |sampled, clip, skeleton, tick|:
+                joint: Pose::Joint = skeleton.joints[index]
+                local: Geometry::Transform = clip_sample_local_or(clip, index, tick, joint.local)
+                _ = skeleton_add(&sampled, joint.parent, local)
+            evaluated: Pose::Pose = catch pose_evaluate(&sampled):
+                value: value
+                error failure: Pose::Pose{models: zeroed, count: 0}
+            raise ClipError.InvalidSkeleton if not Pose::pose_valid(&evaluated)
+            evaluated
