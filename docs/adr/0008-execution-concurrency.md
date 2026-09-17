@@ -32,3 +32,14 @@ intentions.
 
 Compiler-inferred sets, parallel executor, backend thread-affinity
 enforcement, measured workload reports on target hardware.
+
+## Derived execution waves (2026-09-18)
+
+`Schedule::assign_groups` derives the earliest-fit grouping from the declared
+read/write sets: a system joins the first wave holding no conflicting system, so
+readers share a wave while a writer is pushed past every reader and writer of
+the same resource. `Executor::plan_auto` feeds that grouping through the same
+`plan_valid` guard, so an analysis bug appears as a rejected plan rather than a
+race. `test/schedule.elisa` pins that the derived plan has two waves, that the
+readers share the first wave, and that executing it yields the order
+`0, 2, 3, 1` with each system visited once.

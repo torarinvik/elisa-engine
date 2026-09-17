@@ -90,4 +90,26 @@ def main() -> i32:
     return 18 if run_count(&work, 0) != 3 or run_count(&work, 1) != 3
     return 19 if run_count(&work, 2) != 3 or run_count(&work, 3) != 3
     return 20 if run_count(&work, 7) != 0
+
+    # The analysis derives the grouping: both readers join the first wave and
+    # the two writers are ordered, giving two waves and the same serial order
+    # the hand-built grouped plan produced.
+    auto: Plan =
+        catch plan_auto(systems, 4):
+            value: value
+            error failure: plan_new()
+    return 28 if not plan_valid(&auto, systems) or auto.group_count != 2
+    return 29 if auto.group[0] != 0 or auto.group[1] != 1
+    return 30 if auto.group[2] != 0 or auto.group[3] != 0
+    auto_seq: i64[8] = plan_sequence(&auto)
+    return 31 if auto_seq[0] != 0 or auto_seq[1] != 2 or auto_seq[2] != 3 or auto_seq[3] != 1
+    auto_state: mutable FrameState = frame_state_new()
+    auto_run: i32 =
+        catch plan_execute(&auto, &auto_state, dispatch):
+            ok: 0
+            error failure: 1
+    return 32 if auto_run != 0 or auto_state.visits[1] != 1 or auto_state.length != 4
+    derived: usize[8] = assign_groups(systems, 4)
+    return 33 if wave_count(derived, 4) != 2 or wave_count(derived, 9) != 0
+    return 34 if wave_count(derived, 0) != 0
     0

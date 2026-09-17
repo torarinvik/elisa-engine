@@ -137,6 +137,7 @@ Gameplay-adjacent ownership lives in small policy modules, each gated by
 tests: `src/physics/policy.elisa` (one solver per body, kinematic from
 Elisa, dynamic from the solver, tick-boundary commits),
 `src/runtime/schedule.elisa` (declared read/write sets, conflict ordering,
+automatic earliest-fit wave assignment feeding an auto-derived executor plan,
 parallel pairs) plus `src/runtime/executor.elisa` (builds a flat-group
 plan, validates it against the analysis, derives the serial order, and
 dispatches each system through a single function value, recording the

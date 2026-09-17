@@ -82,3 +82,30 @@ module Schedule:
     public:
         def schedule_respects(order: usize[8], systems: System[8], count: usize) -> bool:
             Order::respects(order, systems, count)
+
+        # Earliest-fit grouping: each system joins the first group that holds no
+        # conflicting system. Two readers therefore share a group, while a
+        # writer is pushed past every reader and writer of the same resource.
+        # Systems are visited in declared order, so the assignment is
+        # deterministic and the plan it feeds is reproducible.
+        def assign_groups(systems: System[8], count: usize) -> usize[8]:
+            groups: mutable usize[8] = zeroed
+            return groups if count > Tune::MAX_SYSTEMS
+            for index in 0..<count |groups, systems|:
+                placed: mutable bool = false
+                for group in 0..<Tune::MAX_SYSTEMS |groups, systems, index, placed|:
+                    break if placed
+                    clash: bool =
+                        for other in 0..<index |conflicting: bool = false| -> conflicting:
+                            conflicting <- true if groups[other] == group and systems_conflict(systems[other], systems[index])
+                    if not clash:
+                        groups[index] <- group
+                        placed <- true
+            groups
+
+        def wave_count(groups: usize[8], count: usize) -> usize:
+            return 0 if count == 0 or count > Tune::MAX_SYSTEMS
+            highest: usize =
+                for index in 0..<count |top: usize = 0| -> top:
+                    top <- groups[index] + 1 if groups[index] >= top
+            highest

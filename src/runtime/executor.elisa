@@ -61,6 +61,13 @@ module Executor:
             plan.group_count <- highest + 1 if count > 0 else 0
             plan
 
+        # Derive the grouping from the declared read/write sets instead of
+        # requiring the caller to supply one. The result is checked by the same
+        # plan_valid guard, so a bug in the analysis shows up as a rejected
+        # plan rather than a race.
+        def plan_auto(systems: Schedule::System[8], count: usize) -> Plan error[ExecError]:
+            plan_from_groups(Schedule::assign_groups(systems, count), count)
+
         # A plan is valid when every group is dense from zero and no group
         # contains a conflicting pair, which is the property a parallel
         # executor would have to preserve.
