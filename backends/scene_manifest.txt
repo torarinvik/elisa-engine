@@ -22,6 +22,9 @@ frame_budget_us=16667
 # the cell-sized entity just in front of the wall plane, so the entity host
 # object sits where the Elisa game says the player is; hosts do not choose it.
 player_final=1,4
+# Fog radius, from MazeGame rows. Hosts hide walls outside it from the player
+# and the checker expects exactly those; test/maze.elisa pins the predicate.
+fog_radius=3
 # Game markers from the MazeGame rules. test/maze.elisa pins each coordinate
 # against is_key/is_door/is_hazard and checks they are open cells, so the
 # fixture cannot drift from the rules that place them.

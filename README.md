@@ -98,6 +98,10 @@ updates the transform, renders one hidden Metal frame through Wicked's
 `RenderPath3D`, and checks despawn against the external static libraries without
 copying WickedEngine into this repository.
 
+`examples/maze/game.elisa` also publishes its fog-of-war rule
+(`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
+hiding geometry outside the player's radius.
+
 `examples/maze/main.elisa` is the packaged headless entry point: it
 starts, refuses input until playing, wins the scripted route, restarts,
 pauses and resumes, and exits, reporting each step through its exit

@@ -43,7 +43,19 @@ func _run_capture() -> void:
 
     # Maze wall geometry from the Elisa topology, same placement rule as the
     # native host: an 8x8 map on a vertical plane 6 units from the camera.
+    # Fog of war: hide geometry outside the player's visible radius, using the
+    # rule the game publishes. The player cell and radius come from the
+    # fixture, so the host never chooses either.
+    var fog_active := manifest.has("fog_radius") and manifest.has("player_final")
+    var fog_radius := int(manifest.get("fog_radius", 0))
+    var fog_player := Vector2i(0, 0)
+    if fog_active:
+        var player_parts := String(manifest["player_final"]).split(",")
+        fog_player = Vector2i(int(player_parts[0]), int(player_parts[1]))
+        fog_active = fog_radius > 0
+
     var wall_count := 0
+    var walls_hidden := 0
     if manifest.has("walls"):
         for cell in String(manifest["walls"]).split(";"):
             if cell.is_empty():
@@ -54,6 +66,9 @@ func _run_capture() -> void:
                 return
             var cell_x := int(parts[0])
             var cell_y := int(parts[1])
+            if fog_active and abs(cell_x - fog_player.x) + abs(cell_y - fog_player.y) > fog_radius:
+                walls_hidden += 1
+                continue
             var wall := MeshInstance3D.new()
             wall.name = "ElisaWall_%d_%d" % [cell_x, cell_y]
             var wall_mesh := BoxMesh.new()
@@ -246,7 +261,7 @@ func _run_capture() -> void:
     for child in scene_root.get_children():
         if child is MeshInstance3D and child.name.begins_with("ElisaWall"):
             visible_walls += 1
-    print("godot capture: %dx%d walls=%d markers=%d" % [image.get_width(), image.get_height(), visible_walls, marker_count])
+    print("godot capture: %dx%d walls=%d hidden=%d markers=%d" % [image.get_width(), image.get_height(), visible_walls, walls_hidden, marker_count])
     quit(0)
 
 func _fail(message: String) -> void:

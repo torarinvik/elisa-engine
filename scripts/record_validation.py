@@ -212,6 +212,12 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError("scene manifest hunter_route endpoints drift")
     if route_points[0] != (1, 1):
         raise ValueError("scene manifest hunter_route does not start at the spawn")
+    try:
+        fog_radius = int(values.get("fog_radius", ""))
+    except ValueError:
+        raise ValueError(f"scene manifest fog_radius is not an integer: {values.get('fog_radius')!r}")
+    if fog_radius <= 0 or fog_radius > 8:
+        raise ValueError(f"scene manifest fog_radius out of range: {fog_radius}")
     allowed_status = ("menu", "playing", "paused", "won", "lost", "exited")
     if values.get("game_status") not in allowed_status:
         raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")
@@ -235,7 +241,7 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError("scene manifest player_final overlaps a marker")
     return {"sha256": sha256_file(manifest), "fields": len(values),
             "wall_cells": len(wall_cells), "occluded_cells": len(occluded),
-            "markers": len(markers), "frame_budget_us": budget, "audio_cues": audio_cues}
+            "markers": len(markers), "frame_budget_us": budget, "audio_cues": audio_cues, "fog_radius": fog_radius}
 
 
 def main(arguments: list[str]) -> int:

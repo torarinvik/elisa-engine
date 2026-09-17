@@ -106,12 +106,41 @@ int main(int argc, char** argv) {
     // Create every entity before borrowing any component pointer: adding
     // entities can reallocate the component stores, so pointers fetched
     // earlier would dangle.
+    // Fog of war: the host hides geometry outside the player's visible radius,
+    // using the rule the game publishes. The player cell and radius come from
+    // the fixture, so the host never chooses either.
+    int fog_radius = 0;
+    int fog_player_x = 0;
+    int fog_player_y = 0;
+    bool fog_active = false;
+    {
+        const auto radius_it = manifest.find("fog_radius");
+        const auto player_it = manifest.find("player_final");
+        if (radius_it != manifest.end() && player_it != manifest.end()) {
+            fog_radius = std::stoi(radius_it->second);
+            const auto player_cells = parse_walls(player_it->second);
+            if (not player_cells.empty()) {
+                fog_player_x = player_cells.front().first;
+                fog_player_y = player_cells.front().second;
+                fog_active = fog_radius > 0;
+            }
+        }
+    }
+
     const auto walls_it = manifest.find("walls");
     const auto wall_cells = walls_it == manifest.end()
         ? std::vector<std::pair<int, int>>{}
         : parse_walls(walls_it->second);
     std::vector<wi::ecs::Entity> wall_entities;
+    int walls_hidden = 0;
     for (const auto& cell : wall_cells) {
+        if (fog_active) {
+            const int distance = std::abs(cell.first - fog_player_x) + std::abs(cell.second - fog_player_y);
+            if (distance > fog_radius) {
+                ++walls_hidden;
+                continue;
+            }
+        }
         const auto wall = scene.Entity_CreateCube(
             "elisa_wall_" + std::to_string(cell.first) + "_" + std::to_string(cell.second));
         if (wall == wi::ecs::INVALID_ENTITY) {
@@ -132,9 +161,9 @@ int main(int argc, char** argv) {
         }
         wall_entities.push_back(wall);
     }
-    std::fprintf(stdout, "wall cells=%u walls created=%u\n",
-        (unsigned)wall_cells.size(), (unsigned)wall_entities.size());
-    if (!wall_cells.empty() && wall_entities.size() != wall_cells.size()) {
+    std::fprintf(stdout, "wall cells=%u walls created=%u hidden=%d\n",
+        (unsigned)wall_cells.size(), (unsigned)wall_entities.size(), walls_hidden);
+    if (!wall_cells.empty() && wall_entities.size() + walls_hidden != wall_cells.size()) {
         return 1;
     }
 

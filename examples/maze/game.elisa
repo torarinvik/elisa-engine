@@ -90,6 +90,19 @@ module MazeGame:
             return 4 if status == GameStatus.Lost
             5
 
+        # Fog-of-war as a pure predicate, so a host can render the same
+        # visibility the game uses without owning the rule.
+        def maze_fog_radius() -> i64:
+            Tune::FOG_RADIUS
+
+        def maze_cell_visible(px: i64, py: i64, x: i64, y: i64) -> bool:
+            return true if x < 0 or y < 0 or x >= Maze::maze_width().i64() or y >= Maze::maze_height().i64()
+            dx: i64 = x - px
+            dy: i64 = y - py
+            adx: i64 = 0 - dx if dx < 0 else dx
+            ady: i64 = 0 - dy if dy < 0 else dy
+            adx + ady <= Tune::FOG_RADIUS
+
         def maze_key_x() -> i64:
             Tune::KEY_X
 

@@ -187,6 +187,15 @@ def resolve_occluded(spec):
     return ignored
 
 
+def _walls_of(cells):
+    parsed = set()
+    for entry in cells.split(";"):
+        if entry:
+            (x, y) = entry.split(",")
+            parsed.add((int(x), int(y)))
+    return parsed
+
+
 def resolve_marker_fields(spec):
     # Per-kind marker values, so checks can assert the goal is green and the
     # hazards are red rather than only that *something* is lit there.
@@ -196,7 +205,7 @@ def resolve_marker_fields(spec):
     fields = {}
     for line in open(path, encoding="utf-8").read().splitlines():
         text = line.strip()
-        for field in ("goal", "key", "door", "hazards", "player_final", "hunter", "hunter_route", "status_cell"):
+        for field in ("goal", "key", "door", "hazards", "player_final", "hunter", "hunter_route", "status_cell", "fog_radius", "game_status"):
             if text.startswith(field + "="):
                 fields[field] = text[len(field) + 1:]
     return fields
@@ -280,7 +289,20 @@ def marker_colour_failures(source, rows, cols, spec, margin=0.03):
     return failures
 
 
-def pattern_mismatches(source, rows, cols, cells, ignore=None, markers=None):
+def fog_visible_walls(walls, spec):
+    # When the fixture declares a fog radius, a host is expected to draw only
+    # the geometry inside the player's visible radius; everything else must be
+    # dark. Cells outside the grid are never walls, so the filter is exact.
+    fields = resolve_marker_fields(spec)
+    if "fog_radius" not in fields or "player_final" not in fields:
+        return walls
+    radius = int(fields["fog_radius"])
+    (px, py) = (int(part) for part in fields["player_final"].split(","))
+    return {cell for cell in walls
+            if abs(cell[0] - px) + abs(cell[1] - py) <= radius}
+
+
+def pattern_mismatches(source, rows, cols, cells, ignore=None, markers=None, lit_walls=None):
     # Every grid position must be bright exactly when it is a wall in the
     # Elisa list, so the rendered frame encodes the authoritative topology.
     rendered = maze_pattern(source, rows, cols, cells).split("\n")
@@ -290,7 +312,7 @@ def pattern_mismatches(source, rows, cols, cells, ignore=None, markers=None):
             (x, y) = entry.split(",")
             walls.add((int(x), int(y)))
     covered = ignore or set()
-    lit = walls | (markers or set())
+    lit = (walls if lit_walls is None else lit_walls) | (markers or set())
     mismatches = 0
     for line_index, line in enumerate(rendered):
         row = rows - 1 - line_index
@@ -357,7 +379,8 @@ def main(arguments):
             return 2
         rows, cols, cells = int(arguments[3]), int(arguments[4]), resolve_cells(arguments[5])
         allowed = int(arguments[6])
-        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells, resolve_occluded(arguments[5]), resolve_markers(arguments[5]))
+        found = pattern_mismatches(read_png(arguments[2]), rows, cols, cells, resolve_occluded(arguments[5]),
+                                   resolve_markers(arguments[5]), fog_visible_walls(_walls_of(cells), arguments[5]))
         print(f"topology mismatches={found} allowed={allowed}")
         return 0 if found <= allowed else 1
     if command == "perf":
@@ -423,7 +446,8 @@ def main(arguments):
             return 1
         print(f"deterministic: peak={peak:.4f} mean={average:.4f}")
         cells = resolve_cells(cells_spec)
-        found = pattern_mismatches(frame, rows, cols, cells, resolve_occluded(cells_spec), resolve_markers(cells_spec))
+        found = pattern_mismatches(frame, rows, cols, cells, resolve_occluded(cells_spec),
+                                   resolve_markers(cells_spec), fog_visible_walls(_walls_of(cells), cells_spec))
         if found != 0:
             print(f"topology mismatches={found}", file=sys.stderr)
             return 1

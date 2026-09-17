@@ -293,6 +293,32 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
+## Fog of war in the hosts (2026-09-18)
+
+Both hosts hide level geometry outside the player's visible radius, using
+the rule the game owns. `examples/maze/game.elisa` publishes
+`maze_fog_radius` and a pure `maze_cell_visible` predicate, and
+`test/maze.elisa` pins the radius (3) and the predicate at the boundary.
+The fixture carries `fog_radius`, and the checker expects brightness only
+for walls inside the radius plus the markers, so a host that drew every
+wall would fail on the 25 hidden cells. Observed in both hosts:
+`walls=9 hidden=25`, with topology, marker colour, and route checks all
+still exact. This is the plan's "visibility or fog-of-war" rendered from
+Elisa-owned rules rather than re-implemented in a backend.
+
+## Environment limits found (2026-09-18)
+
+Plain Elisa programs have no file or socket I/O: the host APIs
+(`write_text`, `path`, process capture) belong to ElisaScript, not to
+code compiled by `elisac`. That blocks two plan items at the data layer
+rather than the design layer — the asset pipeline cannot yet emit a
+cooked manifest to disk, and a live transport cannot be driven from
+Elisa across processes. The contracts and encodings for both exist and
+are tested (`src/assets/*`, `src/net/wire.elisa`, `src/net/loopback.elisa`);
+what is missing is an IO capability to carry them across a real boundary.
+Redoing either in C++ would duplicate engine logic and is deliberately
+not done.
+
 ## Gameplay over time in the hosts (2026-09-18)
 
 The hosts no longer draw a static arrangement; they replay an Elisa
@@ -353,9 +379,11 @@ call per cue), not by listening.
 The probe reached 592 of the 600-line file limit, so its support code
 (fixture parsing, the right-handed to Wicked-space conversion, cell
 markers, and the generated test WAV) moved to `native/probe_support.h`.
-`native/wicked_probe.cpp` is now 471 lines and the header 137, both with
-headroom, and the split was verified by rerunning the driver unchanged.
-`scripts/check.elisascript` remains unsplit at its own limit.
+`native/wicked_probe.cpp` went to 471 lines and the header 137 (the split
+was verified by rerunning the driver unchanged), and the fog and route
+work has since taken the probe back to 568, so another split is due
+before further native features. `scripts/check.elisascript` remains
+unsplit at its own limit.
 
 ## Toward pixel comparison (status: both hosts captured)
 

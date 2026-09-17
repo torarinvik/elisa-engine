@@ -58,6 +58,9 @@ def main() -> i32:
     route: Path = hunter_pursuit_route()
     return 43 if not path_found(&route) or path_length(&route) != 4
     return 44 if path_cell(&route, 0) != 9 or path_cell(&route, 3) != 12
+    return 45 if maze_fog_radius() != 3
+    return 46 if not maze_cell_visible(1, 4, 1, 4) or not maze_cell_visible(1, 4, 4, 4)
+    return 47 if maze_cell_visible(1, 4, 5, 4)
     return 36 if game_status_code(GameStatus.Won) != 3 or game_status_code(GameStatus.Lost) != 4
     return 37 if game_status_code(GameStatus.Menu) != 0 or game_status_code(GameStatus.Paused) != 2
 
