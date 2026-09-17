@@ -1,9 +1,11 @@
 include "../src/net/session.elisa"
 include "../src/net/loopback.elisa"
+include "../src/net/peer.elisa"
 using Net
 using Session
 using Wire
 using Loopback
+using Peer
 
 def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
     ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
@@ -103,6 +105,37 @@ def loopback_test() -> i32:
     return 55 if latest.revision != 4 or link_dropped(&reliable) != 0
     0
 
+def server_state(rev: i64) -> ReplRecord:
+    ReplRecord{persistent: 99, x: rev * 10, y: 0, revision: rev, owner: Owner.Server}
+
+# Two peers over a lossy, delayed link: the client must still converge on the
+# server's final state, refuse an unauthorized writer, and ignore stale
+# revisions. This is the netcode path end to end at the Elisa layer.
+def peer_test() -> i32:
+    link: mutable Link = link_new(3, 1)
+    for rev in 1..<7 |link|:
+        sent: i32 = catch link_send(&link, &server_state(rev.i64()), rev.i64() - 1):
+            value: value
+            error failure: 99
+        return 60 if sent == 99
+    client: mutable PeerState = peer_new(Owner.Server)
+    for tick in 1..<13 |link, client|:
+        received: ReplRecord =
+            catch link_receive(&link, tick.i64()):
+                value: value
+                error failure: ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
+        if received.persistent == 99:
+            outcome: ApplyResult = peer_apply(&client, received, Owner.Server)
+            _ = outcome
+    return 61 if peer_revision(&client) != 6 or peer_x(&client) != 60
+    return 62 if client.applied < 3 or client.rejected != 0
+    hostile: ReplRecord = ReplRecord{persistent: 99, x: 999, y: 0, revision: 7, owner: Owner.Client}
+    rejected: ApplyResult = peer_apply(&client, hostile, Owner.Server)
+    return 63 if rejected != ApplyResult.RejectedAuthority or client.rejected != 1 or peer_x(&client) != 60
+    stale: ApplyResult = peer_apply(&client, server_state(5), Owner.Server)
+    return 64 if stale != ApplyResult.IgnoredOlder or peer_x(&client) != 60
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -133,4 +166,6 @@ def main() -> i32:
     return wired if wired != 0
     looped: i32 = loopback_test()
     return looped if looped != 0
+    peers: i32 = peer_test()
+    return peers if peers != 0
     0

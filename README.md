@@ -145,10 +145,12 @@ normalization, and normalized dot products),
 snapshots, perf budgets, undo/redo, reload generations), and
 `src/net/replication.elisa` plus `src/net/session.elisa` (authority,
 interpolation data, deterministic loss profile, rollback, sessions with
-recovery), and `src/net/wire.elisa` plus `src/net/loopback.elisa` (a
-fixed little-endian replication frame with an exact encode/decode round
-trip, and an in-memory loopback link that applies the same loss and delay
-policy). The loopback is a transport double: it proves the
+recovery), and `src/net/wire.elisa`, `src/net/loopback.elisa`, and
+`src/net/peer.elisa` (a fixed little-endian replication frame with an
+exact encode/decode round trip; an in-memory loopback link applying the
+declared loss and delay policy; and a peer that accepts only authorized,
+newer writes and converges on the server's final state over that lossy
+link). The loopback is a transport double: it proves the
 encode/deliver/decode/reconcile chain under loss and latency, not that a
 real socket works. None of these link their native libraries yet; they
 establish the contracts those integrations must satisfy.

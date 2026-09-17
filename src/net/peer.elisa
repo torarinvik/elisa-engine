@@ -1,0 +1,59 @@
+# Peer state machine over the loopback link. This is the piece that turns the
+# wire format, the authority rules, and the loss/delay policy into observable
+# behavior: a peer accepts only writes it is authorized to accept, only when
+# the revision is newer, and records when accepting one required a rollback.
+# The transport stays a byte mover; the decision to accept, ignore, or reject
+# is Elisa's.
+include "./loopback.elisa"
+
+module Peer:
+    private:
+        const module Tune:
+            PERSISTENT: u64 = 99
+
+    public:
+        enum ApplyResult:
+            Applied
+            IgnoredOlder
+            RejectedAuthority
+            Invalid
+
+        struct PeerState:
+            local: mutable Net::ReplRecord
+            applied: mutable usize
+            ignored: mutable usize
+            rejected: mutable usize
+            rollbacks: mutable usize
+
+        def peer_new(owner: Net::Owner) -> PeerState:
+            PeerState{
+                local: Net::ReplRecord{persistent: Tune::PERSISTENT, x: 0, y: 0, revision: 0, owner: owner},
+                applied: 0,
+                ignored: 0,
+                rejected: 0,
+                rollbacks: 0,
+            }
+
+        def peer_apply(state: mutable PeerState&, incoming: Net::ReplRecord, authorized: Net::Owner) -> ApplyResult:
+            return ApplyResult.Invalid if not Net::record_valid(incoming)
+            return ApplyResult.Invalid if incoming.persistent != state.local.persistent
+            # A peer accepts a write to an identity only from the owner it is
+            # authorized to trust; anything else is refused rather than merged.
+            if incoming.owner != authorized or not Net::may_write(incoming, authorized):
+                state.rejected <- state.rejected + 1
+                return ApplyResult.RejectedAuthority
+            if incoming.revision <= state.local.revision:
+                state.ignored <- state.ignored + 1
+                return ApplyResult.IgnoredOlder
+            # Accepting a newer remote state that disagrees is what a rollback
+            # policy is for; count it so callers can see resimulation demand.
+            state.rollbacks <- state.rollbacks + 1 if Net::needs_rollback(state.local, incoming)
+            state.local <- incoming
+            state.applied <- state.applied + 1
+            ApplyResult.Applied
+
+        def peer_revision(state: PeerState&) -> i64:
+            state.local.revision
+
+        def peer_x(state: PeerState&) -> i64:
+            state.local.x
