@@ -97,11 +97,15 @@ uploaded buffers, sane object flags, occlusion culling disabled without
 effect). A one-run triage saved the scene target, its MSAA resolve
 alias, and the presented image side by side: all three read pure zero,
 so no color stage holds the scene and compositing is not the culprit.
-A setup defect would move at least one of those controls; none moves. So the draw is either never
+Forcing the depth clear to 1.0 changed nothing versus the 0.0 default,
+so depth convention is not the sole gate either (with the caveat that a
+per-frame target recreate would wipe the forcing; the desc print showed
+stable 640x400 throughout). A setup defect would move at
+least one of those controls; none moves. So the draw is either never
 submitted or fully discarded downstream of submission: look next at the
 per-instance submit path (render queue, PSO and material bind),
-viewport binding values, depth function versus clear value, tonemap
-exposure input, light-grid upload, and the HDR compositing branch. The
+viewport binding values, tonemap exposure input, light-grid upload, and
+the HDR compositing branch. The
 single most informative next step is not another engine-Code read but
 an environment control: a minimal raw-Metal triangle through the same
 hidden SDL window. If the triangle shows, the environment rasterizes

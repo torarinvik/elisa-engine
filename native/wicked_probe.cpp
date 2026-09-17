@@ -161,10 +161,6 @@ int main(int argc, char** argv) {
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);
-    // Several frames: the first frames after path activation still warm
-    // up async shader compilation and postprocess history. Runtime shader
-    // compiles take seconds, so a handful of fast frames can all run
-    // before the object shaders exist and every draw is skipped.
     // Pump platform events first: on macOS a window that never sees its
     // event queue may never finish mapping its Metal layer.
     for (int pump = 0; pump < 60; ++pump) {
@@ -173,6 +169,10 @@ int main(int argc, char** argv) {
         }
         wi::helper::Sleep(16);
     }
+    // NOTE (depth experiment 2026-09-18): forcing the depth clear to 1.0
+    // changed nothing versus the 0.0 default, so depth convention is not
+    // the sole gate. The forcing lines were removed again to leave
+    // engine state at defaults.
     for (int frame = 0; frame < 30; ++frame) {
         application.Run();
     }
