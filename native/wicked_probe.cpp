@@ -3,6 +3,7 @@
 #include "wiArguments.h"
 #include "wiHelper.h"
 #include "wiInitializer.h"
+#include "wiPhysics.h"
 #include "wiRenderPath3D.h"
 #include "wiRenderer.h"
 #include "wiScene.h"
@@ -193,6 +194,27 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "markers created=%u\n", (unsigned)marker_entities.size());
 
+    // Physics: a dynamic box far off-camera (x=20) so it cannot occlude any
+    // projected marker or wall sample. Elisa owns the policy; this checks the
+    // Jolt integration actually simulates: gravity must pull it down.
+    wi::physics::SetSimulationEnabled(true);
+    const auto physics_box = scene.Entity_CreateCube("elisa_physics_box");
+    if (!check(physics_box != wi::ecs::INVALID_ENTITY, "physics cube entity")) {
+        return 1;
+    }
+    auto& physics_body = scene.rigidbodies.Create(physics_box);
+    auto* physics_transform = scene.transforms.GetComponent(physics_box);
+    if (!check(physics_transform != nullptr, "physics transform")) {
+        return 1;
+    }
+    physics_body.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
+    physics_body.mass = 1.0f;
+    physics_body.box.halfextents = XMFLOAT3(0.3f, 0.3f, 0.3f);
+    physics_transform->translation_local = to_wicked_space(20.0f, 5.0f, 0.0f);
+    physics_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
+    physics_transform->UpdateTransform();
+    const float physics_start_y = physics_transform->GetPosition().y;
+
     auto* object_transform = scene.transforms.GetComponent(object);
     auto* mesh = scene.meshes.GetComponent(object);
     auto* camera_transform = scene.transforms.GetComponent(camera);
@@ -331,6 +353,18 @@ int main(int argc, char** argv) {
     const int64_t worst_micros = frame_micros.back();
     std::fprintf(stdout, "frame stats: samples=%u median_us=%lld p95_us=%lld worst_us=%lld\n",
         (unsigned)frame_micros.size(), (long long)median_micros, (long long)p95_micros, (long long)worst_micros);
+    // Physics needs wall time, not just frames: Wicked advances Jolt from the
+    // frame delta, so a settle loop with real sleeps lets gravity act.
+    for (int settle = 0; settle < 60; ++settle) {
+        application.Run();
+        wi::helper::Sleep(10);
+    }
+    const float physics_end_y = scene.transforms.GetComponent(physics_box)->GetPosition().y;
+    std::fprintf(stdout, "physics: start_y=%.3f end_y=%.3f\n", physics_start_y, physics_end_y);
+    if (!check(physics_start_y - physics_end_y >= 0.2f, "physics box fell under gravity")) {
+        return 1;
+    }
+
     // Metal work is asynchronous: without draining the queue the backbuffer
     // still holds cleared memory when it is read below, no matter how many
     // frames were submitted.
@@ -454,6 +488,7 @@ int main(int argc, char** argv) {
     for (const auto& marker : marker_entities) {
         scene.Entity_Remove(marker);
     }
+    scene.Entity_Remove(physics_box);
     if (!check(scene.objects.GetComponent(object) == nullptr, "cube despawn") ||
         !check(scene.meshes.GetComponent(object) == nullptr, "mesh despawn") ||
         !check(scene.cameras.GetComponent(camera) == nullptr, "camera despawn") ||

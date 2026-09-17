@@ -293,6 +293,21 @@ zero for a scene this small and is not used). These are trivial, mostly
 hidden frames, so the figures are a floor for this scene, not a
 performance promise for a full game.
 
+## Native physics integration (2026-09-18)
+
+The native host now drives a real Jolt simulation. The probe enables
+simulation, gives a cube a dynamic `RigidBodyPhysicsComponent` (box
+shape, unit mass), places it far off-camera at x=20 so it cannot occlude
+any projected marker or wall sample, and then settles with a loop that
+supplies wall time rather than only frames — Wicked advances Jolt from
+the frame delta, so gravity needs real elapsed time. Observed:
+`start_y=5.000 end_y=-41.665`, a clear fall, and the run fails if the box
+does not drop at least 0.2 units. The game-side policy stays in Elisa
+(`src/physics/policy.elisa`: one solver per body, kinematic motion from
+Elisa, dynamic motion from the solver result, commits at a tick
+boundary); this proves the native solver actually moves a dynamic body.
+The Godot host has no physics wiring yet.
+
 ## Native audio decode and cue playback (2026-09-18)
 
 The native host now exercises the audio path the game's cues need, without
