@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "probe_support.h"
+#include "audio_probe.h"
+#include "probe_diagnostics.h"
 
 using namespace probe;
 
@@ -332,43 +334,9 @@ int main(int argc, char** argv) {
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
     // Audio: decode a generated clip and play one instance per cue the Elisa
-    // game emitted. Verifying decoded sample information is the real check;
-    // playback is one call per cue.
-    {
-        const int wav_samples = 400;
-        const int wav_rate = 8000;
-        const std::vector<uint8_t> wav = make_test_wav(wav_samples, wav_rate);
-        wi::audio::Sound sound;
-        if (!check(wi::audio::CreateSound(wav.data(), wav.size(), &sound), "audio sound decode") ||
-            !check(sound.IsValid(), "audio sound valid")) {
-            return 1;
-        }
-        const wi::audio::SampleInfo info = wi::audio::GetSampleInfo(&sound);
-        if (!check(info.sample_count == (size_t)wav_samples && info.sample_rate == wav_rate && info.channel_count == 1,
-                "audio sample information")) {
-            return 1;
-        }
-        int cue_count = 0;
-        const auto cues_it = manifest.find("audio_cues");
-        if (cues_it != manifest.end()) {
-            cue_count = std::stoi(cues_it->second);
-        }
-        int played = 0;
-        for (int cue = 0; cue < cue_count; ++cue) {
-            wi::audio::SoundInstance instance;
-            instance.SetLooped(false);
-            if (!check(wi::audio::CreateSoundInstance(&sound, &instance), "audio instance") ||
-                !check(instance.IsValid(), "audio instance valid")) {
-                return 1;
-            }
-            wi::audio::Play(&instance);
-            ++played;
-        }
-        std::fprintf(stdout, "audio: decoded samples=%u rate=%d channels=%u cue plays=%d\n",
-            (unsigned)info.sample_count, info.sample_rate, info.channel_count, played);
-        if (cue_count > 0 && played != cue_count) {
-            return 1;
-        }
+    // game emitted. The check itself lives in native/audio_probe.h.
+    if (!probe_audio(manifest)) {
+        return 1;
     }
 
     // Frame timing: the plan asks for measured frame time with median and
@@ -441,59 +409,9 @@ int main(int argc, char** argv) {
     // already established by Elisa-side checks above. A failed capture
     // fails the probe loudly instead of passing silently without pixels.
     const char* screenshot_path = argc >= 4 ? argv[3] : "wicked-frame.png";
-    // Ground-truth diagnostics: eye/at, lamp/object positions, and the
-    // visibility set the renderer actually computed. Pixels alone cannot
-    // distinguish "camera faces away" from "light missing" from "culled".
-    {
-        const XMFLOAT3 eye = camera_component->Eye;
-        const XMFLOAT3 at = camera_component->At;
-        std::fprintf(stdout, "camera eye=(%.2f,%.2f,%.2f) at=(%.2f,%.2f,%.2f) wh=(%.1f,%.1f) near=%.3f far=%.1f fov=%.3f\n",
-            eye.x, eye.y, eye.z, at.x, at.y, at.z,
-            camera_component->width, camera_component->height,
-            camera_component->zNearP, camera_component->zFarP, camera_component->fov);
-        std::fprintf(stdout, "scene objects=%u lights=%u visible objects=%u visible lights=%u\n",
-            (unsigned)scene.objects.GetCount(), (unsigned)scene.lights.GetCount(),
-            (unsigned)render_path.visibility_main.visibleObjects.size(),
-            (unsigned)render_path.visibility_main.visibleLights.size());
-        std::fprintf(stdout, "aabb streams=%u\n", (unsigned)scene.aabb_objects.size());
-        {
-            XMUINT2 internal = render_path.GetInternalResolution();
-            std::fprintf(stdout, "internal resolution=%ux%u\n", internal.x, internal.y);
-        }
-        std::fprintf(stdout, "mesh verts=%u idx-valid=%d pos-valid=%d indices=%u subset-count=%u general-valid=%d clu-valid=%d meshshader-allowed=%d\n",
-            (unsigned)mesh->vertex_positions.size(),
-            mesh->ib.IsValid() ? 1 : 0, mesh->vb_pos_wind.IsValid() ? 1 : 0,
-            (unsigned)mesh->indices.size(),
-            mesh->subsets.empty() ? 0u : (unsigned)mesh->subsets[0].indexCount,
-            mesh->generalBuffer.IsValid() ? 1 : 0,
-            mesh->vb_clu.IsValid() ? 1 : 0,
-            wi::renderer::IsMeshShaderAllowed() ? 1 : 0);
-        {
-            const auto* drawable = scene.objects.GetComponent(object);
-            std::fprintf(stdout, "object renderable=%d foreground=%d hide-main=%d filtermask=%u mesh-index=%u\n",
-                (drawable != nullptr && drawable->IsRenderable()) ? 1 : 0,
-                (drawable != nullptr && drawable->IsForeground()) ? 1 : 0,
-                (drawable != nullptr && drawable->IsNotVisibleInMainCamera()) ? 1 : 0,
-                drawable != nullptr ? drawable->GetFilterMask() : 0u,
-                drawable != nullptr ? drawable->mesh_index : 9999u);
-            if (!render_path.visibility_main.visibleObjects.empty()) {
-                std::fprintf(stdout, "visible[0]=%u\n",
-                    (unsigned)render_path.visibility_main.visibleObjects[0]);
-            }
-        }
-        if (!scene.aabb_objects.empty()) {
-            const auto& bounds = scene.aabb_objects[0];
-            std::fprintf(stdout, "aabb0 min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) layer=%u\n",
-                bounds._min.x, bounds._min.y, bounds._min.z,
-                bounds._max.x, bounds._max.y, bounds._max.z, bounds.layerMask);
-        }
-        std::fprintf(stdout, "instance matrices=%u\n", (unsigned)scene.matrix_objects.size());
-        if (!scene.matrix_objects.empty()) {
-            const auto& instance = scene.matrix_objects[0];
-            std::fprintf(stdout, "instance0 row=(%.2f,%.2f,%.2f,%.2f)\n",
-                instance.m[3][0], instance.m[3][1], instance.m[3][2], instance.m[3][3]);
-        }
-    }
+    // Ground-truth diagnostics live in native/probe_diagnostics.h so this
+    // file stays under the line limit.
+    print_scene_diagnostics(scene, render_path, mesh, camera_component, object);
     // Capture the composited swapchain image, not an intermediate target:
     // the postprocess result is only written when post effects run, so it
     // can sit stale while the presented frame is correct.
@@ -515,30 +433,6 @@ int main(int argc, char** argv) {
                       << "worst_us=" << worst_micros << "\n";
         }
     }
-    {
-        // Render-target inventory: dimensions and sample counts pin down
-        // the MSAA-resolve and sizing theories without downloading anything
-        // the graphics API forbids reading back (see depth note below).
-        std::fprintf(stdout, "rtMain %ux%u samples=%u msaa %ux%u samples=%u\n",
-            render_path.rtMain.desc.width, render_path.rtMain.desc.height,
-            render_path.rtMain.desc.sample_count,
-            render_path.rtMain_render.desc.width, render_path.rtMain_render.desc.height,
-            render_path.rtMain_render.desc.sample_count);
-        {
-            const wi::graphics::Texture* depth = render_path.GetDepthStencil();
-            if (depth == nullptr || !depth->IsValid()) {
-                std::fprintf(stdout, "depth target MISSING\n");
-            } else {
-                std::fprintf(stdout, "depth %ux%u fmt=%d\n",
-                    depth->desc.width, depth->desc.height, (int)depth->desc.format);
-            }
-        }
-        // NOTE: the depth target is intentionally never downloaded here:
-        // blitting a Depth32Float_Stencil8 texture to a buffer trips
-        // Metal API validation, so depth content is out of scope for
-        // this probe. Validity and dimensions above are the whole claim.
-    }
-
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);
     scene.Entity_Remove(lamp);

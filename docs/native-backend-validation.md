@@ -379,11 +379,15 @@ call per cue), not by listening.
 The probe reached 592 of the 600-line file limit, so its support code
 (fixture parsing, the right-handed to Wicked-space conversion, cell
 markers, and the generated test WAV) moved to `native/probe_support.h`.
-`native/wicked_probe.cpp` went to 471 lines and the header 137 (the split
-was verified by rerunning the driver unchanged), and the fog and route
-work has since taken the probe back to 568, so another split is due
-before further native features. `scripts/check.elisascript` remains
-unsplit at its own limit.
+The probe has since been split three ways: `native/probe_support.h`
+(fixture parsing, handedness conversion, markers, test WAV),
+`native/audio_probe.h` (the decode and cue playback check), and
+`native/probe_diagnostics.h` (the renderer ground-truth printout).
+`native/wicked_probe.cpp` is now 462 lines and each header well under
+the limit, verified by rerunning the driver unchanged. Splitting early
+is much cheaper than splitting at the limit, which is why it is done as
+soon as the count passes roughly 450. `scripts/check.elisascript`
+remains unsplit at its own limit.
 
 ## Toward pixel comparison (status: both hosts captured)
 
