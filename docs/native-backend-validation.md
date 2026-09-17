@@ -79,20 +79,24 @@ versus thirty frames, event pumping, GPU drain, white versus sky-blue
 emissive material, MSAA resolve (aliased at 1x), depth target validity
 (640x400 present), mesh upload (24 verts, 36 indices, buffers valid),
 internal resolution (640x400, so the scissor path is not degenerate),
-and shader compile health (zero failures in the log — which cuts the
-other way too, see below). An emissive cube inside a correct frustum
-with passing visibility still produces a black frame, so no scene
-fragment is reaching the target.
-
-The sharpest remaining facts: no object-shader permutation ever
-compiles (a first draw attempt would demand one), and even the depth
-prepass leaves no silhouette (its download encodes as a degenerate
-1-bit file). So the draw is never attempted, not merely unlit: suspects
-left standing are the main-pass viewport binding values, the depth
-function versus clear value, the tonemap exposure input, light-grid
-upload, and the HDR compositing branch. That is the next debugging
-step, not a new policy: the capture, compare, and gate plumbing is done
-and waiting for first light.
+object render flags and mesh-index linkage (all drawable), close-range
+framing (a frame-filling cube changes nothing), and a realistic-sky
+control (still black, so the failure is in the shared path, not scene
+setup). A Metal System Trace of the probe shows exactly one
+probe-owned shader (a compute entry) and zero graphics shaders, and a
+full run under Metal API validation exits clean: the API usage is
+valid, the draws are simply never submitted. Even the depth prepass
+leaves no silhouette. So no scene fragment is reaching any target;
+look next at the per-instance submit path (render queue, PSO and
+material bind), viewport binding values, depth function versus clear
+value, tonemap exposure input, light-grid upload, and the HDR
+compositing branch. Two methodological notes: `saveTextureToMemory`
+must never be pointed at a depth target (Depth32Float_Stencil8 to
+buffer trips validation outright), and the probe binary must receive
+the inner `WickedEngine/WickedEngine` directory — the outer checkout
+root silently starves every shader lookup and segfaults. That is the
+next debugging step, not a new policy: the capture, compare, and gate
+plumbing is done and waiting for first light.
 
 The manifest the probe consumes (`backends/scene_manifest.txt`) is pinned
 to the Elisa canonical scene by `scripts/record_validation.py`, which

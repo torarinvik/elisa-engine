@@ -142,6 +142,9 @@ int main(int argc, char** argv) {
         std::fabs(object_position.z - object_z) < 0.0001f, "cube transform update")) {
         return 1;
     }
+    std::fprintf(stdout, "cube world row=(%.2f,%.2f,%.2f,%.2f)\n",
+        object_transform->world.m[3][0], object_transform->world.m[3][1],
+        object_transform->world.m[3][2], object_transform->world.m[3][3]);
     camera_transform->translation_local = XMFLOAT3(camera_x, camera_y, camera_z);
     // Default orientation already faces +Z toward the cube; leave it alone.
     camera_transform->UpdateTransform();
@@ -207,11 +210,16 @@ int main(int argc, char** argv) {
             mesh->subsets.empty() ? 0u : (unsigned)mesh->subsets[0].indexCount);
         {
             const auto* drawable = scene.objects.GetComponent(object);
-            std::fprintf(stdout, "object renderable=%d foreground=%d hide-main=%d filtermask=%u\n",
+            std::fprintf(stdout, "object renderable=%d foreground=%d hide-main=%d filtermask=%u mesh-index=%u\n",
                 (drawable != nullptr && drawable->IsRenderable()) ? 1 : 0,
                 (drawable != nullptr && drawable->IsForeground()) ? 1 : 0,
                 (drawable != nullptr && drawable->IsNotVisibleInMainCamera()) ? 1 : 0,
-                drawable != nullptr ? drawable->GetFilterMask() : 0u);
+                drawable != nullptr ? drawable->GetFilterMask() : 0u,
+                drawable != nullptr ? drawable->mesh_index : 9999u);
+            if (!render_path.visibility_main.visibleObjects.empty()) {
+                std::fprintf(stdout, "visible[0]=%u\n",
+                    (unsigned)render_path.visibility_main.visibleObjects[0]);
+            }
         }
         if (!scene.aabb_objects.empty()) {
             const auto& bounds = scene.aabb_objects[0];
@@ -232,9 +240,9 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "scene screenshot saved\n");
     {
-        // Temporary diagnostic: is the scene landing in the MSAA target
-        // while the resolve never runs?
-        wi::vector<uint8_t> msaa_png;
+        // Render-target inventory: dimensions and sample counts pin down
+        // the MSAA-resolve and sizing theories without downloading anything
+        // the graphics API forbids reading back (see depth note below).
         std::fprintf(stdout, "rtMain %ux%u samples=%u msaa %ux%u samples=%u\n",
             render_path.rtMain.desc.width, render_path.rtMain.desc.height,
             render_path.rtMain.desc.sample_count,
@@ -249,10 +257,10 @@ int main(int argc, char** argv) {
                     depth->desc.width, depth->desc.height, (int)depth->desc.format);
             }
         }
-        if (wi::helper::saveTextureToMemoryFile(*render_path.GetDepthStencil(), "PNG", msaa_png)) {
-            std::ofstream msaa_out("/tmp/wicked-depth.png", std::ios::binary);
-            msaa_out.write((const char*)msaa_png.data(), (std::streamsize)msaa_png.size());
-        }
+        // NOTE: the depth target is intentionally never downloaded here:
+        // blitting a Depth32Float_Stencil8 texture to a buffer trips
+        // Metal API validation, so depth content is out of scope for
+        // this probe. Validity and dimensions above are the whole claim.
     }
 
     scene.Entity_Remove(object);
