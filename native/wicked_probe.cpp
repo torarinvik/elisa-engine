@@ -156,6 +156,10 @@ int main(int argc, char** argv) {
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
     render_path.camera = camera_component;
+    // No occlusion queries in a one-shot probe: unprimed query heaps can
+    // hold skips across frames with nothing ever proving visibility.
+    render_path.setOcclusionCullingEnabled(false);
+    wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);
     // Several frames: the first frames after path activation still warm
     // up async shader compilation and postprocess history. Runtime shader
@@ -205,11 +209,14 @@ int main(int argc, char** argv) {
             XMUINT2 internal = render_path.GetInternalResolution();
             std::fprintf(stdout, "internal resolution=%ux%u\n", internal.x, internal.y);
         }
-        std::fprintf(stdout, "mesh verts=%u idx-valid=%d pos-valid=%d indices=%u subset-count=%u\n",
+        std::fprintf(stdout, "mesh verts=%u idx-valid=%d pos-valid=%d indices=%u subset-count=%u general-valid=%d clu-valid=%d meshshader-allowed=%d\n",
             (unsigned)mesh->vertex_positions.size(),
             mesh->ib.IsValid() ? 1 : 0, mesh->vb_pos_wind.IsValid() ? 1 : 0,
             (unsigned)mesh->indices.size(),
-            mesh->subsets.empty() ? 0u : (unsigned)mesh->subsets[0].indexCount);
+            mesh->subsets.empty() ? 0u : (unsigned)mesh->subsets[0].indexCount,
+            mesh->generalBuffer.IsValid() ? 1 : 0,
+            mesh->vb_clu.IsValid() ? 1 : 0,
+            wi::renderer::IsMeshShaderAllowed() ? 1 : 0);
         {
             const auto* drawable = scene.objects.GetComponent(object);
             std::fprintf(stdout, "object renderable=%d foreground=%d hide-main=%d filtermask=%u mesh-index=%u\n",

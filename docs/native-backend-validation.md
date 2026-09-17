@@ -93,12 +93,20 @@ versus emissive materials all produce byte-identical near-black, while
 CPU state is verified correct at every level (camera 640x400 physical
 with sane near/far/fov, cube world matrix exact, AABB exact,
 visibility 1+1 with correct index linkage, valid depth/MSAA targets,
-uploaded buffers, sane object flags). A setup defect would move at
-least one of those controls; none moves. So the draw is either never
+uploaded buffers, sane object flags, occlusion culling disabled without
+effect). A one-run triage saved the scene target, its MSAA resolve
+alias, and the presented image side by side: all three read pure zero,
+so no color stage holds the scene and compositing is not the culprit.
+A setup defect would move at least one of those controls; none moves. So the draw is either never
 submitted or fully discarded downstream of submission: look next at the
 per-instance submit path (render queue, PSO and material bind),
 viewport binding values, depth function versus clear value, tonemap
-exposure input, light-grid upload, and the HDR compositing branch. Two
+exposure input, light-grid upload, and the HDR compositing branch. The
+single most informative next step is not another engine-Code read but
+an environment control: a minimal raw-Metal triangle through the same
+hidden SDL window. If the triangle shows, the environment rasterizes
+and the failure is Wicked draw submission; if it does not, the hidden
+surface itself never presents pixels regardless of engine code. Two
 methodological notes: `saveTextureToMemory`
 must never be pointed at a depth target (Depth32Float_Stencil8 to
 buffer trips validation outright), and the probe binary must receive
