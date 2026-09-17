@@ -1,0 +1,53 @@
+# Elisa-owned wall layout. The topology in maze.elisa is the definition;
+# this module exposes the same walls as an ordered cell list so a host can
+# render game-authored geometry instead of a test cube. The manifest in
+# backends/scene_manifest.txt carries this list to the native probe, and
+# test/maze.elisa checks the list against Maze::is_wall for every cell.
+include "./maze.elisa"
+
+module MazeLayout:
+    private:
+        const module Grid:
+            WIDTH: usize = 8
+            HEIGHT: usize = 8
+
+    public:
+        struct WallList:
+            xs: mutable i64[64]
+            ys: mutable i64[64]
+            count: mutable usize
+
+        def maze_layout_cells() -> WallList:
+            xs: mutable i64[64] = zeroed
+            ys: mutable i64[64] = zeroed
+            count: mutable usize = 0
+            for y in 0..<Grid::HEIGHT |xs, ys, count|:
+                for x in 0..<Grid::WIDTH |xs, ys, count|:
+                    if Maze::is_wall(x.i64(), y.i64()):
+                        xs[count] <- x.i64()
+                        ys[count] <- y.i64()
+                        count <- count + 1
+            WallList{xs: xs, ys: ys, count: count}
+
+        def maze_layout_count() -> usize:
+            cells: WallList = maze_layout_cells()
+            cells.count
+
+        # Two directions: every listed cell is a wall, and every wall in the
+        # 8x8 grid is listed exactly once. The per-cell distinctness follows
+        # from the single pass over the grid that builds the list.
+        def maze_layout_matches_topology() -> bool:
+            cells: WallList = maze_layout_cells()
+            listed_are_walls: bool =
+                for index in 0..<cells.count |ok: bool = true| -> ok:
+                    ok <- ok and Maze::is_wall(cells.xs[index], cells.ys[index])
+            all_walls_listed: bool =
+                for y in 0..<Grid::HEIGHT |row_ok: bool = true| -> row_ok:
+                    row: bool =
+                        for x in 0..<Grid::WIDTH |cell_ok: bool = true| -> cell_ok:
+                            listed: bool =
+                                for index in 0..<cells.count |found: bool = false| -> found:
+                                    found <- true if cells.xs[index] == x.i64() and cells.ys[index] == y.i64()
+                            cell_ok <- cell_ok and (listed == Maze::is_wall(x.i64(), y.i64()))
+                    row_ok <- row_ok and row
+            listed_are_walls and all_walls_listed

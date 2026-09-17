@@ -163,6 +163,24 @@ object timestamp rather than a bare exit code, and distrust implied
 target names. The upstream checkout itself is untouched by the fix;
 only its build products were stale.
 
+## Maze geometry and determinism (2026-09-18)
+
+The native host now renders game-authored content, not a test cube.
+`examples/maze/layout.elisa` derives the 34 wall cells from
+`Maze::is_wall`; `test/maze.elisa` checks that list against the
+topology in both directions (every listed cell is a wall, every wall is
+listed); `backends/scene_manifest.txt` carries the list to the probe as
+a `walls=` line whose count `scripts/record_validation.py` re-checks
+against the same 34 the Elisa test pins; and `native/wicked_probe.cpp`
+builds one unlit cube per cell on a vertical plane the default frustum
+contains. The captured 640x400 frame shows the maze wall pattern
+(verified by sampling projected cell centers), and the driver now runs
+the probe twice and requires a strict zero-tolerance pixel compare, so
+render determinism is gated rather than asserted. Sample projection
+drifts by a couple of cells near the interior, so the frame is checked
+for structure, not yet for exact per-cell correspondence; a projective
+check belongs with the eventual Godot capture.
+
 ## Toward pixel comparison (status: Wicked side done)
 
 `src/backend/image_compare.elisa` defines the tolerance policy

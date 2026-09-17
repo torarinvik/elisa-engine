@@ -15,6 +15,8 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 bool check(bool value, const char* message) {
@@ -42,6 +44,27 @@ bool load_manifest(const char* filename, std::map<std::string, std::string>& val
         values[line.substr(0, separator)] = line.substr(separator + 1);
     }
     return true;
+}
+
+// "x,y;x,y;..." grid cells from the Elisa maze topology. Empty when the
+// manifest has no wall line, which keeps single-cube hosts working.
+std::vector<std::pair<int, int>> parse_walls(const std::string& spec) {
+    std::vector<std::pair<int, int>> cells;
+    size_t start = 0;
+    while (start < spec.size()) {
+        size_t end = spec.find(';', start);
+        if (end == std::string::npos) {
+            end = spec.size();
+        }
+        const std::string entry = spec.substr(start, end - start);
+        const auto comma = entry.find(',');
+        if (comma == std::string::npos) {
+            return {};
+        }
+        cells.emplace_back(std::stoi(entry.substr(0, comma)), std::stoi(entry.substr(comma + 1)));
+        start = end + 1;
+    }
+    return cells;
 }
 }
 
@@ -112,6 +135,47 @@ int main(int argc, char** argv) {
     if (!check(object != wi::ecs::INVALID_ENTITY, "cube entity") ||
         !check(camera != wi::ecs::INVALID_ENTITY, "camera entity") ||
         !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
+        return 1;
+    }
+
+    // Maze wall geometry from the Elisa-owned topology. Rendered as an
+    // unlit vertical wall map so the frame proves the native host draws
+    // game-authored content, not a single test cube. The plane sits at
+    // z=1 (6 units from the camera) where the whole 8x8 map fits the
+    // default 45-degree frustum; the entity cube stays in front at z=3.
+    //
+    // Create every entity before borrowing any component pointer: adding
+    // entities can reallocate the component stores, so pointers fetched
+    // earlier would dangle.
+    const auto walls_it = manifest.find("walls");
+    const auto wall_cells = walls_it == manifest.end()
+        ? std::vector<std::pair<int, int>>{}
+        : parse_walls(walls_it->second);
+    std::vector<wi::ecs::Entity> wall_entities;
+    for (const auto& cell : wall_cells) {
+        const auto wall = scene.Entity_CreateCube(
+            "elisa_wall_" + std::to_string(cell.first) + "_" + std::to_string(cell.second));
+        if (wall == wi::ecs::INVALID_ENTITY) {
+            continue;
+        }
+        auto* wall_transform = scene.transforms.GetComponent(wall);
+        auto* wall_material = scene.materials.GetComponent(wall);
+        if (wall_transform == nullptr) {
+            continue;
+        }
+        wall_transform->translation_local = XMFLOAT3(
+            (float)cell.first * 0.6f - 2.1f, (float)cell.second * 0.6f - 2.1f, 1.0f);
+        wall_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
+        wall_transform->UpdateTransform();
+        if (wall_material != nullptr) {
+            wall_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+            wall_material->baseColor = XMFLOAT4(0.8f, 0.8f, 0.85f, 1.0f);
+        }
+        wall_entities.push_back(wall);
+    }
+    std::fprintf(stdout, "wall cells=%u walls created=%u\n",
+        (unsigned)wall_cells.size(), (unsigned)wall_entities.size());
+    if (!wall_cells.empty() && wall_entities.size() != wall_cells.size()) {
         return 1;
     }
 
@@ -293,10 +357,17 @@ int main(int argc, char** argv) {
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);
     scene.Entity_Remove(lamp);
+    // Despawn the whole maze wall set, then probe one representative for
+    // the same object/mesh teardown guarantee the entity cube gets.
+    for (const auto& wall : wall_entities) {
+        scene.Entity_Remove(wall);
+    }
     if (!check(scene.objects.GetComponent(object) == nullptr, "cube despawn") ||
         !check(scene.meshes.GetComponent(object) == nullptr, "mesh despawn") ||
         !check(scene.cameras.GetComponent(camera) == nullptr, "camera despawn") ||
-        !check(scene.lights.GetComponent(lamp) == nullptr, "lamp despawn")) {
+        !check(scene.lights.GetComponent(lamp) == nullptr, "lamp despawn") ||
+        (!wall_entities.empty() &&
+            !check(scene.objects.GetComponent(wall_entities.front()) == nullptr, "wall despawn"))) {
         return 1;
     }
     std::fprintf(stdout, "scene despawn passed\n");

@@ -112,7 +112,19 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
     for key, want in expected.items():
         if values.get(key) != want:
             raise ValueError(f"scene manifest drift: {key}={values.get(key)!r}, expected {want!r}")
-    return {"sha256": sha256_file(manifest), "fields": len(values)}
+    # The wall list is the Elisa maze topology carried to the native host.
+    # 34 is pinned independently by test/maze.elisa (maze_wall_count) and
+    # test/maze.elisa also checks the layout list against Maze::is_wall for
+    # every cell, so this only catches fixture drift, not engine drift.
+    wall_spec = values.get("walls", "")
+    wall_cells = [entry for entry in wall_spec.split(";") if entry]
+    if len(wall_cells) != 34:
+        raise ValueError(f"scene manifest wall count drift: {len(wall_cells)}, expected 34")
+    for entry in wall_cells:
+        parts = entry.split(",")
+        if len(parts) != 2 or not all(part.lstrip("-").isdigit() for part in parts):
+            raise ValueError(f"scene manifest wall cell malformed: {entry!r}")
+    return {"sha256": sha256_file(manifest), "fields": len(values), "wall_cells": len(wall_cells)}
 
 
 def main(arguments: list[str]) -> int:

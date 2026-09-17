@@ -1,5 +1,7 @@
 include "../examples/maze/maze.elisa"
+include "../examples/maze/layout.elisa"
 using Maze
+using MazeLayout
 
 def main() -> i32:
     return 1 if maze_width() != 8 or maze_height() != 8
@@ -9,6 +11,10 @@ def main() -> i32:
     return 4 if not maze_valid(&state) or maze_at_goal(&state)
     return 5 if not is_wall(0, 1) or is_wall(1, 1) or not is_wall(3, 3) or is_wall(2, 2)
     return 6 if maze_wall_count() != 34
+    layout: WallList = maze_layout_cells()
+    return 17 if layout.count != maze_wall_count()
+    return 18 if not maze_layout_matches_topology() or maze_layout_count() != layout.count
+    return 19 if not is_wall(layout.xs[0], layout.ys[0])
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0

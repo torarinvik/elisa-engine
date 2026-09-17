@@ -109,4 +109,20 @@ def main(arguments: darray[sview]) -> i64:
 
     python: sview = get_environment_or("PYTHON_BIN", "python3")
     compare_status: i64 = run_visible(python, [str(root.joinpath("scripts/compare_renders.py")), "check", screenshot, "320", "200"])
-    compare_status
+    if compare_status != 0:
+        return compare_status
+
+    # Determinism: the same static scene must render identical pixels
+    # across runs. Replay and rollback determinism build on this; a
+    # nondeterministic renderer fails here first, loudly.
+    rerun_screenshot: sview = str(root.joinpath("build/wicked-frame-rerun.png"))
+    rerun_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(str(output)), [str(wicked_source), str(manifest), rerun_screenshot, "alwaysactive"], empty_input)
+    _ = write_stdout(rerun_result.stdout)
+    _ = write_stderr(rerun_result.stderr)
+    if rerun_result.exit_status != 0:
+        return rerun_result.exit_status
+
+    determinism_status: i64 = run_visible(python, [str(root.joinpath("scripts/compare_renders.py")), "compare", screenshot, rerun_screenshot, "--per-channel", "0.0", "--mean", "0.0"])
+    determinism_status
