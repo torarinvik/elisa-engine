@@ -29,3 +29,12 @@ in `examples/maze/game.elisa` matching on moves rather than a type tree.
 
 Runtime-loaded binary plugins with unknown cases remain incompatible
 with compile-time exhaustiveness; that combination is not promised.
+
+
+## Upward composition predicates (2026-09-18)
+
+`World::entity_is_actor` and `World::entity_is_enemy` make the set refinement
+executable: `Enemy` is an `Actor`, so a `Guard` is both an enemy and an actor,
+while a `Player` is only an actor. The cases are listed explicitly rather than
+wildcarded, so adding a descendant forces the case-complete query to be updated
+rather than silently matching. `test/world.elisa` pins the three relationships.

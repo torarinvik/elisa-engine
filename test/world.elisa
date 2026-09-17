@@ -172,6 +172,11 @@ def main() -> i32:
             error failure: invalid_lookup(second)
     return 9 if not (compact_lookup.kind is Enemy.Guard)
     return 10 if not world_reference_epoch_matches(first.world_epoch, second.world_epoch)
+    # Upward composition: Guard is an Enemy and therefore an Actor; Player is an
+    # Actor but not an Enemy; Unknown refines none of them.
+    return 12 if not entity_is_actor(Actor.Player) or entity_is_enemy(Actor.Player)
+    return 13 if not entity_is_actor(Enemy.Guard) or not entity_is_enemy(Enemy.Guard)
+    return 14 if entity_is_actor(Entity.Unknown) or entity_is_enemy(Entity.Unknown)
     churn: i32 = churn_test()
     return churn if churn != 0
     capacity: i32 = capacity_test()

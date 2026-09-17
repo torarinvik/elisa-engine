@@ -237,6 +237,28 @@ module World:
         def world_reference_epoch_matches(world_epoch: i64, reference_epoch: i64) -> bool:
             WorldReference::epoch_matches(world_epoch, reference_epoch)
 
+        # Upward composition: Enemy is an Actor, so a Guard is both an enemy and
+        # an actor, while a Player is only an actor. The cases are listed
+        # explicitly rather than wildcarded, so adding a descendant forces this
+        # case-complete query to be updated instead of silently matching.
+        def entity_is_actor(kind: Entity) -> bool:
+            match kind:
+                Actor.Player:
+                    true
+                Enemy.Guard:
+                    true
+                Entity.Unknown:
+                    false
+
+        def entity_is_enemy(kind: Entity) -> bool:
+            match kind:
+                Actor.Player:
+                    false
+                Enemy.Guard:
+                    true
+                Entity.Unknown:
+                    false
+
         def world_is_valid(world: World&) -> bool:
             return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > Bounds::WORLD_MAX_ENTITIES or world.actor_count > Bounds::WORLD_MAX_ENTITIES or world.enemy_count > Bounds::WORLD_MAX_ENTITIES or world.live_count > world.registry_count
             live: mutable usize = 0
