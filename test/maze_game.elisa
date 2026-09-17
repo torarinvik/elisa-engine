@@ -78,6 +78,26 @@ def main() -> i32:
     moved_quiet: bool = game_step(&game, MazeMove.East)
     return 29 if not moved_quiet or game.cue_count != quiet
 
+    # Drain all three lives: the third hazard hit must end the game, not just
+    # cost a life, and a lost game refuses input until it is restarted.
+    doomed: mutable MazeGame = game_new()
+    game_start(&doomed)
+    lose: MazeMove[15] = [
+        MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+        MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+        MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+    ]
+    for step in 0..<15 |doomed|:
+        moved: bool = game_step(&doomed, lose[step])
+        return 31 if not moved
+    return 32 if doomed.lives != 0 or not game_lost(&doomed) or doomed.status != GameStatus.Lost
+    return 33 if not game_valid(&doomed)
+    after_loss: bool = game_step(&doomed, MazeMove.East)
+    return 34 if after_loss
+    game_restart(&doomed)
+    return 35 if doomed.status != GameStatus.Playing or doomed.lives != 3 or game_lost(&doomed)
+    return 36 if not game_valid(&doomed)
+
     game_quit(&game)
     return 30 if game.status != GameStatus.Exited
     0

@@ -35,6 +35,17 @@ module MazeTrace:
         def maze_fixture_script() -> MazeMove[10]:
             [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle]
 
+        # Three trips onto the hazard at (2,5): South four times down the open
+        # first column, then East. Each hit costs a life and resets the player
+        # to the start, so the same five moves repeat. The third hit drains the
+        # last life and the game reports Lost.
+        def maze_lose_script() -> MazeMove[15]:
+            [
+                MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+                MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+                MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+            ]
+
         def maze_play(script: MazeMove[10], steps: usize) -> TraceResult:
             game: mutable MazeGame = game_new()
             game_start(&game)

@@ -6,7 +6,55 @@ using Runtime
 using Input
 using Assets
 
+# Despawn/restart/unload churn: each cycle must return the world and the
+# backend to baseline without accumulating live resources or leaving a
+# dangling reference. Identity advances monotonically while storage slots are
+# reused, so a recycled slot never resurrects an old identity.
+def lifecycle_audit() -> i32:
+    world: mutable World = catch world_new():
+        value: value
+        error failure: return 30
+    recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    visual: mutable VisualAsset = VisualAsset{
+        mesh: AssetId{high: 30, low: 1},
+        material: AssetId{high: 30, low: 2},
+        local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}},
+    }
+    previous_id: mutable i64 = 0
+    for cycle in 0..<8 |world, recorder, visual, previous_id|:
+        player: PlayerState = catch spawn_player(&world, &recorder, visual):
+            value: value
+            error failure: return 31
+        return 32 if player.player.id <= previous_id
+        previous_id <- player.player.id
+        return 33 if world.live_count != 1 or not world_is_valid(&world) or recorder_live_count(&recorder) != 1
+        removed: bool = catch world_despawn(&world, player.player):
+            ok: true
+            error failure: false
+        return 34 if not removed or world.live_count != 0
+        dangling: i32 = catch world_lookup(&world, player.player):
+            value: 1
+            WorldError.InvalidReference: 0
+            error failure: 2
+        return 35 if dangling != 0
+        return 36 if not world_is_valid(&world)
+        destroyed: bool = catch submit_destroy(&recorder, player.player):
+            ok: true
+            error failure: false
+        return 37 if not destroyed or recorder_live_count(&recorder) != 0
+        # A second destroy must be refused rather than free the same object twice.
+        double_destroy: i32 = catch submit_destroy(&recorder, player.player):
+            value: 1
+            SceneError.DestroyedObject: 0
+            error failure: 2
+        return 38 if double_destroy != 0
+        world_compact(&world)
+        return 39 if world.registry_count != 0 or world.actor_count != 0 or not world_is_valid(&world)
+    0
+
 def main() -> i32:
+    churn: i32 = lifecycle_audit()
+    return churn if churn != 0
     first_world: mutable World = catch world_new():
         value: value
         error failure: return 1

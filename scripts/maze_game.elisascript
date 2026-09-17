@@ -37,5 +37,5 @@ def main(arguments: darray[sview]) -> i64:
         eprint("Packaged maze game failed; exit status identifies the step.")
         return session_result.exit_status
 
-    println("Packaged maze game session passed: start, play, win, restart, pause, resume, exit.")
+    println("Packaged maze game session passed: start, play, win, lose, restart, pause, resume, exit.")
     0

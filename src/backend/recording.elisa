@@ -98,12 +98,21 @@ module Backend:
                     slot: usize = slot_of(recorder, reference)
                     slot != Backend::Limits::INVALID_SLOT and recorder.seen_live[slot] == Backend::Limits::LIVE
 
+                def live_count(recorder: SceneRecorder&) -> usize:
+                    for index in 0..<recorder.seen_count |count: usize = 0| -> count:
+                        count <- count + 1 if recorder.seen_live[index] == Backend::Limits::LIVE
+
     public:
         def recorder_new() -> SceneRecorder:
             Recording::recorder_new()
 
         def recorder_is_live(recorder: SceneRecorder&, reference: World::EntityRef) -> bool:
             Recording::recorder_is_live(recorder, reference)
+
+        # Number of backend objects still live. Restart/unload audits read this
+        # to prove resources return to baseline rather than accumulate.
+        def recorder_live_count(recorder: SceneRecorder&) -> usize:
+            Recording::live_count(recorder)
 
         def can_submit_updates(recorder: SceneRecorder&, reference: World::EntityRef, count: usize) -> bool:
             recorder_is_live(recorder, reference) and recorder.command_count <= Backend::Limits::MAX_COMMANDS and count <= Backend::Limits::MAX_COMMANDS - recorder.command_count

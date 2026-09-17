@@ -27,12 +27,20 @@ def main() -> i32:
 
     game_restart(&game)
     return 6 if game.status != GameStatus.Playing or game.lives != 3 or game.has_key
+    # Play the losing route to the last life, then confirm the game reports it.
+    doom: MazeMove[15] = maze_lose_script()
+    for index in 0..<15 |game, doom|:
+        drained: bool = game_step(&game, doom[index])
+        return 7 if not drained
+    return 8 if not game_lost(&game) or game.lives != 0
+    game_restart(&game)
+    return 9 if game.status != GameStatus.Playing or game.lives != 3 or game_lost(&game)
     game_pause(&game)
-    return 7 if game.status != GameStatus.Paused
+    return 10 if game.status != GameStatus.Paused
     frozen: bool = game_step(&game, MazeMove.East)
-    return 8 if frozen or game.status != GameStatus.Paused
+    return 11 if frozen or game.status != GameStatus.Paused
     game_resume(&game)
-    return 9 if game.status != GameStatus.Playing
+    return 12 if game.status != GameStatus.Playing
     game_quit(&game)
-    return 10 if game.status != GameStatus.Exited
+    return 13 if game.status != GameStatus.Exited
     0

@@ -461,3 +461,22 @@ The remaining gap is raw colour agreement: the two renderers use
 different tonemapping and colour spaces, so a per-pixel colour compare
 is not yet meaningful and is not gated. The structural comparison is
 the current cross-backend evidence.
+
+## Backend resource accounting (2026-09-18)
+
+`Backend::recorder_live_count` reports how many recorded backend objects are
+still live, so a restart or unload is checked against a baseline rather than
+trusted. It was added because the two-level `recorder_is_live` wrapper is
+declined by the backend when it is called from inside a captured loop body
+("could not produce a linkable unit; declined 1: ... (call expression)"),
+while a single-level query over the same `seen`/`seen_live` tables lowers
+cleanly. The audit now uses the count.
+
+`test/headless_game.elisa` runs eight spawn/despawn/destroy cycles and
+requires each to end with the world at zero live entities and the recorder at
+zero live objects: the despawned reference is rejected by lookup, storage
+slots are reused (`registry_count`/`actor_count` return to zero after
+compaction), identities strictly increase (a recycled slot never resurrects
+an old identity), and a second destroy of the same reference is refused. The
+packaged maze session (`examples/maze/main.elisa`) plays the win route, then
+the losing route to the last life, restarts, pauses, resumes, and exits.
