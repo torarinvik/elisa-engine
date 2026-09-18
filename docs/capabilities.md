@@ -25,6 +25,7 @@ writes `build/validation.json`. Host evidence comes from
 | Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd` |
+| Host embedding via C ABI (live input drives gameplay) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Declared read/write sets, derived execution waves | Tested | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa` |
 | Inspected counters, budgets, submitted bytes | Tested | `src/tooling/inspector.elisa`, `test/inspector.elisa` |
 
@@ -155,11 +156,9 @@ toolchain not present in this environment:
   not vendored or built here.
 - **GPU texture compression (KTX/Basis).** The texture path is uncompressed
   RGBA applied to a material; no KTX/Basis toolchain is available.
-- **Live input driving gameplay.** The hosts translate device events to the
-  portable button names (native SDL push/poll, Godot synthetic events) and the
-  engine maps names to actions, but the hosts consume a canonical fixture rather
-  than calling back into Elisa gameplay, so a keypress cannot yet drive the
-  game.
+- **Godot host embedding the game via the C ABI.** The native host drives
+  gameplay through the Elisa C ABI; the Godot host still consumes the fixture
+  and synthetic events, and wiring the C ABI into GDScript is follow-up work.
 - **General UI layout/style system.** The menu model and host widgets exist, but
   there is no general layout, styling, or text-flow system.
 

@@ -215,6 +215,13 @@ The fixture carries the portable input mapping (`input_forward`, `input_left`,
 probe parses synthetic key events, and both must resolve the bound keys to the
 same portable button names the engine's input map uses, never to enum ordinals.
 
+Live input can also drive gameplay directly: `examples/maze/capi.elisa` exports
+the game as a C ABI with the compiler's `-emit c-archive`, and
+`native/embed_probe.cpp` links that archive, reads an SDL key event, maps it to
+a move code, and calls `maze_step` in-process. `python3 scripts/embed_probe.py`
+builds and runs it. So a host can feed input while Elisa still owns identity,
+rules, and state (ADR-0012).
+
 The fixture also carries the menu state (`menu_actions`, `menu_enabled`,
 `menu_focus`); `backends/godot/probe.gd` consumes it with real Godot controls
 and the gated probe verifies the focused row and the disabled rows, so UI data

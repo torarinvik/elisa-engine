@@ -1,0 +1,48 @@
+# C ABI for embedding the maze game in a host. The host reads device input and
+# calls these exports, so live input drives Elisa gameplay instead of only a
+# fixture. The archive bundles the Elisa runtime, so the host links one library.
+include "./game.elisa"
+
+using Maze
+using MazeGame
+
+module MazeCapi:
+    private:
+        global mutable embedded_game: MazeGame = game_new()
+
+    public:
+        def start() -> i32:
+            MazeGame::game_start(&embedded_game)
+            MazeGame::game_status_code(embedded_game.status).i32()
+
+        # Direction codes mirror the portable move order the host maps to:
+        # 0 north, 1 south, 2 west, 3 east.
+        def move_of(direction: i32) -> Maze::MazeMove:
+            return Maze::MazeMove.North if direction == 0
+            return Maze::MazeMove.South if direction == 1
+            return Maze::MazeMove.West if direction == 2
+            return Maze::MazeMove.East if direction == 3
+            Maze::MazeMove.Idle
+
+        def step(direction: i32) -> i32:
+            moved: bool = MazeGame::game_step(&embedded_game, move_of(direction))
+            1 if moved else 0
+
+        def player_x() -> i32:
+            embedded_game.grid.player_x.i32()
+
+        def player_y() -> i32:
+            embedded_game.grid.player_y.i32()
+
+        def status() -> i32:
+            MazeGame::game_status_code(embedded_game.status).i32()
+
+        def lives() -> i32:
+            embedded_game.lives.i32()
+
+export fn maze_start() -> i32 = MazeCapi::start
+export fn maze_step(direction: i32) -> i32 = MazeCapi::step
+export fn maze_player_x() -> i32 = MazeCapi::player_x
+export fn maze_player_y() -> i32 = MazeCapi::player_y
+export fn maze_status() -> i32 = MazeCapi::status
+export fn maze_lives() -> i32 = MazeCapi::lives
