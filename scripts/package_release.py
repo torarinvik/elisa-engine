@@ -78,6 +78,27 @@ def cook(root: Path) -> Path:
     return packages[0]
 
 
+def build_embed_archive(root: Path, compiler: str, staging: Path) -> tuple:
+    # The host-facing C ABI: emit the maze game as a C archive and copy its
+    # generated header beside it, so an embedder links one library and declares
+    # the export surface from the header the compiler produced.
+    archive = staging / "lib/libmaze.a"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [compiler, "-emit", "c-archive", "-o", str(archive), str(root / "examples/maze/capi.elisa")],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"c-archive emit failed: {result.stderr.strip() or result.stdout.strip()}")
+    header = archive.with_suffix(".h")
+    if not archive.is_file() or not header.is_file():
+        raise RuntimeError("c-archive emit produced no archive or header")
+    target_header = staging / "include/libmaze.h"
+    target_header.parent.mkdir(parents=True, exist_ok=True)
+    target_header.write_bytes(header.read_bytes())
+    return archive, target_header
+
+
 def collect(root: Path, compiler: str, staging: Path) -> dict:
     game = staging / "bin/maze-game"
     build_game(root, compiler, game)
@@ -100,6 +121,7 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
     (staging / "fixtures").mkdir(parents=True, exist_ok=True)
     fixture = staging / "fixtures/scene_manifest.txt"
     fixture.write_bytes((root / "backends/scene_manifest.txt").read_bytes())
+    embed_archive, embed_header = build_embed_archive(root, compiler, staging)
     git = git_commit(root)
     release = {
         "name": "elisa-maze",
@@ -112,6 +134,8 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
             "bin/maze-game": sha256_file(game),
             f"assets/{package.name}": sha256_file(target_package),
             "fixtures/scene_manifest.txt": sha256_file(fixture),
+            "lib/libmaze.a": sha256_file(embed_archive),
+            "include/libmaze.h": sha256_file(embed_header),
         },
     }
     if target_texture is not None:
