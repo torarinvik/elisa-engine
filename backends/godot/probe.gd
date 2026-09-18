@@ -207,6 +207,7 @@ func _run_probe() -> void:
             var button := Button.new()
             button.name = "ElisaMenuAction_%d" % index
             button.text = "Action %d" % index
+            button.custom_minimum_size = Vector2(120.0, float(manifest.get("menu_row_height", "20")))
             button.disabled = enabled_flags[index] == 0
             if button.disabled:
                 disabled_count += 1
@@ -221,8 +222,12 @@ func _run_probe() -> void:
         if menu_focus >= menu_visible:
             _fail("menu focus is outside the visible window")
             return
+        var row_height: float = float(manifest.get("menu_row_height", "20"))
         if focused != buttons[menu_focus] or disabled_count != enabled_flags.count(0):
             _fail("menu focus or disabled state does not match the fixture")
+            return
+        if buttons[menu_focus].custom_minimum_size.y != row_height:
+            _fail("menu row height was not applied")
             return
         menu_root.queue_free()
 

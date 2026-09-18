@@ -255,6 +255,10 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             # inside it.
             if menu_focus >= menu_visible:
                 raise ValueError(f"scene manifest menu_focus {menu_focus} is outside the {menu_visible}-row window")
+        if "menu_row_height" in values:
+            row_height = int(values["menu_row_height"])
+            if row_height <= 0 or row_height > 200:
+                raise ValueError(f"scene manifest menu_row_height out of range: {row_height}")
     # Portable input mapping names, kept to the engine's button vocabulary so a
     # host never receives an enum ordinal.
     input_buttons = ("KeyA", "KeyD", "KeyW", "PadLeft", "PadRight", "PadUp")

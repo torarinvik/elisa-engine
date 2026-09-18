@@ -21,11 +21,12 @@ module Ui:
             focus: mutable i64
             visible: mutable usize
             scroll: mutable i64
+            row_height: mutable i64
             x: i64
             y: i64
 
         def menu_new(x: i64, y: i64) -> Menu:
-            Menu{items: zeroed, count: 0, focus: -1, visible: Tune::MAX_ITEMS, scroll: 0, x: x, y: y}
+            Menu{items: zeroed, count: 0, focus: -1, visible: Tune::MAX_ITEMS, scroll: 0, row_height: Tune::ROW_HEIGHT, x: x, y: y}
 
         def menu_add(menu: mutable Menu&, action: i64, enabled: bool) -> bool:
             return false if menu.count >= Tune::MAX_ITEMS or action <= 0
@@ -45,10 +46,21 @@ module Ui:
         def row_height() -> i64:
             Tune::ROW_HEIGHT
 
+        # Row height is style data the game owns and the host applies, so a
+        # denser or larger menu needs no host change.
+        def menu_set_row_height(menu: mutable Menu&, height: i64) -> bool:
+            return false if height <= 0
+            menu.row_height <- height
+            true
+
+        def menu_row_height(menu: Menu&) -> i64:
+            menu.row_height
+
         def menu_valid(menu: Menu&) -> bool:
             return false if menu.count > Tune::MAX_ITEMS
             return false if menu.focus < -1 or menu.focus >= menu.count.i64()
             return false if menu.visible == 0 or menu.visible > Tune::MAX_ITEMS
+            return false if menu.row_height <= 0
             return false if menu.scroll < 0
             # The visible window always contains the focused row.
             return false if menu.focus >= 0 and (menu.focus < menu.scroll or menu.focus >= menu.scroll + menu.visible.i64())
@@ -137,7 +149,7 @@ module Ui:
         def hit_test(menu: Menu&, pointer_y: i64) -> i64:
             relative: i64 = pointer_y - menu.y
             return -1 if relative < 0
-            row: i64 = relative / Tune::ROW_HEIGHT
+            row: i64 = relative / menu.row_height
             return -1 if row >= menu.visible.i64()
             index: i64 = menu.scroll + row
             return -1 if index >= menu.count.i64() or not menu.items[index.usize()].enabled

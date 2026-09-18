@@ -55,8 +55,16 @@ inline bool probe_menu(const std::map<std::string, std::string>& manifest) {
             return false;
         }
     }
-    std::fprintf(stdout, "menu: actions=%d focus=%d visible=%d disabled=%d\n",
-        actions, focus, visible, disabled);
+    int row_height = 20;
+    const auto row_height_it = manifest.find("menu_row_height");
+    if (row_height_it != manifest.end()) {
+        row_height = std::stoi(row_height_it->second);
+        if (!check(row_height > 0, "menu row height is positive")) {
+            return false;
+        }
+    }
+    std::fprintf(stdout, "menu: actions=%d focus=%d visible=%d row_height=%d disabled=%d\n",
+        actions, focus, visible, row_height, disabled);
     return true;
 }
 

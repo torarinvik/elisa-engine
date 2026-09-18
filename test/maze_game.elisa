@@ -32,6 +32,10 @@ def ui_scroll_test() -> i32:
     Ui::focus_next(&menu)
     return 80 if menu.focus != 7 or Ui::scroll_offset(&menu) != 5 or Ui::visible_action(&menu, 2) != 8
     return 81 if Ui::hit_test(&menu, 0) != 5 or Ui::hit_test(&menu, 60) != -1 or not Ui::menu_valid(&menu)
+    # Row height is style data: changing it moves the hit-test boundaries.
+    return 82 if not Ui::menu_set_row_height(&menu, 40) or Ui::menu_row_height(&menu) != 40 or not Ui::menu_valid(&menu)
+    return 83 if Ui::hit_test(&menu, 20) != 5 or Ui::hit_test(&menu, 40) != 6
+    return 84 if Ui::menu_set_row_height(&menu, 0)
     0
 
 # Buffered input into the play-in-editor: actions are queued as a host would
