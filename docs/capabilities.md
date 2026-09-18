@@ -104,5 +104,6 @@ writes `build/validation.json`. Host evidence comes from
 | Native sanitizer run | Planned | wrapper exists; the sandbox aborts the graphics run |
 | Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
 | Skeletal-pose submission to the hosts | Planned | engine-side poses only |
-| UI toolkit | Planned | text stack only |
+| UI menu model (layout, focus, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
+| UI rendering toolkit | Planned | text stack and menu model only |
 | Compressed textures (KTX/Basis) | Planned | no textures yet |

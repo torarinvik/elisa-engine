@@ -196,6 +196,12 @@ resident count never exceeds the budget because the farthest desired chunks are
 evicted first. `examples/maze/game.elisa` drives it from the real player
 position, so streaming follows gameplay and a restart leaves residency coherent.
 
+`src/ui/menu.elisa` is the engine-owned menu model: a fixed-height vertical
+list with focus navigation that skips disabled rows, pointer hit testing, and
+activation returning an action id the game maps to its own flow. No text and no
+rendering live in the model; `examples/maze/menu.elisa` decides which actions
+each game state offers, so the model never learns the game's rules.
+
 `examples/maze/studio.elisa` is the play-in-editor surface: a running game with
 an undo/redo history over its settings, stepped through the real game API, and
 an asset-catalogue check that rejects a stale package generation.

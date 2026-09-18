@@ -1,0 +1,64 @@
+# The maze menu as Elisa UI data. The menu model carries layout and focus; this
+# module is the only place that decides which actions the game offers in each
+# state and what they mean, so the model never learns the game's rules and a
+# host only draws the rows it is given.
+include "./game.elisa"
+include "../../src/ui/menu.elisa"
+
+module MazeMenu:
+    private:
+        const module Action:
+            START: i64 = 1
+            RESTART: i64 = 2
+            PAUSE: i64 = 3
+            RESUME: i64 = 4
+            QUIT: i64 = 5
+
+    public:
+        def action_start() -> i64:
+            Action::START
+
+        def action_restart() -> i64:
+            Action::RESTART
+
+        def action_quit() -> i64:
+            Action::QUIT
+
+        def action_count() -> usize:
+            5
+
+        # Items are enabled only when they make sense for the current state: a
+        # paused game offers resume, a running game offers pause, and start is
+        # offered only from the menu.
+        def menu_build(game: MazeGame::MazeGame&) -> Ui::Menu:
+            menu: mutable Ui::Menu = Ui::menu_new(0, 0)
+            _ = Ui::menu_add(&menu, Action::START, game.status == MazeGame::GameStatus.Menu)
+            _ = Ui::menu_add(&menu, Action::RESTART, game.status != MazeGame::GameStatus.Menu)
+            _ = Ui::menu_add(&menu, Action::PAUSE, game.status == MazeGame::GameStatus.Playing)
+            _ = Ui::menu_add(&menu, Action::RESUME, game.status == MazeGame::GameStatus.Paused)
+            _ = Ui::menu_add(&menu, Action::QUIT, true)
+            menu
+
+        def menu_invoke(game: mutable MazeGame::MazeGame&, action: i64) -> bool:
+            return false if action <= 0
+            if action == Action::START:
+                MazeGame::game_start(game)
+                return true
+            if action == Action::RESTART:
+                MazeGame::game_restart(game)
+                return true
+            if action == Action::PAUSE:
+                MazeGame::game_pause(game)
+                return true
+            if action == Action::RESUME:
+                MazeGame::game_resume(game)
+                return true
+            if action == Action::QUIT:
+                MazeGame::game_quit(game)
+                return true
+            false
+
+        # Activate a row by index through the model, then run the action.
+        def menu_activate_row(game: mutable MazeGame::MazeGame&, menu: mutable Ui::Menu&, index: usize) -> bool:
+            action: i64 = Ui::activate(menu, index)
+            menu_invoke(game, action)

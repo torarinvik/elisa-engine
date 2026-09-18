@@ -1,7 +1,10 @@
 include "../examples/maze/studio.elisa"
+include "../examples/maze/menu.elisa"
 using Maze
 using MazeGame
 using MazeStudio
+using MazeMenu
+using Ui
 using Editor
 using Assets
 using AssetCatalogue
@@ -152,4 +155,23 @@ def main() -> i32:
     return 54 if game_resident_chunks(&stream_game) == 0 or game_resident_chunks(&stream_game) > 9
     game_restart(&stream_game)
     return 55 if not game_valid(&stream_game) or not game_chunk_resident(&stream_game, 0, 0)
+
+    # UI menu model: from the menu, start is offered and the focus lands on it;
+    # focus skips disabled rows; activating a row runs the game flow.
+    menu_game: mutable MazeGame = game_new()
+    menu: mutable Ui::Menu = menu_build(&menu_game)
+    return 56 if not Ui::menu_valid(&menu) or item_count(&menu) != action_count()
+    return 57 if Ui::focused_action(&menu) != action_start()
+    return 58 if Ui::item_enabled(&menu, 1) or Ui::item_enabled(&menu, 2)
+    Ui::focus_next(&menu)
+    return 59 if Ui::focused_action(&menu) != action_quit()
+    menu_activated: bool = menu_activate_row(&menu_game, &menu, 0)
+    return 60 if not menu_activated or menu_game.status != GameStatus.Playing
+    running_menu: Ui::Menu = menu_build(&menu_game)
+    return 61 if Ui::item_enabled(&running_menu, 0) or not Ui::item_enabled(&running_menu, 2)
+    quit_row: i64 = Ui::hit_test(&running_menu, 4 * row_height())
+    return 62 if quit_row != 4
+    quit_done: bool = menu_activate_row(&menu_game, &running_menu, 4)
+    return 63 if not quit_done or menu_game.status != GameStatus.Exited
+    return 64 if menu_activate_row(&menu_game, &running_menu, 0)
     0
