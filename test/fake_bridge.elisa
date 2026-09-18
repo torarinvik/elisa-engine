@@ -77,4 +77,78 @@ def main() -> i32:
         ok: 0
         error failure: 1
     return 15 if reused_destroyed != 0
+
+    # Stale handles are rejected once a slot has been reused with a new
+    # generation: an old callback or upload ticket must not act on the new
+    # object that now occupies the slot.
+    fresh_callback: CallbackHandle = catch callback_register(&bridge):
+        value: value
+        error failure: return 16
+    stale_callback: i32 = catch callback_begin(&bridge, callback):
+        value: 0
+        BridgeError.InvalidCallback: 1
+        error failure: 2
+    return 17 if stale_callback != 1 or not callback_is_registered(&bridge, fresh_callback)
+    premature_end: i32 = catch callback_end(&bridge, fresh_callback):
+        ok: 0
+        BridgeError.CallbackAlreadyUnregistered: 1
+        error failure: 2
+    return 18 if premature_end != 1
+    upload_resource: ResourceHandle = catch resource_create(&bridge, false):
+        value: value
+        error failure: return 19
+    fresh_upload: i32 = catch upload_submit(&bridge, upload_resource, 8):
+        value: 0
+        error failure: 1
+    return 20 if fresh_upload != 0
+    stale_upload: i32 = catch upload_complete(&bridge, upload):
+        ok: 0
+        BridgeError.InvalidUpload: 1
+        error failure: 2
+    return 21 if stale_upload != 1
+
+    capacity: i32 = capacity_test()
+    return capacity if capacity != 0
+    0
+
+# Capacity and oversized inputs, tested on a fresh bridge so the linear
+# lifecycle above is not disturbed.
+def capacity_test() -> i32:
+    bridge: mutable Bridge = bridge_new()
+    target: ResourceHandle = catch resource_create(&bridge, false):
+        value: value
+        error failure: return 30
+    for index in 0..<15 |bridge|:
+        extra: ResourceHandle = catch resource_create(&bridge, false):
+            value: value
+            error failure: return 31
+    resource_overflow: i32 = catch resource_create(&bridge, false):
+        value: 0
+        BridgeError.Capacity: 1
+        error failure: 2
+    return 32 if resource_overflow != 1
+    for index in 0..<16 |bridge, target|:
+        ticket: UploadTicket = catch upload_submit(&bridge, target, 4):
+            value: value
+            error failure: return 33
+    upload_overflow: i32 = catch upload_submit(&bridge, target, 4):
+        value: 0
+        BridgeError.Capacity: 1
+        error failure: 2
+    return 34 if upload_overflow != 1
+    oversize: i32 = catch upload_submit(&bridge, target, 1048577):
+        value: 0
+        BridgeError.OversizedUpload: 1
+        BridgeError.Capacity: 2
+        error failure: 3
+    return 35 if oversize != 1
+    for index in 0..<16 |bridge|:
+        registered: CallbackHandle = catch callback_register(&bridge):
+            value: value
+            error failure: return 36
+    callback_overflow: i32 = catch callback_register(&bridge):
+        value: 0
+        BridgeError.Capacity: 1
+        error failure: 2
+    return 37 if callback_overflow != 1
     0

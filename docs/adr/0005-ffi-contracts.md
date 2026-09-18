@@ -32,3 +32,14 @@ produces use-after-free and cross-thread defects at the boundary.
 
 Sanitizer/fuzz runs against real native libraries; vendor internals
 (Godot reference counting, renderer worker pools) stay behind wrappers.
+
+
+## Adversarial bridge coverage extended (2026-09-18)
+
+The fake bridge now bounds upload size (`MAX_UPLOAD_BYTES` and an
+`OversizedUpload` error, checked before slot allocation so an oversized request
+is not mistaken for capacity) and `test/fake_bridge.elisa` covers the remaining
+adversarial cases the plan lists: resource, upload, and callback capacity
+exhaustion; a stale callback handle after its slot is reused; a stale upload
+ticket after its slot is reused; and ending a callback that was never started.
+`
