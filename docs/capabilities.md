@@ -121,11 +121,35 @@ writes `build/validation.json`. Host evidence comes from
 
 Re-run on the current tree:
 
-- `elisascript scripts/check.elisascript` — exit 0, 32 checks, proofs replayed,
-  `build/validation.json` written with the release and catalogue records.
+- `elisascript scripts/check.elisascript` — exit 0, all checks pass, proofs
+  replayed, `build/validation.json` written with the release and catalogue
+  records.
+- `python3 scripts/run_boundary_sanitized.py` — exit 0, no AddressSanitizer or
+  UBSan finding over the boundary libraries.
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
-  budget met, churn/ozz/Recast/miniaudio/text/zstd/reload/udp/menu all pass.
+  budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture,
+  UDP, menu, pose, and Wicked-GUI checks all pass.
 - `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic
   and the two hosts agree on scene semantics.
-- `python3 scripts/run_boundary_sanitized.py` — clean AddressSanitizer/UBSan run
-  over the boundary libraries.
+
+## Deferred
+
+These plan items are deliberately not implemented. The plan calls the library
+roadmap "an integration order, not a command to add every dependency
+immediately," and each of these is either optional for the first game or needs a
+toolchain not present in this environment:
+
+- **GameNetworkingSockets transport.** Replication, authority, prediction,
+  interpolation, and recovery are implemented and tested, and a real UDP socket
+  round trip exercises the byte boundary, but the selected transport library is
+  not vendored or built here.
+- **GPU texture compression (KTX/Basis).** The texture path is uncompressed
+  RGBA applied to a material; no KTX/Basis toolchain is available.
+- **Skinned-mesh submission to the hosts.** The engine performs linear blend
+  skinning and hosts consume solved joint positions, but no skinned asset with
+  cooked weights exists to submit.
+- **Live input driving the hosts.** The hosts consume a canonical fixture; host
+  input reaching Elisa gameplay needs an embedding the current separation does
+  not provide.
+- **General UI layout/style system.** The menu model and host widgets exist, but
+  there is no general layout, styling, or text-flow system.
