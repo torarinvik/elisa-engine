@@ -64,3 +64,14 @@ revision and owner always come from the newer snapshot so an interpolated
 position never masquerades as authority, and a reordered or invalid snapshot is
 refused. `test/session.elisa` pins the single-snapshot case, the midpoint and
 quarter interpolation, both clamps, and the out-of-order and invalid rejections.
+
+## Wire decoder fuzz test (2026-09-18)
+
+The plan asks for fuzzing at the unverified boundary. `test/session.elisa` now
+mutates a valid frame with zero to three flipped bytes over 256 deterministic
+rounds and requires the decoder to either accept a valid record or refuse with
+one of its declared errors; any other outcome fails. It also requires both an
+acceptance and a rejection to occur, so the test exercises both paths rather
+than passing vacuously. Combined with the malformed-frame cases added earlier,
+the untrusted byte boundary is covered by round trips, crafted bad frames, and
+a fuzz sweep.

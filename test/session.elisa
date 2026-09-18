@@ -213,6 +213,43 @@ def interp_test() -> i32:
     return 89 if invalid != 1 or not buffer_valid(&buffer)
     0
 
+# Fuzz the wire decoder: 256 mutated frames (a valid frame with zero to three
+# bytes flipped) must either decode to a valid record or be refused with one of
+# the declared errors. Any other outcome fails, and both acceptance and
+# rejection must occur so the test exercises both paths.
+def fuzz_test() -> i32:
+    seed: mutable i64 = 1
+    base: ReplRecord = sample(Owner.Client, 12345, 0 - 5, 7)
+    valid: u8[33] = catch encode(&base):
+        value: value
+        error failure: zeroed
+    accepted: mutable usize = 0
+    rejected: mutable usize = 0
+    for round in 0..<256 |seed, accepted, rejected, valid|:
+        frame: mutable u8[33] = valid
+        seed <- (seed * 1103515245 + 12345) % 2147483648
+        mutations: i64 = seed % 4
+        for step in 0..<mutations |frame, seed|:
+            seed <- (seed * 1103515245 + 12345) % 2147483648
+            position: i64 = seed / 65536 % 33
+            seed <- (seed * 1103515245 + 12345) % 2147483648
+            frame[position.usize()] <- (seed / 65536 % 256).u8()
+        outcome: i32 = catch decode(frame, wire_frame_bytes()):
+            value: 1
+            WireError.ShortFrame: 0
+            WireError.LongFrame: 0
+            WireError.UnknownOwner: 0
+            WireError.Unrepresentable: 0
+            WireError.InvalidRecord: 0
+            error failure: 2
+        return 90 if outcome == 2
+        if outcome == 1:
+            accepted <- accepted + 1
+        if outcome == 0:
+            rejected <- rejected + 1
+    return 91 if accepted == 0 or rejected == 0 or accepted + rejected != 256
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -249,4 +286,6 @@ def main() -> i32:
     return recovered if recovered != 0
     interpolated: i32 = interp_test()
     return interpolated if interpolated != 0
+    fuzzed: i32 = fuzz_test()
+    return fuzzed if fuzzed != 0
     0
