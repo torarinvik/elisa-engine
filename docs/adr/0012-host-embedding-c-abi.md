@@ -44,3 +44,16 @@ Rules this fixes:
   ABI carries input in.
 - Exporting through a C ABI is now a supported path; a new game surface adds
   `export fn` wrappers rather than host-side reimplementations.
+
+## c-archive omits a nested-module function (2026-09-18, compiler defect)
+
+Extending the C ABI with a query surface (`maze_is_wall`, `maze_wall_count`)
+made `-emit c-archive` produce an archive whose object referenced
+`_Maze::Steps.next_position` from `maze_try_move` without emitting its
+definition, so linking failed with an undefined symbol. The same source links
+when the query surface is absent, so the emit set depends on which exports are
+present — a backend defect, not a source error. The query surface was reverted
+to keep the embedding working; the minimized reproduction is an Elisa file that
+exports a function reaching a nested-module private helper (`module Steps` inside
+`module Maze`) and should be filed in the compiler repository. Per the plan's
+guidance, the engine did not move gameplay policy into C++ to work around it.
