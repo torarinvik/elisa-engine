@@ -322,6 +322,45 @@ def reliable_gap_test() -> i32:
     return 124 if not sender_ack(&gap, 0) or gap.base != 2 or not sender_valid(&gap)
     0
 
+# Reliable delivery end to end: four revisions are sent through a link that
+# drops every second frame; the window retransmits the oldest until each is
+# acknowledged, and the peer converges on the last revision with the window
+# empty. Retransmissions must actually occur, or loss was not recovered.
+def reliable_link_test() -> i32:
+    link: mutable Link = link_new(2, 0)
+    sender: mutable Sender = sender_new()
+    for revision in 1..<5 |sender|:
+        seq: i64 = catch sender_send(&sender, sample(Owner.Server, revision.i64(), revision.i64() * 10, 0)):
+            value: value
+            error failure: return 130
+    return 131 if sender_outstanding(&sender) != 4
+    client: mutable PeerState = peer_new(Owner.Server)
+    for tick in 0..<24 |link, sender, client|:
+        if sender_outstanding(&sender) > 0:
+            resent: i64 = catch sender_retransmit(&sender):
+                value: value
+                error failure: 0 - 1
+            record: ReplRecord =
+                catch sender_record(&sender, resent):
+                    value: value
+                    error failure: sample(Owner.Server, 1, 10, 0)
+            sent: usize = catch link_send(&link, &record, tick.i64()):
+                value: value
+                error failure: 99
+            return 132 if sent == 99
+        received: ReplRecord =
+            catch link_receive(&link, tick.i64()):
+                value: value
+                error failure: ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
+        if received.persistent == 99:
+            outcome: ApplyResult = peer_apply(&client, received, Owner.Server)
+            acked: bool = sender_ack(&sender, received.revision - 1)
+            _ = outcome
+            _ = acked
+    return 133 if peer_revision(&client) != 4 or peer_x(&client) != 40
+    return 134 if sender_outstanding(&sender) != 0 or sender.retransmits == 0 or not sender_valid(&sender)
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -366,4 +405,6 @@ def main() -> i32:
     return reliable if reliable != 0
     gap_reliable: i32 = reliable_gap_test()
     return gap_reliable if gap_reliable != 0
+    loss_recovered: i32 = reliable_link_test()
+    return loss_recovered if loss_recovered != 0
     0

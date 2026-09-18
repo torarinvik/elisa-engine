@@ -83,3 +83,12 @@ revision arrive before an earlier one. `test/session.elisa` now sends revisions
 2, 3, then 1 with arrival ticks 0, 1, 2 and requires the peer to converge on
 revision 3, ignore the stale revision 1 that arrives last, and reject nothing.
 Reordering is therefore covered alongside loss and delay.
+
+## Loss recovery end to end (2026-09-18)
+
+The reliable window is exercised over the lossy link, not only as bookkeeping:
+four revisions are sent through a link that drops every second frame, the window
+retransmits the oldest until each is acknowledged, and the peer converges on the
+last revision with the window empty. The test requires retransmissions to have
+occurred, so a run where loss was not recovered fails rather than passing
+vacuously.
