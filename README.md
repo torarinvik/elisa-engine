@@ -201,7 +201,10 @@ position, so streaming follows gameplay and a restart leaves residency coherent.
 The fixture also carries the menu state (`menu_actions`, `menu_enabled`,
 `menu_focus`); `backends/godot/probe.gd` consumes it with real Godot controls
 and the gated probe verifies the focused row and the disabled rows, so UI data
-reaches a host's UI system rather than staying in the model.
+reaches a host's UI system rather than staying in the model. The native host
+builds the same menu as real Wicked GUI buttons, verifies their enabled states,
+and removes them before capture, so both backend families render Elisa UI
+widgets from the same data.
 
 `src/ui/menu.elisa` is the engine-owned menu model: a fixed-height vertical
 list with focus navigation that skips disabled rows, pointer hit testing, and

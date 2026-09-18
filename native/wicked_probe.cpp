@@ -29,6 +29,7 @@
 #include "zstd_probe.h"
 #include "reload_probe.h"
 #include "texture_probe.h"
+#include "gui_probe.h"
 #include "tracy_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
@@ -389,6 +390,11 @@ int main(int argc, char** argv) {
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);
+    // Native UI: build and verify Wicked GUI buttons from the menu state, then
+    // remove them so the captured frame is unchanged.
+    if (!probe_wicked_gui(render_path.GetGUI(), manifest)) {
+        return 1;
+    }
     std::fprintf(stdout, "pre-frames aabb=%u matrices=%u objects=%u\n",
         (unsigned)scene.aabb_objects.size(), (unsigned)scene.matrix_objects.size(),
         (unsigned)scene.objects.GetCount());

@@ -111,8 +111,8 @@ writes `build/validation.json`. Host evidence comes from
 | Skeletal-pose submission to the hosts | Planned | engine-side poses only |
 | UI menu model (layout, focus, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
-| Native consumes and validates menu state | Implemented | `native/menu_probe.h` (data-level, not a widget toolkit) |
-| UI rendering toolkit | Partial | Godot controls + text stack; native UI pending |
+| Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
+| UI rendering toolkit | Partial | Godot controls and Wicked widgets from Elisa data; no general layout/style system |
 | Compressed textures (KTX/Basis) | Planned | RGBA texture package only; no GPU compression |
 
 ## Verification
