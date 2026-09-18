@@ -1,0 +1,52 @@
+# Save and restore the maze game's portable state. Elisa owns the meaning of
+# each field; src/runtime/save.elisa owns the container, its magic, and its
+# version, so a blob written by one version is rejected by another rather than
+# misread. Loading re-derives stream residency and re-checks the whole state.
+include "./game.elisa"
+include "../../src/runtime/save.elisa"
+
+using Save
+
+module MazePersist:
+    private:
+        const module Field:
+            COUNT: usize = 7
+            SETTINGS: usize = 0
+            STATUS: usize = 1
+            PLAYER_X: usize = 2
+            PLAYER_Y: usize = 3
+            MOVES: usize = 4
+            LIVES: usize = 5
+            HAS_KEY: usize = 6
+
+    public:
+        def field_count() -> usize:
+            Field::COUNT
+
+        def game_save(game: MazeGame::MazeGame&) -> Blob error[SaveError]:
+            values: mutable i64[8] = zeroed
+            values[Field::SETTINGS] <- MazeGame::settings_code(game.settings)
+            values[Field::STATUS] <- MazeGame::game_status_code(game.status)
+            values[Field::PLAYER_X] <- game.grid.player_x
+            values[Field::PLAYER_Y] <- game.grid.player_y
+            values[Field::MOVES] <- game.grid.moves.i64()
+            values[Field::LIVES] <- game.lives
+            values[Field::HAS_KEY] <- 1 if game.has_key else 0
+            save_write(values, Field::COUNT)
+
+        def game_load(game: mutable MazeGame::MazeGame&, blob: Save::Blob&) -> bool:
+            readable: bool = catch save_read(blob, Field::COUNT):
+                ok: true
+                error failure: false
+            return false if not readable
+            game.settings <- MazeGame::settings_from_code(save_value_or(blob, Field::SETTINGS, 3))
+            game.status <- MazeGame::status_from_code(save_value_or(blob, Field::STATUS, 0))
+            game.grid <- Maze::MazeState{
+                player_x: save_value_or(blob, Field::PLAYER_X, 1),
+                player_y: save_value_or(blob, Field::PLAYER_Y, 1),
+                moves: save_value_or(blob, Field::MOVES, 0).usize(),
+            }
+            game.lives <- save_value_or(blob, Field::LIVES, 3)
+            game.has_key <- save_value_or(blob, Field::HAS_KEY, 0) == 1
+            MazeGame::game_refresh_stream(game)
+            MazeGame::game_valid(game)

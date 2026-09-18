@@ -1,10 +1,13 @@
 include "../examples/maze/studio.elisa"
 include "../examples/maze/menu.elisa"
+include "../examples/maze/persist.elisa"
 using Maze
 using MazeGame
 using MazeStudio
 using MazeMenu
+using MazePersist
 using Ui
+using Save
 using Editor
 using Assets
 using AssetCatalogue
@@ -174,4 +177,25 @@ def main() -> i32:
     quit_done: bool = menu_activate_row(&menu_game, &running_menu, 4)
     return 63 if not quit_done or menu_game.status != GameStatus.Exited
     return 64 if menu_activate_row(&menu_game, &running_menu, 0)
+
+    # Saved settings: the game's portable state round-trips through a versioned
+    # blob; a wrong version or corrupt magic is rejected, and a loaded state is
+    # re-validated.
+    save_game: mutable MazeGame = game_new()
+    game_start(&save_game)
+    _ = game_apply_settings(&save_game, GameSettings{fog: false, audio: true})
+    _ = game_step(&save_game, MazeMove.East)
+    saved: Blob = catch game_save(&save_game):
+        value: value
+        error failure: return 65
+    return 66 if not blob_valid(&saved) or saved.version != save_version()
+    loaded_game: mutable MazeGame = game_new()
+    return 67 if not game_load(&loaded_game, &saved)
+    return 68 if loaded_game.status != GameStatus.Playing or loaded_game.grid.player_x != 2 or loaded_game.lives != 3
+    return 69 if loaded_game.settings.fog or not loaded_game.settings.audio or not game_valid(&loaded_game)
+    wrong_version: Blob = Blob{version: 99, count: saved.count, fields: saved.fields}
+    return 70 if game_load(&loaded_game, &wrong_version)
+    corrupt: mutable Blob = Blob{version: saved.version, count: saved.count, fields: saved.fields}
+    corrupt.fields[0] <- 0
+    return 71 if game_load(&loaded_game, &corrupt) or not game_valid(&loaded_game)
     0

@@ -95,6 +95,28 @@ module MazeGame:
             return 4 if status == GameStatus.Lost
             5
 
+        def status_from_code(code: i64) -> GameStatus:
+            return GameStatus.Menu if code == 0
+            return GameStatus.Playing if code == 1
+            return GameStatus.Paused if code == 2
+            return GameStatus.Won if code == 3
+            return GameStatus.Lost if code == 4
+            return GameStatus.Exited if code == 5
+            GameStatus.Menu
+
+        # Settings packed into one integer, shared by the editor history and
+        # the save format so there is one encoding, not two.
+        def settings_code(settings: GameSettings) -> i64:
+            fog_part: i64 = 1 if settings.fog else 0
+            audio_part: i64 = 2 if settings.audio else 0
+            fog_part + audio_part
+
+        def settings_from_code(code: i64) -> GameSettings:
+            GameSettings{fog: code / 1 % 2 == 1, audio: code / 2 % 2 == 1}
+
+        def game_refresh_stream(game: mutable MazeGame&) -> void:
+            Flow::refresh_stream(game)
+
         # Fog-of-war as a pure predicate, so a host can render the same
         # visibility the game uses without owning the rule.
         def maze_fog_radius() -> i64:

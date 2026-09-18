@@ -1,0 +1,55 @@
+# Portable save blobs. The plan keeps serialization layouts explicit and warns
+# never to persist runtime pointers, backend handles, or compiler-assigned enum
+# ordinals as durable data. This module stores a magic marker, a format version,
+# a field count, and up to eight plain i64 fields, and a reader rejects a blob
+# whose magic, version, or length disagrees. A caller owns the field meaning;
+# the container only guarantees that a decoded blob is the one this version
+# wrote.
+module Save:
+    private:
+        const module Tune:
+            MAGIC: i64 = 297638561601
+            VERSION: i64 = 1
+            MAX_FIELDS: usize = 8
+
+    public:
+        error SaveError:
+            Capacity
+            WrongVersion
+            Corrupt
+
+        struct Blob:
+            version: i64
+            count: usize
+            fields: mutable i64[8]
+
+        def blob_valid(blob: Blob&) -> bool:
+            return false if blob.version <= 0 or blob.count == 0 or blob.count > Tune::MAX_FIELDS
+            blob.fields[0] == Tune::MAGIC
+
+        # Writes the magic marker, the version, and the caller's fields.
+        def save_write(values: i64[8], count: usize) -> Blob error[SaveError]:
+            raise SaveError.Capacity if count + 1 > Tune::MAX_FIELDS
+            blob: mutable Blob = Blob{version: Tune::VERSION, count: count + 1, fields: zeroed}
+            blob.fields[0] <- Tune::MAGIC
+            for index in 0..<count |blob, values|:
+                blob.fields[index + 1] <- values[index]
+            blob
+
+        # A blob is readable only when it is this version, has exactly the
+        # expected field count, and carries the magic marker.
+        def save_read(blob: Blob&, expected_count: usize) -> bool error[SaveError]:
+            raise SaveError.WrongVersion if blob.version != Tune::VERSION
+            raise SaveError.Corrupt if blob.count != expected_count + 1 or blob.fields[0] != Tune::MAGIC
+            true
+
+        def save_value(blob: Blob&, index: usize) -> i64 error[SaveError]:
+            raise SaveError.Corrupt if index + 1 >= blob.count
+            blob.fields[index + 1]
+
+        def save_value_or(blob: Blob&, index: usize, fallback: i64) -> i64:
+            return fallback if index + 1 >= blob.count
+            blob.fields[index + 1]
+
+        def save_version() -> i64:
+            Tune::VERSION

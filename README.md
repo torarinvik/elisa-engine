@@ -207,6 +207,13 @@ activation returning an action id the game maps to its own flow. No text and no
 rendering live in the model; `examples/maze/menu.elisa` decides which actions
 each game state offers, so the model never learns the game's rules.
 
+`src/runtime/save.elisa` stores portable save blobs as a magic marker, a
+format version, a field count, and plain i64 fields, rejecting a blob whose
+magic, version, or length disagrees. `examples/maze/persist.elisa` saves and
+restores the game's settings, status, player cell, moves, lives, and key, and
+re-derives stream residency on load; a wrong version or a corrupt marker is
+refused.
+
 `examples/maze/studio.elisa` is the play-in-editor surface: a running game with
 an undo/redo history over its settings, stepped through the real game API, and
 an asset-catalogue check that rejects a stale package generation.
