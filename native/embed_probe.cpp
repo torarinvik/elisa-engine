@@ -7,6 +7,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -174,6 +175,20 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "embed: the live game and the fixture disagree\n");
         return 11;
     }
+
+    // Bridge-call benchmark: the plan asks for the ABI boundary to be measured
+    // separately from frame time or submitted bytes, so record the per-call
+    // cost of the exported query surface instead of assuming it.
+    const int bridge_calls = 100000;
+    long long bridge_checksum = 0;
+    const auto bridge_start = std::chrono::steady_clock::now();
+    for (int call = 0; call < bridge_calls; ++call) {
+        bridge_checksum += maze_player_x() + maze_player_y();
+    }
+    const auto bridge_stop = std::chrono::steady_clock::now();
+    const long long bridge_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(bridge_stop - bridge_start).count();
+    std::fprintf(stdout, "embed bridge: calls=%d total_ns=%lld per_call_ns=%.1f checksum=%lld\n",
+        bridge_calls, bridge_ns, (double)bridge_ns / (double)bridge_calls, bridge_checksum);
 
     // Play the winning route entirely through the ABI and render the world from
     // the query surface, so a host can drive and display the live game.

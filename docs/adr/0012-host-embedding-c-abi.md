@@ -45,6 +45,14 @@ Rules this fixes:
 - Exporting through a C ABI is now a supported path; a new game surface adds
   `export fn` wrappers rather than host-side reimplementations.
 
+## Bridge-call benchmark (2026-09-18)
+
+The plan asks for bridge calls to be measured separately from frame time and
+submitted bytes. `native/embed_probe.cpp` times 100,000 calls to the exported
+query surface and prints `embed bridge: calls=100000 total_ns=… per_call_ns=…
+checksum=…`; on this machine the per-call cost is about 4.7 ns, so the ABI
+boundary is recorded rather than assumed.
+
 ## Live input drives both rendered hosts (2026-09-18)
 
 Both capture hosts rendered replayed routes; now each also renders state it

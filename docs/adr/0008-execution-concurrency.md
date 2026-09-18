@@ -33,6 +33,17 @@ intentions.
 Compiler-inferred sets, parallel executor, backend thread-affinity
 enforcement, measured workload reports on target hardware.
 
+## Allocation benchmark (2026-09-18)
+
+The plan asks for allocations to be benchmarked separately from frame time and
+object counts. The native churn probe now records heap bytes in use
+(`malloc_zone_statistics`) around its eight 64-cube rounds: the first full round
+warms Wicked's pools, and the final reading must stay within 2 MiB of that
+steady state. On this machine the steady delta is ~270 KB, so a batch that
+leaked would trip the guard even though the component counts return to
+baseline. The reading is printed as `churn memory: before_bytes=… steady_bytes=…
+after_bytes=… steady_delta_bytes=…`.
+
 ## Derived execution waves (2026-09-18)
 
 `Schedule::assign_groups` derives the earliest-fit grouping from the declared

@@ -234,6 +234,11 @@ plays the winning route through the same exports. `python3 scripts/embed_probe.p
 builds and runs it. So a host can feed input while Elisa still owns identity,
 rules, and state (ADR-0012).
 
+The native churn benchmark records allocated heap bytes alongside round
+timings, so a spawn/despawn batch that leaks fails even when the scene's
+component counts return to baseline, and the embedding host times 100,000
+exported query calls so the C ABI boundary has a recorded per-call cost.
+
 Both capture hosts also render from live input now: a key event is mapped to
 the portable move code, the embedded game is advanced (through the C ABI on
 the native side, through the GDExtension on the Godot side), the rendered
