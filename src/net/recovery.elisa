@@ -1,0 +1,61 @@
+# Recovery above the transport. A client tracks the next server revision it
+# expects; a contiguous revision keeps it in sync, a jump forward is a gap that
+# blocks state application until a full snapshot resyncs it, and a stale
+# revision is ignored. A resync resets the client's expectation but never
+# rewinds the rollback high-water mark, because rewinding the allocator while
+# references survive would violate the non-reuse contract.
+module Recovery:
+    private:
+        const module Tune:
+            INITIAL_REVISION: i64 = 1
+
+    public:
+        struct RecoveryView:
+            expected: mutable i64
+            last_seen: mutable i64
+            gaps: mutable usize
+            resyncs: mutable usize
+            in_sync: mutable bool
+            high_water: mutable i64
+
+        def recovery_new(high_water: i64) -> RecoveryView:
+            RecoveryView{
+                expected: Tune::INITIAL_REVISION,
+                last_seen: 0,
+                gaps: 0,
+                resyncs: 0,
+                in_sync: true,
+                high_water: high_water,
+            }
+
+        def recovery_valid(view: RecoveryView&) -> bool:
+            view.expected >= Tune::INITIAL_REVISION and view.last_seen >= 0 and view.high_water >= 0
+
+        # Observe a server revision. A later gap blocks the session until a
+        # snapshot arrives, so the caller must not apply out-of-order state.
+        def recovery_observe(view: mutable RecoveryView&, revision: i64) -> bool:
+            return view.in_sync if revision < view.expected
+            if revision == view.expected:
+                view.last_seen <- revision
+                view.expected <- revision + 1
+                return view.in_sync
+            view.gaps <- view.gaps + 1
+            view.last_seen <- revision
+            view.in_sync <- false
+            false
+
+        # A full snapshot closes the gap. Prediction is rebuilt from it; the
+        # high-water mark is deliberately not rewound.
+        def recovery_resync(view: mutable RecoveryView&, revision: i64) -> bool:
+            return false if revision < view.last_seen
+            view.expected <- revision + 1
+            view.last_seen <- revision
+            view.in_sync <- true
+            view.resyncs <- view.resyncs + 1
+            true
+
+        def recovery_high_water(view: RecoveryView&) -> i64:
+            view.high_water
+
+        def recovery_gap_count(view: RecoveryView&) -> usize:
+            view.gaps

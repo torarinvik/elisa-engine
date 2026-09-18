@@ -1,11 +1,13 @@
 include "../src/net/session.elisa"
 include "../src/net/loopback.elisa"
 include "../src/net/peer.elisa"
+include "../src/net/recovery.elisa"
 using Net
 using Session
 using Wire
 using Loopback
 using Peer
+using Recovery
 
 def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
     ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
@@ -136,6 +138,22 @@ def peer_test() -> i32:
     return 64 if stale != ApplyResult.IgnoredOlder or peer_x(&client) != 60
     0
 
+# Recovery: a contiguous revision keeps the session in sync, a forward jump is
+# a gap that blocks application until a snapshot resyncs it, and a stale
+# revision is ignored. The high-water mark is never rewound.
+def recovery_test() -> i32:
+    view: mutable RecoveryView = recovery_new(300)
+    return 70 if not recovery_valid(&view) or view.expected != 1 or not view.in_sync
+    return 71 if not recovery_observe(&view, 1) or view.expected != 2
+    return 72 if not recovery_observe(&view, 2) or not recovery_observe(&view, 3) or view.expected != 4
+    return 73 if recovery_observe(&view, 6)
+    return 74 if view.in_sync or view.gaps != 1 or view.expected != 4 or view.last_seen != 6
+    return 75 if recovery_observe(&view, 4) or recovery_gap_count(&view) != 1
+    return 76 if not recovery_resync(&view, 6) or view.expected != 7 or not view.in_sync or view.resyncs != 1
+    return 77 if not recovery_observe(&view, 7) or view.expected != 8
+    return 78 if recovery_high_water(&view) != 300 or recovery_resync(&view, 5) or not recovery_valid(&view)
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -168,4 +186,6 @@ def main() -> i32:
     return looped if looped != 0
     peers: i32 = peer_test()
     return peers if peers != 0
+    recovered: i32 = recovery_test()
+    return recovered if recovered != 0
     0
