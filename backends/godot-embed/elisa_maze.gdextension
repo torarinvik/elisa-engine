@@ -1,0 +1,12 @@
+[configuration]
+
+; Built from the matching dumped interface by scripts/godot_embed_probe.py.
+entry_symbol = "gdextension_init"
+compatibility_minimum = "4.7"
+
+[libraries]
+
+macos.debug = "res://bin/libelisa_maze.macos.arm64.dylib"
+macos.debug.arm64 = "res://bin/libelisa_maze.macos.arm64.dylib"
+macos.release = "res://bin/libelisa_maze.macos.arm64.dylib"
+macos.release.arm64 = "res://bin/libelisa_maze.macos.arm64.dylib"

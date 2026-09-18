@@ -2,8 +2,10 @@
 
 An experimental Elisa-native game engine built around algebraic entity hierarchies,
 numeric identity, and specialist engine libraries. SDL3 and headless Godot and
-Wicked host probes are now exercised; the full Godot GDExtension and Wicked
-renderer remain planned. [Native backend validation](docs/native-backend-validation.md)
+Wicked host probes are now exercised, and the Godot host embeds Elisa gameplay
+through a hand-written GDExtension over the same C ABI the native host uses
+(ADR-0013); the full Wicked renderer remains planned.
+[Native backend validation](docs/native-backend-validation.md)
 records the pinned external Wicked checkout and its macOS build notes.
 Binding architecture decisions live in [docs/adr/](docs/adr/); anything the
 ADRs mark as not covered is not claimed anywhere else in this file. Every
@@ -224,6 +226,16 @@ plays the winning route through the same exports. `python3 scripts/embed_probe.p
 builds and runs it. So a host can feed input while Elisa still owns identity,
 rules, and state (ADR-0012).
 
+The Godot host reaches the same gameplay without a binding release:
+`scripts/fetch_gdextension_header.py` dumps the installed Godot's own
+`gdextension_interface.h`, and `backends/godot-embed/elisa_godot_bridge.cpp`
+binds an abstract, static `ElisaMaze` class straight to the `libmaze` exports —
+the session is process-global, so the class offers class-level calls rather
+than pretending every object owns state. `python3 scripts/godot_embed_probe.py`
+emits the archive, builds the extension, imports it, and plays a full session
+(start, movement, hazard, reset, win) that must agree with the native
+embedding move for move (ADR-0013).
+
 The fixture also carries the menu state (`menu_actions`, `menu_enabled`,
 `menu_focus`); `backends/godot/probe.gd` consumes it with real Godot controls
 and the gated probe verifies the focused row and the disabled rows, so UI data
@@ -337,11 +349,11 @@ postconditions.
 
 ## Next milestone
 
-Packaged per-target maze binaries running through both backend families,
-a screenshot-driven pixel comparison using the declared tolerance, native
+Packaging the Godot GDExtension alongside the release archive, a
+screenshot-driven pixel comparison using the declared tolerance, native
 solver linkage behind the physics authority policy, and an editor surface
 over the inspector/undo/reload foundation. `scripts/check.elisascript`
-stands at 588 of the 600-line file limit and must be split before further
+stands at 593 of the 600-line file limit and must be split before further
 suites land. The project license is still explicitly undecided and blocks
 any distribution.
 

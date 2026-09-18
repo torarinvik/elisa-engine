@@ -27,6 +27,7 @@ writes `build/validation.json`. Host evidence comes from
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd` |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
+| Godot host embeds Elisa gameplay through a hand-written GDExtension | Tested + Implemented | `backends/godot-embed/`, `scripts/godot_embed_probe.py` (full session matches the native embedding) |
 | Declared read/write sets, derived execution waves | Tested | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa` |
 | Inspected counters, budgets, submitted bytes | Tested | `src/tooling/inspector.elisa`, `test/inspector.elisa` |
 
@@ -150,6 +151,9 @@ Re-run on the current tree:
   and the two hosts agree on scene semantics.
 - `python3 scripts/embed_probe.py` — exit 0; the host links the Elisa C archive,
   drives gameplay, maps an SDL event to a move, and exercises the hazard rules.
+- `python3 scripts/godot_embed_probe.py` — exit 0; the Godot host dumps its own
+  GDExtension header, builds the bridge over the same archive, and plays a full
+  session that matches the native embedding move for move.
 
 ## Deferred
 
@@ -162,12 +166,9 @@ toolchain not present in this environment:
   interpolation, and recovery are implemented and tested, and a real UDP socket
   round trip exercises the byte boundary, but the selected transport library is
   not vendored or built here.
-- **Godot host embedding the game via the C ABI.** The native host drives
-  gameplay through the Elisa C ABI; the Godot host still consumes the fixture
-  and synthetic events, and wiring the C ABI into GDScript is follow-up work.
 - **General UI layout/style system.** The menu model and host widgets exist, but
   there is no general layout, styling, or text-flow system.
 
 Architectural decisions behind these boundaries are recorded in
-[docs/adr/](adr/), in particular ADR-0011 on the canonical fixture as the
-backend contract.
+[docs/adr/](adr/): ADR-0011 on the canonical fixture as the backend contract,
+ADR-0012 on the host C ABI, and ADR-0013 on the hand-written Godot GDExtension.

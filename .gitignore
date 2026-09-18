@@ -1,6 +1,8 @@
 /dependencies.md
 /dependencies
 /build/
+/backends/godot-embed/bin/
+/backends/godot-embed/.godot/
 .DS_Store
 docs/tail-return-validation.md
 Elisa_Engine_Architecture_and_Plan.md
