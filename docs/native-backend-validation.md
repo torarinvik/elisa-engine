@@ -575,3 +575,16 @@ Two Godot-host defects/gaps were closed here:
   player per cue the fixture declares, failing if the count disagrees. A run
   reported `godot audio: decoded_bytes=800 rate=8000 cues=4 expected=4`, so
   simple audio now runs on both hosts, not just natively.
+
+
+## Gated Godot asset and audio checks (2026-09-18)
+
+The cooked-package and audio checks were only in the non-headless capture, so
+a regression there would not fail the main gate. They are now in
+`backends/godot/probe.gd`, which `scripts/check.elisascript` runs headless:
+the probe loads the cooked package, checks the format and triangle count
+against the fixture, builds a surface from the geometry, and verifies the
+audio clip decodes to the expected sample information. The gate reports
+`godot probe asset: format=elisa-cooked-v2 triangles=12 surface=1` and
+`godot probe audio: decoded_bytes=800 rate=8000 cues=4`, so the asset and
+audio contracts are gated, not only observed.
