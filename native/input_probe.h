@@ -4,6 +4,11 @@
 // synthetic key events for the fixture's bound keys, polls them back, and
 // requires each to map to the named portable button. It exercises the platform
 // boundary; gameplay action selection still runs in Elisa.
+//
+// This probe is compiled into the Wicked host, whose upstream platform layer
+// builds against SDL2, so it must use SDL2: SDL2 and SDL3 export the same
+// symbol names and cannot link into one binary. The engine's own platform
+// default is SDL3 (src/backend/sdl3.elisa and the standalone embedding host).
 #include "probe_core.h"
 
 #include <SDL2/SDL.h>

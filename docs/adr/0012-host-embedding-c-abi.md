@@ -23,7 +23,7 @@ Export the game's public entry points as a **C ABI** with the compiler's
   `maze_lives`. The archive bundles the Elisa runtime, so the host links one
   library.
 - `native/embed_probe.cpp` links the archive, drives gameplay through the
-  exports, then reads an SDL key event, maps it to a move code, and calls
+  exports, then reads an SDL3 key event, maps it to a move code, and calls
   `maze_step` — live input reaching Elisa gameplay.
 - `scripts/embed_probe.py` emits the archive, builds the host, and runs it.
 

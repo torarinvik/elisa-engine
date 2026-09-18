@@ -5,7 +5,7 @@
 // maze_step, which is live input driving Elisa gameplay across the boundary.
 #include "libmaze.h"
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -18,16 +18,16 @@
 namespace {
 
 int move_code_for(SDL_Keycode code) {
-    if (code == SDLK_w) {
+    if (code == SDLK_W) {
         return 0;
     }
-    if (code == SDLK_s) {
+    if (code == SDLK_S) {
         return 1;
     }
-    if (code == SDLK_a) {
+    if (code == SDLK_A) {
         return 2;
     }
-    if (code == SDLK_d) {
+    if (code == SDLK_D) {
         return 3;
     }
     return -1;
@@ -80,26 +80,26 @@ int main(int argc, char** argv) {
         return 3;
     }
 
-    if (SDL_Init(SDL_INIT_EVENTS) != 0) {
-        std::fprintf(stderr, "embed: SDL event init failed: %s\n", SDL_GetError());
+    if (!SDL_Init(SDL_INIT_EVENTS)) {
+        std::fprintf(stderr, "embed: SDL3 event init failed: %s\n", SDL_GetError());
         return 4;
     }
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYDOWN;
-    event.key.type = SDL_KEYDOWN;
-    event.key.keysym.sym = SDLK_d;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(SDLK_d);
-    const int pushed = SDL_PushEvent(&event);
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.type = SDL_EVENT_KEY_DOWN;
+    event.key.key = SDLK_D;
+    event.key.scancode = SDL_GetScancodeFromKey(SDLK_D, nullptr);
+    const bool pushed = SDL_PushEvent(&event);
     int direction = -1;
     SDL_Event polled;
-    while (SDL_PollEvent(&polled) == 1) {
-        if (polled.type == SDL_KEYDOWN) {
-            direction = move_code_for(polled.key.keysym.sym);
+    while (SDL_PollEvent(&polled)) {
+        if (polled.type == SDL_EVENT_KEY_DOWN) {
+            direction = move_code_for(polled.key.key);
         }
     }
     SDL_Quit();
-    if (pushed != 1 or direction != 3) {
+    if (!pushed or direction != 3) {
         std::fprintf(stderr, "embed: device event did not map to a move code\n");
         return 5;
     }

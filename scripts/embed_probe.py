@@ -3,7 +3,7 @@
 
 The maze game is compiled to a C archive (examples/maze/capi.elisa) whose
 exported functions a C++ host links and calls, so gameplay runs in-process. The
-host then reads an SDL key event, maps it to a move code, and steps the game,
+host then reads an SDL3 key event, maps it to a move code, and steps the game,
 which is live input driving Elisa gameplay across the boundary. This is separate
 from scripts/check.elisascript, which does not emit a C archive.
 
@@ -46,7 +46,7 @@ def main() -> int:
     build_result = subprocess.run(
         [cxx, "-std=c++17", "-I", str(build), "-I", sdl_include,
          str(ENGINE_ROOT / "native/embed_probe.cpp"), str(archive),
-         "-L", sdl_library, "-lSDL2", "-o", str(host)],
+         "-L", sdl_library, "-lSDL3", "-o", str(host)],
         capture_output=True, text=True, check=False,
     )
     relay(build_result)

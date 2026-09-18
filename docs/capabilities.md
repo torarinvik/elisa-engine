@@ -24,7 +24,7 @@ writes `build/validation.json`. Host evidence comes from
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
 | Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
-| Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd` |
+| Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is the engine default, SDL2 only inside the Wicked host (upstream) |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
 | Godot host embeds Elisa gameplay through a hand-written GDExtension | Tested + Implemented | `backends/godot-embed/`, `scripts/godot_embed_probe.py` (full session matches the native embedding) |
@@ -126,7 +126,7 @@ writes `build/validation.json`. Host evidence comes from
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
 | ASan full graphics probe | Planned | AddressSanitizer aborts before `main` under this session's sandbox; boundary harness keeps ASan+UBSan |
-| Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
+| Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL3 event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
 | Live input driving the rendered capture hosts | Planned | `backends/godot/probe.gd` and the Wicked probe still replay Elisa-computed routes |
 | Skinned-mesh submission to the hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `skin_quad`, `backends/godot/probe.gd`, `native/skin_probe.h` |
 | UI menu model (layout, focus, scrolling, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
@@ -164,7 +164,7 @@ Re-run on the current tree:
 - `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic
   and the two hosts agree on scene semantics.
 - `python3 scripts/embed_probe.py` — exit 0; the host links the Elisa C archive,
-  drives gameplay, maps an SDL event to a move, and exercises the hazard rules.
+  drives gameplay, maps an SDL3 event to a move, and exercises the hazard rules.
 - `python3 scripts/godot_embed_probe.py` — exit 0; the Godot host dumps its own
   GDExtension header, builds the bridge over the same archive, plays a full
   session that matches the native embedding move for move, and drives gameplay

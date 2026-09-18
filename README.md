@@ -221,6 +221,10 @@ The fixture carries the portable input mapping (`input_forward`, `input_left`,
 `input_right`); the native host pushes and polls SDL key events and the Godot
 probe parses synthetic key events, and both must resolve the bound keys to the
 same portable button names the engine's input map uses, never to enum ordinals.
+SDL3 is the engine's platform default (`src/backend/sdl3.elisa`, the gated SDL3
+platform probe, and the standalone embedding host); the Wicked probe stays on
+SDL2 only because Wicked's upstream platform layer builds against it and SDL2
+and SDL3 cannot link into one binary.
 
 Live input can also drive gameplay directly: `examples/maze/capi.elisa` exports
 the game as a C ABI with the compiler's `-emit c-archive`, and

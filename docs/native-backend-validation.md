@@ -133,7 +133,11 @@ elisascript scripts/wicked_probe.elisascript
 ```
 
 Set `WICKED_SDL_INCLUDE_DIR` and `WICKED_SDL_LIB_DIR` when SDL2 is installed
-outside Homebrew's `/opt/homebrew` prefix.
+outside Homebrew's `/opt/homebrew` prefix. SDL2 is an upstream Wicked
+constraint only: SDL2 and SDL3 export the same symbols and cannot link into
+one binary. Everywhere the engine chooses, the default is SDL3
+(`src/backend/sdl3.elisa`, the SDL3 platform probe, and the standalone
+embedding host).
 
 The current macOS build needs four local compatibility edits in that external
 checkout: a `PipelineHash` inequality operator, the SDL2 Apple cursor guard,
