@@ -75,3 +75,11 @@ acceptance and a rejection to occur, so the test exercises both paths rather
 than passing vacuously. Combined with the malformed-frame cases added earlier,
 the untrusted byte boundary is covered by round trips, crafted bad frames, and
 a fuzz sweep.
+
+## Reordered delivery (2026-09-18)
+
+The loopback already held per-packet send ticks, so a caller can make a later
+revision arrive before an earlier one. `test/session.elisa` now sends revisions
+2, 3, then 1 with arrival ticks 0, 1, 2 and requires the peer to converge on
+revision 3, ignore the stale revision 1 that arrives last, and reject nothing.
+Reordering is therefore covered alongside loss and delay.

@@ -250,6 +250,34 @@ def fuzz_test() -> i32:
     return 91 if accepted == 0 or rejected == 0 or accepted + rejected != 256
     0
 
+# Reordering: packets sent so that a later revision arrives before an earlier
+# one. The peer must still converge on the newest revision and ignore the stale
+# one that arrives last, so a reordered link does not corrupt state.
+def reorder_test() -> i32:
+    link: mutable Link = link_new(0, 0)
+    sent_two: i32 = catch link_send(&link, &sample(Owner.Server, 2, 20, 0), 0):
+        ok: 0
+        error failure: 1
+    sent_three: i32 = catch link_send(&link, &sample(Owner.Server, 3, 30, 0), 1):
+        ok: 0
+        error failure: 1
+    sent_one: i32 = catch link_send(&link, &sample(Owner.Server, 1, 10, 0), 2):
+        ok: 0
+        error failure: 1
+    return 100 if sent_one != 0 or sent_two != 0 or sent_three != 0
+    client: mutable PeerState = peer_new(Owner.Server)
+    for tick in 0..<3 |link, client|:
+        received: ReplRecord =
+            catch link_receive(&link, tick.i64()):
+                value: value
+                error failure: ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
+        if received.persistent == 99:
+            outcome: ApplyResult = peer_apply(&client, received, Owner.Server)
+            _ = outcome
+    return 101 if peer_revision(&client) != 3 or peer_x(&client) != 30
+    return 102 if client.ignored == 0 or client.rejected != 0
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -288,4 +316,6 @@ def main() -> i32:
     return interpolated if interpolated != 0
     fuzzed: i32 = fuzz_test()
     return fuzzed if fuzzed != 0
+    reordered: i32 = reorder_test()
+    return reordered if reordered != 0
     0

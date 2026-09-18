@@ -86,6 +86,7 @@ writes `build/validation.json`. Host evidence comes from
 |---|---|---|
 | Fixed little-endian replication frame | Tested | `src/net/wire.elisa`, `test/session.elisa` |
 | Loss/delay loopback link | Tested | `src/net/loopback.elisa`, `test/session.elisa` |
+| Reordered delivery tolerance | Tested | `test/session.elisa` |
 | Authority and revision ordering | Tested | `src/net/peer.elisa`, `test/session.elisa` |
 | Client prediction and reconciliation | Tested | `src/net/prediction.elisa`, `test/replication.elisa` |
 | Snapshot interpolation with clamping | Tested | `src/net/interpolation.elisa`, `test/session.elisa` |
