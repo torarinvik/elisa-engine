@@ -1,0 +1,80 @@
+# Reliable delivery above the lossy link: a sliding window of unacknowledged
+# records with retransmission of the oldest. The transport still drops and
+# delays; this policy decides what to resend, so a dropped frame is recovered by
+# a retransmission rather than by waiting for a newer revision that may never
+# come. It is bookkeeping, not a socket: the caller drives sends, acks, and
+# retransmissions on its own ticks.
+include "./replication.elisa"
+
+module Reliable:
+    private:
+        const module Tune:
+            WINDOW: usize = 8
+
+    public:
+        error ReliableError:
+            WindowFull
+            UnknownSequence
+
+        struct Sender:
+            base: mutable i64
+            next: mutable i64
+            records: mutable Net::ReplRecord[8]
+            live: mutable bool[8]
+            sent: mutable usize
+            retransmits: mutable usize
+
+        def sender_new() -> Sender:
+            Sender{base: 0, next: 0, records: zeroed, live: zeroed, sent: 0, retransmits: 0}
+
+        def sender_valid(sender: Sender&) -> bool:
+            return false if sender.base < 0 or sender.next < sender.base
+            return false if sender.next - sender.base > Tune::WINDOW.i64()
+            true
+
+        def sender_outstanding(sender: Sender&) -> usize:
+            (sender.next - sender.base).usize()
+
+        # The sequence is assigned by the window, not the caller, so retransmits
+        # reuse the original sequence and an ack unambiguously clears it.
+        def sender_send(sender: mutable Sender&, record: Net::ReplRecord) -> i64 error[ReliableError]:
+            raise ReliableError.WindowFull if sender.next - sender.base >= Tune::WINDOW.i64()
+            slot: usize = (sender.next % 8).usize()
+            sender.records[slot] <- record
+            sender.live[slot] <- true
+            sequence: i64 = sender.next
+            sender.next <- sender.next + 1
+            sender.sent <- sender.sent + 1
+            sequence
+
+        # Acknowledging advances the base over every contiguous acknowledged
+        # record, so a gap holds the window until it is filled.
+        def sender_ack(sender: mutable Sender&, sequence: i64) -> bool:
+            return false if sequence < sender.base or sequence >= sender.next
+            slot: usize = (sequence % 8).usize()
+            if not sender.live[slot]:
+                return false
+            sender.live[slot] <- false
+            for guard in 0..<Tune::WINDOW |sender|:
+                break if sender.base >= sender.next
+                head: usize = (sender.base % 8).usize()
+                break if sender.live[head]
+                sender.base <- sender.base + 1
+            true
+
+        def sender_oldest(sender: Sender&) -> i64:
+            return -1 if sender.base >= sender.next
+            head: usize = (sender.base % 8).usize()
+            return -1 if not sender.live[head]
+            sender.base
+
+        def sender_record(sender: Sender&, sequence: i64) -> Net::ReplRecord error[ReliableError]:
+            raise ReliableError.UnknownSequence if sequence < sender.base or sequence >= sender.next
+            sender.records[(sequence % 8).usize()]
+
+        def sender_retransmit(sender: mutable Sender&) -> i64 error[ReliableError]:
+            raise ReliableError.UnknownSequence if sender.base >= sender.next
+            head: usize = (sender.base % 8).usize()
+            raise ReliableError.UnknownSequence if not sender.live[head]
+            sender.retransmits <- sender.retransmits + 1
+            sender.base

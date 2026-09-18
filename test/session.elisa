@@ -3,6 +3,7 @@ include "../src/net/loopback.elisa"
 include "../src/net/peer.elisa"
 include "../src/net/recovery.elisa"
 include "../src/net/interpolation.elisa"
+include "../src/net/reliable.elisa"
 using Net
 using Session
 using Wire
@@ -10,6 +11,7 @@ using Loopback
 using Peer
 using Recovery
 using Interp
+using Reliable
 
 def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
     ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
@@ -278,6 +280,48 @@ def reorder_test() -> i32:
     return 102 if client.ignored == 0 or client.rejected != 0
     0
 
+# Reliable delivery: a sliding window resends the oldest unacknowledged record,
+# a gap holds the window until it is filled, and an ack advances the base over
+# contiguous acknowledgements only.
+def reliable_test() -> i32:
+    sender: mutable Sender = sender_new()
+    return 110 if not sender_valid(&sender) or sender_outstanding(&sender) != 0 or sender_oldest(&sender) != -1
+    seq0: i64 = catch sender_send(&sender, sample(Owner.Server, 1, 10, 0)):
+        value: value
+        error failure: return 111
+    seq1: i64 = catch sender_send(&sender, sample(Owner.Server, 2, 20, 0)):
+        value: value
+        error failure: return 112
+    seq2: i64 = catch sender_send(&sender, sample(Owner.Server, 3, 30, 0)):
+        value: value
+        error failure: return 113
+    return 114 if seq0 != 0 or seq1 != 1 or seq2 != 2 or sender_outstanding(&sender) != 3
+    return 115 if not sender_ack(&sender, 0) or not sender_ack(&sender, 1) or sender_oldest(&sender) != 2
+    resent: i64 = catch sender_retransmit(&sender):
+        value: value
+        error failure: return 116
+    return 117 if resent != 2 or sender.retransmits != 1 or sender_outstanding(&sender) != 1
+    return 118 if sender_ack(&sender, 0) or not sender_ack(&sender, 2)
+    none: i64 = catch sender_retransmit(&sender):
+        value: 0
+        ReliableError.UnknownSequence: 1
+        error failure: 2
+    return 119 if none != 1 or not sender_valid(&sender)
+    0
+
+def reliable_gap_test() -> i32:
+    gap: mutable Sender = sender_new()
+    first: i64 = catch sender_send(&gap, sample(Owner.Server, 1, 10, 0)):
+        value: value
+        error failure: return 120
+    second: i64 = catch sender_send(&gap, sample(Owner.Server, 2, 20, 0)):
+        value: value
+        error failure: return 121
+    return 122 if first != 0 or second != 1
+    return 123 if not sender_ack(&gap, 1) or gap.base != 0
+    return 124 if not sender_ack(&gap, 0) or gap.base != 2 or not sender_valid(&gap)
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -318,4 +362,8 @@ def main() -> i32:
     return fuzzed if fuzzed != 0
     reordered: i32 = reorder_test()
     return reordered if reordered != 0
+    reliable: i32 = reliable_test()
+    return reliable if reliable != 0
+    gap_reliable: i32 = reliable_gap_test()
+    return gap_reliable if gap_reliable != 0
     0

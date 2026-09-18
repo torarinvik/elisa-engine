@@ -260,7 +260,8 @@ snapshots, perf budgets, undo/redo, reload generations), and
 interpolation data, deterministic loss profile, rollback, sessions with
 recovery), and `src/net/wire.elisa`, `src/net/loopback.elisa`,
 `src/net/peer.elisa`, `src/net/prediction.elisa`,
-`src/net/interpolation.elisa`, and `src/net/recovery.elisa` (a fixed little-endian
+`src/net/interpolation.elisa`, `src/net/recovery.elisa`, and
+`src/net/reliable.elisa` (a fixed little-endian
 replication frame with an exact encode/decode round trip; an in-memory loopback
 link applying the declared loss and delay policy; a peer that accepts only
 authorized, newer writes and converges on the server's final state over that
@@ -269,7 +270,8 @@ unacknowledged inputs over each authority snapshot, and counts corrections; and
 interpolation that renders between the two most recent authority snapshots and
 clamps rather than extrapolating; and recovery that detects a revision gap,
 blocks application until a snapshot resyncs, and never rewinds the rollback
-high-water mark). The loopback is a transport double: it proves the
+high-water mark; and a sliding window that resends the oldest unacknowledged
+record so a dropped frame is recovered rather than waited out). The loopback is a transport double: it proves the
 encode/deliver/decode/reconcile chain under loss and latency, not that a
 real socket works. None of these link their native libraries yet; they
 establish the contracts those integrations must satisfy.

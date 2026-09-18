@@ -91,6 +91,7 @@ writes `build/validation.json`. Host evidence comes from
 | Client prediction and reconciliation | Tested | `src/net/prediction.elisa`, `test/replication.elisa` |
 | Snapshot interpolation with clamping | Tested | `src/net/interpolation.elisa`, `test/session.elisa` |
 | Recovery (gap detection, resync, high-water) | Tested | `src/net/recovery.elisa`, `test/session.elisa` |
+| Reliable delivery window (retransmission) | Tested | `src/net/reliable.elisa`, `test/session.elisa` |
 | Determinism scope (solver, build) | Tested | `test/replication.elisa` |
 | Fuzzed wire decoder | Tested | `test/session.elisa` |
 | Real socket transport for the frame shape | Tested | `native/udp_probe.h` (UDP loopback) |
