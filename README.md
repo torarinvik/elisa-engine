@@ -109,10 +109,11 @@ malformed or oversized asset rather than partially parsing it; its `--self-test`
 rejects a set of crafted bad documents and runs as part of validation. It also records a persistent
 SQLite catalogue of cooked assets (source path, content hash, counts) for the
 toolkit, distinct from the runtime package, and cooks a first texture: a small
-solid-green RGBA texture in a versioned texture package that both hosts upload
-and apply to the goal material, so the authored texture reaches the rendered
-frame; the Godot capture's goal-colour check and the cross-host comparison both
-still pass. It then
+solid-green texture in a versioned texture package that both hosts upload and
+apply to the goal material (RGBA for the material, plus 16-bit R5G6B5 and a
+BC1/DXT1 block-compressed block for the compressed path), so the authored
+texture reaches the rendered frame; the Godot capture's goal-colour check and
+the cross-host comparison both still pass. It then
 cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the
