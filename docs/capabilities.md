@@ -115,7 +115,7 @@ writes `build/validation.json`. Host evidence comes from
 | Pinned toolchains and provenance | Implemented | `scripts/record_validation.py`, `build/validation.json` |
 | Dependency provenance (pinned hashes/commits recorded) | Implemented | `dependency_provenance`, `dependencies` in validation |
 | Reproducible release archive (mesh + textures + KTX + fixture + C ABI + Godot extension) | Implemented | `scripts/package_release.py`, `release` in validation |
-| Toolchain-free CI smoke (cook, bounded import, KTX containers) | Partial | `.github/workflows/check.yml`; Python-only, so the full gate still needs the pinned toolchain |
+| Automated platform testing | Partial | `.github/workflows/check.yml`: a Linux/macOS cook + KTX job and a macOS job running the GNS, Basis, and ASan/UBSan boundary probes; the full gate still needs the pinned compiler/prover and a graphics session |
 | 600-line source limit enforced | Implemented | `source_length_policy` |
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |
@@ -125,7 +125,7 @@ writes `build/validation.json`. Host evidence comes from
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
-| ASan full graphics probe | Planned | AddressSanitizer aborts before `main` under this session's sandbox; boundary harness keeps ASan+UBSan |
+| ASan full graphics probe | Planned | AddressSanitizer prints "Checking file existence is not allowed under sandbox" and aborts before `main`; the same probe runs under UBSan (`ELISA_SANITIZER=undefined`), and the boundary harness keeps the ASan+UBSan pair |
 | Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL3 event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
 | Live input driving the native rendered host | Tested + Implemented | `native/live_game_probe.h`, `scripts/wicked_probe.elisascript` (live frame non-blank after an SDL key drives the game) |
 | Live input driving the Godot rendered capture | Tested + Implemented | `scripts/build_godot_extension.py`, `backends/godot/capture.gd` (synthetic key → `maze_step` → live marker → verified live frame) |
