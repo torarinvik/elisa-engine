@@ -156,3 +156,7 @@ toolchain not present in this environment:
   game.
 - **General UI layout/style system.** The menu model and host widgets exist, but
   there is no general layout, styling, or text-flow system.
+
+Architectural decisions behind these boundaries are recorded in
+[docs/adr/](adr/), in particular ADR-0011 on the canonical fixture as the
+backend contract.
