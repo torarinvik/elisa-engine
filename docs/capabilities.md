@@ -109,5 +109,19 @@ writes `build/validation.json`. Host evidence comes from
 | Skeletal-pose submission to the hosts | Planned | engine-side poses only |
 | UI menu model (layout, focus, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
+| Native consumes and validates menu state | Implemented | `native/menu_probe.h` (data-level, not a widget toolkit) |
 | UI rendering toolkit | Partial | Godot controls + text stack; native UI pending |
 | Compressed textures (KTX/Basis) | Planned | no textures yet |
+
+## Verification
+
+Re-run on the current tree:
+
+- `elisascript scripts/check.elisascript` — exit 0, 32 checks, proofs replayed,
+  `build/validation.json` written with the release and catalogue records.
+- `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
+  budget met, churn/ozz/Recast/miniaudio/text/zstd/reload/udp/menu all pass.
+- `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic
+  and the two hosts agree on scene semantics.
+- `python3 scripts/run_boundary_sanitized.py` — clean AddressSanitizer/UBSan run
+  over the boundary libraries.

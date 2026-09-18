@@ -10,8 +10,11 @@
 #include "recast_probe.h"
 #include "text_probe.h"
 #include "udp_probe.h"
+#include "menu_probe.h"
 
 #include <cstdio>
+#include <map>
+#include <string>
 
 int main() {
     const bool ozz = probe::probe_ozz_sampling();
@@ -19,7 +22,9 @@ int main() {
     const bool audio = probe::probe_miniaudio();
     const bool text = probe::probe_text();
     const bool udp = probe::probe_udp_loopback();
-    std::fprintf(stdout, "boundary harness: ozz=%d recast=%d audio=%d text=%d udp=%d\n",
-        ozz ? 1 : 0, recast ? 1 : 0, audio ? 1 : 0, text ? 1 : 0, udp ? 1 : 0);
-    return (ozz && recast && audio && text && udp) ? 0 : 1;
+    std::map<std::string, std::string> manifest;
+    const bool menu = !probe::load_manifest("backends/scene_manifest.txt", manifest) || probe::probe_menu(manifest);
+    std::fprintf(stdout, "boundary harness: ozz=%d recast=%d audio=%d text=%d udp=%d menu=%d\n",
+        ozz ? 1 : 0, recast ? 1 : 0, audio ? 1 : 0, text ? 1 : 0, udp ? 1 : 0, menu ? 1 : 0);
+    return (ozz && recast && audio && text && udp && menu) ? 0 : 1;
 }
