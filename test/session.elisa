@@ -2,12 +2,14 @@ include "../src/net/session.elisa"
 include "../src/net/loopback.elisa"
 include "../src/net/peer.elisa"
 include "../src/net/recovery.elisa"
+include "../src/net/interpolation.elisa"
 using Net
 using Session
 using Wire
 using Loopback
 using Peer
 using Recovery
+using Interp
 
 def sample(owner: Owner, revision: i64, x: i64, y: i64) -> ReplRecord:
     ReplRecord{persistent: 99, x: x, y: y, revision: revision, owner: owner}
@@ -178,6 +180,39 @@ def recovery_test() -> i32:
     return 78 if recovery_high_water(&view) != 300 or recovery_resync(&view, 5) or not recovery_valid(&view)
     0
 
+# Interpolation: the client renders between the two most recent authority
+# snapshots, clamps rather than extrapolating, and refuses a reordered snapshot.
+def interp_test() -> i32:
+    buffer: mutable Buffer = buffer_new()
+    return 80 if not buffer_valid(&buffer) or buffer_count(&buffer) != 0
+    first: i32 = catch buffer_push(&buffer, sample(Owner.Server, 1, 0, 0), 10):
+        ok: 0
+        error failure: 1
+    return 81 if first != 0 or buffer_count(&buffer) != 1
+    single: ReplRecord = buffer_sample(&buffer, 15)
+    return 82 if single.x != 0 or single.revision != 1 or not buffer_is_clamped(&buffer, 15)
+    second: i32 = catch buffer_push(&buffer, sample(Owner.Server, 2, 10, 20), 20):
+        ok: 0
+        error failure: 1
+    return 83 if second != 0 or buffer_count(&buffer) != 2
+    mid: ReplRecord = buffer_sample(&buffer, 15)
+    return 84 if mid.x != 5 or mid.y != 10 or mid.revision != 2 or buffer_is_clamped(&buffer, 15)
+    return 85 if buffer_sample(&buffer, 5).x != 0 or not buffer_is_clamped(&buffer, 5)
+    return 86 if buffer_sample(&buffer, 25).x != 10 or not buffer_is_clamped(&buffer, 25)
+    quarter: ReplRecord = buffer_sample(&buffer, 12)
+    return 87 if quarter.x != 2 or quarter.y != 4
+    stale: i32 = catch buffer_push(&buffer, sample(Owner.Server, 3, 1, 1), 19):
+        ok: 0
+        InterpError.OutOfOrder: 1
+        error failure: 2
+    return 88 if stale != 1
+    invalid: i32 = catch buffer_push(&buffer, ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}, 30):
+        ok: 0
+        InterpError.InvalidSnapshot: 1
+        error failure: 2
+    return 89 if invalid != 1 or not buffer_valid(&buffer)
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -212,4 +247,6 @@ def main() -> i32:
     return peers if peers != 0
     recovered: i32 = recovery_test()
     return recovered if recovered != 0
+    interpolated: i32 = interp_test()
+    return interpolated if interpolated != 0
     0

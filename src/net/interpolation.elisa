@@ -1,0 +1,71 @@
+# Interpolation above the transport. A client keeps the two most recent
+# authority snapshots and renders between them at its own time, instead of
+# snapping to the newest one or extrapolating past it. Sampling clamps to the
+# held snapshots rather than guessing, and the revision/owner always come from
+# the newer snapshot so an interpolated position never masquerades as authority.
+include "./replication.elisa"
+
+module Interp:
+    public:
+        error InterpError:
+            InvalidSnapshot
+            OutOfOrder
+
+        struct Buffer:
+            older: mutable Net::ReplRecord
+            newer: mutable Net::ReplRecord
+            older_tick: mutable i64
+            newer_tick: mutable i64
+            count: mutable usize
+
+    private:
+        def lerp_axis(older: i64, newer: i64, numerator: i64, denominator: i64) -> i64:
+            return older if denominator <= 0
+            older + (newer - older) * numerator / denominator
+
+    public:
+        def buffer_new() -> Buffer:
+            empty: Net::ReplRecord = Net::ReplRecord{persistent: 99, x: 0, y: 0, revision: 0, owner: Net::Owner.Server}
+            Buffer{older: empty, newer: empty, older_tick: 0, newer_tick: 0, count: 0}
+
+        def buffer_valid(buffer: Buffer&) -> bool:
+            buffer.count <= 2 and buffer.older_tick <= buffer.newer_tick
+
+        def buffer_count(buffer: Buffer&) -> usize:
+            buffer.count
+
+        # Snapshots must arrive with non-decreasing ticks; a reordered or stale
+        # snapshot is refused rather than shifting the buffer backwards.
+        def buffer_push(buffer: mutable Buffer&, record: Net::ReplRecord, tick: i64) -> void error[InterpError]:
+            raise InterpError.InvalidSnapshot if not Net::record_valid(record)
+            raise InterpError.OutOfOrder if buffer.count > 0 and tick < buffer.newer_tick
+            if buffer.count == 0:
+                buffer.newer <- record
+                buffer.newer_tick <- tick
+                buffer.count <- 1
+                return
+            buffer.older <- buffer.newer
+            buffer.older_tick <- buffer.newer_tick
+            buffer.newer <- record
+            buffer.newer_tick <- tick
+            buffer.count <- 2
+
+        # Position interpolated at at_tick, clamped to the held range so the
+        # client never extrapolates beyond what the server confirmed.
+        def buffer_sample(buffer: Buffer&, at_tick: i64) -> Net::ReplRecord:
+            return buffer.newer if buffer.count < 2
+            return buffer.older if at_tick <= buffer.older_tick
+            return buffer.newer if at_tick >= buffer.newer_tick
+            numerator: i64 = at_tick - buffer.older_tick
+            denominator: i64 = buffer.newer_tick - buffer.older_tick
+            Net::ReplRecord{
+                persistent: buffer.newer.persistent,
+                x: lerp_axis(buffer.older.x, buffer.newer.x, numerator, denominator),
+                y: lerp_axis(buffer.older.y, buffer.newer.y, numerator, denominator),
+                revision: buffer.newer.revision,
+                owner: buffer.newer.owner,
+            }
+
+        def buffer_is_clamped(buffer: Buffer&, at_tick: i64) -> bool:
+            return true if buffer.count < 2
+            at_tick <= buffer.older_tick or at_tick >= buffer.newer_tick

@@ -54,3 +54,13 @@ entering the world. `test/session.elisa` adds an all-zero frame, an all-ones
 revision, and an unrepresentably negative coordinate (refused at encode), so
 the untrusted byte boundary is tested for malformed input, not only round
 trips.
+
+## Snapshot interpolation (2026-09-18)
+
+`src/net/interpolation.elisa` keeps the two most recent authority snapshots and
+renders between them at the client's own time. Sampling clamps to the held
+range rather than extrapolating beyond what the server confirmed, the
+revision and owner always come from the newer snapshot so an interpolated
+position never masquerades as authority, and a reordered or invalid snapshot is
+refused. `test/session.elisa` pins the single-snapshot case, the midpoint and
+quarter interpolation, both clamps, and the out-of-order and invalid rejections.
