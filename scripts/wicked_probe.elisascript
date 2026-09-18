@@ -63,6 +63,13 @@ def main(arguments: darray[sview]) -> i64:
 
     _ = create_directories(root.joinpath("build"))
     cxx: sview = get_environment_or("CXX", "c++")
+    # The C ABI archive makes the embedded game linkable; the live section
+    # needs it before the probe is compiled.
+    compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
+    embed_archive: sview = str(root.joinpath("build/libmaze.a"))
+    archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
+    if archive_status != 0:
+        return archive_status
     sdl_include: sview = get_environment_or("WICKED_SDL_INCLUDE_DIR", "/opt/homebrew/include")
     sdl_library: sview = get_environment_or("WICKED_SDL_LIB_DIR", "/opt/homebrew/lib")
     sdl_subinclude: sview = str(path(sdl_include).joinpath("SDL2"))
@@ -128,7 +135,7 @@ def main(arguments: darray[sview]) -> i64:
             return 2
     compile_arguments: darray[sview] = [
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
-        "-I", str(dependencies), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
+        "-I", str(dependencies), "-I", str(root.joinpath("build")), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
         "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
         "-I", freetype_include, "-I", harfbuzz_include,
         "-I", str(tracy.joinpath("public")), "-DTRACY_ENABLE",
@@ -144,6 +151,7 @@ def main(arguments: darray[sview]) -> i64:
         str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(recast_libs[0]), str(recast_libs[1]),
         "-L", sdl_library, "-lfreetype", "-lharfbuzz", "-lzstd",
+        embed_archive,
         str(library_root.joinpath("libWickedEngine.a")),
         str(library_root.joinpath("libJolt.a")), str(utility_lib),
         str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",
@@ -205,4 +213,14 @@ def main(arguments: darray[sview]) -> i64:
         return perf_status
 
     println("Native frame time within budget.")
+
+    # Live-input frame: the host drove the embedded game and rendered from the
+    # queried cell, so a blank frame there means live input never reached the
+    # renderer.
+    live_screenshot: sview = str(root.joinpath("build/wicked-frame-live.png"))
+    live_status: i64 = run_visible(python, [compare, "nonblank", live_screenshot])
+    if live_status != 0:
+        return live_status
+
+    println("Native live-input frame rendered from the embedded game.")
     0

@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "live_game_probe.h"
 #include "probe_support.h"
 #include "asset_import.h"
 #include "package_load.h"
@@ -555,6 +556,11 @@ int main(int argc, char** argv) {
                       << "p95_us=" << p95_micros << "\n"
                       << "worst_us=" << worst_micros << "\n";
         }
+    }
+    // Live input driving rendered state: drive the embedded game and save a
+    // second frame from the queried player cell (native/live_game_probe.h).
+    if (!probe_live_game_rendering(application, scene, object, screenshot_path)) {
+        return 1;
     }
     // The specialist-library checks (scaling, churn, ozz, Recast/Detour,
     // miniaudio, text) live in native/library_probes.h.

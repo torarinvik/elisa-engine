@@ -353,6 +353,18 @@ def main(arguments):
         print(__doc__.splitlines()[0], file=sys.stderr)
         return 2
     command = arguments[1]
+    if command == "nonblank":
+        # One frame from a live-input run: there is no fixture topology to
+        # check, but a host that renders nothing must still fail loudly.
+        if len(arguments) != 3:
+            print("usage: compare_renders.py nonblank <png>", file=sys.stderr)
+            return 2
+        frame = read_png(arguments[2])
+        if frame_range(frame[3], frame[2]) < 0.01:
+            print("frame is blank", file=sys.stderr)
+            return 1
+        print(f"frame ok: {frame[0]}x{frame[1]} range={frame_range(frame[3], frame[2]):.4f}")
+        return 0
     if command == "pattern":
         if len(arguments) != 6:
             print("usage: compare_renders.py pattern <png> <rows> <cols> <cells>", file=sys.stderr)
