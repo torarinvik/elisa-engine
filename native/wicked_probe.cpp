@@ -226,6 +226,7 @@ int main(int argc, char** argv) {
 
 
     wi::ecs::Entity hunter_marker = wi::ecs::INVALID_ENTITY;
+    bool goal_used_cooked = false;
     for (const auto& spec : marker_specs) {
         for (const auto& cell : marker_cells(spec.field)) {
             const std::string marker_name =
@@ -245,8 +246,17 @@ int main(int argc, char** argv) {
             if (std::string(spec.field) == "hunter") {
                 hunter_marker = marker;
             }
+            if (std::string(spec.field) == "goal" && use_cooked) {
+                goal_used_cooked = true;
+            }
             marker_entities.push_back(marker);
         }
+    }
+    // When a package loaded, the goal marker must have been built from it
+    // rather than the procedural fallback, so the authored asset really does
+    // reach the screen through the pipeline.
+    if (!check(!cooked_package.loaded || goal_used_cooked, "goal marker uses the cooked package mesh")) {
+        return 1;
     }
     // Status indicator: the host draws the game's state as a coloured cell,
     // so a captured frame carries the status the Elisa game reported.
