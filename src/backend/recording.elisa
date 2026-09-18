@@ -56,55 +56,55 @@ module Backend:
                 def same_reference(left: World::EntityRef, right: World::EntityRef) -> bool:
                     left.world_epoch == right.world_epoch and left.id == right.id
 
-                def slot_of(recorder: SceneRecorder&, reference: World::EntityRef) -> usize:
+                def slot_of(recorder: Backend::SceneRecorder&, reference: World::EntityRef) -> usize:
                     for index in 0..<recorder.seen_count |slot: usize = Backend::Limits::INVALID_SLOT| -> slot:
                         break index if same_reference(recorder.seen[index], reference)
 
-                def append(recorder: mutable SceneRecorder&, kind: SceneCommandKind, reference: World::EntityRef, transform: Geometry::Transform, visual: Assets::VisualAsset) -> void:
-                    recorder.commands[recorder.command_count] <- SceneCommand{kind: kind, reference: reference, transform: transform, visual: visual}
+                def append(recorder: mutable Backend::SceneRecorder&, kind: Backend::SceneCommandKind, reference: World::EntityRef, transform: Geometry::Transform, visual: Assets::VisualAsset) -> void:
+                    recorder.commands[recorder.command_count] <- Backend::SceneCommand{kind: kind, reference: reference, transform: transform, visual: visual}
                     recorder.command_count <- recorder.command_count + 1
 
             public:
-                def recorder_new() -> SceneRecorder:
-                    SceneRecorder{commands: zeroed, command_count: 0, seen: zeroed, visuals: zeroed, seen_live: zeroed, seen_count: 0}
+                def recorder_new() -> Backend::SceneRecorder:
+                    Backend::SceneRecorder{commands: zeroed, command_count: 0, seen: zeroed, visuals: zeroed, seen_live: zeroed, seen_count: 0}
 
-                def record_create(recorder: mutable SceneRecorder&, reference: World::EntityRef, transform: Geometry::Transform, visual: Assets::VisualAsset) -> void error[SceneError]:
-                    raise SceneError.InvalidReference if not valid_reference(reference)
-                    raise SceneError.InvalidAsset if not Assets::visual_asset_valid(visual)
-                    raise SceneError.DuplicateCreate if slot_of(recorder, reference) != Backend::Limits::INVALID_SLOT
-                    raise SceneError.Capacity if recorder.command_count >= Backend::Limits::MAX_COMMANDS or recorder.seen_count >= Backend::Limits::MAX_COMMANDS
-                    append(recorder, SceneCommandKind.Create, reference, transform, visual)
+                def record_create(recorder: mutable Backend::SceneRecorder&, reference: World::EntityRef, transform: Geometry::Transform, visual: Assets::VisualAsset) -> void error[Backend::SceneError]:
+                    raise Backend::SceneError.InvalidReference if not valid_reference(reference)
+                    raise Backend::SceneError.InvalidAsset if not Assets::visual_asset_valid(visual)
+                    raise Backend::SceneError.DuplicateCreate if slot_of(recorder, reference) != Backend::Limits::INVALID_SLOT
+                    raise Backend::SceneError.Capacity if recorder.command_count >= Backend::Limits::MAX_COMMANDS or recorder.seen_count >= Backend::Limits::MAX_COMMANDS
+                    append(recorder, Backend::SceneCommandKind.Create, reference, transform, visual)
                     recorder.seen[recorder.seen_count] <- reference
                     recorder.visuals[recorder.seen_count] <- visual
                     recorder.seen_live[recorder.seen_count] <- Backend::Limits::LIVE
                     recorder.seen_count <- recorder.seen_count + 1
 
-                def record_update(recorder: mutable SceneRecorder&, reference: World::EntityRef, transform: Geometry::Transform) -> void error[SceneError]:
-                    raise SceneError.InvalidReference if not valid_reference(reference)
+                def record_update(recorder: mutable Backend::SceneRecorder&, reference: World::EntityRef, transform: Geometry::Transform) -> void error[Backend::SceneError]:
+                    raise Backend::SceneError.InvalidReference if not valid_reference(reference)
                     slot: usize = slot_of(recorder, reference)
-                    raise SceneError.UnknownObject if slot == Backend::Limits::INVALID_SLOT
-                    raise SceneError.DestroyedObject if recorder.seen_live[slot] != Backend::Limits::LIVE
-                    raise SceneError.Capacity if recorder.command_count >= Backend::Limits::MAX_COMMANDS
-                    append(recorder, SceneCommandKind.Update, reference, transform, recorder.visuals[slot])
+                    raise Backend::SceneError.UnknownObject if slot == Backend::Limits::INVALID_SLOT
+                    raise Backend::SceneError.DestroyedObject if recorder.seen_live[slot] != Backend::Limits::LIVE
+                    raise Backend::SceneError.Capacity if recorder.command_count >= Backend::Limits::MAX_COMMANDS
+                    append(recorder, Backend::SceneCommandKind.Update, reference, transform, recorder.visuals[slot])
 
-                def record_destroy(recorder: mutable SceneRecorder&, reference: World::EntityRef) -> void error[SceneError]:
-                    raise SceneError.InvalidReference if not valid_reference(reference)
+                def record_destroy(recorder: mutable Backend::SceneRecorder&, reference: World::EntityRef) -> void error[Backend::SceneError]:
+                    raise Backend::SceneError.InvalidReference if not valid_reference(reference)
                     slot: usize = slot_of(recorder, reference)
-                    raise SceneError.UnknownObject if slot == Backend::Limits::INVALID_SLOT
-                    raise SceneError.DestroyedObject if recorder.seen_live[slot] != Backend::Limits::LIVE
-                    raise SceneError.Capacity if recorder.command_count >= Backend::Limits::MAX_COMMANDS
-                    append(recorder, SceneCommandKind.Destroy, reference, Geometry::transform_identity(), recorder.visuals[slot])
+                    raise Backend::SceneError.UnknownObject if slot == Backend::Limits::INVALID_SLOT
+                    raise Backend::SceneError.DestroyedObject if recorder.seen_live[slot] != Backend::Limits::LIVE
+                    raise Backend::SceneError.Capacity if recorder.command_count >= Backend::Limits::MAX_COMMANDS
+                    append(recorder, Backend::SceneCommandKind.Destroy, reference, Geometry::transform_identity(), recorder.visuals[slot])
                     recorder.seen_live[slot] <- Backend::Limits::DEAD
 
-                def command_at(recorder: SceneRecorder&, index: usize) -> SceneCommand error[SceneError]:
-                    raise SceneError.CommandOutOfBounds if index >= recorder.command_count
+                def command_at(recorder: Backend::SceneRecorder&, index: usize) -> Backend::SceneCommand error[Backend::SceneError]:
+                    raise Backend::SceneError.CommandOutOfBounds if index >= recorder.command_count
                     recorder.commands[index]
 
-                def recorder_is_live(recorder: SceneRecorder&, reference: World::EntityRef) -> bool:
+                def recorder_is_live(recorder: Backend::SceneRecorder&, reference: World::EntityRef) -> bool:
                     slot: usize = slot_of(recorder, reference)
                     slot != Backend::Limits::INVALID_SLOT and recorder.seen_live[slot] == Backend::Limits::LIVE
 
-                def live_count(recorder: SceneRecorder&) -> usize:
+                def live_count(recorder: Backend::SceneRecorder&) -> usize:
                     for index in 0..<recorder.seen_count |count: usize = 0| -> count:
                         count <- count + 1 if recorder.seen_live[index] == Backend::Limits::LIVE
 

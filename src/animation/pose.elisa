@@ -148,6 +148,10 @@ module Pose:
             raise PoseError.JointOutOfBounds if root_index + 2 >= pose.count
             root: Geometry::Vec3 = pose.models[root_index].position
             knee: Geometry::Vec3 = Ik::two_bone_knee(root, target, upper_len, lower_len, bend_axis)
-            pose.models[root_index + 1].position <- knee
-            pose.models[root_index + 2].position <- target
+            # Geometry::Transform holds its fields immutable on purpose, so a joint moves by
+            # being replaced whole -- the same way pose_from_skeleton writes `models[index]`.
+            knee_joint: Geometry::Transform = pose.models[root_index + 1]
+            end_joint: Geometry::Transform = pose.models[root_index + 2]
+            pose.models[root_index + 1] <- Geometry::Transform{position: knee, rotation: knee_joint.rotation, scale: knee_joint.scale}
+            pose.models[root_index + 2] <- Geometry::Transform{position: target, rotation: end_joint.rotation, scale: end_joint.scale}
             true

@@ -59,25 +59,25 @@ module ImageCompare:
     private:
         module Compare:
             private:
-                def mismatch_count(first: Rgba[16], second: Rgba[16], count: usize, per_channel: f32) -> usize:
+                def mismatch_count(first: ImageCompare::Rgba[16], second: ImageCompare::Rgba[16], count: usize, per_channel: f32) -> usize:
                     for index in 0..<count |mismatches: usize = 0| -> mismatches:
-                        first_pixel: Rgba = first[index]
-                        second_pixel: Rgba = second[index]
+                        first_pixel: ImageCompare::Rgba = first[index]
+                        second_pixel: ImageCompare::Rgba = second[index]
                         mismatches <- mismatches + 1 if not ImageCompare::pixels_match(first_pixel, second_pixel, per_channel)
 
-                def total_max_error(first: Rgba[16], second: Rgba[16], count: usize) -> f32:
+                def total_max_error(first: ImageCompare::Rgba[16], second: ImageCompare::Rgba[16], count: usize) -> f32:
                     for index in 0..<count |total: f32 = 0.0| -> total:
-                        left: Rgba = first[index]
-                        right: Rgba = second[index]
+                        left: ImageCompare::Rgba = first[index]
+                        right: ImageCompare::Rgba = second[index]
                         total <- total + ImageCompare::pixel_max_error(left, right)
 
             public:
-                def mean_error(first: Rgba[16], second: Rgba[16], count: usize) -> f32:
+                def mean_error(first: ImageCompare::Rgba[16], second: ImageCompare::Rgba[16], count: usize) -> f32:
                     return 0.0 if count == 0
                     total: f32 = total_max_error(first, second, count)
                     total / count.i64().f32()
 
-                def within(first: Rgba[16], second: Rgba[16], count: usize, tolerance: ImageTolerance) -> bool:
+                def within(first: ImageCompare::Rgba[16], second: ImageCompare::Rgba[16], count: usize, tolerance: ImageCompare::ImageTolerance) -> bool:
                     return false if count > ImageCompare::max_pixels() or not ImageCompare::tolerance_valid(tolerance)
                     return false if mismatch_count(first, second, count, tolerance.per_channel) != 0
                     mean_error(first, second, count) <= tolerance.mean_allowance

@@ -33,7 +33,7 @@ module World:
             WORLD_MAX_EPOCH: i64 = 9223372036854775807
 
         const module Sentinel:
-            WORLD_INVALID_SLOT: usize = Bounds::WORLD_MAX_ENTITIES
+            WORLD_INVALID_SLOT: usize = World::Bounds::WORLD_MAX_ENTITIES
 
         global mutable next_world_epoch: i64 = 0
 
@@ -45,18 +45,18 @@ module World:
 
         struct ActorRecord:
             id: i64
-            live: bool
+            live: mutable bool
             health: i64
 
         struct EnemyRecord:
             id: i64
-            live: bool
+            live: mutable bool
             threat: i64
 
         struct RegistryRow:
             id: i64
             kind: Entity
-            live: bool
+            live: mutable bool
             storage: StorageKind
 
     private:
