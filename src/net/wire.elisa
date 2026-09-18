@@ -85,10 +85,15 @@ module Wire:
             revision_bits: u64 = frame[24].u64() + (frame[25].u64() << 8) + (frame[26].u64() << 16) + (frame[27].u64() << 24) + (frame[28].u64() << 32) + (frame[29].u64() << 40) + (frame[30].u64() << 48) + (frame[31].u64() << 56)
             owner: Net::Owner =
                 Net::Owner.Server if frame[32] == Format::OWNER_SERVER else Net::Owner.Client
-            Net::ReplRecord{
+            record: Net::ReplRecord = Net::ReplRecord{
                 persistent: persistent,
                 x: x_bits.i64() - Format::BIAS,
                 y: y_bits.i64() - Format::BIAS,
                 revision: revision_bits.i64(),
                 owner: owner,
             }
+            # A crafted frame can carry a zero identity or a revision that
+            # wraps to negative; a decoded record is held to the same validity
+            # contract as one the engine built.
+            raise WireError.InvalidRecord if not Net::record_valid(&record)
+            record

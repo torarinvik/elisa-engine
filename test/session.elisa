@@ -50,6 +50,30 @@ def wire_test() -> i32:
         WireError.InvalidRecord: 0
         error failure: 2
     return 45 if rejected != 0
+    # A crafted all-zero frame has a valid owner byte but a zero identity, and
+    # a frame with an all-ones revision wraps negative; both must be refused at
+    # decode rather than entering the world.
+    zero_frame: u8[33] = zeroed
+    zero_record: i32 = catch decode(zero_frame, wire_frame_bytes()):
+        value: 1
+        WireError.InvalidRecord: 0
+        error failure: 2
+    return 46 if zero_record != 0
+    huge_revision: mutable u8[33] = frame
+    for byte in 24..<32 |huge_revision|:
+        huge_revision[byte] <- 255
+    overflow_revision: i32 = catch decode(huge_revision, wire_frame_bytes()):
+        value: 1
+        WireError.InvalidRecord: 0
+        error failure: 2
+    return 47 if overflow_revision != 0
+    # A value too negative to bias is unrepresentable rather than wrapping.
+    too_negative: ReplRecord = sample(Owner.Server, 1, 0 - 2000000, 0)
+    unrepresentable: i32 = catch encode(&too_negative):
+        value: 1
+        WireError.Unrepresentable: 0
+        error failure: 2
+    return 48 if unrepresentable != 0
     0
 
 def loopback_test() -> i32:

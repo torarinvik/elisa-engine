@@ -43,3 +43,14 @@ rebuilt position that differs counts as a correction, and acknowledging more
 inputs than are pending is an explicit error. `test/replication.elisa` pins the
 ahead-of-server error, the reconciliation, the correction count, the ack, and
 the invalid-snapshot rejection.
+
+
+## Wire decode hardening (2026-09-18)
+
+`Wire::decode` now holds a decoded frame to the same validity contract as a
+record the engine built: a crafted frame with a zero persistent identity or a
+revision that wraps negative is refused with `InvalidRecord` instead of
+entering the world. `test/session.elisa` adds an all-zero frame, an all-ones
+revision, and an unrepresentably negative coordinate (refused at encode), so
+the untrusted byte boundary is tested for malformed input, not only round
+trips.
