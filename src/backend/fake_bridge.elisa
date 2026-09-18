@@ -63,7 +63,7 @@ module FakeBridge:
 
     private:
         module State:
-            def next_generation(current: i64) -> i64 error[FakeBridge::BridgeError]:
+            def next_generation(current: i64) -> i64 error[BridgeError]:
                 raise FakeBridge::BridgeError.GenerationExhausted if current >= FakeBridge::Limits::MAX_GENERATION
                 FakeBridge::Limits::FIRST_GENERATION if current == 0 else current + 1
 
