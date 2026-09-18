@@ -63,6 +63,7 @@ writes `build/validation.json`. Host evidence comes from
 | Grid navigation (BFS) | Tested | `src/nav/grid.elisa`, `test/grid_nav.elisa` |
 | Physics authority (one solver per body) | Tested | `src/physics/policy.elisa`, `test/physics_policy.elisa` |
 | Audio generation/ownership policy | Tested | `src/audio/policy.elisa`, `test/audio_policy.elisa` |
+| Distance attenuation (spatial groundwork) | Tested | `AudioPolicy::attenuation`, `test/audio_policy.elisa` |
 
 ## Assets
 
@@ -96,7 +97,7 @@ writes `build/validation.json`. Host evidence comes from
 | Capability | Label | Evidence |
 |---|---|---|
 | Pinned toolchains and provenance | Implemented | `scripts/record_validation.py`, `build/validation.json` |
-| Reproducible release archive | Implemented | `scripts/package_release.py`, `release` in validation |
+| Reproducible release archive (mesh + texture + fixture) | Implemented | `scripts/package_release.py`, `release` in validation |
 | 600-line source limit enforced | Implemented | `source_length_policy` |
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |

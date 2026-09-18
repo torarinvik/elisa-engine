@@ -85,6 +85,13 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
     (staging / "assets").mkdir(parents=True, exist_ok=True)
     target_package = staging / "assets" / package.name
     target_package.write_bytes(package.read_bytes())
+    # A release carries every cooked artifact the runtime reads, not just the
+    # mesh package; the texture ships beside it.
+    texture = root / "build" / "cooked" / "maze_tile_tex.rgba"
+    target_texture = None
+    if texture.is_file():
+        target_texture = staging / "assets" / texture.name
+        target_texture.write_bytes(texture.read_bytes())
     (staging / "fixtures").mkdir(parents=True, exist_ok=True)
     fixture = staging / "fixtures/scene_manifest.txt"
     fixture.write_bytes((root / "backends/scene_manifest.txt").read_bytes())
@@ -102,6 +109,8 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
             "fixtures/scene_manifest.txt": sha256_file(fixture),
         },
     }
+    if target_texture is not None:
+        release["files"][f"assets/{target_texture.name}"] = sha256_file(target_texture)
     (staging / "release.json").write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return release
 

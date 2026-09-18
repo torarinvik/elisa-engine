@@ -46,4 +46,10 @@ def main() -> i32:
         AudioError.UnknownVoice: 0
         error failure: 2
     return 10 if missing != 0
+
+    # Distance attenuation is clamped to [0, 1] and silent outside the range.
+    return 11 if attenuation(0.0, 10.0) != 1.0 or attenuation(5.0, 10.0) != 0.5
+    return 12 if attenuation(10.0, 10.0) != 0.0 or attenuation(15.0, 10.0) != 0.0
+    return 13 if attenuation(0.0 - 3.0, 10.0) != 1.0 or attenuation(5.0, 0.0) != 0.0
+    return 14 if not gain_valid(attenuation(2.0, 10.0)) or gain_valid(1.5) or gain_valid(0.0 - 0.1)
     0

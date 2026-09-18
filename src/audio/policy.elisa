@@ -46,6 +46,18 @@ module AudioPolicy:
         def spatial_required(kind: VoiceKind) -> bool:
             kind == VoiceKind.Spatial
 
+        # Linear distance attenuation: full gain at the listener and silent at
+        # or beyond max_distance. A non-positive range is silent rather than
+        # producing negative or infinite gain, and a gain is always in [0, 1].
+        def attenuation(distance: f32, max_distance: f32) -> f32:
+            return 0.0 if max_distance <= 0.0
+            return 1.0 if distance <= 0.0
+            return 0.0 if distance >= max_distance
+            1.0 - distance / max_distance
+
+        def gain_valid(gain: f32) -> bool:
+            gain >= 0.0 and gain <= 1.0
+
     private:
         module Voices:
             public:
