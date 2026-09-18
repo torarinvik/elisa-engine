@@ -130,6 +130,12 @@ write does not help; early-raise style instead of `elif/else` proves 5/6. The
 engine source was not restructured to hide this, per the plan's rule against
 moving contracts to make an integration appear to pass.
 
+The minimized case is also recorded in the responsible repository:
+`elisa-proof/test/repro/region_branch_facts.elisa` with
+`test/repro/check_region_branch_facts.py`, which currently reports
+`status=failed proven=4/6 failed=2`. It is a red regression test until the
+region flow keeps branch facts for locals read from mutable reference fields.
+
 ## Evidence
 
 `src/tooling/inspector.elisa`, `src/tooling/editor.elisa`,
