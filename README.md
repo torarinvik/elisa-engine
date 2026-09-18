@@ -234,6 +234,12 @@ plays the winning route through the same exports. `python3 scripts/embed_probe.p
 builds and runs it. So a host can feed input while Elisa still owns identity,
 rules, and state (ADR-0012).
 
+The native capture host also renders from live input now: a real SDL key event
+is mapped to the portable move code, the embedded game is advanced through the
+C ABI, the rendered object moves to the queried player cell, and a second
+verified frame is captured (`native/live_game_probe.h`). The Godot rendered
+capture still replays the fixture route.
+
 The Godot host reaches the same gameplay without a binding release:
 `scripts/fetch_gdextension_header.py` dumps the installed Godot's own
 `gdextension_interface.h`, and `backends/godot-embed/elisa_godot_bridge.cpp`

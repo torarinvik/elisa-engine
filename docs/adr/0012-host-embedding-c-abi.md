@@ -45,6 +45,17 @@ Rules this fixes:
 - Exporting through a C ABI is now a supported path; a new game surface adds
   `export fn` wrappers rather than host-side reimplementations.
 
+## Live input drives the native rendered host (2026-09-18)
+
+The native capture host rendered a replayed route; now it also renders state it
+advanced itself. `native/live_game_probe.h` maps a real SDL key event to the
+portable move code, calls `maze_step` through the archive, requires the queried
+player cell to match (2,1), positions the rendered object there, and saves a
+second frame. The runner emits the archive before compiling the probe and
+verifies the live frame with `compare_renders.py nonblank` (range 0.8353), so a
+host that renders nothing fails. The Godot rendered capture still replays the
+fixture route; wiring the GDExtension into that project is the remaining half.
+
 ## c-archive omits a nested-module function (2026-09-18, compiler defect)
 
 Extending the C ABI with a query surface (`maze_is_wall`, `maze_wall_count`)
