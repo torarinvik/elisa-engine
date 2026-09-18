@@ -36,6 +36,9 @@ inline bool probe_texture_package(const std::string& package_path) {
             "texture pixel payload matches its dimensions")) {
         return false;
     }
+    if (!check(pixels.front() == 26 && pixels[1] == 229 && pixels[2] == 51, "texture is the cooked green")) {
+        return false;
+    }
     std::fprintf(stdout, "texture: %dx%d channels=4 bytes=%u first=0x%02X\n",
         width, height, (unsigned)pixels.size(), (unsigned)pixels.front());
     return true;

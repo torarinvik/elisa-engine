@@ -139,10 +139,11 @@ func _run_probe() -> void:
                 return
             var texture_image := Image.create_from_data(texture_width, texture_height, false, Image.FORMAT_RGBA8, texture_pixels)
             var texture := ImageTexture.create_from_image(texture_image)
-            print("godot texture: %dx%d texture=%s bright=%.2f dark=%.2f" % [
+            var corner: Color = texture_image.get_pixel(0, 0)
+            print("godot texture: %dx%d texture=%s rgb=%.2f,%.2f,%.2f" % [
                 texture_image.get_width(), texture_image.get_height(), str(texture != null),
-                texture_image.get_pixel(0, 0).r, texture_image.get_pixel(1, 0).r])
-            if texture == null or texture_image.get_pixel(0, 0).r < 0.9 or texture_image.get_pixel(1, 0).r > 0.2:
+                corner.r, corner.g, corner.b])
+            if texture == null or corner.g < 0.8 or corner.r > 0.2 or corner.b > 0.3:
                 _fail("cooked texture pixels do not match")
                 return
 

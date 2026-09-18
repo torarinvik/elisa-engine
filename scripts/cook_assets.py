@@ -196,8 +196,9 @@ def write_texture_package(root: Path, size: int = 4) -> Path:
     pixels = bytearray()
     for y in range(size):
         for x in range(size):
-            bright = 255 if (x + y) % 2 == 0 else 32
-            pixels += bytes((bright, bright, bright, 255))
+            # Solid green so the texture can drive a material's albedo and
+            # still be checked by the goal marker's colour test on both hosts.
+            pixels += bytes((26, 229, 51, 255))
     package_dir = root / "build/cooked"
     package_dir.mkdir(parents=True, exist_ok=True)
     package = package_dir / "maze_tile_tex.rgba"

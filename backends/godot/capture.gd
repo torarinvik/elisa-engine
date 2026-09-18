@@ -108,6 +108,7 @@ func _run_capture() -> void:
     # Built later from the cooked package's geometry, used by the goal marker,
     # so it must be declared before the marker loop runs.
     var cooked_goal_mesh: ArrayMesh = null
+    var cooked_goal_texture: Texture2D = null
 
     # Authored source asset, loaded through Godot's own importer instead of
     # being built in bridge code. The triangle count is exercised rather than
@@ -176,6 +177,23 @@ func _run_capture() -> void:
         cooked_goal_mesh = ArrayMesh.new()
         cooked_goal_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
         print("cooked package: mesh vertices=%d indices=%d" % [vertices.size(), index_ints.size()])
+        # Cooked texture: turn the RGBA package into a Godot texture so the
+        # goal material samples it, the same texture the native host uploads.
+        var texture_path: String = package_path.get_base_dir().path_join(asset_path.get_file().get_basename() + "_tex.rgba")
+        if FileAccess.file_exists(texture_path):
+            var texture_values := {}
+            for line in FileAccess.get_file_as_string(texture_path).split("\n"):
+                var text := line.strip_edges()
+                if text.is_empty() or text.find("=") < 1:
+                    continue
+                texture_values[text.left(text.find("="))] = text.substr(text.find("=") + 1).strip_edges()
+            var texture_width: int = int(texture_values.get("width", "0"))
+            var texture_height: int = int(texture_values.get("height", "0"))
+            var texture_pixels := Marshalls.base64_to_raw(texture_values.get("pixels_b64", ""))
+            if texture_values.get("format", "") == "elisa-texture-v1" and texture_pixels.size() == texture_width * texture_height * 4:
+                var texture_image := Image.create_from_data(texture_width, texture_height, false, Image.FORMAT_RGBA8, texture_pixels)
+                cooked_goal_texture = ImageTexture.create_from_image(texture_image)
+                print("godot goal texture: %dx%d texture=%s" % [texture_width, texture_height, str(cooked_goal_texture != null)])
 
     var status_colors := {
         "playing": Color(0.1, 0.85, 0.9, 1.0),
@@ -235,6 +253,9 @@ func _run_capture() -> void:
             var marker_material := StandardMaterial3D.new()
             marker_material.albedo_color = spec["color"]
             marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+            if use_cooked and cooked_goal_texture != null:
+                marker_material.albedo_texture = cooked_goal_texture
+                marker_material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
             marker.material_override = marker_material
             marker.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
             scene_root.add_child(marker)

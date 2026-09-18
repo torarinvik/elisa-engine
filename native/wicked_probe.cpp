@@ -29,6 +29,7 @@
 #include "zstd_probe.h"
 #include "reload_probe.h"
 #include "texture_probe.h"
+#include "texture_upload.h"
 #include "gui_probe.h"
 #include "tracy_probe.h"
 #include "audio_probe.h"
@@ -198,6 +199,7 @@ int main(int argc, char** argv) {
     // cgltf, and verify its triangle count. This is the pipeline's import
     // stage (normalized counts); renderer mesh creation is a later step.
     CookedPackage cooked_package;
+    wi::Resource goal_texture;
     {
         const auto asset_it = manifest.find("mesh_asset");
         const auto triangles_it = manifest.find("mesh_triangles");
@@ -239,6 +241,12 @@ int main(int argc, char** argv) {
             if (!probe_texture_package(texture_path.lexically_normal().string())) {
                 return 1;
             }
+            // Upload the texture into a GPU resource; the goal marker samples
+            // it below so the cooked texture reaches the screen.
+            goal_texture = load_texture_resource(texture_path.lexically_normal().string());
+            if (!check(goal_texture.IsValid(), "goal texture uploaded")) {
+                return 1;
+            }
         }
     }
 
@@ -266,6 +274,13 @@ int main(int argc, char** argv) {
             }
             if (std::string(spec.field) == "goal" && use_cooked) {
                 goal_used_cooked = true;
+                if (goal_texture.IsValid()) {
+                    auto* goal_material = scene.materials.GetComponent(marker);
+                    if (goal_material != nullptr) {
+                        goal_material->baseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+                        goal_material->textures[wi::scene::MaterialComponent::BASECOLORMAP].resource = goal_texture;
+                    }
+                }
             }
             marker_entities.push_back(marker);
         }

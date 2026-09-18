@@ -74,7 +74,7 @@ writes `build/validation.json`. Host evidence comes from
 | Bounded import, malformed-input rejection | Tested | `scripts/cook_assets.py --self-test`, `asset_import_bounds` |
 | Persistent SQLite catalogue | Implemented | `scripts/cook_assets.py`, `asset_catalogue_database` |
 | zstd package round trip | Implemented | `native/zstd_probe.h` |
-| Cooked RGBA texture consumed by both hosts | Tested | `scripts/cook_assets.py`, `cooked_texture`, `backends/godot/probe.gd`, `native/texture_probe.h` |
+| Cooked RGBA texture consumed and rendered by both hosts | Tested + Implemented | texture package, `cooked_texture`, goal material on both hosts, `native/texture_upload.h` |
 | Asset reload generations and stale rejection | Tested | `src/tooling/editor.elisa`, `test/editor.elisa` |
 
 ## Networking
@@ -113,7 +113,7 @@ writes `build/validation.json`. Host evidence comes from
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
 | UI rendering toolkit | Partial | Godot controls and Wicked widgets from Elisa data; no general layout/style system |
-| Compressed textures (KTX/Basis) | Planned | RGBA texture package only; no GPU compression |
+| Compressed textures (KTX/Basis) | Planned | uncompressed RGBA texture applied to a material; no GPU compression |
 
 ## Verification
 
