@@ -71,7 +71,7 @@ writes `build/validation.json`. Host evidence comes from
 |---|---|---|
 | Descriptors, content IDs, bounds | Tested | `src/assets/descriptor.elisa`, `test/assets.elisa` |
 | Versioned cooked package (v2 geometry) | Tested + Implemented | `scripts/cook_assets.py`, both hosts |
-| Bounded import, malformed-input rejection | Tested | `scripts/cook_assets.py --self-test`, `asset_import_bounds` |
+| Bounded import, crafted + fuzzed rejection | Tested | `scripts/cook_assets.py --self-test`, `asset_import_bounds` |
 | Persistent SQLite catalogue | Implemented | `scripts/cook_assets.py`, `asset_catalogue_database` |
 | zstd package round trip | Implemented | `native/zstd_probe.h` |
 | Cooked RGBA texture consumed and rendered by both hosts | Tested + Implemented | texture package, `cooked_texture`, goal material on both hosts, `native/texture_upload.h` |

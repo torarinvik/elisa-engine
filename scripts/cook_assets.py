@@ -16,6 +16,7 @@ rather than producing a package that disagrees with the fixture.
 import base64
 import hashlib
 import json
+import random
 import sqlite3
 import sys
 from pathlib import Path
@@ -280,17 +281,48 @@ def self_test() -> int:
         ("negative count", lambda: accessor_bytes(document(accessor_count=-1), buffer_of(document(accessor_count=-1)), 0)),
         ("unsupported component", lambda: normalized_geometry(document(component=5120), buffer_of(document(component=5120)))),
     ]
+    declared = (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, json.JSONDecodeError)
     failures = 0
     for (name, call) in checks:
         try:
             call()
             print(f"self-test: {name} was accepted but should have been rejected", file=sys.stderr)
             failures += 1
-        except (OSError, ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):
+        except declared:
             pass
+    # Fuzz the import boundary: structurally random documents must be rejected
+    # with a declared error, never with an undeclared exception type.
+    rng = random.Random(20260918)
+    keys = ["asset", "version", "accessors", "bufferViews", "buffers", "meshes", "primitives",
+            "attributes", "POSITION", "NORMAL", "indices", "bufferView", "componentType",
+            "count", "type", "uri", "byteOffset", "byteStride", "min", "max"]
+    def random_value(depth: int):
+        if depth <= 0:
+            return rng.choice([0, 1, -1, 3, 5126, "SCALAR", "VEC3", "data:,", "", None, True])
+        pick = rng.randrange(5)
+        if pick == 0:
+            return rng.randrange(-4, 64)
+        if pick == 1:
+            return [random_value(depth - 1) for _ in range(rng.randrange(3))]
+        if pick == 2:
+            return {rng.choice(keys): random_value(depth - 1) for _ in range(rng.randrange(3))}
+        if pick == 3:
+            return rng.choice(["", "x", "2.0", "data:,", "VEC3", "SCALAR"])
+        return None
+    fuzz_rounds = 96
+    for _ in range(fuzz_rounds):
+        document = {"asset": {"version": "2.0"}, **{rng.choice(keys): random_value(3) for _ in range(rng.randrange(5))}}
+        try:
+            parsed = read_gltf(json.dumps(document).encode())
+            normalized_counts(parsed)
+        except declared:
+            pass
+        except Exception as error:  # noqa: BLE001 - report the unexpected type and fail
+            print(f"self-test: fuzz raised undeclared {type(error).__name__}", file=sys.stderr)
+            failures += 1
     if failures != 0:
         return 1
-    print(f"asset import self-test passed: {len(checks)} malformed documents rejected")
+    print(f"asset import self-test passed: {len(checks)} crafted + {fuzz_rounds} fuzzed documents rejected")
     return 0
 
 
@@ -302,7 +334,7 @@ def main(arguments: list[str]) -> int:
         return 2
     try:
         cook(Path(arguments[0]).resolve(strict=True))
-    except (OSError, ValueError, KeyError, IndexError, json.JSONDecodeError) as failure:
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, json.JSONDecodeError) as failure:
         print(f"asset cooking failed: {failure}", file=sys.stderr)
         return 1
     return 0
