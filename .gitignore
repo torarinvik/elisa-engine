@@ -3,6 +3,8 @@
 /build/
 /backends/godot-embed/bin/
 /backends/godot-embed/.godot/
+/backends/godot/bin/
+/backends/godot/.godot/
 .DS_Store
 docs/tail-return-validation.md
 Elisa_Engine_Architecture_and_Plan.md

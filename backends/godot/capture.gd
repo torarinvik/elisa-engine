@@ -424,6 +424,57 @@ func _run_capture() -> void:
     stats_file.store_line("p95_us=%d" % frame_micros[(frame_micros.size() * 95) / 100])
     stats_file.store_line("worst_us=%d" % frame_micros[frame_micros.size() - 1])
     stats_file.close()
+
+    # Live input: the rendered host drives the embedded Elisa game through the
+    # GDExtension with a synthetic key event and captures a second frame from
+    # the queried player cell, so gameplay this host advanced reaches pixels.
+    # The fixture frame above is already saved, so determinism and topology
+    # comparisons are unchanged.
+    if not ClassDB.class_exists("ElisaMaze"):
+        _fail("ElisaMaze extension is not registered")
+        return
+    ElisaMaze.maze_start()
+    var live_key := InputEventKey.new()
+    live_key.keycode = KEY_D
+    live_key.physical_keycode = KEY_D
+    live_key.pressed = true
+    Input.parse_input_event(live_key)
+    Input.flush_buffered_events()
+    if not Input.is_key_pressed(KEY_D):
+        _fail("live key did not register")
+        return
+    var live_move := 3
+    if ElisaMaze.maze_step(live_move) != 1:
+        _fail("live move did not advance the game")
+        return
+    var live_x: int = ElisaMaze.maze_player_x()
+    var live_y: int = ElisaMaze.maze_player_y()
+    if live_x != 2 or live_y != 1:
+        _fail("live move reached the wrong cell")
+        return
+    var live_marker := MeshInstance3D.new()
+    live_marker.name = "ElisaLiveMarker"
+    var live_mesh := BoxMesh.new()
+    live_mesh.size = Vector3(0.6, 0.6, 0.6)
+    var live_material := StandardMaterial3D.new()
+    live_material.albedo_color = Color(0.2, 0.7, 1.0, 1.0)
+    live_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    live_mesh.material = live_material
+    live_marker.mesh = live_mesh
+    live_marker.position = Vector3(live_x * 0.6 - 2.1, live_y * 0.6 - 2.1, 1.0)
+    scene_root.add_child(live_marker)
+    for _live_frame in range(5):
+        await process_frame
+    var live_image: Image = root.get_texture().get_image()
+    if live_image == null:
+        _fail("live viewport image unavailable")
+        return
+    var live_path: String = arguments[1].get_basename() + "-live.png"
+    if live_image.save_png(live_path) != OK:
+        _fail("live capture save failed")
+        return
+    print("godot live game: key=d move=%d player=(%d,%d) frame=%s" % [live_move, live_x, live_y, live_path])
+
     var visible_walls := 0
     for child in scene_root.get_children():
         if child is MeshInstance3D and child.name.begins_with("ElisaWall"):

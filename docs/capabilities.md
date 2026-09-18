@@ -128,7 +128,7 @@ writes `build/validation.json`. Host evidence comes from
 | ASan full graphics probe | Planned | AddressSanitizer aborts before `main` under this session's sandbox; boundary harness keeps ASan+UBSan |
 | Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL3 event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
 | Live input driving the native rendered host | Tested + Implemented | `native/live_game_probe.h`, `scripts/wicked_probe.elisascript` (live frame non-blank after an SDL key drives the game) |
-| Live input driving the Godot rendered capture | Planned | `backends/godot/capture.gd` still replays Elisa-computed routes |
+| Live input driving the Godot rendered capture | Tested + Implemented | `scripts/build_godot_extension.py`, `backends/godot/capture.gd` (synthetic key → `maze_step` → live marker → verified live frame) |
 | Skinned-mesh submission to the hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `skin_quad`, `backends/godot/probe.gd`, `native/skin_probe.h` |
 | UI menu model (layout, focus, scrolling, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
 | UI box layout (orientation, padding, spacing) | Tested | `src/ui/layout.elisa`, `test/editor.elisa` |
@@ -162,8 +162,9 @@ Re-run on the current tree:
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
   budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture
   (including the KTX container), UDP, menu, pose, and Wicked-GUI checks all pass.
-- `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic
-  and the two hosts agree on scene semantics.
+- `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic,
+  the two hosts agree on scene semantics, and the live-input frame rendered from
+  the embedded game is non-blank.
 - `python3 scripts/embed_probe.py` — exit 0; the host links the Elisa C archive,
   drives gameplay, maps an SDL3 event to a move, and exercises the hazard rules.
 - `python3 scripts/godot_embed_probe.py` — exit 0; the Godot host dumps its own

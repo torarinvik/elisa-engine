@@ -74,6 +74,14 @@ def main(arguments: darray[sview]) -> i64:
             return cook_status
         cook_status
 
+    # Build the embedded game into this project so the rendered capture host
+    # can drive gameplay with live input, not only replay the fixture route.
+    _ =
+        extension_status: i64 = run_visible(python, [str(root.joinpath("scripts/build_godot_extension.py")), project])
+        if extension_status != 0:
+            return extension_status
+        extension_status
+
     first_capture: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(godot), ["--path", project, "--script", "res://capture.gd", "--", manifest, frame], empty_input)
@@ -110,6 +118,17 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Godot frame time within budget.")
+
+    # Live-input frame: the host drove the embedded game and rendered from the
+    # queried cell, so a blank frame there means live input never reached the
+    # renderer.
+    _ =
+        status: i64 = run_visible(python, [compare, "nonblank", str(root.joinpath("build/godot-frame-live.png"))])
+        if status != 0:
+            return status
+        status
+
+    println("Godot live-input frame rendered from the embedded game.")
 
     if not is_file(path(native_frame)):
         eprint("Native frame missing; run scripts/wicked_probe.elisascript first.")

@@ -45,16 +45,20 @@ Rules this fixes:
 - Exporting through a C ABI is now a supported path; a new game surface adds
   `export fn` wrappers rather than host-side reimplementations.
 
-## Live input drives the native rendered host (2026-09-18)
+## Live input drives both rendered hosts (2026-09-18)
 
-The native capture host rendered a replayed route; now it also renders state it
-advanced itself. `native/live_game_probe.h` maps a real SDL key event to the
-portable move code, calls `maze_step` through the archive, requires the queried
-player cell to match (2,1), positions the rendered object there, and saves a
-second frame. The runner emits the archive before compiling the probe and
-verifies the live frame with `compare_renders.py nonblank` (range 0.8353), so a
-host that renders nothing fails. The Godot rendered capture still replays the
-fixture route; wiring the GDExtension into that project is the remaining half.
+Both capture hosts rendered replayed routes; now each also renders state it
+advanced itself. The native side (`native/live_game_probe.h`) maps a real SDL
+key event to the portable move code, calls `maze_step` through the archive,
+requires the queried player cell to match (2,1), positions the rendered object
+there, and saves a second frame; the runner emits the archive before compiling
+the probe and verifies the live frame with `compare_renders.py nonblank` (range
+0.8353). The Godot side builds the same GDExtension into the capture project
+(`scripts/build_godot_extension.py`), and `backends/godot/capture.gd` parses a
+synthetic key, calls `maze_step`, places a live marker at the queried cell, and
+saves a verified live frame after the fixture frame, so determinism and
+topology comparisons stay unchanged. A host that renders nothing fails in both
+runners.
 
 ## c-archive omits a nested-module function (2026-09-18, compiler defect)
 
