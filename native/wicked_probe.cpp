@@ -25,12 +25,7 @@
 #include "probe_support.h"
 #include "asset_import.h"
 #include "package_load.h"
-#include "perf_sweep.h"
-#include "churn_probe.h"
-#include "ozz_probe.h"
-#include "recast_probe.h"
-#include "miniaudio_probe.h"
-#include "text_probe.h"
+#include "library_probes.h"
 #include "zstd_probe.h"
 #include "reload_probe.h"
 #include "tracy_probe.h"
@@ -511,28 +506,9 @@ int main(int argc, char** argv) {
                       << "worst_us=" << worst_micros << "\n";
         }
     }
-    // Measured scaling sweep lives in native/perf_sweep.h.
-    if (!run_perf_sweep(application, scene, manifest)) {
-        return 1;
-    }
-    // Spawn/despawn churn lives in native/churn_probe.h.
-    if (!run_churn_probe(scene, manifest)) {
-        return 1;
-    }
-    // ozz skeletal sampling lives in native/ozz_probe.h.
-    if (!probe_ozz_sampling()) {
-        return 1;
-    }
-    // Recast/Detour navigation lives in native/recast_probe.h.
-    if (!probe_recast_navigation()) {
-        return 1;
-    }
-    // miniaudio decode and null device lives in native/miniaudio_probe.h.
-    if (!probe_miniaudio()) {
-        return 1;
-    }
-    // FreeType/HarfBuzz text lives in native/text_probe.h.
-    if (!probe_text()) {
+    // The specialist-library checks (scaling, churn, ozz, Recast/Detour,
+    // miniaudio, text) live in native/library_probes.h.
+    if (!run_library_probes(application, scene, manifest)) {
         return 1;
     }
 
