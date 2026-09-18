@@ -15,6 +15,7 @@
 #include "menu_probe.h"
 #include "pose_probe.h"
 #include "input_probe.h"
+#include "skin_probe.h"
 
 #include <map>
 #include <string>
@@ -51,6 +52,9 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
         return false;
     }
     if (!probe_input(manifest)) {
+        return false;
+    }
+    if (!probe_skinned_quad(scene, manifest)) {
         return false;
     }
     return true;

@@ -4,6 +4,9 @@
 # consuming gameplay math. Cell units, not metres, because the maze hosts draw
 # on a cell-mapped plane.
 include "../../src/animation/ik.elisa"
+include "../../src/animation/skin.elisa"
+
+using Pose
 
 module MazePose:
     private:
@@ -17,6 +20,18 @@ module MazePose:
             difference: f32 = value - expected
             adjusted: f32 = 0.0 - difference if difference < 0.0 else difference
             adjusted < Tune::TOLERANCE
+
+    private:
+        # Two independent root joints at (x0,y0) and (x1,y1); used as the bind
+        # and current poses for skinning a small quad.
+        def two_joint_pose(x0: f32, y0: f32, x1: f32, y1: f32) -> Pose::Pose:
+            skeleton: mutable Pose::Skeleton = Pose::skeleton_new()
+            _ = Pose::skeleton_add(&skeleton, -1, Geometry::Transform{position: Geometry::Vec3{x: x0, y: y0, z: 0.0}, rotation: Geometry::quat_identity(), scale: Geometry::vec3_one()})
+            _ = Pose::skeleton_add(&skeleton, -1, Geometry::Transform{position: Geometry::Vec3{x: x1, y: y1, z: 0.0}, rotation: Geometry::quat_identity(), scale: Geometry::vec3_one()})
+            evaluated: Pose::Pose = catch pose_evaluate(&skeleton):
+                value: value
+                error failure: Pose::Pose{models: zeroed, count: 0}
+            evaluated
 
     public:
         struct LegPose:
@@ -46,6 +61,40 @@ module MazePose:
 
         def lower_length() -> f32:
             Tune::LOWER
+
+        struct QuadPose:
+            x0: f32
+            y0: f32
+            x1: f32
+            y1: f32
+            x2: f32
+            y2: f32
+            x3: f32
+            y3: f32
+
+        # A small quad around the shin, skinned from the bind (straight) leg to
+        # the solved (bent) leg. The host uploads the deformed positions; the
+        # engine owns the skinning, so the host only moves vertices.
+        def deform_quad(hip_x: f32, hip_y: f32) -> QuadPose:
+            leg: LegPose = pose_leg(hip_x, hip_y)
+            bind: Pose::Pose = two_joint_pose(hip_x, hip_y, hip_x, hip_y - 0.6)
+            current: Pose::Pose = two_joint_pose(hip_x, hip_y, leg.knee_x, leg.knee_y)
+            binding: mutable Skin::Binding = Skin::binding_new()
+            _ = Skin::binding_add(&binding, 1, 1.0)
+            rest0: Geometry::Vec3 = Geometry::Vec3{x: hip_x - 0.1, y: hip_y - 1.1, z: 0.0}
+            rest1: Geometry::Vec3 = Geometry::Vec3{x: hip_x + 0.1, y: hip_y - 1.1, z: 0.0}
+            rest2: Geometry::Vec3 = Geometry::Vec3{x: hip_x + 0.1, y: hip_y - 0.9, z: 0.0}
+            rest3: Geometry::Vec3 = Geometry::Vec3{x: hip_x - 0.1, y: hip_y - 0.9, z: 0.0}
+            skinned0: Geometry::Vec3 = Skin::skin_vertex(rest0, &binding, &current, &bind)
+            skinned1: Geometry::Vec3 = Skin::skin_vertex(rest1, &binding, &current, &bind)
+            skinned2: Geometry::Vec3 = Skin::skin_vertex(rest2, &binding, &current, &bind)
+            skinned3: Geometry::Vec3 = Skin::skin_vertex(rest3, &binding, &current, &bind)
+            QuadPose{
+                x0: skinned0.x, y0: skinned0.y,
+                x1: skinned1.x, y1: skinned1.y,
+                x2: skinned2.x, y2: skinned2.y,
+                x3: skinned3.x, y3: skinned3.y,
+            }
 
         # The solved joints must form two segments of exactly the bone lengths.
         def leg_pose_valid(pose: LegPose&) -> bool:

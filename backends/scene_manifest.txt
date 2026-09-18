@@ -57,6 +57,9 @@ input_right=KeyD
 pose_hip=1,1
 pose_knee=1.397,0.55
 pose_foot=1,0.1
+# Skinned quad submitted to the hosts: four vertices deformed by the engine's
+# skinning from the bind leg to the solved leg (MazePose::deform_quad).
+skin_quad=1.297,0.05;1.497,0.05;1.497,0.25;1.297,0.25
 # Game status as portable data and the cell a host draws its indicator in.
 # test/maze.elisa pins the code (Playing) and game_status_code's mapping.
 game_status=playing

@@ -138,6 +138,16 @@ def main() -> i32:
     return 67 if pose.knee_y >= pose.hip_y or pose.knee_y <= pose.foot_y
     return 68 if upper_length() != 0.6 or lower_length() != 0.6
 
+    # Skinned-mesh submission: a quad is deformed from the bind leg to the
+    # solved leg by the engine's skinning, so the host receives deformed
+    # positions rather than doing the skinning itself.
+    quad: QuadPose = deform_quad(1.0, 1.0)
+    return 71 if not near(quad.x0, 1.297) or not near(quad.y0, 0.05)
+    return 72 if not near(quad.x1, 1.497) or not near(quad.y1, 0.05)
+    return 73 if not near(quad.x2, 1.497) or not near(quad.y2, 0.25)
+    return 74 if not near(quad.x3, 1.297) or not near(quad.y3, 0.25)
+    return 75 if near(quad.x0, 0.9) or near(quad.y0, 0.0 - 0.1)
+
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0
     idle: bool = maze_try_move(&state, MazeMove.Idle)

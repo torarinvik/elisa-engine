@@ -253,6 +253,23 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
     for key in ("input_forward", "input_left", "input_right"):
         if key in values and values[key] not in input_buttons:
             raise ValueError(f"scene manifest {key} is not a portable button: {values[key]!r}")
+    # Skinned quad: four coordinate pairs whose corners form a rectangle (the
+    # three consecutive edge vectors are axis-aligned and equal in length).
+    if "skin_quad" in values:
+        entries = [entry for entry in values["skin_quad"].split(";") if entry]
+        if len(entries) != 4:
+            raise ValueError(f"scene manifest skin_quad needs four vertices: {len(entries)}")
+        points = []
+        for entry in entries:
+            parts = entry.split(",")
+            if len(parts) != 2:
+                raise ValueError(f"scene manifest skin_quad vertex malformed: {entry!r}")
+            points.append((float(parts[0]), float(parts[1])))
+        width = math.hypot(points[1][0] - points[0][0], points[1][1] - points[0][1])
+        height = math.hypot(points[2][0] - points[1][0], points[2][1] - points[1][1])
+        closing = math.hypot(points[0][0] - points[3][0], points[0][1] - points[3][1])
+        if abs(width - 0.2) > 0.01 or abs(height - 0.2) > 0.01 or abs(closing - height) > 0.01:
+            raise ValueError(f"scene manifest skin_quad is not a 0.2 square: {width:.3f}, {height:.3f}, {closing:.3f}")
     # Character leg pose: two segments of the bone lengths, with the knee bent
     # between the hip and the foot.
     def pose_pair(key):

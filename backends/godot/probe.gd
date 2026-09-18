@@ -259,6 +259,28 @@ func _run_probe() -> void:
             _fail("host input mapping did not register the bound keys")
             return
 
+    # Skinned-mesh submission: build a quad mesh from the engine-deformed
+    # positions and require the vertex count and a corner to match the fixture.
+    if manifest.has("skin_quad"):
+        var corners: PackedVector3Array = PackedVector3Array()
+        for entry in String(manifest["skin_quad"]).split(";"):
+            if entry.is_empty():
+                continue
+            var parts := entry.split(",")
+            corners.append(Vector3(float(parts[0]) * 0.6 - 2.1, float(parts[1]) * 0.6 - 2.1, 1.0))
+        var skinned_arrays := []
+        skinned_arrays.resize(Mesh.ARRAY_MAX)
+        skinned_arrays[Mesh.ARRAY_VERTEX] = corners
+        skinned_arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+        var skinned_mesh := ArrayMesh.new()
+        skinned_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, skinned_arrays)
+        var first_corner_x: float = corners[0].x
+        print("godot skinned quad: vertices=%d indices=%d first_x=%.3f" % [
+            corners.size(), skinned_mesh.surface_get_array_index_len(0), first_corner_x])
+        if corners.size() != 4 or skinned_mesh.surface_get_array_index_len(0) != 6 or abs(first_corner_x - (1.297 * 0.6 - 2.1)) > 0.001:
+            _fail("skinned quad mesh does not match the fixture")
+            return
+
     print("Godot backend scene create/update/render/despawn probe passed.")
     quit(0)
 
