@@ -699,3 +699,17 @@ reports "Checking file existence is not allowed under sandbox" and the run dies
 after the worker threads start. No clean sanitizer result is claimed here; the
 wrapper is kept so the run can be repeated where sanitizers are permitted, and
 the item remains open.
+
+## Tracy profiling client (2026-09-18)
+
+The plan lists Tracy for early profiling once the runtime produces useful
+timing data, and the probe already measures frame time, churn, and submitted
+bytes. `scripts/fetch_tracy.py` pins Tracy v0.14.1 by commit
+(`30997d5ca6bb632cc10807a1da8a6d3de0aeeb3c`), and the build compiles
+`public/TracyClient.cpp` with `-DTRACY_ENABLE` into the probe. The main frame
+loop is instrumented with `FrameMark`, and `native/tracy_probe.h` marks a few
+frames and a zone. The run reported `tracy: frames marked=4`, and the frame
+determinism check still passed, so the client is compiled in and active and does
+not perturb the rendered frame. With no Tracy server attached the marks are
+dropped, so this is evidence the client is linked and exercised, not a captured
+profile; the value is that a server can now be attached to a real run.

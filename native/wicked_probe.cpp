@@ -33,6 +33,7 @@
 #include "text_probe.h"
 #include "zstd_probe.h"
 #include "reload_probe.h"
+#include "tracy_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -417,6 +418,11 @@ int main(int argc, char** argv) {
     // Warm-up frames are excluded on purpose: shader permutation creation and
     // history buffers make the first frames unrepresentative, and the plan
     // asks for steady-state median and tail, not start-up cost.
+    // The Tracy client is exercised here; the frame loop below also marks each
+    // frame. See native/tracy_probe.h.
+    if (!probe_tracy()) {
+        return 1;
+    }
     const int warmup_frames = 5;
     const int measured_frames = 30;
     std::vector<int64_t> frame_micros;
@@ -424,6 +430,7 @@ int main(int argc, char** argv) {
     for (int frame = 0; frame < warmup_frames + measured_frames; ++frame) {
         const auto frame_start = std::chrono::steady_clock::now();
         application.Run();
+        FrameMark;
         if (hunter_marker != wi::ecs::INVALID_ENTITY and not hunter_route.empty()) {
             const std::size_t step = std::min((std::size_t)frame, hunter_route.size() - 1);
             auto* walk_transform = scene.transforms.GetComponent(hunter_marker);

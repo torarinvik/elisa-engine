@@ -99,6 +99,10 @@ def main(arguments: darray[sview]) -> i64:
             return 2
     freetype_include: sview = str(path(sdl_include).joinpath("freetype2"))
     harfbuzz_include: sview = str(path(sdl_include).joinpath("harfbuzz"))
+    tracy: Path = root.joinpath("dependencies/tracy")
+    if not is_file(path(str(tracy.joinpath("public/TracyClient.cpp")))):
+        eprint("Missing Tracy; run python3 scripts/fetch_tracy.py first.")
+        return 2
     miniaudio: Path = root.joinpath("dependencies/miniaudio")
     if not is_file(path(str(miniaudio.joinpath("miniaudio.h")))):
         eprint("Missing miniaudio; run python3 scripts/fetch_dependencies.py first.")
@@ -127,11 +131,13 @@ def main(arguments: darray[sview]) -> i64:
         "-I", str(dependencies), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
         "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
         "-I", freetype_include, "-I", harfbuzz_include,
+        "-I", str(tracy.joinpath("public")), "-DTRACY_ENABLE",
         "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
         "-I", sdl_include, "-I", sdl_subinclude,
         str(source), str(helper), str(input_helper),
+        str(tracy.joinpath("public/TracyClient.cpp")),
         str(meshopt.joinpath("allocator.cpp")),
         str(meshopt.joinpath("vcacheoptimizer.cpp")),
         str(meshopt.joinpath("indexanalyzer.cpp")),
