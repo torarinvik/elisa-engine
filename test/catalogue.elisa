@@ -51,4 +51,13 @@ def main() -> i32:
     return 12 if unknown != 0
     stale: bool = package_fresh(&catalogue, AssetId{high: 1, low: 1}, wall_content(), 0)
     return 13 if stale
+
+    # Browsing and validation: the editor reads rows by index and rejects a
+    # corrupted row.
+    return 14 if not catalogue_validate(&catalogue) or entry_count(&catalogue) != 1
+    return 15 if entry_id_high(&catalogue, 0) != 11 or entry_content_high(&catalogue, 0) != 77
+    return 16 if entry_blob_bytes(&catalogue, 0) != 4096 or entry_generation(&catalogue, 0) != 1
+    return 17 if entry_id_high(&catalogue, 1) != -1 or entry_blob_bytes(&catalogue, 5) != -1
+    catalogue.entries[0].cooked_generation <- 0 - 1
+    return 18 if catalogue_validate(&catalogue)
     0

@@ -82,6 +82,7 @@ writes `build/validation.json`. Host evidence comes from
 | zstd package round trip | Implemented | `native/zstd_probe.h` |
 | Cooked RGBA texture consumed and rendered by both hosts | Tested + Implemented | texture package, `cooked_texture`, goal material on both hosts, `native/texture_upload.h` |
 | Asset reload generations and stale rejection | Tested | `src/tooling/editor.elisa`, `test/editor.elisa` |
+| Catalogue browsing and validation | Tested | `src/assets/database.elisa`, `test/catalogue.elisa` |
 
 ## Networking
 

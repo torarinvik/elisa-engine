@@ -43,6 +43,40 @@ module AssetCatalogue:
         def entry_count(catalogue: Catalogue&) -> usize:
             catalogue.count
 
+        # Browsing: an asset editor lists entries by index. Out-of-range access
+        # returns sentinels rather than reading past the catalogue.
+        def entry_id_high(catalogue: Catalogue&, index: usize) -> i64:
+            return -1 if index >= catalogue.count
+            catalogue.entries[index].id.high.i64()
+
+        def entry_content_high(catalogue: Catalogue&, index: usize) -> i64:
+            return -1 if index >= catalogue.count
+            catalogue.entries[index].content.high.i64()
+
+        def entry_blob_bytes(catalogue: Catalogue&, index: usize) -> i64:
+            return -1 if index >= catalogue.count
+            catalogue.entries[index].blob_bytes
+
+        def entry_generation(catalogue: Catalogue&, index: usize) -> i64:
+            return -1 if index >= catalogue.count
+            catalogue.entries[index].cooked_generation
+
+        # Validation beyond uniqueness: every row must carry valid ids, a
+        # non-negative size within the bound, and a non-negative generation, so
+        # a corrupted catalogue is rejected before an editor trusts it.
+        def catalogue_validate(catalogue: Catalogue&) -> bool:
+            return false if not catalogue_valid(catalogue)
+            # A statement loop reads the catalogue directly; a value block would
+            # capture a snapshot of the reference and miss a later mutation.
+            ok: mutable bool = true
+            for index in 0..<catalogue.count:
+                entry: Entry = catalogue.entries[index]
+                if not Assets::asset_id_valid(entry.id) or not Assets::asset_id_valid(entry.content):
+                    ok <- false
+                if entry.blob_bytes < 0 or entry.blob_bytes > Tune::MAX_BLOB_BYTES or entry.cooked_generation < 0:
+                    ok <- false
+            ok
+
         def lookup_generation(catalogue: Catalogue&, id: Assets::AssetId) -> i64:
             found: i64 =
                 for index in 0..<catalogue.count |best: i64 = -1| -> best:

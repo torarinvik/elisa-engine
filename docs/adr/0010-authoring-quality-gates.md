@@ -88,3 +88,14 @@ empty-diagnostic case, once; a changed non-empty diagnostic still fails without
 a retry, so a real contract change cannot be masked. The check is bounded and
 the fixture still has to be rejected with the expected "linear value"
 diagnostic.
+
+## Value blocks snapshot read-only references (2026-09-18)
+
+While adding catalogue validation, a value block over a read-only reference
+(`for index in 0..<catalogue.count |ok| -> ok:`) captured a **snapshot** of the
+reference and did not observe a mutation made before the call, so corrupted
+entries validated as good. Rewriting the loop as a statement loop, which reads
+the reference directly, sees the current value. The rule of thumb for this
+codebase is therefore stronger than "only mutables may be threaded": a loop that
+must observe the caller's current state should read the reference directly in a
+statement loop, not capture it in a value block.
