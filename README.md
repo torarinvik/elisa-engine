@@ -184,6 +184,9 @@ Idle),
 knee placement from the triangle projection without inverse trig) and
 `src/animation/pose.elisa` (local-to-model pose evaluation, normalized-linear
 blending, root-motion extraction, and a column-major skinning payload) and
+`src/animation/skin.elisa` (linear blend skinning: a rest vertex is expressed
+in each influencing joint's bind space, moved by that joint's model transform,
+and blended by weight) and
 `src/animation/sampler.elisa` (keyframe clips stored as flat parallel columns;
 sampling interpolates a local transform at a tick and holds the end keys rather
 than extrapolating).

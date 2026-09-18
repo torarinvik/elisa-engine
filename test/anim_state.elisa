@@ -1,9 +1,11 @@
 include "../src/animation/sampler.elisa"
+include "../src/animation/skin.elisa"
 include "../src/animation/state.elisa"
 using Anim
 using Ik
 using Pose
 using Sampler
+using Skin
 using Geometry
 
 def near(value: f32, expected: f32) -> bool:
@@ -60,6 +62,34 @@ def clip_tests() -> i32:
         value: value
         error failure: return 62
     return 63 if not near(pose_root_motion(&start_pose, &end_pose).x, 2.0)
+    skinning: i32 = skinning_test()
+    return skinning if skinning != 0
+    0
+
+def two_roots(x0: f32, y0: f32, x1: f32, y1: f32) -> Pose:
+    skeleton: mutable Skeleton = skeleton_new()
+    _ = skeleton_add(&skeleton, -1, Transform{position: Vec3{x: x0, y: y0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
+    _ = skeleton_add(&skeleton, -1, Transform{position: Vec3{x: x1, y: y1, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
+    result: Pose = catch pose_evaluate(&skeleton):
+        value: value
+        error failure: Pose{models: zeroed, count: 0}
+    result
+
+def skinning_test() -> i32:
+    bind: Pose = two_roots(0.0, 0.0, 1.0, 0.0)
+    current: Pose = two_roots(0.0, 0.0, 1.0, 2.0)
+    single: mutable Binding = binding_new()
+    return 64 if not binding_add(&single, 1, 1.0)
+    return 65 if not binding_valid(&single, 2) or binding_weight_sum(&single) != 1.0
+    moved: Vec3 = skin_vertex(Vec3{x: 0.5, y: 0.0, z: 0.0}, &single, &current, &bind)
+    return 66 if not near(moved.x, 0.5) or not near(moved.y, 2.0)
+    blended: mutable Binding = binding_new()
+    _ = binding_add(&blended, 0, 0.5)
+    return 67 if not binding_add(&blended, 1, 0.5) or not binding_valid(&blended, 2)
+    mixed: Vec3 = skin_vertex(Vec3{x: 0.5, y: 0.0, z: 0.0}, &blended, &current, &bind)
+    return 68 if not near(mixed.x, 0.5) or not near(mixed.y, 1.0)
+    return 69 if binding_add(&blended, 0, 0.0) or binding_valid(&single, 1)
+    return 70 if binding_weight_sum(&blended) != 1.0
     0
 
 def main() -> i32:

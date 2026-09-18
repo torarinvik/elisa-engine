@@ -1,0 +1,50 @@
+# Linear blend skinning in Elisa. A rest-pose vertex is expressed in each
+# influencing joint's bind space, moved by that joint's current model
+# transform, and blended by weight. The engine owns this because it composes
+# animation with the skeleton; a backend only receives the deformed positions.
+include "../math/geometry.elisa"
+include "./pose.elisa"
+
+module Skin:
+    public:
+        struct Influence:
+            joint: usize
+            weight: f32
+
+        struct Binding:
+            influences: mutable Influence[4]
+            count: mutable usize
+
+        def binding_new() -> Binding:
+            Binding{influences: zeroed, count: 0}
+
+        def binding_add(binding: mutable Binding&, joint: usize, weight: f32) -> bool:
+            return false if binding.count >= 4 or weight <= 0.0
+            binding.influences[binding.count] <- Influence{joint: joint, weight: weight}
+            binding.count <- binding.count + 1
+            true
+
+        def binding_valid(binding: Binding&, joint_count: usize) -> bool:
+            return false if binding.count == 0 or binding.count > 4
+            valid: mutable bool = true
+            for index in 0..<binding.count:
+                if binding.influences[index].joint >= joint_count:
+                    valid <- false
+            valid
+
+        def binding_weight_sum(binding: Binding&) -> f32:
+            total: mutable f32 = 0.0
+            for index in 0..<binding.count:
+                total <- total + binding.influences[index].weight
+            total
+
+        # Rest and current poses must share a skeleton, and every influence's
+        # joint must exist in both. The caller checks binding_valid first.
+        def skin_vertex(rest: Geometry::Vec3, binding: Binding&, current: Pose::Pose&, bind: Pose::Pose&) -> Geometry::Vec3:
+            accumulated: mutable Geometry::Vec3 = Geometry::vec3_zero()
+            for index in 0..<binding.count:
+                influence: Influence = binding.influences[index]
+                local: Geometry::Vec3 = Geometry::transform_apply_inverse_point(bind.models[influence.joint], rest)
+                transformed: Geometry::Vec3 = Geometry::transform_apply_point(current.models[influence.joint], local)
+                accumulated <- Geometry::vec3_add(accumulated, Geometry::vec3_scale(transformed, influence.weight))
+            accumulated

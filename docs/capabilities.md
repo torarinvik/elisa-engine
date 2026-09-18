@@ -58,6 +58,7 @@ writes `build/validation.json`. Host evidence comes from
 | Keyframe clip sampling | Tested | `src/animation/sampler.elisa`, `test/anim_state.elisa` |
 | Pose evaluation, blending, root motion, skinning payload | Tested | `src/animation/pose.elisa`, `test/anim_state.elisa` |
 | Two-bone IK and aim constraints | Tested | `src/animation/ik.elisa`, `test/anim_state.elisa` |
+| Linear blend skinning (bind-pose inverse) | Tested | `src/animation/skin.elisa`, `test/anim_state.elisa` |
 | Character composes World + nav + animation + IK, unloads | Tested | `examples/maze/character.elisa`, `test/maze.elisa` |
 | Root motion drives movement policy | Tested | `examples/maze/rootmotion.elisa`, `test/maze.elisa` |
 | Character leg pose consumed by hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `pose_*`, `backends/godot/probe.gd`, `native/pose_probe.h` |
