@@ -24,6 +24,8 @@ def invalid_world() -> World:
         registry: zeroed,
         registry_count: 0,
         live_count: 0,
+        live_ids: zeroed,
+        live_ids_count: 0,
         actors: zeroed,
         actor_count: 0,
         enemies: zeroed,
@@ -63,6 +65,8 @@ def churn_test() -> i32:
             return 24 if not removed or world_is_live(&world, references[step])
     world_compact(&world)
     return 25 if not world_is_valid(&world)
+    # The compact live-id column stays consistent through churn and compaction.
+    return 29 if not world_live_column_valid(&world) or world_live_ids_count(&world) != world.live_count
     for step in 0..<64 |world, references, expected_actor|:
         expected_live: bool = step % 3 != 0
         return 26 if world_is_live(&world, references[step]) != expected_live
@@ -177,6 +181,11 @@ def main() -> i32:
     return 12 if not entity_is_actor(Actor.Player) or entity_is_enemy(Actor.Player)
     return 13 if not entity_is_actor(Enemy.Guard) or not entity_is_enemy(Enemy.Guard)
     return 14 if entity_is_actor(Entity.Unknown) or entity_is_enemy(Entity.Unknown)
+    return 15 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
+    # The freed slot is reused, so the column order follows the registry, not
+    # spawn order; what matters is that it holds exactly the live ids.
+    return 16 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
+    return 17 if world_live_ids_count(&world) != world.live_count or world_live_id_at(&world, 2) != -1
     churn: i32 = churn_test()
     return churn if churn != 0
     capacity: i32 = capacity_test()

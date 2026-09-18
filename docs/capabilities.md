@@ -22,6 +22,7 @@ writes `build/validation.json`. Host evidence comes from
 | Monotonic `i64` identity, explicit exhaustion | Proved + Tested | `proof/entity_id.elisa`, `test/entity_id.elisa` |
 | Owning `World`, liveness, storage, rollback, compaction | Proved + Tested | `proof/world.elisa`, `test/world.elisa` |
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
+| Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd` |
 | Declared read/write sets, derived execution waves | Tested | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa` |

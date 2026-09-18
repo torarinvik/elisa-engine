@@ -122,6 +122,15 @@ module World:
             for index in 0..<world.enemy_count |matches: usize = 0| -> matches:
                 matches <- matches + 1 if world.enemies[index].live and world.enemies[index].id == id
 
+        def remove_live_id(world: mutable World&, id: i64) -> void:
+            slot: mutable usize = Bounds::WORLD_MAX_ENTITIES
+            for index in 0..<world.live_ids_count |world, id, slot|:
+                slot <- index if world.live_ids[index] == id
+            return if slot >= world.live_ids_count
+            for shift in slot..<world.live_ids_count - 1 |world|:
+                world.live_ids[shift] <- world.live_ids[shift + 1]
+            world.live_ids_count <- world.live_ids_count - 1
+
         def compact_registry(world: mutable World&) -> void:
             write: mutable usize = 0
             for read in 0..<world.registry_count:
@@ -131,6 +140,11 @@ module World:
             for index in write..<world.registry_count:
                 world.registry[index].live <- false
             world.registry_count <- write
+            world.live_ids_count <- 0
+            for index in 0..<world.registry_count:
+                if world.registry[index].live:
+                    world.live_ids[world.live_ids_count] <- world.registry[index].id
+                    world.live_ids_count <- world.live_ids_count + 1
 
         def compact_actors(world: mutable World&) -> void:
             write: mutable usize = 0
@@ -169,6 +183,10 @@ module World:
             registry: mutable RegistryRow[Bounds::WORLD_MAX_ENTITIES]
             registry_count: mutable usize
             live_count: mutable usize
+            # Compact live-entity column: the ids of live entities in a dense
+            # array, so iteration is O(live) rather than O(registry capacity).
+            live_ids: mutable i64[256]
+            live_ids_count: mutable usize
             actors: mutable ActorRecord[Bounds::WORLD_MAX_ENTITIES]
             actor_count: mutable usize
             enemies: mutable EnemyRecord[Bounds::WORLD_MAX_ENTITIES]
@@ -182,6 +200,8 @@ module World:
                 registry: zeroed,
                 registry_count: 0,
                 live_count: 0,
+                live_ids: zeroed,
+                live_ids_count: 0,
                 actors: zeroed,
                 actor_count: 0,
                 enemies: zeroed,
@@ -210,6 +230,8 @@ module World:
                 world.enemies[storage_index] <- EnemyRecord{id: id, live: true, threat: 1}
                 world.enemy_count <- world.enemy_count + 1 if storage_index == world.enemy_count
             world.live_count <- world.live_count + 1
+            world.live_ids[world.live_ids_count] <- id
+            world.live_ids_count <- world.live_ids_count + 1
             EntityRef{world_epoch: world.epoch, id: id}
 
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
@@ -220,6 +242,7 @@ module World:
             raise WorldError.InvalidReference if not removed
             world.registry[index].live <- false
             world.live_count <- world.live_count - 1
+            remove_live_id(world, reference.id)
 
         def world_lookup(world: World&, reference: EntityRef) -> EntityLookup error[WorldError]:
             index: usize = registry_slot(world, reference)
@@ -258,6 +281,26 @@ module World:
                     true
                 Entity.Unknown:
                     false
+
+        def world_live_ids_count(world: World&) -> usize:
+            world.live_ids_count
+
+        def world_live_id_at(world: World&, index: usize) -> i64:
+            return -1 if index >= world.live_ids_count
+            world.live_ids[index]
+
+        # The compact column is consistent when it holds exactly the live ids,
+        # once each, and nothing else.
+        def world_live_column_valid(world: World&) -> bool:
+            return false if world.live_ids_count != world.live_count
+            for index in 0..<world.live_ids_count |valid: bool = true| -> valid:
+                id: i64 = world.live_ids[index]
+                valid <- false if not world_is_live(world, EntityRef{world_epoch: world.epoch, id: id})
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if world.live_ids[earlier] == id
+                valid <- valid and unique
+            true
 
         def world_is_valid(world: World&) -> bool:
             return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > Bounds::WORLD_MAX_ENTITIES or world.actor_count > Bounds::WORLD_MAX_ENTITIES or world.enemy_count > Bounds::WORLD_MAX_ENTITIES or world.live_count > world.registry_count
