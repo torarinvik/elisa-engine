@@ -19,11 +19,13 @@ import sys
 import tarfile
 from pathlib import Path
 
+# A release names only the platform this tree has actually been validated on.
+# Intel macOS, Windows, Linux, Android, and iOS are listed as untested rather
+# than implied from a dependency's platform list.
 SUPPORTED_PLATFORMS = {
     ("Darwin", "arm64"): "macos-arm64",
-    ("Darwin", "x86_64"): "macos-x86_64",
 }
-UNTESTED_PLATFORMS = ("windows-x86_64", "linux-x86_64", "android-arm64", "ios-arm64")
+UNTESTED_PLATFORMS = ("macos-x86_64", "windows-x86_64", "linux-x86_64", "android-arm64", "ios-arm64")
 
 
 def sha256_bytes(data: bytes) -> str:

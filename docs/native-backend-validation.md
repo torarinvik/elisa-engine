@@ -534,8 +534,8 @@ This is archive reproducibility given the collected inputs, which is the honest
 scope: the per-file hashes pin the inputs, while byte-identical compiler output
 from source is not claimed. The summary names the supported platform
 (`macos-arm64` here) and lists the platforms deliberately left untested
-(windows, linux, android, ios), so support is not inferred from a dependency's
-platform list.
+(macos-x86_64, windows, linux, android, ios), so support is not inferred from a
+dependency's platform list.
 
 ## Native spawn/despawn churn (2026-09-18)
 

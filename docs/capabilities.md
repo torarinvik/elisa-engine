@@ -177,6 +177,22 @@ Re-run on the current tree:
   The gated Godot scene probe loads the same file as a compressed image; run
   `python3 scripts/fetch_basisu.py` once so the cooker can emit it.
 
+## Plan-gated (not implemented by design)
+
+The plan's library roadmap is "an integration order, not a command to add every
+dependency immediately," and each of these is gated on a representative need:
+
+- **Box2D** waits for a genuine 2D use case; the first game is 3D.
+- **ACL** is a later benchmarked alternative codec path; `src/animation/codec.elisa`
+  records the codec choice rather than shipping a second decoder.
+- **Steam Audio** is optional spatial acoustics; `src/audio/policy.elisa` keeps
+  spatial voices behind an explicit opt-in for when it is added.
+- **Effekseer** needs a concrete authoring need; Wicked supplies effects for now.
+- **ufbx** is a fallback importer; the glTF path covers the shipped assets.
+- **Arbitrary code hot reload** stays out of scope until quiescence, callback
+  draining, and state migration are demonstrated; the bounded policy and asset
+  reload path are implemented and tested (`src/tooling/reload.elisa`).
+
 ## Deferred
 
 These plan items are deliberately not implemented. The plan calls the library
