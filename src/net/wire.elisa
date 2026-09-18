@@ -34,7 +34,11 @@ module Wire:
 
         def encode(record: Net::ReplRecord&) -> u8[33] error[WireError]:
             raise WireError.InvalidRecord if not Net::record_valid(record)
-            raise WireError.Unrepresentable if record.x + Format::BIAS < 0 or record.y + Format::BIAS < 0
+            # Bounds are checked BEFORE biasing: adding the bias first could
+            # overflow the widest i64 values and trap instead of rejecting them.
+            # A value is representable when biasing keeps it a non-negative i64.
+            raise WireError.Unrepresentable if record.x < 0 - Format::BIAS or record.y < 0 - Format::BIAS
+            raise WireError.Unrepresentable if record.x > 9223372036854775807 - Format::BIAS or record.y > 9223372036854775807 - Format::BIAS
             out: mutable u8[33] = zeroed
             persistent: u64 = record.persistent
             x_bits: u64 = (record.x + Format::BIAS).u64()

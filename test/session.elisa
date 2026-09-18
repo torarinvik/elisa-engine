@@ -78,6 +78,20 @@ def wire_test() -> i32:
         WireError.Unrepresentable: 0
         error failure: 2
     return 48 if unrepresentable != 0
+    # Integer overflow at the boundary: the bias addition on the widest i64
+    # values wraps, and a wrap must be refused rather than encoded.
+    huge_high: ReplRecord = sample(Owner.Server, 1, 9223372036854775807, 0)
+    overflow_high: i32 = catch encode(&huge_high):
+        value: 1
+        WireError.Unrepresentable: 0
+        error failure: 2
+    return 49 if overflow_high != 0
+    huge_low: ReplRecord = sample(Owner.Server, 1, 0 - 9223372036854775807 - 1, 0)
+    overflow_low: i32 = catch encode(&huge_low):
+        value: 1
+        WireError.Unrepresentable: 0
+        error failure: 2
+    return 50 if overflow_low != 0
     0
 
 def loopback_test() -> i32:

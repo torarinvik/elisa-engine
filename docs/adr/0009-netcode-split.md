@@ -92,3 +92,14 @@ retransmits the oldest until each is acknowledged, and the peer converges on the
 last revision with the window empty. The test requires retransmissions to have
 occurred, so a run where loss was not recovered fails rather than passing
 vacuously.
+
+## Wire bias overflow (2026-09-18)
+
+`Wire::encode` checked representability by biasing first and testing for a
+negative result. For the widest i64 values the bias addition overflows and the
+program **traps** instead of rejecting the record, which an integer-overflow
+test exposed. The check now bounds `x`/`y` before biasing (at least `-BIAS` and
+at most `i64::MAX - BIAS`), so an unrepresentable coordinate is refused without
+arithmetic that can overflow. `test/session.elisa` pins the high and low
+extremes as `Unrepresentable` and a value at the representable boundary as
+accepted.
