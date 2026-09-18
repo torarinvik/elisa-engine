@@ -138,6 +138,42 @@ func _run_probe() -> void:
         _fail("audio sample information mismatch")
         return
 
+    # Elisa UI menu as host controls: the host consumes the menu state as data
+    # and highlights only the focused, enabled row. Controls work headless, so
+    # this is part of the gated probe rather than a rendered-only check.
+    if manifest.has("menu_actions") and manifest.has("menu_enabled") and manifest.has("menu_focus"):
+        var action_count: int = int(manifest["menu_actions"])
+        var menu_focus: int = int(manifest["menu_focus"])
+        var enabled_flags: Array[int] = []
+        for part in String(manifest["menu_enabled"]).split(","):
+            enabled_flags.append(int(part))
+        if enabled_flags.size() != action_count or menu_focus < 0 or menu_focus >= action_count or enabled_flags[menu_focus] != 1:
+            _fail("menu state is inconsistent")
+            return
+        var menu_root := VBoxContainer.new()
+        menu_root.name = "ElisaMenu"
+        root.add_child(menu_root)
+        var buttons: Array[Button] = []
+        var disabled_count := 0
+        for index in range(action_count):
+            var button := Button.new()
+            button.name = "ElisaMenuAction_%d" % index
+            button.text = "Action %d" % index
+            button.disabled = enabled_flags[index] == 0
+            if button.disabled:
+                disabled_count += 1
+            menu_root.add_child(button)
+            buttons.append(button)
+        buttons[menu_focus].grab_focus()
+        await process_frame
+        var focused: Control = root.gui_get_focus_owner()
+        print("godot menu: actions=%d focus=%d focused=%s disabled=%d" % [
+            action_count, menu_focus, focused.name if focused != null else "none", disabled_count])
+        if focused != buttons[menu_focus] or disabled_count != enabled_flags.count(0):
+            _fail("menu focus or disabled state does not match the fixture")
+            return
+        menu_root.queue_free()
+
     print("Godot backend scene create/update/render/despawn probe passed.")
     quit(0)
 

@@ -228,6 +228,23 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
         raise ValueError(f"scene manifest mesh_triangles is not an integer: {values.get('mesh_triangles')!r}")
     if mesh_triangles <= 0:
         raise ValueError(f"scene manifest mesh_triangles out of range: {mesh_triangles}")
+    # Menu state for the host UI: the action count, the enabled mask, and the
+    # focused row must be mutually consistent and the focus row must be enabled.
+    if "menu_actions" in values or "menu_enabled" in values:
+        try:
+            menu_actions = int(values.get("menu_actions", ""))
+            menu_focus = int(values.get("menu_focus", ""))
+        except ValueError:
+            raise ValueError(f"scene manifest menu numbers malformed: {values.get('menu_actions')!r}, {values.get('menu_focus')!r}")
+        enabled = [part for part in values.get("menu_enabled", "").split(",") if part]
+        if menu_actions <= 0 or menu_actions > 8:
+            raise ValueError(f"scene manifest menu_actions out of range: {menu_actions}")
+        if len(enabled) != menu_actions or not all(part in ("0", "1") for part in enabled):
+            raise ValueError(f"scene manifest menu_enabled does not match {menu_actions} actions: {enabled!r}")
+        if menu_focus < 0 or menu_focus >= menu_actions or enabled[menu_focus] != "1":
+            raise ValueError(f"scene manifest menu_focus {menu_focus} is not an enabled row")
+        if "1" not in enabled:
+            raise ValueError("scene manifest menu has no enabled action")
     allowed_status = ("menu", "playing", "paused", "won", "lost", "exited")
     if values.get("game_status") not in allowed_status:
         raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")

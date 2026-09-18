@@ -52,6 +52,13 @@ status_cell=6,1
 # Audio cues the game emitted for this snapshot (start click + one per move).
 # test/maze.elisa pins the count; the host decodes that many sound plays.
 audio_cues=4
+# Menu state as portable data for the host UI: the five Elisa menu actions
+# (start, restart, pause, resume, quit), the enabled mask for this playing
+# snapshot, and the focused row. test/maze_game.elisa pins the model; the host
+# only draws what it is given.
+menu_actions=5
+menu_focus=1
+menu_enabled=0,1,1,0,1
 # Wall cells in the Elisa maze topology, row-major (x,y). The count is pinned
 # by test/maze.elisa (maze_wall_count == 34) and re-checked by
 # scripts/record_validation.py; test/maze_layout.elisa pins the Elisa-side

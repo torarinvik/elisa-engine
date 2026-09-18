@@ -106,5 +106,6 @@ writes `build/validation.json`. Host evidence comes from
 | Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
 | Skeletal-pose submission to the hosts | Planned | engine-side poses only |
 | UI menu model (layout, focus, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
-| UI rendering toolkit | Planned | text stack and menu model only |
+| Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
+| UI rendering toolkit | Partial | Godot controls + text stack; native UI pending |
 | Compressed textures (KTX/Basis) | Planned | no textures yet |
