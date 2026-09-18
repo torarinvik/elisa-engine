@@ -42,4 +42,3 @@ is not mistaken for capacity) and `test/fake_bridge.elisa` covers the remaining
 adversarial cases the plan lists: resource, upload, and callback capacity
 exhaustion; a stale callback handle after its slot is reused; a stale upload
 ticket after its slot is reused; and ending a callback that was never started.
-`
