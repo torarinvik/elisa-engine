@@ -743,3 +743,14 @@ It is a stand-in for the GameNetworkingSockets transport the plan selects, so
 the status document lists GNS as still planned: this proves the boundary the
 replication layer sits above, not the selected library's reliability, ordering,
 or encryption features.
+
+## Measured data layout (2026-09-18)
+
+The plan asks data-layout choices to be measured rather than asserted.
+`native/layout_probe.h` creates 512 entities and measures two ways to read their
+transforms: iterating the component's contiguous storage, and looking each
+entity up by id. Both medians are recorded and the contiguous walk must be no
+more than a loose multiple of the indexed one. On this workstation the
+contiguous walk took 1 us against 14 us indexed for the same 512 entities, the
+expected cache behavior. It is one recorded comparison on one machine, not a
+claim that one layout always wins; the point is that the number is recorded.
