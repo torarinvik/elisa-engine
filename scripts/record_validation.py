@@ -420,6 +420,40 @@ def cooked_texture_packed(root: Path) -> dict:
     return {"sha256": sha256_file(path), "width": width, "height": height, "bytes_per_pixel": bytes_per_pixel}
 
 
+def dependency_provenance(root: Path) -> dict:
+    # Record what each pinned dependency actually is. Single-file dependencies
+    # are hash-checked against the pin in fetch_dependencies.py and a mismatch
+    # fails the gate; a dependency that is simply not fetched is recorded as
+    # absent rather than treated as a failure, because the gate does not require
+    # the native dependencies. Git-pinned dependencies record their commit.
+    import importlib.util
+    script = root / "scripts/fetch_dependencies.py"
+    spec = importlib.util.spec_from_file_location("fetch_dependencies_for_validation", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    recorded = {}
+    for name, (revision, _url, expected, relative) in module.PINNED.items():
+        path = root / "dependencies" / relative
+        if not path.is_file():
+            recorded[name] = {"present": False, "revision": revision}
+            continue
+        digest = sha256_file(path)
+        if expected is not None and digest != expected:
+            raise ValueError(f"dependency {name} hash mismatch: {digest} != {expected}")
+        recorded[name] = {"present": True, "revision": revision, "sha256": digest}
+    for name in ("ozz", "recast", "tracy"):
+        path = root / "dependencies" / name
+        if (path / ".git").is_dir():
+            commit = subprocess.run(
+                ["git", "-C", str(path), "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            recorded[name] = {"present": True, "commit": commit}
+        else:
+            recorded[name] = {"present": False}
+    return {"pins": recorded, "present": sum(1 for entry in recorded.values() if entry["present"])}
+
+
 def asset_catalogue_database(root: Path) -> dict:
     # The toolkit writes a persistent SQLite catalogue during cooking. This
     # gates that the row the toolkit recorded agrees with the shared fixture
@@ -512,8 +546,9 @@ def main(arguments: list[str]) -> int:
             "cooked_texture_packed": cooked_texture_packed(engine),
             "asset_import_bounds": asset_import_self_test(engine),
             "asset_catalogue_database": asset_catalogue_database(engine),
+            "dependencies": dependency_provenance(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "asset_catalogue_database", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "asset_catalogue_database", "dependency_pins", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
