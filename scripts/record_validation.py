@@ -454,6 +454,28 @@ def dependency_provenance(root: Path) -> dict:
     return {"pins": recorded, "present": sum(1 for entry in recorded.values() if entry["present"])}
 
 
+def cooked_texture_bc1(root: Path) -> dict:
+    # Block-compressed companion: a 4x4 BC1 texture is one 8-byte block, so the
+    # payload must be exactly that.
+    path = root / "build/cooked/maze_tile_tex_bc1.rgba"
+    if not path.is_file():
+        raise ValueError("cooked BC1 texture is missing")
+    values = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    if values.get("format") != "elisa-texture-v1" or values.get("packing") != "bc1":
+        raise ValueError(f"cooked BC1 texture format drift: {values.get('format')!r}/{values.get('packing')!r}")
+    width = int(values.get("width", ""))
+    height = int(values.get("height", ""))
+    block_bytes = int(values.get("block_bytes", ""))
+    pixels = base64.b64decode(values.get("pixels_b64", ""))
+    if width != 4 or height != 4 or block_bytes != 8 or len(pixels) != 8:
+        raise ValueError(f"cooked BC1 texture size mismatch: {width}x{height} block={block_bytes} pixels={len(pixels)}")
+    return {"sha256": sha256_file(path), "width": width, "height": height, "block_bytes": block_bytes}
+
+
 def asset_catalogue_database(root: Path) -> dict:
     # The toolkit writes a persistent SQLite catalogue during cooking. This
     # gates that the row the toolkit recorded agrees with the shared fixture
@@ -544,11 +566,12 @@ def main(arguments: list[str]) -> int:
             "cooked_asset": cooked,
             "cooked_texture": cooked_texture(engine),
             "cooked_texture_packed": cooked_texture_packed(engine),
+            "cooked_texture_bc1": cooked_texture_bc1(engine),
             "asset_import_bounds": asset_import_self_test(engine),
             "asset_catalogue_database": asset_catalogue_database(engine),
             "dependencies": dependency_provenance(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "asset_catalogue_database", "dependency_pins", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "cooked_texture_bc1", "asset_catalogue_database", "dependency_pins", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -118,6 +118,11 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
     if packed_texture.is_file():
         target_packed = staging / "assets" / packed_texture.name
         target_packed.write_bytes(packed_texture.read_bytes())
+    bc1_texture = root / "build" / "cooked" / "maze_tile_tex_bc1.rgba"
+    target_bc1 = None
+    if bc1_texture.is_file():
+        target_bc1 = staging / "assets" / bc1_texture.name
+        target_bc1.write_bytes(bc1_texture.read_bytes())
     (staging / "fixtures").mkdir(parents=True, exist_ok=True)
     fixture = staging / "fixtures/scene_manifest.txt"
     fixture.write_bytes((root / "backends/scene_manifest.txt").read_bytes())
@@ -142,6 +147,8 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
         release["files"][f"assets/{target_texture.name}"] = sha256_file(target_texture)
     if target_packed is not None:
         release["files"][f"assets/{target_packed.name}"] = sha256_file(target_packed)
+    if target_bc1 is not None:
+        release["files"][f"assets/{target_bc1.name}"] = sha256_file(target_bc1)
     (staging / "release.json").write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return release
 

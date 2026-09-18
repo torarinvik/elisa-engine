@@ -246,6 +246,11 @@ int main(int argc, char** argv) {
             if (!probe_texture_packed(packed_texture_path.lexically_normal().string())) {
                 return 1;
             }
+            const std::filesystem::path bc1_texture_path =
+                package_path.parent_path() / (asset_path.stem().string() + "_tex_bc1.rgba");
+            if (!probe_texture_bc1(bc1_texture_path.lexically_normal().string())) {
+                return 1;
+            }
             // Upload the texture into a GPU resource; the goal marker samples
             // it below so the cooked texture reaches the screen.
             goal_texture = load_texture_resource(texture_path.lexically_normal().string());

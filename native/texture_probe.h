@@ -73,4 +73,32 @@ inline bool probe_texture_packed(const std::string& package_path) {
     return true;
 }
 
+inline bool probe_texture_bc1(const std::string& package_path) {
+    std::ifstream input(package_path);
+    if (!check(input.good(), "BC1 texture package readable")) {
+        return false;
+    }
+    std::map<std::string, std::string> values;
+    std::string line;
+    while (std::getline(input, line)) {
+        const auto separator = line.find('=');
+        if (separator != std::string::npos) {
+            values[line.substr(0, separator)] = line.substr(separator + 1);
+        }
+    }
+    if (!check(values["format"] == "elisa-texture-v1" && values["packing"] == "bc1" && values["block_bytes"] == "8",
+            "BC1 texture format, packing, and block size")) {
+        return false;
+    }
+    const int width = std::stoi(values["width"]);
+    const int height = std::stoi(values["height"]);
+    const std::vector<uint8_t> pixels = decode_base64(values["pixels_b64"]);
+    if (!check(width == 4 && height == 4 && pixels.size() == 8, "BC1 texture is one 8-byte block")) {
+        return false;
+    }
+    std::fprintf(stdout, "bc1 texture: %dx%d block_bytes=8 bytes=%u\n",
+        width, height, (unsigned)pixels.size());
+    return true;
+}
+
 } // namespace probe

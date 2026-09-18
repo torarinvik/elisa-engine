@@ -131,7 +131,8 @@ writes `build/validation.json`. Host evidence comes from
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
 | UI rendering toolkit | Partial | Godot controls, Wicked widgets, menu model, box layout, row-height style, and line breaking; no shaping or full typography |
 | 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
-| Block-compressed textures (KTX/Basis) | Planned | 16-bit packing only; no KTX/Basis toolchain |
+| Block-compressed texture (BC1/DXT1) | Tested | `scripts/cook_assets.py`, `cooked_texture_bc1`, `backends/godot/probe.gd`, `native/texture_probe.h` |
+| KTX2/Basis container and GPU transcode | Planned | BC1 block path only; no KTX/Basis toolchain |
 
 ## Verification
 
@@ -161,8 +162,6 @@ toolchain not present in this environment:
   interpolation, and recovery are implemented and tested, and a real UDP socket
   round trip exercises the byte boundary, but the selected transport library is
   not vendored or built here.
-- **GPU texture compression (KTX/Basis).** The texture path is uncompressed
-  RGBA applied to a material; no KTX/Basis toolchain is available.
 - **Godot host embedding the game via the C ABI.** The native host drives
   gameplay through the Elisa C ABI; the Godot host still consumes the fixture
   and synthetic events, and wiring the C ABI into GDScript is follow-up work.

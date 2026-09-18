@@ -169,6 +169,30 @@ func _run_probe() -> void:
             if packed_colour.g < 0.7 or packed_colour.r > 0.3 or packed_colour.b > 0.5:
                 _fail("packed texture colour mismatch")
                 return
+        # Block-compressed companion: the host decodes the BC1 block.
+        var bc1_path: String = package_path.get_base_dir().path_join(asset_name + "_tex_bc1.rgba")
+        if FileAccess.file_exists(bc1_path):
+            var bc1_values := {}
+            for line in FileAccess.get_file_as_string(bc1_path).split("\n"):
+                var text := line.strip_edges()
+                if text.is_empty() or text.find("=") < 1:
+                    continue
+                bc1_values[text.left(text.find("="))] = text.substr(text.find("=") + 1).strip_edges()
+            var bc1_width: int = int(bc1_values.get("width", "0"))
+            var bc1_height: int = int(bc1_values.get("height", "0"))
+            var bc1_pixels := Marshalls.base64_to_raw(bc1_values.get("pixels_b64", ""))
+            if bc1_values.get("packing", "") != "bc1" or bc1_pixels.size() != 8:
+                _fail("cooked BC1 texture does not match")
+                return
+            var bc1_image := Image.create_from_data(bc1_width, bc1_height, false, Image.FORMAT_DXT1, bc1_pixels)
+            if bc1_image.is_compressed():
+                bc1_image.decompress()
+            var bc1_colour: Color = bc1_image.get_pixel(0, 0)
+            print("godot bc1 texture: %dx%d rgb=%.2f,%.2f,%.2f" % [
+                bc1_width, bc1_height, bc1_colour.r, bc1_colour.g, bc1_colour.b])
+            if bc1_colour.g < 0.6 or bc1_colour.r > 0.4 or bc1_colour.b > 0.5:
+                _fail("BC1 texture colour mismatch")
+                return
 
     var audio_samples := 400
     var audio_rate := 8000

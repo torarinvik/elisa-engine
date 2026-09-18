@@ -229,6 +229,26 @@ def write_texture_package(root: Path, size: int = 4) -> Path:
     ]
     package16 = package_dir / "maze_tile_tex16.rgba"
     package16.write_text("\n".join(lines16) + "\n", encoding="utf-8")
+    # Block compression: a BC1/DXT1 block is two RGB565 endpoints plus 2-bit
+    # indices. A solid colour encodes as both endpoints equal and all indices
+    # zero, so a 4x4 texture is one 8-byte block. KTX/Basis use the same family
+    # of block formats; this is a real block-compressed path without their
+    # toolchains.
+    r5 = 26 >> 3
+    g6 = 229 >> 2
+    b5 = 51 >> 3
+    endpoint = ((r5 << 11) | (g6 << 5) | b5) & 0xFFFF
+    block = bytes((endpoint & 0xFF, (endpoint >> 8) & 0xFF, endpoint & 0xFF, (endpoint >> 8) & 0xFF, 0, 0, 0, 0))
+    lines_bc1 = [
+        "format=elisa-texture-v1",
+        "packing=bc1",
+        f"width={size}",
+        f"height={size}",
+        "block_bytes=8",
+        "pixels_b64=" + base64.b64encode(block).decode(),
+    ]
+    package_bc1 = package_dir / "maze_tile_tex_bc1.rgba"
+    package_bc1.write_text("\n".join(lines_bc1) + "\n", encoding="utf-8")
     return package
 
 
