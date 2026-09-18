@@ -50,9 +50,8 @@ subsystem proves nothing about it.
 
 The boundary harness has run under AddressSanitizer and UBSan from the start;
 the full graphics probe could not. Two separate blockers, now separated:
-AddressSanitizer itself aborts before `main` inside this session's sandbox
-("Checking file existence is not allowed under sandbox", no instrumented
-output), and the ElisaScript runner supervising an ASan+UBSan build dies with
+the AddressSanitizer flavor HANGS before `main` (root-caused 2026-09-18, see
+below), and the ElisaScript runner supervising an ASan+UBSan build dies with
 `runtime: Time` in its child-wait sleep. A UBSan-only flavor therefore has its
 own flag, `ELISA_SANITIZER=undefined`, and the full graphics probe runs under
 it with the standard runner:
@@ -66,8 +65,47 @@ The first run found real undefined behavior: `native/package_load.h` decoded
 base64 into a signed `int` accumulator whose fourth sextet shifted into the
 sign bit (`runtime error: left shift of negative value`). The accumulator is
 now `uint32_t`, and the probe exits 0 with no sanitizer report. AddressSanitizer
-coverage of the graphics path remains blocked by the sandbox; the boundary
-harness keeps the ASan+UBSan pair for the unverified libraries.
+coverage of the graphics path remains blocked, by a third-party library
+initializer rather than by the sandbox; the boundary harness keeps the
+ASan+UBSan pair for the unverified libraries.
+
+### What actually blocks the ASan flavor (2026-09-18)
+
+The earlier reading -- "AddressSanitizer aborts before `main`" -- was wrong on
+both counts, and it pointed at the sandbox instead of the real cause.
+
+AddressSanitizer starts normally. Under `ASAN_OPTIONS=verbosity=1` the run
+reaches `AddressSanitizer Init done` and the probe's worker threads T1-T10 start
+and exit cleanly. The nine `Checking file existence is not allowed under
+sandbox` lines are ASan's OWN init-time probes for its config files; they are
+printed BEFORE `Init done` and ASan continues past them.
+
+The probe does not abort -- it HANGS, and never reaches `main`. A `sample` of
+the stuck process puts the main thread in dyld static initializers:
+
+```
+dyld4::Loader::runInitializersBottomUp
+  -> dllinit            (in libSDL2-2.0.0.dylib, i.e. sdl2-compat)
+    -> error_dialog
+      -> -[NSAlert runModal]      <- modal alert, blocked in the event loop
+```
+
+sdl2-compat is a shim that dlopens SDL3 from its library initializer, and the
+only fatal init string in that dylib is "Failed loading SDL3 library."
+`DYLD_PRINT_LIBRARIES=1` confirms the split: `build/wicked-native-probe` and
+`build/wicked-native-probe-ubsan` both load `libSDL3`, and
+`build/wicked-probe-asan` loads it zero times. So under ASan the shim cannot
+load SDL3 and raises a modal dialog that nothing can dismiss in a headless run.
+
+A bounded 1800 s run confirms the shape: exit 124 from `timeout`, no sanitizer
+report, no crash, no instrumented output.
+
+This is a third-party packaging problem (sdl2-compat's initializer), not an
+engine defect and not an ASan defect. Pre-loading SDL3 with
+`DYLD_INSERT_LIBRARIES=/opt/homebrew/opt/sdl3/lib/libSDL3.0.dylib` was tried and
+does NOT clear it -- the probe stops in the same modal alert -- so do not repeat
+that. The way out is a build change: link the probe against SDL3 directly, or
+against a real SDL2 rather than the compat shim. That is a build-policy call.
 
 ## Debug collision geometry (2026-09-18)
 
@@ -132,9 +170,19 @@ moving contracts to make an integration appear to pass.
 
 The minimized case is also recorded in the responsible repository:
 `elisa-proof/test/repro/region_branch_facts.elisa` with
-`test/repro/check_region_branch_facts.py`, which currently reports
-`status=failed proven=4/6 failed=2`. It is a red regression test until the
-region flow keeps branch facts for locals read from mutable reference fields.
+`test/repro/check_region_branch_facts.py`.
+
+**Resolved 2026-09-18 in `elisa-proof` 12c79ab.** The cause was not the region
+flow losing branch facts. The goal is over a FIELD place (`allocator.last`), and
+the interval and difference tiers key a `ProofBound` by a bare identifier, so
+only the syntactic negation rule could close it -- and that rule compares
+operands with `proof_expr_equal`. The callee contract spells the bound as the
+constant `MIN` while the branch facts had already folded it to `0`
+(`MIN == 0`, `not(allocator.last < 0)`): equal in value, unequal in spelling.
+Operands now match THROUGH a constant pin, mirrored in the kernel replay so a
+certificate is still re-derived independently. `check_region_branch_facts.py`
+reports PASS (6/6), `proof/entity_id.elisa` is back to 15/15 with zero replay
+gaps, and `scripts/check.elisascript` exits 0.
 
 ## Evidence
 

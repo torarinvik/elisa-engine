@@ -127,7 +127,7 @@ writes `build/validation.json`. Host evidence comes from
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
-| ASan full graphics probe | Planned | AddressSanitizer prints "Checking file existence is not allowed under sandbox" and aborts before `main`; the same probe runs under UBSan (`ELISA_SANITIZER=undefined`), and the boundary harness keeps the ASan+UBSan pair |
+| ASan full graphics probe | Blocked (third-party) | The instrumented probe HANGS before `main`, it does not abort: sdl2-compat's `dllinit` fails to dlopen SDL3 and raises a modal `NSAlert` nothing can dismiss (root cause and evidence in ADR-0010). The same probe runs under UBSan (`ELISA_SANITIZER=undefined`), and the boundary harness keeps the ASan+UBSan pair |
 | Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL3 event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
 | Live input driving the native rendered host | Tested + Implemented | `native/live_game_probe.h`, `scripts/wicked_probe.elisascript` (live frame non-blank after an SDL key drives the game) |
 | Live input driving the Godot rendered capture | Tested + Implemented | `scripts/build_godot_extension.py`, `backends/godot/capture.gd` (synthetic key → `maze_step` → live marker → verified live frame) |
@@ -149,18 +149,17 @@ writes `build/validation.json`. Host evidence comes from
 
 Re-run on the current tree:
 
-- `elisascript scripts/check.elisascript` — all 32 runtime suites pass, but the
-  proof step is currently blocked: the prover rebuilt from `elisa-proof`
-  e2fadd8 no longer establishes branch facts read from a mutable reference
-  field, so `proof/entity_id.elisa` reports 13/15 (see ADR-0010 for the
-  minimized repro). The engine source is unchanged; re-run after the prover
-  fix.
+- `elisascript scripts/check.elisascript` — exit 0: all 32 runtime suites pass
+  and the proof step is green again. `proof/entity_id.elisa` is 15/15
+  obligations replayed and `proof/world.elisa` 2/2, status `proved` with no
+  replay gaps. The branch-fact regression is fixed in `elisa-proof` 12c79ab
+  (see ADR-0010); the engine source was never changed for it.
 - `python3 scripts/run_boundary_sanitized.py` — exit 0, no AddressSanitizer or
   UBSan finding over the boundary libraries.
 - `ELISA_SANITIZER=undefined CXX="$PWD/scripts/cxx_sanitize.py" elisascript
   scripts/wicked_probe.elisascript` — exit 0, the full graphics probe under
-  UBSan with no report (AddressSanitizer still aborts before `main` in the
-  sandbox).
+  UBSan with no report (the AddressSanitizer flavor of the same probe still
+  hangs before `main` in sdl2-compat's library initializer).
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
   budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture
   (including the KTX container), UDP, menu, pose, and Wicked-GUI checks all pass.
