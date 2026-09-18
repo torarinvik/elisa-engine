@@ -92,8 +92,11 @@ def main() -> int:
         "--script", "res://godot_embed_probe.gd",
     ])
     relay(probe)
-    marker = "embed godot: full session agrees with the native embedding"
-    if probe.returncode != 0 or marker not in probe.stdout:
+    markers = (
+        "embed godot live input:",
+        "embed godot: full session agrees with the native embedding",
+    )
+    if probe.returncode != 0 or any(marker not in probe.stdout for marker in markers):
         print("Godot embedded maze host failed; the log identifies the step.", file=sys.stderr)
         return probe.returncode if probe.returncode != 0 else 1
     print("Godot embedded maze host passed: the same Elisa gameplay drives both host families.")

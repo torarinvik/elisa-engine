@@ -65,6 +65,35 @@ func _run_probe() -> void:
 	if not check_equal("wall(1,1)", ElisaMaze.maze_is_wall(1, 1), 0):
 		quit(1)
 		return
+
+	# Live input, the same path the game uses: a synthetic key event is parsed
+	# by the host, mapped to the portable move code, and drives Elisa gameplay
+	# through the extension. The native embedding maps SDL keys the same way.
+	var keycodes := {"KeyW": KEY_W, "KeyA": KEY_A, "KeyS": KEY_S, "KeyD": KEY_D}
+	var move_codes := {"KeyW": 0, "KeyA": 2, "KeyS": 1, "KeyD": 3}
+	ElisaMaze.maze_start()
+	var pressed := 0
+	for name in keycodes:
+		var event := InputEventKey.new()
+		event.keycode = keycodes[name]
+		event.physical_keycode = keycodes[name]
+		event.pressed = true
+		Input.parse_input_event(event)
+		Input.flush_buffered_events()
+		if Input.is_key_pressed(keycodes[name]):
+			pressed += 1
+	if not check_equal("input pressed", pressed, keycodes.size()):
+		quit(1)
+		return
+	if not check_equal("live east moved", ElisaMaze.maze_step(move_codes["KeyD"]), 1):
+		quit(1)
+		return
+	if not check_equal("live after east x", ElisaMaze.maze_player_x(), 2):
+		quit(1)
+		return
+	print("embed godot live input: keys=%d move_code=%d player_x=%d" % [
+		pressed, move_codes["KeyD"], ElisaMaze.maze_player_x()])
+
 	ElisaMaze.maze_start()
 	for step in range(4):
 		ElisaMaze.maze_step(1)

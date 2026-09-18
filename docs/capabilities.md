@@ -125,7 +125,8 @@ writes `build/validation.json`. Host evidence comes from
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
 | ASan full graphics probe | Planned | AddressSanitizer aborts before `main` under this session's sandbox; boundary harness keeps ASan+UBSan |
-| Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
+| Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
+| Live input driving the rendered capture hosts | Planned | `backends/godot/probe.gd` and the Wicked probe still replay Elisa-computed routes |
 | Skinned-mesh submission to the hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `skin_quad`, `backends/godot/probe.gd`, `native/skin_probe.h` |
 | UI menu model (layout, focus, scrolling, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
 | UI box layout (orientation, padding, spacing) | Tested | `src/ui/layout.elisa`, `test/editor.elisa` |

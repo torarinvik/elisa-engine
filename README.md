@@ -234,7 +234,10 @@ the session is process-global, so the class offers class-level calls rather
 than pretending every object owns state. `python3 scripts/godot_embed_probe.py`
 emits the archive, builds the extension, imports it, and plays a full session
 (start, movement, hazard, reset, win) that must agree with the native
-embedding move for move (ADR-0013).
+embedding move for move. It also drives gameplay from live input: a synthetic
+key event is parsed by the host, mapped to the same portable move code the
+native embedding uses, and reaches `maze_step` through the extension
+(ADR-0013).
 
 The fixture also carries the engine's UI theme (`menu_style_*`), so a host
 applies Elisa's surface and label colors instead of choosing its own:
