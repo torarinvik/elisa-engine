@@ -56,4 +56,14 @@ def main() -> i32:
     return 18 if parent_matrix[2] < -1.001 or parent_matrix[2] > -0.999 or parent_matrix[8] < 0.999 or parent_matrix[8] > 1.001
     return 19 if parent_matrix[12] < 0.999 or parent_matrix[12] > 1.001
     return 20 if quat_normalize(Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0}).w != 1.0
+
+    # Proximity protocol: three unrelated shapes share one distance query, and
+    # a generic takes two different implementing types in the same call.
+    near_point: Vec3 = Vec3{x: 2.0, y: 0.0, z: 0.0}
+    return 21 if not within_radius(near_point, origin, 2.5) or within_radius(near_point, origin, 1.5)
+    far_box: Bounds3 = Bounds3{minimum: Vec3{x: 3.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 4.0, y: 1.0, z: 1.0}}
+    return 22 if not within_radius(far_box, origin, 3.5) or within_radius(far_box, origin, 2.5)
+    return 23 if bounds3_distance(far_box, origin) < 2.999 or bounds3_distance(far_box, origin) > 3.001
+    return 24 if not within_radius(ray, Vec3{x: 0.0, y: 1.0, z: 0.0}, 1.5)
+    return 25 if nearest_distance(far_box, near_point, origin) < 1.999 or nearest_distance(far_box, near_point, origin) > 2.001
     0

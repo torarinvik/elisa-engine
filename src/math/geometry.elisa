@@ -167,6 +167,59 @@ module Geometry:
         def ray3_at(ray: Ray3, distance: f32) -> Vec3:
             vec3_add(ray.origin, vec3_scale(ray.direction, distance))
 
+        # Distance from a point to the nearest point of a valid box; zero when
+        # the point is inside. Invalid (reversed) bounds are not a shape, so
+        # callers must check bounds3_valid first.
+        def bounds3_distance(bounds: Bounds3, point: Vec3) -> f32:
+            dx: mutable f32 = Scalar::ZERO
+            dx <- bounds.minimum.x - point.x if point.x < bounds.minimum.x
+            dx <- point.x - bounds.maximum.x if point.x > bounds.maximum.x
+            dy: mutable f32 = Scalar::ZERO
+            dy <- bounds.minimum.y - point.y if point.y < bounds.minimum.y
+            dy <- point.y - bounds.maximum.y if point.y > bounds.maximum.y
+            dz: mutable f32 = Scalar::ZERO
+            dz <- bounds.minimum.z - point.z if point.z < bounds.minimum.z
+            dz <- point.z - bounds.maximum.z if point.z > bounds.maximum.z
+            vec3_length(Vec3{x: dx, y: dy, z: dz})
+
+        # Distance from a point to the nearest point of a ray, clamped at the
+        # origin so the result is a ray distance, not a line distance. A
+        # zero-length direction degenerates to the origin.
+        def ray3_distance(ray: Ray3, point: Vec3) -> f32:
+            direction_squared: f32 = vec3_length_squared(ray.direction)
+            return vec3_distance(ray.origin, point) if direction_squared <= Scalar::ZERO
+            offset: Vec3 = vec3_sub(point, ray.origin)
+            projection: f32 = vec3_dot(offset, ray.direction) / direction_squared
+            clamped: f32 = projection if projection >= Scalar::ZERO else Scalar::ZERO
+            vec3_distance(ray3_at(ray, clamped), point)
+
+        # Behavior abstraction: a point, a box, and a ray answer the same
+        # proximity query without sharing a representation or a base type.
+        # Protocols are constraints, not boxed values, so the generic forms
+        # take one or two concrete implementing types.
+        protocol Distant:
+            def distance_to(self: Self, point: Vec3) -> f32
+
+        impl Distant for Vec3:
+            def distance_to(self: Self, point: Vec3) -> f32:
+                vec3_distance(self, point)
+
+        impl Distant for Bounds3:
+            def distance_to(self: Self, point: Vec3) -> f32:
+                bounds3_distance(self, point)
+
+        impl Distant for Ray3:
+            def distance_to(self: Self, point: Vec3) -> f32:
+                ray3_distance(self, point)
+
+        def within_radius(shape: Distant, point: Vec3, radius: f32) -> bool:
+            shape.distance_to(point) <= radius
+
+        def nearest_distance[A: Distant, B: Distant](a: A, b: B, point: Vec3) -> f32:
+            first: f32 = a.distance_to(point)
+            second: f32 = b.distance_to(point)
+            first if first <= second else second
+
         # Square root by Newton iteration. The engine keeps its math in Elisa
         # rather than exposing a vendor type, and the language has no square
         # root yet, so a bounded fixed iteration count is used: 24 steps is

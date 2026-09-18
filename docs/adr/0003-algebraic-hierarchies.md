@@ -23,13 +23,34 @@ taxonomy with capabilities.
 
 `src/world/world.elisa` (`Entity`/`Actor`/`Enemy` with `ActorRecord` and
 `EnemyRecord` stores), `test/world.elisa` leaf matching, maze game rules
-in `examples/maze/game.elisa` matching on moves rather than a type tree.
+in `examples/maze/game.elisa` matching on moves rather than a type tree,
+and the `Geometry::Distant` protocol with `test/geometry.elisa`.
 
 ## Not covered
 
 Runtime-loaded binary plugins with unknown cases remain incompatible
 with compile-time exhaustiveness; that combination is not promised.
 
+
+## Protocols express behavior, not taxonomy (2026-09-18)
+
+The first engine protocol is `Geometry::Distant`: a point (`Vec3`), an
+axis-aligned box (`Bounds3`), and a ray (`Ray3`) all answer
+`distance_to(point)` while sharing no representation, no base type, and no
+storage. `within_radius(shape: Distant, ...)` and
+`nearest_distance[A: Distant, B: Distant](...)` are generic over the protocol,
+and the second takes two independently specialized implementing types in one
+call. `test/geometry.elisa` pins the three implementations and both generic
+forms.
+
+Two compiler constraints were established while adding it. An `impl` must be
+declared beside the implementing type (or at top level with a top-level
+protocol); `impl Distant for Other::Type` from a third module does not
+register the interface fact. Protocol parameters are constraints, not boxed
+values, so heterogeneous collections of implementations are not expressible
+through a protocol alone and no protocol value can be stored. The game stays
+grid-based and does not use the shape protocol; proximity is an engine math
+capability, not a forced refactor of gameplay.
 
 ## Upward composition predicates (2026-09-18)
 
