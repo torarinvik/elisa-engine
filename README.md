@@ -224,8 +224,10 @@ and removes them before capture, so both backend families render Elisa UI
 widgets from the same data.
 
 `src/ui/menu.elisa` is the engine-owned menu model: a fixed-height vertical
-list with focus navigation that skips disabled rows, pointer hit testing, and
-activation returning an action id the game maps to its own flow. No text and no
+list with focus navigation that skips disabled rows, a visible window that
+scrolls to keep the focused row on screen, pointer hit testing that accounts for
+the scroll offset, and activation returning an action id the game maps to its
+own flow. No text and no
 rendering live in the model; `examples/maze/menu.elisa` decides which actions
 each game state offers, so the model never learns the game's rules.
 

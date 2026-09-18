@@ -73,6 +73,8 @@ audio_cues=4
 # only draws what it is given.
 menu_actions=5
 menu_focus=1
+# Rows the host shows at once; a shorter window scrolls to keep focus visible.
+menu_visible=3
 menu_enabled=0,1,1,0,1
 # Wall cells in the Elisa maze topology, row-major (x,y). The count is pinned
 # by test/maze.elisa (maze_wall_count == 34) and re-checked by

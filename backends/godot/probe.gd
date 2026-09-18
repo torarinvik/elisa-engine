@@ -192,8 +192,12 @@ func _run_probe() -> void:
         buttons[menu_focus].grab_focus()
         await process_frame
         var focused: Control = root.gui_get_focus_owner()
-        print("godot menu: actions=%d focus=%d focused=%s disabled=%d" % [
-            action_count, menu_focus, focused.name if focused != null else "none", disabled_count])
+        var menu_visible: int = int(manifest.get("menu_visible", str(action_count)))
+        print("godot menu: actions=%d focus=%d visible=%d focused=%s disabled=%d" % [
+            action_count, menu_focus, menu_visible, focused.name if focused != null else "none", disabled_count])
+        if menu_focus >= menu_visible:
+            _fail("menu focus is outside the visible window")
+            return
         if focused != buttons[menu_focus] or disabled_count != enabled_flags.count(0):
             _fail("menu focus or disabled state does not match the fixture")
             return

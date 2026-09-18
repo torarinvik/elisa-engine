@@ -247,6 +247,14 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             raise ValueError(f"scene manifest menu_focus {menu_focus} is not an enabled row")
         if "1" not in enabled:
             raise ValueError("scene manifest menu has no enabled action")
+        if "menu_visible" in values:
+            menu_visible = int(values["menu_visible"])
+            if menu_visible <= 0 or menu_visible > menu_actions:
+                raise ValueError(f"scene manifest menu_visible out of range: {menu_visible}")
+            # The fixture's window starts at row 0, so the focused row must be
+            # inside it.
+            if menu_focus >= menu_visible:
+                raise ValueError(f"scene manifest menu_focus {menu_focus} is outside the {menu_visible}-row window")
     # Portable input mapping names, kept to the engine's button vocabulary so a
     # host never receives an enum ordinal.
     input_buttons = ("KeyA", "KeyD", "KeyW", "PadLeft", "PadRight", "PadUp")

@@ -12,6 +12,28 @@ using Editor
 using Assets
 using AssetCatalogue
 
+# A menu window shorter than the list scrolls to keep the focused row visible,
+# visible_action maps a window row to its action, and hit testing accounts for
+# the scroll offset.
+def ui_scroll_test() -> i32:
+    menu: mutable Ui::Menu = Ui::menu_new(0, 0)
+    for action in 1..<9 |menu|:
+        _ = Ui::menu_add(&menu, action.i64(), true)
+    return 76 if not Ui::menu_valid(&menu) or item_count(&menu) != 8
+    return 77 if not Ui::menu_set_visible(&menu, 3) or Ui::visible_rows(&menu) != 3 or Ui::scroll_offset(&menu) != 0
+    Ui::focus_next(&menu)
+    Ui::focus_next(&menu)
+    Ui::focus_next(&menu)
+    return 78 if menu.focus != 3 or Ui::scroll_offset(&menu) != 1
+    return 79 if Ui::visible_action(&menu, 0) != 2 or Ui::visible_action(&menu, 2) != 4
+    Ui::focus_next(&menu)
+    Ui::focus_next(&menu)
+    Ui::focus_next(&menu)
+    Ui::focus_next(&menu)
+    return 80 if menu.focus != 7 or Ui::scroll_offset(&menu) != 5 or Ui::visible_action(&menu, 2) != 8
+    return 81 if Ui::hit_test(&menu, 0) != 5 or Ui::hit_test(&menu, 60) != -1 or not Ui::menu_valid(&menu)
+    0
+
 def main() -> i32:
     game: mutable MazeGame = game_new()
     return 1 if game.lives != 3 or game.has_key or game.cue_count != 0
@@ -198,4 +220,6 @@ def main() -> i32:
     corrupt: mutable Blob = Blob{version: saved.version, count: saved.count, fields: saved.fields}
     corrupt.fields[0] <- 0
     return 71 if game_load(&loaded_game, &corrupt) or not game_valid(&loaded_game)
+    scrolled: i32 = ui_scroll_test()
+    return scrolled if scrolled != 0
     0

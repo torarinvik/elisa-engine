@@ -19,11 +19,13 @@ module Ui:
             items: mutable Item[8]
             count: mutable usize
             focus: mutable i64
+            visible: mutable usize
+            scroll: mutable i64
             x: i64
             y: i64
 
         def menu_new(x: i64, y: i64) -> Menu:
-            Menu{items: zeroed, count: 0, focus: -1, x: x, y: y}
+            Menu{items: zeroed, count: 0, focus: -1, visible: Tune::MAX_ITEMS, scroll: 0, x: x, y: y}
 
         def menu_add(menu: mutable Menu&, action: i64, enabled: bool) -> bool:
             return false if menu.count >= Tune::MAX_ITEMS or action <= 0
@@ -46,6 +48,10 @@ module Ui:
         def menu_valid(menu: Menu&) -> bool:
             return false if menu.count > Tune::MAX_ITEMS
             return false if menu.focus < -1 or menu.focus >= menu.count.i64()
+            return false if menu.visible == 0 or menu.visible > Tune::MAX_ITEMS
+            return false if menu.scroll < 0
+            # The visible window always contains the focused row.
+            return false if menu.focus >= 0 and (menu.focus < menu.scroll or menu.focus >= menu.scroll + menu.visible.i64())
             # A focused item is always enabled, and action ids are unique.
             for index in 0..<menu.count |valid: bool = true| -> valid:
                 valid <- false if menu.items[index].action <= 0
@@ -63,6 +69,41 @@ module Ui:
         def item_enabled(menu: Menu&, index: usize) -> bool:
             false if index >= menu.count else menu.items[index].enabled
 
+        def visible_rows(menu: Menu&) -> usize:
+            menu.visible
+
+        def scroll_offset(menu: Menu&) -> i64:
+            menu.scroll
+
+        # Keep the focused row inside the visible window, then clamp the window
+        # so it never scrolls past the last full page.
+        def focus_visible(menu: mutable Menu&) -> void:
+            return if menu.focus < 0
+            if menu.focus < menu.scroll:
+                menu.scroll <- menu.focus
+            window_end: i64 = menu.scroll + menu.visible.i64() - 1
+            if menu.focus > window_end:
+                menu.scroll <- menu.focus - menu.visible.i64() + 1
+            highest: i64 = menu.count.i64() - menu.visible.i64()
+            return if highest < 0
+            if menu.scroll > highest:
+                menu.scroll <- highest
+            if menu.scroll < 0:
+                menu.scroll <- 0
+
+        def menu_set_visible(menu: mutable Menu&, rows: usize) -> bool:
+            return false if rows == 0 or rows > Tune::MAX_ITEMS
+            menu.visible <- rows
+            focus_visible(menu)
+            true
+
+        # Action at a visible row (0 is the top of the window), or -1.
+        def visible_action(menu: Menu&, row: usize) -> i64:
+            return -1 if row >= menu.visible
+            index: i64 = menu.scroll + row.i64()
+            return -1 if index >= menu.count.i64() or not menu.items[index.usize()].enabled
+            menu.items[index.usize()].action
+
         def focused_action(menu: Menu&) -> i64:
             return -1 if menu.focus < 0 or menu.focus >= menu.count.i64()
             menu.items[menu.focus.usize()].action
@@ -77,6 +118,7 @@ module Ui:
                 chosen <- candidate if chosen < 0 and menu.items[candidate.usize()].enabled
             if chosen >= 0:
                 menu.focus <- chosen
+                focus_visible(menu)
             chosen >= 0
 
         def focus_previous(menu: mutable Menu&) -> bool:
@@ -87,6 +129,7 @@ module Ui:
                 chosen <- candidate if chosen < 0 and menu.items[candidate.usize()].enabled
             if chosen >= 0:
                 menu.focus <- chosen
+                focus_visible(menu)
             chosen >= 0
 
         # Pointer hit test: the row under the pointer, or -1 outside the list or
@@ -94,7 +137,9 @@ module Ui:
         def hit_test(menu: Menu&, pointer_y: i64) -> i64:
             relative: i64 = pointer_y - menu.y
             return -1 if relative < 0
-            index: i64 = relative / Tune::ROW_HEIGHT
+            row: i64 = relative / Tune::ROW_HEIGHT
+            return -1 if row >= menu.visible.i64()
+            index: i64 = menu.scroll + row
             return -1 if index >= menu.count.i64() or not menu.items[index.usize()].enabled
             index
 
@@ -103,4 +148,5 @@ module Ui:
         def activate(menu: mutable Menu&, index: usize) -> i64:
             return -1 if index >= menu.count or not menu.items[index].enabled
             menu.focus <- index.i64()
+            focus_visible(menu)
             menu.items[index].action

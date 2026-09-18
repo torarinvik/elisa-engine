@@ -46,7 +46,17 @@ inline bool probe_menu(const std::map<std::string, std::string>& manifest) {
     for (int flag : enabled) {
         disabled += (flag == 0) ? 1 : 0;
     }
-    std::fprintf(stdout, "menu: actions=%d focus=%d disabled=%d\n", actions, focus, disabled);
+    int visible = actions;
+    const auto visible_it = manifest.find("menu_visible");
+    if (visible_it != manifest.end()) {
+        visible = std::stoi(visible_it->second);
+        if (!check(visible > 0 && visible <= actions && focus < visible,
+                "menu focus is inside the visible window")) {
+            return false;
+        }
+    }
+    std::fprintf(stdout, "menu: actions=%d focus=%d visible=%d disabled=%d\n",
+        actions, focus, visible, disabled);
     return true;
 }
 
