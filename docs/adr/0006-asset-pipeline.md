@@ -32,3 +32,16 @@ bytes in the shipped runtime expands the attack surface.
 
 Byte-level importers, texture transcoding, audio streaming, chunked
 scene streaming; catalogue persistence format (SQLite) not yet chosen.
+
+## Bounded import and malformed-asset tests (2026-09-18)
+
+`scripts/cook_assets.py` now bounds the untrusted import: document, buffer,
+accessor, bufferView, and mesh counts have ceilings, the embedded buffer's
+encoded length is checked before decoding, and every accessor's byte range must
+lie inside the buffer instead of being silently sliced. `--self-test` crafts
+seven malformed documents (wrong version, too many accessors, no embedded
+buffer, out-of-range bufferView, accessor range beyond the buffer, negative
+count, unsupported component type) and requires all to be rejected; it runs as
+`asset_import_bounds` inside the validation gate. This keeps import parsing
+bounded and gives the malformed-asset and oversized-count cases real tests
+rather than a claim.

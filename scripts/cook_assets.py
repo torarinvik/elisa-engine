@@ -21,6 +21,16 @@ from pathlib import Path
 
 PACKAGE_FORMAT = "elisa-cooked-v2"
 
+# Bounds on untrusted import input. The plan asks to bound parsing work and to
+# test malformed assets and oversized counts, so every structural count and
+# byte range is checked before it is used, and a document that exceeds a bound
+# is rejected rather than partially parsed.
+MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
+MAX_BUFFER_BYTES = 64 * 1024 * 1024
+MAX_ACCESSORS = 4096
+MAX_BUFFER_VIEWS = 4096
+MAX_MESHES = 4096
+
 
 def read_manifest(root: Path) -> dict:
     values = {}
@@ -34,9 +44,17 @@ def read_manifest(root: Path) -> dict:
 
 
 def read_gltf(data: bytes) -> dict:
+    if len(data) > MAX_DOCUMENT_BYTES:
+        raise ValueError("glTF document exceeds the size bound")
     document = json.loads(data)
     if document.get("asset", {}).get("version") != "2.0":
         raise ValueError("not a glTF 2.0 asset")
+    if len(document.get("accessors", [])) > MAX_ACCESSORS:
+        raise ValueError("glTF exceeds the accessor bound")
+    if len(document.get("bufferViews", [])) > MAX_BUFFER_VIEWS:
+        raise ValueError("glTF exceeds the bufferView bound")
+    if len(document.get("meshes", [])) > MAX_MESHES:
+        raise ValueError("glTF exceeds the mesh bound")
     return document
 
 
@@ -49,18 +67,40 @@ def source_bytes(root: Path, document: dict) -> bytes:
     uri = buffers[0].get("uri", "")
     if not uri.startswith("data:") or ";base64," not in uri:
         raise ValueError("buffer is not an embedded base64 data URI")
-    return base64.b64decode(uri.split(";base64,", 1)[1])
+    encoded = uri.split(";base64,", 1)[1]
+    # The encoded form is about 4/3 of the decoded size; check before decoding
+    # so an oversized URI cannot allocate the whole buffer first.
+    if len(encoded) > MAX_BUFFER_BYTES * 2:
+        raise ValueError("embedded buffer exceeds the size bound")
+    decoded = base64.b64decode(encoded)
+    if len(decoded) > MAX_BUFFER_BYTES:
+        raise ValueError("embedded buffer exceeds the size bound")
+    return decoded
 
 
 def accessor_bytes(document: dict, buffer: bytes, accessor_index: int) -> bytes:
-    accessor = document["accessors"][accessor_index]
-    view = document["bufferViews"][accessor["bufferView"]]
+    accessors = document["accessors"]
+    if accessor_index < 0 or accessor_index >= len(accessors):
+        raise ValueError("accessor index out of range")
+    accessor = accessors[accessor_index]
+    views = document["bufferViews"]
+    view_index = accessor["bufferView"]
+    if view_index < 0 or view_index >= len(views):
+        raise ValueError("bufferView index out of range")
+    view = views[view_index]
     component_sizes = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}
     components = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[accessor["type"]]
     element = component_sizes[accessor["componentType"]] * components
     stride = view.get("byteStride", element)
     start = view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
     count = accessor["count"]
+    if count < 0:
+        raise ValueError("accessor count is negative")
+    # The whole range the accessor would touch must lie inside the buffer, so a
+    # truncated or overflowing range is rejected instead of silently sliced.
+    end = start + element * count if count == 0 else start + (count - 1) * stride + element
+    if start < 0 or end > len(buffer):
+        raise ValueError("accessor range exceeds the buffer")
     if stride == element:
         return buffer[start:start + element * count]
     packed = bytearray()
@@ -162,13 +202,52 @@ def cook(root: Path) -> Path:
     return package
 
 
+def self_test() -> int:
+    def document(accessor_count: int = 3, component: int = 5126, view: int = 0, buffer_bytes: int = 64) -> dict:
+        payload = base64.b64encode(bytes(buffer_bytes)).decode()
+        return {
+            "asset": {"version": "2.0"},
+            "buffers": [{"uri": "data:application/octet-stream;base64," + payload}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": buffer_bytes}],
+            "accessors": [{"bufferView": view, "componentType": component, "count": accessor_count, "type": "VEC3"}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 0}]}],
+        }
+
+    def buffer_of(doc: dict) -> bytes:
+        return source_bytes(None, doc)
+
+    checks = [
+        ("wrong version", lambda: read_gltf(b'{"asset":{"version":"1.0"}}')),
+        ("too many accessors", lambda: read_gltf(json.dumps({"asset": {"version": "2.0"}, "accessors": [{}] * (MAX_ACCESSORS + 1)}).encode())),
+        ("no embedded buffer", lambda: source_bytes(None, {"buffers": []})),
+        ("view index out of range", lambda: accessor_bytes(document(view=9), buffer_of(document(view=9)), 0)),
+        ("accessor beyond buffer", lambda: accessor_bytes(document(accessor_count=100), buffer_of(document(accessor_count=100)), 0)),
+        ("negative count", lambda: accessor_bytes(document(accessor_count=-1), buffer_of(document(accessor_count=-1)), 0)),
+        ("unsupported component", lambda: normalized_geometry(document(component=5120), buffer_of(document(component=5120)))),
+    ]
+    failures = 0
+    for (name, call) in checks:
+        try:
+            call()
+            print(f"self-test: {name} was accepted but should have been rejected", file=sys.stderr)
+            failures += 1
+        except (OSError, ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):
+            pass
+    if failures != 0:
+        return 1
+    print(f"asset import self-test passed: {len(checks)} malformed documents rejected")
+    return 0
+
+
 def main(arguments: list[str]) -> int:
+    if arguments == ["--self-test"]:
+        return self_test()
     if len(arguments) != 1:
-        print("usage: cook_assets.py ENGINE_ROOT", file=sys.stderr)
+        print("usage: cook_assets.py ENGINE_ROOT | --self-test", file=sys.stderr)
         return 2
     try:
         cook(Path(arguments[0]).resolve(strict=True))
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as failure:
+    except (OSError, ValueError, KeyError, IndexError, json.JSONDecodeError) as failure:
         print(f"asset cooking failed: {failure}", file=sys.stderr)
         return 1
     return 0

@@ -101,8 +101,11 @@ copying WickedEngine into this repository.
 `examples/maze/assets/maze_tile.gltf` is the first authored source
 asset; the Godot host loads it through its own glTF importer and the
 native host imports it through cgltf, both verified against the
-fixture's pinned triangle count. `scripts/cook_assets.py` then cooks the source into a versioned,
-hash-carrying package (normalized float32 positions/normals and uint32
+fixture's pinned triangle count. `scripts/cook_assets.py` bounds untrusted import input (document, buffer,
+accessor, and mesh counts; accessor byte ranges inside the buffer) and rejects a
+malformed or oversized asset rather than partially parsing it; its `--self-test`
+rejects a set of crafted bad documents and runs as part of validation. It then
+cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the pinned
 dependency with `python3 scripts/fetch_dependencies.py` before building

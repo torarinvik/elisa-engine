@@ -297,6 +297,19 @@ def source_length_policy(root: Path) -> dict:
     return {"max_lines": largest, "max_file": largest_file, "files": count, "limit": MAX_SOURCE_LINES}
 
 
+def asset_import_self_test(root: Path) -> dict:
+    # Malformed-asset and oversized-count handling is a gate, not a manual
+    # step: the cooker's self-test must reject every crafted bad document.
+    script = root / "scripts/cook_assets.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--self-test"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"asset import self-test failed: {result.stderr.strip() or result.stdout.strip()}")
+    return {"sha256": sha256_file(script), "summary": result.stdout.strip()}
+
+
 def release_package(root: Path, compiler: str) -> dict:
     # A release is only recorded if the packager proved the archive
     # reproducible. The summary pins the archive hash and the platform, and
@@ -343,8 +356,9 @@ def main(arguments: list[str]) -> int:
             "scene_manifest": scene_manifest_matches_bridge(engine),
             "source_length_policy": source_length_policy(engine),
             "cooked_asset": cooked,
+            "asset_import_bounds": asset_import_self_test(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
