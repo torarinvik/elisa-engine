@@ -12,12 +12,16 @@
 #include <vector>
 
 namespace probe {
-bool check(bool value, const char* message) {
+bool check_named(const char* probe_name, bool value, const char* message) {
     if (!value) {
-        std::fprintf(stderr, "wicked probe failed: %s\n", message);
+        std::fprintf(stderr, "%s probe failed: %s\n", probe_name, message);
         return false;
     }
     return true;
+}
+
+bool check(bool value, const char* message) {
+    return check_named("wicked", value, message);
 }
 
 bool load_manifest(const char* filename, std::map<std::string, std::string>& values) {

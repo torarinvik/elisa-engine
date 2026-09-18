@@ -105,7 +105,7 @@ writes `build/validation.json`. Host evidence comes from
 | Netcode convergence fuzz across loss/delay profiles | Tested | `test/session.elisa` |
 | Integer-overflow rejection at the wire boundary | Tested | `Wire::encode` bounds, `test/session.elisa` |
 | Real socket transport for the frame shape | Tested | `native/udp_probe.h` (UDP loopback) |
-| GameNetworkingSockets transport | Planned | UDP loopback is a stand-in, not the selected library |
+| GameNetworkingSockets transport | Tested + Implemented | `scripts/fetch_gns.py` (pinned a424b7db), `native/gns_probe.cpp`, `scripts/gns_probe.py` (33-byte replication frame over a real loopback connection) |
 
 ## Tooling, releases, and specialist libraries
 
@@ -165,8 +165,12 @@ Re-run on the current tree:
 - `python3 scripts/embed_probe.py` — exit 0; the host links the Elisa C archive,
   drives gameplay, maps an SDL event to a move, and exercises the hazard rules.
 - `python3 scripts/godot_embed_probe.py` — exit 0; the Godot host dumps its own
-  GDExtension header, builds the bridge over the same archive, and plays a full
-  session that matches the native embedding move for move.
+  GDExtension header, builds the bridge over the same archive, plays a full
+  session that matches the native embedding move for move, and drives gameplay
+  from live input through the extension.
+- `python3 scripts/gns_probe.py` — exit 0; GameNetworkingSockets is fetched,
+  built, linked, and moves the engine's 33-byte replication frame over a real
+  loopback connection unchanged.
 
 ## Deferred
 
@@ -175,10 +179,6 @@ roadmap "an integration order, not a command to add every dependency
 immediately," and each of these is either optional for the first game or needs a
 toolchain not present in this environment:
 
-- **GameNetworkingSockets transport.** Replication, authority, prediction,
-  interpolation, and recovery are implemented and tested, and a real UDP socket
-  round trip exercises the byte boundary, but the selected transport library is
-  not vendored or built here.
 - **General UI layout/style system.** The menu model and host widgets exist, but
   there is no general layout, styling, or text-flow system.
 

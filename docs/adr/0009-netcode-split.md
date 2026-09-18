@@ -33,6 +33,20 @@ game-state agreement produces silent divergence.
 Transport integration, loss/latency chaos runs, demonstrated multiplayer
 session, authority migration, snapshot compression.
 
+## GameNetworkingSockets transport (2026-09-18)
+
+The selected transport is now linked, not just named. `scripts/fetch_gns.py`
+pins GameNetworkingSockets at a424b7db and builds the static library without
+Steam sockets; `native/gns_probe.cpp` runs a listen socket and a client
+connection in one process and sends the engine's own 33-byte replication frame
+(persistent, biased x, biased y, revision, owner, little-endian) over
+127.0.0.1, requiring the delivered bytes to be unchanged and the reliable send
+to be accepted. `scripts/gns_probe.py` fetches, builds, compiles, and runs it;
+`record_validation.py` records the checkout. Replication, authority,
+prediction, interpolation, recovery, and rollback remain the Elisa modules from
+the sections above, exactly as the split requires. Steam sockets stay off, so
+the library speaks plain UDP and no Steam SDK is involved.
+
 ## Client prediction (2026-09-18)
 
 `src/net/prediction.elisa` adds the client half above the transport. Local

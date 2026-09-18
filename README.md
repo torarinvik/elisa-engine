@@ -308,9 +308,13 @@ clamps rather than extrapolating; and recovery that detects a revision gap,
 blocks application until a snapshot resyncs, and never rewinds the rollback
 high-water mark; and a sliding window that resends the oldest unacknowledged
 record so a dropped frame is recovered rather than waited out). The loopback is a transport double: it proves the
-encode/deliver/decode/reconcile chain under loss and latency, not that a
-real socket works. None of these link their native libraries yet; they
-establish the contracts those integrations must satisfy.
+encode/deliver/decode/reconcile chain under loss and latency. A real UDP round
+trip (`native/udp_probe.h`) exercises the socket boundary, and the selected
+transport library is linked: `scripts/fetch_gns.py` pins
+GameNetworkingSockets, `native/gns_probe.cpp` moves the engine's 33-byte frame
+over a real loopback connection, and `python3 scripts/gns_probe.py` builds and
+runs it. Replication, authority, prediction, interpolation, and recovery remain
+Elisa modules above the transport.
 
 The current stage1 compiler rejects direct copies of the affine allocator,
 World, and scene recorder from borrowed parameters; the check script verifies those rejection
