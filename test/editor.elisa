@@ -1,5 +1,7 @@
 include "../src/tooling/editor.elisa"
+include "../src/tooling/reload.elisa"
 using Editor
+using Reload
 
 def main() -> i32:
     history: mutable History = history_new()
@@ -35,4 +37,58 @@ def main() -> i32:
     return 14 if not is_stale(&reloads, 5, 0) or is_stale(&reloads, 5, 1)
     rejected: bool = note_asset_reload(&reloads, 0)
     return 15 if rejected
+
+    # Code-reload policy: the gate is open only when no system is running and
+    # no callback is in flight, and migration is explicit rather than guessed.
+    gate: mutable Gate = gate_new()
+    return 16 if not gate_valid(&gate) or not gate_quiescent(&gate) or not reload_allowed(&gate)
+    gate_enter(&gate)
+    return 17 if gate_quiescent(&gate) or reload_allowed(&gate)
+    busy: i32 = catch reload_begin(&gate):
+        ok: 0
+        ReloadError.Busy: 1
+        error failure: 2
+    return 18 if busy != 1 or gate.reloads != 0
+    gate_leave(&gate)
+    return 19 if not gate_quiescent(&gate) or not reload_allowed(&gate)
+    callback_begin(&gate)
+    return 20 if gate_quiescent(&gate) or reload_allowed(&gate)
+    callback_end(&gate)
+    allowed: i32 = catch reload_begin(&gate):
+        ok: 0
+        ReloadError.Busy: 1
+        error failure: 2
+    return 21 if allowed != 0 or gate.reloads != 1
+
+    migrated: mutable State = state_new()
+    return 22 if migrated.version != 1 or not state_valid(&migrated) or current_version() != 2
+    migrated.value <- 5
+    step_up: i32 = catch migrate(&migrated, 2):
+        ok: 0
+        ReloadError.UnknownVersion: 1
+        ReloadError.Downgrade: 2
+        error failure: 3
+    return 23 if step_up != 0 or migrated.version != 2 or migrated.value != 10 or not state_valid(&migrated)
+    no_op: i32 = catch migrate(&migrated, 2):
+        ok: 0
+        ReloadError.UnknownVersion: 1
+        error failure: 2
+    return 24 if no_op != 0 or migrated.value != 10
+    downgraded: i32 = catch migrate(&migrated, 1):
+        ok: 0
+        ReloadError.Downgrade: 1
+        ReloadError.UnknownVersion: 2
+        error failure: 3
+    return 25 if downgraded != 1 or migrated.version != 2
+    unknown: i32 = catch migrate(&migrated, 3):
+        ok: 0
+        ReloadError.UnknownVersion: 1
+        ReloadError.Downgrade: 2
+        error failure: 3
+    return 26 if unknown != 1 or migrated.value != 10
+    base: mutable State = State{version: 1, value: 3}
+    current: State = catch migrated_to_current(&base):
+        value: value
+        error failure: return 27
+    return 28 if current.version != 2 or current.value != 6 or not state_valid(&current)
     0

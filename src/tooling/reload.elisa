@@ -1,0 +1,83 @@
+# Code-reload policy. The plan keeps code reload out of scope until
+# quiescence, callback draining, and versioned state migration are
+# demonstrated, and warns that a preserved pointer into unloaded code is not a
+# reload strategy. This module demonstrates the three prerequisites as data:
+# a gate that is open only when no system is running and no backend callback is
+# in flight, and an explicit version-to-version migration that fails rather
+# than guessing. Loading code itself stays outside the engine for now.
+module Reload:
+    private:
+        const module Tune:
+            CURRENT_VERSION: i64 = 2
+            BASE_VERSION: i64 = 1
+            SCALE_STEP: i64 = 2
+
+    public:
+        error ReloadError:
+            Busy
+            UnknownVersion
+            Downgrade
+
+        struct Gate:
+            running: mutable usize
+            callbacks: mutable usize
+            reloads: mutable usize
+
+        struct State:
+            version: mutable i64
+            value: mutable i64
+
+        def gate_new() -> Gate:
+            Gate{running: 0, callbacks: 0, reloads: 0}
+
+        def gate_valid(gate: Gate&) -> bool:
+            gate.running <= 64 and gate.callbacks <= 64
+
+        def gate_enter(gate: mutable Gate&) -> void:
+            gate.running <- gate.running + 1
+
+        def gate_leave(gate: mutable Gate&) -> void:
+            return if gate.running == 0
+            gate.running <- gate.running - 1
+
+        def callback_begin(gate: mutable Gate&) -> void:
+            gate.callbacks <- gate.callbacks + 1
+
+        def callback_end(gate: mutable Gate&) -> void:
+            return if gate.callbacks == 0
+            gate.callbacks <- gate.callbacks - 1
+
+        # Quiescent means no system is mid-step and no registered callback is
+        # still in flight. Only then may code be replaced.
+        def gate_quiescent(gate: Gate&) -> bool:
+            gate.running == 0 and gate.callbacks == 0
+
+        def reload_allowed(gate: Gate&) -> bool:
+            gate_valid(gate) and gate_quiescent(gate)
+
+        def reload_begin(gate: mutable Gate&) -> void error[ReloadError]:
+            raise ReloadError.Busy if not reload_allowed(gate)
+            gate.reloads <- gate.reloads + 1
+
+        # Versioned state migration: each step is explicit and a newer state
+        # cannot be handed to older code, nor an unknown version guessed at.
+        def state_new() -> State:
+            State{version: Tune::BASE_VERSION, value: 0}
+
+        def state_valid(state: State&) -> bool:
+            state.version >= Tune::BASE_VERSION and state.version <= Tune::CURRENT_VERSION
+
+        def migrate(state: mutable State&, target: i64) -> void error[ReloadError]:
+            raise ReloadError.UnknownVersion if target < Tune::BASE_VERSION or target > Tune::CURRENT_VERSION
+            raise ReloadError.Downgrade if target < state.version
+            return if target == state.version
+            state.value <- state.value * Tune::SCALE_STEP
+            state.version <- target
+
+        def migrated_to_current(original: State&) -> State error[ReloadError]:
+            updated: mutable State = State{version: original.version, value: original.value}
+            try migrate(&updated, Tune::CURRENT_VERSION)
+            updated
+
+        def current_version() -> i64:
+            Tune::CURRENT_VERSION
