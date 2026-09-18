@@ -85,5 +85,22 @@ int main() {
         std::fprintf(stderr, "embed: live input did not drive gameplay\n");
         return 6;
     }
+
+    // The rules run through the ABI too: restart, walk onto the hazard at
+    // (2,5), and require a life to be spent and the player reset.
+    maze_start();
+    for (int step = 0; step < 4; ++step) {
+        maze_step(1); // south down the open first column
+    }
+    const int hazard = maze_step(3); // east onto the hazard
+    const int after_lives = maze_lives();
+    const int after_x = maze_player_x();
+    const int after_y = maze_player_y();
+    std::fprintf(stdout, "embed rules: hazard_move=%d lives=%d reset=(%d,%d)\n",
+        hazard, after_lives, after_x, after_y);
+    if (hazard != 1 or after_lives != 2 or after_x != 1 or after_y != 1) {
+        std::fprintf(stderr, "embed: hazard rules did not run through the ABI\n");
+        return 7;
+    }
     return 0;
 }

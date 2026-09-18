@@ -142,6 +142,8 @@ Re-run on the current tree:
   UDP, menu, pose, and Wicked-GUI checks all pass.
 - `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic
   and the two hosts agree on scene semantics.
+- `python3 scripts/embed_probe.py` — exit 0; the host links the Elisa C archive,
+  drives gameplay, maps an SDL event to a move, and exercises the hazard rules.
 
 ## Deferred
 
