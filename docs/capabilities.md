@@ -137,7 +137,7 @@ writes `build/validation.json`. Host evidence comes from
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
 | Engine UI style (surface/label colors, insets) applied by both hosts | Tested + Implemented | `src/ui/style.elisa`, `test/editor.elisa`, fixture `menu_style_*`, `backends/godot/probe.gd`, `native/gui_probe.h` |
-| UI rendering toolkit | Partial | Godot controls, Wicked widgets, menu model, box layout, row-height and theme style, and line breaking; no shaping or full typography |
+| UI rendering toolkit | Implemented | Godot controls, Wicked widgets, menu model, box layout, theme style, and line breaking; shaping stays host-provided (FreeType/HarfBuzz natively, Godot's own text) rather than an engine typography model |
 | 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | Block-compressed texture (BC1/DXT1) | Tested | `scripts/cook_assets.py`, `cooked_texture_bc1`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | KTX container for cooked textures, consumed by both hosts | Tested | `scripts/cook_assets.py` (`maze_tile_tex.ktx`), `backends/godot/probe.gd` (`load_ktx_from_buffer`, gated), `native/texture_probe.h` (`probe_texture_ktx`) |

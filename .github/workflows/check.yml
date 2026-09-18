@@ -35,3 +35,29 @@ jobs:
           assert (Path("build/catalogue.db")).is_file(), "cook produced no catalogue"
           print("cooked KTX containers and catalogue verified")
           PY
+
+  # The real libraries that need a toolchain: the selected transport and the
+  # Basis encoder are fetched, built, and run, and the boundary libraries run
+  # under AddressSanitizer/UBSan. These mirror commands verified on the
+  # development machine; the pinned compiler/prover and the graphics hosts
+  # still need the full local gate.
+  native:
+    runs-on: macos-latest
+    env:
+      HOMEBREW_PREFIX: /opt/homebrew
+      HOMEBREW_INCLUDE_DIR: /opt/homebrew/include
+      HOMEBREW_LIBRARY_DIR: /opt/homebrew/lib
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: brew install protobuf openssl@3 freetype harfbuzz zstd
+      - name: GameNetworkingSockets transport
+        run: python3 scripts/gns_probe.py
+      - name: Basis Universal KTX2
+        run: python3 scripts/basisu_probe.py
+      - name: Fetch boundary dependencies
+        run: |
+          python3 scripts/fetch_ozz.py
+          python3 scripts/fetch_recast.py
+      - name: Boundary sanitizers (ASan + UBSan)
+        run: python3 scripts/run_boundary_sanitized.py
