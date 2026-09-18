@@ -26,6 +26,33 @@ PINNED = {
         "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9",
         "cgltf/cgltf.h",
     ),
+    # meshoptimizer is multi-file; only the vertex-cache optimizer and its
+    # analyzer are pinned, because that is what the runtime host uses. The
+    # revision and content hashes lock the four files the build compiles.
+    "meshoptimizer_header": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/meshoptimizer.h",
+        "21a72040a75bacf6ddefb7e74f1cf566af1e68ea5e4dc0db598278f4681e0b87",
+        "meshoptimizer/meshoptimizer.h",
+    ),
+    "meshoptimizer_allocator": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/allocator.cpp",
+        "d2cc48691fe2f4c6d097bf7a766389cfb7f83ca14a5f747e3944332656d02254",
+        "meshoptimizer/allocator.cpp",
+    ),
+    "meshoptimizer_vcache": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/vcacheoptimizer.cpp",
+        "618429ef4db8ab9b16fde4e73dcf425d89452acbf103085478bc8b1761fa6689",
+        "meshoptimizer/vcacheoptimizer.cpp",
+    ),
+    "meshoptimizer_analyzer": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/indexanalyzer.cpp",
+        "bff37aecb10cefa33f3f6a217413c6ac98899c23e6de5282420c60e6baf786ec",
+        "meshoptimizer/indexanalyzer.cpp",
+    ),
 }
 
 

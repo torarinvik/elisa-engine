@@ -588,3 +588,17 @@ audio clip decodes to the expected sample information. The gate reports
 `godot probe asset: format=elisa-cooked-v2 triangles=12 surface=1` and
 `godot probe audio: decoded_bytes=800 rate=8000 cues=4`, so the asset and
 audio contracts are gated, not only observed.
+
+## meshoptimizer integration (2026-09-18)
+
+The native host now cache-optimizes the cooked package's index buffer with
+meshoptimizer before upload (`native/meshopt_probe.h`). Four files are fetched
+with revision and content hashes pinned by `scripts/fetch_dependencies.py`, and
+the build compiles them into the probe. The measured evidence is the average
+cache miss ratio printed before and after the optimization, and the probe fails
+if the optimizer makes it worse. For the authored cube the buffer is
+`indices=36 vertices=24 acmr=2.0000->2.0000`: the cube duplicates vertices per
+face, so there is no reuse for the optimizer to find and the honest result is
+no change. The gate therefore prevents a regression rather than claiming a win
+this asset does not support. A denser mesh with real reuse would show a
+decrease; the instrumentation is what matters here.

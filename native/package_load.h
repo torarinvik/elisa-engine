@@ -4,6 +4,7 @@
 // data instead of parsing a source format. Packages are produced offline by
 // scripts/cook_assets.py; the runtime only accepts a format it knows.
 #include "wiScene.h"
+#include "meshopt_probe.h"
 
 #include <cstdint>
 #include <fstream>
@@ -133,6 +134,11 @@ inline wi::ecs::Entity create_cooked_mesh(wi::scene::Scene& scene, const std::st
         }
     }
     mesh->indices = package.index_data;
+    // Cache-optimize the index buffer before upload; the measured ACMR gate
+    // lives in native/meshopt_probe.h.
+    if (!optimize_vertex_cache(mesh->indices, mesh->vertex_positions.size())) {
+        return wi::ecs::INVALID_ENTITY;
+    }
     if (!mesh->subsets.empty()) {
         mesh->subsets[0].indexCount = (uint32_t)package.index_data.size();
         mesh->subsets[0].indexOffset = 0;

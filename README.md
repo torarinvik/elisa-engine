@@ -107,9 +107,12 @@ malformed or oversized asset rather than partially parsing it; its `--self-test`
 rejects a set of crafted bad documents and runs as part of validation. It then
 cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
-marker's mesh from that package rather than from a source format. Fetch the pinned
-dependency with `python3 scripts/fetch_dependencies.py` before building
-the native probe.
+marker's mesh from that package rather than from a source format. Fetch the
+pinned dependencies (cgltf and the meshoptimizer vertex-cache files, both
+revision- and hash-locked) with `python3 scripts/fetch_dependencies.py` before
+building the native probe. The native host then cache-optimizes the cooked
+index buffer with meshoptimizer before upload, and fails the probe if the
+optimizer worsens the measured average cache miss ratio.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by

@@ -83,14 +83,22 @@ def main(arguments: darray[sview]) -> i64:
     if not is_file(path(str(dependencies.joinpath("cgltf.h")))):
         eprint("Missing cgltf; run python3 scripts/fetch_dependencies.py first.")
         return 2
+    meshopt: Path = root.joinpath("dependencies/meshoptimizer")
+    for dependency_file in ["meshoptimizer.h", "allocator.cpp", "vcacheoptimizer.cpp", "indexanalyzer.cpp"]:
+        if not is_file(path(str(meshopt.joinpath(dependency_file)))):
+            eprint("Missing meshoptimizer; run python3 scripts/fetch_dependencies.py first.")
+            return 2
     compile_arguments: darray[sview] = [
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
-        "-I", str(dependencies),
+        "-I", str(dependencies), "-I", str(meshopt),
         "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
         "-I", sdl_include, "-I", sdl_subinclude,
         str(source), str(helper), str(input_helper),
+        str(meshopt.joinpath("allocator.cpp")),
+        str(meshopt.joinpath("vcacheoptimizer.cpp")),
+        str(meshopt.joinpath("indexanalyzer.cpp")),
         str(library_root.joinpath("libWickedEngine.a")),
         str(library_root.joinpath("libJolt.a")), str(utility_lib),
         str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",
