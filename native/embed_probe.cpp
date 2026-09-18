@@ -119,5 +119,33 @@ int main() {
         std::fprintf(stderr, "embed: wall query disagreed\n");
         return 9;
     }
+
+    // Play the winning route entirely through the ABI and render the world from
+    // the query surface, so a host can drive and display the live game.
+    maze_start();
+    for (int step = 0; step < 5; ++step) {
+        maze_step(1); // south to the open last row
+    }
+    for (int step = 0; step < 5; ++step) {
+        maze_step(3); // east to the goal
+    }
+    const int won = maze_status();
+    const int won_x = maze_player_x();
+    const int won_y = maze_player_y();
+    std::fprintf(stdout, "embed win: status=%d player=(%d,%d)\n", won, won_x, won_y);
+    if (won != 3 or won_x != 6 or won_y != 6) {
+        std::fprintf(stderr, "embed: winning route did not win through the ABI\n");
+        return 10;
+    }
+    std::fprintf(stdout, "embed map:\n");
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            const char cell = (x == won_x and y == won_y) ? 'P'
+                : (x == goal_x and y == goal_y) ? 'G'
+                : maze_is_wall(x, y) == 1 ? '#' : '.';
+            std::fputc(cell, stdout);
+        }
+        std::fputc('\n', stdout);
+    }
     return 0;
 }

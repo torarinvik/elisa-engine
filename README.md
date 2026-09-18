@@ -218,7 +218,8 @@ same portable button names the engine's input map uses, never to enum ordinals.
 Live input can also drive gameplay directly: `examples/maze/capi.elisa` exports
 the game as a C ABI with the compiler's `-emit c-archive`, and
 `native/embed_probe.cpp` links that archive, reads an SDL key event, maps it to
-a move code, and calls `maze_step` in-process. `python3 scripts/embed_probe.py`
+a move code, and calls `maze_step` in-process; it also queries the world and
+plays the winning route through the same exports. `python3 scripts/embed_probe.py`
 builds and runs it. So a host can feed input while Elisa still owns identity,
 rules, and state (ADR-0012).
 
