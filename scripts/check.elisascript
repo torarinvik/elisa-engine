@@ -54,17 +54,20 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
 
 
 def rejects_ownership_copy(compiler: sview, source: sview, output: sview) -> bool:
-    rejection: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(compiler), ["-emit", "obj", "-o", output, source], empty_input)
-    if rejection.exit_status == 0:
-        eprint("An affine owner was copied without a compiler error.")
-        return false
-    if not ("linear value" in rejection.stderr):
-        _ = write_stderr(rejection.stderr)
-        eprint("The negative ownership fixture failed for another reason.")
-        return false
-    true
+    # A compiler crash leaves a nonzero status and an empty diagnostic. Retry
+    # only that case once; a changed non-empty diagnostic is not retried, so a
+    # real contract change still fails.
+    for attempt in 0..<2:
+        rejection: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(compiler), ["-emit", "obj", "-o", output, source], empty_input)
+        if rejection.exit_status == 0:
+            eprint("An affine owner was copied without a compiler error.")
+            return false
+        return true if "linear value" in rejection.stderr
+        break if rejection.stderr != ""
+    eprint("The negative ownership fixture failed for another reason.")
+    false
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count != 0:

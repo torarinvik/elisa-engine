@@ -78,3 +78,13 @@ and are recorded because they are easy to hit again:
 
 Neither workaround relaxes a safety check; both are recorded as open compiler
 issues that the responsible repository should receive as minimized reports.
+
+## Transient compiler crash in the negative fixtures (2026-09-18)
+
+The affine-copy negative fixtures occasionally failed with a nonzero compiler
+status and an *empty* diagnostic, then passed on a rerun — a compiler crash, not
+a changed diagnostic. `rejects_ownership_copy` now retries **only** the
+empty-diagnostic case, once; a changed non-empty diagnostic still fails without
+a retry, so a real contract change cannot be masked. The check is bounded and
+the fixture still has to be rejected with the expected "linear value"
+diagnostic.
