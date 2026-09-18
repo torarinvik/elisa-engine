@@ -104,7 +104,9 @@ native host imports it through cgltf, both verified against the
 fixture's pinned triangle count. `scripts/cook_assets.py` bounds untrusted import input (document, buffer,
 accessor, and mesh counts; accessor byte ranges inside the buffer) and rejects a
 malformed or oversized asset rather than partially parsing it; its `--self-test`
-rejects a set of crafted bad documents and runs as part of validation. It then
+rejects a set of crafted bad documents and runs as part of validation. It also records a persistent
+SQLite catalogue of cooked assets (source path, content hash, counts) for the
+toolkit, distinct from the runtime package. It then
 cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 from typing import Optional
@@ -297,6 +298,35 @@ def source_length_policy(root: Path) -> dict:
     return {"max_lines": largest, "max_file": largest_file, "files": count, "limit": MAX_SOURCE_LINES}
 
 
+def asset_catalogue_database(root: Path) -> dict:
+    # The toolkit writes a persistent SQLite catalogue during cooking. This
+    # gates that the row the toolkit recorded agrees with the shared fixture
+    # rather than trusting the database to exist.
+    database = root / "build/catalogue.db"
+    if not database.is_file():
+        raise ValueError("asset catalogue database is missing")
+    connection = sqlite3.connect(database)
+    try:
+        rows = connection.execute("SELECT source, sha256, triangles, positions FROM assets").fetchall()
+    finally:
+        connection.close()
+    if len(rows) != 1:
+        raise ValueError(f"asset catalogue expected one row, found {len(rows)}")
+    manifest_values = {}
+    for line in (root / "backends/scene_manifest.txt").read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        manifest_values[key.strip()] = value.strip()
+    expected_triangles = int(manifest_values.get("mesh_triangles", "0"))
+    if rows[0][2] != expected_triangles:
+        raise ValueError(
+            f"asset catalogue triangles {rows[0][2]} disagree with the fixture's {expected_triangles}")
+    return {"sha256": sha256_file(database), "assets": len(rows),
+            "triangles": rows[0][2], "positions": rows[0][3]}
+
+
 def asset_import_self_test(root: Path) -> dict:
     # Malformed-asset and oversized-count handling is a gate, not a manual
     # step: the cooker's self-test must reject every crafted bad document.
@@ -357,8 +387,9 @@ def main(arguments: list[str]) -> int:
             "source_length_policy": source_length_policy(engine),
             "cooked_asset": cooked,
             "asset_import_bounds": asset_import_self_test(engine),
+            "asset_catalogue_database": asset_catalogue_database(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "asset_catalogue_database", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

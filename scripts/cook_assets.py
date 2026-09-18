@@ -16,6 +16,7 @@ rather than producing a package that disagrees with the fixture.
 import base64
 import hashlib
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -162,6 +163,31 @@ def normalized_geometry(document: dict, buffer: bytes):
     raise ValueError("no primitive with positions and indices")
 
 
+def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> Path:
+    # The toolkit keeps a persistent catalogue (SQLite) of cooked assets, so a
+    # later tool can look up a source by its content hash without re-parsing the
+    # package. The runtime does not read this database.
+    database = root / "build/catalogue.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS assets ("
+            "source TEXT PRIMARY KEY, sha256 TEXT NOT NULL, "
+            "triangles INTEGER NOT NULL, positions INTEGER NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO assets (source, sha256, triangles, positions) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(source) DO UPDATE SET "
+            "sha256=excluded.sha256, triangles=excluded.triangles, positions=excluded.positions",
+            (asset_rel, digest, counts["triangles"], counts["positions"]),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return database
+
+
 def cook(root: Path) -> Path:
     manifest = read_manifest(root)
     asset_rel = manifest.get("mesh_asset", "")
@@ -198,7 +224,9 @@ def cook(root: Path) -> Path:
         "indices_b64=" + base64.b64encode(geometry["indices"]).decode(),
     ]
     package.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    database = record_catalogue(root, asset_rel, digest, counts)
     print(f"cooked {asset_rel} -> {package} ({counts['triangles']} triangles, sha256 {digest[:12]})")
+    print(f"catalogue -> {database}")
     return package
 
 

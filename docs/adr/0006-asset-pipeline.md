@@ -45,3 +45,14 @@ count, unsupported component type) and requires all to be rejected; it runs as
 `asset_import_bounds` inside the validation gate. This keeps import parsing
 bounded and gives the malformed-asset and oversized-count cases real tests
 rather than a claim.
+
+## Persistent SQLite catalogue (2026-09-18)
+
+The plan lists SQLite for persistent tooling and catalogue. `cook_assets.py`
+now records each cooked asset in `build/catalogue.db` (a `assets` table keyed by
+source path, carrying the content hash and normalized counts) using the Python
+standard library, so the toolkit can look up a source by content hash without
+re-parsing a package. The runtime does not read this database; the package
+remains the runtime artifact. `record_validation.py` verifies the recorded row
+agrees with the shared fixture's triangle count and records the database hash
+under `asset_catalogue_database`, so the catalogue is gated rather than assumed.
