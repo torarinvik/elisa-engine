@@ -1,0 +1,28 @@
+# The maze's debug collision geometry: every cell the game treats as solid or
+# interactive, derived from the same rule tables collision uses, so an
+# inspector wireframe cannot disagree with gameplay. The engine side
+# (DebugGeometry) owns the box construction and the bounded collection.
+include "./game.elisa"
+include "../../src/tooling/debug_geometry.elisa"
+
+module MazeDebug:
+    private:
+        def add_cell(boxes: mutable DebugGeometry::Boxes&, kind: DebugGeometry::BoxKind, x: i64, y: i64) -> bool:
+            DebugGeometry::boxes_add(boxes, DebugGeometry::cell_box(kind, x.f32(), y.f32()))
+
+    public:
+        # Solid cells first, then the door, hazards, and goal. The capacity is
+        # the engine's; a maze larger than it would refuse cells and fail
+        # boxes_valid rather than dropping geometry silently.
+        def collision_boxes() -> DebugGeometry::Boxes:
+            boxes: mutable DebugGeometry::Boxes = DebugGeometry::boxes_new()
+            for y in 0..<Maze::maze_height() |boxes|:
+                for x in 0..<Maze::maze_width() |boxes, y|:
+                    if Maze::is_wall(x.i64(), y.i64()):
+                        solid: bool = add_cell(&boxes, DebugGeometry::BoxKind.Solid, x.i64(), y.i64())
+                        _ = solid
+            _ = add_cell(&boxes, DebugGeometry::BoxKind.Door, MazeGame::maze_door_x(), MazeGame::maze_door_y())
+            _ = add_cell(&boxes, DebugGeometry::BoxKind.Hazard, MazeGame::maze_hazard_a_x(), MazeGame::maze_hazard_a_y())
+            _ = add_cell(&boxes, DebugGeometry::BoxKind.Hazard, MazeGame::maze_hazard_b_x(), MazeGame::maze_hazard_b_y())
+            _ = add_cell(&boxes, DebugGeometry::BoxKind.Goal, Maze::maze_goal_x(), Maze::maze_goal_y())
+            boxes

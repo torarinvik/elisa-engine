@@ -1,7 +1,10 @@
 include "../examples/maze/studio.elisa"
 include "../examples/maze/menu.elisa"
 include "../examples/maze/persist.elisa"
+include "../examples/maze/debug.elisa"
+using DebugGeometry
 using Maze
+using MazeDebug
 using MazeGame
 using MazeStudio
 using MazeMenu
@@ -247,4 +250,16 @@ def main() -> i32:
     return scrolled if scrolled != 0
     fed: i32 = studio_input_test()
     return fed if fed != 0
+    debugged: i32 = debug_geometry_test()
+    return debugged if debugged != 0
+    0
+
+# Debug collision geometry: the solid cells plus door, hazards, and goal, all
+# from the same rules collision uses.
+def debug_geometry_test() -> i32:
+    boxes: Boxes = MazeDebug::collision_boxes()
+    return 85 if not boxes_valid(&boxes)
+    return 86 if boxes.count != Maze::maze_wall_count() + 4
+    return 87 if box_kind_count(&boxes, BoxKind.Solid) != Maze::maze_wall_count()
+    return 88 if box_kind_count(&boxes, BoxKind.Hazard) != 2 or box_kind_count(&boxes, BoxKind.Door) != 1 or box_kind_count(&boxes, BoxKind.Goal) != 1
     0

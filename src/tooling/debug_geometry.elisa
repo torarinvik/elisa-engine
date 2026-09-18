@@ -1,0 +1,65 @@
+# Debug collision geometry: the inspector's view of what the game treats as
+# solid or interactive, as a bounded list of axis-aligned boxes a host can draw
+# as wireframes. This is derived data, not a second authority: the game builds
+# it from the same rule tables its collision uses, and the engine only supplies
+# the box construction and capacity contract.
+include "../math/geometry.elisa"
+
+module DebugGeometry:
+    private:
+        const module Limits:
+            MAX_BOXES: usize = 64
+            CELL_EXTENT: f32 = 0.6
+
+    public:
+        enum BoxKind:
+            Solid
+            Hazard
+            Door
+            Goal
+
+        struct Box:
+            kind: BoxKind
+            bounds: Geometry::Bounds3
+
+        struct Boxes:
+            count: mutable usize
+            entries: mutable Box[64]
+
+        def boxes_new() -> Boxes:
+            Boxes{count: 0, entries: zeroed}
+
+        def box_capacity() -> usize:
+            Limits::MAX_BOXES
+
+        def cell_extent() -> f32:
+            Limits::CELL_EXTENT
+
+        # A cell-centre box in cell units: the host scales it exactly as it
+        # scales the fixture's marker cells, so a wireframe matches the world.
+        def cell_box(kind: BoxKind, cell_x: f32, cell_y: f32) -> Box:
+            half: f32 = Limits::CELL_EXTENT * 0.5
+            Box{
+                kind: kind,
+                bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: cell_x - half, y: cell_y - half, z: 0.0 - half},
+                    maximum: Geometry::Vec3{x: cell_x + half, y: cell_y + half, z: 0.0 + half},
+                },
+            }
+
+        # Bounded append: a full collection refuses the box and reports it
+        # rather than dropping geometry silently.
+        def boxes_add(boxes: mutable Boxes&, box: Box) -> bool:
+            return false if boxes.count >= Limits::MAX_BOXES
+            boxes.entries[boxes.count] <- box
+            boxes.count <- boxes.count + 1
+            true
+
+        def boxes_valid(boxes: Boxes&) -> bool:
+            return false if boxes.count > Limits::MAX_BOXES
+            for index in 0..<boxes.count |ok: bool = true| -> ok:
+                ok <- ok and Geometry::bounds3_valid(boxes.entries[index].bounds)
+
+        def box_kind_count(boxes: Boxes&, kind: BoxKind) -> usize:
+            for index in 0..<boxes.count |found: usize = 0| -> found:
+                found <- found + 1 if boxes.entries[index].kind == kind

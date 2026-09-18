@@ -69,6 +69,19 @@ now `uint32_t`, and the probe exits 0 with no sanitizer report. AddressSanitizer
 coverage of the graphics path remains blocked by the sandbox; the boundary
 harness keeps the ASan+UBSan pair for the unverified libraries.
 
+## Debug collision geometry (2026-09-18)
+
+The inspector's list includes debug collision geometry. `DebugGeometry` owns
+cell-box construction (cell extent 0.6, matching the hosts' wall placement) and
+a bounded collection that refuses an overflow instead of dropping geometry;
+`examples/maze/debug.elisa` builds the boxes from the same rule tables
+collision uses, so solid cells, door, hazards, and goal cannot disagree with
+gameplay. `test/inspector.elisa` pins the box math, kind counts, and the
+capacity guard; `test/maze_game.elisa` pins the maze counts against
+`maze_wall_count`; the Godot capture builds a wireframe `ImmediateMesh` for
+every visible wall (9 visible, 216 line vertices, 12 edges per box) and frees
+it before capture, so the frame comparison still passes.
+
 ## Prover regression: branch facts from a mutable reference field (2026-09-18)
 
 The prover rebuilt from `elisa-proof` e2fadd8 ("Align proof contracts with

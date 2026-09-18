@@ -295,7 +295,10 @@ normalization, quaternion multiply/rotate, and transform composition, so
 rotation stays engine-owned instead of a vendor type.
 `src/audio/policy.elisa` (one device, playback first, spatial opt-in),
 `src/tooling/inspector.elisa` plus `src/tooling/editor.elisa` (read-only
-snapshots, perf budgets, undo/redo, reload generations), and
+snapshots, perf budgets, undo/redo, reload generations) plus
+`src/tooling/debug_geometry.elisa` and `examples/maze/debug.elisa` (bounded
+collision boxes for solid cells and interactive markers, drawn as Godot
+wireframes before capture), and
 `src/net/replication.elisa` plus `src/net/session.elisa` (authority,
 interpolation data, deterministic loss profile, rollback, sessions with
 recovery), and `src/net/wire.elisa`, `src/net/loopback.elisa`,

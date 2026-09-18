@@ -1,8 +1,10 @@
 include "../src/tooling/inspector.elisa"
+include "../src/tooling/debug_geometry.elisa"
 using World
 using Backend
 using Geometry
 using Assets
+using DebugGeometry
 using Inspector
 
 def sample_visual() -> VisualAsset:
@@ -55,4 +57,18 @@ def main() -> i32:
     samples: i64[16] = [1500, 20000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
     return 13 if worst_sample(samples, 3) != 20000 or frames_over_budget(samples, 3, 16667) != 1
     return 14 if worst_sample(samples, 0) != 0 or frames_over_budget(samples, 17, 16667) != 0
+
+    # Debug collision geometry: cell boxes, kind counts, and the capacity guard
+    # that refuses a full collection instead of dropping geometry silently.
+    boxes: mutable Boxes = boxes_new()
+    return 15 if not boxes_add(&boxes, cell_box(BoxKind.Solid, 1.0, 2.0)) or boxes.count != 1
+    solid_box: Box = boxes.entries[0]
+    return 16 if solid_box.bounds.minimum.x < 0.699 or solid_box.bounds.minimum.x > 0.701
+    return 17 if solid_box.bounds.maximum.x < 1.299 or solid_box.bounds.maximum.x > 1.301
+    return 18 if not boxes_valid(&boxes) or box_kind_count(&boxes, BoxKind.Solid) != 1 or box_kind_count(&boxes, BoxKind.Goal) != 0
+    return 19 if not boxes_add(&boxes, cell_box(BoxKind.Goal, 0.0, 0.0)) or box_kind_count(&boxes, BoxKind.Goal) != 1
+    for index in 2..<box_capacity() |boxes|:
+        _ = boxes_add(&boxes, cell_box(BoxKind.Hazard, 0.0, 0.0))
+    return 20 if boxes.count != box_capacity() or not boxes_valid(&boxes)
+    return 21 if boxes_add(&boxes, cell_box(BoxKind.Hazard, 0.0, 0.0)) or boxes.count != box_capacity()
     0

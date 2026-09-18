@@ -56,6 +56,8 @@ func _run_capture() -> void:
 
     var wall_count := 0
     var walls_hidden := 0
+    var debug_mesh := ImmediateMesh.new()
+    debug_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
     if manifest.has("walls"):
         for cell in String(manifest["walls"]).split(";"):
             if cell.is_empty():
@@ -69,6 +71,20 @@ func _run_capture() -> void:
             if fog_active and abs(cell_x - fog_player.x) + abs(cell_y - fog_player.y) > fog_radius:
                 walls_hidden += 1
                 continue
+            # Debug collision geometry: each visible solid cell becomes a
+            # wireframe box at the engine's cell extent (DebugGeometry uses the
+            # same 0.6), verified and freed before capture so the frame is
+            # unchanged.
+            var debug_center := Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
+            var debug_half := 0.3
+            var corners: Array[Vector3] = []
+            for sx in [-1.0, 1.0]:
+                for sy in [-1.0, 1.0]:
+                    for sz in [-1.0, 1.0]:
+                        corners.append(debug_center + Vector3(sx * debug_half, sy * debug_half, sz * debug_half))
+            for edge in [[0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3], [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7]]:
+                debug_mesh.surface_add_vertex(corners[edge[0]])
+                debug_mesh.surface_add_vertex(corners[edge[1]])
             var wall := MeshInstance3D.new()
             wall.name = "ElisaWall_%d_%d" % [cell_x, cell_y]
             var wall_mesh := BoxMesh.new()
@@ -81,6 +97,13 @@ func _run_capture() -> void:
             wall.position = Vector3(cell_x * 0.6 - 2.1, cell_y * 0.6 - 2.1, 1.0)
             scene_root.add_child(wall)
             wall_count += 1
+    debug_mesh.surface_end()
+    if manifest.has("walls"):
+        var debug_vertices: int = debug_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size()
+        if debug_vertices != wall_count * 24:
+            _fail("debug collision wireframe was not built for every visible wall")
+            return
+        print("godot debug geometry: boxes=%d line_vertices=%d" % [wall_count, debug_vertices])
 
     var object := MeshInstance3D.new()
     object.name = "ElisaObject"
