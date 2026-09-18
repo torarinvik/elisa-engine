@@ -149,8 +149,10 @@ toolchain not present in this environment:
 - **Skinned-mesh submission to the hosts.** The engine performs linear blend
   skinning and hosts consume solved joint positions, but no skinned asset with
   cooked weights exists to submit.
-- **Live input driving the hosts.** The hosts consume a canonical fixture; host
-  input reaching Elisa gameplay needs an embedding the current separation does
-  not provide.
+- **Live input driving gameplay.** The hosts translate device events to the
+  portable button names (native SDL push/poll, Godot synthetic events) and the
+  engine maps names to actions, but the hosts consume a canonical fixture rather
+  than calling back into Elisa gameplay, so a keypress cannot yet drive the
+  game.
 - **General UI layout/style system.** The menu model and host widgets exist, but
   there is no general layout, styling, or text-flow system.
