@@ -1,0 +1,99 @@
+# Engine-owned UI layout: boxes with an orientation, padding, and spacing whose
+# rectangles are computed in a single forward pass. Nodes are added parent
+# first, so a child's parent always has its rectangle before the child is
+# placed. It carries no drawing and no text; a host paints the rectangles and a
+# font stack fills them. This is the layout half the plan's Elisa UI names.
+module UiLayout:
+    private:
+        const module Tune:
+            MAX_NODES: usize = 32
+
+    public:
+        enum Orientation:
+            Horizontal
+            Vertical
+
+        struct Rect:
+            x: i64
+            y: i64
+            width: i64
+            height: i64
+
+        struct Node:
+            parent: i64
+            orientation: Orientation
+            size: i64
+            padding: i64
+            spacing: i64
+            rect: mutable Rect
+
+        struct Layout:
+            nodes: mutable Node[32]
+            count: mutable usize
+            cursor: mutable i64[32]
+
+        def layout_new() -> Layout:
+            Layout{nodes: zeroed, count: 0, cursor: zeroed}
+
+        def empty_rect() -> Rect:
+            Rect{x: 0, y: 0, width: 0, height: 0}
+
+        # parent is -1 for the root. The first root gets the whole viewport.
+        def layout_add(layout: mutable Layout&, parent: i64, orientation: Orientation, size: i64, padding: i64, spacing: i64) -> i64:
+            return -1 if layout.count >= Tune::MAX_NODES
+            return -1 if parent >= layout.count.i64()
+            return -1 if size < 0 or padding < 0 or spacing < 0
+            layout.nodes[layout.count] <- Node{
+                parent: parent,
+                orientation: orientation,
+                size: size,
+                padding: padding,
+                spacing: spacing,
+                rect: empty_rect(),
+            }
+            layout.count <- layout.count + 1
+            layout.count.i64() - 1
+
+        def layout_valid(layout: Layout&) -> bool:
+            return false if layout.count > Tune::MAX_NODES
+            for index in 0..<layout.count |valid: bool = true| -> valid:
+                parent: i64 = layout.nodes[index].parent
+                valid <- false if parent < -1 or parent >= index.i64()
+                valid <- false if layout.nodes[index].size < 0
+            true
+
+        def node_rect(layout: Layout&, index: usize) -> Rect:
+            layout.nodes[index].rect
+
+        # Place the root in the viewport and every other node inside its parent.
+        # A vertical parent stacks children top to bottom; a horizontal parent
+        # stacks left to right. Children fill the parent's cross axis minus the
+        # parent's padding.
+        def layout_compute(layout: mutable Layout&, root_x: i64, root_y: i64, width: i64, height: i64) -> void:
+            for index in 0..<layout.count:
+                node: Node = layout.nodes[index]
+                parent: i64 = node.parent
+                if parent < 0:
+                    layout.nodes[index].rect <- Rect{x: root_x, y: root_y, width: width, height: height}
+                    if node.orientation == Orientation.Vertical:
+                        layout.cursor[index] <- root_y + node.padding
+                    else:
+                        layout.cursor[index] <- root_x + node.padding
+                else:
+                    parent_node: Node = layout.nodes[parent.usize()]
+                    parent_rect: Rect = parent_node.rect
+                    content_x: i64 = parent_rect.x + parent_node.padding
+                    content_y: i64 = parent_rect.y + parent_node.padding
+                    inner_width: i64 = parent_rect.width - parent_node.padding * 2
+                    inner_height: i64 = parent_rect.height - parent_node.padding * 2
+                    if parent_node.orientation == Orientation.Vertical:
+                        layout.nodes[index].rect <- Rect{x: content_x, y: layout.cursor[parent.usize()], width: inner_width, height: node.size}
+                        layout.cursor[parent.usize()] <- layout.cursor[parent.usize()] + node.size + parent_node.spacing
+                    else:
+                        layout.nodes[index].rect <- Rect{x: layout.cursor[parent.usize()], y: content_y, width: node.size, height: inner_height}
+                        layout.cursor[parent.usize()] <- layout.cursor[parent.usize()] + node.size + parent_node.spacing
+                    placed: Rect = layout.nodes[index].rect
+                    if node.orientation == Orientation.Vertical:
+                        layout.cursor[index] <- placed.y + node.padding
+                    else:
+                        layout.cursor[index] <- placed.x + node.padding

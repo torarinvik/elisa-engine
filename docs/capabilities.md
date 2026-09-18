@@ -113,9 +113,10 @@ writes `build/validation.json`. Host evidence comes from
 | Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
 | Skinned-mesh submission to the hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `skin_quad`, `backends/godot/probe.gd`, `native/skin_probe.h` |
 | UI menu model (layout, focus, scrolling, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
+| UI box layout (orientation, padding, spacing) | Tested | `src/ui/layout.elisa`, `test/editor.elisa` |
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
-| UI rendering toolkit | Partial | Godot controls and Wicked widgets from Elisa data; no general layout/style system |
+| UI rendering toolkit | Partial | Godot controls, Wicked widgets, menu model, and box layout; no styling or text flow |
 | 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | Block-compressed textures (KTX/Basis) | Planned | 16-bit packing only; no KTX/Basis toolchain |
 

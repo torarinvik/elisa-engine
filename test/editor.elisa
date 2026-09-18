@@ -1,7 +1,39 @@
 include "../src/tooling/editor.elisa"
+include "../src/ui/layout.elisa"
 include "../src/tooling/reload.elisa"
 using Editor
 using Reload
+using UiLayout
+
+# A two-level layout: a vertical root with a horizontal header and a vertical
+# body; padding, spacing, and orientation decide every rectangle.
+def layout_test() -> i32:
+    layout: mutable Layout = layout_new()
+    root: i64 = layout_add(&layout, -1, Orientation.Vertical, 0, 10, 4)
+    header: i64 = layout_add(&layout, root, Orientation.Horizontal, 30, 2, 6)
+    body: i64 = layout_add(&layout, root, Orientation.Vertical, 60, 2, 0)
+    left: i64 = layout_add(&layout, header, Orientation.Vertical, 20, 0, 0)
+    right: i64 = layout_add(&layout, header, Orientation.Vertical, 40, 0, 0)
+    row_a: i64 = layout_add(&layout, body, Orientation.Horizontal, 25, 0, 0)
+    row_b: i64 = layout_add(&layout, body, Orientation.Horizontal, 25, 0, 0)
+    return 1 if root != 0 or header != 1 or body != 2 or left != 3 or right != 4 or row_a != 5 or row_b != 6
+    return 2 if layout_add(&layout, 9, Orientation.Vertical, 1, 0, 0) != -1 or not layout_valid(&layout)
+    layout_compute(&layout, 0, 0, 200, 100)
+    root_rect: Rect = node_rect(&layout, 0)
+    header_rect: Rect = node_rect(&layout, 1)
+    body_rect: Rect = node_rect(&layout, 2)
+    return 3 if root_rect.width != 200 or root_rect.height != 100
+    return 4 if header_rect.x != 10 or header_rect.y != 10 or header_rect.width != 180 or header_rect.height != 30
+    return 5 if body_rect.y != 44 or body_rect.height != 60
+    left_rect: Rect = node_rect(&layout, 3)
+    right_rect: Rect = node_rect(&layout, 4)
+    return 6 if left_rect.x != 12 or left_rect.y != 12 or left_rect.width != 20 or left_rect.height != 26
+    return 7 if right_rect.x != 38 or right_rect.width != 40
+    row_a_rect: Rect = node_rect(&layout, 5)
+    row_b_rect: Rect = node_rect(&layout, 6)
+    return 8 if row_a_rect.x != 12 or row_a_rect.y != 46 or row_a_rect.width != 176 or row_a_rect.height != 25
+    return 9 if row_b_rect.y != 71
+    0
 
 def main() -> i32:
     history: mutable History = history_new()
@@ -91,4 +123,6 @@ def main() -> i32:
         value: value
         error failure: return 27
     return 28 if current.version != 2 or current.value != 6 or not state_valid(&current)
+    laid_out: i32 = layout_test()
+    return laid_out if laid_out != 0
     0

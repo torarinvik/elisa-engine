@@ -223,6 +223,10 @@ builds the same menu as real Wicked GUI buttons, verifies their enabled states,
 and removes them before capture, so both backend families render Elisa UI
 widgets from the same data.
 
+`src/ui/layout.elisa` is the engine-owned layout engine: boxes with an
+orientation, padding, and spacing whose rectangles are computed in one forward
+pass, used for panels and rows while a host paints the rectangles.
+
 `src/ui/menu.elisa` is the engine-owned menu model: a fixed-height vertical
 list with focus navigation that skips disabled rows, a visible window that
 scrolls to keep the focused row on screen, pointer hit testing that accounts for
