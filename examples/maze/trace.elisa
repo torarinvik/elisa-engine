@@ -12,8 +12,9 @@ include "./game.elisa"
 module MazeTrace:
     private:
         const module Script:
-            STEPS: usize = 10
-            FIXTURE_STEPS: usize = 3
+            public:
+                STEPS: usize = 10
+                FIXTURE_STEPS: usize = 3
 
     public:
         struct TraceResult:

@@ -4,13 +4,14 @@
 module FakeBridge:
     private:
         const module Limits:
-            MAX_RESOURCES: usize = 16
-            MAX_UPLOADS: usize = 16
-            MAX_CALLBACKS: usize = 16
-            MAX_UPLOAD_BYTES: usize = 1048576
-            INVALID_SLOT: usize = 16
-            FIRST_GENERATION: i64 = 1
-            MAX_GENERATION: i64 = 9223372036854775807
+            public:
+                MAX_RESOURCES: usize = 16
+                MAX_UPLOADS: usize = 16
+                MAX_CALLBACKS: usize = 16
+                MAX_UPLOAD_BYTES: usize = 1048576
+                INVALID_SLOT: usize = 16
+                FIRST_GENERATION: i64 = 1
+                MAX_GENERATION: i64 = 9223372036854775807
 
     private:
         struct ResourceState:

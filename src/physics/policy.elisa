@@ -6,7 +6,8 @@
 module Physics:
     private:
         const module Tune:
-            MAX_BODIES: usize = 8
+            public:
+                MAX_BODIES: usize = 8
 
     public:
         enum SolverKind:

@@ -16,11 +16,12 @@ using Geometry
 module MazeCharacter:
     private:
         const module Tune:
-            CELL: f32 = 0.6
-            ORIGIN: f32 = 2.1
-            HIP_HEIGHT: f32 = 0.9
-            LEG: f32 = 0.5
-            ZERO: f32 = 0.0
+            public:
+                CELL: f32 = 0.6
+                ORIGIN: f32 = 2.1
+                HIP_HEIGHT: f32 = 0.9
+                LEG: f32 = 0.5
+                ZERO: f32 = 0.0
 
     public:
         error CharacterError:

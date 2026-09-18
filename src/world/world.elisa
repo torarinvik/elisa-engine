@@ -28,12 +28,14 @@ module World:
 
     private:
         const module Bounds:
-            WORLD_MAX_ENTITIES: usize = 256
-            WORLD_FIRST_EPOCH: i64 = 1
-            WORLD_MAX_EPOCH: i64 = 9223372036854775807
+            public:
+                WORLD_MAX_ENTITIES: usize = 256
+                WORLD_FIRST_EPOCH: i64 = 1
+                WORLD_MAX_EPOCH: i64 = 9223372036854775807
 
         const module Sentinel:
-            WORLD_INVALID_SLOT: usize = Bounds::WORLD_MAX_ENTITIES
+            public:
+                WORLD_INVALID_SLOT: usize = Bounds::WORLD_MAX_ENTITIES
 
         global mutable next_world_epoch: i64 = 0
 

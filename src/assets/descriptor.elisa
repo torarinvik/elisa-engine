@@ -5,7 +5,8 @@ include "../math/geometry.elisa"
 module Assets:
     private:
         const module Sentinel:
-            ZERO: u64 = 0
+            public:
+                ZERO: u64 = 0
 
     public:
         struct AssetId:

@@ -9,7 +9,8 @@ include "./replication.elisa"
 module Predict:
     private:
         const module Tune:
-            MAX_PENDING: usize = 16
+            public:
+                MAX_PENDING: usize = 16
 
     public:
         error PredictError:

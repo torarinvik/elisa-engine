@@ -11,8 +11,10 @@ include "./schedule.elisa"
 module Executor:
     private:
         const module Limits:
-            MAX_SYSTEMS: usize = 8
-            NO_GROUP: usize = 8
+            public:
+                MAX_SYSTEMS: usize = 8
+            private:
+                NO_GROUP: usize = 8
 
     public:
         error ExecError:

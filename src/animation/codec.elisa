@@ -6,9 +6,11 @@
 module Codec:
     private:
         const module Tune:
-            MAX_CODECS: usize = 2
-            OZZ_ID: i64 = 1
-            ACL_ID: i64 = 2
+            private:
+                MAX_CODECS: usize = 2
+            public:
+                OZZ_ID: i64 = 1
+                ACL_ID: i64 = 2
 
     public:
         enum CodecKind:

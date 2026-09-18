@@ -9,10 +9,11 @@ include "./recording.elisa"
 module SceneBridge:
     private:
         const module Limits:
-            MANIFEST_VERSION: i64 = 1
-            VIEWPORT_WIDTH: i32 = 320
-            VIEWPORT_HEIGHT: i32 = 200
-            MAX_SCENE_COMMANDS: usize = 256
+            public:
+                MANIFEST_VERSION: i64 = 1
+                VIEWPORT_WIDTH: i32 = 320
+                VIEWPORT_HEIGHT: i32 = 200
+                MAX_SCENE_COMMANDS: usize = 256
 
     public:
         error BridgeError:

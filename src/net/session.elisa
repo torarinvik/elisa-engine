@@ -9,8 +9,9 @@ include "./replication.elisa"
 module Session:
     private:
         const module Tune:
-            MAX_CLIENTS: usize = 4
-            MAX_IDS: usize = 8
+            public:
+                MAX_CLIENTS: usize = 4
+                MAX_IDS: usize = 8
 
     public:
         enum SessionStage:

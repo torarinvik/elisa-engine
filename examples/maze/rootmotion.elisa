@@ -14,8 +14,9 @@ using Geometry
 module MazeRootMotion:
     private:
         const module Tune:
-            CLIP_TICKS: i64 = 8
-            CELL_LENGTH: f32 = 0.6
+            public:
+                CLIP_TICKS: i64 = 8
+                CELL_LENGTH: f32 = 0.6
 
         def walk_skeleton() -> Pose::Skeleton:
             skeleton: mutable Pose::Skeleton = skeleton_new()

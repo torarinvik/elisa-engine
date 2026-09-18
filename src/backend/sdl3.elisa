@@ -3,9 +3,10 @@
 module Sdl3:
     private:
         const module Flags:
-            EVENTS: u32 = 16384
-            VIDEO: u32 = 32
-            HIDDEN_WINDOW: u64 = 8
+            public:
+                EVENTS: u32 = 16384
+                VIDEO: u32 = 32
+                HIDDEN_WINDOW: u64 = 8
 
         extern resource SDLWindow
 

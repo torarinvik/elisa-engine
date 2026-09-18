@@ -11,10 +11,11 @@ using Pose
 module MazePose:
     private:
         const module Tune:
-            UPPER: f32 = 0.6
-            LOWER: f32 = 0.6
-            FOOT_DROP: f32 = 0.9
-            TOLERANCE: f32 = 0.002
+            public:
+                UPPER: f32 = 0.6
+                LOWER: f32 = 0.6
+                FOOT_DROP: f32 = 0.9
+                TOLERANCE: f32 = 0.002
 
         def near(value: f32, expected: f32) -> bool:
             difference: f32 = value - expected

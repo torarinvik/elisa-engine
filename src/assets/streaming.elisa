@@ -8,8 +8,9 @@
 module Streaming:
     private:
         const module Tune:
-            CHUNK_CELLS: i64 = 2
-            MAX_CHUNKS: usize = 64
+            public:
+                CHUNK_CELLS: i64 = 2
+                MAX_CHUNKS: usize = 64
 
     public:
         struct StreamState:

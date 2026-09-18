@@ -6,7 +6,8 @@
 module UiLayout:
     private:
         const module Tune:
-            MAX_NODES: usize = 32
+            public:
+                MAX_NODES: usize = 32
 
     public:
         enum Orientation:

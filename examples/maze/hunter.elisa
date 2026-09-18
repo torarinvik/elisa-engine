@@ -10,11 +10,12 @@ include "../../src/animation/state.elisa"
 module MazeHunter:
     private:
         const module Tune:
-            MAX_STEPS: usize = 64
-            SPAWN_X: i64 = 1
-            SPAWN_Y: i64 = 1
-            PURSUIT_X: i64 = 4
-            PURSUIT_Y: i64 = 1
+            public:
+                MAX_STEPS: usize = 64
+                SPAWN_X: i64 = 1
+                SPAWN_Y: i64 = 1
+                PURSUIT_X: i64 = 4
+                PURSUIT_Y: i64 = 1
 
     public:
         struct Hunter:

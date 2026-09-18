@@ -3,11 +3,14 @@
 module Runtime:
     private:
         const module Timing:
-            STEP_MICROS: i64 = 16667
-            MAX_STEPS: usize = 4
-            MAX_STEPS_I64: i64 = 4
-            MAX_ACCUMULATED: i64 = STEP_MICROS * MAX_STEPS_I64
-            MAX_TICKS: i64 = 9223372036854775807
+            public:
+                STEP_MICROS: i64 = 16667
+                MAX_STEPS: usize = 4
+            private:
+                MAX_STEPS_I64: i64 = 4
+            public:
+                MAX_ACCUMULATED: i64 = STEP_MICROS * MAX_STEPS_I64
+                MAX_TICKS: i64 = 9223372036854775807
 
     public:
         error ClockError:

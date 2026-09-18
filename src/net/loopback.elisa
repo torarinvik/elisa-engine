@@ -11,7 +11,8 @@ using Wire
 module Loopback:
     private:
         const module Limits:
-            MAX_PACKETS: usize = 16
+            public:
+                MAX_PACKETS: usize = 16
 
     public:
         struct Packet:

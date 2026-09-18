@@ -11,10 +11,11 @@ include "../../src/net/replication.elisa"
 module MazeBundle:
     private:
         const module Tune:
-            BUNDLE_VERSION: i64 = 1
-            VIEW_MAX: i32 = 8192
-            FRAME_BUDGET: i64 = 16667
-            REQUIRED_FEATURES: usize = 2
+            public:
+                BUNDLE_VERSION: i64 = 1
+                VIEW_MAX: i32 = 8192
+                FRAME_BUDGET: i64 = 16667
+                REQUIRED_FEATURES: usize = 2
 
     public:
         struct Bundle:

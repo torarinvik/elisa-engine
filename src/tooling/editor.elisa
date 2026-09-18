@@ -6,8 +6,9 @@
 module Editor:
     private:
         const module Tune:
-            MAX_EDITS: usize = 16
-            MAX_ASSETS: usize = 8
+            public:
+                MAX_EDITS: usize = 16
+                MAX_ASSETS: usize = 8
 
     public:
         struct Edit:

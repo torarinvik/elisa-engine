@@ -7,8 +7,9 @@
 module Schedule:
     private:
         const module Tune:
-            RESOURCES: usize = 4
-            MAX_SYSTEMS: usize = 8
+            public:
+                RESOURCES: usize = 4
+                MAX_SYSTEMS: usize = 8
 
     public:
         enum Resource:

@@ -9,7 +9,8 @@ include "./replication.elisa"
 module Reliable:
     private:
         const module Tune:
-            WINDOW: usize = 8
+            public:
+                WINDOW: usize = 8
 
     public:
         error ReliableError:
