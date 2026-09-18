@@ -27,6 +27,7 @@
 #include "package_load.h"
 #include "perf_sweep.h"
 #include "churn_probe.h"
+#include "ozz_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -496,6 +497,10 @@ int main(int argc, char** argv) {
     }
     // Spawn/despawn churn lives in native/churn_probe.h.
     if (!run_churn_probe(scene, manifest)) {
+        return 1;
+    }
+    // ozz skeletal sampling lives in native/ozz_probe.h.
+    if (!probe_ozz_sampling()) {
         return 1;
     }
 

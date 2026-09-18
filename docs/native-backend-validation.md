@@ -602,3 +602,19 @@ face, so there is no reuse for the optimizer to find and the honest result is
 no change. The gate therefore prevents a regression rather than claiming a win
 this asset does not support. A denser mesh with real reuse would show a
 decrease; the instrumentation is what matters here.
+
+## ozz-animation sampling (2026-09-18)
+
+ozz-animation is the plan's selected skeletal-animation library, so the native
+host now links it rather than only implementing an engine-side sampler.
+`scripts/fetch_ozz.py` pins ozz 0.16.0 by commit
+(`6cbdc790123aa4731d82e255df187b3a8a808256`), clones it into `dependencies/ozz`
+(git-ignored), and builds only the runtime and offline animation libraries with
+CMake — tools, samples, and howtos stay off. `native/ozz_probe.h` builds a
+two-joint skeleton and a linear translation clip in code, samples it at ratios
+0, 0.5, and 1.0, runs ozz's local-to-model job, and checks the root translation
+against the same linear expectation the engine's own sampler produces. The
+probe run reported `ozz: root_x start=0.0000 mid=1.0000 end=2.0000`, so ozz is
+genuinely linked and sampling. This is not a claim that a full character
+pipeline was ported to ozz; the engine-side sampler remains the one the
+gameplay uses.

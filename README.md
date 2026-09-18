@@ -108,11 +108,15 @@ rejects a set of crafted bad documents and runs as part of validation. It then
 cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the
-pinned dependencies (cgltf and the meshoptimizer vertex-cache files, both
-revision- and hash-locked) with `python3 scripts/fetch_dependencies.py` before
-building the native probe. The native host then cache-optimizes the cooked
-index buffer with meshoptimizer before upload, and fails the probe if the
-optimizer worsens the measured average cache miss ratio.
+pinned dependencies with `python3 scripts/fetch_dependencies.py` (cgltf and the
+meshoptimizer vertex-cache files, revision- and hash-locked) and
+`python3 scripts/fetch_ozz.py` (ozz-animation, pinned by commit and built into
+`dependencies/ozz`) before building the native probe. The native host
+cache-optimizes the cooked index buffer with meshoptimizer before upload —
+failing the probe if the optimizer worsens the measured average cache miss
+ratio — and links ozz-animation, sampling a two-joint linear clip at start,
+midpoint, and end and checking it against the same linear expectation the
+engine's own sampler produces.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by

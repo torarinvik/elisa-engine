@@ -83,6 +83,20 @@ def main(arguments: darray[sview]) -> i64:
     if not is_file(path(str(dependencies.joinpath("cgltf.h")))):
         eprint("Missing cgltf; run python3 scripts/fetch_dependencies.py first.")
         return 2
+    ozz: Path = root.joinpath("dependencies/ozz")
+    ozz_library_root: Path = ozz.joinpath("build/src")
+    if not is_file(path(str(ozz.joinpath("include/ozz/animation/runtime/animation.h")))):
+        eprint("Missing ozz; run python3 scripts/fetch_ozz.py first.")
+        return 2
+    ozz_libs: darray[sview] = [
+        str(ozz_library_root.joinpath("animation/offline/libozz_animation_offline_r.a")),
+        str(ozz_library_root.joinpath("animation/runtime/libozz_animation_r.a")),
+        str(ozz_library_root.joinpath("base/libozz_base_r.a")),
+    ]
+    for ozz_lib in ozz_libs:
+        if not is_file(path(ozz_lib)):
+            eprint("Missing ozz library; run python3 scripts/fetch_ozz.py first.")
+            return 2
     meshopt: Path = root.joinpath("dependencies/meshoptimizer")
     for dependency_file in ["meshoptimizer.h", "allocator.cpp", "vcacheoptimizer.cpp", "indexanalyzer.cpp"]:
         if not is_file(path(str(meshopt.joinpath(dependency_file)))):
@@ -90,7 +104,7 @@ def main(arguments: darray[sview]) -> i64:
             return 2
     compile_arguments: darray[sview] = [
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
-        "-I", str(dependencies), "-I", str(meshopt),
+        "-I", str(dependencies), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
         "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
@@ -99,6 +113,7 @@ def main(arguments: darray[sview]) -> i64:
         str(meshopt.joinpath("allocator.cpp")),
         str(meshopt.joinpath("vcacheoptimizer.cpp")),
         str(meshopt.joinpath("indexanalyzer.cpp")),
+        str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(library_root.joinpath("libWickedEngine.a")),
         str(library_root.joinpath("libJolt.a")), str(utility_lib),
         str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",
