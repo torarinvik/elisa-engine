@@ -1,5 +1,6 @@
 """Validate proof outcomes and atomically record the exact inputs to a passing check."""
 
+import base64
 import hashlib
 import json
 import os
@@ -315,6 +316,31 @@ def source_length_policy(root: Path) -> dict:
     return {"max_lines": largest, "max_file": largest_file, "files": count, "limit": MAX_SOURCE_LINES}
 
 
+def cooked_texture(root: Path) -> dict:
+    # The first texture the pipeline cooks is gated too: a versioned RGBA
+    # package whose declared size must match its pixel payload.
+    path = root / "build/cooked/maze_tile_tex.rgba"
+    if not path.is_file():
+        raise ValueError("cooked texture package is missing")
+    values = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    if values.get("format") != "elisa-texture-v1":
+        raise ValueError(f"cooked texture format drift: {values.get('format')!r}")
+    try:
+        width = int(values.get("width", ""))
+        height = int(values.get("height", ""))
+        channels = int(values.get("channels", ""))
+    except ValueError:
+        raise ValueError("cooked texture dimensions are not integers")
+    pixels = base64.b64decode(values.get("pixels_b64", ""))
+    if width != 4 or height != 4 or channels != 4 or len(pixels) != width * height * channels:
+        raise ValueError(f"cooked texture size mismatch: {width}x{height}x{channels} pixels={len(pixels)}")
+    return {"sha256": sha256_file(path), "width": width, "height": height, "pixel_bytes": len(pixels)}
+
+
 def asset_catalogue_database(root: Path) -> dict:
     # The toolkit writes a persistent SQLite catalogue during cooking. This
     # gates that the row the toolkit recorded agrees with the shared fixture
@@ -403,10 +429,11 @@ def main(arguments: list[str]) -> int:
             "scene_manifest": scene_manifest_matches_bridge(engine),
             "source_length_policy": source_length_policy(engine),
             "cooked_asset": cooked,
+            "cooked_texture": cooked_texture(engine),
             "asset_import_bounds": asset_import_self_test(engine),
             "asset_catalogue_database": asset_catalogue_database(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "asset_catalogue_database", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "asset_catalogue_database", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

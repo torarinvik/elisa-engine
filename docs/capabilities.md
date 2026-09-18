@@ -73,6 +73,7 @@ writes `build/validation.json`. Host evidence comes from
 | Bounded import, malformed-input rejection | Tested | `scripts/cook_assets.py --self-test`, `asset_import_bounds` |
 | Persistent SQLite catalogue | Implemented | `scripts/cook_assets.py`, `asset_catalogue_database` |
 | zstd package round trip | Implemented | `native/zstd_probe.h` |
+| Cooked RGBA texture consumed by both hosts | Tested | `scripts/cook_assets.py`, `cooked_texture`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | Asset reload generations and stale rejection | Tested | `src/tooling/editor.elisa`, `test/editor.elisa` |
 
 ## Networking
@@ -111,7 +112,7 @@ writes `build/validation.json`. Host evidence comes from
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native consumes and validates menu state | Implemented | `native/menu_probe.h` (data-level, not a widget toolkit) |
 | UI rendering toolkit | Partial | Godot controls + text stack; native UI pending |
-| Compressed textures (KTX/Basis) | Planned | no textures yet |
+| Compressed textures (KTX/Basis) | Planned | RGBA texture package only; no GPU compression |
 
 ## Verification
 

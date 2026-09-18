@@ -188,6 +188,30 @@ def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> P
     return database
 
 
+def write_texture_package(root: Path, size: int = 4) -> Path:
+    # The first texture step: a small RGBA checkerboard cooked to a versioned
+    # texture package. It is procedural for now; an authored image and GPU
+    # compression are later steps. The runtime reads the package, not a source
+    # format, exactly as it does for geometry.
+    pixels = bytearray()
+    for y in range(size):
+        for x in range(size):
+            bright = 255 if (x + y) % 2 == 0 else 32
+            pixels += bytes((bright, bright, bright, 255))
+    package_dir = root / "build/cooked"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    package = package_dir / "maze_tile_tex.rgba"
+    lines = [
+        "format=elisa-texture-v1",
+        f"width={size}",
+        f"height={size}",
+        "channels=4",
+        "pixels_b64=" + base64.b64encode(bytes(pixels)).decode(),
+    ]
+    package.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return package
+
+
 def cook(root: Path) -> Path:
     manifest = read_manifest(root)
     asset_rel = manifest.get("mesh_asset", "")
@@ -225,7 +249,9 @@ def cook(root: Path) -> Path:
     ]
     package.write_text("\n".join(lines) + "\n", encoding="utf-8")
     database = record_catalogue(root, asset_rel, digest, counts)
+    texture = write_texture_package(root)
     print(f"cooked {asset_rel} -> {package} ({counts['triangles']} triangles, sha256 {digest[:12]})")
+    print(f"cooked texture -> {texture}")
     print(f"catalogue -> {database}")
     return package
 

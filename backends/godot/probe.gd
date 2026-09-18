@@ -121,6 +121,30 @@ func _run_probe() -> void:
         if cooked_mesh.get_surface_count() < 1:
             _fail("cooked package produced no surface")
             return
+        # Cooked texture: the host turns the RGBA package into a real Godot
+        # Image/ImageTexture and checks its size and a bright/dark checker pixel.
+        var texture_path: String = package_path.get_base_dir().path_join(asset_name + "_tex.rgba")
+        if FileAccess.file_exists(texture_path):
+            var texture_values := {}
+            for line in FileAccess.get_file_as_string(texture_path).split("\n"):
+                var text := line.strip_edges()
+                if text.is_empty() or text.find("=") < 1:
+                    continue
+                texture_values[text.left(text.find("="))] = text.substr(text.find("=") + 1).strip_edges()
+            var texture_width: int = int(texture_values.get("width", "0"))
+            var texture_height: int = int(texture_values.get("height", "0"))
+            var texture_pixels := Marshalls.base64_to_raw(texture_values.get("pixels_b64", ""))
+            if texture_values.get("format", "") != "elisa-texture-v1" or texture_pixels.size() != texture_width * texture_height * 4:
+                _fail("cooked texture does not match")
+                return
+            var texture_image := Image.create_from_data(texture_width, texture_height, false, Image.FORMAT_RGBA8, texture_pixels)
+            var texture := ImageTexture.create_from_image(texture_image)
+            print("godot texture: %dx%d texture=%s bright=%.2f dark=%.2f" % [
+                texture_image.get_width(), texture_image.get_height(), str(texture != null),
+                texture_image.get_pixel(0, 0).r, texture_image.get_pixel(1, 0).r])
+            if texture == null or texture_image.get_pixel(0, 0).r < 0.9 or texture_image.get_pixel(1, 0).r > 0.2:
+                _fail("cooked texture pixels do not match")
+                return
 
     var audio_samples := 400
     var audio_rate := 8000

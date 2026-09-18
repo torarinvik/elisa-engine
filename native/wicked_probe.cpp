@@ -28,6 +28,7 @@
 #include "library_probes.h"
 #include "zstd_probe.h"
 #include "reload_probe.h"
+#include "texture_probe.h"
 #include "tracy_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
@@ -229,6 +230,12 @@ int main(int argc, char** argv) {
             }
             // Asset reload lives in native/reload_probe.h.
             if (!probe_reload(scene, package, package_path.lexically_normal().string())) {
+                return 1;
+            }
+            // Cooked texture consumption lives in native/texture_probe.h.
+            const std::filesystem::path texture_path =
+                package_path.parent_path() / (asset_path.stem().string() + "_tex.rgba");
+            if (!probe_texture_package(texture_path.lexically_normal().string())) {
                 return 1;
             }
         }
