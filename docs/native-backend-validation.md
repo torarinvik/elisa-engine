@@ -675,3 +675,27 @@ workstation the text package compressed from 1243 to 386 bytes
 (`ratio=0.311`), which is unsurprising for base64 text and shows the mechanism
 rather than promising a ratio for binary geometry. zstd is a system (Homebrew)
 library, so nothing is vendored for it.
+
+## Native asset reload (2026-09-18)
+
+The plan prioritizes asset reload before code reload: a host must release a
+representation and rebuild it from canonical data without changing identity or
+accumulating resources. `native/reload_probe.h` reloads the cooked package from
+disk, requires the reloaded positions, normals, and indices to match the
+in-memory copy exactly, builds a mesh from the reloaded package, and removes it
+again so the scene object count returns to its baseline. The run reported
+`reload: positions=72 indices=36 objects_baseline=10` and the probe passed, so
+reload is exercised on the native host, not just assumed.
+
+## Sanitizer attempt (2026-09-18)
+
+`scripts/cxx_sanitize.py` is an opt-in compiler wrapper that adds
+AddressSanitizer and UndefinedBehaviorSanitizer (with
+`-fno-sanitize-recover=all` so a finding aborts) and is used via
+`CXX="$PWD/scripts/cxx_sanitize.py" elisascript scripts/wicked_probe.elisascript`.
+The instrumented probe builds and ASan initializes, but in this shell the
+instrumented graphics run aborts with no sanitizer report — the environment
+reports "Checking file existence is not allowed under sandbox" and the run dies
+after the worker threads start. No clean sanitizer result is claimed here; the
+wrapper is kept so the run can be repeated where sanitizers are permitted, and
+the item remains open.

@@ -32,6 +32,7 @@
 #include "miniaudio_probe.h"
 #include "text_probe.h"
 #include "zstd_probe.h"
+#include "reload_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -228,6 +229,10 @@ int main(int argc, char** argv) {
             }
             // zstd package compression lives in native/zstd_probe.h.
             if (!probe_zstd(package_path.lexically_normal().string())) {
+                return 1;
+            }
+            // Asset reload lives in native/reload_probe.h.
+            if (!probe_reload(scene, package, package_path.lexically_normal().string())) {
                 return 1;
             }
         }

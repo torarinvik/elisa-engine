@@ -126,8 +126,10 @@ around the wall, so the navigation library is exercised rather than declared.
 It also decodes the audio clip through miniaudio and opens a null playback
 device, so the audio library runs headless, and it loads a system font through
 FreeType and shapes a short string through HarfBuzz, so the text stack is
-exercised too, and it compresses the cooked package with zstd and checks the
-byte-for-byte round trip, measuring the ratio on a real payload. The game's own navigation decisions stay in Elisa.
+exercised too, it compresses the cooked package with zstd and checks the
+byte-for-byte round trip, measuring the ratio on a real payload, and it
+reloads the package from disk and rebuilds a mesh from it to show the reload
+lifecycle releases and rebuilds without accumulating scene objects. The game's own navigation decisions stay in Elisa.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
