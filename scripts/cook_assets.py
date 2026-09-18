@@ -18,10 +18,43 @@ import hashlib
 import json
 import random
 import sqlite3
+import struct
 import sys
 from pathlib import Path
 
 PACKAGE_FORMAT = "elisa-cooked-v2"
+
+# KTX1 container constants. Godot's Image.load_ktx_from_buffer reads this
+# container, so a cooked block texture can travel as one file instead of
+# inline base64 inside the text package. KTX2 and Basis supercompression
+# need an encoder this environment does not have and stay deferred.
+KTX_IDENTIFIER = bytes((0xAB, 0x4B, 0x54, 0x58, 0x20, 0x31, 0x31, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A))
+GL_UNSIGNED_BYTE = 0x1401
+GL_RGB = 0x1907
+GL_RGBA = 0x1908
+GL_RGBA8 = 0x8058
+GL_COMPRESSED_RGB_S3TC_DXT1_EXT = 0x83F0
+
+
+def ktx1_bytes(width: int, height: int, gl_type: int, gl_format: int, gl_internal: int,
+               gl_base: int, payload: bytes, image_bytes: int) -> bytes:
+    header = struct.pack(
+        "<13I",
+        0x04030201,  # little-endian marker
+        gl_type,
+        1,  # glTypeSize
+        gl_format,
+        gl_internal,
+        gl_base,
+        width,
+        height,
+        0,  # pixelDepth
+        0,  # numberOfArrayElements
+        1,  # numberOfFaces
+        1,  # numberOfMipmapLevels
+        0,  # bytesOfKeyValueData
+    )
+    return KTX_IDENTIFIER + header + struct.pack("<I", image_bytes) + payload
 
 # Bounds on untrusted import input. The plan asks to bound parsing work and to
 # test malformed assets and oversized counts, so every structural count and
@@ -249,6 +282,13 @@ def write_texture_package(root: Path, size: int = 4) -> Path:
     ]
     package_bc1 = package_dir / "maze_tile_tex_bc1.rgba"
     package_bc1.write_text("\n".join(lines_bc1) + "\n", encoding="utf-8")
+    # The same payloads in a KTX1 container: a real texture format both hosts
+    # can open directly (Godot via Image.load_ktx_from_buffer), rather than a
+    # project-local text package. The block payload keeps its BC1 format ID.
+    (package_dir / "maze_tile_tex.ktx").write_bytes(
+        ktx1_bytes(size, size, GL_UNSIGNED_BYTE, GL_RGBA, GL_RGBA8, GL_RGBA, bytes(pixels), size * size * 4))
+    (package_dir / "maze_tile_tex_bc1.ktx").write_bytes(
+        ktx1_bytes(size, size, 0, 0, GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_RGB, block, 8))
     return package
 
 

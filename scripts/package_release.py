@@ -123,6 +123,13 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
     if bc1_texture.is_file():
         target_bc1 = staging / "assets" / bc1_texture.name
         target_bc1.write_bytes(bc1_texture.read_bytes())
+    ktx_textures = []
+    for name in ("maze_tile_tex.ktx", "maze_tile_tex_bc1.ktx"):
+        texture = root / "build" / "cooked" / name
+        if texture.is_file():
+            target = staging / "assets" / texture.name
+            target.write_bytes(texture.read_bytes())
+            ktx_textures.append(target)
     (staging / "fixtures").mkdir(parents=True, exist_ok=True)
     fixture = staging / "fixtures/scene_manifest.txt"
     fixture.write_bytes((root / "backends/scene_manifest.txt").read_bytes())
@@ -149,6 +156,8 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
         release["files"][f"assets/{target_packed.name}"] = sha256_file(target_packed)
     if target_bc1 is not None:
         release["files"][f"assets/{target_bc1.name}"] = sha256_file(target_bc1)
+    for target in ktx_textures:
+        release["files"][f"assets/{target.name}"] = sha256_file(target)
     (staging / "release.json").write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return release
 

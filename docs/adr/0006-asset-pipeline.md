@@ -57,6 +57,20 @@ remains the runtime artifact. `record_validation.py` verifies the recorded row
 agrees with the shared fixture's triangle count and records the database hash
 under `asset_catalogue_database`, so the catalogue is gated rather than assumed.
 
+## KTX container for cooked textures (2026-09-18)
+
+The cooked textures traveled only as a project-local `base64` text package, so
+no foreign host could open them without knowing that format. The cooker now
+also writes KTX1 containers for the RGBA and BC1 payloads
+(`maze_tile_tex.ktx`, `maze_tile_tex_bc1.ktx`), with the block payload keeping
+its DXT1 format ID. The Godot host opens the container with
+`Image.load_ktx_from_buffer` and sees a compressed image before it decompresses;
+the native probe parses the container header and verifies the payload instead of
+trusting the extension. Both probes are gated. KTX2 and Basis
+supercompression/GPU transcode still need an encoder this environment does not
+have, so the container is the implemented part and the transcode stays
+deferred.
+
 ## Chunk streaming (2026-09-18)
 
 `src/assets/streaming.elisa` divides a cell grid into fixed 2x2-cell chunks and

@@ -193,6 +193,29 @@ func _run_probe() -> void:
             if bc1_colour.g < 0.6 or bc1_colour.r > 0.4 or bc1_colour.b > 0.5:
                 _fail("BC1 texture colour mismatch")
                 return
+        # The KTX container of the same block payload: the host opens the
+        # standard format directly instead of a project-local text package.
+        var ktx_path: String = package_path.get_base_dir().path_join(asset_name + "_tex_bc1.ktx")
+        if FileAccess.file_exists(ktx_path):
+            var ktx_bytes := FileAccess.get_file_as_bytes(ktx_path)
+            var ktx_image := Image.new()
+            var ktx_error := ktx_image.load_ktx_from_buffer(ktx_bytes)
+            if ktx_error != OK:
+                _fail("KTX BC1 texture did not load")
+                return
+            var ktx_was_compressed := ktx_image.is_compressed()
+            if ktx_was_compressed:
+                ktx_image.decompress()
+            var ktx_colour: Color = ktx_image.get_pixel(0, 0)
+            print("godot ktx texture: %dx%d compressed=%s rgb=%.2f,%.2f,%.2f" % [
+                ktx_image.get_width(), ktx_image.get_height(), str(ktx_was_compressed),
+                ktx_colour.r, ktx_colour.g, ktx_colour.b])
+            if ktx_image.get_width() != 4 or ktx_image.get_height() != 4 or not ktx_was_compressed:
+                _fail("KTX texture is not the compressed 4x4 block")
+                return
+            if ktx_colour.g < 0.6 or ktx_colour.r > 0.4 or ktx_colour.b > 0.5:
+                _fail("KTX texture colour mismatch")
+                return
 
     var audio_samples := 400
     var audio_rate := 8000

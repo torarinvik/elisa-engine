@@ -133,7 +133,8 @@ writes `build/validation.json`. Host evidence comes from
 | UI rendering toolkit | Partial | Godot controls, Wicked widgets, menu model, box layout, row-height style, and line breaking; no shaping or full typography |
 | 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | Block-compressed texture (BC1/DXT1) | Tested | `scripts/cook_assets.py`, `cooked_texture_bc1`, `backends/godot/probe.gd`, `native/texture_probe.h` |
-| KTX2/Basis container and GPU transcode | Planned | BC1 block path only; no KTX/Basis toolchain |
+| KTX container for cooked textures, consumed by both hosts | Tested | `scripts/cook_assets.py` (`maze_tile_tex.ktx`), `backends/godot/probe.gd` (`load_ktx_from_buffer`, gated), `native/texture_probe.h` (`probe_texture_ktx`) |
+| KTX2/Basis supercompression and GPU transcode | Planned | KTX1 container and BC1 path only; no Basis encoder toolchain |
 
 ## Verification
 
@@ -145,8 +146,8 @@ Re-run on the current tree:
 - `python3 scripts/run_boundary_sanitized.py` — exit 0, no AddressSanitizer or
   UBSan finding over the boundary libraries.
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
-  budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture,
-  UDP, menu, pose, and Wicked-GUI checks all pass.
+  budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture
+  (including the KTX container), UDP, menu, pose, and Wicked-GUI checks all pass.
 - `elisascript scripts/godot_capture.elisascript` — exit 0; frames deterministic
   and the two hosts agree on scene semantics.
 - `python3 scripts/embed_probe.py` — exit 0; the host links the Elisa C archive,
