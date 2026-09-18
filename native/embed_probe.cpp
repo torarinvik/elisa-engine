@@ -8,7 +8,12 @@
 #include <SDL2/SDL.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <string>
 
 namespace {
 
@@ -30,7 +35,28 @@ int move_code_for(SDL_Keycode code) {
 
 } // namespace
 
-int main() {
+namespace {
+
+std::map<std::string, std::string> read_manifest(const char* path) {
+    std::map<std::string, std::string> values;
+    std::ifstream input(path);
+    std::string line;
+    while (std::getline(input, line)) {
+        if (line.empty() or line.front() == '#') {
+            continue;
+        }
+        const auto separator = line.find('=');
+        if (separator != std::string::npos) {
+            values[line.substr(0, separator)] = line.substr(separator + 1);
+        }
+    }
+    return values;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    const char* manifest_path = argc > 1 ? argv[1] : "backends/scene_manifest.txt";
     const int status = maze_start();
     if (status != 1) {
         std::fprintf(stderr, "embed: start returned %d, expected Playing(1)\n", status);
@@ -118,6 +144,35 @@ int main() {
     if (maze_is_wall(0, 1) != 1 or maze_is_wall(1, 1) != 0) {
         std::fprintf(stderr, "embed: wall query disagreed\n");
         return 9;
+    }
+
+    // The two boundaries must agree: the live game's topology is the fixture's.
+    const std::map<std::string, std::string> manifest = read_manifest(manifest_path);
+    int manifest_walls = 0;
+    {
+        std::stringstream cells(manifest.count("walls") ? manifest.at("walls") : "");
+        std::string cell;
+        while (std::getline(cells, cell, ';')) {
+            if (not cell.empty()) {
+                ++manifest_walls;
+            }
+        }
+    }
+    int manifest_goal_x = -1;
+    int manifest_goal_y = -1;
+    if (manifest.count("goal") != 0) {
+        const std::string goal = manifest.at("goal");
+        const auto comma = goal.find(',');
+        if (comma != std::string::npos) {
+            manifest_goal_x = std::atoi(goal.substr(0, comma).c_str());
+            manifest_goal_y = std::atoi(goal.substr(comma + 1).c_str());
+        }
+    }
+    std::fprintf(stdout, "embed fixture: walls=%d vs %d goal=(%d,%d) vs (%d,%d)\n",
+        walls, manifest_walls, goal_x, goal_y, manifest_goal_x, manifest_goal_y);
+    if (manifest_walls != walls or manifest_goal_x != goal_x or manifest_goal_y != goal_y) {
+        std::fprintf(stderr, "embed: the live game and the fixture disagree\n");
+        return 11;
     }
 
     // Play the winning route entirely through the ABI and render the world from

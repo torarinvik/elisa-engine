@@ -52,7 +52,7 @@ def main() -> int:
     relay(build_result)
     if build_result.returncode != 0:
         return build_result.returncode
-    run = subprocess.run([str(host)], capture_output=True, text=True, check=False)
+    run = subprocess.run([str(host), str(ENGINE_ROOT / "backends/scene_manifest.txt")], capture_output=True, text=True, check=False)
     relay(run)
     if run.returncode != 0:
         print("Embedded maze host failed; exit status identifies the step.", file=sys.stderr)

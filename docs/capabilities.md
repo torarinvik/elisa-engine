@@ -26,6 +26,7 @@ writes `build/validation.json`. Host evidence comes from
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd` |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
+| Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
 | Declared read/write sets, derived execution waves | Tested | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa` |
 | Inspected counters, budgets, submitted bytes | Tested | `src/tooling/inspector.elisa`, `test/inspector.elisa` |
 
