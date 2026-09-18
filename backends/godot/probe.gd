@@ -146,6 +146,29 @@ func _run_probe() -> void:
             if texture == null or corner.g < 0.8 or corner.r > 0.2 or corner.b > 0.3:
                 _fail("cooked texture pixels do not match")
                 return
+        # 16-bit packed companion: half the bytes per pixel, decoded by the host
+        # as RGB565. Still green, so a packing error is caught.
+        var packed_path: String = package_path.get_base_dir().path_join(asset_name + "_tex16.rgba")
+        if FileAccess.file_exists(packed_path):
+            var packed_values := {}
+            for line in FileAccess.get_file_as_string(packed_path).split("\n"):
+                var text := line.strip_edges()
+                if text.is_empty() or text.find("=") < 1:
+                    continue
+                packed_values[text.left(text.find("="))] = text.substr(text.find("=") + 1).strip_edges()
+            var packed_width: int = int(packed_values.get("width", "0"))
+            var packed_height: int = int(packed_values.get("height", "0"))
+            var packed_pixels := Marshalls.base64_to_raw(packed_values.get("pixels_b64", ""))
+            if packed_values.get("packing", "") != "rgb565" or packed_pixels.size() != packed_width * packed_height * 2:
+                _fail("cooked packed texture does not match")
+                return
+            var packed_image := Image.create_from_data(packed_width, packed_height, false, Image.FORMAT_RGB565, packed_pixels)
+            var packed_colour: Color = packed_image.get_pixel(0, 0)
+            print("godot packed texture: %dx%d rgb=%.2f,%.2f,%.2f" % [
+                packed_width, packed_height, packed_colour.r, packed_colour.g, packed_colour.b])
+            if packed_colour.g < 0.7 or packed_colour.r > 0.3 or packed_colour.b > 0.5:
+                _fail("packed texture colour mismatch")
+                return
 
     var audio_samples := 400
     var audio_rate := 8000

@@ -44,4 +44,33 @@ inline bool probe_texture_package(const std::string& package_path) {
     return true;
 }
 
+inline bool probe_texture_packed(const std::string& package_path) {
+    std::ifstream input(package_path);
+    if (!check(input.good(), "packed texture package readable")) {
+        return false;
+    }
+    std::map<std::string, std::string> values;
+    std::string line;
+    while (std::getline(input, line)) {
+        const auto separator = line.find('=');
+        if (separator != std::string::npos) {
+            values[line.substr(0, separator)] = line.substr(separator + 1);
+        }
+    }
+    if (!check(values["format"] == "elisa-texture-v1" && values["packing"] == "rgb565",
+            "packed texture format and packing")) {
+        return false;
+    }
+    const int width = std::stoi(values["width"]);
+    const int height = std::stoi(values["height"]);
+    const std::vector<uint8_t> pixels = decode_base64(values["pixels_b64"]);
+    if (!check(width == 4 && height == 4 && pixels.size() == (size_t)(width * height * 2),
+            "packed texture payload is two bytes per pixel")) {
+        return false;
+    }
+    std::fprintf(stdout, "packed texture: %dx%d bytes_per_pixel=2 bytes=%u\n",
+        width, height, (unsigned)pixels.size());
+    return true;
+}
+
 } // namespace probe

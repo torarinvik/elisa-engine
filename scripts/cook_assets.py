@@ -211,6 +211,24 @@ def write_texture_package(root: Path, size: int = 4) -> Path:
         "pixels_b64=" + base64.b64encode(bytes(pixels)).decode(),
     ]
     package.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # A 16-bit packed companion: the same solid colour in R5G6B5, half the
+    # bytes per pixel. This is bit-depth compression, not block compression; the
+    # KTX/Basis path is still the higher-quality option.
+    packed = bytearray()
+    for _y in range(size):
+        for _x in range(size):
+            value = ((26 >> 3) << 11) | ((229 >> 2) << 5) | (51 >> 3)
+            packed += bytes((value & 0xFF, (value >> 8) & 0xFF))
+    lines16 = [
+        "format=elisa-texture-v1",
+        "packing=rgb565",
+        f"width={size}",
+        f"height={size}",
+        "bytes_per_pixel=2",
+        "pixels_b64=" + base64.b64encode(bytes(packed)).decode(),
+    ]
+    package16 = package_dir / "maze_tile_tex16.rgba"
+    package16.write_text("\n".join(lines16) + "\n", encoding="utf-8")
     return package
 
 

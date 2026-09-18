@@ -116,7 +116,8 @@ writes `build/validation.json`. Host evidence comes from
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
 | UI rendering toolkit | Partial | Godot controls and Wicked widgets from Elisa data; no general layout/style system |
-| Compressed textures (KTX/Basis) | Planned | uncompressed RGBA texture applied to a material; no GPU compression |
+| 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
+| Block-compressed textures (KTX/Basis) | Planned | 16-bit packing only; no KTX/Basis toolchain |
 
 ## Verification
 
