@@ -6,7 +6,9 @@ Wicked host probes are now exercised; the full Godot GDExtension and Wicked
 renderer remain planned. [Native backend validation](docs/native-backend-validation.md)
 records the pinned external Wicked checkout and its macOS build notes.
 Binding architecture decisions live in [docs/adr/](docs/adr/); anything the
-ADRs mark as not covered is not claimed anywhere else in this file.
+ADRs mark as not covered is not claimed anywhere else in this file. Every
+capability is labelled proved, tested, implemented, partial, or planned with
+its evidence in [docs/capabilities.md](docs/capabilities.md).
 
 ## Current foundation: identity and checked world
 
