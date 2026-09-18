@@ -11,6 +11,7 @@
 #include "recast_probe.h"
 #include "miniaudio_probe.h"
 #include "text_probe.h"
+#include "udp_probe.h"
 
 #include <map>
 #include <string>
@@ -35,6 +36,9 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
         return false;
     }
     if (!probe_text()) {
+        return false;
+    }
+    if (!probe_udp_loopback()) {
         return false;
     }
     return true;

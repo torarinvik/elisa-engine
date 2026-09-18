@@ -726,3 +726,20 @@ determinism check still passed, so the client is compiled in and active and does
 not perturb the rendered frame. With no Tracy server attached the marks are
 dropped, so this is evidence the client is linked and exercised, not a captured
 profile; the value is that a server can now be attached to a real run.
+
+## Real socket transport boundary (2026-09-18)
+
+`native/udp_probe.h` sends a 33-byte payload — the same frame size as
+`src/net/wire.elisa` — across an actual UDP socket bound to loopback and
+requires the bytes to arrive unchanged. That moves the transport from
+"in-memory loopback only" to a real OS byte boundary, and it runs under the
+sanitized boundary harness as well as the graphics probe:
+
+```
+udp: port=63584 bytes=33 round_trip=ok
+```
+
+It is a stand-in for the GameNetworkingSockets transport the plan selects, so
+the status document lists GNS as still planned: this proves the boundary the
+replication layer sits above, not the selected library's reliability, ordering,
+or encryption features.

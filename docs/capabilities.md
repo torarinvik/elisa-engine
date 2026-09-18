@@ -86,7 +86,8 @@ writes `build/validation.json`. Host evidence comes from
 | Recovery (gap detection, resync, high-water) | Tested | `src/net/recovery.elisa`, `test/session.elisa` |
 | Determinism scope (solver, build) | Tested | `test/replication.elisa` |
 | Fuzzed wire decoder | Tested | `test/session.elisa` |
-| GameNetworkingSockets transport | Planned | in-memory loopback only |
+| Real socket transport for the frame shape | Tested | `native/udp_probe.h` (UDP loopback) |
+| GameNetworkingSockets transport | Planned | UDP loopback is a stand-in, not the selected library |
 
 ## Tooling, releases, and specialist libraries
 
