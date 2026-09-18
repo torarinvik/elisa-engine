@@ -349,8 +349,7 @@ postconditions.
 
 ## Next milestone
 
-Packaging the Godot GDExtension alongside the release archive, a
-screenshot-driven pixel comparison using the declared tolerance, native
+A screenshot-driven pixel comparison using the declared tolerance, native
 solver linkage behind the physics authority policy, and an editor surface
 over the inspector/undo/reload foundation. `scripts/check.elisascript`
 stands at 593 of the 600-line file limit and must be split before further

@@ -1,0 +1,37 @@
+# Toolchain-free checks: these steps need only a Python interpreter, so they
+# run on every push and pull request without the pinned Elisa compiler,
+# prover, ElisaScript launcher, or a graphics session. The full gate stays
+# local (`elisascript scripts/check.elisascript`) because it needs all four.
+name: cook
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cook:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax
+        run: python3 -m py_compile scripts/*.py test/check_workflow.py
+      - name: Bounded import self-test
+        run: python3 scripts/cook_assets.py --self-test
+      - name: Cook assets and verify the KTX containers
+        run: |
+          python3 scripts/cook_assets.py "$PWD"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          identifier = bytes((0xAB, 0x4B, 0x54, 0x58, 0x20, 0x31, 0x31, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A))
+          cooked = Path("build/cooked")
+          for name in ("maze_tile_tex.ktx", "maze_tile_tex_bc1.ktx"):
+              data = (cooked / name).read_bytes()
+              assert data.startswith(identifier), f"{name} has no KTX identifier"
+              assert data[12:16] == b"\x01\x02\x03\x04", f"{name} is not little-endian KTX"
+          assert (Path("build/catalogue.db")).is_file(), "cook produced no catalogue"
+          print("cooked KTX containers and catalogue verified")
+          PY

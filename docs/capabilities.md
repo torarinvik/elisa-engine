@@ -113,7 +113,8 @@ writes `build/validation.json`. Host evidence comes from
 |---|---|---|
 | Pinned toolchains and provenance | Implemented | `scripts/record_validation.py`, `build/validation.json` |
 | Dependency provenance (pinned hashes/commits recorded) | Implemented | `dependency_provenance`, `dependencies` in validation |
-| Reproducible release archive (mesh + textures + fixture + C ABI) | Implemented | `scripts/package_release.py`, `release` in validation |
+| Reproducible release archive (mesh + textures + KTX + fixture + C ABI + Godot extension) | Implemented | `scripts/package_release.py`, `release` in validation |
+| Toolchain-free CI smoke (cook, bounded import, KTX containers) | Partial | `.github/workflows/check.yml`; Python-only, so the full gate still needs the pinned toolchain |
 | 600-line source limit enforced | Implemented | `source_length_policy` |
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |

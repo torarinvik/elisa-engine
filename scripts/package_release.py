@@ -99,6 +99,25 @@ def build_embed_archive(root: Path, compiler: str, staging: Path) -> tuple:
     return archive, target_header
 
 
+def package_godot_extension(root: Path, staging: Path) -> list:
+    # The Godot host builds the extension from source against the installed
+    # Godot's own dumped interface, so the release carries the bridge, the
+    # project files, and the probe rather than a prebuilt dylib tied to one
+    # Godot build.
+    names = ("elisa_godot_bridge.cpp", "elisa_maze.gdextension", "project.godot", "godot_embed_probe.gd")
+    target_dir = staging / "godot"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for name in names:
+        source = root / "backends/godot-embed" / name
+        if not source.is_file():
+            raise RuntimeError(f"Godot extension source missing: {name}")
+        target = target_dir / name
+        target.write_bytes(source.read_bytes())
+        copied.append(target)
+    return copied
+
+
 def collect(root: Path, compiler: str, staging: Path) -> dict:
     game = staging / "bin/maze-game"
     build_game(root, compiler, game)
@@ -134,6 +153,7 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
     fixture = staging / "fixtures/scene_manifest.txt"
     fixture.write_bytes((root / "backends/scene_manifest.txt").read_bytes())
     embed_archive, embed_header = build_embed_archive(root, compiler, staging)
+    godot_files = package_godot_extension(root, staging)
     git = git_commit(root)
     release = {
         "name": "elisa-maze",
@@ -158,6 +178,8 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
         release["files"][f"assets/{target_bc1.name}"] = sha256_file(target_bc1)
     for target in ktx_textures:
         release["files"][f"assets/{target.name}"] = sha256_file(target)
+    for target in godot_files:
+        release["files"][f"godot/{target.name}"] = sha256_file(target)
     (staging / "release.json").write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return release
 
