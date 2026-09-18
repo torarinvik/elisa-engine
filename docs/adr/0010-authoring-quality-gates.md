@@ -69,6 +69,54 @@ now `uint32_t`, and the probe exits 0 with no sanitizer report. AddressSanitizer
 coverage of the graphics path remains blocked by the sandbox; the boundary
 harness keeps the ASan+UBSan pair for the unverified libraries.
 
+## Prover regression: branch facts from a mutable reference field (2026-09-18)
+
+The prover rebuilt from `elisa-proof` e2fadd8 ("Align proof contracts with
+fresh compiler safety checks") no longer establishes a callee precondition
+when the argument is a local bound from a **mutable reference field** through
+branch guards. The gate is blocked on this: `proof/entity_id.elisa` regressed
+from 15/15 to 13/15 (`call-requires-unproven [unknown]` at
+`src/entity_id.elisa` line 31), with the same engine source and compiler.
+
+Minimized repro (28 lines; 4/6 proven with the regression):
+
+```elisa
+module Guard:
+    const MIN: i64 = 0
+    const MAX: i64 = 9223372036854775807
+
+    error TooBig:
+        Low
+        High
+
+    affine struct Allocator:
+        last: mutable i64
+
+    def next(last: i64) -> i64:
+        requires last >= MIN
+        requires last < MAX
+        ensure result > last
+        ensure result == last + 1
+        last + 1
+
+    def allocate(allocator: mutable Allocator&) -> i64 error[TooBig]:
+        cursor: i64 = allocator.last
+        if cursor < MIN:
+            raise TooBig.Low
+        elif cursor >= MAX:
+            raise TooBig.High
+        else:
+            candidate: i64 = next(cursor)
+            allocator.last <- candidate
+            candidate
+```
+
+Observed bisection: replacing `cursor: i64 = allocator.last` with a plain
+`cursor: i64` parameter proves 6/6; removing the `allocator.last <- candidate`
+write does not help; early-raise style instead of `elif/else` proves 5/6. The
+engine source was not restructured to hide this, per the plan's rule against
+moving contracts to make an integration appear to pass.
+
 ## Evidence
 
 `src/tooling/inspector.elisa`, `src/tooling/editor.elisa`,

@@ -1,0 +1,47 @@
+# Engine-owned UI style: colors and spacing for menu surfaces, separate from
+# the menu model (which owns rows, focus, and scrolling) and from host widgets
+# (which paint). A host reads a theme and applies it; it never chooses colors.
+# The canonical fixture carries the same values so both hosts render one theme.
+module UiStyle:
+    public:
+        struct Color:
+            r: i64
+            g: i64
+            b: i64
+            a: i64
+
+        struct Theme:
+            background: Color
+            text: Color
+            disabled: Color
+            focus: Color
+            padding: i64
+            border: i64
+
+        def color_new(r: i64, g: i64, b: i64, a: i64) -> Color:
+            Color{r: r, g: g, b: b, a: a}
+
+        def color_valid(color: Color&) -> bool:
+            color.r >= 0 and color.r <= 255 and color.g >= 0 and color.g <= 255 and color.b >= 0 and color.b <= 255 and color.a >= 0 and color.a <= 255
+
+        def theme_default() -> Theme:
+            Theme{
+                background: color_new(15, 15, 20, 255),
+                text: color_new(230, 230, 235, 255),
+                disabled: color_new(110, 110, 118, 255),
+                focus: color_new(255, 196, 64, 255),
+                padding: 6,
+                border: 1,
+            }
+
+        def theme_valid(theme: Theme&) -> bool:
+            color_valid(theme.background) and color_valid(theme.text) and color_valid(theme.disabled) and color_valid(theme.focus) and theme.padding >= 0 and theme.padding <= 64 and theme.border >= 0 and theme.border <= 16
+
+        # The label color for one row state: focus wins over the normal color,
+        # and a disabled row never shows the focus color.
+        def theme_text_color(theme: Theme&, enabled: bool, focused: bool) -> Color:
+            return theme.focus if enabled and focused
+            theme.disabled if not enabled else theme.text
+
+        def theme_surface_inset(theme: Theme&) -> i64:
+            theme.padding + theme.border

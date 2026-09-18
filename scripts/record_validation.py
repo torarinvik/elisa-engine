@@ -259,6 +259,21 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             row_height = int(values["menu_row_height"])
             if row_height <= 0 or row_height > 200:
                 raise ValueError(f"scene manifest menu_row_height out of range: {row_height}")
+        # Engine theme values: four RGBA channels in range, then the insets the
+        # host adds around a row's label.
+        for key in ("menu_style_background", "menu_style_text", "menu_style_disabled", "menu_style_focus"):
+            if key in values:
+                channels = values[key].split(",")
+                if len(channels) != 4 or any(not c.isdigit() or int(c) > 255 for c in channels):
+                    raise ValueError(f"scene manifest {key} is not an RGBA color: {values[key]!r}")
+        if "menu_style_padding" in values:
+            padding = int(values["menu_style_padding"])
+            if padding < 0 or padding > 64:
+                raise ValueError(f"scene manifest menu_style_padding out of range: {padding}")
+        if "menu_style_border" in values:
+            border = int(values["menu_style_border"])
+            if border < 0 or border > 16:
+                raise ValueError(f"scene manifest menu_style_border out of range: {border}")
     # Portable input mapping names, kept to the engine's button vocabulary so a
     # host never receives an enum ordinal.
     input_buttons = ("KeyA", "KeyD", "KeyW", "PadLeft", "PadRight", "PadUp")

@@ -78,6 +78,15 @@ menu_visible=3
 # Row height the host applies; style data the game owns.
 menu_row_height=20
 menu_enabled=0,1,1,0,1
+# The engine theme (UiStyle::theme_default) as host-consumable values: surface
+# and label colors for enabled, disabled, and focused rows, plus surface insets.
+# A host must apply these, not choose its own.
+menu_style_background=15,15,20,255
+menu_style_text=230,230,235,255
+menu_style_disabled=110,110,118,255
+menu_style_focus=255,196,64,255
+menu_style_padding=6
+menu_style_border=1
 # Wall cells in the Elisa maze topology, row-major (x,y). The count is pinned
 # by test/maze.elisa (maze_wall_count == 34) and re-checked by
 # scripts/record_validation.py; test/maze_layout.elisa pins the Elisa-side

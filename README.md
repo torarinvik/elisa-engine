@@ -236,6 +236,13 @@ emits the archive, builds the extension, imports it, and plays a full session
 (start, movement, hazard, reset, win) that must agree with the native
 embedding move for move (ADR-0013).
 
+The fixture also carries the engine's UI theme (`menu_style_*`), so a host
+applies Elisa's surface and label colors instead of choosing its own:
+`src/ui/style.elisa` owns the theme and `test/editor.elisa` pins its state
+rules. The Godot probe builds real `StyleBoxFlat` surfaces and verifies the
+focused and disabled label colors; the native probe applies the same values
+to Wicked widgets before they are removed.
+
 The fixture also carries the menu state (`menu_actions`, `menu_enabled`,
 `menu_focus`); `backends/godot/probe.gd` consumes it with real Godot controls
 and the gated probe verifies the focused row and the disabled rows, so UI data

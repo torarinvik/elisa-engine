@@ -260,6 +260,29 @@ func _run_probe() -> void:
                 disabled_count += 1
             menu_root.add_child(button)
             buttons.append(button)
+        # Engine theme: the host applies the fixture's colors and insets instead
+        # of choosing its own, and the focused row shows the focus label color.
+        var has_style: bool = manifest.has("menu_style_background") and manifest.has("menu_style_text") \
+            and manifest.has("menu_style_disabled") and manifest.has("menu_style_focus") \
+            and manifest.has("menu_style_padding") and manifest.has("menu_style_border")
+        var style_padding: int = int(manifest.get("menu_style_padding", "0"))
+        var style_border: int = int(manifest.get("menu_style_border", "0"))
+        if has_style:
+            var surface := StyleBoxFlat.new()
+            surface.bg_color = _rgba(String(manifest["menu_style_background"]))
+            surface.border_color = _rgba(String(manifest["menu_style_focus"]))
+            surface.set_border_width_all(style_border)
+            surface.content_margin_left = style_padding
+            surface.content_margin_right = style_padding
+            surface.content_margin_top = style_padding
+            surface.content_margin_bottom = style_padding
+            var disabled_color := _rgba(String(manifest["menu_style_disabled"]))
+            var text_color := _rgba(String(manifest["menu_style_text"]))
+            for button in buttons:
+                button.add_theme_stylebox_override("normal", surface)
+                button.add_theme_stylebox_override("focus", surface)
+                button.add_theme_color_override("font_color", disabled_color if button.disabled else text_color)
+            buttons[menu_focus].add_theme_color_override("font_color", _rgba(String(manifest["menu_style_focus"])))
         buttons[menu_focus].grab_focus()
         await process_frame
         var focused: Control = root.gui_get_focus_owner()
@@ -276,6 +299,22 @@ func _run_probe() -> void:
         if buttons[menu_focus].custom_minimum_size.y != row_height:
             _fail("menu row height was not applied")
             return
+        if has_style:
+            var focused_box: StyleBoxFlat = buttons[menu_focus].get_theme_stylebox("focus")
+            var disabled_index: int = enabled_flags.find(0)
+            if focused_box == null or not _rgba_matches(focused_box.bg_color, String(manifest["menu_style_background"])) \
+                    or focused_box.content_margin_left != style_padding or focused_box.border_width_top != style_border:
+                _fail("menu surface style was not applied")
+                return
+            if disabled_index >= 0 and not _rgba_matches(buttons[disabled_index].get_theme_color("font_color"), String(manifest["menu_style_disabled"])):
+                _fail("disabled label color was not applied")
+                return
+            if not _rgba_matches(buttons[menu_focus].get_theme_color("font_color"), String(manifest["menu_style_focus"])):
+                _fail("focused label color was not applied")
+                return
+            print("godot style: background=%s focus=%s disabled=%s inset=%d" % [
+                String(manifest["menu_style_background"]), String(manifest["menu_style_focus"]),
+                String(manifest["menu_style_disabled"]), style_padding + style_border])
         menu_root.queue_free()
 
     # Character leg pose: the host builds one marker per solved joint from the
@@ -362,6 +401,19 @@ func _run_probe() -> void:
 
     print("Godot backend scene create/update/render/despawn probe passed.")
     quit(0)
+
+func _rgba(text: String) -> Color:
+    var parts := text.split(",")
+    if parts.size() != 4:
+        return Color(0.0, 0.0, 0.0, 0.0)
+    return Color(int(parts[0]) / 255.0, int(parts[1]) / 255.0, int(parts[2]) / 255.0, int(parts[3]) / 255.0)
+
+func _rgba_matches(color: Color, text: String) -> bool:
+    var parts := text.split(",")
+    if parts.size() != 4:
+        return false
+    return int(round(color.r * 255.0)) == int(parts[0]) and int(round(color.g * 255.0)) == int(parts[1]) \
+        and int(round(color.b * 255.0)) == int(parts[2]) and int(round(color.a * 255.0)) == int(parts[3])
 
 func _fail(message: String) -> void:
     push_error(message)

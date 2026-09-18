@@ -133,7 +133,8 @@ writes `build/validation.json`. Host evidence comes from
 | Host UI consumes Elisa style data (row height) | Tested | fixture `menu_row_height`, `backends/godot/probe.gd` |
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |
-| UI rendering toolkit | Partial | Godot controls, Wicked widgets, menu model, box layout, row-height style, and line breaking; no shaping or full typography |
+| Engine UI style (surface/label colors, insets) applied by both hosts | Tested + Implemented | `src/ui/style.elisa`, `test/editor.elisa`, fixture `menu_style_*`, `backends/godot/probe.gd`, `native/gui_probe.h` |
+| UI rendering toolkit | Partial | Godot controls, Wicked widgets, menu model, box layout, row-height and theme style, and line breaking; no shaping or full typography |
 | 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | Block-compressed texture (BC1/DXT1) | Tested | `scripts/cook_assets.py`, `cooked_texture_bc1`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | KTX container for cooked textures, consumed by both hosts | Tested | `scripts/cook_assets.py` (`maze_tile_tex.ktx`), `backends/godot/probe.gd` (`load_ktx_from_buffer`, gated), `native/texture_probe.h` (`probe_texture_ktx`) |
@@ -143,9 +144,12 @@ writes `build/validation.json`. Host evidence comes from
 
 Re-run on the current tree:
 
-- `elisascript scripts/check.elisascript` — exit 0, all checks pass, proofs
-  replayed, `build/validation.json` written with the release and catalogue
-  records.
+- `elisascript scripts/check.elisascript` — all 32 runtime suites pass, but the
+  proof step is currently blocked: the prover rebuilt from `elisa-proof`
+  e2fadd8 no longer establishes branch facts read from a mutable reference
+  field, so `proof/entity_id.elisa` reports 13/15 (see ADR-0010 for the
+  minimized repro). The engine source is unchanged; re-run after the prover
+  fix.
 - `python3 scripts/run_boundary_sanitized.py` — exit 0, no AddressSanitizer or
   UBSan finding over the boundary libraries.
 - `ELISA_SANITIZER=undefined CXX="$PWD/scripts/cxx_sanitize.py" elisascript

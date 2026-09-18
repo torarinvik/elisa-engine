@@ -1,10 +1,12 @@
 include "../src/tooling/editor.elisa"
 include "../src/ui/layout.elisa"
 include "../src/ui/text.elisa"
+include "../src/ui/style.elisa"
 include "../src/tooling/reload.elisa"
 using Editor
 using Reload
 using UiLayout
+using UiStyle
 using UiText
 
 # A two-level layout: a vertical root with a horizontal header and a vertical
@@ -58,6 +60,22 @@ def text_test() -> i32:
     wide: Wrapped = wrap(&long_run, 6, 1)
     return 16 if wide.line_count != 2 or line_width(&wide, 0) != 10 or line_width(&wide, 1) != 2
     return 17 if wrap(&run, 0, 1).line_count != 0
+    0
+
+# One theme decides every state color; a disabled row never shows focus, and
+# a host is expected to apply exactly these values.
+def style_test() -> i32:
+    theme: Theme = theme_default()
+    return 1 if not theme_valid(&theme)
+    normal: Color = theme_text_color(&theme, true, false)
+    focused: Color = theme_text_color(&theme, true, true)
+    disabled: Color = theme_text_color(&theme, false, true)
+    return 2 if normal.r != theme.text.r or normal.b != theme.text.b
+    return 3 if focused.g != theme.focus.g
+    return 4 if disabled.r != theme.disabled.r
+    return 5 if theme_surface_inset(&theme) != theme.padding + theme.border
+    return 6 if color_valid(color_new(256, 0, 0, 255)) or color_valid(color_new(0, 0, 0, -1))
+    return 7 if theme.disabled.r >= theme.text.r
     0
 
 def main() -> i32:
@@ -148,6 +166,8 @@ def main() -> i32:
         value: value
         error failure: return 27
     return 28 if current.version != 2 or current.value != 6 or not state_valid(&current)
+    styled: i32 = style_test()
+    return styled if styled != 0
     laid_out: i32 = layout_test()
     return laid_out if laid_out != 0
     wrapped_text: i32 = text_test()
