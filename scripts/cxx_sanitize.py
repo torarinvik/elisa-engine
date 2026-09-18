@@ -10,16 +10,29 @@ changing the build orchestrator:
 process, so a sanitizer finding turns into a nonzero exit status the runner
 already relays. The probe exits with `std::_Exit`, so leak detection does not
 run; this catches memory and undefined-behaviour errors during the run.
+
+`ELISA_SANITIZER=undefined` selects a UBSan-only build. That flavor is what the
+full graphics probe currently runs under: AddressSanitizer aborts before `main`
+inside this session's sandbox, while the boundary harness still runs the full
+ASan+UBSan pair.
 """
 
 import os
 import sys
 
-SANITIZER_FLAGS = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-g"]
+SANITIZER_FLAVORS = {
+    "address,undefined": ["-fsanitize=address,undefined"],
+    "undefined": ["-fsanitize=undefined"],
+}
 
 
 def main() -> int:
-    os.execvp("c++", ["c++", *SANITIZER_FLAGS, *sys.argv[1:]])
+    flavor = os.environ.get("ELISA_SANITIZER", "address,undefined")
+    flags = SANITIZER_FLAVORS.get(flavor)
+    if flags is None:
+        print(f"unknown ELISA_SANITIZER '{flavor}'; use {', '.join(SANITIZER_FLAVORS)}", file=sys.stderr)
+        return 2
+    os.execvp("c++", ["c++", *flags, "-fno-sanitize-recover=all", "-g", *sys.argv[1:]])
     return 127
 
 

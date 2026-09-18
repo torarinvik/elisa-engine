@@ -122,7 +122,8 @@ writes `build/validation.json`. Host evidence comes from
 | FreeType/HarfBuzz text | Implemented | `native/text_probe.h` |
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
-| Sanitized full graphics probe | Planned | sandbox aborts the instrumented graphics run |
+| UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
+| ASan full graphics probe | Planned | AddressSanitizer aborts before `main` under this session's sandbox; boundary harness keeps ASan+UBSan |
 | Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
 | Skinned-mesh submission to the hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `skin_quad`, `backends/godot/probe.gd`, `native/skin_probe.h` |
 | UI menu model (layout, focus, scrolling, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
@@ -146,6 +147,10 @@ Re-run on the current tree:
   records.
 - `python3 scripts/run_boundary_sanitized.py` — exit 0, no AddressSanitizer or
   UBSan finding over the boundary libraries.
+- `ELISA_SANITIZER=undefined CXX="$PWD/scripts/cxx_sanitize.py" elisascript
+  scripts/wicked_probe.elisascript` — exit 0, the full graphics probe under
+  UBSan with no report (AddressSanitizer still aborts before `main` in the
+  sandbox).
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
   budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture
   (including the KTX container), UDP, menu, pose, and Wicked-GUI checks all pass.

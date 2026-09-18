@@ -28,14 +28,16 @@ inline std::vector<uint8_t> decode_base64(const std::string& text) {
     static const std::string alphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::vector<uint8_t> out;
-    int accumulator = 0;
+    // Unsigned: a signed accumulator shifts into its sign bit on the fourth
+    // sextet, which is undefined behavior (found by the UBSan graphics probe).
+    uint32_t accumulator = 0;
     int bits = 0;
     for (char character : text) {
         const auto position = alphabet.find(character);
         if (position == std::string::npos) {
             continue;
         }
-        accumulator = (accumulator << 6) | (int)position;
+        accumulator = (accumulator << 6) | (uint32_t)position;
         bits += 6;
         if (bits >= 8) {
             bits -= 8;

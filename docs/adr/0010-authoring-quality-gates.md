@@ -46,11 +46,35 @@ subsystem proves nothing about it.
   instead of scanning for it. The packaging driver is separate from
   `scripts/check.elisascript` because that script is at its 600-line limit.
 
+## UBSan on the full graphics probe (2026-09-18)
+
+The boundary harness has run under AddressSanitizer and UBSan from the start;
+the full graphics probe could not. Two separate blockers, now separated:
+AddressSanitizer itself aborts before `main` inside this session's sandbox
+("Checking file existence is not allowed under sandbox", no instrumented
+output), and the ElisaScript runner supervising an ASan+UBSan build dies with
+`runtime: Time` in its child-wait sleep. A UBSan-only flavor therefore has its
+own flag, `ELISA_SANITIZER=undefined`, and the full graphics probe runs under
+it with the standard runner:
+
+```
+ELISA_SANITIZER=undefined CXX="$PWD/scripts/cxx_sanitize.py" \
+  elisascript scripts/wicked_probe.elisascript
+```
+
+The first run found real undefined behavior: `native/package_load.h` decoded
+base64 into a signed `int` accumulator whose fourth sextet shifted into the
+sign bit (`runtime error: left shift of negative value`). The accumulator is
+now `uint32_t`, and the probe exits 0 with no sanitizer report. AddressSanitizer
+coverage of the graphics path remains blocked by the sandbox; the boundary
+harness keeps the ASan+UBSan pair for the unverified libraries.
+
 ## Evidence
 
 `src/tooling/inspector.elisa`, `src/tooling/editor.elisa`,
-`scripts/record_validation.py`, `test/check_workflow.py`,
-`test/inspector.elisa`, `test/editor.elisa`, `build/validation.json`.
+`scripts/record_validation.py`, `scripts/cxx_sanitize.py`,
+`test/check_workflow.py`, `test/inspector.elisa`, `test/editor.elisa`,
+`build/validation.json`.
 
 ## Not covered
 
