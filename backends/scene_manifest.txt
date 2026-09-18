@@ -45,6 +45,12 @@ hunter=1,1
 # pursuit cell in the open first row, crossing no marker). test/maze.elisa
 # pins the four cells; hosts walk it and the character ends at the last one.
 hunter_route=1,1;2,1;3,1;4,1
+# Portable input mapping: the device keys bound to the forward, left, and right
+# actions (the engine's default input map). A host maps its own SDL key codes to
+# these portable names; it never uses compiler-assigned enum ordinals.
+input_forward=KeyW
+input_left=KeyA
+input_right=KeyD
 # Character leg pose for this snapshot, in cell units, solved by
 # MazePose::pose_leg (engine IK) for the hunter at its spawn: hip, knee, foot.
 # test/maze.elisa pins the Elisa-side pose; hosts consume the same numbers.

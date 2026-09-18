@@ -208,6 +208,11 @@ resident count never exceeds the budget because the farthest desired chunks are
 evicted first. `examples/maze/game.elisa` drives it from the real player
 position, so streaming follows gameplay and a restart leaves residency coherent.
 
+The fixture carries the portable input mapping (`input_forward`, `input_left`,
+`input_right`); the native host pushes and polls SDL key events and the Godot
+probe parses synthetic key events, and both must resolve the bound keys to the
+same portable button names the engine's input map uses, never to enum ordinals.
+
 The fixture also carries the menu state (`menu_actions`, `menu_enabled`,
 `menu_focus`); `backends/godot/probe.gd` consumes it with real Godot controls
 and the gated probe verifies the focused row and the disabled rows, so UI data

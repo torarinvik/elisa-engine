@@ -14,6 +14,7 @@
 #include "udp_probe.h"
 #include "menu_probe.h"
 #include "pose_probe.h"
+#include "input_probe.h"
 
 #include <map>
 #include <string>
@@ -47,6 +48,9 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
         return false;
     }
     if (!probe_pose(manifest)) {
+        return false;
+    }
+    if (!probe_input(manifest)) {
         return false;
     }
     return true;

@@ -247,6 +247,12 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             raise ValueError(f"scene manifest menu_focus {menu_focus} is not an enabled row")
         if "1" not in enabled:
             raise ValueError("scene manifest menu has no enabled action")
+    # Portable input mapping names, kept to the engine's button vocabulary so a
+    # host never receives an enum ordinal.
+    input_buttons = ("KeyA", "KeyD", "KeyW", "PadLeft", "PadRight", "PadUp")
+    for key in ("input_forward", "input_left", "input_right"):
+        if key in values and values[key] not in input_buttons:
+            raise ValueError(f"scene manifest {key} is not a portable button: {values[key]!r}")
     # Character leg pose: two segments of the bone lengths, with the knee bent
     # between the hip and the foot.
     def pose_pair(key):

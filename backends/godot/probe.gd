@@ -234,6 +234,31 @@ func _run_probe() -> void:
             return
         pose_root.queue_free()
 
+    # Host input path: a synthetic key event is parsed and the host's key state
+    # must reflect the fixture's bound keys, the portable names the engine maps.
+    if manifest.has("input_forward"):
+        var keycodes := {"KeyW": KEY_W, "KeyA": KEY_A, "KeyD": KEY_D,
+            "PadLeft": KEY_LEFT, "PadRight": KEY_RIGHT, "PadUp": KEY_UP}
+        var bound_names := [String(manifest["input_forward"]), String(manifest["input_left"]), String(manifest["input_right"])]
+        var parsed := 0
+        for name in bound_names:
+            var keycode: Key = keycodes.get(name, KEY_NONE)
+            if keycode == KEY_NONE:
+                _fail("unknown portable input button: %s" % name)
+                return
+            var event := InputEventKey.new()
+            event.keycode = keycode
+            event.physical_keycode = keycode
+            event.pressed = true
+            Input.parse_input_event(event)
+            Input.flush_buffered_events()
+            if Input.is_key_pressed(keycode):
+                parsed += 1
+        print("godot input: bound=%d pressed=%d" % [bound_names.size(), parsed])
+        if parsed != bound_names.size():
+            _fail("host input mapping did not register the bound keys")
+            return
+
     print("Godot backend scene create/update/render/despawn probe passed.")
     quit(0)
 
