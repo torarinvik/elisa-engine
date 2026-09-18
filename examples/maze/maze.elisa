@@ -4,14 +4,13 @@
 module Maze:
     private:
         const module Grid:
-            public:
-                WIDTH: usize = 8
-                HEIGHT: usize = 8
-                START_X: i64 = 1
-                START_Y: i64 = 1
-                GOAL_X: i64 = 6
-                GOAL_Y: i64 = 6
-                MAX_MOVES: usize = 1024
+            WIDTH: usize = 8
+            HEIGHT: usize = 8
+            START_X: i64 = 1
+            START_Y: i64 = 1
+            GOAL_X: i64 = 6
+            GOAL_Y: i64 = 6
+            MAX_MOVES: usize = 1024
 
     public:
         enum MazeMove:

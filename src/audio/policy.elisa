@@ -6,10 +6,8 @@
 module AudioPolicy:
     private:
         const module Tune:
-            public:
-                MAX_VOICES: usize = 8
-            private:
-                MAX_LISTENERS: usize = 1
+            MAX_VOICES: usize = 8
+            MAX_LISTENERS: usize = 1
 
     public:
         enum VoiceKind:

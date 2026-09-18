@@ -7,9 +7,8 @@
 module Ui:
     private:
         const module Tune:
-            public:
-                MAX_ITEMS: usize = 8
-                ROW_HEIGHT: i64 = 20
+            MAX_ITEMS: usize = 8
+            ROW_HEIGHT: i64 = 20
 
     public:
         struct Item:

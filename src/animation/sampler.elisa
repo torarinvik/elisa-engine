@@ -18,10 +18,9 @@ using Pose
 module Sampler:
     private:
         const module Tune:
-            public:
-                MAX_JOINTS: usize = 16
-                MAX_KEYS: usize = 8
-                STRIDE: usize = 8
+            MAX_JOINTS: usize = 16
+            MAX_KEYS: usize = 8
+            STRIDE: usize = 8
 
         def transform_of(clip: ClipData&, index: usize) -> Geometry::Transform:
             Geometry::Transform{

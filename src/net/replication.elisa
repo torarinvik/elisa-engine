@@ -6,9 +6,8 @@
 module Net:
     private:
         const module Tune:
-            public:
-                MAX_LOG: usize = 16
-                MAX_REVISION: i64 = 9223372036854775807
+            MAX_LOG: usize = 16
+            MAX_REVISION: i64 = 9223372036854775807
 
     public:
         enum Owner:

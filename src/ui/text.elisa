@@ -7,9 +7,8 @@
 module UiText:
     private:
         const module Tune:
-            public:
-                MAX_WORDS: usize = 32
-                MAX_LINES: usize = 16
+            MAX_WORDS: usize = 32
+            MAX_LINES: usize = 16
 
     public:
         struct Word:

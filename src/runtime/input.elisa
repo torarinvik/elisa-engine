@@ -3,8 +3,7 @@
 module Input:
     private:
         const module Limits:
-            public:
-                BINDING_COUNT: usize = 6
+            BINDING_COUNT: usize = 6
 
     public:
         enum Button:

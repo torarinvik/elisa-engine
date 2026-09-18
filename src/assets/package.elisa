@@ -7,10 +7,9 @@ include "../math/geometry.elisa"
 module AssetPackage:
     private:
         const module Cook:
-            public:
-                PACKAGE_VERSION: i64 = 1
-                HASH_ADD: u64 = 7
-                HASH_MUL: u64 = 31
+            PACKAGE_VERSION: i64 = 1
+            HASH_ADD: u64 = 7
+            HASH_MUL: u64 = 31
 
     public:
         error PackageError:

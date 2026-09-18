@@ -8,9 +8,8 @@ include "../backend/recording.elisa"
 module Inspector:
     private:
         const module Bounds:
-            public:
-                MAX_FRAMES: usize = 16
-                MAX_ERRORS: usize = 8
+            MAX_FRAMES: usize = 16
+            MAX_ERRORS: usize = 8
 
     public:
         struct Snapshot:

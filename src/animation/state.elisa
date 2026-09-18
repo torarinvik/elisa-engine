@@ -5,19 +5,18 @@
 module Anim:
     private:
         const module Tune:
-            public:
-                IDLE_LEN: i64 = 60
-                WALK_LEN: i64 = 30
-                WIN_LEN: i64 = 45
-                HURT_LEN: i64 = 20
-                BLEND_TICKS: i64 = 4
-                MAX_EVENTS: usize = 8
-                WALK_HALF: i64 = 15
-                STRIDE: f32 = 0.03125
-                FULL_BLEND: f32 = 1.0
-                NO_BLEND: f32 = 0.0
-                EVENT_LOOP: i64 = 1
-                EVENT_STEP: i64 = 2
+            IDLE_LEN: i64 = 60
+            WALK_LEN: i64 = 30
+            WIN_LEN: i64 = 45
+            HURT_LEN: i64 = 20
+            BLEND_TICKS: i64 = 4
+            MAX_EVENTS: usize = 8
+            WALK_HALF: i64 = 15
+            STRIDE: f32 = 0.03125
+            FULL_BLEND: f32 = 1.0
+            NO_BLEND: f32 = 0.0
+            EVENT_LOOP: i64 = 1
+            EVENT_STEP: i64 = 2
 
     public:
         enum Clip:

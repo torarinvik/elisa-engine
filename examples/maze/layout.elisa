@@ -8,9 +8,8 @@ include "./maze.elisa"
 module MazeLayout:
     private:
         const module Grid:
-            public:
-                WIDTH: usize = 8
-                HEIGHT: usize = 8
+            WIDTH: usize = 8
+            HEIGHT: usize = 8
 
     public:
         struct WallList:

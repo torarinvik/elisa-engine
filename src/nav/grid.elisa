@@ -4,12 +4,10 @@
 module Nav:
     private:
         const module Grid:
-            public:
-                WIDTH: i64 = 8
-                HEIGHT: i64 = 8
-            private:
-                CELLS: usize = 64
-                STRIDE: i64 = 8
+            WIDTH: i64 = 8
+            HEIGHT: i64 = 8
+            CELLS: usize = 64
+            STRIDE: i64 = 8
 
     public:
         struct Path:

@@ -10,15 +10,14 @@ using Save
 module MazePersist:
     private:
         const module Field:
-            public:
-                COUNT: usize = 7
-                SETTINGS: usize = 0
-                STATUS: usize = 1
-                PLAYER_X: usize = 2
-                PLAYER_Y: usize = 3
-                MOVES: usize = 4
-                LIVES: usize = 5
-                HAS_KEY: usize = 6
+            COUNT: usize = 7
+            SETTINGS: usize = 0
+            STATUS: usize = 1
+            PLAYER_X: usize = 2
+            PLAYER_Y: usize = 3
+            MOVES: usize = 4
+            LIVES: usize = 5
+            HAS_KEY: usize = 6
 
     public:
         def field_count() -> usize:

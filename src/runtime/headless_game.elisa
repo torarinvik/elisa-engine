@@ -14,9 +14,8 @@ using Assets
 module HeadlessGame:
     private:
         const module Motion:
-            public:
-                STEP_DISTANCE: f32 = 0.25
-                ZERO: f32 = 0.0
+            STEP_DISTANCE: f32 = 0.25
+            ZERO: f32 = 0.0
 
         def action_displacement(action: Action) -> Vec3:
             match action:

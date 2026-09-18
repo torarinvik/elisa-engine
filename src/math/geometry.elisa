@@ -3,10 +3,9 @@
 module Geometry:
     private:
         const module Scalar:
-            public:
-                ZERO: f32 = 0.0
-                ONE: f32 = 1.0
-                TWO: f32 = 2.0
+            ZERO: f32 = 0.0
+            ONE: f32 = 1.0
+            TWO: f32 = 2.0
 
     public:
         struct Vec3:

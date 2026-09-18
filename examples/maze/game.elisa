@@ -8,28 +8,27 @@ include "../../src/assets/streaming.elisa"
 module MazeGame:
     private:
         const module Tune:
-            public:
-                START_LIVES: i64 = 3
-                MAX_CUES: usize = 16
-                FOG_RADIUS: i64 = 3
-                CUE_STEP: i64 = 1
-                CUE_BLOCKED: i64 = 2
-                CUE_KEY: i64 = 3
-                CUE_DOOR: i64 = 4
-                CUE_HAZARD: i64 = 5
-                CUE_WIN: i64 = 6
-                CUE_LOSE: i64 = 7
-                CUE_CLICK: i64 = 8
-                KEY_X: i64 = 2
-                KEY_Y: i64 = 6
-                DOOR_X: i64 = 5
-                DOOR_Y: i64 = 6
-                HAZARD_AX: i64 = 5
-                HAZARD_AY: i64 = 2
-                HAZARD_BX: i64 = 2
-                HAZARD_BY: i64 = 5
-                STREAM_RADIUS: i64 = 2
-                STREAM_BUDGET: usize = 9
+            START_LIVES: i64 = 3
+            MAX_CUES: usize = 16
+            FOG_RADIUS: i64 = 3
+            CUE_STEP: i64 = 1
+            CUE_BLOCKED: i64 = 2
+            CUE_KEY: i64 = 3
+            CUE_DOOR: i64 = 4
+            CUE_HAZARD: i64 = 5
+            CUE_WIN: i64 = 6
+            CUE_LOSE: i64 = 7
+            CUE_CLICK: i64 = 8
+            KEY_X: i64 = 2
+            KEY_Y: i64 = 6
+            DOOR_X: i64 = 5
+            DOOR_Y: i64 = 6
+            HAZARD_AX: i64 = 5
+            HAZARD_AY: i64 = 2
+            HAZARD_BX: i64 = 2
+            HAZARD_BY: i64 = 5
+            STREAM_RADIUS: i64 = 2
+            STREAM_BUDGET: usize = 9
 
     public:
         enum GameStatus:

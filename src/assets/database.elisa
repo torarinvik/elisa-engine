@@ -8,9 +8,8 @@ include "./descriptor.elisa"
 module AssetCatalogue:
     private:
         const module Tune:
-            public:
-                MAX_ENTRIES: usize = 16
-                MAX_BLOB_BYTES: i64 = 1048576
+            MAX_ENTRIES: usize = 16
+            MAX_BLOB_BYTES: i64 = 1048576
 
     public:
         error CatalogueError:

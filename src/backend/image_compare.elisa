@@ -6,10 +6,9 @@
 module ImageCompare:
     private:
         const module Limits:
-            public:
-                MAX_PIXELS: usize = 16
-                CHANNEL_LO: f32 = 0.0
-                CHANNEL_HI: f32 = 1.0
+            MAX_PIXELS: usize = 16
+            CHANNEL_LO: f32 = 0.0
+            CHANNEL_HI: f32 = 1.0
 
     public:
         struct Rgba:

@@ -3,8 +3,7 @@
 module Capabilities:
     private:
         const module Bounds:
-            public:
-                MAX_FEATURES: usize = 8
+            MAX_FEATURES: usize = 8
 
     public:
         enum BackendKind:

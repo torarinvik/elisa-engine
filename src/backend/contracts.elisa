@@ -3,10 +3,8 @@
 module Contracts:
     private:
         const module Rules:
-            public:
-                POINTER_ALIGNMENT: usize = 8
-            private:
-                NO_BYTES: usize = 0
+            POINTER_ALIGNMENT: usize = 8
+            NO_BYTES: usize = 0
 
     public:
         enum Operation:

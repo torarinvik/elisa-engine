@@ -12,12 +12,11 @@ include "./replication.elisa"
 module Wire:
     private:
         const module Format:
-            public:
-                FRAME_BYTES: usize = 33
-                OWNER_SERVER: u8 = 0
-                OWNER_CLIENT: u8 = 1
-                BYTE_MASK: u64 = 255
-                BIAS: i64 = 1000000
+            FRAME_BYTES: usize = 33
+            OWNER_SERVER: u8 = 0
+            OWNER_CLIENT: u8 = 1
+            BYTE_MASK: u64 = 255
+            BIAS: i64 = 1000000
 
     public:
         error WireError:

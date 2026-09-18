@@ -8,10 +8,9 @@
 module Reload:
     private:
         const module Tune:
-            public:
-                CURRENT_VERSION: i64 = 2
-                BASE_VERSION: i64 = 1
-                SCALE_STEP: i64 = 2
+            CURRENT_VERSION: i64 = 2
+            BASE_VERSION: i64 = 1
+            SCALE_STEP: i64 = 2
 
     public:
         error ReloadError:

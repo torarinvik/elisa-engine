@@ -9,8 +9,7 @@ include "./loopback.elisa"
 module Peer:
     private:
         const module Tune:
-            public:
-                PERSISTENT: u64 = 99
+            PERSISTENT: u64 = 99
 
     public:
         enum ApplyResult:

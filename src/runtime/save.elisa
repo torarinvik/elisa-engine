@@ -8,10 +8,9 @@
 module Save:
     private:
         const module Tune:
-            public:
-                MAGIC: i64 = 297638561601
-                VERSION: i64 = 1
-                MAX_FIELDS: usize = 8
+            MAGIC: i64 = 297638561601
+            VERSION: i64 = 1
+            MAX_FIELDS: usize = 8
 
     public:
         error SaveError:

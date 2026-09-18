@@ -10,8 +10,7 @@ include "../../src/assets/database.elisa"
 module MazeStudio:
     private:
         const module Tune:
-            public:
-                SETTINGS_TARGET: i64 = 0
+            SETTINGS_TARGET: i64 = 0
 
     public:
         struct Studio:
