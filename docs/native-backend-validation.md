@@ -665,3 +665,13 @@ vendored for them. The run reported
 `text: font=/System/Library/Fonts/Supplemental/Arial.ttf glyph=18x23 advance=21 shaped_glyphs=5 text_advance=69.36`,
 so the text stack is exercised in a headless run. No UI layout is claimed; this
 is the font and shaping layer, not a widget toolkit.
+
+## zstd package compression (2026-09-18)
+
+`native/zstd_probe.h` compresses the actual cooked package file with zstd and
+decompresses it again, requiring a byte-for-byte round trip. The ratio is
+therefore a measurement of a real payload, not a synthetic buffer. On this
+workstation the text package compressed from 1243 to 386 bytes
+(`ratio=0.311`), which is unsurprising for base64 text and shows the mechanism
+rather than promising a ratio for binary geometry. zstd is a system (Homebrew)
+library, so nothing is vendored for it.

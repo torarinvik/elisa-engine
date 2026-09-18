@@ -137,7 +137,7 @@ def main(arguments: darray[sview]) -> i64:
         str(meshopt.joinpath("indexanalyzer.cpp")),
         str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(recast_libs[0]), str(recast_libs[1]),
-        "-L", sdl_library, "-lfreetype", "-lharfbuzz",
+        "-L", sdl_library, "-lfreetype", "-lharfbuzz", "-lzstd",
         str(library_root.joinpath("libWickedEngine.a")),
         str(library_root.joinpath("libJolt.a")), str(utility_lib),
         str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",

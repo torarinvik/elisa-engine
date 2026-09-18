@@ -31,6 +31,7 @@
 #include "recast_probe.h"
 #include "miniaudio_probe.h"
 #include "text_probe.h"
+#include "zstd_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -223,6 +224,10 @@ int main(int argc, char** argv) {
             if (!check(package.loaded, "cooked package format") ||
                 !check(package.triangles == summary.triangles && package.positions == summary.positions,
                     "cooked package counts match the import")) {
+                return 1;
+            }
+            // zstd package compression lives in native/zstd_probe.h.
+            if (!probe_zstd(package_path.lexically_normal().string())) {
                 return 1;
             }
         }
