@@ -138,4 +138,18 @@ def main() -> i32:
         error failure: false
     return 48 if not recooked or lookup_generation(&catalog, tile) != 1
     return 49 if not studio_tile_fresh(&studio, &catalog, content_two, 1) or studio_tile_fresh(&studio, &catalog, content_one, 0)
+
+    # Chunk streaming follows the running game: chunks around the player are
+    # resident, the resident count stays within the budget, and a restart leaves
+    # the residency coherent.
+    stream_game: mutable MazeGame = game_new()
+    game_start(&stream_game)
+    return 50 if not game_valid(&stream_game) or game_resident_chunks(&stream_game) == 0
+    return 51 if not game_chunk_resident(&stream_game, 0, 0)
+    return 52 if game_resident_chunks(&stream_game) > 9
+    east_stream: bool = game_step(&stream_game, MazeMove.East)
+    return 53 if not east_stream or not game_valid(&stream_game)
+    return 54 if game_resident_chunks(&stream_game) == 0 or game_resident_chunks(&stream_game) > 9
+    game_restart(&stream_game)
+    return 55 if not game_valid(&stream_game) or not game_chunk_resident(&stream_game, 0, 0)
     0

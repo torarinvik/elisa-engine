@@ -1,0 +1,135 @@
+# Chunk streaming. A cell grid is divided into fixed 2x2-cell chunks; as the
+# player moves, chunks inside the residency radius are loaded and chunks outside
+# are unloaded, and the resident set never exceeds the declared budget. When the
+# desired set is larger than the budget, the farthest desired chunks are evicted
+# rather than the budget being exceeded, so residency is bounded by construction.
+# Loading and unloading are counted, so a restart that accumulates chunks would
+# be visible in the counters.
+module Streaming:
+    private:
+        const module Tune:
+            CHUNK_CELLS: i64 = 2
+            MAX_CHUNKS: usize = 64
+
+    public:
+        struct StreamState:
+            width: i64
+            height: i64
+            budget: usize
+            resident: mutable bool[64]
+            count: mutable usize
+            loads: mutable usize
+            unloads: mutable usize
+            evictions: mutable usize
+
+        def stream_new(width: i64, height: i64, budget: usize) -> StreamState:
+            StreamState{
+                width: width,
+                height: height,
+                budget: budget,
+                resident: zeroed,
+                count: 0,
+                loads: 0,
+                unloads: 0,
+                evictions: 0,
+            }
+
+        def chunk_cells_x(width: i64) -> i64:
+            (width + Tune::CHUNK_CELLS - 1) / Tune::CHUNK_CELLS
+
+        def chunk_cells_y(height: i64) -> i64:
+            (height + Tune::CHUNK_CELLS - 1) / Tune::CHUNK_CELLS
+
+        def chunks_x(state: StreamState&) -> i64:
+            chunk_cells_x(state.width)
+
+        def chunks_y(state: StreamState&) -> i64:
+            chunk_cells_y(state.height)
+
+        def chunk_index(state: StreamState&, chunk_x: i64, chunk_y: i64) -> usize:
+            chunk_y.usize() * chunks_x(state).usize() + chunk_x.usize()
+
+        def stream_valid(state: StreamState&) -> bool:
+            return false if state.width <= 0 or state.height <= 0 or state.budget == 0
+            return false if chunks_x(state) * chunks_y(state) > Tune::MAX_CHUNKS.usize().i64()
+            # A read-only reference cannot be threaded through a value block, so
+            # the resident column is copied into a mutable local first.
+            residents: mutable bool[64] = state.resident
+            live: usize =
+                for index in 0..<Tune::MAX_CHUNKS |total: usize = 0, residents| -> total:
+                    total <- total + 1 if residents[index]
+            live == state.count and state.count <= state.budget
+
+        def stream_is_resident(state: StreamState&, chunk_x: i64, chunk_y: i64) -> bool:
+            return false if chunk_x < 0 or chunk_y < 0 or chunk_x >= chunks_x(state) or chunk_y >= chunks_y(state)
+            state.resident[chunk_index(state, chunk_x, chunk_y)]
+
+    private:
+        def abs_i64(value: i64) -> i64:
+            0 - value if value < 0 else value
+
+        def chunk_distance(state: StreamState&, chunk_x: i64, chunk_y: i64, player_x: i64, player_y: i64) -> i64:
+            # Chebyshev distance in cells from the chunk's centre to the player.
+            centre_x: i64 = chunk_x * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
+            centre_y: i64 = chunk_y * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
+            dx: i64 = abs_i64(centre_x - player_x)
+            dy: i64 = abs_i64(centre_y - player_y)
+            dx if dx > dy else dy
+
+        def chunk_overlaps_radius(state: StreamState&, chunk_x: i64, chunk_y: i64, player_x: i64, player_y: i64, radius: i64) -> bool:
+            min_x: i64 = chunk_x * Tune::CHUNK_CELLS
+            max_x: i64 = min_x + Tune::CHUNK_CELLS - 1
+            min_y: i64 = chunk_y * Tune::CHUNK_CELLS
+            max_y: i64 = min_y + Tune::CHUNK_CELLS - 1
+            player_min_x: i64 = player_x - radius
+            player_max_x: i64 = player_x + radius
+            player_min_y: i64 = player_y - radius
+            player_max_y: i64 = player_y + radius
+            not (max_x < player_min_x or min_x > player_max_x or max_y < player_min_y or min_y > player_max_y)
+
+    public:
+        # Recompute residency for the player's position and return the number of
+        # load/unload/eviction changes. The desired set is capped at the budget
+        # by evicting the farthest desired chunks.
+        def stream_update(state: mutable StreamState&, player_x: i64, player_y: i64, radius: i64) -> usize:
+            chunks_x_value: i64 = chunks_x(state)
+            chunks_y_value: i64 = chunks_y(state)
+            desired: mutable bool[64] = zeroed
+            for chunk_y in 0..<chunks_y_value |desired, state, player_x, player_y, radius|:
+                for chunk_x in 0..<chunks_x_value |desired, state, player_x, player_y, radius, chunk_y|:
+                    if chunk_overlaps_radius(state, chunk_x, chunk_y, player_x, player_y, radius):
+                        desired[chunk_index(state, chunk_x, chunk_y)] <- true
+            desired_count: mutable usize = 0
+            for index in 0..<Tune::MAX_CHUNKS |desired, desired_count|:
+                if desired[index]:
+                    desired_count <- desired_count + 1
+            # Evict the farthest desired chunks until the desired set fits.
+            for guard in 0..<Tune::MAX_CHUNKS |desired, desired_count, state, player_x, player_y|:
+                break if desired_count <= state.budget
+                farthest: mutable i64 = -1
+                farthest_index: mutable usize = 0
+                for chunk_y in 0..<chunks_y(state) |desired, state, player_x, player_y, farthest, farthest_index|:
+                    for chunk_x in 0..<chunks_x(state) |desired, state, player_x, player_y, farthest, farthest_index, chunk_y|:
+                        index: usize = chunk_index(state, chunk_x, chunk_y)
+                        if desired[index]:
+                            distance: i64 = chunk_distance(state, chunk_x, chunk_y, player_x, player_y)
+                            if distance > farthest:
+                                farthest <- distance
+                                farthest_index <- index
+                break if farthest < 0
+                desired[farthest_index] <- false
+                desired_count <- desired_count - 1
+                state.evictions <- state.evictions + 1
+            changes: mutable usize = 0
+            for index in 0..<Tune::MAX_CHUNKS |desired, state, changes|:
+                if desired[index] and not state.resident[index]:
+                    state.resident[index] <- true
+                    state.count <- state.count + 1
+                    state.loads <- state.loads + 1
+                    changes <- changes + 1
+                if not desired[index] and state.resident[index]:
+                    state.resident[index] <- false
+                    state.count <- state.count - 1
+                    state.unloads <- state.unloads + 1
+                    changes <- changes + 1
+            changes

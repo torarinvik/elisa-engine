@@ -56,3 +56,15 @@ re-parsing a package. The runtime does not read this database; the package
 remains the runtime artifact. `record_validation.py` verifies the recorded row
 agrees with the shared fixture's triangle count and records the database hash
 under `asset_catalogue_database`, so the catalogue is gated rather than assumed.
+
+## Chunk streaming (2026-09-18)
+
+`src/assets/streaming.elisa` divides a cell grid into fixed 2x2-cell chunks and
+keeps a bounded resident set as the player moves: chunks whose cell rectangle
+intersects the player's radius load, chunks outside unload, and the resident
+count never exceeds the declared budget because the farthest desired chunks are
+evicted first (counted as evictions). `examples/maze/game.elisa` drives it from
+the real player position on start, restart, each move, and each hazard reset,
+and `game_valid` requires the residency to be coherent. `test/maze_game.elisa`
+pins the load on start, the unchanged budget after a move, and the coherent
+restart.

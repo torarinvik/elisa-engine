@@ -184,6 +184,12 @@ pose, and unloads with its identity removed first.
 drive movement: a cell is committed only when the accumulated root distance
 reaches the cell length, so a shorter clip takes more cycles per cell instead
 of a fixed timer deciding motion.
+`src/assets/streaming.elisa` keeps a bounded residency of 2x2-cell chunks as
+the player moves: chunks inside the radius load, chunks outside unload, and the
+resident count never exceeds the budget because the farthest desired chunks are
+evicted first. `examples/maze/game.elisa` drives it from the real player
+position, so streaming follows gameplay and a restart leaves residency coherent.
+
 `examples/maze/studio.elisa` is the play-in-editor surface: a running game with
 an undo/redo history over its settings, stepped through the real game API, and
 an asset-catalogue check that rejects a stale package generation.

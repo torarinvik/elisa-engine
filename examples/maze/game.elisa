@@ -3,6 +3,7 @@
 # Elisa owns all rules. Backends render derived transforms and play cue IDs;
 # they never decide movement, collision, visibility, or win/loss.
 include "./maze.elisa"
+include "../../src/assets/streaming.elisa"
 
 module MazeGame:
     private:
@@ -26,6 +27,8 @@ module MazeGame:
             HAZARD_AY: i64 = 2
             HAZARD_BX: i64 = 2
             HAZARD_BY: i64 = 5
+            STREAM_RADIUS: i64 = 2
+            STREAM_BUDGET: usize = 9
 
     public:
         enum GameStatus:
@@ -48,6 +51,7 @@ module MazeGame:
             settings: mutable GameSettings
             cues: mutable i64[16]
             cue_count: mutable usize
+            stream: mutable Streaming::StreamState
 
         def default_settings() -> GameSettings:
             GameSettings{fog: true, audio: true}
@@ -61,6 +65,7 @@ module MazeGame:
                 settings: default_settings(),
                 cues: zeroed,
                 cue_count: 0,
+                stream: Streaming::stream_new(Maze::maze_width().i64(), Maze::maze_height().i64(), Tune::STREAM_BUDGET),
             }
 
         def is_hazard(x: i64, y: i64) -> bool:
@@ -149,7 +154,14 @@ module MazeGame:
             return false if game.lives < 0 or game.lives > Tune::START_LIVES or game.cue_count > Tune::MAX_CUES
             return false if not Maze::maze_valid(game.grid)
             return false if game.status == GameStatus.Playing and Maze::maze_at_goal(game.grid)
+            return false if not Streaming::stream_valid(&game.stream)
             true
+
+        def game_resident_chunks(game: MazeGame&) -> usize:
+            game.stream.count
+
+        def game_chunk_resident(game: MazeGame&, chunk_x: i64, chunk_y: i64) -> bool:
+            Streaming::stream_is_resident(&game.stream, chunk_x, chunk_y)
 
         def game_won(game: MazeGame&) -> bool:
             game.status == GameStatus.Won
@@ -171,12 +183,16 @@ module MazeGame:
                     game.cue_count <- game.cue_count + 1
 
             public:
+                def refresh_stream(game: mutable MazeGame&) -> void:
+                    _ = Streaming::stream_update(&game.stream, game.grid.player_x, game.grid.player_y, MazeGame::Tune::STREAM_RADIUS)
+
                 def start(game: mutable MazeGame&) -> void:
                     game.grid <- Maze::maze_start()
                     game.lives <- MazeGame::Tune::START_LIVES
                     game.has_key <- false
                     game.status <- MazeGame::GameStatus.Playing
                     game.cue_count <- 0
+                    refresh_stream(game)
                     push_cue(game, MazeGame::Tune::CUE_CLICK)
 
                 def pause(game: mutable MazeGame&) -> void:
@@ -201,6 +217,7 @@ module MazeGame:
                     game.status <- MazeGame::GameStatus.Playing
                     game.settings <- keep
                     game.cue_count <- 0
+                    refresh_stream(game)
                     push_cue(game, MazeGame::Tune::CUE_CLICK)
 
                 def apply_settings(game: mutable MazeGame&, settings: MazeGame::GameSettings) -> void:
@@ -214,6 +231,7 @@ module MazeGame:
                     return push_blocked(game) if not moved
                     return push_door(game) if MazeGame::door_blocked(game, tent.player_x, tent.player_y)
                     game.grid <- tent
+                    refresh_stream(game)
                     on_key: bool = MazeGame::is_key(game.grid.player_x, game.grid.player_y)
                     game.has_key <- true if on_key and not game.has_key
                     push_cue(game, MazeGame::Tune::CUE_KEY) if on_key and game.has_key
@@ -235,6 +253,7 @@ module MazeGame:
                     push_cue(game, MazeGame::Tune::CUE_HAZARD)
                     return on_lose(game) if game.lives <= 0
                     game.grid <- Maze::maze_start()
+                    refresh_stream(game)
                     true
 
                 def on_goal(game: mutable MazeGame&) -> bool:
