@@ -618,3 +618,19 @@ probe run reported `ozz: root_x start=0.0000 mid=1.0000 end=2.0000`, so ozz is
 genuinely linked and sampling. This is not a claim that a full character
 pipeline was ported to ozz; the engine-side sampler remains the one the
 gameplay uses.
+
+## Recast/Detour navigation (2026-09-18)
+
+The native host now exercises Recast for navmesh generation and Detour for
+queries. `scripts/fetch_recast.py` pins recastnavigation v1.6.0 by commit
+(`6dc1667f580357e8a2154c28b7867bea7e8ad3a7`), builds only Recast and Detour
+(the demo, tests, and examples stay off), and sets
+`CMAKE_POLICY_VERSION_MINIMUM=3.5` because the upstream CMakeLists predates the
+policy floor of newer CMake. `native/recast_probe.h` rasterizes a plane with a
+wall and a gap (counter-clockwise winding so Recast reads +Y normals, and padded
+bounds so the ground has vertical headroom), builds the compact heightfield,
+regions, contours, poly mesh, and detail mesh, then creates and queries a Detour
+navmesh. The path must use more than one polygon, so a straight line being
+blocked is what proves Detour navigated. The run reported
+`recast: polys=16 navdata=2476 path_polys=5 start=20 end=29`. As with ozz, this
+is linked-and-exercised evidence; the maze's own pathfinding stays in Elisa.

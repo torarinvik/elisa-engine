@@ -28,6 +28,7 @@
 #include "perf_sweep.h"
 #include "churn_probe.h"
 #include "ozz_probe.h"
+#include "recast_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -501,6 +502,10 @@ int main(int argc, char** argv) {
     }
     // ozz skeletal sampling lives in native/ozz_probe.h.
     if (!probe_ozz_sampling()) {
+        return 1;
+    }
+    // Recast/Detour navigation lives in native/recast_probe.h.
+    if (!probe_recast_navigation()) {
         return 1;
     }
 

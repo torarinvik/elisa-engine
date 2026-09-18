@@ -111,12 +111,17 @@ marker's mesh from that package rather than from a source format. Fetch the
 pinned dependencies with `python3 scripts/fetch_dependencies.py` (cgltf and the
 meshoptimizer vertex-cache files, revision- and hash-locked) and
 `python3 scripts/fetch_ozz.py` (ozz-animation, pinned by commit and built into
-`dependencies/ozz`) before building the native probe. The native host
+`dependencies/ozz`) and `python3 scripts/fetch_recast.py` (Recast/Detour,
+pinned by commit and built into `dependencies/recast`) before building the
+native probe. The native host
 cache-optimizes the cooked index buffer with meshoptimizer before upload —
 failing the probe if the optimizer worsens the measured average cache miss
 ratio — and links ozz-animation, sampling a two-joint linear clip at start,
 midpoint, and end and checking it against the same linear expectation the
-engine's own sampler produces.
+engine's own sampler produces. It also runs Recast/Detour: a plane with a wall
+and a gap is voxelized into a navmesh and Detour finds a multi-polygon path
+around the wall, so the navigation library is exercised rather than declared.
+The game's own navigation decisions stay in Elisa.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
