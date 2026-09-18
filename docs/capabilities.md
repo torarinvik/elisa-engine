@@ -98,6 +98,7 @@ writes `build/validation.json`. Host evidence comes from
 | Loss recovery end to end (window over the lossy link) | Tested | `test/session.elisa` |
 | Determinism scope (solver, build) | Tested | `test/replication.elisa` |
 | Fuzzed wire decoder | Tested | `test/session.elisa` |
+| Netcode convergence fuzz across loss/delay profiles | Tested | `test/session.elisa` |
 | Integer-overflow rejection at the wire boundary | Tested | `Wire::encode` bounds, `test/session.elisa` |
 | Real socket transport for the frame shape | Tested | `native/udp_probe.h` (UDP loopback) |
 | GameNetworkingSockets transport | Planned | UDP loopback is a stand-in, not the selected library |

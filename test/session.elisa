@@ -375,6 +375,44 @@ def reliable_link_test() -> i32:
     return 134 if sender_outstanding(&sender) != 0 or sender.retransmits == 0 or not sender_valid(&sender)
     0
 
+# Model-based convergence fuzz: revisions sent through a link are delivered
+# under loss and delay profiles, and the peer must never regress and must end at
+# the highest delivered revision. It exercises the netcode across profiles
+# rather than one hand-picked setting.
+def convergence_profile(loss_every: usize, delay: i64, revisions: usize) -> i32:
+    link: mutable Link = link_new(loss_every, delay)
+    for index in 0..<revisions |link|:
+        sent: i32 = catch link_send(&link, &sample(Owner.Server, index.i64() + 1, (index.i64() + 1) * 10, 0), index.i64()):
+            ok: 0
+            error failure: 1
+        return 150 if sent != 0
+    highest: mutable i64 = 0
+    for index in 0..<revisions |highest|:
+        highest <- index.i64() + 1 if should_deliver(index, loss_every)
+    client: mutable PeerState = peer_new(Owner.Server)
+    previous: mutable i64 = 0
+    for tick in 0..<revisions.i64() + delay + 2 |link, client, previous|:
+        received: ReplRecord =
+            catch link_receive(&link, tick):
+                value: value
+                error failure: ReplRecord{persistent: 0, x: 0, y: 0, revision: 0, owner: Owner.Server}
+        if received.persistent == 99:
+            outcome: ApplyResult = peer_apply(&client, received, Owner.Server)
+            return 151 if peer_revision(&client) < previous
+            previous <- peer_revision(&client)
+    return 152 if peer_revision(&client) != highest
+    return 153 if client.rejected != 0
+    0
+
+def convergence_fuzz() -> i32:
+    for loss in 2..<5:
+        for delay in 0..<3:
+            result: i32 = convergence_profile(loss.usize(), delay.i64(), 6)
+            return result if result != 0
+    no_loss: i32 = convergence_profile(0, 0, 6)
+    return 154 if no_loss != 0
+    0
+
 def main() -> i32:
     session: mutable NetSession = session_new()
     return 1 if not session_valid(&session) or session_live(&session)
@@ -421,4 +459,6 @@ def main() -> i32:
     return gap_reliable if gap_reliable != 0
     loss_recovered: i32 = reliable_link_test()
     return loss_recovered if loss_recovered != 0
+    converged: i32 = convergence_fuzz()
+    return converged if converged != 0
     0

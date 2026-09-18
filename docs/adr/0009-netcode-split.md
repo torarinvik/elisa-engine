@@ -103,3 +103,12 @@ at most `i64::MAX - BIAS`), so an unrepresentable coordinate is refused without
 arithmetic that can overflow. `test/session.elisa` pins the high and low
 extremes as `Unrepresentable` and a value at the representable boundary as
 accepted.
+
+## Convergence fuzz (2026-09-18)
+
+A model-based test sweeps loss and delay profiles (loss every 2, 3, or 4
+frames; delay 0-2 ticks; plus a no-loss profile), sends six revisions through
+the link, and requires the peer to never regress and to end at the highest
+delivered revision with no rejection. It exercises the netcode across profiles
+rather than one hand-picked setting, and a profile where the peer regressed or
+overshot the delivered revision would fail.
