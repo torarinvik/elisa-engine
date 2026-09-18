@@ -30,6 +30,7 @@
 #include "ozz_probe.h"
 #include "recast_probe.h"
 #include "miniaudio_probe.h"
+#include "text_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -511,6 +512,10 @@ int main(int argc, char** argv) {
     }
     // miniaudio decode and null device lives in native/miniaudio_probe.h.
     if (!probe_miniaudio()) {
+        return 1;
+    }
+    // FreeType/HarfBuzz text lives in native/text_probe.h.
+    if (!probe_text()) {
         return 1;
     }
 

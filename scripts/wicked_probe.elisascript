@@ -97,6 +97,8 @@ def main(arguments: darray[sview]) -> i64:
         if not is_file(path(ozz_lib)):
             eprint("Missing ozz library; run python3 scripts/fetch_ozz.py first.")
             return 2
+    freetype_include: sview = str(path(sdl_include).joinpath("freetype2"))
+    harfbuzz_include: sview = str(path(sdl_include).joinpath("harfbuzz"))
     miniaudio: Path = root.joinpath("dependencies/miniaudio")
     if not is_file(path(str(miniaudio.joinpath("miniaudio.h")))):
         eprint("Missing miniaudio; run python3 scripts/fetch_dependencies.py first.")
@@ -124,6 +126,7 @@ def main(arguments: darray[sview]) -> i64:
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
         "-I", str(dependencies), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
         "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
+        "-I", freetype_include, "-I", harfbuzz_include,
         "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
@@ -134,6 +137,7 @@ def main(arguments: darray[sview]) -> i64:
         str(meshopt.joinpath("indexanalyzer.cpp")),
         str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(recast_libs[0]), str(recast_libs[1]),
+        "-L", sdl_library, "-lfreetype", "-lharfbuzz",
         str(library_root.joinpath("libWickedEngine.a")),
         str(library_root.joinpath("libJolt.a")), str(utility_lib),
         str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",

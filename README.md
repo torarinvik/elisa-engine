@@ -122,8 +122,9 @@ engine's own sampler produces. It also runs Recast/Detour: a plane with a wall
 and a gap is voxelized into a navmesh and Detour finds a multi-polygon path
 around the wall, so the navigation library is exercised rather than declared.
 It also decodes the audio clip through miniaudio and opens a null playback
-device, so the audio library runs headless. The game's own navigation decisions
-stay in Elisa.
+device, so the audio library runs headless, and it loads a system font through
+FreeType and shapes a short string through HarfBuzz, so the text stack is
+exercised too. The game's own navigation decisions stay in Elisa.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
@@ -223,7 +224,9 @@ cover the pure epoch predicate, not mutable registry consistency.
 
 Requires an ElisaScript launcher, the self-hosted Elisa compiler, a built
 Elisa Proof assistant, and SDL3 for the platform probe (set
-`ELISA_SDL3_LIB_DIR` when SDL3 is installed outside `/opt/homebrew/lib`):
+`ELISA_SDL3_LIB_DIR` when SDL3 is installed outside `/opt/homebrew/lib`). The
+native probe additionally needs the Homebrew `freetype` and `harfbuzz` libraries
+for the text check:
 
 ```sh
 PATH="$HOME/.elisac:$PATH" elisascript scripts/check.elisascript

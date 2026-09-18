@@ -652,3 +652,16 @@ One integration detail: miniaudio's bundled FLAC decoder does not compile
 cleanly with this compiler at `-O0`, so the unused codecs are compiled out with
 `MA_NO_FLAC`, `MA_NO_MP3`, `MA_NO_VORBIS`, and `MA_NO_OPUS` rather than patching
 the dependency. The engine only decodes WAV here.
+
+## FreeType/HarfBuzz text (2026-09-18)
+
+Text stays on shared ecosystem components, as the plan directs, rather than a
+reimplemented font stack. `native/text_probe.h` loads a system font through
+FreeType (honoring `ELISA_TEXT_FONT`, otherwise the first of a small candidate
+list), rasterizes one glyph to check its bitmap and advance, and shapes "Elisa"
+through HarfBuzz using the same face, checking the glyph count. FreeType and
+HarfBuzz are system (Homebrew) libraries linked by the probe, so nothing is
+vendored for them. The run reported
+`text: font=/System/Library/Fonts/Supplemental/Arial.ttf glyph=18x23 advance=21 shaped_glyphs=5 text_advance=69.36`,
+so the text stack is exercised in a headless run. No UI layout is claimed; this
+is the font and shaping layer, not a widget toolkit.
