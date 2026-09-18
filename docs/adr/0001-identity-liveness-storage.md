@@ -33,3 +33,14 @@ conditional on a monotonic cursor), `src/net/replication.elisa`
 
 Whole-world ownership/concurrency proofs; persistent cross-build identity
 lives in asset IDs, not entity IDs; packed-handle ABI not fixed.
+
+## Root motion drives movement (2026-09-18)
+
+`examples/maze/rootmotion.elisa` closes the plan's requirement that root motion
+drive the character through the movement policy rather than compete with a
+second controller. The walker samples a clip whose root advances a fixed
+distance per cycle, adds the sampled root translation to its travelled
+distance, and commits a cell only when that distance reaches the cell length.
+`test/maze.elisa` pins the consequence: a cell-length clip commits one cell per
+eight-tick cycle, while a half-length clip needs two cycles, so the clip's data
+(not a timer) decides movement.

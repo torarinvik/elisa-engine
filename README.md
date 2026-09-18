@@ -159,6 +159,10 @@ than extrapolating).
 `examples/maze/character.elisa` composes these into one playable enemy: it is
 an owning World entity that navigates, animates, carries an IK-corrected leg
 pose, and unloads with its identity removed first.
+`examples/maze/rootmotion.elisa` makes the sampled clip's root translation
+drive movement: a cell is committed only when the accumulated root distance
+reaches the cell length, so a shorter clip takes more cycles per cell instead
+of a fixed timer deciding motion.
 `examples/maze/studio.elisa` is the play-in-editor surface: a running game with
 an undo/redo history over its settings, stepped through the real game API, and
 an asset-catalogue check that rejects a stale package generation.

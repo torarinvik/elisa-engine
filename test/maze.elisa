@@ -3,12 +3,14 @@ include "../examples/maze/layout.elisa"
 include "../examples/maze/trace.elisa"
 include "../examples/maze/hunter.elisa"
 include "../examples/maze/character.elisa"
+include "../examples/maze/rootmotion.elisa"
 using Maze
 using MazeLayout
 using MazeGame
 using MazeTrace
 using MazeHunter
 using MazeCharacter
+using MazeRootMotion
 using World
 using Nav
 
@@ -89,6 +91,28 @@ def main() -> i32:
         WorldError.InvalidReference: 0
         error failure: 2
     return 56 if dangling_character != 0
+
+    # Root motion drives the walk: the clip's sampled root distance commits a
+    # cell, so a shorter clip needs more cycles per cell rather than a fixed
+    # timer deciding movement.
+    fast: mutable Walker = walker_new()
+    for step in 0..<7 |fast|:
+        early_fast: bool = walker_step(&fast, 0.6)
+        return 57 if early_fast
+    return 58 if fast.cells != 0 or fast.tick != 7
+    fast_commit: bool = walker_step(&fast, 0.6)
+    return 59 if not fast_commit or fast.cells != 1 or fast.tick != 0 or walker_travelled(&fast) > 0.001
+    for step in 0..<8 |fast|:
+        _ = walker_step(&fast, 0.6)
+    return 60 if fast.cells != 2
+    slow: mutable Walker = walker_new()
+    for step in 0..<8 |slow|:
+        early_slow: bool = walker_step(&slow, 0.3)
+        return 61 if early_slow
+    return 62 if slow.cells != 0 or walker_travelled(&slow) < 0.299 or walker_travelled(&slow) > 0.301
+    for step in 0..<8 |slow|:
+        _ = walker_step(&slow, 0.3)
+    return 63 if slow.cells != 1
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0

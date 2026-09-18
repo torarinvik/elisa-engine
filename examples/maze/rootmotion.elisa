@@ -1,0 +1,71 @@
+# Root motion drives the walk. The plan requires root motion to move the
+# character through the movement policy rather than competing with a separate
+# controller, so the controller never counts a fixed timer: each sampled clip
+# cycle contributes the root translation the clip actually produced, and a cell
+# is committed only when that distance reaches the cell length. A shorter clip
+# therefore takes more cycles per cell, which is what makes the test meaningful.
+include "./maze.elisa"
+include "../../src/animation/sampler.elisa"
+
+using Sampler
+using Pose
+using Geometry
+
+module MazeRootMotion:
+    private:
+        const module Tune:
+            CLIP_TICKS: i64 = 8
+            CELL_LENGTH: f32 = 0.6
+
+        def walk_skeleton() -> Pose::Skeleton:
+            skeleton: mutable Pose::Skeleton = skeleton_new()
+            _ = skeleton_add(&skeleton, -1, transform_identity())
+            skeleton
+
+        def pose_at(clip: ClipData&, tick: i64) -> Pose::Pose:
+            skeleton: mutable Pose::Skeleton = walk_skeleton()
+            evaluated: Pose::Pose = catch clip_sample_pose(clip, tick, &skeleton):
+                value: value
+                error failure: Pose::Pose{models: zeroed, count: 0}
+            evaluated
+
+    public:
+        struct Walker:
+            tick: mutable i64
+            travelled: mutable f32
+            cells: mutable i64
+
+        # A walk clip whose root advances step_length over one cycle. The clip
+        # owns the distance; the controller only asks how far the sampled pose
+        # moved.
+        def walk_clip(step_length: f32) -> ClipData:
+            clip: mutable ClipData = clip_new(Tune::CLIP_TICKS)
+            _ = clip_add_key(&clip, 0, 0, transform_identity())
+            forward: Transform = Transform{position: Vec3{x: step_length, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()}
+            _ = clip_add_key(&clip, 0, Tune::CLIP_TICKS, forward)
+            clip
+
+        def walker_new() -> Walker:
+            Walker{tick: 0, travelled: 0.0, cells: 0}
+
+        def walker_step(walker: mutable Walker&, step_length: f32) -> bool:
+            clip: ClipData = walk_clip(step_length)
+            next_tick: i64 = walker.tick + 1
+            current: Pose::Pose = pose_at(&clip, next_tick)
+            root_x: f32 = pose_root_position(&current).x
+            walker.tick <- next_tick
+            return false if next_tick < Tune::CLIP_TICKS
+            # Cycle complete: add the root motion this cycle produced and start
+            # the clip again. The tick resets, but the distance does not.
+            walker.tick <- 0
+            walker.travelled <- walker.travelled + root_x
+            return false if walker.travelled < Tune::CELL_LENGTH
+            walker.travelled <- walker.travelled - Tune::CELL_LENGTH
+            walker.cells <- walker.cells + 1
+            true
+
+        def walker_cells(walker: Walker&) -> i64:
+            walker.cells
+
+        def walker_travelled(walker: Walker&) -> f32:
+            walker.travelled
