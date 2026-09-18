@@ -216,6 +216,28 @@ func _run_probe() -> void:
             if ktx_colour.g < 0.6 or ktx_colour.r > 0.4 or ktx_colour.b > 0.5:
                 _fail("KTX texture colour mismatch")
                 return
+        # Basis Universal KTX2: Godot's KTX loader transcodes the supercompressed
+        # container and keeps it compressed, so this is the GPU-format path.
+        var ktx2_path: String = package_path.get_base_dir().path_join(asset_name + "_tex.ktx2")
+        if FileAccess.file_exists(ktx2_path):
+            var ktx2_image := Image.new()
+            var ktx2_error := ktx2_image.load_ktx_from_buffer(FileAccess.get_file_as_bytes(ktx2_path))
+            if ktx2_error != OK:
+                _fail("KTX2 Basis texture did not load")
+                return
+            var ktx2_was_compressed := ktx2_image.is_compressed()
+            if ktx2_was_compressed:
+                ktx2_image.decompress()
+            var ktx2_colour: Color = ktx2_image.get_pixel(0, 0)
+            print("godot ktx2 texture: %dx%d compressed=%s rgb=%.2f,%.2f,%.2f" % [
+                ktx2_image.get_width(), ktx2_image.get_height(), str(ktx2_was_compressed),
+                ktx2_colour.r, ktx2_colour.g, ktx2_colour.b])
+            if ktx2_image.get_width() != 4 or ktx2_image.get_height() != 4 or not ktx2_was_compressed:
+                _fail("KTX2 texture is not the compressed 4x4 block")
+                return
+            if ktx2_colour.g < 0.6 or ktx2_colour.r > 0.4 or ktx2_colour.b > 0.5:
+                _fail("KTX2 texture colour mismatch")
+                return
 
     var audio_samples := 400
     var audio_rate := 8000

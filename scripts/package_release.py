@@ -143,7 +143,7 @@ def collect(root: Path, compiler: str, staging: Path) -> dict:
         target_bc1 = staging / "assets" / bc1_texture.name
         target_bc1.write_bytes(bc1_texture.read_bytes())
     ktx_textures = []
-    for name in ("maze_tile_tex.ktx", "maze_tile_tex_bc1.ktx"):
+    for name in ("maze_tile_tex.ktx", "maze_tile_tex_bc1.ktx", "maze_tile_tex.ktx2"):
         texture = root / "build" / "cooked" / name
         if texture.is_file():
             target = staging / "assets" / texture.name

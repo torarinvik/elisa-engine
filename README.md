@@ -112,10 +112,14 @@ rejects a set of crafted bad documents and runs as part of validation. It also r
 SQLite catalogue of cooked assets (source path, content hash, counts) for the
 toolkit, distinct from the runtime package, and cooks a first texture: a small
 solid-green texture in a versioned texture package that both hosts upload and
-apply to the goal material (RGBA for the material, plus 16-bit R5G6B5 and a
-BC1/DXT1 block-compressed block for the compressed path), so the authored
-texture reaches the rendered frame; the Godot capture's goal-colour check and
-the cross-host comparison both still pass. It then
+apply to the goal material (RGBA for the material, plus 16-bit R5G6B5, a
+BC1/DXT1 block-compressed block, and a KTX1 container for the compressed path).
+With `scripts/fetch_basisu.py` run once, the cooker also emits a Basis
+Universal KTX2 through the pinned encoder: the native probe transcodes it with
+the Basis transcoder, and Godot's KTX loader transcodes the same file and keeps
+it compressed, so the authored texture reaches the rendered frame and the
+supercompressed path is exercised on both hosts. The Godot capture's
+goal-colour check and the cross-host comparison both still pass. It then
 cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the

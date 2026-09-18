@@ -66,10 +66,17 @@ also writes KTX1 containers for the RGBA and BC1 payloads
 its DXT1 format ID. The Godot host opens the container with
 `Image.load_ktx_from_buffer` and sees a compressed image before it decompresses;
 the native probe parses the container header and verifies the payload instead of
-trusting the extension. Both probes are gated. KTX2 and Basis
-supercompression/GPU transcode still need an encoder this environment does not
-have, so the container is the implemented part and the transcode stays
-deferred.
+trusting the extension. Both probes are gated.
+
+Basis Universal now supplies the supercompressed path. `scripts/fetch_basisu.py`
+pins the encoder at 99f52d63 and builds the `basisu` CLI; the cooker writes the
+cooked pixels as a PNG and runs `basisu -ktx2 -uastc -linear` to produce
+`maze_tile_tex.ktx2`. `native/basisu_probe.cpp` parses that KTX2 with the Basis
+transcoder from the same checkout and transcodes it to RGBA on the CPU, and
+Godot's own KTX loader transcodes the same file and keeps it compressed, so
+both hosts consume the supercompressed container. sRGB is avoided (`-linear`)
+because Godot's loader decompresses sRGB KTX2 rather than keeping the GPU
+format.
 
 ## Chunk streaming (2026-09-18)
 

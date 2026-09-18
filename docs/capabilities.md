@@ -139,7 +139,7 @@ writes `build/validation.json`. Host evidence comes from
 | 16-bit packed texture (RGB565) | Tested | `scripts/cook_assets.py`, `cooked_texture_packed`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | Block-compressed texture (BC1/DXT1) | Tested | `scripts/cook_assets.py`, `cooked_texture_bc1`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | KTX container for cooked textures, consumed by both hosts | Tested | `scripts/cook_assets.py` (`maze_tile_tex.ktx`), `backends/godot/probe.gd` (`load_ktx_from_buffer`, gated), `native/texture_probe.h` (`probe_texture_ktx`) |
-| KTX2/Basis supercompression and GPU transcode | Planned | KTX1 container and BC1 path only; no Basis encoder toolchain |
+| KTX2/Basis supercompression | Tested + Implemented | `scripts/fetch_basisu.py` (pinned 99f52d63), cooker writes `maze_tile_tex.ktx2`, `native/basisu_probe.cpp` transcodes to RGBA, Godot loads it compressed |
 
 ## Verification
 
@@ -171,6 +171,10 @@ Re-run on the current tree:
 - `python3 scripts/gns_probe.py` — exit 0; GameNetworkingSockets is fetched,
   built, linked, and moves the engine's 33-byte replication frame over a real
   loopback connection unchanged.
+- `python3 scripts/basisu_probe.py` — exit 0; the pinned Basis encoder cooks
+  `maze_tile_tex.ktx2` and the Basis transcoder decodes it to the cooked green.
+  The gated Godot scene probe loads the same file as a compressed image; run
+  `python3 scripts/fetch_basisu.py` once so the cooker can emit it.
 
 ## Deferred
 

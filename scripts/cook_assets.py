@@ -16,10 +16,15 @@ rather than producing a package that disagrees with the fixture.
 import base64
 import hashlib
 import json
+import os
 import random
+import shutil
 import sqlite3
 import struct
+import subprocess
 import sys
+import tempfile
+import zlib
 from pathlib import Path
 
 PACKAGE_FORMAT = "elisa-cooked-v2"
@@ -289,7 +294,49 @@ def write_texture_package(root: Path, size: int = 4) -> Path:
         ktx1_bytes(size, size, GL_UNSIGNED_BYTE, GL_RGBA, GL_RGBA8, GL_RGBA, bytes(pixels), size * size * 4))
     (package_dir / "maze_tile_tex_bc1.ktx").write_bytes(
         ktx1_bytes(size, size, 0, 0, GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_RGB, block, 8))
+    # Basis Universal KTX2: the plan's supercompressed path. The Basis encoder
+    # is an external tool (scripts/fetch_basisu.py); when it is not fetched the
+    # cooker still produces the KTX1 containers, and the dedicated
+    # scripts/basisu_probe.py is the verification path for this format.
+    write_basisu_ktx2(root, package_dir, pixels, size)
     return package
+
+
+def write_png(width: int, height: int, rgba: bytes) -> bytes:
+    # A minimal PNG writer so the cooker does not need an image library to hand
+    # the Basis encoder its source pixels.
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        body = tag + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    rows = b"".join(b"\x00" + rgba[y * width * 4:(y + 1) * width * 4] for y in range(height))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
+def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
+    basisu = os.environ.get("BASISU_BIN", "")
+    if not basisu:
+        candidate = root / "dependencies/basisu/bin/basisu"
+        if candidate.is_file():
+            basisu = str(candidate)
+    if not basisu or shutil.which(basisu) is None:
+        return None
+    output = package_dir / "maze_tile_tex.ktx2"
+    with tempfile.TemporaryDirectory(prefix="elisa-basisu-") as workdir:
+        source = Path(workdir) / "tile.png"
+        source.write_bytes(write_png(size, size, pixels))
+        result = subprocess.run(
+            [basisu, "-ktx2", "-uastc", "-linear", str(source), "-output_file", str(output)],
+            capture_output=True, text=True, check=False,
+        )
+    if result.returncode != 0 or not output.is_file():
+        raise ValueError(f"Basis encoding failed: {result.stderr.strip() or result.stdout.strip()}")
+    return output
 
 
 def cook(root: Path) -> Path:
