@@ -5,6 +5,7 @@ include "../examples/maze/hunter.elisa"
 include "../examples/maze/character.elisa"
 include "../examples/maze/rootmotion.elisa"
 include "../examples/maze/pose.elisa"
+include "../src/runtime/input.elisa"
 using Maze
 using MazeLayout
 using MazeGame
@@ -13,6 +14,7 @@ using MazeHunter
 using MazeCharacter
 using MazeRootMotion
 using MazePose
+using Input
 using World
 using Nav
 
@@ -120,6 +122,12 @@ def main() -> i32:
     for step in 0..<8 |slow|:
         _ = walker_step(&slow, 0.3)
     return 63 if slow.cells != 1
+
+    # The fixture's portable input names mirror the engine's default map, so a
+    # host button name can never drift from what the engine binds.
+    input_map: InputMap = default_input_map()
+    return 69 if input_map.forward_key != Button.KeyW or input_map.left_key != Button.KeyA
+    return 70 if input_map.right_key != Button.KeyD or action_for(input_map, Button.KeyW) != Action.Forward
 
     # The character's leg pose is engine IK, not authored: the two segments have
     # the bone lengths and the knee bends between the hip and the foot.
