@@ -223,6 +223,10 @@ builds the same menu as real Wicked GUI buttons, verifies their enabled states,
 and removes them before capture, so both backend families render Elisa UI
 widgets from the same data.
 
+`src/ui/text.elisa` breaks text into lines: a host shapes with a font stack and
+hands back word widths, and the engine packs words greedily (a word wider than
+the line takes one line, so overflow is recorded rather than hidden).
+
 `src/ui/layout.elisa` is the engine-owned layout engine: boxes with an
 orientation, padding, and spacing whose rectangles are computed in one forward
 pass, used for panels and rows while a host paints the rectangles.

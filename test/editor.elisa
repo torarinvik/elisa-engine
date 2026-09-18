@@ -1,9 +1,11 @@
 include "../src/tooling/editor.elisa"
 include "../src/ui/layout.elisa"
+include "../src/ui/text.elisa"
 include "../src/tooling/reload.elisa"
 using Editor
 using Reload
 using UiLayout
+using UiText
 
 # A two-level layout: a vertical root with a horizontal header and a vertical
 # body; padding, spacing, and orientation decide every rectangle.
@@ -33,6 +35,29 @@ def layout_test() -> i32:
     row_b_rect: Rect = node_rect(&layout, 6)
     return 8 if row_a_rect.x != 12 or row_a_rect.y != 46 or row_a_rect.width != 176 or row_a_rect.height != 25
     return 9 if row_b_rect.y != 71
+    0
+
+# Text line breaking: words pack greedily until a line would overflow, then a
+# new line starts; a word wider than the line still occupies one line so the
+# overflow is recorded rather than hidden.
+def text_test() -> i32:
+    run: mutable Run = run_new()
+    return 10 if not run_valid(&run) or run.count != 0
+    _ = run_add_word(&run, 3)
+    _ = run_add_word(&run, 2)
+    _ = run_add_word(&run, 4)
+    return 11 if run.count != 3 or not run_valid(&run) or run_add_word(&run, 0 - 1)
+    wrapped: Wrapped = wrap(&run, 6, 1)
+    return 12 if wrapped.line_count != 2 or not wrapped_valid(&wrapped)
+    return 13 if line_start(&wrapped, 0) != 0 or line_width(&wrapped, 0) != 6
+    return 14 if line_start(&wrapped, 1) != 2 or line_width(&wrapped, 1) != 4
+    return 15 if line_width(&wrapped, 2) != -1
+    long_run: mutable Run = run_new()
+    _ = run_add_word(&long_run, 10)
+    _ = run_add_word(&long_run, 2)
+    wide: Wrapped = wrap(&long_run, 6, 1)
+    return 16 if wide.line_count != 2 or line_width(&wide, 0) != 10 or line_width(&wide, 1) != 2
+    return 17 if wrap(&run, 0, 1).line_count != 0
     0
 
 def main() -> i32:
@@ -125,4 +150,6 @@ def main() -> i32:
     return 28 if current.version != 2 or current.value != 6 or not state_valid(&current)
     laid_out: i32 = layout_test()
     return laid_out if laid_out != 0
+    wrapped_text: i32 = text_test()
+    return wrapped_text if wrapped_text != 0
     0

@@ -1,0 +1,82 @@
+# Engine-owned text line breaking. A host shapes text with a font stack and
+# hands back word widths; the engine decides where lines break, because line
+# layout is engine policy and shaping is an ecosystem concern. Words are packed
+# greedily, and a word wider than the line takes its own line rather than being
+# split, so an overlong word is visible in the recorded width instead of being
+# silently truncated.
+module UiText:
+    private:
+        const module Tune:
+            MAX_WORDS: usize = 32
+            MAX_LINES: usize = 16
+
+    public:
+        struct Word:
+            width: i64
+
+        struct Run:
+            words: mutable Word[32]
+            count: mutable usize
+
+        struct Wrapped:
+            line_count: mutable usize
+            line_starts: mutable usize[16]
+            line_widths: mutable i64[16]
+
+        def run_new() -> Run:
+            Run{words: zeroed, count: 0}
+
+        def wrapped_new() -> Wrapped:
+            Wrapped{line_count: 0, line_starts: zeroed, line_widths: zeroed}
+
+        def run_valid(run: Run&) -> bool:
+            return false if run.count > Tune::MAX_WORDS
+            for index in 0..<run.count |valid: bool = true| -> valid:
+                valid <- false if run.words[index].width < 0
+            true
+
+        def run_add_word(run: mutable Run&, width: i64) -> bool:
+            return false if run.count >= Tune::MAX_WORDS or width < 0
+            run.words[run.count] <- Word{width: width}
+            run.count <- run.count + 1
+            true
+
+        def wrapped_valid(wrapped: Wrapped&) -> bool:
+            return false if wrapped.line_count > Tune::MAX_LINES
+            for index in 0..<wrapped.line_count |ordered: bool = true| -> ordered:
+                ordered <- false if wrapped.line_widths[index] < 0
+                ordered <- false if index > 0 and wrapped.line_starts[index] <= wrapped.line_starts[index - 1]
+            true
+
+        def line_start(wrapped: Wrapped&, index: usize) -> usize:
+            return Tune::MAX_WORDS if index >= wrapped.line_count
+            wrapped.line_starts[index]
+
+        def line_width(wrapped: Wrapped&, index: usize) -> i64:
+            return -1 if index >= wrapped.line_count
+            wrapped.line_widths[index]
+
+        # Greedy packing: a word joins the line if the line plus the spacing
+        # plus the word still fits, otherwise it starts a new line. Widths
+        # already over the limit still occupy a single line, so the overflow is
+        # recorded rather than hidden.
+        def wrap(run: Run&, max_width: i64, spacing: i64) -> Wrapped:
+            result: mutable Wrapped = wrapped_new()
+            return result if run.count == 0 or max_width <= 0 or spacing < 0
+            line_start: mutable usize = 0
+            line_width: mutable i64 = 0
+            for index in 0..<run.count |result, run, line_start, line_width, max_width, spacing|:
+                word: i64 = run.words[index].width
+                fits: bool = line_width == 0 or line_width + spacing + word <= max_width
+                if not fits:
+                    result.line_starts[result.line_count] <- line_start
+                    result.line_widths[result.line_count] <- line_width
+                    result.line_count <- result.line_count + 1
+                    line_start <- index
+                    line_width <- word
+                else:
+                    line_width <- word if line_width == 0 else line_width + spacing + word
+            result.line_starts[result.line_count] <- line_start
+            result.line_widths[result.line_count] <- line_width
+            result.line_count <- result.line_count + 1
+            result
