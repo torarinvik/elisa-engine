@@ -196,7 +196,9 @@ pose, and unloads with its identity removed first.
 `examples/maze/pose.elisa` solves a two-bone leg in the maze plane with the
 engine's IK, so the character's hip, knee, and foot are gameplay math; the
 fixture carries those joints and both hosts consume them (Godot builds joint
-markers, the native host validates them).
+markers, the native host validates them). The engine also skins a quad with
+`src/animation/skin.elisa` and the fixture carries the deformed vertices, so
+both hosts upload the skinned mesh rather than skinning it themselves.
 
 `examples/maze/rootmotion.elisa` makes the sampled clip's root translation
 drive movement: a cell is committed only when the accumulated root distance
