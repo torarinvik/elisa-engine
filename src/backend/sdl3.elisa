@@ -34,10 +34,15 @@ module Sdl3:
             SDL_Quit()
             initialized
 
+        # `get ... else false` asked for a bool where the binding's own type (SDLWindow) was
+        # required. Split out so the fallback can be the CONTROL-FLOW form: the window binds
+        # or the helper returns false, and either way `__drop__` releases it before SDL_Quit.
+        private def sdl3_open_hidden_window() -> bool:
+            window: SDLWindow = get SDL_CreateWindow("Elisa Engine", 320, 200, Flags::HIDDEN_WINDOW) else return false
+            return true
+
         def sdl3_try_hidden_window() -> bool:
             return false if not SDL_Init(Flags::VIDEO)
-            created: bool =
-                window: SDLWindow = get SDL_CreateWindow("Elisa Engine", 320, 200, Flags::HIDDEN_WINDOW) else false
-                true
+            created: bool = sdl3_open_hidden_window()
             SDL_Quit()
             created
