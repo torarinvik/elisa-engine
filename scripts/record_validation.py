@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import math
 import json
 import os
 from pathlib import Path
@@ -246,6 +247,27 @@ def scene_manifest_matches_bridge(root: Path) -> dict:
             raise ValueError(f"scene manifest menu_focus {menu_focus} is not an enabled row")
         if "1" not in enabled:
             raise ValueError("scene manifest menu has no enabled action")
+    # Character leg pose: two segments of the bone lengths, with the knee bent
+    # between the hip and the foot.
+    def pose_pair(key):
+        value = values.get(key, "")
+        parts = value.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"scene manifest {key} is not a coordinate pair: {value!r}")
+        try:
+            return (float(parts[0]), float(parts[1]))
+        except ValueError:
+            raise ValueError(f"scene manifest {key} is not numeric: {value!r}")
+    if "pose_hip" in values:
+        hip = pose_pair("pose_hip")
+        knee = pose_pair("pose_knee")
+        foot = pose_pair("pose_foot")
+        if not (hip[1] > knee[1] > foot[1]):
+            raise ValueError("scene manifest pose knee is not between the hip and the foot")
+        upper = math.hypot(knee[0] - hip[0], knee[1] - hip[1])
+        lower = math.hypot(foot[0] - knee[0], foot[1] - knee[1])
+        if abs(upper - 0.6) > 0.01 or abs(lower - 0.6) > 0.01:
+            raise ValueError(f"scene manifest pose segments are not the bone lengths: {upper:.3f}, {lower:.3f}")
     allowed_status = ("menu", "playing", "paused", "won", "lost", "exited")
     if values.get("game_status") not in allowed_status:
         raise ValueError(f"scene manifest game_status drift: {values.get('game_status')!r}")

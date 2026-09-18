@@ -11,6 +11,7 @@
 #include "text_probe.h"
 #include "udp_probe.h"
 #include "menu_probe.h"
+#include "pose_probe.h"
 
 #include <cstdio>
 #include <map>
@@ -23,8 +24,9 @@ int main() {
     const bool text = probe::probe_text();
     const bool udp = probe::probe_udp_loopback();
     std::map<std::string, std::string> manifest;
-    const bool menu = !probe::load_manifest("backends/scene_manifest.txt", manifest) || probe::probe_menu(manifest);
-    std::fprintf(stdout, "boundary harness: ozz=%d recast=%d audio=%d text=%d udp=%d menu=%d\n",
-        ozz ? 1 : 0, recast ? 1 : 0, audio ? 1 : 0, text ? 1 : 0, udp ? 1 : 0, menu ? 1 : 0);
-    return (ozz && recast && audio && text && udp && menu) ? 0 : 1;
+    const bool manifest_ok = probe::load_manifest("backends/scene_manifest.txt", manifest);
+    const bool extra = !manifest_ok || (probe::probe_menu(manifest) && probe::probe_pose(manifest));
+    std::fprintf(stdout, "boundary harness: ozz=%d recast=%d audio=%d text=%d udp=%d menu_and_pose=%d\n",
+        ozz ? 1 : 0, recast ? 1 : 0, audio ? 1 : 0, text ? 1 : 0, udp ? 1 : 0, extra ? 1 : 0);
+    return (ozz && recast && audio && text && udp && extra) ? 0 : 1;
 }

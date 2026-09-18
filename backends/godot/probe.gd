@@ -199,6 +199,41 @@ func _run_probe() -> void:
             return
         menu_root.queue_free()
 
+    # Character leg pose: the host builds one marker per solved joint from the
+    # fixture's cell-unit pose, so the engine's IK reaches the host.
+    if manifest.has("pose_hip") and manifest.has("pose_knee") and manifest.has("pose_foot"):
+        var joints := {
+            "ElisaPoseHip": String(manifest["pose_hip"]),
+            "ElisaPoseKnee": String(manifest["pose_knee"]),
+            "ElisaPoseFoot": String(manifest["pose_foot"]),
+        }
+        var pose_root := Node3D.new()
+        pose_root.name = "ElisaPose"
+        root.add_child(pose_root)
+        var joints_ok := true
+        for joint_name in joints:
+            var parts: PackedStringArray = joints[joint_name].split(",")
+            if parts.size() != 2:
+                joints_ok = false
+                break
+            var joint := MeshInstance3D.new()
+            joint.name = joint_name
+            var joint_mesh := BoxMesh.new()
+            joint_mesh.size = Vector3(0.08, 0.08, 0.08)
+            joint.mesh = joint_mesh
+            joint.position = Vector3(float(parts[0]) * 0.6 - 2.1, float(parts[1]) * 0.6 - 2.1, 1.0)
+            pose_root.add_child(joint)
+            if joint.position.y > (float(String(manifest["pose_hip"]).split(",")[1]) * 0.6 - 2.1) + 0.001:
+                joints_ok = false
+        var hip_y: float = float(String(manifest["pose_hip"]).split(",")[1]) * 0.6 - 2.1
+        var knee_y: float = float(String(manifest["pose_knee"]).split(",")[1]) * 0.6 - 2.1
+        var foot_y: float = float(String(manifest["pose_foot"]).split(",")[1]) * 0.6 - 2.1
+        print("godot pose: joints=%d hip_y=%.3f knee_y=%.3f foot_y=%.3f" % [pose_root.get_child_count(), hip_y, knee_y, foot_y])
+        if not joints_ok or pose_root.get_child_count() != 3 or not (hip_y > knee_y and knee_y > foot_y):
+            _fail("character pose joints are inconsistent")
+            return
+        pose_root.queue_free()
+
     print("Godot backend scene create/update/render/despawn probe passed.")
     quit(0)
 

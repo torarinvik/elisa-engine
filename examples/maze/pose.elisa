@@ -1,0 +1,58 @@
+# A two-bone leg in the maze plane. The joint positions come from the engine's
+# IK solver, not from authored numbers: the foot hangs below the hip and the
+# knee is solved by the law of cosines, so a host that consumes the pose is
+# consuming gameplay math. Cell units, not metres, because the maze hosts draw
+# on a cell-mapped plane.
+include "../../src/animation/ik.elisa"
+
+module MazePose:
+    private:
+        const module Tune:
+            UPPER: f32 = 0.6
+            LOWER: f32 = 0.6
+            FOOT_DROP: f32 = 0.9
+            TOLERANCE: f32 = 0.002
+
+        def near(value: f32, expected: f32) -> bool:
+            difference: f32 = value - expected
+            adjusted: f32 = 0.0 - difference if difference < 0.0 else difference
+            adjusted < Tune::TOLERANCE
+
+    public:
+        struct LegPose:
+            hip_x: f32
+            hip_y: f32
+            knee_x: f32
+            knee_y: f32
+            foot_x: f32
+            foot_y: f32
+
+        def pose_leg(hip_x: f32, hip_y: f32) -> LegPose:
+            hip: Geometry::Vec3 = Geometry::Vec3{x: hip_x, y: hip_y, z: 0.0}
+            foot: Geometry::Vec3 = Geometry::Vec3{x: hip_x, y: hip_y - Tune::FOOT_DROP, z: 0.0}
+            bend: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+            knee: Geometry::Vec3 = Ik::two_bone_knee(hip, foot, Tune::UPPER, Tune::LOWER, bend)
+            LegPose{
+                hip_x: hip.x,
+                hip_y: hip.y,
+                knee_x: knee.x,
+                knee_y: knee.y,
+                foot_x: foot.x,
+                foot_y: foot.y,
+            }
+
+        def upper_length() -> f32:
+            Tune::UPPER
+
+        def lower_length() -> f32:
+            Tune::LOWER
+
+        # The solved joints must form two segments of exactly the bone lengths.
+        def leg_pose_valid(pose: LegPose&) -> bool:
+            upper_dx: f32 = pose.knee_x - pose.hip_x
+            upper_dy: f32 = pose.knee_y - pose.hip_y
+            lower_dx: f32 = pose.foot_x - pose.knee_x
+            lower_dy: f32 = pose.foot_y - pose.knee_y
+            upper: f32 = Geometry::sqrt_f32(upper_dx * upper_dx + upper_dy * upper_dy)
+            lower: f32 = Geometry::sqrt_f32(lower_dx * lower_dx + lower_dy * lower_dy)
+            near(upper, Tune::UPPER) and near(lower, Tune::LOWER)

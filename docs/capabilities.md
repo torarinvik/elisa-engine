@@ -60,6 +60,7 @@ writes `build/validation.json`. Host evidence comes from
 | Two-bone IK and aim constraints | Tested | `src/animation/ik.elisa`, `test/anim_state.elisa` |
 | Character composes World + nav + animation + IK, unloads | Tested | `examples/maze/character.elisa`, `test/maze.elisa` |
 | Root motion drives movement policy | Tested | `examples/maze/rootmotion.elisa`, `test/maze.elisa` |
+| Character leg pose consumed by hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `pose_*`, `backends/godot/probe.gd`, `native/pose_probe.h` |
 | Grid navigation (BFS) | Tested | `src/nav/grid.elisa`, `test/grid_nav.elisa` |
 | Physics authority (one solver per body) | Tested | `src/physics/policy.elisa`, `test/physics_policy.elisa` |
 | Audio generation/ownership policy | Tested | `src/audio/policy.elisa`, `test/audio_policy.elisa` |
@@ -108,7 +109,7 @@ writes `build/validation.json`. Host evidence comes from
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | Sanitized full graphics probe | Planned | sandbox aborts the instrumented graphics run |
 | Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
-| Skeletal-pose submission to the hosts | Planned | engine-side poses only |
+| Skinned-mesh submission to the hosts | Planned | joint positions consumed; no skinning upload |
 | UI menu model (layout, focus, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |
 | Native UI builds Wicked widgets from menu state | Implemented | `native/gui_probe.h` (verified, then removed before capture) |

@@ -4,6 +4,7 @@ include "../examples/maze/trace.elisa"
 include "../examples/maze/hunter.elisa"
 include "../examples/maze/character.elisa"
 include "../examples/maze/rootmotion.elisa"
+include "../examples/maze/pose.elisa"
 using Maze
 using MazeLayout
 using MazeGame
@@ -11,8 +12,14 @@ using MazeTrace
 using MazeHunter
 using MazeCharacter
 using MazeRootMotion
+using MazePose
 using World
 using Nav
+
+def near(value: f32, expected: f32) -> bool:
+    difference: f32 = value - expected
+    adjusted: f32 = 0.0 - difference if difference < 0.0 else difference
+    adjusted < 0.01
 
 def main() -> i32:
     return 1 if maze_width() != 8 or maze_height() != 8
@@ -113,6 +120,15 @@ def main() -> i32:
     for step in 0..<8 |slow|:
         _ = walker_step(&slow, 0.3)
     return 63 if slow.cells != 1
+
+    # The character's leg pose is engine IK, not authored: the two segments have
+    # the bone lengths and the knee bends between the hip and the foot.
+    pose: LegPose = pose_leg(1.0, 1.0)
+    return 64 if not leg_pose_valid(&pose)
+    return 65 if pose.hip_x != 1.0 or pose.hip_y != 1.0 or not near(pose.foot_x, 1.0) or not near(pose.foot_y, 0.1)
+    return 66 if not near(pose.knee_x, 1.397) or not near(pose.knee_y, 0.55)
+    return 67 if pose.knee_y >= pose.hip_y or pose.knee_y <= pose.foot_y
+    return 68 if upper_length() != 0.6 or lower_length() != 0.6
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0
