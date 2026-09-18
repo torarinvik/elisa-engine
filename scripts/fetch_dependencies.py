@@ -26,6 +26,12 @@ PINNED = {
         "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9",
         "cgltf/cgltf.h",
     ),
+    "miniaudio": (
+        "0.11.22",
+        "https://raw.githubusercontent.com/mackron/miniaudio/0.11.22/miniaudio.h",
+        "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410",
+        "miniaudio/miniaudio.h",
+    ),
     # meshoptimizer is multi-file; only the vertex-cache optimizer and its
     # analyzer are pinned, because that is what the runtime host uses. The
     # revision and content hashes lock the four files the build compiles.

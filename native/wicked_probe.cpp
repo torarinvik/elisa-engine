@@ -29,6 +29,7 @@
 #include "churn_probe.h"
 #include "ozz_probe.h"
 #include "recast_probe.h"
+#include "miniaudio_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 
@@ -506,6 +507,10 @@ int main(int argc, char** argv) {
     }
     // Recast/Detour navigation lives in native/recast_probe.h.
     if (!probe_recast_navigation()) {
+        return 1;
+    }
+    // miniaudio decode and null device lives in native/miniaudio_probe.h.
+    if (!probe_miniaudio()) {
         return 1;
     }
 

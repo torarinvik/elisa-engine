@@ -634,3 +634,21 @@ navmesh. The path must use more than one polygon, so a straight line being
 blocked is what proves Detour navigated. The run reported
 `recast: polys=16 navdata=2476 path_polys=5 start=20 end=29`. As with ozz, this
 is linked-and-exercised evidence; the maze's own pathfinding stays in Elisa.
+
+## miniaudio integration (2026-09-18)
+
+The native host now exercises miniaudio, the plan's selected audio library.
+`scripts/fetch_dependencies.py` pins miniaudio 0.11.22 as a single header, and
+`native/miniaudio_probe.h` compiles its implementation into the native probe's
+translation unit. The probe decodes the same short WAV the Wicked audio check
+uses and opens a null playback device, so audio runs in a headless capture
+without an output device; it reports frames, sample rate, channels, and the
+active backend, and fails unless the decode matches and the null backend
+opened. The run reported
+`miniaudio: frames=400 read=400 rate=8000 channels=1 backend=14` (14 is
+`ma_backend_null`).
+
+One integration detail: miniaudio's bundled FLAC decoder does not compile
+cleanly with this compiler at `-O0`, so the unused codecs are compiled out with
+`MA_NO_FLAC`, `MA_NO_MP3`, `MA_NO_VORBIS`, and `MA_NO_OPUS` rather than patching
+the dependency. The engine only decodes WAV here.

@@ -97,6 +97,10 @@ def main(arguments: darray[sview]) -> i64:
         if not is_file(path(ozz_lib)):
             eprint("Missing ozz library; run python3 scripts/fetch_ozz.py first.")
             return 2
+    miniaudio: Path = root.joinpath("dependencies/miniaudio")
+    if not is_file(path(str(miniaudio.joinpath("miniaudio.h")))):
+        eprint("Missing miniaudio; run python3 scripts/fetch_dependencies.py first.")
+        return 2
     recast: Path = root.joinpath("dependencies/recast")
     recast_include: Path = recast.joinpath("Recast/Include")
     detour_include: Path = recast.joinpath("Detour/Include")
@@ -119,7 +123,7 @@ def main(arguments: darray[sview]) -> i64:
     compile_arguments: darray[sview] = [
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
         "-I", str(dependencies), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
-        "-I", str(recast_include), "-I", str(detour_include),
+        "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
         "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
