@@ -1,48 +1,75 @@
 # C ABI for embedding the maze game in a host. The host reads device input and
 # calls these exports, so live input drives Elisa gameplay instead of only a
 # fixture. The archive bundles the Elisa runtime, so the host links one library.
+#
+# Everything is top-level: a module wrapper around a global plus these exports
+# made -emit c-archive omit a nested-module function (see ADR-0012), so the
+# export surface stays flat, which emits reliably.
 include "./game.elisa"
 
 using Maze
 using MazeGame
 
-module MazeCapi:
-    private:
-        global mutable embedded_game: MazeGame = game_new()
+global mutable embedded_game: MazeGame = MazeGame::game_new()
 
-    public:
-        def start() -> i32:
-            MazeGame::game_start(&embedded_game)
-            MazeGame::game_status_code(embedded_game.status).i32()
+def capi_start() -> i32:
+    MazeGame::game_start(&embedded_game)
+    MazeGame::game_status_code(embedded_game.status).i32()
 
-        # Direction codes mirror the portable move order the host maps to:
-        # 0 north, 1 south, 2 west, 3 east.
-        def move_of(direction: i32) -> Maze::MazeMove:
-            return Maze::MazeMove.North if direction == 0
-            return Maze::MazeMove.South if direction == 1
-            return Maze::MazeMove.West if direction == 2
-            return Maze::MazeMove.East if direction == 3
-            Maze::MazeMove.Idle
+# Direction codes mirror the portable move order the host maps to:
+# 0 north, 1 south, 2 west, 3 east.
+def capi_move_of(direction: i32) -> Maze::MazeMove:
+    return Maze::MazeMove.North if direction == 0
+    return Maze::MazeMove.South if direction == 1
+    return Maze::MazeMove.West if direction == 2
+    return Maze::MazeMove.East if direction == 3
+    Maze::MazeMove.Idle
 
-        def step(direction: i32) -> i32:
-            moved: bool = MazeGame::game_step(&embedded_game, move_of(direction))
-            1 if moved else 0
+def capi_step(direction: i32) -> i32:
+    moved: bool = MazeGame::game_step(&embedded_game, capi_move_of(direction))
+    1 if moved else 0
 
-        def player_x() -> i32:
-            embedded_game.grid.player_x.i32()
+def capi_player_x() -> i32:
+    embedded_game.grid.player_x.i32()
 
-        def player_y() -> i32:
-            embedded_game.grid.player_y.i32()
+def capi_player_y() -> i32:
+    embedded_game.grid.player_y.i32()
 
-        def status() -> i32:
-            MazeGame::game_status_code(embedded_game.status).i32()
+def capi_status() -> i32:
+    MazeGame::game_status_code(embedded_game.status).i32()
 
-        def lives() -> i32:
-            embedded_game.lives.i32()
+def capi_lives() -> i32:
+    embedded_game.lives.i32()
 
-export fn maze_start() -> i32 = MazeCapi::start
-export fn maze_step(direction: i32) -> i32 = MazeCapi::step
-export fn maze_player_x() -> i32 = MazeCapi::player_x
-export fn maze_player_y() -> i32 = MazeCapi::player_y
-export fn maze_status() -> i32 = MazeCapi::status
-export fn maze_lives() -> i32 = MazeCapi::lives
+# Query surface: an embedder can inspect the world it drives, so it does not
+# need the static fixture to render the live game.
+def capi_width() -> i32:
+    Maze::maze_width().i32()
+
+def capi_height() -> i32:
+    Maze::maze_height().i32()
+
+def capi_wall_count() -> i32:
+    Maze::maze_wall_count().i32()
+
+def capi_goal_x() -> i32:
+    Maze::maze_goal_x().i32()
+
+def capi_goal_y() -> i32:
+    Maze::maze_goal_y().i32()
+
+def capi_is_wall(x: i32, y: i32) -> i32:
+    1 if Maze::is_wall(x.i64(), y.i64()) else 0
+
+export fn maze_start() -> i32 = capi_start
+export fn maze_step(direction: i32) -> i32 = capi_step
+export fn maze_player_x() -> i32 = capi_player_x
+export fn maze_player_y() -> i32 = capi_player_y
+export fn maze_status() -> i32 = capi_status
+export fn maze_lives() -> i32 = capi_lives
+export fn maze_width() -> i32 = capi_width
+export fn maze_height() -> i32 = capi_height
+export fn maze_wall_count() -> i32 = capi_wall_count
+export fn maze_goal_x() -> i32 = capi_goal_x
+export fn maze_goal_y() -> i32 = capi_goal_y
+export fn maze_is_wall(x: i32, y: i32) -> i32 = capi_is_wall

@@ -102,5 +102,22 @@ int main() {
         std::fprintf(stderr, "embed: hazard rules did not run through the ABI\n");
         return 7;
     }
+
+    // Query surface: the host can inspect the world it drives.
+    const int width = maze_width();
+    const int height = maze_height();
+    const int walls = maze_wall_count();
+    const int goal_x = maze_goal_x();
+    const int goal_y = maze_goal_y();
+    std::fprintf(stdout, "embed world: %dx%d walls=%d goal=(%d,%d) wall(0,1)=%d wall(1,1)=%d\n",
+        width, height, walls, goal_x, goal_y, maze_is_wall(0, 1), maze_is_wall(1, 1));
+    if (width != 8 or height != 8 or walls != 34 or goal_x != 6 or goal_y != 6) {
+        std::fprintf(stderr, "embed: world query disagreed\n");
+        return 8;
+    }
+    if (maze_is_wall(0, 1) != 1 or maze_is_wall(1, 1) != 0) {
+        std::fprintf(stderr, "embed: wall query disagreed\n");
+        return 9;
+    }
     return 0;
 }
