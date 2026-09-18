@@ -5,7 +5,7 @@
 // at start, midpoint, and end, and compared against the same linear expectation
 // the engine's own sampler produces. This proves ozz is linked and sampling; it
 // does not claim a full character pipeline was ported to ozz.
-#include "probe_support.h"
+#include "probe_core.h"
 
 #include "ozz/animation/offline/animation_builder.h"
 #include "ozz/animation/offline/raw_animation.h"

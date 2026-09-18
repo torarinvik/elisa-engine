@@ -4,7 +4,7 @@
 // probe loads a system font through FreeType, rasterizes one glyph to check its
 // bitmap and advance, and shapes a short string through HarfBuzz to check the
 // glyph count. It needs no rendering surface, so it runs in the headless probe.
-#include "probe_support.h"
+#include "probe_core.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H

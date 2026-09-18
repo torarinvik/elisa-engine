@@ -101,7 +101,8 @@ writes `build/validation.json`. Host evidence comes from
 | ozz sampling, Recast/Detour navigation, miniaudio | Implemented | `native/ozz_probe.h`, `native/recast_probe.h`, `native/miniaudio_probe.h` |
 | FreeType/HarfBuzz text | Implemented | `native/text_probe.h` |
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
-| Native sanitizer run | Planned | wrapper exists; the sandbox aborts the graphics run |
+| Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
+| Sanitized full graphics probe | Planned | sandbox aborts the instrumented graphics run |
 | Live input driving the hosts | Planned | hosts replay Elisa-computed routes |
 | Skeletal-pose submission to the hosts | Planned | engine-side poses only |
 | UI menu model (layout, focus, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |

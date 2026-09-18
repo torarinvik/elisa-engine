@@ -4,7 +4,7 @@
 // device, so the library is exercised without needing an output device in a
 // headless run. The implementation is compiled into this one translation unit
 // (the native probe), which is what miniaudio's single-header model expects.
-#include "probe_support.h"
+#include "probe_core.h"
 
 // Only WAV decoding is needed. The bundled FLAC decoder does not compile
 // cleanly with this compiler at -O0, and the engine does not use it, so the

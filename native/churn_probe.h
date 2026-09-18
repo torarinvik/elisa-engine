@@ -5,7 +5,7 @@
 // removes it, and asserts the scene component counts return to the pre-batch
 // baseline; the round time is recorded as median and tail. It lives in its own
 // header so native/wicked_probe.cpp stays under the 600-line limit.
-#include "probe_support.h"
+#include "probe_core.h"
 #include "wiScene.h"
 
 #include <algorithm>

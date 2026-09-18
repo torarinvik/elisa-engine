@@ -4,7 +4,7 @@
 // is the average cache miss ratio before and after, and the run fails if
 // optimization makes it worse, so the library earns its place rather than being
 // linked for its own sake.
-#include "probe_support.h"
+#include "probe_core.h"
 #include "meshoptimizer.h"
 
 #include <cstdio>

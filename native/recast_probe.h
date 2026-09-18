@@ -5,7 +5,7 @@
 // the wall to the other, so the integration is exercised rather than declared.
 // The game's own navigation decisions stay in Elisa; this proves the library
 // builds a navmesh and answers a query.
-#include "probe_support.h"
+#include "probe_core.h"
 
 #include "DetourCommon.h"
 #include "DetourNavMesh.h"

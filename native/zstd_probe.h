@@ -3,7 +3,7 @@
 // compression; here the actual cooked package file is compressed and
 // decompressed so the ratio is a measurement of a real payload rather than a
 // synthetic buffer, and the round trip must reproduce the file byte for byte.
-#include "probe_support.h"
+#include "probe_core.h"
 
 #include <zstd.h>
 

@@ -687,18 +687,31 @@ again so the scene object count returns to its baseline. The run reported
 `reload: positions=72 indices=36 objects_baseline=10` and the probe passed, so
 reload is exercised on the native host, not just assumed.
 
-## Sanitizer attempt (2026-09-18)
+## Sanitizers at the untrusted boundary (2026-09-18)
 
-`scripts/cxx_sanitize.py` is an opt-in compiler wrapper that adds
-AddressSanitizer and UndefinedBehaviorSanitizer (with
-`-fno-sanitize-recover=all` so a finding aborts) and is used via
-`CXX="$PWD/scripts/cxx_sanitize.py" elisascript scripts/wicked_probe.elisascript`.
-The instrumented probe builds and ASan initializes, but in this shell the
-instrumented graphics run aborts with no sanitizer report — the environment
-reports "Checking file existence is not allowed under sandbox" and the run dies
-after the worker threads start. No clean sanitizer result is claimed here; the
-wrapper is kept so the run can be repeated where sanitizers are permitted, and
-the item remains open.
+`scripts/run_boundary_sanitized.py` builds and runs `native/boundary_harness.cpp`
+under AddressSanitizer and UndefinedBehaviorSanitizer
+(`-fno-sanitize-recover=all`). The harness exercises the untrusted-boundary
+libraries — ozz sampling, Recast/Detour navigation, miniaudio decode,
+FreeType/HarfBuzz shaping — without a renderer, so it runs where an instrumented
+graphics process is not permitted. The boundary helpers were split into a
+Wicked-free `native/probe_core.h` so the harness links no Wicked library. The
+run passed with no sanitizer finding:
+
+```
+ozz: root_x start=0.0000 mid=1.0000 end=2.0000
+recast: polys=16 navdata=2476 path_polys=5 start=20 end=29
+miniaudio: frames=400 read=400 rate=8000 channels=1 backend=14
+text: font=... shaped_glyphs=5
+sanitized boundary harness passed: no AddressSanitizer or UBSan finding
+```
+
+The full graphics probe under the same sanitizers remains blocked in this shell:
+`scripts/cxx_sanitize.py` builds it and ASan initializes, but the instrumented
+graphics run aborts with no sanitizer report (the environment logs "Checking
+file existence is not allowed under sandbox" and the run dies after the worker
+threads start). So the boundary libraries are sanitized clean and the graphics
+probe is not claimed.
 
 ## Tracy profiling client (2026-09-18)
 
