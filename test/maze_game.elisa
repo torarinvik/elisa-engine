@@ -34,6 +34,25 @@ def ui_scroll_test() -> i32:
     return 81 if Ui::hit_test(&menu, 0) != 5 or Ui::hit_test(&menu, 60) != -1 or not Ui::menu_valid(&menu)
     0
 
+# Buffered input into the play-in-editor: actions are queued as a host would
+# deliver them and drained one per advance, so gameplay steps at its own
+# cadence; an empty queue or an Idle action does not step.
+def studio_input_test() -> i32:
+    studio: mutable Studio = studio_new()
+    studio_start(&studio)
+    return 140 if not studio_feed(&studio, MazeMove.East) or studio_queued(&studio) != 1
+    return 141 if not studio_feed(&studio, MazeMove.South) or studio_queued(&studio) != 2
+    return 142 if studio_feed(&studio, MazeMove.Idle)
+    east: bool = studio_advance(&studio)
+    return 143 if not east or studio.game.grid.player_x != 2 or studio_queued(&studio) != 1
+    south: bool = studio_advance(&studio)
+    return 144 if not south or studio.game.grid.player_y != 2 or studio_queued(&studio) != 0
+    return 145 if studio_advance(&studio)
+    for step in 0..<8 |studio|:
+        return 146 if not studio_feed(&studio, MazeMove.East)
+    return 147 if studio_feed(&studio, MazeMove.East) or studio_queued(&studio) != 8
+    0
+
 def main() -> i32:
     game: mutable MazeGame = game_new()
     return 1 if game.lives != 3 or game.has_key or game.cue_count != 0
@@ -222,4 +241,6 @@ def main() -> i32:
     return 71 if game_load(&loaded_game, &corrupt) or not game_valid(&loaded_game)
     scrolled: i32 = ui_scroll_test()
     return scrolled if scrolled != 0
+    fed: i32 = studio_input_test()
+    return fed if fed != 0
     0

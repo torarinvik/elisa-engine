@@ -17,13 +17,37 @@ module MazeStudio:
             game: mutable MazeGame::MazeGame
             history: mutable Editor::History
             tile: Assets::AssetId
+            queue: mutable Maze::MazeMove[8]
+            queue_count: mutable usize
 
         def studio_new() -> Studio:
             Studio{
                 game: MazeGame::game_new(),
                 history: Editor::history_new(),
                 tile: Assets::AssetId{high: 23, low: 1},
+                queue: zeroed,
+                queue_count: 0,
             }
+
+        # Buffered input while playing in the editor: a host feeds actions as
+        # they arrive and the studio drains one per advance, so gameplay steps
+        # at its own cadence rather than at the input rate.
+        def studio_feed(studio: mutable Studio&, direction: Maze::MazeMove) -> bool:
+            return false if studio.queue_count >= 8 or direction == Maze::MazeMove.Idle
+            studio.queue[studio.queue_count] <- direction
+            studio.queue_count <- studio.queue_count + 1
+            true
+
+        def studio_queued(studio: Studio&) -> usize:
+            studio.queue_count
+
+        def studio_advance(studio: mutable Studio&) -> bool:
+            return false if studio.queue_count == 0
+            direction: Maze::MazeMove = studio.queue[0]
+            for index in 0..<studio.queue_count - 1 |studio|:
+                studio.queue[index] <- studio.queue[index + 1]
+            studio.queue_count <- studio.queue_count - 1
+            MazeGame::game_step(&studio.game, direction)
 
         def studio_start(studio: mutable Studio&) -> void:
             MazeGame::game_start(&studio.game)

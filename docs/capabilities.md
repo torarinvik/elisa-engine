@@ -48,6 +48,7 @@ writes `build/validation.json`. Host evidence comes from
 | Fog of war, status as portable data | Tested + Implemented | `test/maze.elisa`, host runners |
 | Audio cues as data, playback on both hosts | Implemented | `native/audio_probe.h`, `backends/godot/capture.gd` |
 | Play-in-editor (edit, undo/redo, validate, step) | Tested | `examples/maze/studio.elisa`, `test/maze_game.elisa` |
+| Buffered input into gameplay (editor-feed queue) | Tested | `examples/maze/studio.elisa`, `test/maze_game.elisa` |
 | Bounded chunk streaming driven by the player | Tested | `src/assets/streaming.elisa`, `test/maze_game.elisa` |
 | Saved settings (versioned save blob) | Tested | `src/runtime/save.elisa`, `examples/maze/persist.elisa`, `test/maze_game.elisa` |
 

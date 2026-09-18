@@ -243,8 +243,9 @@ re-derives stream residency on load; a wrong version or a corrupt marker is
 refused.
 
 `examples/maze/studio.elisa` is the play-in-editor surface: a running game with
-an undo/redo history over its settings, stepped through the real game API, and
-an asset-catalogue check that rejects a stale package generation.
+an undo/redo history over its settings, buffered input that a host feeds and the
+studio drains one action per advance, stepped through the real game API, and an
+asset-catalogue check that rejects a stale package generation.
 `src/tooling/reload.elisa` demonstrates the three code-reload prerequisites
 the plan names before loading code: a quiescence gate that is open only when no
 system is mid-step and no callback is in flight, and explicit version-to-version
