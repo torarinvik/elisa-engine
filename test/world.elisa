@@ -165,6 +165,8 @@ def capacity_test() -> i32:
         WorldError.Capacity: 0
         error failure: 33
     return 34 if rejected != 0 or world_live_count(&world) != 256 or world_last_issued(&world) != 256
+    return 35 if world_registry_count(&world) != 256 or world_actor_count(&world) != 256 or world_enemy_count(&world) != 0
+    return 36 if not world_is_valid(&world)
     0
 
 def rollback_test() -> i32:
