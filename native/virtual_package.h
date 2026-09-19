@@ -7,6 +7,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <zstd.h>
 
 namespace probe {
 
@@ -164,6 +165,38 @@ inline BinaryPackageIndex read_binary_package_index(const std::string& path) {
     }
     package.valid = true;
     return package;
+}
+
+inline bool read_binary_package_section(const std::string& path, const BinaryPackageIndex& index,
+    const std::string& name, std::vector<uint8_t>& output, std::string& error) {
+    output.clear();
+    if (!index.valid) { error = "binary package index is invalid"; return false; }
+    const auto section_it = std::find_if(index.sections.begin(), index.sections.end(),
+        [&name](const BinaryPackageSection& section) { return section.name == name; });
+    if (section_it == index.sections.end()) { error = "binary section is missing"; return false; }
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) { error = "binary package is missing"; return false; }
+    const std::streamoff stream_size = input.tellg();
+    if (stream_size < 0 || static_cast<uint64_t>(stream_size) > PackageIndex::MAX_PACKAGE_BYTES ||
+        section_it->offset > static_cast<uint64_t>(stream_size) ||
+        section_it->size > static_cast<uint64_t>(stream_size) - section_it->offset) {
+        error = "binary section read exceeds package"; return false;
+    }
+    std::vector<uint8_t> compressed(static_cast<size_t>(section_it->size));
+    input.seekg(static_cast<std::streamoff>(section_it->offset));
+    input.read(reinterpret_cast<char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
+    if (!input && !compressed.empty()) { error = "binary section read failed"; return false; }
+    if (section_it->compression == 0) {
+        if (section_it->size != section_it->unpacked_size) { error = "raw section size mismatch"; return false; }
+        output = std::move(compressed);
+        return true;
+    }
+    output.resize(static_cast<size_t>(section_it->unpacked_size));
+    const size_t result = ZSTD_decompress(output.data(), output.size(), compressed.data(), compressed.size());
+    if (ZSTD_isError(result) || result != output.size()) {
+        output.clear(); error = "zstd section decompression failed"; return false;
+    }
+    return true;
 }
 
 } // namespace probe

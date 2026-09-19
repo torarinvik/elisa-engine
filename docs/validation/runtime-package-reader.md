@@ -14,6 +14,7 @@ The SDL3/Metal native gate loads the real cooked maze package through this
 reader twice and runs `native/package_bounds_probe.h` against duplicate,
 traversal, malformed, missing-package, valid-binary-index, and overlapping
 binary-section fixtures. The reader is the runtime side of the current text
-package format and a reusable binary index boundary. zstd section reads,
-overrides, async reads, and generation-tagged dependencies remain the broader
-A03/A04 follow-up.
+package format and a reusable binary index boundary. `read_binary_package_section`
+also decompresses bounded zstd sections and the gate verifies the decoded
+payload. Overrides, async reads, and generation-tagged dependencies remain the
+broader A03/A04 follow-up.
