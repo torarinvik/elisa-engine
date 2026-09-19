@@ -1,0 +1,109 @@
+# Elisa-owned render resource references. Meshes and materials are shared asset
+# identities; instances only hold references and per-instance state. Native
+# Wicked adapters can consume this table without becoming gameplay owners.
+include "../assets/descriptor.elisa"
+include "../math/geometry.elisa"
+
+module RenderResources:
+    private:
+        const module Limits:
+            MAX_INSTANCES: usize = 256
+            INVALID_SLOT: usize = MAX_INSTANCES
+            FIRST_GENERATION: i64 = 1
+            MAX_GENERATION: i64 = 9223372036854775807
+
+        def next_generation(current: i64) -> i64:
+            Limits::FIRST_GENERATION if current == 0 else current + 1
+
+    public:
+        struct InstanceHandle:
+            slot: usize
+            generation: i64
+
+        struct InstanceState:
+            mesh: Assets::AssetId
+            material: Assets::AssetId
+            transform: Geometry::Transform
+            layer: i64
+            visible: bool
+
+        enum RenderError:
+            InvalidAsset
+            Capacity
+            UnknownInstance
+            GenerationExhausted
+
+        private:
+            struct Entry:
+                generation: mutable i64
+                live: mutable bool
+                state: mutable InstanceState
+
+        public:
+            affine struct Registry:
+                private:
+                    entries: mutable Entry[Limits::MAX_INSTANCES]
+                    count: mutable usize
+
+            def Registry() -> Registry:
+                Registry{entries: zeroed, count: 0}
+
+            def handle_valid(registry: Registry&, handle: InstanceHandle) -> bool:
+                handle.slot < Limits::MAX_INSTANCES and registry.entries[handle.slot].live and registry.entries[handle.slot].generation == handle.generation
+
+            def create(registry: mutable Registry&, mesh: Assets::AssetId, material: Assets::AssetId,
+                transform: Geometry::Transform, layer: i64) -> InstanceHandle error[RenderError]:
+                raise RenderError.InvalidAsset if not Assets::asset_id_valid(mesh) or not Assets::asset_id_valid(material) or Assets::same_asset_id(mesh, material)
+                raise RenderError.Capacity if registry.count >= Limits::MAX_INSTANCES
+                slot: usize =
+                    for index in 0..<Limits::MAX_INSTANCES |slot: usize = Limits::INVALID_SLOT, registry| -> slot:
+                        break index if not registry.entries[index].live
+                raise RenderError.Capacity if slot == Limits::INVALID_SLOT
+                generation: mutable i64 = registry.entries[slot].generation
+                raise RenderError.GenerationExhausted if generation >= Limits::MAX_GENERATION
+                generation <- next_generation(generation)
+                registry.entries[slot] <- Entry{
+                    generation: generation,
+                    live: true,
+                    state: InstanceState{mesh: mesh, material: material, transform: transform, layer: layer, visible: true},
+                }
+                registry.count <- registry.count + 1
+                InstanceHandle{slot: slot, generation: generation}
+
+            def read(registry: Registry&, handle: InstanceHandle) -> InstanceState error[RenderError]:
+                raise RenderError.UnknownInstance if not handle_valid(registry, handle)
+                registry.entries[handle.slot].state
+
+            def update_transform(registry: mutable Registry&, handle: InstanceHandle, transform: Geometry::Transform) -> void error[RenderError]:
+                raise RenderError.UnknownInstance if not handle_valid(registry, handle)
+                registry.entries[handle.slot].state.transform <- transform
+
+            def set_visible(registry: mutable Registry&, handle: InstanceHandle, visible: bool) -> void error[RenderError]:
+                raise RenderError.UnknownInstance if not handle_valid(registry, handle)
+                registry.entries[handle.slot].state.visible <- visible
+
+            def set_layer(registry: mutable Registry&, handle: InstanceHandle, layer: i64) -> void error[RenderError]:
+                raise RenderError.UnknownInstance if not handle_valid(registry, handle)
+                registry.entries[handle.slot].state.layer <- layer
+
+            def destroy(registry: mutable Registry&, handle: InstanceHandle) -> void error[RenderError]:
+                raise RenderError.UnknownInstance if not handle_valid(registry, handle)
+                registry.entries[handle.slot].live <- false
+                registry.count <- registry.count - 1
+
+            def shared_mesh_count(registry: Registry&, mesh: Assets::AssetId) -> usize:
+                total: usize =
+                    for index in 0..<Limits::MAX_INSTANCES |total: usize = 0| -> total:
+                        if registry.entries[index].live and Assets::same_asset_id(registry.entries[index].state.mesh, mesh):
+                            total <- total + 1
+                total
+
+            def instance_count(registry: Registry&) -> usize:
+                registry.count
+
+            def registry_valid(registry: Registry&) -> bool:
+                return false if registry.count > Limits::MAX_INSTANCES
+                live_count: usize =
+                    for index in 0..<Limits::MAX_INSTANCES |total: usize = 0| -> total:
+                        total <- total + 1 if registry.entries[index].live
+                live_count == registry.count

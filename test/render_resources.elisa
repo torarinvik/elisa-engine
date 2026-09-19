@@ -1,0 +1,35 @@
+include "../src/backend/render_resources.elisa"
+
+def main() -> i32:
+    registry: mutable RenderResources::Registry = RenderResources::Registry()
+    mesh: Assets::AssetId = Assets::AssetId{high: 1, low: 10}
+    material: Assets::AssetId = Assets::AssetId{high: 1, low: 11}
+    transform: Geometry::Transform = Geometry::transform_identity()
+    first: RenderResources::InstanceHandle = catch RenderResources::create(&registry, mesh, material, transform, 1):
+        value: value
+        error failure: return 1
+    second: RenderResources::InstanceHandle = catch RenderResources::create(&registry, mesh, material, transform, 2):
+        value: value
+        error failure: return 2
+    return 3 if RenderResources::shared_mesh_count(&registry, mesh) != 2 or RenderResources::instance_count(&registry) != 2
+    moved: Geometry::Transform = Geometry::transform_translate(transform, Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0})
+    _ = catch RenderResources::update_transform(&registry, first, moved):
+        ok: 0
+        error failure: return 4
+    one: RenderResources::InstanceState = catch RenderResources::read(&registry, first):
+        value: value
+        error failure: return 5
+    two: RenderResources::InstanceState = catch RenderResources::read(&registry, second):
+        value: value
+        error failure: return 6
+    return 7 if one.transform.position.x != 4.0 or two.transform.position.x != 0.0
+    _ = catch RenderResources::destroy(&registry, first):
+        ok: 0
+        error failure: return 8
+    return 9 if RenderResources::shared_mesh_count(&registry, mesh) != 1 or not RenderResources::registry_valid(&registry)
+    stale: i32 = catch RenderResources::set_visible(&registry, first, false):
+        ok: 0
+        RenderResources::RenderError.UnknownInstance: 1
+        error failure: 2
+    return 10 if stale != 1
+    0
