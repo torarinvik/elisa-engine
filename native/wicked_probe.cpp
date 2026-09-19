@@ -20,7 +20,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 #include "live_game_probe.h"
 #include "probe_support.h"
 #include "asset_import.h"
@@ -38,9 +37,9 @@
 #include "native_application.h"
 #include "resource_handles.h"
 #include "resource_handle_probe.h"
+#include "capability_probe.h"
 
 using namespace probe;
-
 
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -86,6 +85,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     wi::Application& application = application_host.wicked();
+    if (!probe_graphics_capabilities()) {
+        return 1;
+    }
 
     wi::scene::Scene scene;
     if (!probe_native_resource_handles(scene)) {

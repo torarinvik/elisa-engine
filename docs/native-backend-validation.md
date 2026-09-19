@@ -24,6 +24,12 @@ The SDL3 window and Wicked application boundary now live in
 the probe still deliberately runs a finite diagnostic client and uses the
 existing forced-exit workaround until F05 supplies orderly Wicked teardown.
 
+After device initialization the native gate queries the adapter name, shader
+format, viewport limit, video-memory budget/usage, mesh-shader, ray-tracing,
+and sparse-texture capabilities through Wicked's graphics device. Optional
+features are reported as `native` or `fallback`; they are not inferred from a
+linked library or from the machine-independent Elisa profile.
+
 ## Prerequisites and commands
 
 Godot 4.7.2 is used for the headless host probe:

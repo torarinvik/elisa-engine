@@ -33,6 +33,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
 | Shared Elisa-to-Wicked coordinate conversion for grid content | Tested + Implemented | `native/coordinate_conventions.h`, native wall/marker/live-input/route rendering |
 | Versioned backend profiles with queried limits and feature requirements | Tested | `src/backend/capabilities.elisa`, `test/capabilities.elisa`; native feature population remains F08 work |
+| Native graphics capability and memory query with explicit optional fallbacks | Tested + Implemented | `native/capability_probe.h`, Wicked `GraphicsDevice::CheckCapability`, memory and viewport queries in the native gate |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Versioned C ABI descriptor, feature negotiation, bounded spans | Tested + Implemented | `native/service_abi.h`, `maze_abi_version`, `maze_feature_bits`, malformed-descriptor checks in `native/embed_probe.cpp` |
 | Stable source/content/artifact asset descriptor with schema, variant, settings, and dependencies | Tested | `src/assets/descriptor.elisa`, `test/assets.elisa` |
