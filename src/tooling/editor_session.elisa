@@ -67,7 +67,6 @@ module EditorSession:
             session.dirty
 
         def select_panel(session: mutable Session&, panel: Panel) -> void error[SessionError]:
-            raise SessionError.InvalidSession if not session_valid(&session)
             session.panel <- panel
 
         private:
