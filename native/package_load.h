@@ -5,9 +5,9 @@
 // scripts/cook_assets.py; the runtime only accepts a format it knows.
 #include "wiScene.h"
 #include "meshopt_probe.h"
+#include "virtual_package.h"
 
 #include <cstdint>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -70,18 +70,12 @@ inline void decode_u32(const std::string& text, std::vector<uint32_t>& out) {
 
 inline CookedPackage load_cooked_package(const std::string& path) {
     CookedPackage package;
-    std::ifstream input(path);
-    if (!input) {
-        return package;
-    }
-    std::string line;
-    while (std::getline(input, line)) {
-        const auto separator = line.find('=');
-        if (separator == std::string::npos) {
-            continue;
-        }
-        const std::string key = line.substr(0, separator);
-        const std::string value = line.substr(separator + 1);
+    const PackageIndex index = read_package_index(path);
+    if (!index.valid) return package;
+    try {
+      for (const auto& section : index.sections) {
+        const std::string& key = section.first;
+        const std::string& value = section.second;
         if (key == "format") {
             package.format = value;
         } else if (key == "triangles") {
@@ -97,6 +91,9 @@ inline CookedPackage load_cooked_package(const std::string& path) {
         } else if (key == "indices_b64") {
             decode_u32(value, package.index_data);
         }
+      }
+    } catch (const std::exception&) {
+        return CookedPackage{};
     }
     package.loaded = package.format == "elisa-cooked-v2" &&
         package.position_data.size() == (size_t)package.positions * 3 &&

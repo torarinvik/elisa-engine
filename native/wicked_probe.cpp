@@ -41,6 +41,7 @@
 #include "frame_pacing_probe.h"
 #include "window_lifecycle_probe.h"
 #include "physics_policy_probe.h"
+#include "package_bounds_probe.h"
 using namespace probe;
 
 int main(int argc, char** argv) {
@@ -224,11 +225,10 @@ int main(int argc, char** argv) {
                     "cooked package counts match the import")) {
                 return 1;
             }
-            // zstd package compression lives in native/zstd_probe.h.
+            if (!probe_package_bounds(package_path.lexically_normal().string())) return 1;
             if (!probe_zstd(package_path.lexically_normal().string())) {
                 return 1;
             }
-            // Asset reload lives in native/reload_probe.h.
             if (!probe_reload(scene, package, package_path.lexically_normal().string())) {
                 return 1;
             }
