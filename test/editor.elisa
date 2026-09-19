@@ -1,4 +1,5 @@
 include "../src/tooling/editor.elisa"
+include "../src/tooling/inspector_view.elisa"
 include "../src/ui/layout.elisa"
 include "../src/ui/text.elisa"
 include "../src/ui/style.elisa"
@@ -8,6 +9,66 @@ using Reload
 using UiLayout
 using UiStyle
 using UiText
+using InspectorView
+
+def inspector_number_field(target: i64, value: i64) -> Field:
+    Field{target: target, kind: FieldKind.Number, value: value, minimum: -10, maximum: 10, editable: true}
+
+def inspector_view_test() -> i32:
+    model: mutable Model = model_new()
+    return 29 if not model_valid(&model) or field_count(&model) != 0 or selected_index(&model) != 8
+    speed: Field = inspector_number_field(10, 2)
+    enabled: Field = Field{target: 11, kind: FieldKind.Toggle, value: 1, minimum: 0, maximum: 1, editable: true}
+    asset: Field = Field{target: 12, kind: FieldKind.Asset, value: 4, minimum: 1, maximum: 99, editable: false}
+    added: i32 = catch add_field(&model, speed):
+        ok: 0
+        FieldError.Capacity: 1
+        FieldError.InvalidField: 2
+        FieldError.DuplicateTarget: 3
+        error failure: 4
+    return 30 if added != 0 or not model_valid(&model) or selected_index(&model) != 0
+    return 31 if catch add_field(&model, enabled):
+        ok: false
+        error failure: true
+    return 32 if catch add_field(&model, asset):
+        ok: false
+        error failure: true
+    return 33 if field_count(&model) != 3
+    selected: i32 = catch select(&model, 1):
+        ok: 0
+        FieldError.UnknownTarget: 1
+        error failure: 2
+    return 34 if selected != 0 or selected_index(&model) != 1
+    changed: i32 = catch set_value(&model, 10, 7):
+        ok: 0
+        FieldError.UnknownTarget: 1
+        FieldError.InvalidField: 2
+        FieldError.OutOfRange: 3
+        error failure: 4
+    return 35 if changed != 0 or not model_dirty(&model) or field_at(&model, 0).value != 7
+    out_of_range: i32 = catch set_value(&model, 10, 99):
+        ok: 0
+        FieldError.OutOfRange: 1
+        error failure: 2
+    return 36 if out_of_range != 1 or field_at(&model, 0).value != 7
+    immutable: i32 = catch set_value(&model, 12, 5):
+        ok: 0
+        FieldError.InvalidField: 1
+        error failure: 2
+    return 37 if immutable != 1
+    duplicate: i32 = catch add_field(&model, inspector_number_field(10, 1)):
+        ok: 0
+        FieldError.DuplicateTarget: 1
+        error failure: 2
+    return 38 if duplicate != 1
+    unknown: i32 = catch select(&model, 8):
+        ok: 0
+        FieldError.UnknownTarget: 1
+        error failure: 2
+    return 39 if unknown != 1
+    clear_dirty(&model)
+    return 40 if model_dirty(&model) or not model_valid(&model)
+    0
 
 # A two-level layout: a vertical root with a horizontal header and a vertical
 # body; padding, spacing, and orientation decide every rectangle.
@@ -172,4 +233,6 @@ def main() -> i32:
     return laid_out if laid_out != 0
     wrapped_text: i32 = text_test()
     return wrapped_text if wrapped_text != 0
+    view: i32 = inspector_view_test()
+    return view if view != 0
     0

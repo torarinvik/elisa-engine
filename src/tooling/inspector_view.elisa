@@ -1,0 +1,101 @@
+# Elisa-owned editor inspector data. Hosts render this value-only model; they
+# do not own field values or validation. Fixed storage keeps an inspector panel
+# bounded and makes edits independent of host widget allocation.
+module InspectorView:
+    private:
+        const module Bounds:
+            MAX_FIELDS: usize = 8
+            INVALID_INDEX: usize = 8
+
+    public:
+        enum FieldKind:
+            Number
+            Toggle
+            Asset
+
+        error FieldError:
+            Capacity
+            InvalidField
+            DuplicateTarget
+            UnknownTarget
+            OutOfRange
+
+        struct Field:
+            target: i64
+            kind: FieldKind
+            value: mutable i64
+            minimum: i64
+            maximum: i64
+            editable: bool
+
+        struct Model:
+            fields: mutable Field[8]
+            count: mutable usize
+            selected: mutable usize
+            dirty: mutable bool
+
+        def model_new() -> Model:
+            Model{fields: zeroed, count: 0, selected: Bounds::INVALID_INDEX, dirty: false}
+
+        def field_valid(field: Field) -> bool:
+            return false if field.target <= 0 or field.minimum > field.maximum
+            return false if field.value < field.minimum or field.value > field.maximum
+            return false if field.kind == FieldKind.Toggle and (field.minimum < 0 or field.maximum > 1)
+            true
+
+        def model_valid(model: Model&) -> bool:
+            return false if model.count > Bounds::MAX_FIELDS
+            return false if model.selected != Bounds::INVALID_INDEX and model.selected >= model.count
+            for index in 0..<model.count |valid: bool = true| -> valid:
+                valid <- false if not field_valid(model.fields[index])
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if model.fields[earlier].target == model.fields[index].target
+                valid <- valid and unique
+            true
+
+        private:
+            module Find:
+                public:
+                    def index_of(model: Model&, target: i64) -> usize:
+                        for index in 0..<model.count |found: usize = InspectorView::Bounds::INVALID_INDEX| -> found:
+                            found <- index if model.fields[index].target == target
+
+        public:
+            def field_count(model: Model&) -> usize:
+                model.count
+
+            def selected_index(model: Model&) -> usize:
+                model.selected
+
+            def model_dirty(model: Model&) -> bool:
+                model.dirty
+
+            def field_at(model: Model&, index: usize) -> Field:
+                return Field{target: 0, kind: FieldKind.Number, value: 0, minimum: 0, maximum: 0, editable: false} if index >= model.count
+                model.fields[index]
+
+            def add_field(model: mutable Model&, field: Field) -> void error[FieldError]:
+                raise FieldError.Capacity if model.count >= Bounds::MAX_FIELDS
+                raise FieldError.InvalidField if not field_valid(field)
+                raise FieldError.DuplicateTarget if Find::index_of(model, field.target) != Bounds::INVALID_INDEX
+                model.fields[model.count] <- field
+                model.count <- model.count + 1
+                model.selected <- 0 if model.selected == Bounds::INVALID_INDEX
+
+            def select(model: mutable Model&, index: usize) -> void error[FieldError]:
+                raise FieldError.UnknownTarget if index >= model.count
+                model.selected <- index
+
+            def set_value(model: mutable Model&, target: i64, value: i64) -> void error[FieldError]:
+                index: usize = Find::index_of(model, target)
+                raise FieldError.UnknownTarget if index == Bounds::INVALID_INDEX
+                raise FieldError.InvalidField if not model.fields[index].editable
+                raise FieldError.OutOfRange if value < model.fields[index].minimum or value > model.fields[index].maximum
+                updated: mutable Field = model.fields[index]
+                updated.value <- value
+                model.fields[index] <- updated
+                model.dirty <- true
+
+            def clear_dirty(model: mutable Model&) -> void:
+                model.dirty <- false

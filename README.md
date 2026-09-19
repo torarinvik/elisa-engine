@@ -311,8 +311,9 @@ guessing. Loading code itself stays outside the engine.
 normalization, quaternion multiply/rotate, and transform composition, so
 rotation stays engine-owned instead of a vendor type.
 `src/audio/policy.elisa` (one device, playback first, spatial opt-in),
-`src/tooling/inspector.elisa` plus `src/tooling/editor.elisa` (read-only
-snapshots, perf budgets, undo/redo, reload generations) plus
+`src/tooling/inspector.elisa` plus `src/tooling/inspector_view.elisa` plus
+`src/tooling/editor.elisa` (read-only snapshots, bounded editable fields,
+perf budgets, undo/redo, reload generations) plus
 `src/tooling/debug_geometry.elisa` and `examples/maze/debug.elisa` (bounded
 collision boxes for solid cells and interactive markers, drawn as Godot
 wireframes before capture), and
