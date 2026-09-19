@@ -15,6 +15,10 @@ writes `build/validation.json`. Host evidence comes from
 `scripts/wicked_probe.elisascript` (native) and
 `scripts/godot_capture.elisascript` (Godot), which need a display session.
 
+**Forward work:** [the active implementation plan](../IMPLEMENTATION_PLAN.md)
+prioritizes the native backend. Its unchecked tasks are future work; the evidence
+labels here do not imply that a probe is a reusable, production-ready service.
+
 ## Identity, world, and runtime
 
 | Capability | Label | Evidence |
@@ -190,33 +194,25 @@ Re-run on the current tree:
   The gated Godot scene probe loads the same file as a compressed image; run
   `python3 scripts/fetch_basisu.py` once so the cooker can emit it.
 
-## Plan-gated (not implemented by design)
+## Roadmap gaps carried into the native plan
 
-The plan's library roadmap is "an integration order, not a command to add every
-dependency immediately," and each of these is gated on a representative need:
+These are unimplemented or partial beyond the evidence above. The active
+[implementation plan](../IMPLEMENTATION_PLAN.md) now gives them concrete tasks
+and consumers; their earlier maze-only deferral is not the current priority policy.
 
-- **Box2D** waits for a genuine 2D use case; the first game is 3D.
-- **ACL** is a later benchmarked alternative codec path; `src/animation/codec.elisa`
-  records the codec choice rather than shipping a second decoder.
-- **Steam Audio** is optional spatial acoustics; `src/audio/policy.elisa` keeps
-  spatial voices behind an explicit opt-in for when it is added.
-- **Effekseer** needs a concrete authoring need; Wicked supplies effects for now.
-- **ufbx** is a fallback importer; the glTF path covers the shipped assets.
-- **Arbitrary code hot reload** stays out of scope until quiescence, callback
-  draining, and state migration are demonstrated; the bounded policy and asset
-  reload path are implemented and tested (`src/tooling/reload.elisa`).
+- **Box2D:** P10 adds a genuine 2D service and playable example.
+- **ACL:** C07 adds and benchmarks an optional compression/decoder path.
+- **Steam Audio:** S04 adds opt-in acoustics after the native audio service.
+- **ufbx:** A09 adds FBX import through the normalized asset pipeline.
+- **Richer editor authoring:** E01–E10 build persistent native authoring workflows
+  over the existing bounded models, including scene, prefab, asset, and subsystem editing.
+- **Arbitrary code hot reload:** E10 first provides safe rebuild/restart, then
+  permits reload only after quiescence, callback draining, and migration are verified.
+- **Effekseer:** X07 remains a specialist expansion with a concrete authoring
+  requirement; Wicked effects are the first native path in R09.
 
-## Deferred
-
-These plan items are deliberately not implemented. The plan calls the library
-roadmap "an integration order, not a command to add every dependency
-immediately," and each of these is either optional for the first game or needs a
-toolchain not present in this environment:
-
-- **Richer editor authoring.** The bounded session, inspector, asset browser,
-  asset removal, widget surface, and inspector field undo/redo are implemented; richer
-  content workflows remain deferred until the editor has a concrete asset
-  editing path.
+The plan also distinguishes the existing specialist-library probes from the
+reusable runtime APIs, authoring, packaging, and scale evidence still required.
 
 Architectural decisions behind these boundaries are recorded in
 [docs/adr/](adr/): ADR-0011 on the canonical fixture as the backend contract,

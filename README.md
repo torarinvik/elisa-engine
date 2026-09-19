@@ -12,11 +12,16 @@ ADRs mark as not covered is not claimed anywhere else in this file. Every
 capability is labelled proved, tested, implemented, partial, or planned with
 its evidence in [docs/capabilities.md](docs/capabilities.md).
 
+**Active development:** [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) is the
+prioritized agent backlog for the Wicked + SDL3 + specialist-library backend.
+It takes the existing probes toward reusable engine services, native authoring,
+and packaged games; Godot remains a compatibility target.
+
 ## Current foundation: identity and checked world
 
 `src/entity_id.elisa` supplies the `EntityId` module's affine, world-local numeric
 identity allocator. Import it with `using EntityId`, initialize
-`EntityIdAllocator{last_issued: ENTITY_ID_INVALID}`, and call
+`EntityId::EntityIdAllocator()`, and call
 `entity_id_allocate(&allocator)` with `catch` to handle its error union.
 Successful allocation returns IDs from 1 through `ENTITY_ID_MAX`.
 `ENTITY_ID_INVALID` (zero) is the unissued initial cursor, not a failure result.
