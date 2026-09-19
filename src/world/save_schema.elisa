@@ -1,0 +1,118 @@
+# Bounded world save schema. Records contain stable gameplay IDs and plain
+# values only; native handles remain outside the durable document. A staged
+# transaction computes its checksum before atomically replacing one record.
+module SaveSchema:
+    private:
+        const module Limits:
+            MAX_RECORDS: usize = 32
+            MAX_FIELDS: usize = 8
+            CURRENT_VERSION: i64 = 2
+            INVALID_SLOT: usize = MAX_RECORDS
+            MAGIC: i64 = 873421
+
+        def record_checksum(record: Record&) -> i64:
+            value: mutable i64 = Limits::MAGIC + record.version * 31 + record.stable_id * 17 + record.field_count.i64()
+            for index in 0..<Limits::MAX_FIELDS |value, record|:
+                value <- value + record.fields[index] * (index.i64() + 3)
+            value
+
+        def slot_of(document: Document&, stable_id: i64) -> usize:
+            for index in 0..<document.count |slot: usize = Limits::INVALID_SLOT| -> slot:
+                break index if document.records[index].stable_id == stable_id
+
+    public:
+        struct Record:
+            version: mutable i64
+            stable_id: i64
+            fields: mutable i64[Limits::MAX_FIELDS]
+            field_count: mutable usize
+            checksum: mutable i64
+
+        affine struct Document:
+            private:
+                records: mutable Record[Limits::MAX_RECORDS]
+                count: mutable usize
+
+        affine struct Transaction:
+            private:
+                active: mutable bool
+                stable_id: mutable i64
+                staged: mutable Record
+
+        error SaveError:
+            InvalidId
+            InvalidVersion
+            InvalidFieldCount
+            Capacity
+            DuplicateId
+            UnknownId
+            Corrupt
+            InactiveTransaction
+
+        def Record(stable_id: i64) -> Record:
+            Record{version: Limits::CURRENT_VERSION, stable_id: stable_id, fields: zeroed, field_count: 0, checksum: 0}
+
+        def Document() -> Document:
+            Document{records: zeroed, count: 0}
+
+        def document_count(document: Document&) -> usize:
+            document.count
+
+        def record_valid(record: Record&) -> bool:
+            record.version > 0 and record.version <= Limits::CURRENT_VERSION and record.stable_id > 0 and record.field_count <= Limits::MAX_FIELDS and record.checksum == record_checksum(record)
+
+        def migrate(record: mutable Record&) -> bool:
+            return false if record.version <= 0 or record.version > Limits::CURRENT_VERSION or record.stable_id <= 0 or record.field_count > Limits::MAX_FIELDS
+            for _ in 0..<Limits::MAX_FIELDS |record|:
+                break if record.version == Limits::CURRENT_VERSION
+                if record.version == 1:
+                    return false if record.field_count >= Limits::MAX_FIELDS
+                    record.fields[record.field_count] <- 0
+                    record.field_count <- record.field_count + 1
+                    record.version <- 2
+                else:
+                    return false
+            record.checksum <- record_checksum(record)
+            true
+
+        def begin(document: Document&, stable_id: i64) -> Transaction error[SaveError]:
+            raise SaveError.InvalidId if stable_id <= 0
+            slot: usize = slot_of(document, stable_id)
+            staged: mutable Record = Record(stable_id)
+            if slot != Limits::INVALID_SLOT:
+                staged <- document.records[slot]
+            Transaction{active: true, stable_id: stable_id, staged: staged}
+
+        def stage(transaction: mutable Transaction&, values: i64[Limits::MAX_FIELDS], count: usize) -> void error[SaveError]:
+            raise SaveError.InactiveTransaction if not transaction.active
+            raise SaveError.InvalidFieldCount if count > Limits::MAX_FIELDS
+            source: mutable i64[Limits::MAX_FIELDS] = values
+            transaction.staged.fields <- source
+            transaction.staged.field_count <- count
+            transaction.staged.version <- Limits::CURRENT_VERSION
+            transaction.staged.checksum <- record_checksum(&transaction.staged)
+
+        def commit(document: mutable Document&, transaction: mutable Transaction&) -> void error[SaveError]:
+            raise SaveError.InactiveTransaction if not transaction.active
+            raise SaveError.InvalidId if transaction.stable_id <= 0
+            raise SaveError.Corrupt if not record_valid(&transaction.staged)
+            slot: usize = slot_of(document, transaction.stable_id)
+            if slot == Limits::INVALID_SLOT:
+                raise SaveError.Capacity if document.count >= Limits::MAX_RECORDS
+                document.records[document.count] <- transaction.staged
+                document.count <- document.count + 1
+            else:
+                document.records[slot] <- transaction.staged
+            transaction.active <- false
+
+        def abort(transaction: mutable Transaction&) -> void error[SaveError]:
+            raise SaveError.InactiveTransaction if not transaction.active
+            transaction.active <- false
+
+        def read(document: Document&, stable_id: i64) -> Record error[SaveError]:
+            raise SaveError.InvalidId if stable_id <= 0
+            slot: usize = slot_of(document, stable_id)
+            raise SaveError.UnknownId if slot == Limits::INVALID_SLOT
+            record: mutable Record = document.records[slot]
+            raise SaveError.Corrupt if not record_valid(&record)
+            record

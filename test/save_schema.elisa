@@ -1,0 +1,40 @@
+include "../src/world/save_schema.elisa"
+
+def main() -> i32:
+    document: mutable SaveSchema::Document = SaveSchema::Document()
+    transaction: mutable SaveSchema::Transaction = catch SaveSchema::begin(&document, 42):
+        value: value
+        error failure: return 1
+    values: i64[8] = [7, 9, 11, 0, 0, 0, 0, 0]
+    _ = catch SaveSchema::stage(&transaction, values, 3):
+        ok: 0
+        error failure: return 2
+    _ = catch SaveSchema::commit(&document, &transaction):
+        ok: 0
+        error failure: return 3
+    return 4 if SaveSchema::document_count(&document) != 1
+    record: SaveSchema::Record = catch SaveSchema::read(&document, 42):
+        value: value
+        error failure: return 5
+    return 6 if record.fields[0] != 7 or record.fields[2] != 11 or record.field_count != 3
+    old: mutable SaveSchema::Record = SaveSchema::Record(99)
+    old.version <- 1
+    old.field_count <- 1
+    old.fields[0] <- 13
+    return 7 if not SaveSchema::migrate(&old) or old.version != 2 or old.field_count != 2 or old.fields[1] != 0
+    return 8 if not SaveSchema::record_valid(&old)
+    pending: mutable SaveSchema::Transaction = catch SaveSchema::begin(&document, 42):
+        value: value
+        error failure: return 9
+    changed: i64[8] = [99, 0, 0, 0, 0, 0, 0, 0]
+    _ = catch SaveSchema::stage(&pending, changed, 1):
+        ok: 0
+        error failure: return 10
+    _ = catch SaveSchema::abort(&pending):
+        ok: 0
+        error failure: return 11
+    after_abort: SaveSchema::Record = catch SaveSchema::read(&document, 42):
+        value: value
+        error failure: return 12
+    return 13 if after_abort.fields[0] != 7
+    0
