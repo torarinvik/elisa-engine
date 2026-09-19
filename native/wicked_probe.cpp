@@ -46,6 +46,7 @@
 #include "render_snapshot_bridge.h"
 #include "physics_body_bridge.h"
 #include "action_input_bridge.h"
+#include "camera_bridge.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -97,6 +98,7 @@ int main(int argc, char** argv) {
     if (!probe_render_snapshot_bridge(scene)) return 1;
     if (!probe_physics_body_bridge(scene)) return 1;
     if (!probe_action_input_bridge()) return 1;
+    if (!probe_camera_bridge(scene)) return 1;
     if (!probe_native_resource_handles(scene)) {
         return 1;
     }
@@ -111,8 +113,6 @@ int main(int argc, char** argv) {
         !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
         return 1;
     }
-    // Maze wall geometry from the Elisa-owned topology. Rendered as an
-    // unlit vertical wall map so the frame proves the native host draws
     // game-authored content, not a single test cube. The plane sits at
     // z=1 (6 units from the camera) where the whole 8x8 map fits the
     // default 45-degree frustum; the entity cube stays in front at z=3.
@@ -120,8 +120,6 @@ int main(int argc, char** argv) {
     // Create every entity before borrowing any component pointer: adding
     // entities can reallocate the component stores, so pointers fetched
     // earlier would dangle.
-    // Fog of war: the host hides geometry outside the player's visible radius,
-    // using the rule the game publishes. The player cell and radius come from
     // the fixture, so the host never chooses either.
     int fog_radius = 0;
     int fog_player_x = 0;

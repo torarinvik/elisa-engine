@@ -10,3 +10,9 @@ The viewport rejects zero or oversized dimensions and records display scale.
 `test/camera.elisa` covers centered perspective rays, camera movement, resize
 scale, orthographic origins, and forward direction. Render-to-texture and
 multi-camera scheduling remain native R03 work.
+
+The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
+orthographic camera components, applies a 2x viewport scale, resizes a
+perspective view, and removes both temporary views without retaining native
+camera entities. Render targets, camera switching, and frustum scheduling are
+still higher-level work.
