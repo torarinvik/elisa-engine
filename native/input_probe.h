@@ -5,13 +5,9 @@
 // requires each to map to the named portable button. It exercises the platform
 // boundary; gameplay action selection still runs in Elisa.
 //
-// This probe is compiled into the Wicked host, whose upstream platform layer
-// builds against SDL2, so it must use SDL2: SDL2 and SDL3 export the same
-// symbol names and cannot link into one binary. The engine's own platform
-// default is SDL3 (src/backend/sdl3.elisa and the standalone embedding host).
 #include "probe_core.h"
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdio>
 #include <cstring>
@@ -22,25 +18,25 @@ namespace probe {
 
 inline SDL_Keycode sdl_key_for(const std::string& name) {
     if (name == "KeyW") {
-        return SDLK_w;
+        return SDLK_W;
     }
     if (name == "KeyA") {
-        return SDLK_a;
+        return SDLK_A;
     }
     if (name == "KeyD") {
-        return SDLK_d;
+        return SDLK_D;
     }
     return SDLK_UNKNOWN;
 }
 
 inline std::string portable_button_for(SDL_Keycode code) {
-    if (code == SDLK_w) {
+    if (code == SDLK_W) {
         return "KeyW";
     }
-    if (code == SDLK_a) {
+    if (code == SDLK_A) {
         return "KeyA";
     }
-    if (code == SDLK_d) {
+    if (code == SDLK_D) {
         return "KeyD";
     }
     return "Unbound";
@@ -62,18 +58,19 @@ inline bool probe_input(const std::map<std::string, std::string>& manifest) {
         }
         SDL_Event event;
         std::memset(&event, 0, sizeof(event));
-        event.type = SDL_KEYDOWN;
-        event.key.type = SDL_KEYDOWN;
-        event.key.keysym.sym = code;
-        event.key.keysym.scancode = SDL_GetScancodeFromKey(code);
-        if (!check(SDL_PushEvent(&event) == 1, "input event pushed")) {
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.type = SDL_EVENT_KEY_DOWN;
+        event.key.down = true;
+        event.key.key = code;
+        event.key.scancode = SDL_GetScancodeFromKey(code, nullptr);
+        if (!check(SDL_PushEvent(&event), "input event pushed")) {
             return false;
         }
         bool matched = false;
         SDL_Event polled;
-        while (SDL_PollEvent(&polled) == 1) {
-            if (polled.type == SDL_KEYDOWN) {
-                matched = portable_button_for(polled.key.keysym.sym) == name;
+        while (SDL_PollEvent(&polled)) {
+            if (polled.type == SDL_EVENT_KEY_DOWN) {
+                matched = portable_button_for(polled.key.key) == name;
             }
         }
         if (!check(matched, "input event maps to the portable button name")) {

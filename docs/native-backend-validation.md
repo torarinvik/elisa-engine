@@ -124,29 +124,24 @@ to the Elisa canonical scene by `scripts/record_validation.py`, which
 rejects drift in version, epoch, entity, camera, viewport, and command
 sequence. Positions remain scenario data and are intentionally unpinned.
 
-When the external checkout has been built as `build-elisa-arm-o0`, run:
+When the external checkout has been built as `build-elisa-sdl3`, run:
 
 ```sh
 WICKED_ROOT="../WickedEngine" \
-WICKED_BUILD="../WickedEngine/build-elisa-arm-o0" \
+WICKED_BUILD="../WickedEngine/build-elisa-sdl3" \
 elisascript scripts/wicked_probe.elisascript
 ```
 
-Run `python3 scripts/fetch_sdl2.py` first. It pins and builds real SDL2 under
-`dependencies/sdl2`, and the probe prefers it over Homebrew's `sdl2-compat`:
-the shim dlopens SDL3 from a library initializer, so when SDL3 cannot load it
-hangs the AddressSanitizer probe before `main` rather than reporting anything.
-Set `WICKED_SDL_INCLUDE_DIR` and `WICKED_SDL_LIB_DIR` to override that choice —
-for instance on Linux, which installs real SDL2 system-wide. Freetype,
-harfbuzz and zstd stay Homebrew-side under `WICKED_BREW_INCLUDE_DIR` and
-`WICKED_BREW_LIB_DIR`. SDL2 is an upstream Wicked
-constraint only: SDL2 and SDL3 export the same symbols and cannot link into
-one binary. Everywhere the engine chooses, the default is SDL3
-(`src/backend/sdl3.elisa`, the SDL3 platform probe, and the standalone
-embedding host).
+Configure the external checkout with `-DWICKED_USE_SDL3=ON` (the default). On
+Homebrew macOS, SDL3 is discovered from `/opt/homebrew`; override the probe's
+paths with `WICKED_SDL3_INCLUDE_DIR` and `WICKED_SDL3_LIB_DIR` when needed.
+Freetype, harfbuzz and zstd stay Homebrew-side under
+`WICKED_BREW_INCLUDE_DIR` and `WICKED_BREW_LIB_DIR`. Everywhere the engine
+chooses, the default is SDL3 (`src/backend/sdl3.elisa`, the SDL3 platform probe,
+the standalone embedding host, and Wicked).
 
 The current macOS build needs four local compatibility edits in that external
-checkout: a `PipelineHash` inequality operator, the SDL2 Apple cursor guard,
+checkout: a `PipelineHash` inequality operator, the SDL3 Apple cursor guard,
 and 8-byte alignment attributes for the two FAudio default curves. The probe
 also passes `WI_UNORDERED_MAP_TYPE=2` and `WICKED_CMAKE_BUILD` so its ABI agrees
 with the CMake libraries. Those edits and flags are deliberately kept outside

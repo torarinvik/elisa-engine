@@ -8,10 +8,9 @@
 #include "wiRenderer.h"
 #include "wiScene.h"
 #include "wiVersion.h"
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <chrono>
-#include <SDL2/SDL_syswm.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -73,28 +72,28 @@ int main(int argc, char** argv) {
     wi::renderer::SetShaderPath(shader_root);
     wi::renderer::SetShaderSourcePath(shader_root);
     std::fprintf(stdout, "wicked %s\n", wi::version::GetVersionString());
-    if (!check(SDL_Init(SDL_INIT_VIDEO) == 0, "SDL video initialization")) {
+    if (!check(SDL_Init(SDL_INIT_VIDEO), "SDL video initialization")) {
         return 1;
     }
     SDL_Window* sdl_window = SDL_CreateWindow(
-        "elisa-engine-probe", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        320, 200, SDL_WINDOW_HIDDEN | SDL_WINDOW_METAL
+        "elisa-engine-probe", 320, 200, SDL_WINDOW_HIDDEN | SDL_WINDOW_METAL
     );
     if (!check(sdl_window != nullptr, "hidden Metal window")) {
         SDL_Quit();
         return 1;
     }
 
-    SDL_SysWMinfo window_info;
-    SDL_VERSION(&window_info.version);
-    if (!check(SDL_GetWindowWMInfo(sdl_window, &window_info), "Cocoa window handle")) {
+    SDL_PropertiesID window_properties = SDL_GetWindowProperties(sdl_window);
+    void* cocoa_window = SDL_GetPointerProperty(
+        window_properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+    if (!check(cocoa_window != nullptr, "Cocoa window handle")) {
         SDL_DestroyWindow(sdl_window);
         SDL_Quit();
         return 1;
     }
 
     wi::Application application;
-    application.SetWindow(reinterpret_cast<SDL_Window*>(window_info.info.cocoa.window));
+    application.SetWindow(reinterpret_cast<wi::platform::window_type>(cocoa_window));
     application.Initialize();
     wi::initializer::WaitForInitializationsToFinish();
 

@@ -23,7 +23,7 @@ def main(arguments: darray[sview]) -> i64:
         path(configured) if configured != "" else root.joinpath("../WickedEngine")
     wicked_build: Path =
         configured: sview = get_environment_or("WICKED_BUILD", "")
-        path(configured) if configured != "" else wicked_root.joinpath("build-elisa-arm-o0")
+        path(configured) if configured != "" else wicked_root.joinpath("build-elisa-sdl3")
     wicked_source: Path = wicked_root.joinpath("WickedEngine")
     utility: Path = wicked_source.joinpath("Utility")
     library_root: Path = wicked_build.joinpath("WickedEngine")
@@ -70,28 +70,10 @@ def main(arguments: darray[sview]) -> i64:
     archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
     if archive_status != 0:
         return archive_status
-    # Wicked's platform layer is built against SDL2. Prefer the pinned real
-    # SDL2 (scripts/fetch_sdl2.py) over Homebrew's sdl2-compat shim, which
-    # dlopens SDL3 from a library initializer and hangs the AddressSanitizer
-    # probe when SDL3 cannot load. Linux installs real SDL2 and can point
-    # WICKED_SDL_INCLUDE_DIR / WICKED_SDL_LIB_DIR at it instead.
-    pinned_sdl2: Path = root.joinpath("dependencies/sdl2")
-    pinned_sdl2_include: sview = str(pinned_sdl2.joinpath("include"))
-    pinned_sdl2_library: sview = str(pinned_sdl2.joinpath("build"))
-    sdl_include: sview =
-        configured_include: sview = get_environment_or("WICKED_SDL_INCLUDE_DIR", "")
-        if configured_include != "":
-            configured_include
-        else:
-            pinned_sdl2_include if is_file(path(str(pinned_sdl2.joinpath("include/SDL2/SDL.h")))) else "/opt/homebrew/include"
-    sdl_library: sview =
-        configured_library: sview = get_environment_or("WICKED_SDL_LIB_DIR", "")
-        if configured_library != "":
-            configured_library
-        else:
-            pinned_sdl2_library if is_file(path(str(pinned_sdl2.joinpath("build/libSDL2-2.0.0.dylib")))) else "/opt/homebrew/lib"
-    sdl_subinclude: sview = str(path(sdl_include).joinpath("SDL2"))
-    # freetype/harfbuzz/zstd stay Homebrew-side; only SDL2 is pinned.
+    sdl_include: sview = get_environment_or("WICKED_SDL3_INCLUDE_DIR", "/opt/homebrew/include")
+    sdl_library: sview = get_environment_or("WICKED_SDL3_LIB_DIR", "/opt/homebrew/lib")
+    sdl_subinclude: sview = str(path(sdl_include).joinpath("SDL3"))
+    # freetype/harfbuzz/zstd stay Homebrew-side; Wicked and the host use SDL3.
     brew_include: sview = get_environment_or("WICKED_BREW_INCLUDE_DIR", "/opt/homebrew/include")
     brew_library: sview = get_environment_or("WICKED_BREW_LIB_DIR", "/opt/homebrew/lib")
     utility_lib: Path = library_root.joinpath("Utility/libUtility.a")
@@ -160,7 +142,7 @@ def main(arguments: darray[sview]) -> i64:
         "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
         "-I", freetype_include, "-I", harfbuzz_include,
         "-I", str(tracy.joinpath("public")), "-DTRACY_ENABLE",
-        "-DSDL2=1", "-D__OBJC_BOOL_IS_BOOL=1",
+        "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
         "-I", sdl_include, "-I", sdl_subinclude,
@@ -171,7 +153,7 @@ def main(arguments: darray[sview]) -> i64:
         str(meshopt.joinpath("indexanalyzer.cpp")),
         str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(recast_libs[0]), str(recast_libs[1]),
-        "-L", sdl_library, "-lSDL2",
+        "-L", sdl_library, "-lSDL3",
         "-L", brew_library, "-lfreetype", "-lharfbuzz", "-lzstd",
         embed_archive,
         str(library_root.joinpath("libWickedEngine.a")),

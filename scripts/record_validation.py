@@ -408,7 +408,7 @@ def dependency_provenance(root: Path) -> dict:
         if expected is not None and digest != expected:
             raise ValueError(f"dependency {name} hash mismatch: {digest} != {expected}")
         recorded[name] = {"present": True, "revision": revision, "sha256": digest}
-    for name in ("ozz", "recast", "tracy", "gns", "basisu", "sdl2"):
+    for name in ("ozz", "recast", "tracy", "gns", "basisu", "sdl3"):
         path = root / "dependencies" / name
         if (path / ".git").is_dir():
             commit = subprocess.run(

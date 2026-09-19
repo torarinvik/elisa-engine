@@ -5,16 +5,12 @@
 // frame comes from gameplay this host itself advanced. The C ABI archive is
 // emitted by scripts/wicked_probe.elisascript before this probe is compiled.
 //
-// This file is compiled into the Wicked host, whose upstream platform layer
-// builds against SDL2, so it uses SDL2 events. SDL2 and SDL3 export the same
-// symbols and cannot link into one binary; the engine's own default is SDL3
-// (src/backend/sdl3.elisa and the standalone embedding host).
+#include <SDL3/SDL.h>
 #include "probe_core.h"
 #include "probe_support.h"
 #include "libmaze.h"
 #include "png_capture.h"
 
-#include <SDL2/SDL.h>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -23,16 +19,16 @@
 namespace probe {
 
 inline int move_code_for_key(SDL_Keycode code) {
-    if (code == SDLK_w) {
+    if (code == SDLK_W) {
         return 0;
     }
-    if (code == SDLK_s) {
+    if (code == SDLK_S) {
         return 1;
     }
-    if (code == SDLK_a) {
+    if (code == SDLK_A) {
         return 2;
     }
-    if (code == SDLK_d) {
+    if (code == SDLK_D) {
         return 3;
     }
     return -1;
@@ -50,19 +46,19 @@ inline bool probe_live_game_rendering(wi::Application& application, wi::scene::S
     }
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYDOWN;
-    event.key.type = SDL_KEYDOWN;
-    event.key.state = SDL_PRESSED;
-    event.key.keysym.sym = SDLK_d;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(SDLK_d);
-    if (!check(SDL_PushEvent(&event) == 1, "live key event pushed")) {
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.type = SDL_EVENT_KEY_DOWN;
+    event.key.down = true;
+    event.key.key = SDLK_D;
+    event.key.scancode = SDL_GetScancodeFromKey(SDLK_D, nullptr);
+    if (!check(SDL_PushEvent(&event), "live key event pushed")) {
         return false;
     }
     int move = -1;
     SDL_Event polled;
-    while (SDL_PollEvent(&polled) == 1) {
-        if (polled.type == SDL_KEYDOWN) {
-            move = move_code_for_key(polled.key.keysym.sym);
+    while (SDL_PollEvent(&polled)) {
+        if (polled.type == SDL_EVENT_KEY_DOWN) {
+            move = move_code_for_key(polled.key.key);
         }
     }
     if (!check(move == 3, "live key maps to the east move")) {

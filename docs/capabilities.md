@@ -24,7 +24,7 @@ writes `build/validation.json`. Host evidence comes from
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
 | Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
-| Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is the engine default, SDL2 only inside the Wicked host (upstream) |
+| Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | C ABI bridge-call cost | Tested | `native/embed_probe.cpp` (100k exported query calls, `per_call_ns` printed) |
 | Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
@@ -127,7 +127,7 @@ writes `build/validation.json`. Host evidence comes from
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
-| ASan full graphics probe | Partial | The pinned real SDL2 (a8a27ba) unblocked the start: the instrumented run reaches `main` and immediately reports an upstream Wicked defect (heap-buffer-overflow in `wiHelper.cpp:971`'s stb callback, reached from `saveTextureToFile`). A screenshot path that avoids `saveTextureToMemoryFile` is the remaining work; ADR-0010 has the trace. The same probe runs under UBSan, and the boundary harness keeps the ASan+UBSan pair |
+| ASan full graphics probe | Partial | The instrumented run reaches `main` and reports an upstream Wicked defect (heap-buffer-overflow in `wiHelper.cpp:971`'s stb callback, reached from `saveTextureToFile`). A screenshot path that avoids `saveTextureToMemoryFile` is the remaining work; ADR-0010 has the historical trace. The same probe runs under UBSan, and the boundary harness keeps the ASan+UBSan pair |
 | Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL3 event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
 | Live input driving the native rendered host | Tested + Implemented | `native/live_game_probe.h`, `scripts/wicked_probe.elisascript` (live frame non-blank after an SDL key drives the game) |
 | Live input driving the Godot rendered capture | Tested + Implemented | `scripts/build_godot_extension.py`, `backends/godot/capture.gd` (synthetic key → `maze_step` → live marker → verified live frame) |
@@ -158,8 +158,8 @@ Re-run on the current tree:
   UBSan finding over the boundary libraries.
 - `ELISA_SANITIZER=undefined CXX="$PWD/scripts/cxx_sanitize.py" elisascript
   scripts/wicked_probe.elisascript` — exit 0, the full graphics probe under
-  UBSan with no report (the AddressSanitizer flavor of the same probe still
-  hangs before `main` in sdl2-compat's library initializer).
+  UBSan with no report. The AddressSanitizer flavor uses the SDL3-native Wicked
+  build and does not depend on the old sdl2-compat shim.
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
   budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture
   (including the KTX container), UDP, menu, pose, and Wicked-GUI checks all pass.

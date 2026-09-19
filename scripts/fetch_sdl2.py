@@ -1,6 +1,11 @@
-"""Fetch and build real SDL2 for the native Wicked host (git-ignored).
+"""Legacy SDL2 fetcher retained for historical reproducibility only.
 
-Wicked's platform layer is built against SDL2, and on Linux that means real
+The native Wicked host now uses SDL3. New builds must configure Wicked with
+``-DWICKED_USE_SDL3=ON`` and install SDL3 through the platform package manager.
+This script remains available only for reproducing the pre-SDL3 validation
+records and is no longer used by any acceptance gate.
+
+The old Wicked platform layer was built against SDL2, and on Linux that meant real
 SDL2 (Homebrew now ships sdl2-compat, a shim that dlopens SDL3 from a library
 initializer -- which is also what hangs the AddressSanitizer graphics probe
 when the shim cannot load SDL3). The engine's own platform default stays SDL3;
