@@ -70,6 +70,10 @@ module WorldRollback:
             for index in 0..<snapshot.live_ids_count |valid: bool = true| -> valid:
                 id: i64 = snapshot.live_ids[index]
                 valid <- false if id <= 0
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if snapshot.live_ids[earlier] == id
+                valid <- valid and unique
                 actor_matches: usize = registry_matches(snapshot, id, World::StorageKind.Actor)
                 enemy_matches: usize = registry_matches(snapshot, id, World::StorageKind.Enemy)
                 valid <- false if actor_matches + enemy_matches != 1
