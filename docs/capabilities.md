@@ -22,7 +22,7 @@ writes `build/validation.json`. Host evidence comes from
 | Monotonic `i64` identity, explicit exhaustion | Proved + Tested | `proof/entity_id.elisa`, `test/entity_id.elisa` |
 | Owning `World`, liveness, typed storage access, rollback snapshots, compaction | Tested | `src/world/rollback.elisa`, `test/world.elisa`; provenance proof remains in `proof/world.elisa` |
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
-| Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
+| Compact live-entity column (O(live) iteration) | Tested | `World::world_live_reference_at`, `World::world_live_column_valid`, `test/world.elisa` |
 | Persistent-to-runtime identity remapping with stale-reference rejection | Tested | `src/world/persistence.elisa`, `test/world.elisa` |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
