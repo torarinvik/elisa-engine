@@ -15,3 +15,8 @@ The fixture `test/action_input.elisa` covers analog dead-zone filtering,
 pressed/held/released transitions, context isolation, chord activation, and
 disconnect cleanup. The shared gate compiles and runs this fixture with the
 stage1 compiler.
+
+The native Wicked gate also runs `native/action_input_bridge.h`: SDL3 keyboard
+events become portable action edges, analog values honor dead zones, focus loss
+clears held state, and the adapter supports reconnectable device slots. The
+native adapter never exposes SDL codes to gameplay.

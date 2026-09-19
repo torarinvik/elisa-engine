@@ -45,6 +45,7 @@
 #include "package_bounds_probe.h"
 #include "render_snapshot_bridge.h"
 #include "physics_body_bridge.h"
+#include "action_input_bridge.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -95,6 +96,7 @@ int main(int argc, char** argv) {
     wi::scene::Scene scene;
     if (!probe_render_snapshot_bridge(scene)) return 1;
     if (!probe_physics_body_bridge(scene)) return 1;
+    if (!probe_action_input_bridge()) return 1;
     if (!probe_native_resource_handles(scene)) {
         return 1;
     }
