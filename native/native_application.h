@@ -10,6 +10,7 @@
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#include <utility>
 
 namespace probe {
 
@@ -62,16 +63,23 @@ public:
         return true;
     }
 
-    // Returns false after a real quit event. Clients may continue to poll
-    // their own input events between calls when they need event ownership.
-    bool poll_events() {
+    // Returns false after a real quit event. The handler receives every event
+    // so a game client can retain ownership of input without duplicating the
+    // SDL queue policy.
+    template <typename EventHandler>
+    bool poll_events(EventHandler&& handler) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            handler(event);
             if (event.type == SDL_EVENT_QUIT) {
                 close_requested_ = true;
             }
         }
         return !close_requested_;
+    }
+
+    bool poll_events() {
+        return poll_events([](const SDL_Event&) {});
     }
 
     void run_frame() {

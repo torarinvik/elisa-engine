@@ -75,10 +75,11 @@ int main(int argc, char** argv) {
     std::fprintf(stdout, "wicked %s\n", wi::version::GetVersionString());
     NativeApplication application_host;
     NativeApplication::Config application_config;
-    application_config.title = "elisa-engine-probe";
+    const bool persistent_host = std::getenv("ELISA_PERSISTENT_HOST") != nullptr;
+    application_config.title = persistent_host ? "Elisa Engine" : "elisa-engine-probe";
     application_config.width = 320;
     application_config.height = 200;
-    application_config.hidden = true;
+    application_config.hidden = !persistent_host;
     if (!check(application_host.initialize(application_config), "native application initialization")) {
         return 1;
     }
@@ -419,6 +420,13 @@ int main(int argc, char** argv) {
     // remove them so the captured frame is unchanged.
     if (!probe_wicked_gui(render_path.GetGUI(), manifest)) {
         return 1;
+    }
+    if (persistent_host) {
+        const int persistent_status = run_persistent_game(application_host, scene, object);
+        // Wicked's global worker systems still lack a public shutdown API;
+        // F05 replaces this final process boundary with ordered teardown.
+        std::fflush(stdout);
+        std::_Exit(persistent_status);
     }
     std::fprintf(stdout, "pre-frames aabb=%u matrices=%u objects=%u\n",
         (unsigned)scene.aabb_objects.size(), (unsigned)scene.matrix_objects.size(),

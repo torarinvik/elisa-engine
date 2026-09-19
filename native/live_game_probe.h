@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 #include "probe_core.h"
 #include "probe_support.h"
+#include "native_application.h"
 #include "libmaze.h"
 #include "png_capture.h"
 
@@ -96,6 +97,58 @@ inline bool probe_live_game_rendering(wi::Application& application, wi::scene::S
     std::fprintf(stdout, "wicked live game: key=d move=%d player=(%d,%d) frame=%s\n",
         move, player_x, player_y, live_path.c_str());
     return true;
+}
+
+inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
+                               wi::ecs::Entity object) {
+    if (maze_start() != 1) {
+        std::fprintf(stderr, "persistent host: game did not start\n");
+        return 1;
+    }
+    bool paused = false;
+    auto place_player = [&scene, object]() {
+        auto* transform = scene.transforms.GetComponent(object);
+        if (transform == nullptr) {
+            return false;
+        }
+        transform->translation_local = to_wicked_space(
+            static_cast<float>(maze_player_x()) * 0.6f - 2.1f,
+            static_cast<float>(maze_player_y()) * 0.6f - 2.1f, 1.0f);
+        transform->SetDirty();
+        transform->UpdateTransform();
+        return true;
+    };
+    if (!place_player()) {
+        return 1;
+    }
+    std::fprintf(stdout, "persistent host: W/A/S/D move, P pause/resume, R restart, close window to exit\n");
+    while (host.poll_events([&](const SDL_Event& event) {
+        if (event.type != SDL_EVENT_KEY_DOWN || !event.key.down) {
+            return;
+        }
+        if (event.key.key == SDLK_P) {
+            paused = !paused;
+            std::fprintf(stdout, "persistent host: %s\n", paused ? "paused" : "resumed");
+            return;
+        }
+        if (event.key.key == SDLK_R) {
+            maze_start();
+            place_player();
+            std::fprintf(stdout, "persistent host: restarted\n");
+            return;
+        }
+        if (!paused) {
+            const int move = move_code_for_key(event.key.key);
+            if (move >= 0 && maze_step(move) == 1) {
+                place_player();
+            }
+        }
+    })) {
+        host.run_frame();
+        wi::helper::Sleep(16);
+    }
+    std::fprintf(stdout, "persistent host: close requested\n");
+    return 0;
 }
 
 } // namespace probe

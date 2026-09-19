@@ -82,6 +82,13 @@ portable Elisa actions, submits Wicked transforms and meshes, and removes all
 created objects. The probe checks Jolt ownership, scene resource counts,
 deterministic capture, cooked assets, audio, UI, and the measured frame budget.
 
+For manual host work, set `ELISA_PERSISTENT_HOST=1` before launching the built
+probe. The same scene then opens as a visible client and runs until SDL close;
+W/A/S/D reaches Elisa through the C ABI, P pauses input, and R restarts the
+Elisa game state. The default validation invocation remains finite. Persistent
+mode still ends at the known forced-exit boundary until F05 can prove Wicked's
+ordered global teardown, and it requires an interactive graphics session.
+
 ## Render comparison
 
 `src/backend/image_compare.elisa` defines per-channel peak and mean tolerances.
