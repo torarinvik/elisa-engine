@@ -49,7 +49,7 @@ def lifecycle_audit() -> i32:
             error failure: 2
         return 38 if double_destroy != 0
         world_compact(&world)
-        return 39 if world_registry_count(&world) != 0 or world.actor_count != 0 or not world_is_valid(&world)
+        return 39 if world_registry_count(&world) != 0 or world_actor_count(&world) != 0 or not world_is_valid(&world)
     0
 
 def main() -> i32:
