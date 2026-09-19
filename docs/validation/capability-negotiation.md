@@ -20,4 +20,6 @@ plus the actual Wicked high-priority and streaming worker counts. Its
 `ELISA_FORCE_OPTIONAL_FALLBACK=1` gate proves that advertised device features
 are not silently treated as required, and the probe rejects an ABI version
 mismatch before handing the profile to policy. Typed Elisa bindings and the
-remaining format fallback matrix remain follow-up work.
+remaining service fallback matrices remain follow-up work. The native policy
+selects BC1, R16F, or RGBA8 from those bits and forces normal maps away from
+BC1; a missing fallback format is reported as unsupported.

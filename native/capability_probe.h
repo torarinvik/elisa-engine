@@ -5,6 +5,7 @@
 #include "wiGraphicsDevice.h"
 #include "wiJobSystem.h"
 #include "wiRenderer.h"
+#include "texture_format_policy.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -67,6 +68,17 @@ inline bool probe_graphics_capabilities() {
         (unsigned long long)profile.capability_bits, (unsigned long long)profile.optional_bits,
         (unsigned long long)profile.resource_format_bits, profile.graphics_workers, profile.streaming_workers);
     if (!check(viewport_count > 0, "graphics viewport capability")) {
+        return false;
+    }
+    if (!check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, false) ==
+            TextureEncoding::Bc1, "BC1 format selection") ||
+        !check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, true) ==
+            TextureEncoding::Rgba8, "normal map BC1 fallback") ||
+        !check(choose_texture_encoding(resource_formats & ~ELISA_FORMAT_BC1,
+            TextureEncoding::Bc1, false) == TextureEncoding::Rgba8,
+            "BC1 unavailable fallback") ||
+        !check(choose_texture_encoding(ELISA_FORMAT_R16_FLOAT, TextureEncoding::Bc1, false) ==
+            TextureEncoding::Unsupported, "missing RGBA8 rejection")) {
         return false;
     }
     // Unsupported optional features remain an explicit fallback decision. A
