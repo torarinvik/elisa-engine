@@ -6,26 +6,30 @@ include "../math/geometry.elisa"
 include "./pose.elisa"
 
 module Skin:
+    private:
+        const module Tune:
+            MAX_INFLUENCES: usize = 4
+
     public:
         struct Influence:
             joint: usize
             weight: f32
 
         struct Binding:
-            influences: mutable Influence[4]
+            influences: mutable Influence[Tune::MAX_INFLUENCES]
             count: mutable usize
 
         def Binding() -> Binding:
             Binding{influences: zeroed, count: 0}
 
         def binding_add(binding: mutable Binding&, joint: usize, weight: f32) -> bool:
-            return false if binding.count >= 4 or weight <= 0.0
+            return false if binding.count >= Tune::MAX_INFLUENCES or weight <= 0.0
             binding.influences[binding.count] <- Influence{joint: joint, weight: weight}
             binding.count <- binding.count + 1
             true
 
         def binding_valid(binding: Binding&, joint_count: usize) -> bool:
-            return false if binding.count == 0 or binding.count > 4
+            return false if binding.count == 0 or binding.count > Tune::MAX_INFLUENCES
             for index in 0..<binding.count |valid: bool = true| -> valid:
                 break false if binding.influences[index].joint >= joint_count
 

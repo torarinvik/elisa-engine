@@ -24,7 +24,7 @@ module DebugGeometry:
 
         struct Boxes:
             count: mutable usize
-            entries: mutable Box[64]
+            entries: mutable Box[Limits::MAX_BOXES]
 
         def Boxes() -> Boxes:
             Boxes{count: 0, entries: zeroed}

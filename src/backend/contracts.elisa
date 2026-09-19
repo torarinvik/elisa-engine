@@ -5,6 +5,7 @@ module Contracts:
         const module Rules:
             POINTER_ALIGNMENT: usize = 8
             NO_BYTES: usize = 0
+            MAX_CONTRACTS: usize = 6
 
     public:
         enum Operation:
@@ -89,6 +90,6 @@ module Contracts:
             FfiContract{operation: Operation.Destroy, input_shape: "owned handle", output_shape: "void", byte_alignment: Rules::POINTER_ALIGNMENT, input_ownership: Ownership.HandleOwner, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
 
         def all_contracts_valid() -> bool:
-            contracts: FfiContract[6] = [read_only_contract(), in_place_contract(), async_upload_contract(), resource_create_contract(), callback_register_contract(), destroy_contract()]
-            for index in 0..<6 |valid: bool = true| -> valid:
+            contracts: FfiContract[Rules::MAX_CONTRACTS] = [read_only_contract(), in_place_contract(), async_upload_contract(), resource_create_contract(), callback_register_contract(), destroy_contract()]
+            for index in 0..<Rules::MAX_CONTRACTS |valid: bool = true| -> valid:
                 break false if not contract_valid(contracts[index])
