@@ -23,10 +23,10 @@ module UiText:
             line_starts: mutable usize[16]
             line_widths: mutable i64[16]
 
-        def run_new() -> Run:
+        def Run() -> Run:
             Run{words: zeroed, count: 0}
 
-        def wrapped_new() -> Wrapped:
+        def Wrapped() -> Wrapped:
             Wrapped{line_count: 0, line_starts: zeroed, line_widths: zeroed}
 
         def run_valid(run: Run&) -> bool:
@@ -61,7 +61,7 @@ module UiText:
         # already over the limit still occupy a single line, so the overflow is
         # recorded rather than hidden.
         def wrap(run: Run&, max_width: i64, spacing: i64) -> Wrapped:
-            result: mutable Wrapped = wrapped_new()
+            result: mutable Wrapped = Wrapped()
             return result if run.count == 0 or max_width <= 0 or spacing < 0
             line_start: mutable usize = 0
             line_width: mutable i64 = 0

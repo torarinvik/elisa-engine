@@ -20,10 +20,10 @@ module MazeStudio:
             queue: mutable Maze::MazeMove[8]
             queue_count: mutable usize
 
-        def studio_new() -> Studio:
+        def Studio() -> Studio:
             Studio{
-                game: MazeGame::game_new(),
-                history: Editor::history_new(),
+                game: MazeGame::MazeGame(),
+                history: Editor::History(),
                 tile: Assets::AssetId{high: 23, low: 1},
                 queue: zeroed,
                 queue_count: 0,

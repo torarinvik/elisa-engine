@@ -35,7 +35,7 @@ module Loopback:
             UnknownPacket
             EncodeFailed
 
-        def link_new(loss_every: usize, delay_ticks: i64) -> Link:
+        def Link(loss_every: usize, delay_ticks: i64) -> Link:
             Link{
                 packets: zeroed,
                 count: 0,

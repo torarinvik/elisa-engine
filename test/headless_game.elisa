@@ -11,10 +11,10 @@ using Assets
 # dangling reference. Identity advances monotonically while storage slots are
 # reused, so a recycled slot never resurrects an old identity.
 def lifecycle_audit() -> i32:
-    world: mutable World = catch world_new():
+    world: mutable World = catch World():
         value: value
         error failure: return 30
-    recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
     visual: mutable VisualAsset = VisualAsset{
         mesh: AssetId{high: 30, low: 1},
         material: AssetId{high: 30, low: 2},
@@ -55,14 +55,14 @@ def lifecycle_audit() -> i32:
 def main() -> i32:
     churn: i32 = lifecycle_audit()
     return churn if churn != 0
-    first_world: mutable World = catch world_new():
+    first_world: mutable World = catch World():
         value: value
         error failure: return 1
-    second_world: mutable World = catch world_new():
+    second_world: mutable World = catch World():
         value: value
         error failure: return 2
-    first_recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
-    second_recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    first_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+    second_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
     first_clock: mutable StepClock = step_clock_new()
     second_clock: mutable StepClock = step_clock_new()
     visual: VisualAsset = VisualAsset{
@@ -123,7 +123,7 @@ def main() -> i32:
         error failure: 2
     return 16 if full != 0 or first_clock.tick_count != prior_ticks or first.transform.position.z != prior_z or first_recorder.command_count != 256
 
-    third_world: mutable World = catch world_new():
+    third_world: mutable World = catch World():
         value: value
         error failure: return 17
     rejected_spawn: i32 = catch spawn_player(&third_world, &first_recorder, visual):

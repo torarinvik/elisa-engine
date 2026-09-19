@@ -18,7 +18,7 @@ module MazeRootMotion:
             CELL_LENGTH: f32 = 0.6
 
         def walk_skeleton() -> Pose::Skeleton:
-            skeleton: mutable Pose::Skeleton = skeleton_new()
+            skeleton: mutable Pose::Skeleton = Skeleton()
             _ = skeleton_add(&skeleton, -1, transform_identity())
             skeleton
 
@@ -39,13 +39,13 @@ module MazeRootMotion:
         # owns the distance; the controller only asks how far the sampled pose
         # moved.
         def walk_clip(step_length: f32) -> ClipData:
-            clip: mutable ClipData = clip_new(Tune::CLIP_TICKS)
+            clip: mutable ClipData = ClipData(Tune::CLIP_TICKS)
             _ = clip_add_key(&clip, 0, 0, transform_identity())
             forward: Transform = Transform{position: Vec3{x: step_length, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()}
             _ = clip_add_key(&clip, 0, Tune::CLIP_TICKS, forward)
             clip
 
-        def walker_new() -> Walker:
+        def Walker() -> Walker:
             Walker{tick: 0, travelled: 0.0, cells: 0}
 
         def walker_step(walker: mutable Walker&, step_length: f32) -> bool:

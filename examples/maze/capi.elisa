@@ -10,7 +10,7 @@ include "./game.elisa"
 using Maze
 using MazeGame
 
-global mutable embedded_game: MazeGame = MazeGame::game_new()
+global mutable embedded_game: MazeGame = MazeGame::MazeGame()
 
 def capi_start() -> i32:
     MazeGame::game_start(&embedded_game)

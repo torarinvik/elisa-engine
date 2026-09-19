@@ -39,10 +39,10 @@ module Executor:
         def frame_state_new() -> FrameState:
             FrameState{visits: zeroed, trace: zeroed, length: 0}
 
-        def plan_new() -> Plan:
+        def Plan() -> Plan:
             Plan{order: zeroed, group: zeroed, count: 0, group_count: 0}
 
-        def work_new() -> Work:
+        def Work() -> Work:
             Work{runs: zeroed}
 
         # Build a plan from an explicit group assignment over systems in

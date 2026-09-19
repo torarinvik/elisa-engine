@@ -217,7 +217,7 @@ module World:
             enemies: mutable EnemyRecord[Bounds::WORLD_MAX_ENTITIES]
             enemy_count: mutable usize
 
-        def world_new() -> World error[WorldError]:
+        def World() -> World error[WorldError]:
             epoch: i64 = try next_epoch()
             World{
                 allocator: EntityId::EntityIdAllocator{last_issued: EntityId::ENTITY_ID_INVALID},

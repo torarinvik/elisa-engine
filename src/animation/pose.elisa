@@ -56,7 +56,7 @@ module Pose:
             models: mutable Geometry::Transform[16]
             count: mutable usize
 
-        def skeleton_new() -> Skeleton:
+        def Skeleton() -> Skeleton:
             Skeleton{joints: zeroed, count: 0}
 
         # Joints are appended in parenting order, so a parent index is always

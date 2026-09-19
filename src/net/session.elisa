@@ -34,7 +34,7 @@ module Session:
             delay_ticks: mutable i64
             reconnects: mutable usize
 
-        def session_new() -> NetSession:
+        def NetSession() -> NetSession:
             NetSession{stage: SessionStage.Idle, clients: zeroed, client_count: 0, owned: zeroed, owned_count: 0, loss_every: 0, delay_ticks: 0, reconnects: 0}
 
         def session_valid(session: NetSession&) -> bool:

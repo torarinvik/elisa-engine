@@ -31,7 +31,7 @@ module MazeMenu:
         # paused game offers resume, a running game offers pause, and start is
         # offered only from the menu.
         def menu_build(game: MazeGame::MazeGame&) -> Ui::Menu:
-            menu: mutable Ui::Menu = Ui::menu_new(0, 0)
+            menu: mutable Ui::Menu = Ui::Menu(0, 0)
             _ = Ui::menu_add(&menu, Action::START, game.status == MazeGame::GameStatus.Menu)
             _ = Ui::menu_add(&menu, Action::RESTART, game.status != MazeGame::GameStatus.Menu)
             _ = Ui::menu_add(&menu, Action::PAUSE, game.status == MazeGame::GameStatus.Playing)

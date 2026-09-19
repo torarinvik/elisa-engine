@@ -29,7 +29,7 @@ module Editor:
             generations: mutable i64[8]
             count: mutable usize
 
-        def history_new() -> History:
+        def History() -> History:
             History{edits: zeroed, length: 0, position: 0}
 
         def history_valid(history: History&) -> bool:
@@ -41,7 +41,7 @@ module Editor:
         def history_can_redo(history: History&) -> bool:
             history.position < history.length
 
-        def reloads_new() -> Reloads:
+        def Reloads() -> Reloads:
             Reloads{assets: zeroed, generations: zeroed, count: 0}
 
         def reloads_valid(state: Reloads&) -> bool:

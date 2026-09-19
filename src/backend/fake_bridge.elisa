@@ -89,7 +89,7 @@ module FakeBridge:
                 handle.slot < FakeBridge::Limits::MAX_CALLBACKS and bridge.callbacks[handle.slot].live != 0 and bridge.callbacks[handle.slot].generation == handle.generation
 
     public:
-        def bridge_new() -> Bridge:
+        def Bridge() -> Bridge:
             Bridge{resources: zeroed, uploads: zeroed, callbacks: zeroed}
 
         def resource_create(bridge: mutable Bridge&, fail_after_allocation: bool) -> ResourceHandle error[BridgeError]:

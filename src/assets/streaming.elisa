@@ -24,7 +24,7 @@ module Streaming:
             unloads: mutable usize
             evictions: mutable usize
 
-        def stream_new(width: i64, height: i64, budget: usize) -> StreamState:
+        def StreamState(width: i64, height: i64, budget: usize) -> StreamState:
             StreamState{
                 width: width,
                 height: height,

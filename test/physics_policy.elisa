@@ -8,7 +8,7 @@ def main() -> i32:
     return 4 if select_solver(false, true) != SolverKind.GodotPhysics or select_solver(false, false) != SolverKind.None
     return 5 if not commit_order_ok(7, 8) or commit_order_ok(7, 7) or commit_order_ok(7, 9)
 
-    claim: mutable SolverClaim = claim_new(SolverKind.Jolt)
+    claim: mutable SolverClaim = SolverClaim(SolverKind.Jolt)
     return 6 if not claim_valid(&claim) or claim_holds(&claim, 11)
     claimed: i32 = catch claim_body(&claim, 11, BodyKind.Dynamic):
         ok: 0
@@ -27,7 +27,7 @@ def main() -> i32:
         error failure: 2
     return 9 if double != 0
 
-    none_claim: mutable SolverClaim = claim_new(SolverKind.None)
+    none_claim: mutable SolverClaim = SolverClaim(SolverKind.None)
     mismatch: i32 = catch claim_body(&none_claim, 13, BodyKind.Dynamic):
         value: 1
         ClaimError.SolverMismatch: 0

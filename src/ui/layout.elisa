@@ -32,7 +32,7 @@ module UiLayout:
             count: mutable usize
             cursor: mutable i64[32]
 
-        def layout_new() -> Layout:
+        def Layout() -> Layout:
             Layout{nodes: zeroed, count: 0, cursor: zeroed}
 
         def empty_rect() -> Rect:

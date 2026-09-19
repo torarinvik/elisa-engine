@@ -2,7 +2,7 @@ include "../src/backend/fake_bridge.elisa"
 using FakeBridge
 
 def main() -> i32:
-    bridge: mutable Bridge = bridge_new()
+    bridge: mutable Bridge = Bridge()
     failed: i32 = catch resource_create(&bridge, true):
         value: 1
         BridgeError.CreateFailed: 0
@@ -114,7 +114,7 @@ def main() -> i32:
 # Capacity and oversized inputs, tested on a fresh bridge so the linear
 # lifecycle above is not disturbed.
 def capacity_test() -> i32:
-    bridge: mutable Bridge = bridge_new()
+    bridge: mutable Bridge = Bridge()
     target: ResourceHandle = catch resource_create(&bridge, false):
         value: value
         error failure: return 30

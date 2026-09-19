@@ -27,7 +27,7 @@ module Reload:
             version: mutable i64
             value: mutable i64
 
-        def gate_new() -> Gate:
+        def Gate() -> Gate:
             Gate{running: 0, callbacks: 0, reloads: 0}
 
         def gate_valid(gate: Gate&) -> bool:
@@ -61,7 +61,7 @@ module Reload:
 
         # Versioned state migration: each step is explicit and a newer state
         # cannot be handed to older code, nor an unknown version guessed at.
-        def state_new() -> State:
+        def State() -> State:
             State{version: Tune::BASE_VERSION, value: 0}
 
         def state_valid(state: State&) -> bool:

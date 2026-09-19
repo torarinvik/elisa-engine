@@ -47,7 +47,7 @@ module MazeTrace:
             ]
 
         def maze_play(script: MazeMove[10], steps: usize) -> TraceResult:
-            game: mutable MazeGame = game_new()
+            game: mutable MazeGame = MazeGame()
             game_start(&game)
             # Value blocks thread mutable bindings only, so the read-only
             # script parameter is copied into a mutable local first.
@@ -75,7 +75,7 @@ module MazeTrace:
         # Cue count of the mid-game snapshot: start click plus one step cue per
         # move, the audio the game emitted for the hosts to consume.
         def maze_fixture_cue_count() -> usize:
-            game: mutable MazeGame = game_new()
+            game: mutable MazeGame = MazeGame()
             game_start(&game)
             script: mutable MazeMove[10] = maze_fixture_script()
             processed: usize =
@@ -85,7 +85,7 @@ module MazeTrace:
             game.cue_count
 
         def maze_fixture_status() -> i64:
-            game: mutable MazeGame = game_new()
+            game: mutable MazeGame = MazeGame()
             game_start(&game)
             script: mutable MazeMove[10] = maze_fixture_script()
             processed: usize =

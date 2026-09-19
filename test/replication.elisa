@@ -44,7 +44,7 @@ def main() -> i32:
     # Client prediction: input applies immediately, the unacknowledged inputs
     # replay over each authority snapshot, and a changed guess is counted. The
     # server stays authoritative even when the client ran ahead of it.
-    prediction: mutable Prediction = prediction_new(Owner.Server)
+    prediction: mutable Prediction = Prediction(Owner.Server)
     return 17 if not prediction_valid(&prediction) or prediction_error(&prediction) != 0
     for step in 0..<3 |prediction|:
         applied: bool = catch predict_input(&prediction, 1):

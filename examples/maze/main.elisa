@@ -11,7 +11,7 @@ using MazeGame
 using MazeTrace
 
 def main() -> i32:
-    game: mutable MazeGame = game_new()
+    game: mutable MazeGame = MazeGame()
     return 1 if game.status != GameStatus.Menu or game.lives != 3
     # A menu is not a game: input must be refused until start.
     early: bool = game_step(&game, MazeMove.East)

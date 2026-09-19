@@ -34,7 +34,7 @@ module Anim:
             events: mutable i64[8]
             event_count: mutable usize
 
-        def anim_new() -> AnimState:
+        def AnimState() -> AnimState:
             AnimState{clip: Clip.Idle, tick: 0, blend: Tune::FULL_BLEND, blend_left: 0, distance: 0.0, events: zeroed, event_count: 0}
 
         def clip_length(clip: Clip) -> i64:

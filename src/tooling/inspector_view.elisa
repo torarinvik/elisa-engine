@@ -34,7 +34,7 @@ module InspectorView:
             selected: mutable usize
             dirty: mutable bool
 
-        def model_new() -> Model:
+        def Model() -> Model:
             Model{fields: zeroed, count: 0, selected: Bounds::INVALID_INDEX, dirty: false}
 
         def field_valid(field: Field) -> bool:

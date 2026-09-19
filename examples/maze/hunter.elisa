@@ -24,8 +24,8 @@ module MazeHunter:
             arrived: mutable bool
             anim: mutable Anim::AnimState
 
-        def hunter_new(x: i64, y: i64) -> Hunter:
-            Hunter{x: x, y: y, steps: 0, arrived: false, anim: Anim::anim_new()}
+        def Hunter(x: i64, y: i64) -> Hunter:
+            Hunter{x: x, y: y, steps: 0, arrived: false, anim: Anim::AnimState()}
 
         # Published spawn cell: hosts draw the character where Elisa puts it,
         # and test/maze.elisa checks the spawn is a valid open cell.

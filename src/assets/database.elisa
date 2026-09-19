@@ -29,7 +29,7 @@ module AssetCatalogue:
             entries: mutable Entry[16]
             count: mutable usize
 
-        def catalogue_new() -> Catalogue:
+        def Catalogue() -> Catalogue:
             Catalogue{entries: zeroed, count: 0}
 
         def catalogue_valid(catalogue: Catalogue&) -> bool:

@@ -18,7 +18,7 @@ module UiStyle:
             padding: i64
             border: i64
 
-        def color_new(r: i64, g: i64, b: i64, a: i64) -> Color:
+        def Color(r: i64, g: i64, b: i64, a: i64) -> Color:
             Color{r: r, g: g, b: b, a: a}
 
         def color_valid(color: Color&) -> bool:
@@ -26,10 +26,10 @@ module UiStyle:
 
         def theme_default() -> Theme:
             Theme{
-                background: color_new(15, 15, 20, 255),
-                text: color_new(230, 230, 235, 255),
-                disabled: color_new(110, 110, 118, 255),
-                focus: color_new(255, 196, 64, 255),
+                background: Color(15, 15, 20, 255),
+                text: Color(230, 230, 235, 255),
+                disabled: Color(110, 110, 118, 255),
+                focus: Color(255, 196, 64, 255),
                 padding: 6,
                 border: 1,
             }

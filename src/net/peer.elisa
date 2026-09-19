@@ -25,7 +25,7 @@ module Peer:
             rejected: mutable usize
             rollbacks: mutable usize
 
-        def peer_new(owner: Net::Owner) -> PeerState:
+        def PeerState(owner: Net::Owner) -> PeerState:
             PeerState{
                 local: Net::ReplRecord{persistent: Tune::PERSISTENT, x: 0, y: 0, revision: 0, owner: owner},
                 applied: 0,

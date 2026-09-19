@@ -14,7 +14,7 @@ using InspectorView
 using AssetBrowser
 
 def asset_browser_test() -> i32:
-    browser: mutable Browser = browser_new()
+    browser: mutable Browser = Browser()
     id: Assets::AssetId = Assets::AssetId{high: 1, low: 2}
     return 41 if not browser_valid(&browser) or browser_selected(&browser) != 8
     added: i32 = catch browser_add(&browser, id, 0):
@@ -48,7 +48,7 @@ def inspector_number_field(target: i64, value: i64) -> Field:
     Field{target: target, kind: FieldKind.Number, value: value, minimum: -10, maximum: 10, editable: true}
 
 def inspector_view_test() -> i32:
-    model: mutable Model = model_new()
+    model: mutable Model = Model()
     return 29 if not model_valid(&model) or field_count(&model) != 0 or selected_index(&model) != 8
     speed: Field = inspector_number_field(10, 2)
     enabled: Field = Field{target: 11, kind: FieldKind.Toggle, value: 1, minimum: 0, maximum: 1, editable: true}
@@ -106,7 +106,7 @@ def inspector_view_test() -> i32:
 # A two-level layout: a vertical root with a horizontal header and a vertical
 # body; padding, spacing, and orientation decide every rectangle.
 def layout_test() -> i32:
-    layout: mutable Layout = layout_new()
+    layout: mutable Layout = Layout()
     root: i64 = layout_add(&layout, -1, Orientation.Vertical, 0, 10, 4)
     header: i64 = layout_add(&layout, root, Orientation.Horizontal, 30, 2, 6)
     body: i64 = layout_add(&layout, root, Orientation.Vertical, 60, 2, 0)
@@ -137,7 +137,7 @@ def layout_test() -> i32:
 # new line starts; a word wider than the line still occupies one line so the
 # overflow is recorded rather than hidden.
 def text_test() -> i32:
-    run: mutable Run = run_new()
+    run: mutable Run = Run()
     return 10 if not run_valid(&run) or run.count != 0
     _ = run_add_word(&run, 3)
     _ = run_add_word(&run, 2)
@@ -148,7 +148,7 @@ def text_test() -> i32:
     return 13 if line_start(&wrapped, 0) != 0 or line_width(&wrapped, 0) != 6
     return 14 if line_start(&wrapped, 1) != 2 or line_width(&wrapped, 1) != 4
     return 15 if line_width(&wrapped, 2) != -1
-    long_run: mutable Run = run_new()
+    long_run: mutable Run = Run()
     _ = run_add_word(&long_run, 10)
     _ = run_add_word(&long_run, 2)
     wide: Wrapped = wrap(&long_run, 6, 1)
@@ -168,12 +168,12 @@ def style_test() -> i32:
     return 3 if focused.g != theme.focus.g
     return 4 if disabled.r != theme.disabled.r
     return 5 if theme_surface_inset(&theme) != theme.padding + theme.border
-    return 6 if color_valid(color_new(256, 0, 0, 255)) or color_valid(color_new(0, 0, 0, -1))
+    return 6 if color_valid(Color(256, 0, 0, 255)) or color_valid(Color(0, 0, 0, -1))
     return 7 if theme.disabled.r >= theme.text.r
     0
 
 def main() -> i32:
-    history: mutable History = history_new()
+    history: mutable History = History()
     return 1 if not history_valid(&history) or history_can_undo(&history) or history_can_redo(&history)
 
     pushed: bool = history_push(&history, 7, 10, 20)
@@ -197,7 +197,7 @@ def main() -> i32:
     overflow: bool = history_push(&history, 99, 1, 2)
     return 10 if overflow or not history_valid(&history)
 
-    reloads: mutable Reloads = reloads_new()
+    reloads: mutable Reloads = Reloads()
     return 11 if not reloads_valid(&reloads) or current_generation(&reloads, 5) != -1
     first: bool = note_asset_reload(&reloads, 5)
     return 12 if not first or current_generation(&reloads, 5) != 0 or not reloads_valid(&reloads)
@@ -209,7 +209,7 @@ def main() -> i32:
 
     # Code-reload policy: the gate is open only when no system is running and
     # no callback is in flight, and migration is explicit rather than guessed.
-    gate: mutable Gate = gate_new()
+    gate: mutable Gate = Gate()
     return 16 if not gate_valid(&gate) or not gate_quiescent(&gate) or not reload_allowed(&gate)
     gate_enter(&gate)
     return 17 if gate_quiescent(&gate) or reload_allowed(&gate)
@@ -229,7 +229,7 @@ def main() -> i32:
         error failure: 2
     return 21 if allowed != 0 or gate.reloads != 1
 
-    migrated: mutable State = state_new()
+    migrated: mutable State = State()
     return 22 if migrated.version != 1 or not state_valid(&migrated) or current_version() != 2
     migrated.value <- 5
     step_up: i32 = catch migrate(&migrated, 2):

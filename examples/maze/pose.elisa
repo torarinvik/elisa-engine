@@ -25,7 +25,7 @@ module MazePose:
         # Two independent root joints at (x0,y0) and (x1,y1); used as the bind
         # and current poses for skinning a small quad.
         def two_joint_pose(x0: f32, y0: f32, x1: f32, y1: f32) -> Pose::Pose:
-            skeleton: mutable Pose::Skeleton = Pose::skeleton_new()
+            skeleton: mutable Pose::Skeleton = Pose::Skeleton()
             _ = Pose::skeleton_add(&skeleton, -1, Geometry::Transform{position: Geometry::Vec3{x: x0, y: y0, z: 0.0}, rotation: Geometry::quat_identity(), scale: Geometry::vec3_one()})
             _ = Pose::skeleton_add(&skeleton, -1, Geometry::Transform{position: Geometry::Vec3{x: x1, y: y1, z: 0.0}, rotation: Geometry::quat_identity(), scale: Geometry::vec3_one()})
             evaluated: Pose::Pose = catch pose_evaluate(&skeleton):
@@ -79,7 +79,7 @@ module MazePose:
             leg: LegPose = pose_leg(hip_x, hip_y)
             bind: Pose::Pose = two_joint_pose(hip_x, hip_y, hip_x, hip_y - 0.6)
             current: Pose::Pose = two_joint_pose(hip_x, hip_y, leg.knee_x, leg.knee_y)
-            binding: mutable Skin::Binding = Skin::binding_new()
+            binding: mutable Skin::Binding = Skin::Binding()
             _ = Skin::binding_add(&binding, 1, 1.0)
             rest0: Geometry::Vec3 = Geometry::Vec3{x: hip_x - 0.1, y: hip_y - 1.1, z: 0.0}
             rest1: Geometry::Vec3 = Geometry::Vec3{x: hip_x + 0.1, y: hip_y - 1.1, z: 0.0}

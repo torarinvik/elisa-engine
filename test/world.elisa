@@ -39,7 +39,7 @@ def invalid_lookup(reference: EntityRef) -> EntityLookup:
     EntityLookup{reference: reference, kind: Entity.Unknown}
 
 def churn_test() -> i32:
-    world: mutable World = catch world_new():
+    world: mutable World = catch World():
         value: value
         error failure: invalid_world()
     return 20 if world.epoch < 1
@@ -82,7 +82,7 @@ def churn_test() -> i32:
     0
 
 def corruption_test() -> i32:
-    world: mutable World = catch world_new():
+    world: mutable World = catch World():
         value: value
         error failure: invalid_world()
     reference: EntityRef = catch world_spawn(&world, Actor.Player):
@@ -98,7 +98,7 @@ def corruption_test() -> i32:
     0
 
 def capacity_test() -> i32:
-    world: mutable World = catch world_new():
+    world: mutable World = catch World():
         value: value
         error failure: invalid_world()
     for step in 0..<256 |world|:
@@ -116,7 +116,7 @@ def capacity_test() -> i32:
 
 def main() -> i32:
     world: World =
-        catch world_new():
+        catch World():
             value: value
             error failure: invalid_world()
     return 11 if world.epoch < 1
@@ -153,7 +153,7 @@ def main() -> i32:
     return dead if dead != 0
 
     other: World =
-        catch world_new():
+        catch World():
             value: value
             error failure: invalid_world()
     wrong_world: i32 = catch world_lookup(&other, second):

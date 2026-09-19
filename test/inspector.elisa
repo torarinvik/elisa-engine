@@ -10,7 +10,7 @@ using Inspector
 using UiWidgets
 
 def widgets_test() -> i32:
-    surface: mutable Surface = surface_new()
+    surface: mutable Surface = Surface()
     button: Widget = Widget{id: 1, kind: WidgetKind.Button, x: 10, y: 10, width: 20, height: 20, value: 0, minimum: 0, maximum: 0, enabled: true, visible: true}
     slider: Widget = Widget{id: 2, kind: WidgetKind.Slider, x: 40, y: 10, width: 20, height: 20, value: 5, minimum: 0, maximum: 10, enabled: true, visible: true}
     added: i32 = catch add_widget(&surface, button):
@@ -61,16 +61,16 @@ def main() -> i32:
     return widgets if widgets != 0
     budget: PerfBudget = default_budget()
     return 1 if not budget_valid(&budget) or budget.max_frame_micros != 16667
-    counters: mutable PerfCounters = counters_new()
+    counters: mutable PerfCounters = PerfCounters()
     return 2 if mean_frame_micros(&counters) != 0
 
-    world: mutable World = catch world_new():
+    world: mutable World = catch World():
         value: value
         error failure: return 3
     object: EntityRef = catch world_spawn(&world, Actor.Player):
         value: value
         error failure: return 4
-    recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
     created: i32 = catch submit_create(&recorder, object, transform_identity(), sample_visual()):
         ok: 0
         error failure: 1
@@ -104,7 +104,7 @@ def main() -> i32:
 
     # Debug collision geometry: cell boxes, kind counts, and the capacity guard
     # that refuses a full collection instead of dropping geometry silently.
-    boxes: mutable Boxes = boxes_new()
+    boxes: mutable Boxes = Boxes()
     return 15 if not boxes_add(&boxes, cell_box(BoxKind.Solid, 1.0, 2.0)) or boxes.count != 1
     solid_box: Box = boxes.entries[0]
     return 16 if solid_box.bounds.minimum.x < 0.699 or solid_box.bounds.minimum.x > 0.701

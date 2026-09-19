@@ -3,8 +3,8 @@ using AudioPolicy
 
 def main() -> i32:
     return 1 if not spatial_required(VoiceKind.Spatial) or spatial_required(VoiceKind.Ui)
-    plain: mutable Device = device_new(false)
-    room: mutable Device = device_new(true)
+    plain: mutable Device = Device(false)
+    room: mutable Device = Device(true)
     return 2 if not device_valid(&plain) or not voice_live(&plain, 5) == false
 
     opened: i32 = catch voice_open(&plain, 5, VoiceKind.Effect):

@@ -24,7 +24,7 @@ module Interp:
             older + (newer - older) * numerator / denominator
 
     public:
-        def buffer_new() -> Buffer:
+        def Buffer() -> Buffer:
             empty: Net::ReplRecord = Net::ReplRecord{persistent: 99, x: 0, y: 0, revision: 0, owner: Net::Owner.Server}
             Buffer{older: empty, newer: empty, older_tick: 0, newer_tick: 0, count: 0}
 

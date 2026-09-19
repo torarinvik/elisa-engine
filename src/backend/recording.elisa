@@ -65,7 +65,7 @@ module Backend:
                     recorder.command_count <- recorder.command_count + 1
 
             public:
-                def recorder_new() -> Backend::SceneRecorder:
+                def create() -> Backend::SceneRecorder:
                     Backend::SceneRecorder{commands: zeroed, command_count: 0, seen: zeroed, visuals: zeroed, seen_live: zeroed, seen_count: 0}
 
                 def record_create(recorder: mutable Backend::SceneRecorder&, reference: World::EntityRef, transform: Geometry::Transform, visual: Assets::VisualAsset) -> void error[Backend::SceneError]:
@@ -109,8 +109,8 @@ module Backend:
                         count <- count + 1 if recorder.seen_live[index] == Backend::Limits::LIVE
 
     public:
-        def recorder_new() -> SceneRecorder:
-            Recording::recorder_new()
+        def SceneRecorder() -> SceneRecorder:
+            Recording::create()
 
         def recorder_is_live(recorder: SceneRecorder&, reference: World::EntityRef) -> bool:
             Recording::recorder_is_live(recorder, reference)

@@ -43,7 +43,7 @@ module Physics:
             return SolverKind.GodotPhysics if godot_ready
             SolverKind.None
 
-        def claim_new(solver: SolverKind) -> SolverClaim:
+        def SolverClaim(solver: SolverKind) -> SolverClaim:
             SolverClaim{solver: solver, bodies: zeroed, count: 0}
 
         def claim_valid(claim: SolverClaim&) -> bool:

@@ -43,7 +43,7 @@ module Sampler:
             rotations: mutable Geometry::Quat[128]
             scales: mutable Geometry::Vec3[128]
 
-        def clip_new(length: i64) -> ClipData:
+        def ClipData(length: i64) -> ClipData:
             ClipData{length: length if length >= 0 else 0, key_counts: zeroed, ticks: zeroed, positions: zeroed, rotations: zeroed, scales: zeroed}
 
         def clip_valid(clip: ClipData&) -> bool:
@@ -104,7 +104,7 @@ module Sampler:
 
         def clip_sample_pose(clip: ClipData&, tick: i64, skeleton: Pose::Skeleton&) -> Pose::Pose error[ClipError]:
             raise ClipError.InvalidSkeleton if not Pose::skeleton_valid(skeleton)
-            sampled: mutable Pose::Skeleton = Pose::skeleton_new()
+            sampled: mutable Pose::Skeleton = Pose::Skeleton()
             for index in 0..<skeleton.count |sampled, clip, skeleton, tick|:
                 joint: Pose::Joint = skeleton.joints[index]
                 local: Geometry::Transform = clip_sample_local_or(clip, index, tick, joint.local)

@@ -56,7 +56,7 @@ module MazeGame:
         def default_settings() -> GameSettings:
             GameSettings{fog: true, audio: true}
 
-        def game_new() -> MazeGame:
+        def MazeGame() -> MazeGame:
             MazeGame{
                 grid: Maze::maze_start(),
                 lives: Tune::START_LIVES,
@@ -65,7 +65,7 @@ module MazeGame:
                 settings: default_settings(),
                 cues: zeroed,
                 cue_count: 0,
-                stream: Streaming::stream_new(Maze::maze_width().i64(), Maze::maze_height().i64(), Tune::STREAM_BUDGET),
+                stream: Streaming::StreamState(Maze::maze_width().i64(), Maze::maze_height().i64(), Tune::STREAM_BUDGET),
             }
 
         def is_hazard(x: i64, y: i64) -> bool:

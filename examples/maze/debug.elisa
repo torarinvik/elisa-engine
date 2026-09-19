@@ -15,7 +15,7 @@ module MazeDebug:
         # the engine's; a maze larger than it would refuse cells and fail
         # boxes_valid rather than dropping geometry silently.
         def collision_boxes() -> DebugGeometry::Boxes:
-            boxes: mutable DebugGeometry::Boxes = DebugGeometry::boxes_new()
+            boxes: mutable DebugGeometry::Boxes = DebugGeometry::Boxes()
             for y in 0..<Maze::maze_height() |boxes|:
                 for x in 0..<Maze::maze_width() |boxes, y|:
                     if Maze::is_wall(x.i64(), y.i64()):

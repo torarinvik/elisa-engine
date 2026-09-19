@@ -24,7 +24,7 @@ module Predict:
             pending_count: mutable usize
             corrections: mutable usize
 
-        def prediction_new(owner: Net::Owner) -> Prediction:
+        def Prediction(owner: Net::Owner) -> Prediction:
             server: Net::ReplRecord = Net::ReplRecord{persistent: 99, x: 0, y: 0, revision: 0, owner: owner}
             Prediction{confirmed: server, predicted: server, pending: zeroed, pending_count: 0, corrections: 0}
 

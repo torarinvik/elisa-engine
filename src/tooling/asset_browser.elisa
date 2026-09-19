@@ -27,7 +27,7 @@ module AssetBrowser:
             count: mutable usize
             selected: mutable usize
 
-        def browser_new() -> Browser:
+        def Browser() -> Browser:
             Browser{rows: zeroed, count: 0, selected: Bounds::INVALID_INDEX}
 
         def browser_valid(browser: Browser&) -> bool:

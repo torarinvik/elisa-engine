@@ -37,7 +37,7 @@ module UiWidgets:
             widgets: mutable Widget[16]
             count: mutable usize
 
-        def surface_new() -> Surface:
+        def Surface() -> Surface:
             Surface{widgets: zeroed, count: 0}
 
         def widget_valid(widget: Widget) -> bool:

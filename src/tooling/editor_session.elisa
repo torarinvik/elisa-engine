@@ -34,9 +34,9 @@ module EditorSession:
 
         def Session() -> Session:
             Session{
-                inspector: InspectorView::model_new(),
-                assets: AssetBrowser::browser_new(),
-                widgets: UiWidgets::surface_new(),
+                inspector: InspectorView::Model(),
+                assets: AssetBrowser::Browser(),
+                widgets: UiWidgets::Surface(),
                 panel: Panel.Inspector,
                 revision: 0,
                 dirty: false,

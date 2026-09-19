@@ -28,7 +28,7 @@ module AudioPolicy:
             kinds: mutable VoiceKind[8]
             count: mutable usize
 
-        def device_new(spatial: bool) -> Device:
+        def Device(spatial: bool) -> Device:
             Device{spatial: spatial, voices: zeroed, kinds: [VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui, VoiceKind.Ui], count: 0}
 
         def device_valid(device: Device&) -> bool:

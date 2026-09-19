@@ -18,7 +18,7 @@ module Recovery:
             in_sync: mutable bool
             high_water: mutable i64
 
-        def recovery_new(high_water: i64) -> RecoveryView:
+        def RecoveryView(high_water: i64) -> RecoveryView:
             RecoveryView{
                 expected: Tune::INITIAL_REVISION,
                 last_seen: 0,

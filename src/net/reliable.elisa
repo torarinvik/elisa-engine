@@ -24,7 +24,7 @@ module Reliable:
             sent: mutable usize
             retransmits: mutable usize
 
-        def sender_new() -> Sender:
+        def Sender() -> Sender:
             Sender{base: 0, next: 0, records: zeroed, live: zeroed, sent: 0, retransmits: 0}
 
         def sender_valid(sender: Sender&) -> bool:

@@ -9,7 +9,7 @@ def wall_content() -> AssetId:
     AssetId{high: 77, low: 1}
 
 def main() -> i32:
-    catalogue: mutable Catalogue = catalogue_new()
+    catalogue: mutable Catalogue = Catalogue()
     return 1 if not catalogue_valid(&catalogue) or entry_count(&catalogue) != 0
     return 2 if lookup_generation(&catalogue, wall_id()) != -1
 

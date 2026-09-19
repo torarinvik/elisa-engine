@@ -42,7 +42,7 @@ module MazeCharacter:
         def leg_pose(x: i64, y: i64) -> Pose::Pose:
             centre_x: f32 = cell_x(x)
             centre_z: f32 = cell_x(y)
-            skeleton: mutable Pose::Skeleton = skeleton_new()
+            skeleton: mutable Pose::Skeleton = Skeleton()
             _ = skeleton_add(&skeleton, -1, Geometry::Transform{position: Geometry::Vec3{x: centre_x, y: Tune::HIP_HEIGHT, z: centre_z}, rotation: quat_identity(), scale: vec3_one()})
             _ = skeleton_add(&skeleton, 0, Geometry::Transform{position: Geometry::Vec3{x: Tune::ZERO, y: Tune::ZERO - Tune::LEG, z: Tune::ZERO}, rotation: quat_identity(), scale: vec3_one()})
             _ = skeleton_add(&skeleton, 1, Geometry::Transform{position: Geometry::Vec3{x: Tune::ZERO, y: Tune::ZERO - Tune::LEG, z: Tune::ZERO}, rotation: quat_identity(), scale: vec3_one()})
@@ -67,7 +67,7 @@ module MazeCharacter:
                 value: value
                 error failure: World::EntityRef{world_epoch: 0, id: 0}
             raise CharacterError.IdentityFailure if entity.id == 0
-            Character{entity: entity, hunter: hunter_new(x, y), leg: leg}
+            Character{entity: entity, hunter: Hunter(x, y), leg: leg}
 
         # One navigation step; the leg pose is re-derived from the new cell so
         # the IK follows gameplay instead of running on its own clock.

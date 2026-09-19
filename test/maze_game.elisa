@@ -19,7 +19,7 @@ using AssetCatalogue
 # visible_action maps a window row to its action, and hit testing accounts for
 # the scroll offset.
 def ui_scroll_test() -> i32:
-    menu: mutable Ui::Menu = Ui::menu_new(0, 0)
+    menu: mutable Ui::Menu = Ui::Menu(0, 0)
     for action in 1..<9 |menu|:
         _ = Ui::menu_add(&menu, action.i64(), true)
     return 76 if not Ui::menu_valid(&menu) or item_count(&menu) != 8
@@ -45,7 +45,7 @@ def ui_scroll_test() -> i32:
 # deliver them and drained one per advance, so gameplay steps at its own
 # cadence; an empty queue or an Idle action does not step.
 def studio_input_test() -> i32:
-    studio: mutable Studio = studio_new()
+    studio: mutable Studio = Studio()
     studio_start(&studio)
     return 140 if not studio_feed(&studio, MazeMove.East) or studio_queued(&studio) != 1
     return 141 if not studio_feed(&studio, MazeMove.South) or studio_queued(&studio) != 2
@@ -61,7 +61,7 @@ def studio_input_test() -> i32:
     0
 
 def main() -> i32:
-    game: mutable MazeGame = game_new()
+    game: mutable MazeGame = MazeGame()
     return 1 if game.lives != 3 or game.has_key or game.cue_count != 0
     return 2 if game.status != GameStatus.Menu or not game_valid(&game)
     early: bool = game_step(&game, MazeMove.East)
@@ -82,7 +82,7 @@ def main() -> i32:
     return 8 if not to_key or not game.has_key or game.grid.player_x != 2
     return 9 if not game_valid(&game)
 
-    locked: mutable MazeGame = game_new()
+    locked: mutable MazeGame = MazeGame()
     game_start(&locked)
     east3: MazeMove[3] = [MazeMove.East, MazeMove.East, MazeMove.East]
     for step in 0..<3 |locked|:
@@ -96,7 +96,7 @@ def main() -> i32:
     door_shut: bool = game_step(&locked, MazeMove.East)
     return 14 if door_shut or locked.grid.player_x != 4 or cue_at(&locked, locked.cue_count - 1) != 4
 
-    danger: mutable MazeGame = game_new()
+    danger: mutable MazeGame = MazeGame()
     game_start(&danger)
     east4: MazeMove[4] = [MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East]
     for step in 0..<4 |danger|:
@@ -138,7 +138,7 @@ def main() -> i32:
 
     # Drain all three lives: the third hazard hit must end the game, not just
     # cost a life, and a lost game refuses input until it is restarted.
-    doomed: mutable MazeGame = game_new()
+    doomed: mutable MazeGame = MazeGame()
     game_start(&doomed)
     lose: MazeMove[15] = [
         MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
@@ -161,7 +161,7 @@ def main() -> i32:
 
     # Play-in-editor: a running game with an undo history over its settings,
     # and asset-catalogue validation that rejects a stale generation.
-    studio: mutable Studio = studio_new()
+    studio: mutable Studio = Studio()
     return 37 if not studio_valid(&studio) or not studio.game.settings.fog or not studio.game.settings.audio
     studio_start(&studio)
     return 38 if studio.game.status != GameStatus.Playing
@@ -177,7 +177,7 @@ def main() -> i32:
     return 43 if not no_change
     quiet_edit: bool = studio_apply(&studio, true, false)
     return 44 if not quiet_edit or studio.game.settings.audio or not studio_valid(&studio)
-    catalog: mutable Catalogue = catalogue_new()
+    catalog: mutable Catalogue = Catalogue()
     tile: AssetId = AssetId{high: 23, low: 1}
     content_one: AssetId = AssetId{high: 40, low: 1}
     content_two: AssetId = AssetId{high: 40, low: 2}
@@ -196,7 +196,7 @@ def main() -> i32:
     # Chunk streaming follows the running game: chunks around the player are
     # resident, the resident count stays within the budget, and a restart leaves
     # the residency coherent.
-    stream_game: mutable MazeGame = game_new()
+    stream_game: mutable MazeGame = MazeGame()
     game_start(&stream_game)
     return 50 if not game_valid(&stream_game) or game_resident_chunks(&stream_game) == 0
     return 51 if not game_chunk_resident(&stream_game, 0, 0)
@@ -209,7 +209,7 @@ def main() -> i32:
 
     # UI menu model: from the menu, start is offered and the focus lands on it;
     # focus skips disabled rows; activating a row runs the game flow.
-    menu_game: mutable MazeGame = game_new()
+    menu_game: mutable MazeGame = MazeGame()
     menu: mutable Ui::Menu = menu_build(&menu_game)
     return 56 if not Ui::menu_valid(&menu) or item_count(&menu) != action_count()
     return 57 if Ui::focused_action(&menu) != action_start()
@@ -229,7 +229,7 @@ def main() -> i32:
     # Saved settings: the game's portable state round-trips through a versioned
     # blob; a wrong version or corrupt magic is rejected, and a loaded state is
     # re-validated.
-    save_game: mutable MazeGame = game_new()
+    save_game: mutable MazeGame = MazeGame()
     game_start(&save_game)
     _ = game_apply_settings(&save_game, GameSettings{fog: false, audio: true})
     _ = game_step(&save_game, MazeMove.East)
@@ -237,7 +237,7 @@ def main() -> i32:
         value: value
         error failure: return 65
     return 66 if not blob_valid(&saved) or saved.version != save_version()
-    loaded_game: mutable MazeGame = game_new()
+    loaded_game: mutable MazeGame = MazeGame()
     return 67 if not game_load(&loaded_game, &saved)
     return 68 if loaded_game.status != GameStatus.Playing or loaded_game.grid.player_x != 2 or loaded_game.lives != 3
     return 69 if loaded_game.settings.fog or not loaded_game.settings.audio or not game_valid(&loaded_game)

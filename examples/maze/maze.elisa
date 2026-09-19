@@ -34,7 +34,7 @@ module Maze:
         def maze_start() -> MazeState:
             MazeState{player_x: Grid::START_X, player_y: Grid::START_Y, moves: 0}
 
-        def maze_new() -> MazeState:
+        def MazeState() -> MazeState:
             maze_start()
 
         def is_wall(x: i64, y: i64) -> bool:

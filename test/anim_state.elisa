@@ -20,7 +20,7 @@ def clip_tests() -> i32:
     # Clip sampling: two keys ten ticks apart interpolate at the midpoint, a
     # tick outside the range holds the end key rather than extrapolating, and a
     # joint with no keys keeps the skeleton's own local transform.
-    clip: mutable ClipData = clip_new(10)
+    clip: mutable ClipData = ClipData(10)
     return 45 if not clip_valid(&clip) or clip_key_count(&clip, 0) != 0
     return 46 if not clip_add_key(&clip, 0, 0, keyed(0.0)) or not clip_add_key(&clip, 0, 10, keyed(2.0))
     return 47 if not clip_add_key(&clip, 1, 0, keyed(0.0)) or not clip_add_key(&clip, 1, 10, keyed(4.0))
@@ -47,7 +47,7 @@ def clip_tests() -> i32:
         ClipError.InvalidTrack: 1
         error failure: 2
     return 58 if bad_joint != 1
-    clip_skeleton: mutable Skeleton = skeleton_new()
+    clip_skeleton: mutable Skeleton = Skeleton()
     _ = skeleton_add(&clip_skeleton, -1, keyed(0.0))
     _ = skeleton_add(&clip_skeleton, 0, keyed(0.0))
     _ = skeleton_add(&clip_skeleton, 1, keyed(0.0))
@@ -67,7 +67,7 @@ def clip_tests() -> i32:
     0
 
 def two_roots(x0: f32, y0: f32, x1: f32, y1: f32) -> Pose:
-    skeleton: mutable Skeleton = skeleton_new()
+    skeleton: mutable Skeleton = Skeleton()
     _ = skeleton_add(&skeleton, -1, Transform{position: Vec3{x: x0, y: y0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
     _ = skeleton_add(&skeleton, -1, Transform{position: Vec3{x: x1, y: y1, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
     result: Pose = catch pose_evaluate(&skeleton):
@@ -78,12 +78,12 @@ def two_roots(x0: f32, y0: f32, x1: f32, y1: f32) -> Pose:
 def skinning_test() -> i32:
     bind: Pose = two_roots(0.0, 0.0, 1.0, 0.0)
     current: Pose = two_roots(0.0, 0.0, 1.0, 2.0)
-    single: mutable Binding = binding_new()
+    single: mutable Binding = Binding()
     return 64 if not binding_add(&single, 1, 1.0)
     return 65 if not binding_valid(&single, 2) or binding_weight_sum(&single) != 1.0
     moved: Vec3 = skin_vertex(Vec3{x: 0.5, y: 0.0, z: 0.0}, &single, &current, &bind)
     return 66 if not near(moved.x, 0.5) or not near(moved.y, 2.0)
-    blended: mutable Binding = binding_new()
+    blended: mutable Binding = Binding()
     _ = binding_add(&blended, 0, 0.5)
     return 67 if not binding_add(&blended, 1, 0.5) or not binding_valid(&blended, 2)
     mixed: Vec3 = skin_vertex(Vec3{x: 0.5, y: 0.0, z: 0.0}, &blended, &current, &bind)
@@ -97,7 +97,7 @@ def main() -> i32:
     return first_clip if first_clip != 0
     return 1 if clip_length(Clip.Idle) != 60 or clip_length(Clip.Walk) != 30
     return 2 if clip_length(Clip.Win) != 45 or clip_length(Clip.Hurt) != 20
-    state: mutable AnimState = anim_new()
+    state: mutable AnimState = AnimState()
     return 3 if state.clip != Clip.Idle or state.tick != 0 or state.blend != 1.0
     return 4 if not anim_valid(&state)
 
@@ -152,7 +152,7 @@ def main() -> i32:
 
     # Local-to-model evaluation: a child one unit along +X under a root moved
     # by 0.4 lands at 1.4; root motion is the difference between two poses.
-    chain: mutable Skeleton = skeleton_new()
+    chain: mutable Skeleton = Skeleton()
     return 25 if not skeleton_add(&chain, -1, transform_identity())
     return 26 if not skeleton_add(&chain, 0, Transform{position: Vec3{x: 1.0, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
     return 27 if not skeleton_add(&chain, 1, Transform{position: Vec3{x: 1.0, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
@@ -166,7 +166,7 @@ def main() -> i32:
         error failure: return 31
     return 32 if not near(end.position.x, 2.0)
     return 33 if not near(pose_root_position(&chain_pose).x, 0.0)
-    shifted: mutable Skeleton = skeleton_new()
+    shifted: mutable Skeleton = Skeleton()
     _ = skeleton_add(&shifted, -1, Transform{position: Vec3{x: 0.4, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()})
     shifted_pose: Pose = catch pose_evaluate(&shifted):
         value: value

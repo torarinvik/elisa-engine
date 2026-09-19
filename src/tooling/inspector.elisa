@@ -38,7 +38,7 @@ module Inspector:
         def default_budget() -> PerfBudget:
             PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_queued_bytes: 20480, max_live_entities: 256}
 
-        def counters_new() -> PerfCounters:
+        def PerfCounters() -> PerfCounters:
             PerfCounters{frames: 0, total_micros: 0, worst_micros: 0, over_budget: 0, samples: zeroed, sample_count: 0}
 
         def snapshot_valid(view: Snapshot&) -> bool:

@@ -19,7 +19,7 @@ def main() -> i32:
     initial: Transform = transform_identity()
     moved: Transform = transform_translate(initial, Vec3{x: 2.0, y: 0.0, z: -3.0})
     visual: VisualAsset = sample_visual()
-    recorder: mutable Backend::SceneRecorder = Backend::recorder_new()
+    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
 
     missing: i32 = catch submit_update(&recorder, first, moved):
         ok: 1
