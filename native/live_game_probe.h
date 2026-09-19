@@ -77,8 +77,7 @@ inline bool probe_live_game_rendering(wi::Application& application, wi::scene::S
     if (!check(transform != nullptr, "live object transform")) {
         return false;
     }
-    transform->translation_local = to_wicked_space(
-        (float)player_x * 0.6f - 2.1f, (float)player_y * 0.6f - 2.1f, 1.0f);
+    transform->translation_local = coordinates::cell_to_wicked(player_x, player_y);
     transform->SetDirty();
     transform->UpdateTransform();
     for (int frame = 0; frame < 5; ++frame) {
@@ -111,9 +110,7 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
         if (transform == nullptr) {
             return false;
         }
-        transform->translation_local = to_wicked_space(
-            static_cast<float>(maze_player_x()) * 0.6f - 2.1f,
-            static_cast<float>(maze_player_y()) * 0.6f - 2.1f, 1.0f);
+        transform->translation_local = coordinates::cell_to_wicked(maze_player_x(), maze_player_y());
         transform->SetDirty();
         transform->UpdateTransform();
         return true;

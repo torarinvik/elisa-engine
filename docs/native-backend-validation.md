@@ -81,6 +81,9 @@ The native host creates the canonical maze geometry, applies SDL3 events to
 portable Elisa actions, submits Wicked transforms and meshes, and removes all
 created objects. The probe checks Jolt ownership, scene resource counts,
 deterministic capture, cooked assets, audio, UI, and the measured frame budget.
+The shared native conversion in `native/coordinate_conventions.h` owns the
+right-handed Elisa-to-left-handed Wicked X flip and the grid spacing/origin;
+walls, markers, live input, and route replay all use that one conversion.
 
 For manual host work, set `ELISA_PERSISTENT_HOST=1` before launching the built
 probe. The same scene then opens as a visible client and runs until SDL close;

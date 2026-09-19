@@ -151,8 +151,7 @@ int main(int argc, char** argv) {
         if (wall_transform == nullptr) {
             continue;
         }
-        wall_transform->translation_local = to_wicked_space(
-            (float)cell.first * 0.6f - 2.1f, (float)cell.second * 0.6f - 2.1f, 1.0f);
+        wall_transform->translation_local = coordinates::cell_to_wicked(cell.first, cell.second);
         wall_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
         wall_transform->UpdateTransform();
         if (wall_material != nullptr) {
@@ -274,7 +273,7 @@ int main(int argc, char** argv) {
             const bool use_cooked = std::string(spec.field) == "goal" && cooked_package.loaded;
             const auto marker = use_cooked
                 ? create_cooked_mesh(scene, marker_name, cooked_package,
-                    to_wicked_space((float)cell.first * 0.6f - 2.1f, (float)cell.second * 0.6f - 2.1f, 1.0f),
+                    coordinates::cell_to_wicked(cell.first, cell.second),
                     0.13f, XMFLOAT4(spec.r, spec.g, spec.b, 1.0f))
                 : create_cell_marker(scene, marker_name, cell.first, cell.second, spec.r, spec.g, spec.b);
             if (marker == wi::ecs::INVALID_ENTITY) {
@@ -479,9 +478,8 @@ int main(int argc, char** argv) {
             const std::size_t step = std::min((std::size_t)frame, hunter_route.size() - 1);
             auto* walk_transform = scene.transforms.GetComponent(hunter_marker);
             if (walk_transform != nullptr) {
-                walk_transform->translation_local = to_wicked_space(
-                    (float)hunter_route[step].first * 0.6f - 2.1f,
-                    (float)hunter_route[step].second * 0.6f - 2.1f, 1.0f);
+                walk_transform->translation_local = coordinates::cell_to_wicked(
+                    hunter_route[step].first, hunter_route[step].second);
                 // Writing translation_local does not mark the transform dirty,
                 // so UpdateTransform would keep the stale world matrix.
                 walk_transform->SetDirty();

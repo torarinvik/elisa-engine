@@ -5,6 +5,7 @@
 // sanitizer boundary harness can share them without a renderer header.
 #include "wiScene.h"
 #include "probe_core.h"
+#include "coordinate_conventions.h"
 
 namespace probe {
 // Elisa math is right-handed with +Y up and -Z forward (see
@@ -15,7 +16,7 @@ namespace probe {
 // maze cells in both frames: without this the native image is the mirror
 // of the Godot image.
 XMFLOAT3 to_wicked_space(float x, float y, float z) {
-    return XMFLOAT3(-x, y, z);
+    return coordinates::to_wicked(x, y, z);
 }
 
 // A small unlit cube marking one game cell: player-facing evidence that the
@@ -32,8 +33,7 @@ wi::ecs::Entity create_cell_marker(wi::scene::Scene& scene, const std::string& n
     if (transform == nullptr) {
         return wi::ecs::INVALID_ENTITY;
     }
-    transform->translation_local = to_wicked_space(
-        (float)cell_x * 0.6f - 2.1f, (float)cell_y * 0.6f - 2.1f, 1.0f);
+    transform->translation_local = coordinates::cell_to_wicked(cell_x, cell_y);
     transform->scale_local = XMFLOAT3(0.26f, 0.26f, 0.26f);
     transform->UpdateTransform();
     if (material != nullptr) {

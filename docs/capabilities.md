@@ -31,6 +31,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Module-private fields for affine owners | Tested | `private:` sections in allocator, World, recorder, fake bridge, and lifetime queue; compiler rejection fixtures in `test/negative/*_private_*.elisa`, gated by `scripts/check.elisascript`; see [field privacy](field-privacy.md) |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
+| Shared Elisa-to-Wicked coordinate conversion for grid content | Tested + Implemented | `native/coordinate_conventions.h`, native wall/marker/live-input/route rendering |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Versioned C ABI descriptor, feature negotiation, bounded spans | Tested + Implemented | `native/service_abi.h`, `maze_abi_version`, `maze_feature_bits`, malformed-descriptor checks in `native/embed_probe.cpp` |
 | Stable source/content/artifact asset descriptor with schema, variant, settings, and dependencies | Tested | `src/assets/descriptor.elisa`, `test/assets.elisa` |
