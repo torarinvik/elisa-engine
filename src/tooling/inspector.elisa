@@ -10,6 +10,10 @@ module Inspector:
         const module Bounds:
             MAX_FRAMES: usize = 16
             MAX_ERRORS: usize = 8
+            MAX_QUEUED_COMMANDS: usize = 256
+            MAX_LIVE_ENTITIES: usize = 256
+            DEFAULT_FRAME_MICROS: i64 = 16667
+            DEFAULT_QUEUED_BYTES: i64 = 20480
 
     public:
         struct Snapshot:
@@ -32,23 +36,23 @@ module Inspector:
             total_micros: mutable i64
             worst_micros: mutable i64
             over_budget: mutable usize
-            samples: mutable i64[16]
+            samples: mutable i64[Bounds::MAX_FRAMES]
             sample_count: mutable usize
 
         def default_budget() -> PerfBudget:
-            PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_queued_bytes: 20480, max_live_entities: 256}
+            PerfBudget{max_frame_micros: Bounds::DEFAULT_FRAME_MICROS, max_queued_commands: Bounds::MAX_QUEUED_COMMANDS, max_queued_bytes: Bounds::DEFAULT_QUEUED_BYTES, max_live_entities: Bounds::MAX_LIVE_ENTITIES}
 
         def PerfCounters() -> PerfCounters:
             PerfCounters{frames: 0, total_micros: 0, worst_micros: 0, over_budget: 0, samples: zeroed, sample_count: 0}
 
         def snapshot_valid(view: Snapshot&) -> bool:
             return false if view.tick < 0 or view.frame_micros < 0 or view.errors > Bounds::MAX_ERRORS
-            return false if view.live_entities > view.registry_slots or view.registry_slots > 256
+            return false if view.live_entities > view.registry_slots or view.registry_slots > Bounds::MAX_LIVE_ENTITIES
             return false if view.queued_bytes < 0
-            view.queued_commands <= 256
+            view.queued_commands <= Bounds::MAX_QUEUED_COMMANDS
 
         def budget_valid(budget: PerfBudget&) -> bool:
-            budget.max_frame_micros > 0 and budget.max_queued_bytes > 0 and budget.max_live_entities > 0 and budget.max_live_entities <= 256 and budget.max_queued_commands <= 256
+            budget.max_frame_micros > 0 and budget.max_queued_bytes > 0 and budget.max_live_entities > 0 and budget.max_live_entities <= Bounds::MAX_LIVE_ENTITIES and budget.max_queued_commands <= Bounds::MAX_QUEUED_COMMANDS
 
         def snapshot_within_budget(view: Snapshot&, budget: PerfBudget&) -> bool:
             return false if not snapshot_valid(view) or not budget_valid(budget)
@@ -58,13 +62,13 @@ module Inspector:
             return 0 if counters.frames == 0
             counters.total_micros / counters.frames.i64()
 
-        def worst_sample(samples: i64[16], count: usize) -> i64:
+        def worst_sample(samples: i64[Bounds::MAX_FRAMES], count: usize) -> i64:
             return 0 if count == 0 or count > Inspector::Bounds::MAX_FRAMES
             for index in 0..<count |worst: i64 = 0| -> worst:
                 candidate: i64 = samples[index]
                 worst <- candidate if candidate > worst
 
-        def frames_over_budget(samples: i64[16], count: usize, budget_micros: i64) -> usize:
+        def frames_over_budget(samples: i64[Bounds::MAX_FRAMES], count: usize, budget_micros: i64) -> usize:
             return 0 if count > Inspector::Bounds::MAX_FRAMES
             for index in 0..<count |over: usize = 0| -> over:
                 over <- over + 1 if samples[index] > budget_micros
