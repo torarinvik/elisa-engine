@@ -34,6 +34,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Shared Elisa-to-Wicked coordinate conversion for grid content | Tested + Implemented | `native/coordinate_conventions.h`, native wall/marker/live-input/route rendering |
 | Versioned backend profiles with queried limits and feature requirements | Tested | `src/backend/capabilities.elisa`, `test/capabilities.elisa`; native feature population remains F08 work |
 | Native graphics capability and memory query with explicit optional fallbacks | Tested + Implemented | `native/capability_probe.h`, Wicked `GraphicsDevice::CheckCapability`, memory and viewport queries in the native gate |
+| SDL3 window lifecycle state and bounded fixed-step pacing | Tested + Implemented | `native/native_application.h`, `native/frame_pacer.h`, `native/window_lifecycle_probe.h`; focus/minimize/restore/resize transitions and capped catch-up run in the native gate |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Versioned C ABI descriptor, feature negotiation, bounded spans | Tested + Implemented | `native/service_abi.h`, `maze_abi_version`, `maze_feature_bits`, malformed-descriptor checks in `native/embed_probe.cpp` |
 | Stable source/content/artifact asset descriptor with schema, variant, settings, and dependencies | Tested | `src/assets/descriptor.elisa`, `test/assets.elisa` |

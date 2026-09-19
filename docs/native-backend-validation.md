@@ -30,6 +30,15 @@ and sparse-texture capabilities through Wicked's graphics device. Optional
 features are reported as `native` or `fallback`; they are not inferred from a
 linked library or from the machine-independent Elisa profile.
 
+The SDL3 host records logical and physical window sizes, display changes,
+focus, minimize, restore, and close transitions. A minimized or zero-pixel
+window suspends simulation while the event queue remains live, so input edges
+are not lost during a resize. `native/frame_pacer.h` keeps simulation ticks at
+an integer nanosecond step, caps catch-up at four ticks, and exposes the
+presentation interpolation fraction without adding work to the Elisa world.
+The finite native gate injects focus/minimize/restore/pixel-size events and
+checks the state transitions and monotonic resize serial.
+
 ## Prerequisites and commands
 
 Godot 4.7.2 is used for the headless host probe:

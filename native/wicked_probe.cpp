@@ -38,7 +38,8 @@
 #include "resource_handles.h"
 #include "resource_handle_probe.h"
 #include "capability_probe.h"
-
+#include "frame_pacing_probe.h"
+#include "window_lifecycle_probe.h"
 using namespace probe;
 
 int main(int argc, char** argv) {
@@ -47,8 +48,6 @@ int main(int argc, char** argv) {
         return 2;
     }
     // Forward flags such as "alwaysactive" to the engine argument table.
-    // The hidden probe window is never active, so without "alwaysactive"
-    // Application::Run returns before drawing a single pixel.
     wi::arguments::Parse(argc, argv);
     std::fprintf(stdout, "probe argc=%d alwaysactive=%d\n",
         argc, wi::arguments::HasArgument("alwaysactive") ? 1 : 0);
@@ -88,6 +87,8 @@ int main(int argc, char** argv) {
     if (!probe_graphics_capabilities()) {
         return 1;
     }
+    if (!probe_fixed_step_pacing()) return 1;
+    if (!persistent_host && !probe_window_lifecycle(application_host)) return 1;
 
     wi::scene::Scene scene;
     if (!probe_native_resource_handles(scene)) {
@@ -560,8 +561,7 @@ int main(int argc, char** argv) {
                       << "worst_us=" << worst_micros << "\n";
         }
     }
-    // Live input driving rendered state: drive the embedded game and save a
-    // second frame from the queried player cell (native/live_game_probe.h).
+    // Live input drives rendered state and saves a second frame.
     if (!probe_live_game_rendering(application, scene, object, screenshot_path)) {
         return 1;
     }

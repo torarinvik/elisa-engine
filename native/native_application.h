@@ -16,6 +16,21 @@ namespace probe {
 
 class NativeApplication {
 public:
+    struct WindowState {
+        int logical_width = 0;
+        int logical_height = 0;
+        int pixel_width = 0;
+        int pixel_height = 0;
+        int display_index = -1;
+        uint64_t resize_serial = 0;
+        bool focused = true;
+        bool minimized = false;
+
+        bool suspended() const {
+            return minimized || pixel_width == 0 || pixel_height == 0;
+        }
+    };
+
     struct Config {
         const char* title = "elisa-engine";
         int width = 1280;
@@ -60,6 +75,7 @@ public:
         wi::initializer::WaitForInitializationsToFinish();
         initialized_ = true;
         close_requested_ = false;
+        refresh_window_state();
         return true;
     }
 
@@ -70,8 +86,9 @@ public:
     bool poll_events(EventHandler&& handler) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            update_window_state(event);
             handler(event);
-            if (event.type == SDL_EVENT_QUIT) {
+            if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
                 close_requested_ = true;
             }
         }
@@ -98,6 +115,14 @@ public:
         return window_;
     }
 
+    const WindowState& window_state() const {
+        return window_state_;
+    }
+
+    bool simulation_suspended() const {
+        return window_state_.suspended();
+    }
+
     wi::Application& wicked() {
         return application_;
     }
@@ -107,8 +132,57 @@ public:
     }
 
 private:
+    void refresh_window_state() {
+        if (window_ == nullptr) {
+            return;
+        }
+        int logical_width = 0;
+        int logical_height = 0;
+        int pixel_width = 0;
+        int pixel_height = 0;
+        SDL_GetWindowSize(window_, &logical_width, &logical_height);
+        SDL_GetWindowSizeInPixels(window_, &pixel_width, &pixel_height);
+        if (logical_width != window_state_.logical_width ||
+            logical_height != window_state_.logical_height ||
+            pixel_width != window_state_.pixel_width ||
+            pixel_height != window_state_.pixel_height) {
+            ++window_state_.resize_serial;
+        }
+        window_state_.logical_width = logical_width;
+        window_state_.logical_height = logical_height;
+        window_state_.pixel_width = pixel_width;
+        window_state_.pixel_height = pixel_height;
+        window_state_.display_index = SDL_GetDisplayForWindow(window_);
+    }
+
+    void update_window_state(const SDL_Event& event) {
+        switch (event.type) {
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            window_state_.focused = true;
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            window_state_.focused = false;
+            break;
+        case SDL_EVENT_WINDOW_MINIMIZED:
+            window_state_.minimized = true;
+            break;
+        case SDL_EVENT_WINDOW_RESTORED:
+            window_state_.minimized = false;
+            refresh_window_state();
+            break;
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            refresh_window_state();
+            break;
+        default:
+            break;
+        }
+    }
+
     SDL_Window* window_ = nullptr;
     wi::Application application_;
+    WindowState window_state_;
     bool initialized_ = false;
     bool close_requested_ = false;
 };

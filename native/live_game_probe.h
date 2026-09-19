@@ -134,7 +134,7 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
             std::fprintf(stdout, "persistent host: restarted\n");
             return;
         }
-        if (!paused) {
+        if (!paused && !host.simulation_suspended()) {
             const int move = move_code_for_key(event.key.key);
             if (move >= 0 && maze_step(move) == 1) {
                 place_player();
