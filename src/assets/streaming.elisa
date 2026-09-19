@@ -5,6 +5,8 @@
 # rather than the budget being exceeded, so residency is bounded by construction.
 # Loading and unloading are counted, so a restart that accumulates chunks would
 # be visible in the counters.
+include "../vendor/elisa_math.elisa"
+
 module Streaming:
     private:
         const module Tune:
@@ -65,16 +67,15 @@ module Streaming:
             state.resident[chunk_index(state, chunk_x, chunk_y)]
 
     private:
-        def abs_i64(value: i64) -> i64:
-            0 - value if value < 0 else value
-
         def chunk_distance(state: StreamState&, chunk_x: i64, chunk_y: i64, player_x: i64, player_y: i64) -> i64:
             # Chebyshev distance in cells from the chunk's centre to the player.
-            centre_x: i64 = chunk_x * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
-            centre_y: i64 = chunk_y * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
-            dx: i64 = abs_i64(centre_x - player_x)
-            dy: i64 = abs_i64(centre_y - player_y)
-            dx if dx > dy else dy
+            dx: i64 =
+                centre_x: i64 = chunk_x * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
+                abs_i64(centre_x - player_x)
+            dy: i64 =
+                centre_y: i64 = chunk_y * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
+                abs_i64(centre_y - player_y)
+            max_i64(dx, dy)
 
         def chunk_overlaps_radius(state: StreamState&, chunk_x: i64, chunk_y: i64, player_x: i64, player_y: i64, radius: i64) -> bool:
             min_x: i64 = chunk_x * Tune::CHUNK_CELLS

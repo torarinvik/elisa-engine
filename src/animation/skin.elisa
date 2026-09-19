@@ -26,25 +26,19 @@ module Skin:
 
         def binding_valid(binding: Binding&, joint_count: usize) -> bool:
             return false if binding.count == 0 or binding.count > 4
-            valid: mutable bool = true
-            for index in 0..<binding.count:
-                if binding.influences[index].joint >= joint_count:
-                    valid <- false
-            valid
+            for index in 0..<binding.count |valid: bool = true| -> valid:
+                break false if binding.influences[index].joint >= joint_count
 
         def binding_weight_sum(binding: Binding&) -> f32:
-            total: mutable f32 = 0.0
-            for index in 0..<binding.count:
+            for index in 0..<binding.count |total: f32 = 0.0| -> total:
                 total <- total + binding.influences[index].weight
-            total
 
         # Rest and current poses must share a skeleton, and every influence's
         # joint must exist in both. The caller checks binding_valid first.
         def skin_vertex(rest: Geometry::Vec3, binding: Binding&, current: Pose::Pose&, bind: Pose::Pose&) -> Geometry::Vec3:
-            accumulated: mutable Geometry::Vec3 = Geometry::vec3_zero()
-            for index in 0..<binding.count:
+            for index in 0..<binding.count |accumulated: Geometry::Vec3 = Geometry::vec3_zero()| -> accumulated:
                 influence: Influence = binding.influences[index]
-                local: Geometry::Vec3 = Geometry::transform_apply_inverse_point(bind.models[influence.joint], rest)
-                transformed: Geometry::Vec3 = Geometry::transform_apply_point(current.models[influence.joint], local)
+                transformed: Geometry::Vec3 =
+                    local: Geometry::Vec3 = Geometry::transform_apply_inverse_point(bind.models[influence.joint], rest)
+                    Geometry::transform_apply_point(current.models[influence.joint], local)
                 accumulated <- Geometry::vec3_add(accumulated, Geometry::vec3_scale(transformed, influence.weight))
-            accumulated

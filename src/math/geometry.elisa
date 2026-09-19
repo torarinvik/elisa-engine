@@ -1,5 +1,7 @@
 # Engine-facing math uses metres, a right-handed frame, +Y up, and -Z forward.
 # Quaternion components are (x, y, z, w). No backend-native layout is exposed.
+include "../vendor/elisa_math.elisa"
+
 module Geometry:
     private:
         const module Scalar:
@@ -188,9 +190,11 @@ module Geometry:
         def ray3_distance(ray: Ray3, point: Vec3) -> f32:
             direction_squared: f32 = vec3_length_squared(ray.direction)
             return vec3_distance(ray.origin, point) if direction_squared <= Scalar::ZERO
-            offset: Vec3 = vec3_sub(point, ray.origin)
-            projection: f32 = vec3_dot(offset, ray.direction) / direction_squared
-            clamped: f32 = projection if projection >= Scalar::ZERO else Scalar::ZERO
+            clamped: f32 =
+                projection: f32 =
+                    offset: Vec3 = vec3_sub(point, ray.origin)
+                    vec3_dot(offset, ray.direction) / direction_squared
+                projection if projection >= Scalar::ZERO else Scalar::ZERO
             vec3_distance(ray3_at(ray, clamped), point)
 
         # Behavior abstraction: a point, a box, and a ray answer the same
@@ -220,16 +224,10 @@ module Geometry:
             second: f32 = b.distance_to(point)
             first if first <= second else second
 
-        # Square root by Newton iteration. The engine keeps its math in Elisa
-        # rather than exposing a vendor type, and the language has no square
-        # root yet, so a bounded fixed iteration count is used: 24 steps is
-        # well past f32 convergence and keeps the function deterministic.
+        # Use the standard library's native f32 square root, retaining the engine's
+        # zero result for non-positive inputs.
         def sqrt_f32(value: f32) -> f32:
-            return Scalar::ZERO if value <= Scalar::ZERO
-            guess: mutable f32 = value if value >= Scalar::ONE else Scalar::ONE
-            for step in 0..<24 |guess, value|:
-                guess <- (guess + value / guess) * 0.5
-            guess
+            Scalar::ZERO if value <= Scalar::ZERO else sqrtf(value)
 
         def vec3_length(value: Vec3) -> f32:
             sqrt_f32(vec3_length_squared(value))

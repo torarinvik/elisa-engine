@@ -94,9 +94,9 @@ module AssetCatalogue:
             public:
                 def register(catalogue: mutable Catalogue&, id: Assets::AssetId, content: Assets::AssetId, blob_bytes: i64) -> void error[CatalogueError]:
                     raise CatalogueError.OversizedBlob if blob_bytes < 0 or blob_bytes > AssetCatalogue::Tune::MAX_BLOB_BYTES
-                    slot: mutable usize = 16
-                    for index in 0..<catalogue.count |catalogue, id, slot|:
-                        slot <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
+                    slot: usize =
+                        for index in 0..<catalogue.count |found: usize = 16, catalogue| -> found:
+                            found <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
                     if slot >= catalogue.count:
                         raise CatalogueError.Capacity if catalogue.count >= AssetCatalogue::Tune::MAX_ENTRIES
                         catalogue.entries[catalogue.count] <- AssetCatalogue::Entry{id: id, content: content, blob_bytes: blob_bytes, cooked_generation: 0}
@@ -105,9 +105,9 @@ module AssetCatalogue:
                     raise CatalogueError.DuplicateEntry if not Assets::same_asset_id(catalogue.entries[slot].content, content)
 
                 def recook(catalogue: mutable Catalogue&, id: Assets::AssetId, content: Assets::AssetId) -> void error[CatalogueError]:
-                    slot: mutable usize = 16
-                    for index in 0..<catalogue.count |catalogue, id, slot|:
-                        slot <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
+                    slot: usize =
+                        for index in 0..<catalogue.count |found: usize = 16, catalogue| -> found:
+                            found <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
                     raise CatalogueError.UnknownEntry if slot >= catalogue.count
                     catalogue.entries[slot].content <- content
                     catalogue.entries[slot].cooked_generation <- catalogue.entries[slot].cooked_generation + 1

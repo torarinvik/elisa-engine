@@ -45,16 +45,15 @@ module Nav:
 
                 def reconstruct(parent: i64[64], start: usize, goal: usize) -> Nav::Path:
                     reversed: mutable i64[64] = zeroed
-                    depth: mutable usize = 0
-                    cursor: mutable usize = goal
-                    for step in 0..<64 |reversed, depth, cursor, parent|:
-                        break if cursor >= 64 or depth >= 64
-                        reversed[depth] <- cursor.i64()
-                        depth <- depth + 1
-                        break if cursor == start
-                        next: i64 = parent[cursor]
-                        break if next < 0
-                        cursor <- next.usize()
+                    depth: usize =
+                        for step in 0..<64 |length: usize = 0, cursor: usize = goal, reversed| -> length:
+                            break if cursor >= 64 or length >= 64
+                            reversed[length] <- cursor.i64()
+                            length <- length + 1
+                            break if cursor == start
+                            next: i64 = parent[cursor]
+                            break if next < 0
+                            cursor <- next.usize()
                     ordered: mutable i64[64] = zeroed
                     for slot in 0..<64 |ordered, reversed, depth|:
                         break if slot >= depth

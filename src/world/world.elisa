@@ -83,24 +83,20 @@ module World:
 
         def registry_slot(world: World&, reference: EntityRef) -> usize:
             return Sentinel::WORLD_INVALID_SLOT if not WorldReference::epoch_matches(world.epoch, reference.world_epoch) or reference.id <= EntityId::ENTITY_ID_INVALID
-            for index in 0..<world.registry_count:
-                return index if world.registry[index].live and world.registry[index].id == reference.id
-            Sentinel::WORLD_INVALID_SLOT
+            for index in 0..<world.registry_count |slot: usize = Sentinel::WORLD_INVALID_SLOT| -> slot:
+                break index if world.registry[index].live and world.registry[index].id == reference.id
 
         def free_registry_slot(world: World&) -> usize:
-            for index in 0..<world.registry_count:
-                return index if not world.registry[index].live
-            world.registry_count if world.registry_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT
+            for index in 0..<world.registry_count |slot: usize = world.registry_count if world.registry_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
+                break index if not world.registry[index].live
 
         def free_actor_slot(world: World&) -> usize:
-            for index in 0..<world.actor_count:
-                return index if not world.actors[index].live
-            world.actor_count if world.actor_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT
+            for index in 0..<world.actor_count |slot: usize = world.actor_count if world.actor_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
+                break index if not world.actors[index].live
 
         def free_enemy_slot(world: World&) -> usize:
-            for index in 0..<world.enemy_count:
-                return index if not world.enemies[index].live
-            world.enemy_count if world.enemy_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT
+            for index in 0..<world.enemy_count |slot: usize = world.enemy_count if world.enemy_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
+                break index if not world.enemies[index].live
 
         def mark_actor_dead(world: mutable World&, id: i64) -> bool:
             for index in 0..<world.actor_count |condition=false, world| -> condition:
@@ -123,20 +119,20 @@ module World:
                 matches <- matches + 1 if world.enemies[index].live and world.enemies[index].id == id
 
         def remove_live_id(world: mutable World&, id: i64) -> void:
-            slot: mutable usize = Bounds::WORLD_MAX_ENTITIES
-            for index in 0..<world.live_ids_count |world, id, slot|:
-                slot <- index if world.live_ids[index] == id
+            slot: usize =
+                for index in 0..<world.live_ids_count |found: usize = Bounds::WORLD_MAX_ENTITIES, world| -> found:
+                    found <- index if world.live_ids[index] == id
             return if slot >= world.live_ids_count
             for shift in slot..<world.live_ids_count - 1 |world|:
                 world.live_ids[shift] <- world.live_ids[shift + 1]
             world.live_ids_count <- world.live_ids_count - 1
 
         def compact_registry(world: mutable World&) -> void:
-            write: mutable usize = 0
-            for read in 0..<world.registry_count:
-                if world.registry[read].live:
-                    world.registry[write] <- world.registry[read]
-                    write <- write + 1
+            write: usize =
+                for read in 0..<world.registry_count |count: usize = 0, world| -> count:
+                    if world.registry[read].live:
+                        world.registry[count] <- world.registry[read]
+                        count <- count + 1
             for index in write..<world.registry_count:
                 world.registry[index].live <- false
             world.registry_count <- write
@@ -147,21 +143,21 @@ module World:
                     world.live_ids_count <- world.live_ids_count + 1
 
         def compact_actors(world: mutable World&) -> void:
-            write: mutable usize = 0
-            for read in 0..<world.actor_count:
-                if world.actors[read].live:
-                    world.actors[write] <- world.actors[read]
-                    write <- write + 1
+            write: usize =
+                for read in 0..<world.actor_count |count: usize = 0, world| -> count:
+                    if world.actors[read].live:
+                        world.actors[count] <- world.actors[read]
+                        count <- count + 1
             for index in write..<world.actor_count:
                 world.actors[index].live <- false
             world.actor_count <- write
 
         def compact_enemies(world: mutable World&) -> void:
-            write: mutable usize = 0
-            for read in 0..<world.enemy_count:
-                if world.enemies[read].live:
-                    world.enemies[write] <- world.enemies[read]
-                    write <- write + 1
+            write: usize =
+                for read in 0..<world.enemy_count |count: usize = 0, world| -> count:
+                    if world.enemies[read].live:
+                        world.enemies[count] <- world.enemies[read]
+                        count <- count + 1
             for index in write..<world.enemy_count:
                 world.enemies[index].live <- false
             world.enemy_count <- write
@@ -216,10 +212,11 @@ module World:
             storage_index: usize =
                 free_actor_slot(world) if storage == StorageKind.Actor else free_enemy_slot(world)
             raise WorldError.Capacity if storage_index == Sentinel::WORLD_INVALID_SLOT
-            cursor: i64 = world.allocator.last_issued
-            raise WorldError.IdentityInvalid if cursor < EntityId::ENTITY_ID_INVALID
-            raise WorldError.IdentityExhausted if cursor >= EntityId::ENTITY_ID_MAX
-            id: i64 = EntityId::entity_id_next(cursor)
+            id: i64 =
+                cursor: i64 = world.allocator.last_issued
+                raise WorldError.IdentityInvalid if cursor < EntityId::ENTITY_ID_INVALID
+                raise WorldError.IdentityExhausted if cursor >= EntityId::ENTITY_ID_MAX
+                EntityId::entity_id_next(cursor)
             world.allocator.last_issued <- id
             world.registry[registry_index] <- RegistryRow{id: id, kind: kind, live: true, storage: storage}
             world.registry_count <- world.registry_count + 1 if registry_index == world.registry_count
@@ -237,8 +234,9 @@ module World:
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
-            storage: StorageKind = world.registry[index].storage
-            removed: bool = mark_actor_dead(world, reference.id) if storage == StorageKind.Actor else mark_enemy_dead(world, reference.id)
+            removed: bool =
+                storage: StorageKind = world.registry[index].storage
+                mark_actor_dead(world, reference.id) if storage == StorageKind.Actor else mark_enemy_dead(world, reference.id)
             raise WorldError.InvalidReference if not removed
             world.registry[index].live <- false
             world.live_count <- world.live_count - 1

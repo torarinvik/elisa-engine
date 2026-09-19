@@ -53,11 +53,11 @@ module Executor:
         def plan_from_groups(groups: usize[8], count: usize) -> Plan error[ExecError]:
             raise ExecError.Capacity if count > Limits::MAX_SYSTEMS
             plan: mutable Plan = Plan{order: zeroed, group: zeroed, count: count, group_count: 0}
-            highest: mutable usize = 0
-            for index in 0..<count |plan, groups, highest|:
-                plan.order[index] <- index
-                plan.group[index] <- groups[index]
-                highest <- groups[index] if groups[index] >= highest
+            highest: usize =
+                for index in 0..<count |top: usize = 0, plan| -> top:
+                    plan.order[index] <- index
+                    plan.group[index] <- groups[index]
+                    top <- groups[index] if groups[index] >= top
             plan.group_count <- highest + 1 if count > 0 else 0
             plan
 

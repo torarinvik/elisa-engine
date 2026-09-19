@@ -93,9 +93,9 @@ module Session:
                     true
 
                 def drop(session: mutable Session::NetSession&, id: u64) -> bool:
-                    slot: mutable usize = 4
-                    for index in 0..<session.client_count |session, id, slot|:
-                        slot <- index if session.clients[index].id == id
+                    slot: usize =
+                        for index in 0..<session.client_count |found: usize = 4, session| -> found:
+                            found <- index if session.clients[index].id == id
                     return false if slot >= session.client_count
                     for shift in slot..<session.client_count - 1 |session|:
                         session.clients[shift] <- session.clients[shift + 1]

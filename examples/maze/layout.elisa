@@ -37,11 +37,9 @@ module MazeLayout:
         # module consumes, so pathfinding always reads the same wall set the
         # visual layout and the render fixture use.
         def maze_walls() -> bool[64]:
-            walls: mutable bool[64] = zeroed
-            for y in 0..<Grid::HEIGHT |walls|:
+            for y in 0..<Grid::HEIGHT |walls: bool[64] = zeroed| -> walls:
                 for x in 0..<Grid::WIDTH |walls|:
                     walls[y * Grid::WIDTH + x] <- Maze::is_wall(x.i64(), y.i64())
-            walls
 
         # Two directions: every listed cell is a wall, and every wall in the
         # 8x8 grid is listed exactly once. The per-cell distinctness follows

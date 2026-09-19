@@ -124,10 +124,10 @@ module Ui:
         # unchanged when nothing is enabled.
         def focus_next(menu: mutable Menu&) -> bool:
             return false if menu.count == 0
-            chosen: mutable i64 = -1
-            for step in 1..<menu.count.i64() + 1 |menu, chosen|:
-                candidate: i64 = (menu.focus + step) % menu.count.i64()
-                chosen <- candidate if chosen < 0 and menu.items[candidate.usize()].enabled
+            chosen: i64 =
+                for step in 1..<menu.count.i64() + 1 |found: i64 = -1, menu| -> found:
+                    candidate: i64 = (menu.focus + step) % menu.count.i64()
+                    break candidate if menu.items[candidate.usize()].enabled
             if chosen >= 0:
                 menu.focus <- chosen
                 focus_visible(menu)
@@ -135,10 +135,10 @@ module Ui:
 
         def focus_previous(menu: mutable Menu&) -> bool:
             return false if menu.count == 0
-            chosen: mutable i64 = -1
-            for step in 1..<menu.count.i64() + 1 |menu, chosen|:
-                candidate: i64 = (menu.focus - step + menu.count.i64() * 2) % menu.count.i64()
-                chosen <- candidate if chosen < 0 and menu.items[candidate.usize()].enabled
+            chosen: i64 =
+                for step in 1..<menu.count.i64() + 1 |found: i64 = -1, menu| -> found:
+                    candidate: i64 = (menu.focus - step + menu.count.i64() * 2) % menu.count.i64()
+                    break candidate if menu.items[candidate.usize()].enabled
             if chosen >= 0:
                 menu.focus <- chosen
                 focus_visible(menu)

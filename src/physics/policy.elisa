@@ -70,9 +70,9 @@ module Physics:
                     claim.count <- claim.count + 1
 
                 def release(claim: mutable SolverClaim&, id: i64) -> void error[ClaimError]:
-                    slot: mutable usize = 8
-                    for index in 0..<claim.count |claim, id, slot|:
-                        slot <- index if claim.bodies[index] == id
+                    slot: usize =
+                        for index in 0..<claim.count |found: usize = 8, claim| -> found:
+                            found <- index if claim.bodies[index] == id
                     raise ClaimError.UnknownBody if slot >= claim.count
                     for shift in slot..<claim.count - 1 |claim|:
                         claim.bodies[shift] <- claim.bodies[shift + 1]

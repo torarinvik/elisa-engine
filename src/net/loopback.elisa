@@ -73,18 +73,17 @@ module Loopback:
             arrived and Net::should_deliver(sequence, link.loss_every)
 
         def link_receive(link: mutable Link&, now_tick: i64) -> Net::ReplRecord error[LinkError]:
-            newest: mutable i64 = -1
-            chosen: mutable usize = Limits::MAX_PACKETS
-            for index in 0..<link.count |link, now_tick, newest, chosen|:
-                packet: Packet = link.packets[index]
-                if not packet.delivered and not packet.dropped and Net::should_deliver(index, link.loss_every) and now_tick >= Net::arrival_tick(packet.send_tick, link.delay_ticks):
-                    record: Net::ReplRecord =
-                        catch decode(packet.bytes, packet.length):
-                            value: value
-                            error failure: Net::ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Net::Owner.Server}
-                    if record.revision > newest:
-                        newest <- record.revision
-                        chosen <- index
+            chosen: usize =
+                for index in 0..<link.count |newest: i64 = -1, selected: usize = Limits::MAX_PACKETS, link| -> selected:
+                    packet: Packet = link.packets[index]
+                    if not packet.delivered and not packet.dropped and Net::should_deliver(index, link.loss_every) and now_tick >= Net::arrival_tick(packet.send_tick, link.delay_ticks):
+                        record: Net::ReplRecord =
+                            catch decode(packet.bytes, packet.length):
+                                value: value
+                                error failure: Net::ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Net::Owner.Server}
+                        if record.revision > newest:
+                            newest <- record.revision
+                            selected <- index
             # Retire everything that can no longer overtake the chosen packet:
             # delivered for real, or past its arrival but superseded.
             for index in 0..<link.count |link, chosen, now_tick|:
