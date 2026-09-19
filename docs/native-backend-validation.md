@@ -92,6 +92,13 @@ style; pose and skinning data; input mapping; live input; deterministic frames;
 and teardown. It requires the scene root to return to its environment node
 after unload.
 
+The C embedding boundary also exposes a versioned `ElisaServiceV1` table for
+session create/update/query/destroy. The host uses opaque generation handles,
+bounded input/output spans, explicit callback affinity, and a caller-provided
+allocator contract. `scripts/embed_probe.py` drives a real generated Elisa
+archive through that table and rejects version, size, allocator, stale-handle,
+and undersized-buffer failures before gameplay continues.
+
 The native host creates the canonical maze geometry, applies SDL3 events to
 portable Elisa actions, submits Wicked transforms and meshes, and removes all
 created objects. The probe checks Jolt ownership, scene resource counts,

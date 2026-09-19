@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,6 +19,53 @@
 #include <string>
 
 namespace {
+
+static_assert(offsetof(ElisaServiceV1, allocator) % alignof(void*) == 0);
+static_assert(sizeof(ElisaServiceHandle) == sizeof(uint64_t));
+static_assert(sizeof(ElisaAbiBuffer) >= sizeof(void*) + sizeof(size_t) * 2);
+
+void* service_allocate(void*, size_t bytes, size_t) {
+    return std::malloc(bytes);
+}
+
+void service_release(void*, void* memory, size_t, size_t) {
+    std::free(memory);
+}
+
+ElisaServiceStatus service_create(void*, ElisaServiceHandle* out_handle) {
+    if (out_handle == nullptr) return ELISA_SERVICE_INVALID_ARGUMENT;
+    const int64_t handle = maze_session_create();
+    if (handle == 0) return ELISA_SERVICE_INVALID_HANDLE;
+    *out_handle = static_cast<ElisaServiceHandle>(handle);
+    return ELISA_SERVICE_OK;
+}
+
+ElisaServiceStatus service_update(void*, ElisaServiceHandle handle, ElisaAbiSpan input) {
+    if (elisa_validate_span(input, sizeof(int32_t)) != ELISA_SERVICE_OK || input.size != sizeof(int32_t)) {
+        return ELISA_SERVICE_INVALID_ARGUMENT;
+    }
+    int32_t direction = 0;
+    std::memcpy(&direction, input.data, sizeof(direction));
+    return maze_session_update(static_cast<int64_t>(handle), direction) < 0
+        ? ELISA_SERVICE_INVALID_HANDLE : ELISA_SERVICE_OK;
+}
+
+ElisaServiceStatus service_query(void*, ElisaServiceHandle handle, uint32_t query, ElisaAbiBuffer* output) {
+    if (output == nullptr) return ELISA_SERVICE_INVALID_ARGUMENT;
+    const auto valid = elisa_validate_buffer(*output, sizeof(int64_t));
+    if (valid != ELISA_SERVICE_OK) return valid;
+    output->size = sizeof(int64_t);
+    if (output->capacity < output->size) return ELISA_SERVICE_BUFFER_TOO_SMALL;
+    const int64_t value = maze_session_query(static_cast<int64_t>(handle), static_cast<int32_t>(query));
+    if (value < 0) return ELISA_SERVICE_INVALID_HANDLE;
+    std::memcpy(output->data, &value, sizeof(value));
+    return ELISA_SERVICE_OK;
+}
+
+ElisaServiceStatus service_destroy(void*, ElisaServiceHandle handle) {
+    return maze_session_destroy(static_cast<int64_t>(handle)) == 0
+        ? ELISA_SERVICE_OK : ELISA_SERVICE_INVALID_HANDLE;
+}
 
 int move_code_for(SDL_Keycode code) {
     if (code == SDLK_W) {
@@ -67,7 +115,8 @@ int main(int argc, char** argv) {
         0u,
     };
     if (elisa_validate_descriptor(&descriptor,
-            ELISA_SERVICE_FEATURE_INPUT | ELISA_SERVICE_FEATURE_WORLD_QUERY | ELISA_SERVICE_FEATURE_STATUS) != ELISA_SERVICE_OK) {
+            ELISA_SERVICE_FEATURE_INPUT | ELISA_SERVICE_FEATURE_WORLD_QUERY | ELISA_SERVICE_FEATURE_STATUS |
+            ELISA_SERVICE_FEATURE_SESSION | ELISA_SERVICE_FEATURE_BOUNDED_QUERY) != ELISA_SERVICE_OK) {
         std::fprintf(stderr, "embed: service descriptor rejected\n");
         return 12;
     }
@@ -87,6 +136,62 @@ int main(int argc, char** argv) {
         elisa_validate_span({nullptr, 0}, descriptor.max_span_bytes) != ELISA_SERVICE_OK) {
         std::fprintf(stderr, "embed: malformed span was accepted\n");
         return 15;
+    }
+    ElisaServiceV1 service = {
+        sizeof(ElisaServiceV1), ELISA_SERVICE_ABI_VERSION, ELISA_SERVICE_THREAD_CALLER, 0,
+        nullptr, {nullptr, service_allocate, service_release}, service_create,
+        service_update, service_query, service_destroy,
+    };
+    if (elisa_validate_service_v1(&service) != ELISA_SERVICE_OK) {
+        std::fprintf(stderr, "embed: service operation table rejected\n");
+        return 16;
+    }
+    ElisaServiceV1 bad_service = service;
+    bad_service.abi_version += 1;
+    if (elisa_validate_service_v1(&bad_service) != ELISA_SERVICE_UNSUPPORTED_VERSION) {
+        std::fprintf(stderr, "embed: service version mismatch was accepted\n");
+        return 21;
+    }
+    ElisaServiceV1 truncated_service = service;
+    truncated_service.struct_size = sizeof(ElisaServiceV1) - 1;
+    if (elisa_validate_service_v1(&truncated_service) != ELISA_SERVICE_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "embed: truncated service table was accepted\n");
+        return 23;
+    }
+    ElisaServiceV1 missing_allocator = service;
+    missing_allocator.allocator.allocate = nullptr;
+    if (elisa_validate_service_v1(&missing_allocator) != ELISA_SERVICE_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "embed: missing allocator was accepted\n");
+        return 24;
+    }
+    ElisaServiceHandle session = 0;
+    if (service.create(service.context, &session) != ELISA_SERVICE_OK || session == 0) {
+        std::fprintf(stderr, "embed: session create failed\n");
+        return 17;
+    }
+    int32_t east_input = 3;
+    if (service.update(service.context, session, {reinterpret_cast<uint8_t*>(&east_input), sizeof(east_input)}) != ELISA_SERVICE_OK) {
+        std::fprintf(stderr, "embed: session update failed\n");
+        return 18;
+    }
+    uint8_t query_bytes[sizeof(int64_t)] = {};
+    ElisaAbiBuffer too_small = {query_bytes, 0, sizeof(int32_t)};
+    if (service.query(service.context, session, 0, &too_small) != ELISA_SERVICE_BUFFER_TOO_SMALL ||
+        too_small.size != sizeof(int64_t)) {
+        std::fprintf(stderr, "embed: undersized query buffer was accepted\n");
+        return 22;
+    }
+    ElisaAbiBuffer query = {query_bytes, 0, sizeof(query_bytes)};
+    if (service.query(service.context, session, 0, &query) != ELISA_SERVICE_OK || query.size != sizeof(int64_t)) {
+        std::fprintf(stderr, "embed: session query failed\n");
+        return 19;
+    }
+    int64_t queried_x = 0;
+    std::memcpy(&queried_x, query.data, sizeof(queried_x));
+    if (queried_x != 2 || service.destroy(service.context, session) != ELISA_SERVICE_OK ||
+        service.destroy(service.context, session) != ELISA_SERVICE_INVALID_HANDLE) {
+        std::fprintf(stderr, "embed: session lifecycle result was wrong\n");
+        return 20;
     }
     std::fprintf(stdout, "embed ABI: version=%u features=0x%llx max_span=%u\n",
         descriptor.abi_version, (unsigned long long)descriptor.feature_bits,

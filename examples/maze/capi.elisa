@@ -11,6 +11,8 @@ using Maze
 using MazeGame
 
 global mutable embedded_game: MazeGame = MazeGame::MazeGame()
+global mutable embedded_session_live: bool = false
+global mutable embedded_session_generation: i64 = 0
 
 def capi_start() -> i32:
     MazeGame::game_start(&embedded_game)
@@ -65,8 +67,34 @@ def capi_abi_version() -> i32:
     1
 
 def capi_feature_bits() -> i64:
-    # Input, world-query, and status are the stable scalar surface in v1.
-    7
+    # Input, world-query, status, and the generation-checked session are v1.
+    31
+
+def capi_session_valid(handle: i64) -> bool:
+    embedded_session_live and handle > 0 and handle == embedded_session_generation
+
+def capi_session_create() -> i64:
+    return 0 if embedded_session_live or embedded_session_generation == 9223372036854775807
+    embedded_session_generation <- embedded_session_generation + 1
+    embedded_session_live <- true
+    capi_start()
+    embedded_session_generation
+
+def capi_session_update(handle: i64, direction: i32) -> i32:
+    return -1 if not capi_session_valid(handle)
+    capi_step(direction)
+
+def capi_session_query(handle: i64, query: i32) -> i64:
+    return -1 if not capi_session_valid(handle)
+    return embedded_game.grid.player_x.i64() if query == 0
+    return embedded_game.grid.player_y.i64() if query == 1
+    return embedded_game.lives.i64() if query == 2
+    capi_status().i64() if query == 3 else -2
+
+def capi_session_destroy(handle: i64) -> i32:
+    return -1 if not capi_session_valid(handle)
+    embedded_session_live <- false
+    0
 
 export fn maze_start() -> i32 = capi_start
 export fn maze_step(direction: i32) -> i32 = capi_step
@@ -82,3 +110,7 @@ export fn maze_goal_y() -> i32 = capi_goal_y
 export fn maze_is_wall(x: i32, y: i32) -> i32 = capi_is_wall
 export fn maze_abi_version() -> i32 = capi_abi_version
 export fn maze_feature_bits() -> i64 = capi_feature_bits
+export fn maze_session_create() -> i64 = capi_session_create
+export fn maze_session_update(handle: i64, direction: i32) -> i32 = capi_session_update
+export fn maze_session_query(handle: i64, query: i32) -> i64 = capi_session_query
+export fn maze_session_destroy(handle: i64) -> i32 = capi_session_destroy
