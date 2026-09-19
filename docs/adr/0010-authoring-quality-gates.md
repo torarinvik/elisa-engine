@@ -107,6 +107,28 @@ does NOT clear it -- the probe stops in the same modal alert -- so do not repeat
 that. The way out is a build change: link the probe against SDL3 directly, or
 against a real SDL2 rather than the compat shim. That is a build-policy call.
 
+**Resolved 2026-09-18 by that build change (a8a27ba).** `scripts/fetch_sdl2.py`
+pins and builds real SDL2 2.32.10 under `dependencies/sdl2`, and the probe links
+it with `-Wl,-rpath,@executable_path` ahead of the Homebrew prefix (the freetype,
+harfbuzz, and zstd includes get their own `WICKED_BREW_*` prefix). The ASan
+flavor now reaches `main` and runs the graphics probe. Its first run reports a
+real heap-buffer-overflow instead of hanging:
+
+```
+ERROR: AddressSanitizer: heap-buffer-overflow ... READ of size 4 ...
+  #8 wi::helper::saveTextureToMemoryFile(...) wiHelper.cpp:971
+  ... stbi_write_png_to_func ... wi::helper::saveTextureToFile
+  #14 main wicked_probe.cpp:546
+```
+
+That is Wicked's PNG write callback (`wiHelper.cpp:971`), which pushes every
+stb byte through `wi::vector::push_back`; the reallocation path reads one byte
+past a 4-byte buffer. A minimal ASan vector-push loop is clean, so the finding
+is specific to that callback path rather than a libc++/ASan artifact. The
+sanitized graphics probe therefore needs a screenshot path that does not call
+`wi::helper::saveTextureToMemoryFile`; recording the upstream defect is the
+honest state until then.
+
 ## Debug collision geometry (2026-09-18)
 
 The inspector's list includes debug collision geometry. `DebugGeometry` owns
