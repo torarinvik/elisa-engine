@@ -25,7 +25,8 @@ backend mapping built on top of it.
 
 `src/entity_id.elisa`, `src/world/world.elisa`,
 `src/world/reference.elisa`, `test/world.elisa` (churn, compaction,
-capacity, corruption), `proof/entity_id.elisa` (advance-by-one, no-reuse
+capacity, corruption, checked dense live-reference iteration),
+`proof/entity_id.elisa` (advance-by-one, no-reuse
 conditional on a monotonic cursor), `src/net/replication.elisa`
 (high-water in rollback snapshots).
 
