@@ -70,7 +70,7 @@ module UiLayout:
         # stacks left to right. Children fill the parent's cross axis minus the
         # parent's padding.
         def layout_compute(layout: mutable Layout&, root_x: i64, root_y: i64, width: i64, height: i64) -> void:
-            for index in 0..<layout.count:
+            for index in 0..<layout.count |layout|:
                 node: Node = layout.nodes[index]
                 parent: i64 = node.parent
                 if parent < 0:

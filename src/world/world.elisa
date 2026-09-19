@@ -133,11 +133,11 @@ module World:
                     if world.registry[read].live:
                         world.registry[count] <- world.registry[read]
                         count <- count + 1
-            for index in write..<world.registry_count:
+            for index in write..<world.registry_count |world|:
                 world.registry[index].live <- false
             world.registry_count <- write
             world.live_ids_count <- 0
-            for index in 0..<world.registry_count:
+            for index in 0..<world.registry_count |world|:
                 if world.registry[index].live:
                     world.live_ids[world.live_ids_count] <- world.registry[index].id
                     world.live_ids_count <- world.live_ids_count + 1
@@ -148,7 +148,7 @@ module World:
                     if world.actors[read].live:
                         world.actors[count] <- world.actors[read]
                         count <- count + 1
-            for index in write..<world.actor_count:
+            for index in write..<world.actor_count |world|:
                 world.actors[index].live <- false
             world.actor_count <- write
 
@@ -158,7 +158,7 @@ module World:
                     if world.enemies[read].live:
                         world.enemies[count] <- world.enemies[read]
                         count <- count + 1
-            for index in write..<world.enemy_count:
+            for index in write..<world.enemy_count |world|:
                 world.enemies[index].live <- false
             world.enemy_count <- write
 
