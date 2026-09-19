@@ -56,9 +56,8 @@ module Capabilities:
 
         def backend_requirements_met(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> bool:
             return false if count > Bounds::MAX_FEATURES
-            for index in 0..<count:
-                return false if not backend_supports(profile, required[index])
-            true
+            for index in 0..<count |met: bool = true| -> met:
+                break false if not backend_supports(profile, required[index])
 
         def headless_profile() -> BackendProfile:
             BackendProfile{

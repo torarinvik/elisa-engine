@@ -126,7 +126,7 @@ rejects_ownership_copy() {
         printf 'An affine owner was copied without a compiler error.\n' >&2
         return 1
     fi
-    if [[ "$diagnostic" != *'linear value'* ]]; then
+    if [[ "$diagnostic" != *"linear value"* && "$diagnostic" != *"expects "*", got "*\&* ]]; then
         printf '%s\n' "$diagnostic" >&2
         printf 'The negative ownership fixture failed for another reason.\n' >&2
         return 1

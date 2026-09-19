@@ -90,6 +90,5 @@ module Contracts:
 
         def all_contracts_valid() -> bool:
             contracts: FfiContract[6] = [read_only_contract(), in_place_contract(), async_upload_contract(), resource_create_contract(), callback_register_contract(), destroy_contract()]
-            for index in 0..<6 |contracts|:
-                return false if not contract_valid(contracts[index])
-            true
+            for index in 0..<6 |valid: bool = true| -> valid:
+                break false if not contract_valid(contracts[index])

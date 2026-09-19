@@ -35,10 +35,11 @@ module Input:
         def input_map_valid(map: InputMap) -> bool:
             return false if map.left_key == Button.Unbound or map.right_key == Button.Unbound or map.forward_key == Button.Unbound or map.left_pad == Button.Unbound or map.right_pad == Button.Unbound or map.forward_pad == Button.Unbound
             buttons: Button[Limits::BINDING_COUNT] = [map.left_key, map.right_key, map.forward_key, map.left_pad, map.right_pad, map.forward_pad]
-            for index in 0..<Limits::BINDING_COUNT |buttons|:
-                for earlier in 0..<index:
-                    return false if buttons[index] == buttons[earlier]
-            true
+            for index in 0..<Limits::BINDING_COUNT |valid: bool = true| -> valid:
+                unique: bool =
+                    for earlier in 0..<index |unique: bool = true| -> unique:
+                        break false if buttons[index] == buttons[earlier]
+                break false if not unique
 
         def action_for(map: InputMap, button: Button) -> Action:
             return Action.Idle if button == Button.Unbound or not input_map_valid(map)

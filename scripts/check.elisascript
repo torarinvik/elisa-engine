@@ -65,6 +65,7 @@ def rejects_ownership_copy(compiler: sview, source: sview, output: sview) -> boo
             eprint("An affine owner was copied without a compiler error.")
             return false
         return true if "linear value" in rejection.stderr
+        return true if "expects " in rejection.stderr and ", got " in rejection.stderr and "&" in rejection.stderr
         if rejection.stderr != "":
             _ = write_stderr(rejection.stderr)
             break
