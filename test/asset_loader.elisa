@@ -1,0 +1,56 @@
+include "../src/assets/loader.elisa"
+using Assets
+using AssetLoader
+
+def main() -> i32:
+    key: RequestKey = RequestKey{id: AssetId{high: 7, low: 3}, variant: ArtifactVariant.Runtime}
+    loader: mutable Loader = Loader(64)
+    first: RequestHandle = catch request(&loader, key, 1, 40):
+        value: value
+        error failure: return 1
+    same: RequestHandle = catch request(&loader, key, 5, 40):
+        value: value
+        error failure: return 2
+    return 3 if first.slot != same.slot or first.generation != same.generation
+    return 4 if state(&loader, first) != RequestState.Queued or not placeholder(&loader, first)
+    bad_stage: i32 = catch upload_complete(&loader, first):
+        ok: 1
+        LoaderError.InvalidStage: 0
+        error failure: 2
+    return 5 if bad_stage != 0
+    decode_begin: i32 = catch begin_decode(&loader, first):
+        ok: 0
+        error failure: 3
+    return 6 if decode_begin != 0
+    decode_complete: i32 = catch complete_decode(&loader, first, 40):
+        ok: 0
+        error failure: 4
+    return 7 if decode_complete != 0 or state(&loader, first) != RequestState.Uploading
+    uploaded: i32 = catch upload_complete(&loader, first):
+        ok: 0
+        error failure: 5
+    return 8 if uploaded != 0 or state(&loader, first) != RequestState.Resident or resident_bytes(&loader) != 40
+
+    second: RequestHandle = catch request(&loader, RequestKey{id: AssetId{high: 7, low: 4}, variant: ArtifactVariant.Runtime}, 0, 40):
+        value: value
+        error failure: return 9
+    _ = catch begin_decode(&loader, second):
+        ok: 0
+        error failure: return 10
+    _ = catch complete_decode(&loader, second, 40):
+        ok: 0
+        error failure: return 11
+    _ = catch upload_complete(&loader, second):
+        ok: 0
+        error failure: return 12
+    return 13 if resident_bytes(&loader) > 64 or eviction_count(&loader) == 0
+    return 14 if state(&loader, first) != RequestState.Cancelled
+
+    cancelled: RequestHandle = catch request(&loader, RequestKey{id: AssetId{high: 7, low: 5}, variant: ArtifactVariant.Runtime}, 0, 8):
+        value: value
+        error failure: return 15
+    _ = catch cancel(&loader, cancelled):
+        ok: 0
+        error failure: return 16
+    return 17 if state(&loader, cancelled) != RequestState.Cancelled or not placeholder(&loader, cancelled)
+    0

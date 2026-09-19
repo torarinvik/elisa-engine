@@ -156,7 +156,12 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Portable asset descriptor tests passed.")
-
+    asset_loader_test_binary: sview = str(root.joinpath("build/asset-loader-test"))
+    loader_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_loader_test_binary, str(root.joinpath("test/asset_loader.elisa"))])
+    return loader_status if loader_status != 0
+    loader_status <- run_visible(asset_loader_test_binary, [])
+    return loader_status if loader_status != 0
+    println("Asynchronous asset-loader contract tests passed.")
     input_test_binary: sview = str(root.joinpath("build/input-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", input_test_binary, str(root.joinpath("test/input.elisa"))])
@@ -171,7 +176,6 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Portable input mapping tests passed.")
-
     capabilities_test_binary: sview = str(root.joinpath("build/capabilities-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", capabilities_test_binary, str(root.joinpath("test/capabilities.elisa"))])
@@ -186,7 +190,6 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Backend capability tests passed.")
-
     fake_bridge_test_binary: sview = str(root.joinpath("build/fake-bridge-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", fake_bridge_test_binary, str(root.joinpath("test/fake_bridge.elisa"))])
@@ -201,7 +204,6 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Fake native bridge lifecycle tests passed.")
-
     sdl3_test_binary: sview = str(root.joinpath("build/sdl3-test"))
     sdl3_library_dir: sview = get_environment_or("ELISA_SDL3_LIB_DIR", "/opt/homebrew/lib")
     _ =

@@ -47,7 +47,7 @@ machine-readable and fail on stale or missing artifacts (F03).
 | FreeType/HarfBuzz/ICU | Host package-manager libraries; no content hash currently recorded | `native/text_probe.h`, `src/ui/text.elisa` | Probe/Policy | UI owner; I04/I05 add shaping, font residency, editing, and localization policy. |
 | GameNetworkingSockets | commit `a424b7db649438acafb60c99cae6667587c42732` | `native/gns_probe.cpp`, `src/net/` | Probe | Network owner; T01/T03 turn loopback transport into a two-process session and replication. |
 | UDP sockets | Platform API | `native/udp_probe.h`, `src/net/transport.elisa` | Adapter | Network owner; retain as a diagnostic transport while GNS owns production sessions. |
-| SQLite | Platform/library dependency | `src/assets/database.elisa`, catalogue tests | Adapter | Asset owner; A02 adds transactional dependency graph, recovery, and deterministic cache. |
+| SQLite | Platform/library dependency | `src/assets/database.elisa`, catalogue tests | Adapter | Asset owner; A02 adds transactional dependency graph, recovery, and deterministic cache. `src/assets/loader.elisa` supplies the portable request/residency contract for A04's native worker and upload queues. |
 | Box2D | Listed in `dependencies.md`, no current native consumer | Planned P10 | Policy | Physics owner; a real 2D example is required before calling this integrated. |
 | Steam Audio | Listed in `dependencies.md`, no current native consumer | Planned S04 | Policy | Audio owner; integrate only after the miniaudio spatial service has a concrete use. |
 | ufbx | Listed in `dependencies.md`, no current native consumer | Planned A09 | Policy | Asset owner; normalized FBX route follows the glTF contract. |

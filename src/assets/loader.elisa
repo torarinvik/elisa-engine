@@ -1,0 +1,161 @@
+# Bounded asynchronous resource-loader contract. Native workers own decode and
+# device threads own upload; this module owns request identity, coalescing,
+# cancellation, priorities, placeholders, and residency accounting.
+include "./descriptor.elisa"
+
+module AssetLoader:
+    private:
+        const module Limits:
+            MAX_REQUESTS: usize = 32
+            MAX_RESIDENT_BYTES: usize = 67108864
+            INVALID_SLOT: usize = MAX_REQUESTS
+            FIRST_GENERATION: i64 = 1
+            MAX_GENERATION: i64 = 9223372036854775807
+
+        def live_state(state: RequestState) -> bool:
+            state != RequestState.Empty and state != RequestState.Failed and state != RequestState.Cancelled
+
+        def next_generation(current: i64) -> i64 error[LoaderError]:
+            raise LoaderError.GenerationExhausted if current >= Limits::MAX_GENERATION
+            Limits::FIRST_GENERATION if current == 0 else current + 1
+
+    public:
+        enum RequestState:
+            Empty
+            Queued
+            Decoding
+            Uploading
+            Resident
+            Failed
+            Cancelled
+
+        enum LoaderError:
+            InvalidKey
+            InvalidBytes
+            Capacity
+            UnknownRequest
+            InvalidStage
+            AlreadyCancelled
+            GenerationExhausted
+            BudgetExceeded
+
+        struct RequestKey:
+            id: Assets::AssetId
+            variant: Assets::ArtifactVariant
+
+        struct RequestHandle:
+            slot: usize
+            generation: i64
+
+        private:
+            struct Request:
+                key: RequestKey
+                generation: mutable i64
+                priority: mutable i64
+                bytes: mutable usize
+                state: mutable RequestState
+
+        public:
+            affine struct Loader:
+                private:
+                    requests: mutable Request[Limits::MAX_REQUESTS]
+                    resident_bytes: mutable usize
+                    budget_bytes: usize
+                    evictions: mutable usize
+
+            def Loader(budget_bytes: usize) -> Loader:
+                Loader{
+                    requests: zeroed,
+                    resident_bytes: 0,
+                    budget_bytes: budget_bytes,
+                    evictions: 0,
+                }
+
+            def request_valid(loader: Loader&, handle: RequestHandle) -> bool:
+                handle.slot < Limits::MAX_REQUESTS and loader.requests[handle.slot].generation == handle.generation and AssetLoader::live_state(loader.requests[handle.slot].state)
+
+            def handle_valid(loader: Loader&, handle: RequestHandle) -> bool:
+                handle.slot < Limits::MAX_REQUESTS and loader.requests[handle.slot].generation == handle.generation
+
+            def state(loader: Loader&, handle: RequestHandle) -> RequestState:
+                return RequestState.Empty if not handle_valid(loader, handle)
+                loader.requests[handle.slot].state
+
+            def request(loader: mutable Loader&, key: RequestKey, priority: i64, estimated_bytes: usize) -> RequestHandle error[LoaderError]:
+                raise LoaderError.InvalidKey if not Assets::asset_id_valid(key.id)
+                raise LoaderError.InvalidBytes if estimated_bytes == 0 or estimated_bytes > Limits::MAX_RESIDENT_BYTES
+                coalesced: mutable bool = false
+                coalesced_slot: mutable usize = Limits::INVALID_SLOT
+                for index in 0..<Limits::MAX_REQUESTS |loader, key, coalesced, coalesced_slot|:
+                    if not coalesced and AssetLoader::live_state(loader.requests[index].state) and Assets::same_asset_id(loader.requests[index].key.id, key.id) and loader.requests[index].key.variant == key.variant:
+                        loader.requests[index].priority <- priority if priority > loader.requests[index].priority
+                        coalesced <- true
+                        coalesced_slot <- index
+                if coalesced:
+                    return RequestHandle{slot: coalesced_slot, generation: loader.requests[coalesced_slot].generation}
+                slot: usize =
+                    for index in 0..<Limits::MAX_REQUESTS |slot: usize = Limits::INVALID_SLOT, loader| -> slot:
+                        break index if not AssetLoader::live_state(loader.requests[index].state)
+                raise LoaderError.Capacity if slot == Limits::INVALID_SLOT
+                generation: i64 = try next_generation(loader.requests[slot].generation)
+                loader.requests[slot] <- Request{
+                    key: key,
+                    generation: generation,
+                    priority: priority,
+                    bytes: estimated_bytes,
+                    state: RequestState.Queued,
+                }
+                RequestHandle{slot: slot, generation: generation}
+
+            def begin_decode(loader: mutable Loader&, handle: RequestHandle) -> void error[LoaderError]:
+                raise LoaderError.UnknownRequest if not request_valid(loader, handle)
+                raise LoaderError.InvalidStage if loader.requests[handle.slot].state != RequestState.Queued
+                loader.requests[handle.slot].state <- RequestState.Decoding
+
+            def complete_decode(loader: mutable Loader&, handle: RequestHandle, decoded_bytes: usize) -> void error[LoaderError]:
+                raise LoaderError.UnknownRequest if not request_valid(loader, handle)
+                raise LoaderError.InvalidStage if loader.requests[handle.slot].state != RequestState.Decoding
+                raise LoaderError.InvalidBytes if decoded_bytes == 0 or decoded_bytes > Limits::MAX_RESIDENT_BYTES
+                loader.requests[handle.slot].bytes <- decoded_bytes
+                loader.requests[handle.slot].state <- RequestState.Uploading
+
+            def upload_complete(loader: mutable Loader&, handle: RequestHandle) -> void error[LoaderError]:
+                raise LoaderError.UnknownRequest if not request_valid(loader, handle)
+                raise LoaderError.InvalidStage if loader.requests[handle.slot].state != RequestState.Uploading
+                raise LoaderError.BudgetExceeded if loader.requests[handle.slot].bytes > loader.budget_bytes
+                loader.resident_bytes <- loader.resident_bytes + loader.requests[handle.slot].bytes
+                loader.requests[handle.slot].state <- RequestState.Resident
+                for guard in 0..<Limits::MAX_REQUESTS |loader|:
+                    break if loader.resident_bytes <= loader.budget_bytes
+                    victim: usize =
+                        for index in 0..<Limits::MAX_REQUESTS |slot: usize = Limits::INVALID_SLOT, loader| -> slot:
+                            break index if loader.requests[index].state == RequestState.Resident
+                    break if victim == Limits::INVALID_SLOT
+                    loader.resident_bytes <- loader.resident_bytes - loader.requests[victim].bytes
+                    loader.requests[victim].state <- RequestState.Cancelled
+                    loader.evictions <- loader.evictions + 1
+
+            def cancel(loader: mutable Loader&, handle: RequestHandle) -> void error[LoaderError]:
+                raise LoaderError.UnknownRequest if not request_valid(loader, handle)
+                raise LoaderError.AlreadyCancelled if loader.requests[handle.slot].state == RequestState.Cancelled
+                raise LoaderError.InvalidStage if loader.requests[handle.slot].state == RequestState.Resident
+                loader.requests[handle.slot].state <- RequestState.Cancelled
+
+            def release(loader: mutable Loader&, handle: RequestHandle) -> void error[LoaderError]:
+                raise LoaderError.UnknownRequest if not request_valid(loader, handle)
+                raise LoaderError.InvalidStage if loader.requests[handle.slot].state != RequestState.Resident
+                loader.resident_bytes <- loader.resident_bytes - loader.requests[handle.slot].bytes
+                loader.requests[handle.slot].state <- RequestState.Empty
+
+            def set_priority(loader: mutable Loader&, handle: RequestHandle, priority: i64) -> void error[LoaderError]:
+                raise LoaderError.UnknownRequest if not request_valid(loader, handle)
+                loader.requests[handle.slot].priority <- priority
+
+            def placeholder(loader: Loader&, handle: RequestHandle) -> bool:
+                state(loader, handle) != RequestState.Resident
+
+            def resident_bytes(loader: Loader&) -> usize:
+                loader.resident_bytes
+
+            def eviction_count(loader: Loader&) -> usize:
+                loader.evictions
