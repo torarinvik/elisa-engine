@@ -32,6 +32,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
+| Versioned C ABI descriptor, feature negotiation, bounded spans | Tested + Implemented | `native/service_abi.h`, `maze_abi_version`, `maze_feature_bits`, malformed-descriptor checks in `native/embed_probe.cpp` |
 | C ABI bridge-call cost | Tested | `native/embed_probe.cpp` (100k exported query calls, `per_call_ns` printed) |
 | Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
 | Godot host embeds Elisa gameplay through a hand-written GDExtension | Tested + Implemented | `backends/godot-embed/`, `scripts/godot_embed_probe.py` (full session matches the native embedding) |

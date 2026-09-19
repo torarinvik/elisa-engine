@@ -33,6 +33,11 @@ Rules this fixes:
   (`Module::function`) is required, not a name brought in by `using`.
 - The C archive is the host-facing contract; its generated header is an audit
   artifact, and `libmaze.elisa-abi.json` records the exported surface.
+- Every host validates `ElisaServiceDescriptor` from `native/service_abi.h`
+  before calling the archive. The descriptor carries its size, ABI version,
+  feature bits, span ceiling, and reserved field; incompatible versions,
+  unsupported features, truncated descriptors, and null non-empty spans are
+  rejected at the boundary.
 - Gameplay state stays in Elisa; the host owns only device input and the loop
   that calls the exports.
 

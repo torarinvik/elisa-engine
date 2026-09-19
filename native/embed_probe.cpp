@@ -4,6 +4,7 @@
 // reads a device event through SDL, maps it to a move code, and calls
 // maze_step, which is live input driving Elisa gameplay across the boundary.
 #include "libmaze.h"
+#include "service_abi.h"
 
 #include <SDL3/SDL.h>
 
@@ -58,6 +59,38 @@ std::map<std::string, std::string> read_manifest(const char* path) {
 
 int main(int argc, char** argv) {
     const char* manifest_path = argc > 1 ? argv[1] : "backends/scene_manifest.txt";
+    const ElisaServiceDescriptor descriptor = {
+        sizeof(ElisaServiceDescriptor),
+        static_cast<uint32_t>(maze_abi_version()),
+        static_cast<uint64_t>(maze_feature_bits()),
+        1024u * 1024u,
+        0u,
+    };
+    if (elisa_validate_descriptor(&descriptor,
+            ELISA_SERVICE_FEATURE_INPUT | ELISA_SERVICE_FEATURE_WORLD_QUERY | ELISA_SERVICE_FEATURE_STATUS) != ELISA_SERVICE_OK) {
+        std::fprintf(stderr, "embed: service descriptor rejected\n");
+        return 12;
+    }
+    ElisaServiceDescriptor bad_version = descriptor;
+    bad_version.abi_version += 1;
+    if (elisa_validate_descriptor(&bad_version, 0) != ELISA_SERVICE_UNSUPPORTED_VERSION) {
+        std::fprintf(stderr, "embed: incompatible ABI version was accepted\n");
+        return 13;
+    }
+    ElisaServiceDescriptor bad_size = descriptor;
+    bad_size.struct_size = sizeof(ElisaServiceDescriptor) - 1;
+    if (elisa_validate_descriptor(&bad_size, 0) != ELISA_SERVICE_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "embed: truncated descriptor was accepted\n");
+        return 14;
+    }
+    if (elisa_validate_span({nullptr, 1}, descriptor.max_span_bytes) != ELISA_SERVICE_INVALID_ARGUMENT ||
+        elisa_validate_span({nullptr, 0}, descriptor.max_span_bytes) != ELISA_SERVICE_OK) {
+        std::fprintf(stderr, "embed: malformed span was accepted\n");
+        return 15;
+    }
+    std::fprintf(stdout, "embed ABI: version=%u features=0x%llx max_span=%u\n",
+        descriptor.abi_version, (unsigned long long)descriptor.feature_bits,
+        descriptor.max_span_bytes);
     const int status = maze_start();
     if (status != 1) {
         std::fprintf(stderr, "embed: start returned %d, expected Playing(1)\n", status);
