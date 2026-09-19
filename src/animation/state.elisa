@@ -31,7 +31,7 @@ module Anim:
             blend: mutable f32
             blend_left: mutable i64
             distance: mutable f32
-            events: mutable i64[8]
+            events: mutable i64[Tune::MAX_EVENTS]
             event_count: mutable usize
 
         def AnimState() -> AnimState:

@@ -16,7 +16,7 @@ module Editor:
             after: i64
 
         struct History:
-            edits: mutable Edit[16]
+            edits: mutable Edit[Tune::MAX_EDITS]
             length: mutable usize
             position: mutable usize
 
@@ -26,8 +26,8 @@ module Editor:
             applied: bool
 
         struct Reloads:
-            assets: mutable u64[8]
-            generations: mutable i64[8]
+            assets: mutable u64[Tune::MAX_ASSETS]
+            generations: mutable i64[Tune::MAX_ASSETS]
             count: mutable usize
 
         def History() -> History:
