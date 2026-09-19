@@ -193,8 +193,10 @@ meshoptimizer, reloads the package, and verifies byte-exact decoded data.
 Godot consumes the same cooked geometry and compressed texture paths.
 
 The native probe links pinned ozz-animation and samples a two-joint clip at
-start, midpoint, and end against the Elisa sampler. Recast/Detour builds and
-queries a navmesh around a wall and gap. miniaudio decodes the test WAV and
+start, midpoint, and end against the Elisa sampler. The reusable
+`native/navmesh_service.h` owns Recast baking and Detour queries, then the
+native host builds and queries a navmesh around a wall and gap with bounded
+nearest-point and raycast checks. miniaudio decodes the test WAV and
 opens a null device. FreeType rasterizes a glyph and HarfBuzz shapes “Elisa”.
 zstd round-trips the actual cooked package. Tracy is compiled with frame marks;
 without a server, the evidence is that the client is linked and exercised.
