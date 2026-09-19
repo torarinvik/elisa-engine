@@ -32,6 +32,7 @@ writes `build/validation.json`. Host evidence comes from
 | Declared read/write sets, derived execution waves | Tested | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa` |
 | Inspected counters, budgets, submitted bytes | Tested | `src/tooling/inspector.elisa`, `test/inspector.elisa` |
 | Bounded editor inspector fields, selection, validation, and dirty edits | Tested | `src/tooling/inspector_view.elisa`, `test/editor.elisa` |
+| Bounded editor asset browser with generation and stale-state tracking | Tested | `src/tooling/asset_browser.elisa`, `test/editor.elisa` |
 | Spawn/despawn churn with allocated bytes | Tested + Implemented | `native/churn_probe.h` (median/p95/worst plus steady-state heap delta, guard at 2 MiB), native runner |
 | Debug collision geometry (solid cells + markers, bounded boxes) | Tested + Implemented | `src/tooling/debug_geometry.elisa`, `examples/maze/debug.elisa`, `test/inspector.elisa`, `test/maze_game.elisa`, Godot wireframe overlay in `backends/godot/capture.gd` |
 

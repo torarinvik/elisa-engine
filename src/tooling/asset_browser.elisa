@@ -1,0 +1,85 @@
+# Bounded asset browser state for the Elisa editor. A host may render these
+# rows, but asset identity, selection, generation, and loaded state stay in the
+# engine model and are rebuilt from the catalogue when a panel is reopened.
+include "../assets/descriptor.elisa"
+
+module AssetBrowser:
+    private:
+        const module Bounds:
+            MAX_ROWS: usize = 8
+            INVALID_INDEX: usize = 8
+
+    public:
+        error BrowserError:
+            Capacity
+            InvalidAsset
+            DuplicateAsset
+            UnknownAsset
+            UnknownRow
+
+        struct Row:
+            id: Assets::AssetId
+            generation: mutable i64
+            loaded: mutable bool
+
+        struct Browser:
+            rows: mutable Row[8]
+            count: mutable usize
+            selected: mutable usize
+
+        def browser_new() -> Browser:
+            Browser{rows: zeroed, count: 0, selected: Bounds::INVALID_INDEX}
+
+        def browser_valid(browser: Browser&) -> bool:
+            return false if browser.count > Bounds::MAX_ROWS
+            return false if browser.selected != Bounds::INVALID_INDEX and browser.selected >= browser.count
+            for index in 0..<browser.count |valid: bool = true| -> valid:
+                row: Row = browser.rows[index]
+                valid <- false if not Assets::asset_id_valid(row.id) or row.generation < 0
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if Assets::same_asset_id(browser.rows[earlier].id, row.id)
+                valid <- valid and unique
+            true
+
+        private:
+            module Find:
+                public:
+                    def row_of(browser: Browser&, id: Assets::AssetId) -> usize:
+                        for index in 0..<browser.count |found: usize = AssetBrowser::Bounds::INVALID_INDEX| -> found:
+                            found <- index if Assets::same_asset_id(browser.rows[index].id, id)
+
+        public:
+            def browser_count(browser: Browser&) -> usize:
+                browser.count
+
+            def browser_selected(browser: Browser&) -> usize:
+                browser.selected
+
+            def browser_row(browser: Browser&, index: usize) -> Row:
+                return Row{id: Assets::AssetId{high: 0, low: 0}, generation: 0, loaded: false} if index >= browser.count
+                browser.rows[index]
+
+            def browser_add(browser: mutable Browser&, id: Assets::AssetId, generation: i64) -> void error[BrowserError]:
+                raise BrowserError.Capacity if browser.count >= Bounds::MAX_ROWS
+                raise BrowserError.InvalidAsset if not Assets::asset_id_valid(id) or generation < 0
+                raise BrowserError.DuplicateAsset if Find::row_of(browser, id) != Bounds::INVALID_INDEX
+                browser.rows[browser.count] <- Row{id: id, generation: generation, loaded: false}
+                browser.count <- browser.count + 1
+                browser.selected <- 0 if browser.selected == Bounds::INVALID_INDEX
+
+            def browser_select(browser: mutable Browser&, index: usize) -> void error[BrowserError]:
+                raise BrowserError.UnknownRow if index >= browser.count
+                browser.selected <- index
+
+            def browser_mark_loaded(browser: mutable Browser&, id: Assets::AssetId, generation: i64) -> void error[BrowserError]:
+                index: usize = Find::row_of(browser, id)
+                raise BrowserError.UnknownAsset if index == Bounds::INVALID_INDEX
+                raise BrowserError.InvalidAsset if generation < 0
+                browser.rows[index].generation <- generation
+                browser.rows[index].loaded <- true
+
+            def browser_is_stale(browser: Browser&, id: Assets::AssetId, generation: i64) -> bool:
+                index: usize = Find::row_of(browser, id)
+                return true if index == Bounds::INVALID_INDEX or generation < 0
+                browser.rows[index].generation != generation or not browser.rows[index].loaded

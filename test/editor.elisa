@@ -1,5 +1,6 @@
 include "../src/tooling/editor.elisa"
 include "../src/tooling/inspector_view.elisa"
+include "../src/tooling/asset_browser.elisa"
 include "../src/ui/layout.elisa"
 include "../src/ui/text.elisa"
 include "../src/ui/style.elisa"
@@ -10,6 +11,38 @@ using UiLayout
 using UiStyle
 using UiText
 using InspectorView
+using AssetBrowser
+
+def asset_browser_test() -> i32:
+    browser: mutable Browser = browser_new()
+    id: Assets::AssetId = Assets::AssetId{high: 1, low: 2}
+    return 41 if not browser_valid(&browser) or browser_selected(&browser) != 8
+    added: i32 = catch browser_add(&browser, id, 0):
+        ok: 0
+        BrowserError.Capacity: 1
+        BrowserError.InvalidAsset: 2
+        BrowserError.DuplicateAsset: 3
+        error failure: 4
+    return 42 if added != 0 or browser_count(&browser) != 1
+    return 43 if not browser_is_stale(&browser, id, 0)
+    marked: i32 = catch browser_mark_loaded(&browser, id, 0):
+        ok: 0
+        BrowserError.UnknownAsset: 1
+        BrowserError.InvalidAsset: 2
+        error failure: 3
+    return 44 if marked != 0 or browser_is_stale(&browser, id, 0)
+    return 45 if not browser_valid(&browser) or not browser_row(&browser, 0).loaded
+    duplicate: i32 = catch browser_add(&browser, id, 0):
+        ok: 0
+        BrowserError.DuplicateAsset: 1
+        error failure: 2
+    return 46 if duplicate != 1
+    selected: i32 = catch browser_select(&browser, 4):
+        ok: 0
+        BrowserError.UnknownRow: 1
+        error failure: 2
+    return 47 if selected != 1 or browser_selected(&browser) != 0
+    0
 
 def inspector_number_field(target: i64, value: i64) -> Field:
     Field{target: target, kind: FieldKind.Number, value: value, minimum: -10, maximum: 10, editable: true}
@@ -235,4 +268,6 @@ def main() -> i32:
     return wrapped_text if wrapped_text != 0
     view: i32 = inspector_view_test()
     return view if view != 0
+    browser: i32 = asset_browser_test()
+    return browser if browser != 0
     0
