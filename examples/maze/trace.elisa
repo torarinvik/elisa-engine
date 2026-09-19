@@ -77,15 +77,19 @@ module MazeTrace:
         def maze_fixture_cue_count() -> usize:
             game: mutable MazeGame = game_new()
             game_start(&game)
-            script: MazeMove[10] = maze_fixture_script()
-            for index in 0..<Script::FIXTURE_STEPS:
-                moved: bool = game_step(&game, script[index])
+            script: mutable MazeMove[10] = maze_fixture_script()
+            processed: usize =
+                for index in 0..<Script::FIXTURE_STEPS |count: usize = 0, game, script| -> count:
+                    moved: bool = game_step(&game, script[index])
+                    count <- count + 1 if moved
             game.cue_count
 
         def maze_fixture_status() -> i64:
             game: mutable MazeGame = game_new()
             game_start(&game)
-            script: MazeMove[10] = maze_fixture_script()
-            for index in 0..<Script::FIXTURE_STEPS:
-                moved: bool = game_step(&game, script[index])
+            script: mutable MazeMove[10] = maze_fixture_script()
+            processed: usize =
+                for index in 0..<Script::FIXTURE_STEPS |count: usize = 0, game, script| -> count:
+                    moved: bool = game_step(&game, script[index])
+                    count <- count + 1 if moved
             game_status_code(game.status)
