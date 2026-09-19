@@ -1,0 +1,103 @@
+include "../math/geometry.elisa"
+
+# Bounded transform hierarchy. Gameplay owns IDs and local transforms; this
+# module owns parent links and derived world transforms for render/physics reads.
+module WorldHierarchy:
+    public:
+        const MAX_NODES: usize = 128
+        const ROOT: i64 = 0
+
+        struct Node:
+            id: i64
+            parent: i64
+            local: Geometry::Transform
+            world: Geometry::Transform
+            dirty: bool
+
+        affine struct Hierarchy:
+            private:
+                nodes: mutable Node[WorldHierarchy::MAX_NODES]
+                count: mutable usize
+
+        def Hierarchy() -> Hierarchy:
+            Hierarchy{nodes: zeroed, count: 0}
+
+        def hierarchy_count(hierarchy: Hierarchy&) -> usize:
+            hierarchy.count
+
+        def slot_of(hierarchy: Hierarchy&, id: i64) -> usize:
+            for index in 0..<hierarchy.count |slot: usize = WorldHierarchy::MAX_NODES| -> slot:
+                break index if hierarchy.nodes[index].id == id
+
+        def hierarchy_spawn(hierarchy: mutable Hierarchy&, id: i64, local: Geometry::Transform) -> bool:
+            return false if id <= 0 or slot_of(hierarchy, id) != WorldHierarchy::MAX_NODES or hierarchy.count >= WorldHierarchy::MAX_NODES
+            hierarchy.nodes[hierarchy.count] <- Node{id: id, parent: WorldHierarchy::ROOT, local: local, world: local, dirty: true}
+            hierarchy.count <- hierarchy.count + 1
+            true
+
+        def would_cycle(hierarchy: Hierarchy&, child: i64, parent: i64) -> bool:
+            cursor: mutable i64 = parent
+            for _ in 0..<WorldHierarchy::MAX_NODES:
+                return true if cursor == child
+                return false if cursor == WorldHierarchy::ROOT
+                slot: usize = slot_of(hierarchy, cursor)
+                return false if slot == WorldHierarchy::MAX_NODES
+                cursor <- hierarchy.nodes[slot].parent
+            true
+
+        def hierarchy_set_parent(hierarchy: mutable Hierarchy&, child: i64, parent: i64,
+            keep_world: bool) -> bool:
+            child_slot: usize = slot_of(hierarchy, child)
+            return false if child_slot == WorldHierarchy::MAX_NODES or (parent != WorldHierarchy::ROOT and slot_of(hierarchy, parent) == WorldHierarchy::MAX_NODES)
+            return false if would_cycle(hierarchy, child, parent)
+            old_world: Geometry::Transform = hierarchy.nodes[child_slot].world
+            hierarchy.nodes[child_slot].parent <- parent
+            if keep_world:
+                if parent == WorldHierarchy::ROOT:
+                    hierarchy.nodes[child_slot].local <- old_world
+                else:
+                    parent_slot: usize = slot_of(hierarchy, parent)
+                    hierarchy.nodes[child_slot].local <- Geometry::Transform{
+                        position: Geometry::transform_apply_inverse_point(hierarchy.nodes[parent_slot].world, old_world.position),
+                        rotation: old_world.rotation,
+                        scale: old_world.scale,
+                    }
+            hierarchy.nodes[child_slot].dirty <- true
+            true
+
+        def hierarchy_update(hierarchy: mutable Hierarchy&) -> void:
+            for _ in 0..<WorldHierarchy::MAX_NODES:
+                changed: mutable bool = false
+                for index in 0..<hierarchy.count:
+                    if hierarchy.nodes[index].dirty:
+                        parent: i64 = hierarchy.nodes[index].parent
+                        if parent == WorldHierarchy::ROOT:
+                            hierarchy.nodes[index].world <- hierarchy.nodes[index].local
+                            hierarchy.nodes[index].dirty <- false
+                            changed <- true
+                        else:
+                            parent_slot: usize = slot_of(hierarchy, parent)
+                            if parent_slot != WorldHierarchy::MAX_NODES and not hierarchy.nodes[parent_slot].dirty:
+                                hierarchy.nodes[index].world <- Geometry::transform_compose(hierarchy.nodes[parent_slot].world, hierarchy.nodes[index].local)
+                                hierarchy.nodes[index].dirty <- false
+                                changed <- true
+                break if not changed
+
+        def hierarchy_world(hierarchy: Hierarchy&, id: i64) -> Geometry::Transform:
+            slot: usize = slot_of(hierarchy, id)
+            return Geometry::transform_identity() if slot == WorldHierarchy::MAX_NODES
+            hierarchy.nodes[slot].world
+
+        def hierarchy_remove(hierarchy: mutable Hierarchy&, id: i64) -> bool:
+            slot: usize = slot_of(hierarchy, id)
+            return false if slot == WorldHierarchy::MAX_NODES
+            old_world: Geometry::Transform = hierarchy.nodes[slot].world
+            for index in 0..<hierarchy.count:
+                if hierarchy.nodes[index].parent == id:
+                    hierarchy.nodes[index].parent <- WorldHierarchy::ROOT
+                    hierarchy.nodes[index].local <- hierarchy.nodes[index].world
+                    hierarchy.nodes[index].dirty <- true
+            for shift in slot..<hierarchy.count - 1:
+                hierarchy.nodes[shift] <- hierarchy.nodes[shift + 1]
+            hierarchy.count <- hierarchy.count - 1
+            true

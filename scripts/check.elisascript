@@ -153,7 +153,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Portable asset descriptor tests passed.")
     asset_loader_test_binary: sview = str(root.joinpath("build/asset-loader-test"))
     loader_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_loader_test_binary, str(root.joinpath("test/asset_loader.elisa"))])
@@ -173,7 +172,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Portable input mapping tests passed.")
     capabilities_test_binary: sview = str(root.joinpath("build/capabilities-test"))
     _ =
@@ -187,7 +185,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Backend capability tests passed.")
     fake_bridge_test_binary: sview = str(root.joinpath("build/fake-bridge-test"))
     _ =
@@ -201,7 +198,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Fake native bridge lifecycle tests passed.")
     sdl3_test_binary: sview = str(root.joinpath("build/sdl3-test"))
     sdl3_library_dir: sview = get_environment_or("ELISA_SDL3_LIB_DIR", "/opt/homebrew/lib")
@@ -216,9 +212,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("SDL3 platform probe passed.")
-
     godot_binary: sview = godot_path()
     if godot_binary == "" or not is_file(path(godot_binary)) or not is_executable(path(godot_binary)):
         eprint("Install Godot or set GODOT_BIN to its executable path.")
@@ -311,6 +305,12 @@ def main(arguments: darray[sview]) -> i64:
     render_status <- run_visible(render_snapshot_binary, [])
     return render_status if render_status != 0
     println("Persistent render snapshot tests passed.")
+    hierarchy_binary: sview = str(root.joinpath("build/hierarchy-test"))
+    hierarchy_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", hierarchy_binary, str(root.joinpath("test/hierarchy.elisa"))])
+    return hierarchy_status if hierarchy_status != 0
+    hierarchy_status <- run_visible(hierarchy_binary, [])
+    return hierarchy_status if hierarchy_status != 0
+    println("Transform hierarchy tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])

@@ -1,0 +1,20 @@
+include "../src/world/hierarchy.elisa"
+
+def main() -> i32:
+    hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+    root: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0})
+    child: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})
+    return 1 if not WorldHierarchy::hierarchy_spawn(&hierarchy, 1, root)
+    return 2 if not WorldHierarchy::hierarchy_spawn(&hierarchy, 2, child)
+    return 3 if not WorldHierarchy::hierarchy_set_parent(&hierarchy, 2, 1, false)
+    WorldHierarchy::hierarchy_update(&hierarchy)
+    world_child: Geometry::Transform = WorldHierarchy::hierarchy_world(&hierarchy, 2)
+    return 4 if world_child.position.x != 3.0
+    return 5 if WorldHierarchy::hierarchy_set_parent(&hierarchy, 1, 2, false)
+    return 6 if not WorldHierarchy::hierarchy_set_parent(&hierarchy, 2, 0, true)
+    WorldHierarchy::hierarchy_update(&hierarchy)
+    kept: Geometry::Transform = WorldHierarchy::hierarchy_world(&hierarchy, 2)
+    return 7 if kept.position.x != 3.0
+    return 8 if not WorldHierarchy::hierarchy_remove(&hierarchy, 1)
+    return 9 if WorldHierarchy::hierarchy_count(&hierarchy) != 1
+    0

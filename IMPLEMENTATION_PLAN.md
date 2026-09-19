@@ -118,6 +118,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/world/storage.elisa` adds an affine typed catalogue with separate actor/projectile columns, one owned monotonic ID stream, typed lookup, destruction, and independent compaction; `test/world_storage.elisa` is part of `scripts/check.elisascript`. Capacity-pressure measurement and integration with the primary `World` registry remain.
 - [ ] **W02 · P1 · Transform hierarchy** — After: W01, F07.
   Add local/world transforms, parenting, dirty propagation, interpolation snapshots, and checked reparenting policy. Done: cycle rejection, keep-world/keep-local behavior, deep trees, parent deletion, and physics-owned transforms agree with rendered positions.
+  Progress: `src/world/hierarchy.elisa` provides bounded local/world TRS nodes, dirty propagation, cycle and missing-parent rejection, keep-world reparenting, and root detachment on parent removal; `test/hierarchy.elisa` is part of the shared gate. Interpolation snapshots and physics-owned transform arbitration remain.
 - [ ] **W03 · P1 · Deferred structural mutation** — After: W01.
   Implement phase-bound spawn/despawn/reparent command buffers with stable ordering and an explicit atomicity policy. Done: iteration borrows cannot outlive the phase; conflicting commands, allocation failure, and despawn during events cause neither partial entities nor dangling borrows.
 - [ ] **W04 · P1 · Scene and prefab instances** — After: W02, W03, A01.
