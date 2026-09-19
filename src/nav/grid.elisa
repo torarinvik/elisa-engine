@@ -11,7 +11,7 @@ module Nav:
 
     public:
         struct Path:
-            cells: mutable i64[64]
+            cells: mutable i64[Grid::CELLS]
             count: mutable usize
             found: mutable bool
 
@@ -22,8 +22,8 @@ module Nav:
             Grid::HEIGHT
 
         def cell_index(x: i64, y: i64) -> usize:
-            return 64 if x < 0 or y < 0 or x >= Grid::WIDTH or y >= Grid::HEIGHT
-            y.usize() * 8 + x.usize()
+            return Grid::CELLS if x < 0 or y < 0 or x >= Grid::WIDTH or y >= Grid::HEIGHT
+            y.usize() * Grid::STRIDE.usize() + x.usize()
 
         def path_found(path: Path&) -> bool:
             path.found
@@ -38,55 +38,55 @@ module Nav:
     private:
         module Search:
             private:
-                def walkable(walls: bool[64], x: i64, y: i64) -> bool:
+                def walkable(walls: bool[Grid::CELLS], x: i64, y: i64) -> bool:
                     return false if x < 0 or y < 0 or x >= Nav::Grid::WIDTH or y >= Nav::Grid::HEIGHT
-                    index: usize = y.usize() * 8 + x.usize()
+                    index: usize = y.usize() * Nav::Grid::STRIDE.usize() + x.usize()
                     not walls[index]
 
-                def reconstruct(parent: i64[64], start: usize, goal: usize) -> Nav::Path:
-                    reversed: mutable i64[64] = zeroed
+                def reconstruct(parent: i64[Grid::CELLS], start: usize, goal: usize) -> Nav::Path:
+                    reversed: mutable i64[Grid::CELLS] = zeroed
                     depth: usize =
-                        for step in 0..<64 |length: usize = 0, cursor: usize = goal, reversed| -> length:
-                            break if cursor >= 64 or length >= 64
+                        for step in 0..<Nav::Grid::CELLS |length: usize = 0, cursor: usize = goal, reversed| -> length:
+                            break if cursor >= Nav::Grid::CELLS or length >= Nav::Grid::CELLS
                             reversed[length] <- cursor.i64()
                             length <- length + 1
                             break if cursor == start
                             next: i64 = parent[cursor]
                             break if next < 0
                             cursor <- next.usize()
-                    ordered: mutable i64[64] = zeroed
-                    for slot in 0..<64 |ordered, reversed, depth|:
+                    ordered: mutable i64[Grid::CELLS] = zeroed
+                    for slot in 0..<Nav::Grid::CELLS |ordered, reversed, depth|:
                         break if slot >= depth
                         ordered[slot] <- reversed[depth - 1 - slot]
                     Nav::Path{cells: ordered, count: depth, found: depth > 0}
 
             public:
-                def search_path(walls: bool[64], start_x: i64, start_y: i64, goal_x: i64, goal_y: i64) -> Nav::Path:
+                def search_path(walls: bool[Grid::CELLS], start_x: i64, start_y: i64, goal_x: i64, goal_y: i64) -> Nav::Path:
                     return Nav::Path{cells: zeroed, count: 0, found: false} if not walkable(walls, start_x, start_y) or not walkable(walls, goal_x, goal_y)
-                    start: usize = start_y.usize() * 8 + start_x.usize()
-                    goal: usize = goal_y.usize() * 8 + goal_x.usize()
-                    single: mutable i64[64] = zeroed
+                    start: usize = start_y.usize() * Nav::Grid::STRIDE.usize() + start_x.usize()
+                    goal: usize = goal_y.usize() * Nav::Grid::STRIDE.usize() + goal_x.usize()
+                    single: mutable i64[Grid::CELLS] = zeroed
                     single[0] <- start.i64()
                     return Nav::Path{cells: single, count: 1, found: true} if start == goal
-                    visited: mutable bool[64] = zeroed
-                    parent: mutable i64[64] = zeroed
-                    queue: mutable usize[64] = zeroed
-                    for slot in 0..<64 |parent|:
+                    visited: mutable bool[Grid::CELLS] = zeroed
+                    parent: mutable i64[Grid::CELLS] = zeroed
+                    queue: mutable usize[Grid::CELLS] = zeroed
+                    for slot in 0..<Nav::Grid::CELLS |parent|:
                         parent[slot] <- -1
                     visited[start] <- true
                     queue[0] <- start
                     qhead: mutable usize = 0
                     qtail: mutable usize = 1
                     found: mutable bool = false
-                    for tick in 0..<64 |queue, visited, parent, qhead, qtail, found, walls|:
+                    for tick in 0..<Nav::Grid::CELLS |queue, visited, parent, qhead, qtail, found, walls|:
                         break if found or qhead >= qtail
                         current: usize = queue[qhead]
                         qhead <- qhead + 1
-                        cx: i64 = (current - current / 8 * 8).i64()
-                        cy: i64 = (current / 8).i64()
+                        cx: i64 = (current - current / Nav::Grid::STRIDE.usize() * Nav::Grid::STRIDE.usize()).i64()
+                        cy: i64 = (current / Nav::Grid::STRIDE.usize()).i64()
                         nx: i64 = cx + 1
                         ny: i64 = cy
-                        east: usize = ny.usize() * 8 + nx.usize()
+                        east: usize = ny.usize() * Nav::Grid::STRIDE.usize() + nx.usize()
                         if nx < Nav::Grid::WIDTH and not walls[east] and not visited[east]:
                             visited[east] <- true
                             parent[east] <- current.i64()
@@ -94,7 +94,7 @@ module Nav:
                             qtail <- qtail + 1
                             found <- true if east == goal
                         wx: i64 = cx - 1
-                        west: usize = cy.usize() * 8 + wx.usize()
+                        west: usize = cy.usize() * Nav::Grid::STRIDE.usize() + wx.usize()
                         if not found and wx >= 0 and not walls[west] and not visited[west]:
                             visited[west] <- true
                             parent[west] <- current.i64()
@@ -102,7 +102,7 @@ module Nav:
                             qtail <- qtail + 1
                             found <- true if west == goal
                         sy: i64 = cy + 1
-                        south: usize = sy.usize() * 8 + cx.usize()
+                        south: usize = sy.usize() * Nav::Grid::STRIDE.usize() + cx.usize()
                         if not found and sy < Nav::Grid::HEIGHT and not walls[south] and not visited[south]:
                             visited[south] <- true
                             parent[south] <- current.i64()
@@ -110,7 +110,7 @@ module Nav:
                             qtail <- qtail + 1
                             found <- true if south == goal
                         ny2: i64 = cy - 1
-                        north: usize = ny2.usize() * 8 + cx.usize()
+                        north: usize = ny2.usize() * Nav::Grid::STRIDE.usize() + cx.usize()
                         if not found and ny2 >= 0 and not walls[north] and not visited[north]:
                             visited[north] <- true
                             parent[north] <- current.i64()
@@ -121,5 +121,5 @@ module Nav:
                     reconstruct(parent, start, goal)
 
     public:
-        def find_path(walls: bool[64], start_x: i64, start_y: i64, goal_x: i64, goal_y: i64) -> Path:
+        def find_path(walls: bool[Grid::CELLS], start_x: i64, start_y: i64, goal_x: i64, goal_y: i64) -> Path:
             Search::search_path(walls, start_x, start_y, goal_x, goal_y)
