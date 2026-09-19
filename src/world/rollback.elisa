@@ -81,6 +81,7 @@ module WorldRollback:
 
         def capture(world: World::World&) -> Snapshot error[RollbackError]:
             raise RollbackError.InvalidSnapshot if not World::world_is_valid(world)
+            raise RollbackError.InvalidSnapshot if not World::world_live_column_valid(world)
             snapshot: mutable Snapshot = Snapshot{
                 epoch: world.epoch,
                 registry: zeroed,
