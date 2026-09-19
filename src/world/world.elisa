@@ -382,10 +382,6 @@ module World:
         def world_live_ids_count(world: World&) -> usize:
             world.live_ids_count
 
-        def world_live_id_at(world: World&, index: usize) -> i64:
-            return -1 if index >= world.live_ids_count
-            world.live_ids[index]
-
         # Dense iteration returns a checked world-branded reference instead of
         # making each caller reconstruct provenance from a raw numeric ID.
         def world_live_reference_at(world: World&, index: usize) -> EntityRef error[WorldError]:
