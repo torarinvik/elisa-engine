@@ -153,6 +153,15 @@ def rollback_test() -> i32:
         value: value
         error failure: invalid_reference()
     return 3 if third.id != allocator_before + 1
+    other: mutable World = catch World():
+        value: value
+        error failure: invalid_world()
+    wrong_world: i32 = catch restore(&other, &snapshot):
+        ok: 0
+        RollbackError.InvalidSnapshot: 1
+        RollbackError.WrongWorld: 2
+        error failure: 3
+    return 4 if wrong_world != 2
     0
 
 def main() -> i32:
