@@ -1,25 +1,27 @@
 # Persistent native host validation
 
-The persistent mode uses the reusable SDL3/Wicked host and keeps gameplay
-authority in the Elisa C ABI. It starts a visible window when
-`ELISA_PERSISTENT_HOST=1`, handles W/A/S/D movement, P pause/resume, R restart,
-and exits on the SDL close request. No frame count or manifest movement rule is
-used.
+The reusable SDL3/Wicked host in `native/native_application.h` drives the
+maze through the Elisa game API. `native/live_game_probe.h` owns the persistent
+loop: it polls real SDL key events, applies pause/resume and restart commands,
+advances the fixed simulation clock, renders continuously, and exits only
+after a close event.
 
-The reproducible event-loop check is:
+The deterministic self-test injects the same event shapes used by the real
+input path. It verifies two pause toggles, one world restart, one movement,
+at least one fixed simulation tick, and a close request before returning.
 
-```sh
-ELISA_PERSISTENT_HOST=1 \
-ELISA_PERSISTENT_SELF_TEST=1 \
-build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
-  "$PWD/backends/scene_manifest.txt" "$PWD/build/persistent-selftest.png" alwaysactive
+Validation command:
+
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_PERSISTENT_HOST=1 ELISA_PERSISTENT_SELF_TEST=1 \
+build/wicked-native-probe \
+  "$PWD/../WickedEngine/WickedEngine" \
+  "$PWD/backends/scene_manifest.txt" \
+  "$PWD/build/persistent-test.png" alwaysactive
 ```
 
-It exited `0` after logging pause, resume, restart, close, and at least one
-fixed simulation tick. `NativeApplication::advance_fixed` uses the bounded
-integer-nanosecond accumulator from `native/frame_pacer.h`, so the event loop
-can present at a variable cadence without coupling gameplay updates to the
-render call. The interactive visible-window path remains hardware-dependent in
-this headless session and is therefore not marked as the complete F02
-milestone. The known Wicked global worker shutdown limitation remains tracked
-under F05.
+Result on the pinned SDL3/Metal build: the host printed `paused`, `resumed`,
+`restarted`, `fixed_ticks=2`, `close requested`, and exited zero through the
+ordered shutdown boundary. The PNG is a runtime artifact; the self-test also
+requires a graphics session because it exercises the visible host path.
