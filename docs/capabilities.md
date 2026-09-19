@@ -34,6 +34,7 @@ writes `build/validation.json`. Host evidence comes from
 | Bounded editor inspector fields, selection, validation, and dirty edits | Tested | `src/tooling/inspector_view.elisa`, `test/editor.elisa` |
 | Bounded editor asset browser with generation and stale-state tracking | Tested | `src/tooling/asset_browser.elisa`, `test/editor.elisa` |
 | Bounded editor widget surface with buttons, toggles, sliders, and hit testing | Tested | `src/ui/widgets.elisa`, `test/inspector.elisa` |
+| Bounded editor session composing panels, asset state, widgets, and revisions | Tested | `src/tooling/editor_session.elisa`, `test/editor_session.elisa` |
 | Spawn/despawn churn with allocated bytes | Tested + Implemented | `native/churn_probe.h` (median/p95/worst plus steady-state heap delta, guard at 2 MiB), native runner |
 | Debug collision geometry (solid cells + markers, bounded boxes) | Tested + Implemented | `src/tooling/debug_geometry.elisa`, `examples/maze/debug.elisa`, `test/inspector.elisa`, `test/maze_game.elisa`, Godot wireframe overlay in `backends/godot/capture.gd` |
 
@@ -208,10 +209,10 @@ roadmap "an integration order, not a command to add every dependency
 immediately," and each of these is either optional for the first game or needs a
 toolchain not present in this environment:
 
-- **Full editor widget suite.** The engine-owned menu, box layout, style, and
-  text-flow foundations are implemented and tested. A broader editor widget
-  library and richer authoring surfaces remain deferred until a concrete
-  editor workflow requires them.
+- **Richer editor authoring.** The bounded session, inspector, asset browser,
+  and widget surface are implemented; undo/redo integration and richer
+  content workflows remain deferred until the editor has a concrete asset
+  editing path.
 
 Architectural decisions behind these boundaries are recorded in
 [docs/adr/](adr/): ADR-0011 on the canonical fixture as the backend contract,

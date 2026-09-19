@@ -97,5 +97,8 @@ module InspectorView:
                 model.fields[index] <- updated
                 model.dirty <- true
 
+            def set_field_value(model: mutable Model&, target: i64, value: i64) -> void error[FieldError]:
+                try set_value(model, target, value)
+
             def clear_dirty(model: mutable Model&) -> void:
                 model.dirty <- false

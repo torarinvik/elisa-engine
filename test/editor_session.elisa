@@ -1,0 +1,43 @@
+include "../src/tooling/editor_session.elisa"
+using EditorSession
+
+def main() -> i32:
+    session: mutable Session = Session()
+    return 1 if not session_valid(&session) or active_panel(&session) != Panel.Inspector
+    field: InspectorView::Field = InspectorView::Field{target: 1, kind: InspectorView::FieldKind.Number, value: 1, minimum: 0, maximum: 10, editable: true}
+    field_added: i32 = catch InspectorView::add_field(&session.inspector, field):
+        ok: 0
+        InspectorView::FieldError.Capacity: 1
+        InspectorView::FieldError.InvalidField: 2
+        InspectorView::FieldError.DuplicateTarget: 3
+        error failure: 4
+    return 2 if field_added != 0
+    edited: i32 = catch edit_field(&session, 1, 5):
+        ok: 0
+        SessionError.FieldUnknown: 1
+        SessionError.FieldInvalid: 2
+        SessionError.FieldRange: 3
+        error failure: 4
+    return 3 if edited != 0 or revision(&session) != 1
+    id: Assets::AssetId = Assets::AssetId{high: 4, low: 5}
+    added: i32 = catch add_asset(&session, id, 0):
+        ok: 0
+        SessionError.AssetCapacity: 1
+        SessionError.AssetInvalid: 2
+        SessionError.AssetDuplicate: 3
+        SessionError.AssetUnknown: 4
+        error failure: 5
+    return 4 if added != 0
+    return 5 if revision(&session) != 2 or not dirty(&session)
+    widget: UiWidgets::Widget = UiWidgets::Widget{id: 9, kind: UiWidgets::WidgetKind.Button, x: 0, y: 0, width: 8, height: 8, value: 0, minimum: 0, maximum: 0, enabled: true, visible: true}
+    attached: i32 = catch attach_widget(&session, widget):
+        ok: 0
+        SessionError.WidgetCapacity: 1
+        SessionError.WidgetInvalid: 2
+        SessionError.WidgetDuplicate: 3
+        error failure: 4
+    return 6 if attached != 0
+    return 7 if revision(&session) != 3
+    return 8 if not dirty(&session)
+    return 9 if not session_valid(&session)
+    0

@@ -472,6 +472,12 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Editor undo and reload tests passed.")
+    session_editor_binary: sview = str(root.joinpath("build/editor-session-test"))
+    status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", session_editor_binary, str(root.joinpath("test/editor_session.elisa"))])
+    return status if status != 0
+    status <- run_visible(session_editor_binary, [])
+    return status if status != 0
+    println("Editor session tests passed.")
 
     session_test_binary: sview = str(root.joinpath("build/session-test"))
     _ =

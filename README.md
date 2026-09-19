@@ -317,6 +317,8 @@ snapshots, bounded editable fields, asset selection/generation state, perf
 budgets, undo/redo, reload generations) plus
 `src/ui/widgets.elisa` (bounded buttons, toggles, sliders, enabled state, and
 hit testing, covered by `test/inspector.elisa`), plus
+`src/tooling/editor_session.elisa` (a value-only session that composes panel,
+asset, widget, revision, and dirty state), plus
 `src/tooling/debug_geometry.elisa` and `examples/maze/debug.elisa` (bounded
 collision boxes for solid cells and interactive markers, drawn as Godot
 wireframes before capture), and

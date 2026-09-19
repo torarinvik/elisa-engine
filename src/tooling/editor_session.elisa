@@ -1,0 +1,134 @@
+# Bounded editor session state. Hosts render this value model; selection,
+# panel ownership, and edit revisions remain in Elisa so reopening a panel
+# cannot create a second authoritative copy of editor state.
+include "inspector_view.elisa"
+include "asset_browser.elisa"
+include "../ui/widgets.elisa"
+
+module EditorSession:
+    public:
+        enum Panel:
+            Inspector
+            Assets
+
+        error SessionError:
+            InvalidSession
+            FieldUnknown
+            FieldInvalid
+            FieldRange
+            AssetUnknown
+            AssetInvalid
+            AssetCapacity
+            AssetDuplicate
+            WidgetCapacity
+            WidgetInvalid
+            WidgetDuplicate
+
+        struct Session:
+            inspector: mutable InspectorView::Model
+            assets: mutable AssetBrowser::Browser
+            widgets: mutable UiWidgets::Surface
+            panel: mutable Panel
+            revision: mutable i64
+            dirty: mutable bool
+
+        def Session() -> Session:
+            Session{
+                inspector: InspectorView::model_new(),
+                assets: AssetBrowser::browser_new(),
+                widgets: UiWidgets::surface_new(),
+                panel: Panel.Inspector,
+                revision: 0,
+                dirty: false,
+            }
+
+        def session_valid(session: Session&) -> bool:
+            return false if not InspectorView::model_valid(&session.inspector)
+            return false if not AssetBrowser::browser_valid(&session.assets)
+            return false if not UiWidgets::surface_valid(&session.widgets)
+            session.revision >= 0
+
+        def active_panel(session: Session&) -> Panel:
+            session.panel
+
+        def revision(session: Session&) -> i64:
+            session.revision
+
+        def dirty(session: Session&) -> bool:
+            session.dirty
+
+        def select_panel(session: mutable Session&, panel: Panel) -> void error[SessionError]:
+            raise SessionError.InvalidSession if not session_valid(&session)
+            session.panel <- panel
+
+        private:
+            module Changes:
+                public:
+                    def advance(session: mutable EditorSession::Session&) -> void error[EditorSession::SessionError]:
+                        raise EditorSession::SessionError.InvalidSession if not EditorSession::session_valid(&session)
+                        session.revision <- session.revision + 1
+                        session.dirty <- true
+
+                    def map_field_error(code: i32) -> void error[EditorSession::SessionError]:
+                        raise EditorSession::SessionError.FieldUnknown if code == 1
+                        raise EditorSession::SessionError.FieldInvalid if code == 2
+                        raise EditorSession::SessionError.FieldRange if code == 3
+
+                    def map_asset_error(code: i32) -> void error[EditorSession::SessionError]:
+                        raise EditorSession::SessionError.AssetCapacity if code == 1
+                        raise EditorSession::SessionError.AssetInvalid if code == 2
+                        raise EditorSession::SessionError.AssetDuplicate if code == 3
+                        raise EditorSession::SessionError.AssetUnknown if code == 4
+
+                    def map_widget_error(code: i32) -> void error[EditorSession::SessionError]:
+                        raise EditorSession::SessionError.WidgetCapacity if code == 1
+                        raise EditorSession::SessionError.WidgetInvalid if code == 2
+                        raise EditorSession::SessionError.WidgetDuplicate if code == 3
+
+        public:
+            def apply_field(model: mutable InspectorView::Model&, target: i64, next_value: i64) -> i32:
+                result: i32 = catch InspectorView::set_field_value(model, target, next_value):
+                    ok: 0
+                    InspectorView::FieldError.UnknownTarget: 1
+                    InspectorView::FieldError.InvalidField: 2
+                    InspectorView::FieldError.OutOfRange: 3
+                    error failure: 4
+                result
+
+            def edit_field(session: mutable Session&, target: i64, next_value: i64) -> void error[SessionError]:
+                result: i32 = apply_field(&session.inspector, target, next_value)
+                raise SessionError.FieldUnknown if result == 1
+                raise SessionError.FieldInvalid if result == 2
+                raise SessionError.FieldRange if result == 3
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
+            def add_asset(session: mutable Session&, id: Assets::AssetId, generation: i64) -> void error[SessionError]:
+                result: i32 = catch AssetBrowser::browser_add(&session.assets, id, generation):
+                    ok: 0
+                    AssetBrowser::BrowserError.Capacity: 1
+                    AssetBrowser::BrowserError.InvalidAsset: 2
+                    AssetBrowser::BrowserError.DuplicateAsset: 3
+                    error failure: 4
+                raise SessionError.AssetCapacity if result == 1
+                raise SessionError.AssetInvalid if result == 2
+                raise SessionError.AssetDuplicate if result == 3
+                raise SessionError.AssetUnknown if result == 4
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
+            def attach_widget(session: mutable Session&, widget: UiWidgets::Widget) -> void error[SessionError]:
+                result: i32 = catch UiWidgets::add_widget(&session.widgets, widget):
+                    ok: 0
+                    UiWidgets::WidgetError.Capacity: 1
+                    UiWidgets::WidgetError.InvalidWidget: 2
+                    UiWidgets::WidgetError.DuplicateId: 3
+                    error failure: 4
+                raise SessionError.WidgetCapacity if result == 1
+                raise SessionError.WidgetInvalid if result == 2
+                raise SessionError.WidgetDuplicate if result == 3
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
+            def clear_dirty(session: mutable Session&) -> void:
+                session.dirty <- false
