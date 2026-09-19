@@ -35,6 +35,7 @@
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
 #include "png_capture.h"
+#include "native_application.h"
 
 using namespace probe;
 
@@ -72,30 +73,16 @@ int main(int argc, char** argv) {
     wi::renderer::SetShaderPath(shader_root);
     wi::renderer::SetShaderSourcePath(shader_root);
     std::fprintf(stdout, "wicked %s\n", wi::version::GetVersionString());
-    if (!check(SDL_Init(SDL_INIT_VIDEO), "SDL video initialization")) {
+    NativeApplication application_host;
+    NativeApplication::Config application_config;
+    application_config.title = "elisa-engine-probe";
+    application_config.width = 320;
+    application_config.height = 200;
+    application_config.hidden = true;
+    if (!check(application_host.initialize(application_config), "native application initialization")) {
         return 1;
     }
-    SDL_Window* sdl_window = SDL_CreateWindow(
-        "elisa-engine-probe", 320, 200, SDL_WINDOW_HIDDEN | SDL_WINDOW_METAL
-    );
-    if (!check(sdl_window != nullptr, "hidden Metal window")) {
-        SDL_Quit();
-        return 1;
-    }
-
-    SDL_PropertiesID window_properties = SDL_GetWindowProperties(sdl_window);
-    void* cocoa_window = SDL_GetPointerProperty(
-        window_properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
-    if (!check(cocoa_window != nullptr, "Cocoa window handle")) {
-        SDL_DestroyWindow(sdl_window);
-        SDL_Quit();
-        return 1;
-    }
-
-    wi::Application application;
-    application.SetWindow(reinterpret_cast<wi::platform::window_type>(cocoa_window));
-    application.Initialize();
-    wi::initializer::WaitForInitializationsToFinish();
+    wi::Application& application = application_host.wicked();
 
     wi::scene::Scene scene;
     const auto object = scene.Entity_CreateCube("elisa_cube_" + std::to_string(entity_id));
@@ -439,8 +426,8 @@ int main(int argc, char** argv) {
     // Pump platform events first: on macOS a window that never sees its
     // event queue may never finish mapping its Metal layer.
     for (int pump = 0; pump < 60; ++pump) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
+        if (!application_host.poll_events()) {
+            return 0;
         }
         wi::helper::Sleep(16);
     }
@@ -475,7 +462,10 @@ int main(int argc, char** argv) {
     frame_micros.reserve(measured_frames);
     for (int frame = 0; frame < warmup_frames + measured_frames; ++frame) {
         const auto frame_start = std::chrono::steady_clock::now();
-        application.Run();
+        if (!application_host.poll_events()) {
+            return 0;
+        }
+        application_host.run_frame();
         FrameMark;
         if (hunter_marker != wi::ecs::INVALID_ENTITY and not hunter_route.empty()) {
             const std::size_t step = std::min((std::size_t)frame, hunter_route.size() - 1);
@@ -505,7 +495,7 @@ int main(int argc, char** argv) {
     // Physics needs wall time, not just frames: Wicked advances Jolt from the
     // frame delta, so a settle loop with real sleeps lets gravity act.
     for (int settle = 0; settle < 60; ++settle) {
-        application.Run();
+        application_host.run_frame();
         wi::helper::Sleep(10);
     }
     const float physics_end_y = scene.transforms.GetComponent(physics_box)->GetPosition().y;

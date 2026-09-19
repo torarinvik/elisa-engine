@@ -18,6 +18,12 @@ same Elisa-owned state.
 The initial renderer triage is historical. The present probe is the SDL3/Metal
 rendered host used by the validation workflow.
 
+The SDL3 window and Wicked application boundary now live in
+`native/native_application.h`. `native/wicked_probe.cpp` consumes that
+`NativeApplication` lifecycle instead of creating SDL and Wicked state inline;
+the probe still deliberately runs a finite diagnostic client and uses the
+existing forced-exit workaround until F05 supplies orderly Wicked teardown.
+
 ## Prerequisites and commands
 
 Godot 4.7.2 is used for the headless host probe:
