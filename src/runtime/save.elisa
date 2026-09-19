@@ -31,9 +31,10 @@ module Save:
         def save_write(values: i64[8], count: usize) -> Blob error[SaveError]:
             raise SaveError.Capacity if count + 1 > Tune::MAX_FIELDS
             blob: mutable Blob = Blob{version: Tune::VERSION, count: count + 1, fields: zeroed}
+            source: mutable i64[8] = values
             blob.fields[0] <- Tune::MAGIC
-            for index in 0..<count |blob, values|:
-                blob.fields[index + 1] <- values[index]
+            for index in 0..<count |blob, source|:
+                blob.fields[index + 1] <- source[index]
             blob
 
         # A blob is readable only when it is this version, has exactly the
