@@ -115,6 +115,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [ ] **W01 · P1 · General world storage beyond the maze** — After: F04.
   Extend the checked world with registered engine/game types and measured dynamic storage, preserving algebraic modeling and branded identity. Done: two unrelated game entity sets coexist; growth failure, compaction, and destruction preserve invariants without maze-specific actor limits or a replacement foreign ECS.
+  Progress: `src/world/storage.elisa` adds an affine typed catalogue with separate actor/projectile columns, one owned monotonic ID stream, typed lookup, destruction, and independent compaction; `test/world_storage.elisa` is part of `scripts/check.elisascript`. Capacity-pressure measurement and integration with the primary `World` registry remain.
 - [ ] **W02 · P1 · Transform hierarchy** — After: W01, F07.
   Add local/world transforms, parenting, dirty propagation, interpolation snapshots, and checked reparenting policy. Done: cycle rejection, keep-world/keep-local behavior, deep trees, parent deletion, and physics-owned transforms agree with rendered positions.
 - [ ] **W03 · P1 · Deferred structural mutation** — After: W01.

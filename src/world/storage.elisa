@@ -1,0 +1,98 @@
+# Bounded typed storage for unrelated game sets. World owns the allocator and
+# rows; callers receive only branded IDs and typed accessors.
+module WorldStorage:
+    public:
+        const MAX_ROWS: usize = 128
+
+        enum SetKind:
+            Actor
+            Projectile
+
+        struct Actor:
+            id: i64
+            health: i64
+
+        struct Projectile:
+            id: i64
+            damage: i64
+
+        affine struct Catalog:
+            private:
+                next_id: mutable i64
+                actor_ids: mutable i64[WorldStorage::MAX_ROWS]
+                projectile_ids: mutable i64[WorldStorage::MAX_ROWS]
+                actors: mutable Actor[WorldStorage::MAX_ROWS]
+                projectiles: mutable Projectile[WorldStorage::MAX_ROWS]
+                actor_count: mutable usize
+                projectile_count: mutable usize
+
+        def Catalog() -> Catalog:
+            Catalog{
+                next_id: 1,
+                actor_ids: zeroed,
+                projectile_ids: zeroed,
+                actors: zeroed,
+                projectiles: zeroed,
+                actor_count: 0,
+                projectile_count: 0,
+            }
+
+        def catalog_actor_count(catalog: Catalog&) -> usize:
+            catalog.actor_count
+
+        def catalog_projectile_count(catalog: Catalog&) -> usize:
+            catalog.projectile_count
+
+        def catalog_spawn_actor(catalog: mutable Catalog&, health: i64) -> i64:
+            return -1 if catalog.actor_count >= WorldStorage::MAX_ROWS
+            id: i64 = catalog.next_id
+            return -1 if id <= 0
+            catalog.next_id <- id + 1
+            index: usize = catalog.actor_count
+            catalog.actor_ids[index] <- id
+            catalog.actors[index] <- Actor{id: id, health: health}
+            catalog.actor_count <- index + 1
+            id
+
+        def catalog_spawn_projectile(catalog: mutable Catalog&, damage: i64) -> i64:
+            return -1 if catalog.projectile_count >= WorldStorage::MAX_ROWS
+            id: i64 = catalog.next_id
+            return -1 if id <= 0
+            catalog.next_id <- id + 1
+            index: usize = catalog.projectile_count
+            catalog.projectile_ids[index] <- id
+            catalog.projectiles[index] <- Projectile{id: id, damage: damage}
+            catalog.projectile_count <- index + 1
+            id
+
+        def catalog_actor(catalog: Catalog&, id: i64) -> Actor:
+            for index in 0..<catalog.actor_count:
+                if catalog.actor_ids[index] == id:
+                    return catalog.actors[index]
+            Actor{id: -1, health: -1}
+
+        def catalog_projectile(catalog: Catalog&, id: i64) -> Projectile:
+            for index in 0..<catalog.projectile_count:
+                if catalog.projectile_ids[index] == id:
+                    return catalog.projectiles[index]
+            Projectile{id: -1, damage: -1}
+
+        def catalog_destroy_actor(catalog: mutable Catalog&, id: i64) -> bool:
+            for index in 0..<catalog.actor_count:
+                if catalog.actor_ids[index] == id:
+                    for shift in index..<catalog.actor_count - 1:
+                        catalog.actor_ids[shift] <- catalog.actor_ids[shift + 1]
+                        catalog.actors[shift] <- catalog.actors[shift + 1]
+                    catalog.actor_count <- catalog.actor_count - 1
+                    return true
+            false
+
+        def catalog_destroy_projectile(catalog: mutable Catalog&, id: i64) -> bool:
+            for index in 0..<catalog.projectile_count:
+                if catalog.projectile_ids[index] == id:
+                    for shift in index..<catalog.projectile_count - 1:
+                        catalog.projectile_ids[shift] <- catalog.projectile_ids[shift + 1]
+                        catalog.projectiles[shift] <- catalog.projectiles[shift + 1]
+                    catalog.projectile_count <- catalog.projectile_count - 1
+                    return true
+            false

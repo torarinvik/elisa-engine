@@ -1,6 +1,5 @@
 # Run with: elisascript scripts/check.elisascript
 # Tool arguments are passed directly; no shell command strings are constructed.
-
 def compiler_path() -> sview:
     _ =
         configured: sview = get_environment_or("ELISA_COMPILER_BIN", "")
@@ -20,7 +19,6 @@ def compiler_path() -> sview:
         if is_file(path(candidate)) and is_executable(path(candidate)):
             return candidate
     ""
-
 def godot_path() -> sview:
     _ =
         configured: sview = get_environment_or("GODOT_BIN", "")
@@ -40,7 +38,6 @@ def godot_path() -> sview:
         if is_file(path(candidate)) and is_executable(path(candidate)):
             return candidate
     ""
-
 # Status-only process calls discard output. Relay both captured streams so tool
 # diagnostics remain visible, including when a child exits unsuccessfully.
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
@@ -51,7 +48,6 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     _ = write_stdout(result.stdout)
     _ = write_stderr(result.stderr)
     result.exit_status
-
 def rejects_owner_violation(compiler: sview, source: sview, output: sview, privacy: bool = false) -> bool:
     # A compiler crash leaves a nonzero status and an empty diagnostic. Retry
     # only that case once; a changed non-empty diagnostic is not retried, so a
@@ -126,7 +122,12 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Checked world lifecycle tests passed.")
-
+    world_storage_test_binary: sview = str(root.joinpath("build/world-storage-test"))
+    storage_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", world_storage_test_binary, str(root.joinpath("test/world_storage.elisa"))])
+    return storage_status if storage_status != 0
+    storage_status <- run_visible(world_storage_test_binary, [])
+    return storage_status if storage_status != 0
+    println("General typed world storage tests passed.")
     geometry_test_binary: sview = str(root.joinpath("build/geometry-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", geometry_test_binary, str(root.joinpath("test/geometry.elisa"))])
@@ -565,7 +566,6 @@ def main(arguments: darray[sview]) -> i64:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output, true):
             return 1
     println("Private owner field rejection tests passed.")
-
     proof_source: sview = str(root.joinpath("proof/entity_id.elisa"))
     _ =
         status: i64 = run_visible(prover, [proof_source])

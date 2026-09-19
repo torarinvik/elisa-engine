@@ -1,0 +1,16 @@
+include "../src/world/storage.elisa"
+
+def main() -> i32:
+    catalog: mutable WorldStorage::Catalog = WorldStorage::Catalog()
+    actor: i64 = WorldStorage::catalog_spawn_actor(&catalog, 100)
+    projectile: i64 = WorldStorage::catalog_spawn_projectile(&catalog, 7)
+    return 1 if actor <= 0 or projectile <= actor
+    actor_record: WorldStorage::Actor = WorldStorage::catalog_actor(&catalog, actor)
+    projectile_record: WorldStorage::Projectile = WorldStorage::catalog_projectile(&catalog, projectile)
+    return 2 if actor_record.health != 100 or projectile_record.damage != 7
+    return 3 if WorldStorage::catalog_actor_count(&catalog) != 1 or WorldStorage::catalog_projectile_count(&catalog) != 1
+    return 4 if not WorldStorage::catalog_destroy_actor(&catalog, actor)
+    return 5 if WorldStorage::catalog_actor_count(&catalog) != 0 or WorldStorage::catalog_projectile_count(&catalog) != 1
+    return 6 if not WorldStorage::catalog_destroy_projectile(&catalog, projectile)
+    return 7 if WorldStorage::catalog_projectile_count(&catalog) != 0
+    0

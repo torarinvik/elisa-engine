@@ -25,6 +25,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 |---|---|---|
 | Monotonic `i64` identity, explicit exhaustion | Proved + Tested | `proof/entity_id.elisa`, `test/entity_id.elisa` |
 | Owning `World`, liveness, typed storage access, rollback snapshots, compaction | Tested | `src/world/rollback.elisa`, `test/world.elisa`; provenance proof remains in `proof/world.elisa` |
+| General typed world storage for unrelated game sets | Tested | `src/world/storage.elisa`, `test/world_storage.elisa`, `docs/validation/world-storage.md`; bounded actor/projectile columns share owned IDs and compact independently |
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
 | Compact live-entity column (O(live) iteration) | Tested | `World::world_live_reference_at`, `World::world_live_column_valid`, `test/world.elisa` |
 | Persistent-to-runtime identity remapping with stale-reference rejection | Tested | `src/world/persistence.elisa`, `test/world.elisa` |
