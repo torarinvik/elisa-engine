@@ -253,12 +253,14 @@ module World:
             storage_index: usize =
                 free_actor_slot(world) if storage == StorageKind.Actor else free_enemy_slot(world)
             raise WorldError.Capacity if storage_index == Sentinel::WORLD_INVALID_SLOT
-            id: i64 =
-                cursor: i64 = world.allocator.last_issued
-                raise WorldError.IdentityInvalid if cursor < EntityId::ENTITY_ID_INVALID
-                raise WorldError.IdentityExhausted if cursor >= EntityId::ENTITY_ID_MAX
-                EntityId::entity_id_next(cursor)
-            world.allocator.last_issued <- id
+            allocation_status: i32 =
+                catch EntityId::entity_id_allocate(&world.allocator):
+                    value: 0
+                    error EntityId::EntityIdError.InvalidId: 1
+                    error EntityId::EntityIdError.MaxId: 2
+            raise WorldError.IdentityInvalid if allocation_status == 1
+            raise WorldError.IdentityExhausted if allocation_status == 2
+            id: i64 = world.allocator.last_issued
             world.registry[registry_index] <- RegistryRow{id: id, kind: kind, live: true, storage: storage}
             world.registry_count <- world.registry_count + 1 if registry_index == world.registry_count
             if storage == StorageKind.Actor:
