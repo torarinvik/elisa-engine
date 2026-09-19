@@ -23,7 +23,7 @@ module Loopback:
             dropped: mutable bool
 
         struct Link:
-            packets: mutable Packet[16]
+            packets: mutable Packet[Limits::MAX_PACKETS]
             count: mutable usize
             loss_every: mutable usize
             delay_ticks: mutable i64
