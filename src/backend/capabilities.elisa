@@ -28,6 +28,12 @@ module Capabilities:
             UploadBytes
             Workers
 
+        enum RequirementState:
+            Ready
+            Fallback
+            Unavailable
+            Invalid
+
         struct BackendCapabilities:
             input: bool
             rendering: bool
@@ -95,6 +101,27 @@ module Capabilities:
             return false if count > Bounds::MAX_FEATURES
             for index in 0..<count |met: bool = true| -> met:
                 break false if not backend_supports(profile, required[index])
+
+        def negotiate_requirements(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize, allow_fallback: bool) -> RequirementState:
+            return RequirementState.Invalid if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
+            missing: mutable bool = false
+            fallback: mutable bool = false
+            for index in 0..<count |missing, fallback|:
+                if not backend_supports(profile, required[index]):
+                    missing <- true if not allow_fallback
+                    fallback <- true if allow_fallback
+            return RequirementState.Unavailable if missing
+            RequirementState.Fallback if fallback else RequirementState.Ready
+
+        def first_missing_requirement(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> BackendFeature:
+            return BackendFeature.Input if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
+            for index in 0..<count |missing: BackendFeature = BackendFeature.Input| -> missing:
+                break required[index] if not backend_supports(profile, required[index])
+
+        def fallback_requirement_count(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> usize:
+            return 0 if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
+            for index in 0..<count |fallback: usize = 0| -> fallback:
+                fallback <- fallback + 1 if not backend_supports(profile, required[index])
 
         def headless_profile() -> BackendProfile:
             BackendProfile{

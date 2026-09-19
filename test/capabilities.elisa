@@ -33,4 +33,9 @@ def main() -> i32:
     return 10 if backend_requirements_met(native, required, 8)
     return 11 if not backend_limit_supports(native, BackendLimit.TextureDimension, 4096)
     return 12 if backend_limit_supports(native, BackendLimit.UploadBytes, 16777217)
+    return 13 if negotiate_requirements(native, required, 8, false) != RequirementState.Unavailable
+    return 14 if first_missing_requirement(native, required, 8) != BackendFeature.Audio
+    return 15 if negotiate_requirements(native, required, 8, true) != RequirementState.Fallback
+    return 16 if fallback_requirement_count(native, required, 8) != 1
+    return 17 if negotiate_requirements(native, required, 9, true) != RequirementState.Invalid
     0
