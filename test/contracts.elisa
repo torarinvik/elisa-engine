@@ -1,5 +1,7 @@
 include "../src/backend/contracts.elisa"
+include "../src/runtime/lifetime.elisa"
 using Contracts
+using Lifetime
 
 def main() -> i32:
     return 1 if not all_contracts_valid()
@@ -26,4 +28,29 @@ def main() -> i32:
     return 11 if contract_valid(invalid_thread)
     invalid_output: FfiContract = FfiContract{operation: Operation.Destroy, input_shape: "owned handle", output_shape: "", byte_alignment: 8, input_ownership: Ownership.HandleOwner, output_ownership: Ownership.None, retention: Retention.NoRetention, thread: Thread.Backend, failure: Failure.ErrorValue, destroys_partial: false, completion_required: false}
     return 12 if contract_valid(invalid_output)
+    queue: mutable Queue = Queue()
+    return 13 if not queue_valid(&queue) or pending_count(&queue) != 0 or pending_bytes(&queue) != 0
+    token: CompletionToken = catch submit(&queue, 128):
+        value: value
+        error failure: CompletionToken{serial: -1}
+    return 14 if token.serial != 1 or pending_count(&queue) != 1 or pending_bytes(&queue) != 128 or not queue_valid(&queue)
+    blocked_reset: i32 = catch reset(&queue):
+        ok: 0
+        LifetimeError.PendingWork: 1
+        error failure: 2
+    return 15 if blocked_reset != 1
+    completed: i32 = catch complete(&queue, token):
+        ok: 0
+        LifetimeError.UnknownToken: 1
+        error failure: 2
+    return 16 if completed != 0 or pending_count(&queue) != 0 or not queue_valid(&queue)
+    reset_empty: i32 = catch reset(&queue):
+        ok: 0
+        error failure: 1
+    return 17 if reset_empty != 0
+    invalid_bytes: i32 = catch submit(&queue, 0):
+        value: CompletionToken{serial: -1}
+        LifetimeError.InvalidBytes: 1
+        error failure: 2
+    return 18 if invalid_bytes != 1
     0

@@ -45,6 +45,7 @@ writes `build/validation.json`. Host evidence comes from
 |---|---|---|
 | Canonical scene command stream, both hosts | Tested + Implemented | `src/backend/scene_bridge.elisa`, `test/scene_bridge.elisa`, `scripts/wicked_probe.elisascript`, `scripts/godot_capture.elisascript` |
 | FFI ownership contracts, adversarial bridge | Tested | `src/backend/contracts.elisa`, `src/backend/fake_bridge.elisa`, `test/contracts.elisa`, `test/fake_bridge.elisa` |
+| Submission storage completion boundary | Tested | `src/runtime/lifetime.elisa`, `test/contracts.elisa` |
 | Scene resources rebuilt from canonical data | Tested | `src/backend/recording.elisa`, `test/recording.elisa` |
 | Cross-host rendered comparison with tolerances | Implemented | `scripts/compare_renders.py`, both host runners |
 | Native asset reload (release + rebuild) | Implemented | `native/reload_probe.h`, native runner |

@@ -1,0 +1,73 @@
+# Explicit submission lifetime policy. Frame or upload storage cannot reset
+# merely because CPU work ended; every queued submission needs completion.
+module Lifetime:
+    private:
+        const module Bounds:
+            MAX_SUBMISSIONS: usize = 16
+            INVALID_SLOT: usize = MAX_SUBMISSIONS
+
+    public:
+        error LifetimeError:
+            Capacity
+            InvalidBytes
+            UnknownToken
+            PendingWork
+
+        struct CompletionToken:
+            serial: i64
+
+        struct Submission:
+            token: CompletionToken
+            bytes: usize
+            live: mutable bool
+
+        affine struct Queue:
+            submissions: mutable Submission[Bounds::MAX_SUBMISSIONS]
+            count: mutable usize
+            next_serial: mutable i64
+
+        def Queue() -> Queue:
+            Queue{submissions: zeroed, count: 0, next_serial: 1}
+
+        def queue_valid(queue: Queue&) -> bool:
+            return false if queue.count > Bounds::MAX_SUBMISSIONS or queue.next_serial <= 0
+            for index in 0..<queue.count |valid: bool = true| -> valid:
+                row: Submission = queue.submissions[index]
+                valid <- false if not row.live or row.bytes == 0 or row.token.serial <= 0
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if queue.submissions[earlier].token.serial == row.token.serial
+                valid <- valid and unique
+
+        private:
+            def slot_of(queue: Queue&, token: CompletionToken) -> usize:
+                for index in 0..<queue.count |slot: usize = Bounds::INVALID_SLOT| -> slot:
+                    break index if queue.submissions[index].live and queue.submissions[index].token.serial == token.serial
+
+        public:
+            def pending_count(queue: Queue&) -> usize:
+                queue.count
+
+            def pending_bytes(queue: Queue&) -> usize:
+                for index in 0..<queue.count |total: usize = 0| -> total:
+                    total <- total + queue.submissions[index].bytes
+
+            def submit(queue: mutable Queue&, bytes: usize) -> CompletionToken error[LifetimeError]:
+                raise LifetimeError.InvalidBytes if bytes == 0
+                raise LifetimeError.Capacity if queue.count >= Bounds::MAX_SUBMISSIONS
+                token: CompletionToken = CompletionToken{serial: queue.next_serial}
+                queue.next_serial <- queue.next_serial + 1
+                queue.submissions[queue.count] <- Submission{token: token, bytes: bytes, live: true}
+                queue.count <- queue.count + 1
+                token
+
+            def complete(queue: mutable Queue&, token: CompletionToken) -> void error[LifetimeError]:
+                slot: usize = slot_of(queue, token)
+                raise LifetimeError.UnknownToken if slot == Bounds::INVALID_SLOT
+                for shift in slot..<queue.count - 1 |queue|:
+                    queue.submissions[shift] <- queue.submissions[shift + 1]
+                queue.submissions[queue.count - 1].live <- false
+                queue.count <- queue.count - 1
+
+            def reset(queue: mutable Queue&) -> void error[LifetimeError]:
+                raise LifetimeError.PendingWork if queue.count != 0
