@@ -19,7 +19,7 @@ module Runtime:
             accumulated_micros: mutable i64
             tick_count: mutable i64
 
-        def step_clock_new() -> StepClock:
+        def StepClock() -> StepClock:
             StepClock{accumulated_micros: 0, tick_count: 0}
 
         def fixed_step_micros() -> i64:

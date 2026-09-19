@@ -63,8 +63,8 @@ def main() -> i32:
         error failure: return 2
     first_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
     second_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    first_clock: mutable StepClock = step_clock_new()
-    second_clock: mutable StepClock = step_clock_new()
+    first_clock: mutable StepClock = StepClock()
+    second_clock: mutable StepClock = StepClock()
     visual: VisualAsset = VisualAsset{
         mesh: AssetId{high: 23, low: 1},
         material: AssetId{high: 23, low: 2},

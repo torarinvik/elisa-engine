@@ -72,7 +72,7 @@ def main() -> i32:
     return 22 if not plan_valid(&grouped_plan, systems)
     seq: i64[8] = plan_sequence(&grouped_plan)
     return 23 if seq[0] != 0 or seq[1] != 2 or seq[2] != 3 or seq[3] != 1
-    state: mutable FrameState = frame_state_new()
+    state: mutable FrameState = FrameState()
     dispatched: i32 =
         catch plan_execute(&grouped_plan, &state, dispatch):
             ok: 0
@@ -103,7 +103,7 @@ def main() -> i32:
     return 30 if auto.group[2] != 0 or auto.group[3] != 0
     auto_seq: i64[8] = plan_sequence(&auto)
     return 31 if auto_seq[0] != 0 or auto_seq[1] != 2 or auto_seq[2] != 3 or auto_seq[3] != 1
-    auto_state: mutable FrameState = frame_state_new()
+    auto_state: mutable FrameState = FrameState()
     auto_run: i32 =
         catch plan_execute(&auto, &auto_state, dispatch):
             ok: 0

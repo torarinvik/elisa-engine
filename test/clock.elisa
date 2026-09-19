@@ -2,7 +2,7 @@ include "../src/runtime/clock.elisa"
 using Runtime
 
 def main() -> i32:
-    clock: mutable StepClock = step_clock_new()
+    clock: mutable StepClock = StepClock()
     step: i64 = fixed_step_micros()
     return 1 if step <= 0 or max_catch_up_steps() != 4
 

@@ -36,7 +36,7 @@ module Executor:
             trace: mutable i64[8]
             length: mutable usize
 
-        def frame_state_new() -> FrameState:
+        def FrameState() -> FrameState:
             FrameState{visits: zeroed, trace: zeroed, length: 0}
 
         def Plan() -> Plan:
