@@ -1,0 +1,20 @@
+include "../src/assets/scene.elisa"
+
+def main() -> i32:
+    scene: mutable AssetScene::Scene = AssetScene::Scene()
+    identity: Geometry::Transform = Geometry::transform_identity()
+    return 1 if not AssetScene::add_node(&scene, AssetScene::Node{id: 1, parent: 0, local: identity, primitive_start: 0, primitive_count: 1})
+    return 2 if not AssetScene::add_node(&scene, AssetScene::Node{id: 2, parent: 1, local: identity, primitive_start: 1, primitive_count: 0})
+    mesh: Assets::AssetId = Assets::AssetId{high: 1, low: 2}
+    material: Assets::AssetId = Assets::AssetId{high: 1, low: 3}
+    primitive: AssetScene::Primitive = AssetScene::Primitive{mesh: mesh, material: material, mode: AssetScene::PrimitiveMode.Triangles, vertex_count: 24, index_count: 36, skin_index: -1, morph_target_count: 2}
+    return 3 if not AssetScene::add_primitive(&scene, primitive)
+    return 4 if not AssetScene::add_camera(&scene, AssetScene::Camera{node_id: 1, perspective: true, primary: true, vertical_fov: 1.0, near_clip: 0.1, far_clip: 100.0})
+    return 5 if not AssetScene::add_light(&scene, AssetScene::Light{node_id: 1, kind: 0, intensity: 2.0, range: 20.0})
+    return 6 if not AssetScene::add_skin(&scene, AssetScene::Skin{skeleton_node: 1, joint_count: 2})
+    return 7 if not AssetScene::scene_valid(&scene) or AssetScene::primitive_count(&scene) != 1
+    return 8 if AssetScene::reject_unsupported_extension(&scene) or AssetScene::scene_valid(&scene)
+    cycle_scene: mutable AssetScene::Scene = AssetScene::Scene()
+    return 9 if not AssetScene::add_node(&cycle_scene, AssetScene::Node{id: 1, parent: 0, local: identity, primitive_start: 0, primitive_count: 0})
+    return 10 if AssetScene::add_node(&cycle_scene, AssetScene::Node{id: 2, parent: 3, local: identity, primitive_start: 0, primitive_count: 0})
+    0

@@ -1,0 +1,150 @@
+# Normalized glTF scene contract. Native cgltf importers populate this bounded
+# representation; renderer and animation services consume it without retaining
+# cgltf pointers or silently dropping unsupported extensions.
+include "../math/geometry.elisa"
+include "./descriptor.elisa"
+
+module AssetScene:
+    private:
+        const module Limits:
+            MAX_NODES: usize = 64
+            MAX_PRIMITIVES: usize = 128
+            MAX_CAMERAS: usize = 8
+            MAX_LIGHTS: usize = 16
+            MAX_SKINS: usize = 8
+            INVALID_SLOT: usize = MAX_NODES
+
+        def node_slot(scene: Scene&, id: i64) -> usize:
+            for index in 0..<scene.node_count |slot: usize = Limits::INVALID_SLOT| -> slot:
+                break index if scene.nodes[index].id == id
+
+        def parent_exists(scene: Scene&, id: i64) -> bool:
+            id == 0 or node_slot(scene, id) != Limits::INVALID_SLOT
+
+        def cycle(scene: Scene&, child: i64, parent: i64) -> bool:
+            cursor: mutable i64 = parent
+            for _ in 0..<Limits::MAX_NODES:
+                return true if cursor == child
+                return false if cursor == 0
+                slot: usize = node_slot(scene, cursor)
+                return false if slot == Limits::INVALID_SLOT
+                cursor <- scene.nodes[slot].parent
+            true
+
+    public:
+        const CURRENT_VERSION: i64 = 1
+
+        enum PrimitiveMode:
+            Triangles
+            Lines
+            Points
+
+        struct Node:
+            id: i64
+            parent: i64
+            local: Geometry::Transform
+            primitive_start: usize
+            primitive_count: usize
+
+        struct Primitive:
+            mesh: Assets::AssetId
+            material: Assets::AssetId
+            mode: PrimitiveMode
+            vertex_count: usize
+            index_count: usize
+            skin_index: i64
+            morph_target_count: usize
+
+        struct Camera:
+            node_id: i64
+            perspective: bool
+            primary: bool
+            vertical_fov: f32
+            near_clip: f32
+            far_clip: f32
+
+        struct Light:
+            node_id: i64
+            kind: i64
+            intensity: f32
+            range: f32
+
+        struct Skin:
+            skeleton_node: i64
+            joint_count: usize
+
+        affine struct Scene:
+            private:
+                version: i64
+                nodes: mutable Node[Limits::MAX_NODES]
+                primitives: mutable Primitive[Limits::MAX_PRIMITIVES]
+                cameras: mutable Camera[Limits::MAX_CAMERAS]
+                lights: mutable Light[Limits::MAX_LIGHTS]
+                skins: mutable Skin[Limits::MAX_SKINS]
+                node_count: mutable usize
+                primitive_count: mutable usize
+                camera_count: mutable usize
+                light_count: mutable usize
+                skin_count: mutable usize
+                unsupported_extensions: mutable usize
+
+        def Scene() -> Scene:
+            Scene{version: CURRENT_VERSION, nodes: zeroed, primitives: zeroed, cameras: zeroed, lights: zeroed, skins: zeroed, node_count: 0, primitive_count: 0, camera_count: 0, light_count: 0, skin_count: 0, unsupported_extensions: 0}
+
+        def add_node(scene: mutable Scene&, node: Node) -> bool:
+            return false if scene.node_count >= Limits::MAX_NODES or node.id <= 0 or node.parent < 0 or node.primitive_count > Limits::MAX_PRIMITIVES
+            return false if node_slot(scene, node.id) != Limits::INVALID_SLOT or not parent_exists(scene, node.parent) or cycle(scene, node.id, node.parent)
+            scene.nodes[scene.node_count] <- node
+            scene.node_count <- scene.node_count + 1
+            true
+
+        def add_primitive(scene: mutable Scene&, primitive: Primitive) -> bool:
+            return false if scene.primitive_count >= Limits::MAX_PRIMITIVES or not Assets::asset_id_valid(primitive.mesh) or not Assets::asset_id_valid(primitive.material) or Assets::same_asset_id(primitive.mesh, primitive.material)
+            return false if primitive.vertex_count == 0 or primitive.index_count == 0
+            scene.primitives[scene.primitive_count] <- primitive
+            scene.primitive_count <- scene.primitive_count + 1
+            true
+
+        def add_camera(scene: mutable Scene&, camera: Camera) -> bool:
+            return false if scene.camera_count >= Limits::MAX_CAMERAS or node_slot(scene, camera.node_id) == Limits::INVALID_SLOT or camera.vertical_fov <= 0.0 or camera.near_clip <= 0.0 or camera.far_clip <= camera.near_clip
+            scene.cameras[scene.camera_count] <- camera
+            scene.camera_count <- scene.camera_count + 1
+            true
+
+        def add_light(scene: mutable Scene&, light: Light) -> bool:
+            return false if scene.light_count >= Limits::MAX_LIGHTS or node_slot(scene, light.node_id) == Limits::INVALID_SLOT or light.kind < 0 or light.intensity < 0.0 or light.range <= 0.0
+            scene.lights[scene.light_count] <- light
+            scene.light_count <- scene.light_count + 1
+            true
+
+        def add_skin(scene: mutable Scene&, skin: Skin) -> bool:
+            return false if scene.skin_count >= Limits::MAX_SKINS or skin.skeleton_node <= 0 or node_slot(scene, skin.skeleton_node) == Limits::INVALID_SLOT or skin.joint_count == 0
+            scene.skins[scene.skin_count] <- skin
+            scene.skin_count <- scene.skin_count + 1
+            true
+
+        def reject_unsupported_extension(scene: mutable Scene&) -> bool:
+            scene.unsupported_extensions <- scene.unsupported_extensions + 1
+            false
+
+        def scene_valid(scene: Scene&) -> bool:
+            return false if scene.version != CURRENT_VERSION or scene.node_count == 0 or scene.node_count > Limits::MAX_NODES or scene.primitive_count > Limits::MAX_PRIMITIVES or scene.camera_count > Limits::MAX_CAMERAS or scene.light_count > Limits::MAX_LIGHTS or scene.skin_count > Limits::MAX_SKINS or scene.unsupported_extensions != 0
+            for index in 0..<scene.node_count:
+                node: Node = scene.nodes[index]
+                return false if node.id <= 0 or not parent_exists(scene, node.parent) or cycle(scene, node.id, node.parent)
+            true
+
+        def node_count(scene: Scene&) -> usize:
+            scene.node_count
+
+        def primitive_count(scene: Scene&) -> usize:
+            scene.primitive_count
+
+        def camera_count(scene: Scene&) -> usize:
+            scene.camera_count
+
+        def light_count(scene: Scene&) -> usize:
+            scene.light_count
+
+        def skin_count(scene: Scene&) -> usize:
+            scene.skin_count

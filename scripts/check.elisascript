@@ -348,6 +348,12 @@ def main(arguments: darray[sview]) -> i64:
     physics_bodies_status <- run_visible(physics_bodies_binary, [])
     return physics_bodies_status if physics_bodies_status != 0
     println("Physics body lifecycle tests passed.")
+    asset_scene_binary: sview = str(root.joinpath("build/asset-scene-test"))
+    asset_scene_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_scene_binary, str(root.joinpath("test/asset_scene.elisa"))])
+    return asset_scene_status if asset_scene_status != 0
+    asset_scene_status <- run_visible(asset_scene_binary, [])
+    return asset_scene_status if asset_scene_status != 0
+    println("Normalized asset scene tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -497,9 +503,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Net session tests passed.")
-
     bundle_test_binary: sview = str(root.joinpath("build/maze-bundle-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", bundle_test_binary, str(root.joinpath("test/maze_bundle.elisa"))])
@@ -511,9 +515,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Maze bundle manifest tests passed.")
-
     audio_test_binary: sview = str(root.joinpath("build/audio-policy-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", audio_test_binary, str(root.joinpath("test/audio_policy.elisa"))])
@@ -525,9 +527,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Audio ownership tests passed.")
-
     codec_test_binary: sview = str(root.joinpath("build/anim-codec-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", codec_test_binary, str(root.joinpath("test/anim_codec.elisa"))])
