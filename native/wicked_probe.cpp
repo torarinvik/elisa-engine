@@ -212,9 +212,6 @@ int main(int argc, char** argv) {
             if (!check(summary.ok && summary.triangles == expected_triangles, "mesh asset triangle count")) {
                 return 1;
             }
-            // Load the cooked package the offline tool produced and require it
-            // to agree with this host's own import. The runtime reads the
-            // package, not the source, so a disagreement is a pipeline defect.
             const std::filesystem::path package_path =
                 manifest_dir / ".." / "build" / "cooked" / (asset_path.stem().string() + ".pkg");
             const CookedPackage package = load_cooked_package(package_path.lexically_normal().string());
@@ -233,7 +230,6 @@ int main(int argc, char** argv) {
             if (!probe_reload(scene, package, package_path.lexically_normal().string())) {
                 return 1;
             }
-            // Cooked texture consumption lives in native/texture_probe.h.
             const std::filesystem::path texture_path =
                 package_path.parent_path() / (asset_path.stem().string() + "_tex.rgba");
             if (!probe_texture_package(texture_path.lexically_normal().string())) {
@@ -249,22 +245,23 @@ int main(int argc, char** argv) {
             if (!probe_texture_bc1(bc1_texture_path.lexically_normal().string())) {
                 return 1;
             }
-            // The KTX containers of the same payloads are what a foreign host
-            // can open directly.
             const std::filesystem::path ktx_texture_path =
                 package_path.parent_path() / (asset_path.stem().string() + "_tex.ktx");
             if (!probe_texture_ktx(ktx_texture_path.lexically_normal().string())) {
                 return 1;
             }
+            const wi::Resource ktx_resource = load_ktx1_texture_resource(
+                ktx_texture_path.lexically_normal().string());
+            if (!check(ktx_resource.IsValid() && ktx_resource.GetTexture().IsValid(),
+                "ktx texture uploaded to Wicked GPU")) return 1;
+            goal_texture = ktx_resource;
             const std::filesystem::path ktx_bc1_texture_path =
                 package_path.parent_path() / (asset_path.stem().string() + "_tex_bc1.ktx");
             if (!probe_texture_ktx(ktx_bc1_texture_path.lexically_normal().string())) {
                 return 1;
             }
-            // Upload the texture into a GPU resource; the goal marker samples
-            // it below so the cooked texture reaches the screen.
-            goal_texture = load_texture_resource(texture_path.lexically_normal().string());
-            if (!check(goal_texture.IsValid(), "goal texture uploaded")) {
+            const wi::Resource raw_texture = load_texture_resource(texture_path.lexically_normal().string());
+            if (!check(raw_texture.IsValid(), "raw texture package uploaded")) {
                 return 1;
             }
         }

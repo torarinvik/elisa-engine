@@ -11,5 +11,6 @@ removes its backing object and returns the scene object count to its baseline;
 foreign handles cannot update another bridge.
 
 The native gate exercises create, update, validation, foreign-owner rejection,
-and unload. Texture-slot upload, authored glTF material import, and transparent
-blend policy remain follow-up R04 work.
+and unload. The authored goal material also consumes a real KTX1 GPU resource;
+texture-slot selection, authored glTF material import, and transparent blend
+policy remain follow-up R04 work.
