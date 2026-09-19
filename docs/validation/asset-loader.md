@@ -19,8 +19,10 @@ upload transitions, placeholder state, 64-byte residency eviction, generation
 identity, and cancellation. The full shared Elisa/Godot/proof check exited 0
 on 2026-09-19.
 
-This is the portable request contract, not a claim that worker threads or GPU
-uploads are complete. A04 remains open for native queue integration, read and
-decode cancellation while in flight, dependency failure propagation, and
-frame-budgeted upload/eviction telemetry.
-
+`native/native_resource_loader.h` now attaches the contract to the bounded
+virtual file service and Wicked device phase. The native gate coalesces a
+compressed override read, decodes it into a bounded 1x1 upload payload, creates
+a real shader-resource texture, and reports requested/coalesced/decoded/uploaded
+counts. Cancellation and stale dependency generations fail before upload.
+Worker-thread scheduling and a production texture decoder remain open; the
+native pump is intentionally bounded and does not block an Elisa frame on IO.

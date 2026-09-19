@@ -3,6 +3,7 @@
 #include "package_load.h"
 #include "probe_support.h"
 #include "virtual_file_service.h"
+#include "native_resource_loader.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -59,7 +60,8 @@ inline void write_binary_package_fixture(const std::filesystem::path& path, bool
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
 
-inline bool probe_package_bounds(const std::string& valid_package) {
+inline bool probe_package_bounds(const std::string& valid_package,
+    wi::graphics::GraphicsDevice* device = nullptr) {
     const std::filesystem::path root = std::filesystem::temp_directory_path() / "elisa-package-probe";
     std::filesystem::create_directories(root);
     const std::filesystem::path duplicate = root / "duplicate.pkg";
@@ -107,6 +109,18 @@ inline bool probe_package_bounds(const std::string& valid_package) {
         vfs.state(stale) == VirtualReadState::Failed &&
         vfs.state(stale_dependency) == VirtualReadState::Failed &&
         vfs.error(stale_dependency) == "stale dependency generation";
+    NativeResourceLoader loader(device);
+    const bool loader_mounted = loader.mount(base_root, {override_root}, 9);
+    const NativeAssetHandle asset = loader.request("maze.elpk", "mesh");
+    const NativeAssetHandle duplicate_asset = loader.request("maze.elpk", "mesh");
+    const bool asset_loaded = loader_mounted && asset.slot == duplicate_asset.slot &&
+        loader.pump(1, 1) == 1 && loader.state(asset) == NativeAssetState::Resident &&
+        loader.texture(asset) != nullptr && loader.telemetry().coalesced == 1;
+    const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
+    const bool asset_cancelled = loader.cancel(cancelled_asset) &&
+        loader.state(cancelled_asset) == NativeAssetState::Cancelled;
+    const NativeAssetHandle stale_asset = loader.request("maze.elpk", "mesh", 8);
+    const bool asset_stale = loader.pump(1, 1) == 0 && loader.state(stale_asset) == NativeAssetState::Failed;
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&
@@ -126,8 +140,11 @@ inline bool probe_package_bounds(const std::string& valid_package) {
         check(virtual_read, "virtual file read coalescing") &&
         check(cancelled_read, "virtual file cancellation") &&
         check(stale_read, "virtual file generation invalidation");
+    const bool loader_result = check(asset_loaded, "native loader coalesced upload") &&
+        check(asset_cancelled, "native loader cancellation") &&
+        check(asset_stale, "native loader dependency generation");
     std::filesystem::remove_all(root);
-    return result;
+    return result && loader_result;
 }
 
 } // namespace probe

@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
                     "cooked package counts match the import")) {
                 return 1;
             }
-            if (!probe_package_bounds(package_path.lexically_normal().string())) return 1;
+            if (!probe_package_bounds(package_path.lexically_normal().string(), wi::graphics::GetDevice())) return 1;
             if (!probe_zstd(package_path.lexically_normal().string())) {
                 return 1;
             }

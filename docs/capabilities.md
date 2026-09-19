@@ -171,7 +171,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Block-compressed texture (BC1/DXT1) | Tested | `scripts/cook_assets.py`, `cooked_texture_bc1`, `backends/godot/probe.gd`, `native/texture_probe.h` |
 | KTX container for cooked textures, consumed by both hosts | Tested | `scripts/cook_assets.py` (`maze_tile_tex.ktx`), `backends/godot/probe.gd` (`load_ktx_from_buffer`, gated), `native/texture_probe.h` (`probe_texture_ktx`) |
 | KTX2/Basis supercompression | Tested + Implemented | `scripts/fetch_basisu.py` (pinned 99f52d63), cooker writes `maze_tile_tex.ktx2`, `native/basisu_probe.cpp` transcodes to RGBA, Godot loads it compressed |
-| Portable asynchronous asset-loader contract | Tested | `src/assets/loader.elisa`, `test/asset_loader.elisa`; request coalescing, staged decode/upload, cancellation, placeholders, generations, and byte-budget eviction are covered; native worker/GPU queue integration remains A04 |
+| Portable and native asynchronous asset-loader contract | Tested | `src/assets/loader.elisa`, `test/asset_loader.elisa`, `native/native_resource_loader.h`; request coalescing, staged decode/upload, cancellation, placeholders, generations, bounded native texture upload, and telemetry are covered; worker scheduling and production decode remain A04 |
 
 ## Verification
 
