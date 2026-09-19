@@ -5,6 +5,7 @@
 #include "wiRenderer.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 namespace probe {
 
@@ -15,8 +16,11 @@ inline bool probe_graphics_capabilities() {
     }
     const auto memory = device->GetMemoryUsage();
     const bool mesh_shader = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::MESH_SHADER);
-    const bool raytracing = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::RAYTRACING);
-    const bool sparse = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::SPARSE_TEXTURE2D);
+    const bool raytracing_native = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::RAYTRACING);
+    const bool sparse_native = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::SPARSE_TEXTURE2D);
+    const bool force_fallback = std::getenv("ELISA_FORCE_OPTIONAL_FALLBACK") != nullptr;
+    const bool raytracing = raytracing_native && !force_fallback;
+    const bool sparse = sparse_native && !force_fallback;
     const uint32_t viewport_count = device->GetMaxViewportCount();
     std::fprintf(stdout,
         "graphics capabilities: adapter=%s shader_format=%d mesh=%d raytracing=%d sparse=%d viewports=%u memory=%llu/%llu\n",
@@ -31,6 +35,9 @@ inline bool probe_graphics_capabilities() {
     // renderer contract, but the report makes that choice visible to Elisa.
     std::fprintf(stdout, "graphics fallback: raytracing=%s sparse_textures=%s\n",
         raytracing ? "native" : "fallback", sparse ? "native" : "fallback");
+    if (!check(!force_fallback || (!raytracing && !sparse), "optional fallback policy")) {
+        return false;
+    }
     return true;
 }
 

@@ -29,6 +29,10 @@ format, viewport limit, video-memory budget/usage, mesh-shader, ray-tracing,
 and sparse-texture capabilities through Wicked's graphics device. Optional
 features are reported as `native` or `fallback`; they are not inferred from a
 linked library or from the machine-independent Elisa profile.
+Setting `ELISA_FORCE_OPTIONAL_FALLBACK=1` exercises the same fallback policy on
+hardware that exposes those features, proving that a linked capability does not
+silently become a gameplay requirement. Native profile population and typed
+Elisa bindings remain open F08 work.
 
 The SDL3 host records logical and physical window sizes, display changes,
 focus, minimize, restore, and close transitions. A minimized or zero-pixel
