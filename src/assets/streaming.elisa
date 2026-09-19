@@ -18,7 +18,7 @@ module Streaming:
             width: i64
             height: i64
             budget: usize
-            resident: mutable bool[64]
+            resident: mutable bool[Tune::MAX_CHUNKS]
             count: mutable usize
             loads: mutable usize
             unloads: mutable usize
@@ -56,7 +56,7 @@ module Streaming:
             return false if chunks_x(state) * chunks_y(state) > Tune::MAX_CHUNKS.usize().i64()
             # A read-only reference cannot be threaded through a value block, so
             # the resident column is copied into a mutable local first.
-            residents: mutable bool[64] = state.resident
+            residents: mutable bool[Tune::MAX_CHUNKS] = state.resident
             live: usize =
                 for index in 0..<Tune::MAX_CHUNKS |total: usize = 0, residents| -> total:
                     total <- total + 1 if residents[index]
@@ -95,7 +95,7 @@ module Streaming:
         def stream_update(state: mutable StreamState&, player_x: i64, player_y: i64, radius: i64) -> usize:
             chunks_x_value: i64 = chunks_x(state)
             chunks_y_value: i64 = chunks_y(state)
-            desired: mutable bool[64] = zeroed
+            desired: mutable bool[Tune::MAX_CHUNKS] = zeroed
             for chunk_y in 0..<chunks_y_value |desired, state, player_x, player_y, radius|:
                 for chunk_x in 0..<chunks_x_value |desired, state, player_x, player_y, radius, chunk_y|:
                     if chunk_overlaps_radius(state, chunk_x, chunk_y, player_x, player_y, radius):
