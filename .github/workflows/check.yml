@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python syntax
         run: python3 -m py_compile scripts/*.py test/check_workflow.py
+      - name: Elisa source-length policy
+        run: python3 scripts/check_source_length.py
       - name: Bounded import self-test
         run: python3 scripts/cook_assets.py --self-test
       - name: Cook assets and verify the KTX containers
