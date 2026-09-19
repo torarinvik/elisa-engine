@@ -46,6 +46,14 @@ def invalid_reference() -> EntityRef:
 def invalid_lookup(reference: EntityRef) -> EntityLookup:
     EntityLookup{reference: reference, kind: Entity.Unknown}
 
+def block_tuple_test() -> i32:
+    folded_left, folded_right =
+        for item in 0..<4 |left: i64 = 0, right: i64 = 1| -> left, right:
+            left <- left + item
+            right <- right * 2
+    return 61 if folded_left != 6 or folded_right != 16
+    0
+
 def churn_test() -> i32:
     world: mutable World = catch World():
         value: value
@@ -393,4 +401,6 @@ def main() -> i32:
     return capacity if capacity != 0
     rollback: i32 = rollback_test()
     return 50 + rollback if rollback != 0
+    block_tuple: i32 = block_tuple_test()
+    return block_tuple if block_tuple != 0
     corruption_test()
