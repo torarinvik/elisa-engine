@@ -121,6 +121,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/world/hierarchy.elisa` provides bounded local/world TRS nodes, dirty propagation, cycle and missing-parent rejection, keep-world reparenting, and root detachment on parent removal; `test/hierarchy.elisa` is part of the shared gate. Interpolation snapshots and physics-owned transform arbitration remain.
 - [ ] **W03 · P1 · Deferred structural mutation** — After: W01.
   Implement phase-bound spawn/despawn/reparent command buffers with stable ordering and an explicit atomicity policy. Done: iteration borrows cannot outlive the phase; conflicting commands, allocation failure, and despawn during events cause neither partial entities nor dangling borrows.
+  Progress: `src/world/commands.elisa` provides a bounded affine spawn/despawn/reparent buffer with insertion order and atomic duplicate-write rejection; `test/world_commands.elisa` is part of the shared gate. Applying accepted commands to `World`, borrow lifetime diagnostics, and allocation-failure rollback remain.
 - [ ] **W04 · P1 · Scene and prefab instances** — After: W02, W03, A01.
   Define versioned scene/prefab data, stable authoring IDs, runtime remapping, nested instances, and overrides. Done: the same prefab can spawn twice without identity collisions; save/reload preserves overrides and rejects cycles or missing references with useful diagnostics.
 - [ ] **W05 · P1 · Streaming world cells** — After: W04, A04, F06.

@@ -1,0 +1,13 @@
+include "../src/world/commands.elisa"
+
+def main() -> i32:
+    buffer: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+    return 1 if not WorldCommands::spawn(&buffer, 1)
+    return 2 if not WorldCommands::reparent(&buffer, 2, 1)
+    return 3 if WorldCommands::command_count(&buffer) != 2 or not WorldCommands::batch_valid(&buffer)
+    return 4 if not WorldCommands::commit(&buffer) or WorldCommands::command_count(&buffer) != 0
+    return 5 if not WorldCommands::spawn(&buffer, 3) or not WorldCommands::despawn(&buffer, 3)
+    return 6 if WorldCommands::batch_valid(&buffer)
+    return 8 if WorldCommands::commit(&buffer)
+    return 7 if WorldCommands::command_count(&buffer) != 2
+    0

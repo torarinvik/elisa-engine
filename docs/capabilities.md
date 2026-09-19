@@ -67,6 +67,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Canonical scene command stream, both hosts | Tested + Implemented | `src/backend/scene_bridge.elisa`, `test/scene_bridge.elisa`, `scripts/wicked_probe.elisascript`, `scripts/godot_capture.elisascript` |
 | Persistent one-to-many render extraction | Tested | `src/backend/render_snapshot.elisa`, `test/render_snapshot.elisa`, `docs/validation/render-extraction.md`; native submission remains an adapter |
 | Bounded transform hierarchy with checked reparenting | Tested | `src/world/hierarchy.elisa`, `test/hierarchy.elisa`, `docs/validation/transform-hierarchy.md`; physics arbitration remains W02 |
+| Deferred structural world command buffer | Tested | `src/world/commands.elisa`, `test/world_commands.elisa`, `docs/validation/deferred-world-commands.md`; application to the primary registry remains W03 |
 | FFI ownership contracts, adversarial bridge | Tested | `src/backend/contracts.elisa`, `src/backend/fake_bridge.elisa`, `test/contracts.elisa`, `test/fake_bridge.elisa` |
 | Submission storage completion boundary | Tested | `src/runtime/lifetime.elisa`, `test/contracts.elisa` |
 | Scene resources rebuilt from canonical data | Tested | `src/backend/recording.elisa`, `test/recording.elisa` |

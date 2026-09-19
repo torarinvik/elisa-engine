@@ -1,0 +1,58 @@
+# Deferred structural mutation. A phase records values only; commit is the one
+# boundary that accepts or rejects the complete batch.
+module WorldCommands:
+    public:
+        const MAX_COMMANDS: usize = 128
+
+        enum Kind:
+            Spawn
+            Despawn
+            Reparent
+
+        struct Command:
+            kind: Kind
+            id: i64
+            parent: i64
+            order: usize
+
+        affine struct Buffer:
+            private:
+                commands: mutable Command[WorldCommands::MAX_COMMANDS]
+                count: mutable usize
+
+        def Buffer() -> Buffer:
+            Buffer{commands: zeroed, count: 0}
+
+        def command_count(buffer: Buffer&) -> usize:
+            buffer.count
+
+        def append(buffer: mutable Buffer&, command: Command) -> bool:
+            return false if buffer.count >= WorldCommands::MAX_COMMANDS or command.id <= 0
+            buffer.commands[buffer.count] <- command
+            buffer.count <- buffer.count + 1
+            true
+
+        def spawn(buffer: mutable Buffer&, id: i64) -> bool:
+            append(buffer, Command{kind: Kind.Spawn, id: id, parent: 0, order: buffer.count})
+
+        def despawn(buffer: mutable Buffer&, id: i64) -> bool:
+            append(buffer, Command{kind: Kind.Despawn, id: id, parent: 0, order: buffer.count})
+
+        def reparent(buffer: mutable Buffer&, id: i64, parent: i64) -> bool:
+            return false if parent < 0 or parent == id
+            append(buffer, Command{kind: Kind.Reparent, id: id, parent: parent, order: buffer.count})
+
+        def batch_valid(buffer: Buffer&) -> bool:
+            for index in 0..<buffer.count |valid: bool = true| -> valid:
+                left: Command = buffer.commands[index]
+                valid <- false if left.order != index
+                duplicate_free: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        right: Command = buffer.commands[earlier]
+                        inner <- false if left.id == right.id
+                valid <- valid and duplicate_free
+
+        def commit(buffer: mutable Buffer&) -> bool:
+            return false if not batch_valid(buffer)
+            buffer.count <- 0
+            true

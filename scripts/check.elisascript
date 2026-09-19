@@ -113,7 +113,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(world_test_binary, [])
         if status != 0:
@@ -311,6 +310,12 @@ def main(arguments: darray[sview]) -> i64:
     hierarchy_status <- run_visible(hierarchy_binary, [])
     return hierarchy_status if hierarchy_status != 0
     println("Transform hierarchy tests passed.")
+    commands_binary: sview = str(root.joinpath("build/world-commands-test"))
+    commands_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", commands_binary, str(root.joinpath("test/world_commands.elisa"))])
+    return commands_status if commands_status != 0
+    commands_status <- run_visible(commands_binary, [])
+    return commands_status if commands_status != 0
+    println("Deferred world command tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -323,7 +328,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Tolerance image comparison tests passed.")
 
     package_test_binary: sview = str(root.joinpath("build/package-test"))
@@ -332,22 +336,18 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(package_test_binary, [])
         if status != 0:
             return status
         status
-
     println("Asset cooking tests passed.")
-
     maze_test_binary: sview = str(root.joinpath("build/maze-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", maze_test_binary, str(root.joinpath("test/maze.elisa"))])
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(maze_test_binary, [])
         if status != 0:
