@@ -5,6 +5,7 @@
 // uses the same object as any future persistent game host, while its finite
 // diagnostics remain a client concern.
 #include "wiApplication.h"
+#include "wiGraphics.h"
 #include "wiInitializer.h"
 
 #include <SDL3/SDL.h>
@@ -39,6 +40,7 @@ public:
     };
 
     NativeApplication() = default;
+    ~NativeApplication() = default;
     NativeApplication(const NativeApplication&) = delete;
     NativeApplication& operator=(const NativeApplication&) = delete;
 
@@ -104,6 +106,27 @@ public:
     }
 
     void request_close() {
+        close_requested_ = true;
+    }
+
+    // Releases work owned by this host before SDL disappears. Wicked's
+    // process-wide worker services remain outside this wrapper; callers can
+    // use this boundary to test whether the pinned build tolerates normal
+    // C++ destruction instead of the finite probe's forced exit.
+    void shutdown() {
+        if (!initialized_) {
+            return;
+        }
+        if (wi::graphics::GetDevice() != nullptr) {
+            wi::graphics::GetDevice()->WaitForGPU();
+        }
+        application_.window = nullptr;
+        if (window_ != nullptr) {
+            SDL_DestroyWindow(window_);
+            window_ = nullptr;
+        }
+        SDL_Quit();
+        initialized_ = false;
         close_requested_ = true;
     }
 

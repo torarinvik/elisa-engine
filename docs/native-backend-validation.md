@@ -39,6 +39,14 @@ presentation interpolation fraction without adding work to the Elisa world.
 The finite native gate injects focus/minimize/restore/pixel-size events and
 checks the state transitions and monotonic resize serial.
 
+`NativeApplication::shutdown()` provides the host-local half of orderly
+shutdown (GPU wait, window detachment, SDL destruction). The optional
+`ELISA_ORDERLY_SHUTDOWN=1` probe is intentionally not part of the green gate:
+the pinned Wicked worker systems still lack a public process-wide shutdown and
+the full graphics run does not complete that mode reliably. This limitation is
+tracked in [`docs/validation/orderly-shutdown.md`](validation/orderly-shutdown.md)
+and keeps F05 open.
+
 ## Prerequisites and commands
 
 Godot 4.7.2 is used for the headless host probe:

@@ -593,8 +593,8 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "scene despawn passed\n");
 
-    // Wicked's global worker systems have no public shutdown API. The one-shot
-    // host exits after the lifecycle assertions so OS teardown cannot race them.
+    if (std::getenv("ELISA_ORDERLY_SHUTDOWN") != nullptr) { application_host.shutdown(); std::fprintf(stdout, "orderly native shutdown passed\n"); return 0; }
+    // The finite probe keeps the known global-worker workaround.
     std::fflush(stdout);
     std::_Exit(0);
 }
