@@ -2,6 +2,7 @@
 
 #include "package_load.h"
 #include "probe_support.h"
+#include "virtual_file_service.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -81,9 +82,27 @@ inline bool probe_package_bounds(const std::string& valid_package) {
     write_binary_package_fixture(overlap, true);
     write_binary_package_fixture(compressed, false, true);
     write_binary_package_fixture(zstd, false, false, true);
+    write_binary_package_fixture(base_root / "maze.elpk", false);
+    write_binary_package_fixture(override_root / "maze.elpk", false, false, true);
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
     std::vector<uint8_t> section;
     std::string section_error;
+    VirtualFileService vfs;
+    const bool mounted = vfs.mount(base_root, {override_root}, 7);
+    const VirtualReadHandle first_read = vfs.request("maze.elpk", "mesh");
+    const VirtualReadHandle duplicate_read = vfs.request("maze.elpk", "mesh");
+    std::vector<uint8_t> virtual_bytes;
+    std::string virtual_error;
+    uint64_t virtual_generation = 0;
+    const bool virtual_read = mounted && first_read.slot == duplicate_read.slot &&
+        vfs.pump(1) == 1 && vfs.state(first_read) == VirtualReadState::Ready &&
+        vfs.take(first_read, virtual_bytes, virtual_generation, virtual_error) &&
+        virtual_generation == 7 && std::string(virtual_bytes.begin(), virtual_bytes.end()) == "elisa-bundle-section";
+    const VirtualReadHandle cancelled = vfs.request("maze.elpk", "missing");
+    const bool cancelled_read = vfs.cancel(cancelled) && vfs.state(cancelled) == VirtualReadState::Cancelled;
+    const VirtualReadHandle stale = vfs.request("maze.elpk", "mesh");
+    const bool remounted = vfs.mount(base_root, {}, 8);
+    const bool stale_read = remounted && vfs.pump(1) == 1 && vfs.state(stale) == VirtualReadState::Failed;
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&
@@ -99,7 +118,10 @@ inline bool probe_package_bounds(const std::string& valid_package) {
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&
-        check(!resolve_package_path(base_root, {}, "maze.elpk", 0).found, "package zero generation rejected");
+        check(!resolve_package_path(base_root, {}, "maze.elpk", 0).found, "package zero generation rejected") &&
+        check(virtual_read, "virtual file read coalescing") &&
+        check(cancelled_read, "virtual file cancellation") &&
+        check(stale_read, "virtual file generation invalidation");
     std::filesystem::remove_all(root);
     return result;
 }

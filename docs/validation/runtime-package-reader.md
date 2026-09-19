@@ -18,5 +18,10 @@ package format and a reusable binary index boundary. `read_binary_package_sectio
 also decompresses bounded zstd sections and the gate verifies the decoded
 payload. `resolve_package_path` selects an explicit override root before the
 shipped base root, rejects traversal and invalid generations, and returns the
-generation attached to the selected path. Async reads and dependency-generation
-propagation remain the broader A03/A04 follow-up.
+generation attached to the selected path. `native/virtual_file_service.h` adds
+a bounded request table over that resolver: duplicate logical-name/section
+requests coalesce, cancellation is explicit, reads complete in a caller-
+supplied pump budget, and a remount invalidates queued work whose captured
+generation is stale. The probe covers override-backed zstd data, cancellation,
+and generation invalidation; worker-thread scheduling and dependency graph
+propagation remain A03/A04 follow-up.
