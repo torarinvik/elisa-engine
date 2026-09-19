@@ -26,6 +26,7 @@ module World:
             InvalidKind
             InvalidReference
             StorageMismatch
+            InvalidValue
 
     private:
         const module Bounds:
@@ -303,6 +304,24 @@ module World:
             index: usize = enemy_slot(world, reference.id)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
             world.enemies[index]
+
+        def world_actor_set_health(world: mutable World&, reference: EntityRef, health: i64) -> void error[WorldError]:
+            raise WorldError.InvalidValue if health < 0
+            registry_index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if registry_index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.StorageMismatch if world.registry[registry_index].storage != StorageKind.Actor
+            index: usize = actor_slot(world, reference.id)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            world.actors[index].health <- health
+
+        def world_enemy_set_threat(world: mutable World&, reference: EntityRef, threat: i64) -> void error[WorldError]:
+            raise WorldError.InvalidValue if threat < 0
+            registry_index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if registry_index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.StorageMismatch if world.registry[registry_index].storage != StorageKind.Enemy
+            index: usize = enemy_slot(world, reference.id)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            world.enemies[index].threat <- threat
 
         def world_is_live(world: World&, reference: EntityRef) -> bool:
             registry_slot(world, reference) != Sentinel::WORLD_INVALID_SLOT
