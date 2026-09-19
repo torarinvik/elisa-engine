@@ -386,6 +386,14 @@ module World:
             return -1 if index >= world.live_ids_count
             world.live_ids[index]
 
+        # Dense iteration returns a checked world-branded reference instead of
+        # making each caller reconstruct provenance from a raw numeric ID.
+        def world_live_reference_at(world: World&, index: usize) -> EntityRef error[WorldError]:
+            raise WorldError.InvalidReference if index >= world.live_ids_count
+            reference: EntityRef = EntityRef{world_epoch: world.epoch, id: world.live_ids[index]}
+            raise WorldError.InvalidReference if not world_is_live(world, reference)
+            reference
+
         # The compact column is consistent when it holds exactly the live ids,
         # once each, and nothing else.
         def world_live_column_valid(world: World&) -> bool:

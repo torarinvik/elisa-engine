@@ -372,6 +372,15 @@ def main() -> i32:
     return 13 if not entity_is_actor(Enemy.Guard) or not entity_is_enemy(Enemy.Guard)
     return 14 if entity_is_actor(Entity.Unknown) or entity_is_enemy(Entity.Unknown)
     return 15 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
+    live_reference: EntityRef = catch world_live_reference_at(&world, 0):
+        value: value
+        error failure: invalid_reference()
+    return 18 if live_reference.world_epoch != world_epoch(&world) or not world_is_live(&world, live_reference)
+    missing_live_reference: i32 = catch world_live_reference_at(&world, 2):
+        value: 1
+        WorldError.InvalidReference: 0
+        error failure: 2
+    return 19 if missing_live_reference != 0
     # The freed slot is reused, so the column order follows the registry, not
     # spawn order; what matters is that it holds exactly the live ids.
     return 16 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
