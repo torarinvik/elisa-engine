@@ -44,6 +44,7 @@
 #include "coordinate_fixture.h"
 #include "package_bounds_probe.h"
 #include "render_snapshot_bridge.h"
+#include "physics_body_bridge.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -93,6 +94,7 @@ int main(int argc, char** argv) {
     if (!persistent_host && !probe_window_lifecycle(application_host)) return 1;
     wi::scene::Scene scene;
     if (!probe_render_snapshot_bridge(scene)) return 1;
+    if (!probe_physics_body_bridge(scene)) return 1;
     if (!probe_native_resource_handles(scene)) {
         return 1;
     }
@@ -101,8 +103,6 @@ int main(int argc, char** argv) {
     }
     const auto object = scene.Entity_CreateCube("elisa_cube_" + std::to_string(entity_id));
     const auto camera = scene.Entity_CreateCamera("elisa_camera_" + std::to_string(camera_id), width, height);
-    // A point lamp: without any light the standard material shades black and
-    // the captured frame carries no evidence that anything was drawn.
     const auto lamp = scene.Entity_CreateLight("elisa_light", XMFLOAT3(2.0f, 3.0f, -2.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), 30.0f, 60.0f);
     if (!check(object != wi::ecs::INVALID_ENTITY, "cube entity") ||
         !check(camera != wi::ecs::INVALID_ENTITY, "camera entity") ||
@@ -176,8 +176,6 @@ int main(int argc, char** argv) {
     if (!wall_cells.empty() && wall_entities.size() + walls_hidden != wall_cells.size()) {
         return 1;
     }
-    // Game markers the Elisa rules place: key, door, hazards, goal. Zones
-    // carry their own unlit colour so a captured frame can be checked for
     // the right object at the right cell.
     std::vector<wi::ecs::Entity> marker_entities;
     const auto marker_cells = [&manifest](const char* key) {
