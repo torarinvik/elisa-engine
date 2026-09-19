@@ -405,10 +405,13 @@ def convergence_profile(loss_every: usize, delay: i64, revisions: usize) -> i32:
     0
 
 def convergence_fuzz() -> i32:
-    for loss in 2..<5:
-        for delay in 0..<3:
-            result: i32 = convergence_profile(loss.usize(), delay.i64(), 6)
-            return result if result != 0
+    status: mutable i32 = 0
+    _ =
+        for loss in 2..<5 |status|:
+            for delay in 0..<3 |status|:
+                result: i32 = convergence_profile(loss.usize(), delay.i64(), 6)
+                status <- result if status == 0 and result != 0
+    return status if status != 0
     no_loss: i32 = convergence_profile(0, 0, 6)
     return 154 if no_loss != 0
     0
