@@ -122,6 +122,10 @@ def main(arguments: darray[sview]) -> i64:
     if not is_file(path(str(miniaudio.joinpath("miniaudio.h")))):
         eprint("Missing miniaudio; run python3 scripts/fetch_dependencies.py first.")
         return 2
+    basis: Path = root.joinpath("dependencies/basisu")
+    if not is_file(path(str(basis.joinpath("transcoder/basisu_transcoder.h")))):
+        eprint("Missing Basis transcoder; run python3 scripts/fetch_basisu.py first.")
+        return 2
     recast: Path = root.joinpath("dependencies/recast")
     recast_include: Path = recast.joinpath("Recast/Include")
     detour_include: Path = recast.joinpath("Detour/Include")
@@ -145,6 +149,7 @@ def main(arguments: darray[sview]) -> i64:
         "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
         "-I", str(dependencies), "-I", str(root.joinpath("build")), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
         "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
+        "-I", str(basis.joinpath("transcoder")),
         "-I", freetype_include, "-I", harfbuzz_include,
         "-I", str(tracy.joinpath("public")), "-DTRACY_ENABLE",
         "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
@@ -152,6 +157,7 @@ def main(arguments: darray[sview]) -> i64:
         "-I", str(utility.joinpath("metal")),
         "-I", sdl_include, "-I", sdl_subinclude,
         str(source), str(helper), str(input_helper),
+        str(basis.joinpath("transcoder/basisu_transcoder.cpp")),
         str(tracy.joinpath("public/TracyClient.cpp")),
         str(meshopt.joinpath("allocator.cpp")),
         str(meshopt.joinpath("vcacheoptimizer.cpp")),

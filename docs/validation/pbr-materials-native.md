@@ -12,5 +12,6 @@ foreign handles cannot update another bridge.
 
 The native gate exercises create, update, base-color texture-slot binding,
 validation, foreign-owner rejection, and unload. The authored goal material
-also consumes a real KTX1 GPU resource; authored glTF material import and
-transparent blend policy remain follow-up R04 work.
+consumes a real Basis/KTX2 GPU resource (with the KTX1 upload retained as a
+structural probe); authored glTF material import and transparent blend policy
+remain follow-up R04 work.

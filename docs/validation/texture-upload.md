@@ -10,6 +10,9 @@ The native gate uploads the same KTX produced by the cooker and assigns the
 result to the authored goal material. The existing raw package, RGB565, BC1,
 and KTX structural probes remain alongside this GPU upload check.
 
-KTX2/Basis transcoding and queried GPU-native format selection remain separate
-follow-up work; malformed or unsupported containers must continue to fail
-before allocation.
+The gate also loads the cooked KTX2 artifact through the pinned Basis
+transcoder in `native/ktx2_upload.h`, transcodes mip level zero to RGBA8, and
+assigns that real Wicked GPU texture to the authored goal material. The
+container is bounded and malformed input fails before allocation. Mip-chain
+upload, color-space/alpha policy, GPU-native format selection, and memory
+budgets remain follow-up A06 work.

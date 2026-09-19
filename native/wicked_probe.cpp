@@ -29,6 +29,7 @@
 #include "reload_probe.h"
 #include "texture_probe.h"
 #include "texture_upload.h"
+#include "ktx2_upload.h"
 #include "gui_probe.h"
 #include "tracy_probe.h"
 #include "audio_probe.h"
@@ -194,9 +195,6 @@ int main(int argc, char** argv) {
         {"hazards", "elisa_hazard", 0.95f, 0.15f, 0.1f},
         {"hunter", "elisa_hunter", 1.0f, 0.55f, 0.1f},
     };
-    // Authored asset: import the same glTF the Godot host loads, through
-    // cgltf, and verify its triangle count. This is the pipeline's import
-    // stage (normalized counts); renderer mesh creation is a later step.
     CookedPackage cooked_package;
     wi::Resource goal_texture;
     {
@@ -258,6 +256,14 @@ int main(int argc, char** argv) {
             if (!check(ktx_resource.IsValid() && ktx_resource.GetTexture().IsValid(),
                 "ktx texture uploaded to Wicked GPU")) return 1;
             goal_texture = ktx_resource;
+            const std::filesystem::path ktx2_texture_path =
+                package_path.parent_path() / (asset_path.stem().string() + "_tex.ktx2");
+            if (!check(std::filesystem::is_regular_file(ktx2_texture_path), "KTX2 artifact present")) return 1;
+            const wi::Resource ktx2_resource = load_ktx2_texture_resource(
+                ktx2_texture_path.lexically_normal().string());
+            if (!check(ktx2_resource.IsValid() && ktx2_resource.GetTexture().IsValid(),
+                "KTX2 texture uploaded to Wicked GPU")) return 1;
+            goal_texture = ktx2_resource;
             const std::filesystem::path ktx_bc1_texture_path =
                 package_path.parent_path() / (asset_path.stem().string() + "_tex_bc1.ktx");
             if (!probe_texture_ktx(ktx_bc1_texture_path.lexically_normal().string())) {
@@ -275,9 +281,6 @@ int main(int argc, char** argv) {
         for (const auto& cell : marker_cells(spec.field)) {
             const std::string marker_name =
                 std::string(spec.name) + "_" + std::to_string(cell.first) + "_" + std::to_string(cell.second);
-            // The goal marker is built from the cooked package's geometry, so
-            // the authored asset reaches the screen through the pipeline. If
-            // no package loaded, fall back to the procedural cube.
             const bool use_cooked = std::string(spec.field) == "goal" && cooked_package.loaded;
             const auto marker = use_cooked
                 ? create_cooked_mesh(scene, marker_name, cooked_package,
@@ -303,9 +306,6 @@ int main(int argc, char** argv) {
             marker_entities.push_back(marker);
         }
     }
-    // When a package loaded, the goal marker must have been built from it
-    // rather than the procedural fallback, so the authored asset really does
-    // reach the screen through the pipeline.
     if (!check(!cooked_package.loaded || goal_used_cooked, "goal marker uses the cooked package mesh")) {
         return 1;
     }
