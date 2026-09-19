@@ -34,7 +34,7 @@ module UiWidgets:
             visible: bool
 
         struct Surface:
-            widgets: mutable Widget[16]
+            widgets: mutable Widget[WidgetBounds::MAX_WIDGETS]
             count: mutable usize
 
         def Surface() -> Surface:

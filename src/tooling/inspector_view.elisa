@@ -5,7 +5,7 @@ module InspectorView:
     private:
         const module Bounds:
             MAX_FIELDS: usize = 8
-            INVALID_INDEX: usize = 8
+            INVALID_INDEX: usize = MAX_FIELDS
 
     public:
         enum FieldKind:
@@ -29,7 +29,7 @@ module InspectorView:
             editable: bool
 
         struct Model:
-            fields: mutable Field[8]
+            fields: mutable Field[Bounds::MAX_FIELDS]
             count: mutable usize
             selected: mutable usize
             dirty: mutable bool

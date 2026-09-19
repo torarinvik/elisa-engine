@@ -7,7 +7,7 @@ module AssetBrowser:
     private:
         const module Bounds:
             MAX_ROWS: usize = 8
-            INVALID_INDEX: usize = 8
+            INVALID_INDEX: usize = MAX_ROWS
 
     public:
         error BrowserError:
@@ -23,7 +23,7 @@ module AssetBrowser:
             loaded: mutable bool
 
         struct Browser:
-            rows: mutable Row[8]
+            rows: mutable Row[Bounds::MAX_ROWS]
             count: mutable usize
             selected: mutable usize
 

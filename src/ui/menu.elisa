@@ -16,7 +16,7 @@ module Ui:
             enabled: bool
 
         struct Menu:
-            items: mutable Item[8]
+            items: mutable Item[Tune::MAX_ITEMS]
             count: mutable usize
             focus: mutable i64
             visible: mutable usize
