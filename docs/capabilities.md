@@ -156,8 +156,8 @@ writes `build/validation.json`. Host evidence comes from
 Re-run on the current tree:
 
 - `elisascript scripts/check.elisascript` — exit 0: all 32 runtime suites pass
-  and the proof step is green again. `proof/entity_id.elisa` is 15/15
-  obligations replayed and `proof/world.elisa` 2/2, status `proved` with no
+  and the proof step is green again. `proof/entity_id.elisa` is 17/17
+  obligations replayed and `proof/world.elisa` 6/6, status `proved` with no
   replay gaps. The branch-fact regression is fixed in `elisa-proof` 12c79ab
   (see ADR-0010); the engine source was never changed for it.
 - `python3 scripts/run_boundary_sanitized.py` — exit 0, no AddressSanitizer or
