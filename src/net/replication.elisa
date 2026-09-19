@@ -74,7 +74,7 @@ module Net:
             for offset in 0..<count |delivered: usize = 0| -> delivered:
                 delivered <- delivered + 1 if should_deliver(first_sequence + offset, loss_every)
 
-        def last_acked_sequence(acks: bool[16], count: usize) -> i64:
+        def last_acked_sequence(acks: bool[Tune::MAX_LOG], count: usize) -> i64:
             return -1 if count > Net::Tune::MAX_LOG
             found: i64 =
                 for index in 0..<count |last: i64 = -1| -> last:

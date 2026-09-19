@@ -70,7 +70,7 @@ module Reliable:
 
         def sender_record(sender: Sender&, sequence: i64) -> Net::ReplRecord error[ReliableError]:
             raise ReliableError.UnknownSequence if sequence < sender.base or sequence >= sender.next
-            sender.records[(sequence % 8).usize()]
+            sender.records[(sequence % Tune::WINDOW.i64()).usize()]
 
         def sender_retransmit(sender: mutable Sender&) -> i64 error[ReliableError]:
             raise ReliableError.UnknownSequence if sender.base >= sender.next
