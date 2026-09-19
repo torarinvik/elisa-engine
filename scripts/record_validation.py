@@ -18,6 +18,7 @@ from record_validation_assets import (
     cooked_texture_packed,
     sha256_file,
 )
+from check_module_hygiene import policy as module_hygiene_policy
 
 
 def git_state(path: Path) -> Optional[dict]:
@@ -466,6 +467,7 @@ def main(arguments: list[str]) -> int:
             "proofs": proofs,
             "scene_manifest": scene_manifest_matches_bridge(engine),
             "source_length_policy": source_length_policy(engine),
+            "module_hygiene_policy": module_hygiene_policy(engine),
             "cooked_asset": cooked,
             "cooked_texture": cooked_texture(engine),
             "cooked_texture_packed": cooked_texture_packed(engine),
@@ -474,7 +476,7 @@ def main(arguments: list[str]) -> int:
             "asset_catalogue_database": asset_catalogue_database(engine),
             "dependencies": dependency_provenance(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "cooked_texture_bc1", "asset_catalogue_database", "dependency_pins", "source_length_policy", "scene_manifest_link", "affine_copy_rejections"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "cooked_texture_bc1", "asset_catalogue_database", "dependency_pins", "source_length_policy", "module_hygiene_policy", "scene_manifest_link", "affine_copy_rejections"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

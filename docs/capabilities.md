@@ -125,6 +125,7 @@ writes `build/validation.json`. Host evidence comes from
 | Reproducible release archive (mesh + textures + KTX + fixture + C ABI + Godot extension) | Implemented | `scripts/package_release.py`, `release` in validation |
 | Automated platform testing | Partial | `.github/workflows/check.yml`: a Linux/macOS cook + KTX job and a macOS job running the GNS, Basis, and ASan/UBSan boundary probes; the full gate still needs the pinned compiler/prover and a graphics session |
 | 600-line source limit enforced | Implemented | `source_length_policy` |
+| Production module namespace hygiene enforced | Implemented | `scripts/check_module_hygiene.py`, `module_hygiene_policy` in `build/validation.json` |
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |
 | cgltf import, meshoptimizer cache optimization | Implemented | `native/asset_import.h`, `native/meshopt_probe.h` |

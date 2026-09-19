@@ -394,6 +394,11 @@ or backend correctness. Runtime tests cover exhaustion, state preservation, and
 registry/store consistency; the proof contracts do not claim those mutable-state
 postconditions.
 
+Production modules keep dependencies qualified through their module namespace;
+`scripts/check_module_hygiene.py` rejects ambient `using` directives and duplicate
+or missing top-level module declarations under `src/`. Tests and examples may
+import modules locally for fixture readability.
+
 ## Next milestone
 
 The core foundation, gameplay, backend, authoring, and networking boundaries
