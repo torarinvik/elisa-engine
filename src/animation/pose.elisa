@@ -127,7 +127,7 @@ module Pose:
 
         # Backend-neutral skinning payload: one column-major 4x4 per joint in
         # model space. A renderer adapts this layout; it never sees Elisa types.
-        def pose_matrix(pose: Pose&, index: usize) -> f32[16] error[PoseError]:
+        def pose_matrix(pose: Pose&, index: usize) -> f32[Geometry::MATRIX_ELEMENTS] error[PoseError]:
             raise PoseError.JointOutOfBounds if index >= pose.count
             Geometry::transform_to_matrix(pose.models[index])
 
