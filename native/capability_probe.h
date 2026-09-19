@@ -3,6 +3,7 @@
 #include "capability_abi.h"
 #include "probe_core.h"
 #include "wiGraphicsDevice.h"
+#include "wiJobSystem.h"
 #include "wiRenderer.h"
 
 #include <cstdio>
@@ -23,6 +24,27 @@ inline bool probe_graphics_capabilities() {
     const bool raytracing = raytracing_native && !force_fallback;
     const bool sparse = sparse_native && !force_fallback;
     const uint32_t viewport_count = device->GetMaxViewportCount();
+    const auto format_supported = [device](wi::graphics::Format format) {
+        wi::graphics::TextureDesc desc;
+        desc.width = 4;
+        desc.height = 4;
+        desc.depth = 1;
+        desc.array_size = 1;
+        desc.mip_levels = 1;
+        desc.sample_count = 1;
+        desc.format = format;
+        desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
+        wi::graphics::Texture texture;
+        const bool supported = device->CreateTexture(&desc, nullptr, &texture) && texture.IsValid();
+        texture = {};
+        return supported;
+    };
+    const uint64_t resource_formats =
+        (format_supported(wi::graphics::Format::R8G8B8A8_UNORM) ? ELISA_FORMAT_RGBA8 : 0ull) |
+        (format_supported(wi::graphics::Format::BC1_UNORM) ? ELISA_FORMAT_BC1 : 0ull) |
+        (format_supported(wi::graphics::Format::R16_FLOAT) ? ELISA_FORMAT_R16_FLOAT : 0ull);
+    const uint32_t graphics_workers = wi::jobsystem::GetThreadCount(wi::jobsystem::Priority::High);
+    const uint32_t streaming_workers = wi::jobsystem::GetThreadCount(wi::jobsystem::Priority::Streaming);
     const ElisaBackendProfile profile = {
         sizeof(ElisaBackendProfile), ELISA_CAPABILITY_ABI_VERSION,
         ELISA_CAPABILITY_RENDERING | ELISA_CAPABILITY_NATIVE_WINDOW |
@@ -30,19 +52,20 @@ inline bool probe_graphics_capabilities() {
         (raytracing ? ELISA_OPTIONAL_RAYTRACING : 0ull) |
             (sparse ? ELISA_OPTIONAL_SPARSE_TEXTURES : 0ull) |
             (mesh_shader ? ELISA_OPTIONAL_MESH_SHADERS : 0ull),
-        viewport_count, 1u, static_cast<uint64_t>(memory.budget),
-        static_cast<uint64_t>(memory.usage),
+        viewport_count, graphics_workers, static_cast<uint64_t>(memory.budget),
+        static_cast<uint64_t>(memory.usage), resource_formats, graphics_workers, streaming_workers,
     };
     if (!check(elisa_validate_backend_profile(&profile) == ELISA_CAPABILITY_OK,
             "versioned capability profile")) {
         return false;
     }
     std::fprintf(stdout,
-        "graphics capabilities: adapter=%s shader_format=%d mesh=%d raytracing=%d sparse=%d viewports=%u memory=%llu/%llu profile=0x%llx optional=0x%llx\n",
+        "graphics capabilities: adapter=%s shader_format=%d mesh=%d raytracing=%d sparse=%d viewports=%u memory=%llu/%llu profile=0x%llx optional=0x%llx formats=0x%llx workers=%u/%u\n",
         device->GetAdapterName().c_str(), (int)device->GetShaderFormat(),
         mesh_shader ? 1 : 0, raytracing ? 1 : 0, sparse ? 1 : 0,
         viewport_count, (unsigned long long)memory.usage, (unsigned long long)memory.budget,
-        (unsigned long long)profile.capability_bits, (unsigned long long)profile.optional_bits);
+        (unsigned long long)profile.capability_bits, (unsigned long long)profile.optional_bits,
+        (unsigned long long)profile.resource_format_bits, profile.graphics_workers, profile.streaming_workers);
     if (!check(viewport_count > 0, "graphics viewport capability")) {
         return false;
     }

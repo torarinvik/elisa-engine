@@ -15,7 +15,9 @@ is allowed, and a nine-feature request is `Invalid`. The test passed on
 
 The native `native/capability_probe.h` now fills the vendor-free
 `ElisaBackendProfile` in `native/capability_abi.h` from the queried device
-limits. Its `ELISA_FORCE_OPTIONAL_FALLBACK=1` gate proves that advertised device
-features are not silently treated as required, and the probe rejects an ABI
-version mismatch before handing the profile to policy. Resource-specific
-feature population and platform-specific worker counts remain follow-up work.
+limits. ABI version 2 carries RGBA8, BC1, and R16F resource-format support,
+plus the actual Wicked high-priority and streaming worker counts. Its
+`ELISA_FORCE_OPTIONAL_FALLBACK=1` gate proves that advertised device features
+are not silently treated as required, and the probe rejects an ABI version
+mismatch before handing the profile to policy. Typed Elisa bindings and the
+remaining format fallback matrix remain follow-up work.

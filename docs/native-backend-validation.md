@@ -25,14 +25,16 @@ both finite and persistent modes use the same ordered shutdown boundary.
 
 After device initialization the native gate queries the adapter name, shader
 format, viewport limit, video-memory budget/usage, mesh-shader, ray-tracing,
-and sparse-texture capabilities through Wicked's graphics device. Optional
+sparse-texture, RGBA8/BC1/R16F resource-format, and Wicked worker-count
+capabilities through Wicked's graphics device and job system. Optional
 features are reported as `native` or `fallback`; these values populate the
 versioned vendor-free `ElisaBackendProfile` and are not inferred from a linked
 library or from the machine-independent Elisa profile.
 Setting `ELISA_FORCE_OPTIONAL_FALLBACK=1` exercises the same fallback policy on
 hardware that exposes those features, proving that a linked capability does not
-silently become a gameplay requirement. Native profile population and typed
-Elisa bindings remain open F08 work.
+silently become a gameplay requirement. The ABI now exposes the queried format
+bits and high-priority/streaming worker counts; typed Elisa bindings and a
+complete format fallback matrix remain open F08 work.
 
 The SDL3 host records logical and physical window sizes, display scale, display
 changes, fullscreen state, focus, minimize, restore, and close transitions. A
