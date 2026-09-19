@@ -151,6 +151,11 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("Portable asset descriptor tests passed.")
+    asset_lod_test_binary: sview = str(root.joinpath("build/asset-lod-test"))
+    asset_lod_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_lod_test_binary, str(root.joinpath("test/asset_lod.elisa"))])
+    return asset_lod_status if asset_lod_status != 0
+    asset_lod_status <- run_visible(asset_lod_test_binary, [])
+    return asset_lod_status if asset_lod_status != 0
     asset_loader_test_binary: sview = str(root.joinpath("build/asset-loader-test"))
     loader_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_loader_test_binary, str(root.joinpath("test/asset_loader.elisa"))])
     return loader_status if loader_status != 0
@@ -317,25 +322,21 @@ def main(arguments: darray[sview]) -> i64:
     return cell_stream_status if cell_stream_status != 0
     cell_stream_status <- run_visible(cell_stream_binary, [])
     return cell_stream_status if cell_stream_status != 0
-    println("World cell streaming tests passed.")
     save_schema_binary: sview = str(root.joinpath("build/save-schema-test"))
     save_schema_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", save_schema_binary, str(root.joinpath("test/save_schema.elisa"))])
     return save_schema_status if save_schema_status != 0
     save_schema_status <- run_visible(save_schema_binary, [])
     return save_schema_status if save_schema_status != 0
-    println("Save schema tests passed.")
     world_events_binary: sview = str(root.joinpath("build/world-events-test"))
     world_events_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", world_events_binary, str(root.joinpath("test/world_events.elisa"))])
     return world_events_status if world_events_status != 0
     world_events_status <- run_visible(world_events_binary, [])
     return world_events_status if world_events_status != 0
-    println("World event phase tests passed.")
     render_resources_binary: sview = str(root.joinpath("build/render-resources-test"))
     render_resources_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", render_resources_binary, str(root.joinpath("test/render_resources.elisa"))])
     return render_resources_status if render_resources_status != 0
     render_resources_status <- run_visible(render_resources_binary, [])
     return render_resources_status if render_resources_status != 0
-    println("Render resource tests passed.")
     camera_binary: sview = str(root.joinpath("build/camera-test"))
     camera_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", camera_binary, str(root.joinpath("test/camera.elisa"))])
     return camera_status if camera_status != 0
@@ -377,7 +378,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Tolerance image comparison tests passed.")
     package_test_binary: sview = str(root.joinpath("build/package-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", package_test_binary, str(root.joinpath("test/package.elisa"))])

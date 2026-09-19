@@ -163,6 +163,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/backend/material.elisa` and `test/material.elisa` define validated PBR texture slots, scalar factors, alpha policy, and normal-map identity at the engine boundary; native KTX2/Basis transcodes and color-space handling remain.
 - [ ] **A07 · P1 · Mesh optimization and LOD cooking** — After: A05.
   Use meshoptimizer for vertex/index optimization, simplification, compression, and optional meshlet data only where the selected render path consumes it. Done: screen-error LOD selection preserves boundaries and material subsets; visual errors, bytes, cook time, and render cost are measured.
+  Progress: `src/assets/lod.elisa` defines a bounded deterministic LOD chain with screen-error selection, material-subset preservation, duplicate/capacity checks, and invalid-order rejection; `test/asset_lod.elisa` is part of the shared gate. meshoptimizer cooking, artifact measurement, and render-path consumption remain.
 - [ ] **A08 · P1 · Tangents and authored lightmap UVs** — After: A05.
   Integrate MikkTSpace and xatlas as offline stages with deterministic settings, seam handling, and metadata. Done: mirrored UV normal mapping and a UV-overlap fixture validate output; tools are not pulled into the game runtime unnecessarily.
 - [ ] **A09 · P2 · FBX import with ufbx** — After: A05, C01.

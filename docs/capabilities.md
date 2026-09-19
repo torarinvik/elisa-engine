@@ -77,6 +77,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Perspective and orthographic camera rays | Tested | `src/backend/camera.elisa`, `test/camera.elisa`, `docs/validation/cameras-viewports.md`; render targets and camera scheduling remain R03 |
 | Generation-checked physics body and shape lifecycle | Tested | `src/physics/bodies.elisa`, `test/physics_bodies.elisa`, `docs/validation/physics-bodies.md`; native Jolt shapes and layers remain P02 |
 | Normalized glTF scene contract | Tested | `src/assets/scene.elisa`, `test/asset_scene.elisa`, `docs/validation/asset-scene.md`; cgltf traversal and upload remain A05 |
+| Mesh LOD screen-error contract | Tested | `src/assets/lod.elisa`, `test/asset_lod.elisa`, [mesh LOD validation](validation/mesh-lod.md); native meshoptimizer cooking remains A07 |
 | Fixed-step physics pose interpolation | Tested | `src/physics/interpolation.elisa`, `test/physics_interpolation.elisa`, `docs/validation/physics-interpolation.md`; Jolt pose commits remain P04 |
 | Shared PBR material and texture-slot contract | Tested | `src/backend/material.elisa`, `test/material.elisa`, `docs/validation/materials.md`; native color/transcode ABI remains A06/R04 |
 | Tick-stamped replay divergence diagnostics | Tested | `src/runtime/replay.elisa`, `test/replay.elisa`, `docs/validation/replay-diagnostics.md`; persistent trace I/O remains W09 |

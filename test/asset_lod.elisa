@@ -1,0 +1,31 @@
+include "../src/assets/lod.elisa"
+
+def main() -> i32:
+    chain: mutable AssetLod::Chain = AssetLod::Chain()
+    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 1, screen_error: 0.01, byte_size: 4096, material_subset: 4, live: true}):
+        ok: 0
+        error failure: return 1
+    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 2, screen_error: 0.1, byte_size: 2048, material_subset: 4, live: true}):
+        ok: 0
+        error failure: return 2
+    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 3, screen_error: 0.5, byte_size: 1024, material_subset: 4, live: true}):
+        ok: 0
+        error failure: return 3
+    return 4 if AssetLod::level_count(&chain) != 3
+    fine: AssetLod::Level = catch AssetLod::select(&chain, 0.05):
+        value: value
+        error failure: return 5
+    return 6 if fine.mesh_id != 1
+    coarse: AssetLod::Level = catch AssetLod::select(&chain, 0.2):
+        value: value
+        error failure: return 7
+    return 8 if coarse.mesh_id != 2
+    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 4, screen_error: 0.25, byte_size: 512, material_subset: 4, live: true}):
+        ok: 0
+        AssetLod::LodError.NonMonotonicError: 0
+        error failure: return 9
+    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 5, screen_error: 0.6, byte_size: 512, material_subset: 9, live: true}):
+        ok: 0
+        AssetLod::LodError.MaterialSubsetChanged: 0
+        error failure: return 10
+    0

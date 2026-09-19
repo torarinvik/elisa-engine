@@ -1,0 +1,60 @@
+# Portable mesh LOD contract. Offline meshoptimizer stages populate these
+# levels; runtime selection only reads validated screen-error metadata.
+module AssetLod:
+    private:
+        const module Limits:
+            MAX_LEVELS: usize = 8
+
+        def level_slot(chain: Chain&, mesh_id: i64) -> usize:
+            for index in 0..<chain.count |slot: usize = Limits::MAX_LEVELS| -> slot:
+                break index if chain.levels[index].live and chain.levels[index].mesh_id == mesh_id
+
+    public:
+        struct Level:
+            mesh_id: i64
+            screen_error: f32
+            byte_size: usize
+            material_subset: i64
+            live: bool
+
+        enum LodError:
+            Capacity
+            InvalidLevel
+            NonMonotonicError
+            MaterialSubsetChanged
+            DuplicateMesh
+            UnknownMesh
+
+        affine struct Chain:
+            private:
+                levels: mutable Level[Limits::MAX_LEVELS]
+                count: mutable usize
+
+        def Chain() -> Chain:
+            Chain{levels: zeroed, count: 0}
+
+        def level_count(chain: Chain&) -> usize:
+            chain.count
+
+        def append(chain: mutable Chain&, level: Level) -> void error[LodError]:
+            raise LodError.InvalidLevel if level.mesh_id <= 0 or level.screen_error < 0.0 or level.byte_size == 0
+            raise LodError.DuplicateMesh if level_slot(chain, level.mesh_id) < Limits::MAX_LEVELS
+            raise LodError.Capacity if chain.count >= Limits::MAX_LEVELS
+            if chain.count > 0:
+                previous: Level = chain.levels[chain.count - 1]
+                raise LodError.NonMonotonicError if level.screen_error < previous.screen_error
+                raise LodError.MaterialSubsetChanged if level.material_subset != previous.material_subset
+            chain.levels[chain.count] <- level
+            chain.count <- chain.count + 1
+
+        def select(chain: Chain&, screen_error_budget: f32) -> Level error[LodError]:
+            raise LodError.InvalidLevel if chain.count == 0 or screen_error_budget < 0.0
+            selected: mutable usize = 0
+            for index in 0..<chain.count |selected, chain|:
+                selected <- index if chain.levels[index].screen_error <= screen_error_budget
+            chain.levels[selected]
+
+        def read(chain: Chain&, mesh_id: i64) -> Level error[LodError]:
+            slot: usize = level_slot(chain, mesh_id)
+            raise LodError.UnknownMesh if slot >= Limits::MAX_LEVELS
+            chain.levels[slot]
