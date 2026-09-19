@@ -15,6 +15,7 @@
 #define MA_NO_OPUS
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
+#include "miniaudio_service.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -65,7 +66,47 @@ inline bool probe_miniaudio() {
     ma_context_uninit(&context);
     std::fprintf(stdout, "miniaudio: frames=%llu read=%llu rate=%u channels=%u backend=%d\n",
         (unsigned long long)frames, (unsigned long long)read, (unsigned)rate, 1u, (int)backend);
-    return check(opened && backend == ma_backend_null, "miniaudio opens a null playback device");
+    if (!check(opened && backend == ma_backend_null, "miniaudio opens a null playback device")) {
+        return false;
+    }
+
+    audio::Service service;
+    if (!check(service.initialize_null(rate, 1), "miniaudio service initializes")) {
+        return false;
+    }
+    const audio::ClipHandle clip = service.decode_clip(wav.data(), wav.size(), rate, 1);
+    if (!check(clip.slot < audio::MAX_CLIPS, "miniaudio service decodes a clip")) {
+        return false;
+    }
+    const audio::VoiceHandle first = service.play(clip);
+    const audio::VoiceHandle second = service.play(clip, true);
+    if (!check(first.slot < audio::MAX_VOICES && second.slot < audio::MAX_VOICES &&
+        service.active_voices() == 2, "miniaudio service starts bounded voices")) {
+        return false;
+    }
+    std::vector<int16_t> mixed(32);
+    service.mix_for_test(mixed.data(), 32);
+    bool has_signal = false;
+    for (const int16_t sample : mixed) has_signal = has_signal || sample != 0;
+    if (!check(has_signal, "miniaudio service mixes a decoded voice")) {
+        return false;
+    }
+    if (!check(service.stop(first) && !service.stop(first) && service.active_voices() == 1,
+            "miniaudio service rejects a stale stopped voice")) {
+        return false;
+    }
+    std::vector<int16_t> drained(samples);
+    service.mix_for_test(drained.data(), samples);
+    if (!check(service.voice_live(second) && service.active_voices() == 1,
+            "miniaudio service keeps looped voices alive")) {
+        return false;
+    }
+    if (!check(service.stop(second) && service.active_voices() == 0,
+            "miniaudio service stops the looped voice")) {
+        return false;
+    }
+    service.shutdown();
+    return check(!service.voice_live(second), "miniaudio service invalidates voices on shutdown");
 }
 
 } // namespace probe

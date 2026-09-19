@@ -148,7 +148,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |
 | cgltf import, meshoptimizer cache optimization | Implemented | `native/asset_import.h`, `native/meshopt_probe.h` |
-| ozz sampling, Recast/Detour navigation, miniaudio | Partial + Implemented | `native/ozz_probe.h`, reusable `native/navmesh_service.h` exercised by `native/recast_probe.h`, `native/miniaudio_probe.h`; navigation ownership/query adapter is integrated, while cooked multi-tile navigation and Elisa agent movement remain N01–N03 |
+| ozz sampling, Recast/Detour navigation, miniaudio | Partial + Implemented | `native/ozz_probe.h`, reusable `native/navmesh_service.h` exercised by `native/recast_probe.h`, bounded `native/miniaudio_service.h` exercised by `native/miniaudio_probe.h`; navigation ownership/query and clip/voice ownership adapters are integrated, while cooked multi-tile navigation, device recovery, streaming, spatial audio, and Elisa agent movement remain N01–N03/S01–S03 |
 | FreeType/HarfBuzz text | Implemented | `native/text_probe.h` |
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
