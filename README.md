@@ -27,9 +27,12 @@ The initial representation uses positive `i64` values; a packed handle ABI is no
 IDs are never recycled within one allocator lifetime. `src/world/world.elisa`
 adds an affine `World` with one allocator, a live registry, separate actor/enemy
 stores, and an epoch in each `EntityRef`. Spawn, despawn, checked lookup, and
-compaction run through that world. Numeric IDs may coincide across worlds; the
-epoch distinguishes their references. The current serial, fixed-capacity world
-is an early implementation, not yet a persistent asset identity system.
+compaction run through that world. Dense iteration uses
+`world_live_reference_at`, which returns a checked world-branded reference rather
+than exposing a raw ID for callers to reconstruct. Numeric IDs may coincide
+across worlds; the epoch distinguishes their references. The current serial,
+fixed-capacity world is an early implementation, not yet a persistent asset
+identity system.
 
 `src/math/geometry.elisa` defines backend-neutral vector, quaternion, transform,
 bounds, and ray values. Its convention is metres in a right-handed frame, +Y up
