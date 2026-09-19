@@ -10,9 +10,12 @@
 include "./replication.elisa"
 
 module Wire:
+    public:
+        # Stable frame shape shared by transports and native adapters.
+        const FRAME_BYTES: usize = 33
+
     private:
         const module Format:
-            FRAME_BYTES: usize = 33
             OWNER_SERVER: u8 = 0
             OWNER_CLIENT: u8 = 1
             BYTE_MASK: u64 = 255
@@ -27,19 +30,19 @@ module Wire:
             InvalidRecord
 
         def wire_frame_bytes() -> usize:
-            Format::FRAME_BYTES
+            FRAME_BYTES
 
         def wire_bias() -> i64:
             Format::BIAS
 
-        def encode(record: Net::ReplRecord&) -> u8[Format::FRAME_BYTES] error[WireError]:
+        def encode(record: Net::ReplRecord&) -> u8[FRAME_BYTES] error[WireError]:
             raise WireError.InvalidRecord if not Net::record_valid(record)
             # Bounds are checked BEFORE biasing: adding the bias first could
             # overflow the widest i64 values and trap instead of rejecting them.
             # A value is representable when biasing keeps it a non-negative i64.
             raise WireError.Unrepresentable if record.x < 0 - Format::BIAS or record.y < 0 - Format::BIAS
             raise WireError.Unrepresentable if record.x > 9223372036854775807 - Format::BIAS or record.y > 9223372036854775807 - Format::BIAS
-            out: mutable u8[Format::FRAME_BYTES] = zeroed
+            out: mutable u8[FRAME_BYTES] = zeroed
             persistent: u64 = record.persistent
             x_bits: u64 = (record.x + Format::BIAS).u64()
             y_bits: u64 = (record.y + Format::BIAS).u64()
@@ -79,9 +82,9 @@ module Wire:
             out[32] <- Format::OWNER_SERVER if record.owner == Net::Owner.Server else Format::OWNER_CLIENT
             out
 
-        def decode(frame: u8[Format::FRAME_BYTES], count: usize) -> Net::ReplRecord error[WireError]:
-            raise WireError.ShortFrame if count < Format::FRAME_BYTES
-            raise WireError.LongFrame if count > Format::FRAME_BYTES
+        def decode(frame: u8[FRAME_BYTES], count: usize) -> Net::ReplRecord error[WireError]:
+            raise WireError.ShortFrame if count < FRAME_BYTES
+            raise WireError.LongFrame if count > FRAME_BYTES
             raise WireError.UnknownOwner if frame[32] != Format::OWNER_SERVER and frame[32] != Format::OWNER_CLIENT
             persistent: u64 = frame[0].u64() + (frame[1].u64() << 8) + (frame[2].u64() << 16) + (frame[3].u64() << 24) + (frame[4].u64() << 32) + (frame[5].u64() << 40) + (frame[6].u64() << 48) + (frame[7].u64() << 56)
             x_bits: u64 = frame[8].u64() + (frame[9].u64() << 8) + (frame[10].u64() << 16) + (frame[11].u64() << 24) + (frame[12].u64() << 32) + (frame[13].u64() << 40) + (frame[14].u64() << 48) + (frame[15].u64() << 56)

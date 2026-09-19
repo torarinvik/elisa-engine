@@ -16,7 +16,7 @@ module Loopback:
     public:
         struct Packet:
             sequence: mutable usize
-            bytes: mutable u8[33]
+            bytes: mutable u8[Wire::FRAME_BYTES]
             length: mutable usize
             send_tick: mutable i64
             delivered: mutable bool
@@ -48,7 +48,7 @@ module Loopback:
         def link_send(link: mutable Link&, record: Net::ReplRecord&, send_tick: i64) -> usize error[LinkError]:
             raise LinkError.Capacity if link.count >= Limits::MAX_PACKETS
             sequence: usize = link.count
-            frame: u8[33] =
+            frame: u8[Wire::FRAME_BYTES] =
                 catch encode(record):
                     value: value
                     error failure: zeroed
