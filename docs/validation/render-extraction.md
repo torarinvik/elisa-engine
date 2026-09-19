@@ -8,4 +8,7 @@ game identities. Updates replace a row's transform; removal compacts the table.
 
 `test/render_snapshot.elisa` and the shared ElisaScript gate cover one-to-many
 fan-out, update, removal, capacity bounds, and invalid-reference rejection.
-Native Wicked submission remains a later adapter over this snapshot contract.
+The Wicked probe also exercises `native/render_snapshot_bridge.h`: it creates
+two native rows for one logical fanout, updates one independently, rejects an
+unknown removal, and returns the scene object count to its baseline. Vendor
+entities remain separate from gameplay references.

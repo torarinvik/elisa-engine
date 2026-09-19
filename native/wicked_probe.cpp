@@ -43,13 +43,13 @@
 #include "physics_policy_probe.h"
 #include "coordinate_fixture.h"
 #include "package_bounds_probe.h"
+#include "render_snapshot_bridge.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
         std::fprintf(stderr, "usage: wicked_probe <wicked-source-directory> <scene-manifest> [screenshot-png] [alwaysactive]\n");
         return 2;
     }
-    // Forward flags such as "alwaysactive" to the engine argument table.
     wi::arguments::Parse(argc, argv);
     std::fprintf(stdout, "probe argc=%d alwaysactive=%d\n",
         argc, wi::arguments::HasArgument("alwaysactive") ? 1 : 0);
@@ -92,6 +92,7 @@ int main(int argc, char** argv) {
     if (!probe_fixed_step_pacing()) return 1;
     if (!persistent_host && !probe_window_lifecycle(application_host)) return 1;
     wi::scene::Scene scene;
+    if (!probe_render_snapshot_bridge(scene)) return 1;
     if (!probe_native_resource_handles(scene)) {
         return 1;
     }

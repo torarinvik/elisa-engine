@@ -66,7 +66,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Capability | Label | Evidence |
 |---|---|---|
 | Canonical scene command stream, both hosts | Tested + Implemented | `src/backend/scene_bridge.elisa`, `test/scene_bridge.elisa`, `scripts/wicked_probe.elisascript`, `scripts/godot_capture.elisascript` |
-| Persistent one-to-many render extraction | Tested | `src/backend/render_snapshot.elisa`, `test/render_snapshot.elisa`, `docs/validation/render-extraction.md`; native submission remains an adapter |
+| Persistent one-to-many render extraction | Tested + Implemented | `src/backend/render_snapshot.elisa`, `test/render_snapshot.elisa`, `native/render_snapshot_bridge.h`, `scripts/wicked_probe.elisascript`, `docs/validation/render-extraction.md`; native rows remain separate from gameplay references |
 | Bounded transform hierarchy with checked reparenting | Tested | `src/world/hierarchy.elisa`, `test/hierarchy.elisa`, `docs/validation/transform-hierarchy.md`; physics arbitration remains W02 |
 | Deferred structural world command buffer | Tested | `src/world/commands.elisa`, `test/world_commands.elisa`, `docs/validation/deferred-world-commands.md`; application to the primary registry remains W03 |
 | Versioned prefab instances with runtime remapping | Tested | `src/world/prefab.elisa`, `test/prefab.elisa`, `docs/validation/prefab-instances.md`; nested instance serialization remains W04 |
