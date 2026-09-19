@@ -1,0 +1,122 @@
+# Engine-owned spatial audio state. Native mixers consume the bounded source
+# snapshot; entity lifetime and attenuation policy remain portable and tested.
+include "../math/geometry.elisa"
+
+module SpatialAudio:
+    private:
+        const module Limits:
+            MAX_SOURCES: usize = 32
+            SPEED_OF_SOUND: f32 = 343.0
+
+        def source_slot(scene: Scene&, id: i64) -> usize:
+            for index in 0..<scene.count |slot: usize = Limits::MAX_SOURCES| -> slot:
+                break index if scene.sources[index].live and scene.sources[index].id == id
+
+        def clamp_gain(value: f32) -> f32:
+            return 0.0 if value <= 0.0
+            return 1.0 if value >= 1.0
+            value
+
+        def attenuation(distance: f32, max_distance: f32) -> f32:
+            return 0.0 if max_distance <= 0.0
+            return 1.0 if distance <= 0.0
+            return 0.0 if distance >= max_distance
+            1.0 - distance / max_distance
+
+    public:
+        struct Listener:
+            position: Geometry::Vec3
+            velocity: Geometry::Vec3
+
+        struct Source:
+            id: i64
+            position: Geometry::Vec3
+            velocity: Geometry::Vec3
+            forward: Geometry::Vec3
+            minimum_distance: f32
+            maximum_distance: f32
+            inner_cone_cos: f32
+            outer_cone_cos: f32
+            outer_cone_gain: f32
+            occlusion: f32
+            live: bool
+
+        enum SpatialError:
+            Capacity
+            DuplicateSource
+            UnknownSource
+            InvalidId
+            InvalidRange
+            InvalidCone
+            InvalidOcclusion
+
+        affine struct Scene:
+            private:
+                sources: mutable Source[Limits::MAX_SOURCES]
+                count: mutable usize
+
+        def Scene() -> Scene:
+            Scene{sources: zeroed, count: 0}
+
+        def source_count(scene: Scene&) -> usize:
+            scene.count
+
+        def source_attach(scene: mutable Scene&, source: Source) -> void error[SpatialError]:
+            raise SpatialError.InvalidId if source.id <= 0
+            raise SpatialError.InvalidRange if source.minimum_distance < 0.0 or source.maximum_distance <= source.minimum_distance
+            raise SpatialError.InvalidCone if source.inner_cone_cos < source.outer_cone_cos or source.inner_cone_cos > 1.0 or source.outer_cone_cos < -1.0 or source.outer_cone_gain < 0.0 or source.outer_cone_gain > 1.0
+            raise SpatialError.InvalidOcclusion if source.occlusion < 0.0 or source.occlusion > 1.0
+            raise SpatialError.DuplicateSource if source_slot(scene, source.id) < Limits::MAX_SOURCES
+            raise SpatialError.Capacity if scene.count >= Limits::MAX_SOURCES
+            scene.sources[scene.count] <- source
+            scene.count <- scene.count + 1
+
+        def source_update(scene: mutable Scene&, source: Source) -> void error[SpatialError]:
+            slot: usize = source_slot(scene, source.id)
+            raise SpatialError.UnknownSource if slot >= Limits::MAX_SOURCES
+            raise SpatialError.InvalidRange if source.minimum_distance < 0.0 or source.maximum_distance <= source.minimum_distance
+            raise SpatialError.InvalidCone if source.inner_cone_cos < source.outer_cone_cos or source.inner_cone_cos > 1.0 or source.outer_cone_cos < -1.0 or source.outer_cone_gain < 0.0 or source.outer_cone_gain > 1.0
+            raise SpatialError.InvalidOcclusion if source.occlusion < 0.0 or source.occlusion > 1.0
+            scene.sources[slot] <- source
+
+        def source_detach(scene: mutable Scene&, id: i64) -> void error[SpatialError]:
+            slot: usize = source_slot(scene, id)
+            raise SpatialError.UnknownSource if slot >= Limits::MAX_SOURCES
+            for shift in slot..<scene.count - 1 |scene|:
+                scene.sources[shift] <- scene.sources[shift + 1]
+            scene.count <- scene.count - 1
+
+        def source_read(scene: Scene&, id: i64) -> Source error[SpatialError]:
+            slot: usize = source_slot(scene, id)
+            raise SpatialError.UnknownSource if slot >= Limits::MAX_SOURCES
+            scene.sources[slot]
+
+        def distance_gain(source: Source, listener: Listener) -> f32:
+            offset: Geometry::Vec3 = Geometry::vec3_sub(source.position, listener.position)
+            distance: f32 = Geometry::sqrt_f32(Geometry::vec3_length_squared(offset))
+            attenuation(distance, source.maximum_distance) if source.minimum_distance == 0.0 else attenuation(distance - source.minimum_distance, source.maximum_distance - source.minimum_distance)
+
+        def cone_gain(source: Source, listener: Listener) -> f32:
+            to_listener: Geometry::Vec3 = Geometry::vec3_sub(listener.position, source.position)
+            length: f32 = Geometry::sqrt_f32(Geometry::vec3_length_squared(to_listener))
+            return 1.0 if length <= 0.0
+            alignment: f32 = Geometry::vec3_dot(source.forward, to_listener) / length
+            return 1.0 if alignment >= source.inner_cone_cos
+            return source.outer_cone_gain if alignment <= source.outer_cone_cos
+            source.outer_cone_gain + (alignment - source.outer_cone_cos) / (source.inner_cone_cos - source.outer_cone_cos) * (1.0 - source.outer_cone_gain)
+
+        def spatial_gain(source: Source, listener: Listener) -> f32:
+            clamp_gain(distance_gain(source, listener) * cone_gain(source, listener) * (1.0 - source.occlusion))
+
+        def doppler_ratio(source: Source, listener: Listener) -> f32:
+            offset: Geometry::Vec3 = Geometry::vec3_sub(source.position, listener.position)
+            length: f32 = Geometry::sqrt_f32(Geometry::vec3_length_squared(offset))
+            return 1.0 if length <= 0.0
+            direction: Geometry::Vec3 = Geometry::vec3_scale(offset, 1.0 / length)
+            relative_speed: f32 = Geometry::vec3_dot(Geometry::vec3_sub(source.velocity, listener.velocity), direction)
+            denominator: f32 = Limits::SPEED_OF_SOUND + relative_speed
+            return 2.0 if denominator <= Limits::SPEED_OF_SOUND * 0.5
+            value: f32 = Limits::SPEED_OF_SOUND / denominator
+            return 0.5 if value <= 0.5
+            return 2.0 if value >= 2.0
+            value

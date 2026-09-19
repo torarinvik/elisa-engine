@@ -1,0 +1,40 @@
+include "../src/audio/spatial.elisa"
+
+def main() -> i32:
+    listener: SpatialAudio::Listener = SpatialAudio::Listener{
+        position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        velocity: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+    }
+    source: SpatialAudio::Source = SpatialAudio::Source{
+        id: 7,
+        position: Geometry::Vec3{x: 0.0, y: 0.0, z: -2.0},
+        velocity: Geometry::Vec3{x: 0.0, y: 0.0, z: 10.0},
+        forward: Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0},
+        minimum_distance: 1.0,
+        maximum_distance: 10.0,
+        inner_cone_cos: 0.9,
+        outer_cone_cos: 0.0,
+        outer_cone_gain: 0.25,
+        occlusion: 0.0,
+        live: true,
+    }
+    scene: mutable SpatialAudio::Scene = SpatialAudio::Scene()
+    _ = catch SpatialAudio::source_attach(&scene, source):
+        ok: 0
+        error failure: return 1
+    return 2 if SpatialAudio::source_count(&scene) != 1
+    return 3 if SpatialAudio::spatial_gain(source, listener) <= 0.0
+    return 4 if SpatialAudio::doppler_ratio(source, listener) <= 1.0
+    occluded: SpatialAudio::Source = source
+    occluded.occlusion <- 1.0
+    return 5 if SpatialAudio::spatial_gain(occluded, listener) != 0.0
+    duplicate: i32 = catch SpatialAudio::source_attach(&scene, source):
+        value: 1
+        SpatialAudio::SpatialError.DuplicateSource: 0
+        error failure: 2
+    return 6 if duplicate != 0
+    detached: i32 = catch SpatialAudio::source_detach(&scene, 7):
+        ok: 0
+        error failure: 1
+    return 7 if detached != 0 or SpatialAudio::source_count(&scene) != 0
+    0

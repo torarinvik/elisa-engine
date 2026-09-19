@@ -389,7 +389,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Asset cooking tests passed.")
     maze_test_binary: sview = str(root.joinpath("build/maze-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", maze_test_binary, str(root.joinpath("test/maze.elisa"))])
@@ -401,7 +400,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Maze vertical slice tests passed.")
     maze_game_test_binary: sview = str(root.joinpath("build/maze-game-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", maze_game_test_binary, str(root.joinpath("test/maze_game.elisa"))])
@@ -527,7 +525,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Maze bundle manifest tests passed.")
     audio_test_binary: sview = str(root.joinpath("build/audio-policy-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", audio_test_binary, str(root.joinpath("test/audio_policy.elisa"))])
@@ -539,7 +536,11 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Audio ownership tests passed.")
+    spatial_audio_test_binary: sview = str(root.joinpath("build/audio-spatial-test"))
+    spatial_audio_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", spatial_audio_test_binary, str(root.joinpath("test/audio_spatial.elisa"))])
+    return spatial_audio_status if spatial_audio_status != 0
+    spatial_audio_status <- run_visible(spatial_audio_test_binary, [])
+    return spatial_audio_status if spatial_audio_status != 0
     codec_test_binary: sview = str(root.joinpath("build/anim-codec-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", codec_test_binary, str(root.joinpath("test/anim_codec.elisa"))])
@@ -551,7 +552,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Animation codec selection tests passed.")
     catalogue_test_binary: sview = str(root.joinpath("build/catalogue-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", catalogue_test_binary, str(root.joinpath("test/catalogue.elisa"))])
