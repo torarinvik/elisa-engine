@@ -232,7 +232,7 @@ module World:
         def World() -> World error[WorldError]:
             epoch: i64 = try next_epoch()
             World{
-                allocator: EntityId::EntityIdAllocator{last_issued: EntityId::ENTITY_ID_INVALID},
+                allocator: EntityId::EntityIdAllocator(),
                 epoch: epoch,
                 registry: zeroed,
                 registry_count: 0,

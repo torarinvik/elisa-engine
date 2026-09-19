@@ -3,7 +3,7 @@ using EntityId
 
 def main() -> i32:
     initial: i32 =
-        allocator: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_INVALID}
+        allocator: mutable EntityIdAllocator = EntityIdAllocator()
         first: i64 = catch entity_id_allocate(&allocator):
             value: value
             error failure: ENTITY_ID_INVALID

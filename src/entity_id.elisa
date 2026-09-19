@@ -12,6 +12,9 @@ module EntityId:
         affine struct EntityIdAllocator:
             last_issued: mutable i64
 
+        def EntityIdAllocator() -> EntityIdAllocator:
+            EntityIdAllocator{last_issued: ENTITY_ID_INVALID}
+
         # The pure transition is shared by the runtime allocator and its proofs.
         def entity_id_next(last_issued: i64) -> i64:
             requires last_issued >= ENTITY_ID_INVALID
