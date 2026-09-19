@@ -57,6 +57,9 @@ module EditorSession:
         def active_panel(session: Session&) -> Panel:
             session.panel
 
+        def selected_asset(session: Session&) -> usize:
+            AssetBrowser::browser_selected(&session.assets)
+
         def revision(session: Session&) -> i64:
             session.revision
 
@@ -140,6 +143,27 @@ module EditorSession:
                 raise SessionError.AssetUnknown if result == 4
                 session.revision <- session.revision + 1
                 session.dirty <- true
+
+            def select_asset(session: mutable Session&, index: usize) -> void error[SessionError]:
+                result: i32 = catch AssetBrowser::browser_select(&session.assets, index):
+                    ok: 0
+                    AssetBrowser::BrowserError.UnknownRow: 1
+                    error failure: 2
+                raise SessionError.AssetUnknown if result != 0
+
+            def mark_asset_loaded(session: mutable Session&, id: Assets::AssetId, generation: i64) -> void error[SessionError]:
+                result: i32 = catch AssetBrowser::browser_mark_loaded(&session.assets, id, generation):
+                    ok: 0
+                    AssetBrowser::BrowserError.UnknownAsset: 1
+                    AssetBrowser::BrowserError.InvalidAsset: 2
+                    error failure: 3
+                raise SessionError.AssetUnknown if result == 1 or result == 3
+                raise SessionError.AssetInvalid if result == 2
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
+            def asset_is_stale(session: Session&, id: Assets::AssetId, generation: i64) -> bool:
+                AssetBrowser::browser_is_stale(&session.assets, id, generation)
 
             def attach_widget(session: mutable Session&, widget: UiWidgets::Widget) -> void error[SessionError]:
                 result: i32 = catch UiWidgets::add_widget(&session.widgets, widget):

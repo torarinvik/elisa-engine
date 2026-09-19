@@ -47,6 +47,25 @@ def main() -> i32:
         error failure: 5
     return 6 if added != 0
     return 7 if revision(&session) != 4 or not dirty(&session)
+    return 12 if selected_asset(&session) != 0
+    selected: i32 = catch select_asset(&session, 0):
+        ok: 0
+        SessionError.AssetUnknown: 1
+        error failure: 2
+    return 13 if selected != 0 or selected_asset(&session) != 0
+    return 14 if not asset_is_stale(&session, id, 0)
+    loaded: i32 = catch mark_asset_loaded(&session, id, 0):
+        ok: 0
+        SessionError.AssetUnknown: 1
+        SessionError.AssetInvalid: 2
+        error failure: 3
+    return 15 if loaded != 0 or asset_is_stale(&session, id, 0)
+    invalid_generation: i32 = catch mark_asset_loaded(&session, id, -1):
+        ok: 0
+        SessionError.AssetUnknown: 1
+        SessionError.AssetInvalid: 2
+        error failure: 3
+    return 16 if invalid_generation != 2
     widget: UiWidgets::Widget = UiWidgets::Widget{id: 9, kind: UiWidgets::WidgetKind.Button, x: 0, y: 0, width: 8, height: 8, value: 0, minimum: 0, maximum: 0, enabled: true, visible: true}
     attached: i32 = catch attach_widget(&session, widget):
         ok: 0
@@ -55,7 +74,7 @@ def main() -> i32:
         SessionError.WidgetDuplicate: 3
         error failure: 4
     return 8 if attached != 0
-    return 9 if revision(&session) != 5
+    return 9 if revision(&session) != 6
     return 10 if not dirty(&session)
     return 11 if not session_valid(&session)
     0

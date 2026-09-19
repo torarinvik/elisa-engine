@@ -34,7 +34,7 @@ writes `build/validation.json`. Host evidence comes from
 | Bounded editor inspector fields, selection, validation, and dirty edits | Tested | `src/tooling/inspector_view.elisa`, `test/editor.elisa` |
 | Bounded editor asset browser with generation and stale-state tracking | Tested | `src/tooling/asset_browser.elisa`, `test/editor.elisa` |
 | Bounded editor widget surface with buttons, toggles, sliders, and hit testing | Tested | `src/ui/widgets.elisa`, `test/inspector.elisa` |
-| Bounded editor session composing panels, asset state, widgets, revisions, and field undo/redo | Tested | `src/tooling/editor_session.elisa`, `test/editor_session.elisa` |
+| Bounded editor session composing panels, asset selection/loading, widgets, revisions, and field undo/redo | Tested | `src/tooling/editor_session.elisa`, `test/editor_session.elisa` |
 | Spawn/despawn churn with allocated bytes | Tested + Implemented | `native/churn_probe.h` (median/p95/worst plus steady-state heap delta, guard at 2 MiB), native runner |
 | Debug collision geometry (solid cells + markers, bounded boxes) | Tested + Implemented | `src/tooling/debug_geometry.elisa`, `examples/maze/debug.elisa`, `test/inspector.elisa`, `test/maze_game.elisa`, Godot wireframe overlay in `backends/godot/capture.gd` |
 
