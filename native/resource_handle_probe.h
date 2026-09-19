@@ -15,7 +15,7 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
         return false;
     }
     const wi::ecs::Entity handle_entity = resource_registry.resolve(handle_probe);
-    if (!check(resource_registry.destroy_deferred(handle_probe), "native handle logical destruction") ||
+    if (!check(resource_registry.destroy_deferred(handle_probe, 7), "native handle logical destruction") ||
         !check(!resource_registry.is_live(handle_probe), "stale native handle rejection") ||
         !check(resource_registry.pending_retirements() == 1, "native handle retirement queued") ||
         !check(scene.objects.GetComponent(handle_entity) != nullptr, "native handle waits for retirement")) {
@@ -26,7 +26,13 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
         !check(resource_registry.destroy(reused_handle), "reused native handle destruction")) {
         return false;
     }
-    resource_registry.collect_retired();
+    resource_registry.collect_retired(6);
+    if (!check(resource_registry.pending_retirements() == 1 &&
+        scene.objects.GetComponent(handle_entity) != nullptr,
+        "native handle waits for incomplete submission")) {
+        return false;
+    }
+    resource_registry.collect_retired(7);
     if (!check(resource_registry.pending_retirements() == 0, "native handle retirement collected") ||
         !check(scene.objects.GetComponent(handle_entity) == nullptr, "native handle resource removed")) {
         return false;

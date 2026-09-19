@@ -73,11 +73,11 @@ public:
 
     // Logical destruction is immediate, but the vendor entity remains in a
     // retirement list until the caller has waited for its GPU submission.
-    bool destroy_deferred(NativeResourceHandle handle) {
+    bool destroy_deferred(NativeResourceHandle handle, uint64_t submission_serial = 0) {
         if (!is_live(handle)) {
             return false;
         }
-        retired_.push_back({slots_[handle.slot].entity, handle.slot});
+        retired_.push_back({slots_[handle.slot].entity, handle.slot, submission_serial});
         slots_[handle.slot].live = false;
         slots_[handle.slot].retired = true;
         return true;
@@ -87,13 +87,18 @@ public:
         return retired_.size();
     }
 
-    void collect_retired() {
+    void collect_retired(uint64_t completed_serial = UINT64_MAX) {
+        size_t write = 0;
         for (const Retired& resource : retired_) {
+            if (resource.serial > completed_serial) {
+                retired_[write++] = resource;
+                continue;
+            }
             scene_.Entity_Remove(resource.entity);
             slots_[resource.slot].entity = wi::ecs::INVALID_ENTITY;
             slots_[resource.slot].retired = false;
         }
-        retired_.clear();
+        retired_.resize(write);
     }
 
 private:
@@ -107,6 +112,7 @@ private:
     struct Retired {
         wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
         uint32_t slot = NativeResourceHandle::INVALID_SLOT;
+        uint64_t serial = 0;
     };
 
     bool slot_valid(NativeResourceHandle handle) const {
