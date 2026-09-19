@@ -10,8 +10,11 @@ elisascript scripts/native_gate.elisascript native
 ```
 
 Every run clears `build/native-gate.json` before doing work and writes a fresh
-JSON status record with dependency, source-length, module-hygiene, headless,
-and native exit statuses. A stale success cannot survive a failed rerun. The
+schema-2 JSON record with dependency, source-length, module-hygiene, headless,
+and native stage states. A stage is explicitly `pass`, `fail`, or `skip`, so a
+quick run cannot report an omitted native stage as green. The record also
+includes the checkout revision, host platform, Python/SDK provenance, timestamp,
+and `hardware_verification` (`verified` only for a passing native run). The
 quick mode is suitable for a clean checkout policy check; headless adds the
 AddressSanitizer/UBSan boundary harness; native adds the SDL3/Wicked graphics,
 package, navigation, coordinate, pacing, and deterministic-frame gate.

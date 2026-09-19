@@ -2,7 +2,11 @@
 """Write the structured result for the ElisaScript native-first gate."""
 
 import json
+import os
+import platform
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -17,7 +21,32 @@ def main() -> int:
     except ValueError:
         print("native gate statuses must be integers", file=sys.stderr)
         return 2
-    output.write_text(json.dumps({"mode": mode, **statuses}, sort_keys=True) + "\n", encoding="utf-8")
+    def stage(value: int) -> dict:
+        return {"status": value, "state": "pass" if value == 0 else "skip" if value < 0 else "fail"}
+
+    checkout = output.parent.parent
+    revision = subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=False,
+    )
+    report = {
+        "schema": 2,
+        "mode": mode,
+        "outcome": "pass" if all(value <= 0 for value in statuses.values()) else "fail",
+        "hardware_verification": "verified" if mode == "native" and statuses["native"] == 0 else "unverified",
+        "recorded_at_unix": time.time(),
+        "provenance": {
+            "checkout": str(checkout),
+            "git_revision": revision.stdout.strip() if revision.returncode == 0 else "unknown",
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "developer_dir": os.environ.get("DEVELOPER_DIR", ""),
+        },
+        "stages": {name: stage(value) for name, value in statuses.items()},
+        # Keep flat status fields for existing consumers.
+        **statuses,
+    }
+    output.write_text(json.dumps(report, sort_keys=True) + "\n", encoding="utf-8")
     print(f"native gate report: {output}")
     return 0
 

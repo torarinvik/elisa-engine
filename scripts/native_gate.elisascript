@@ -40,8 +40,9 @@ def main(arguments: darray[sview]) -> i64:
     _ = write_stdout(hygiene_result.stdout)
     _ = write_stderr(hygiene_result.stderr)
     hygiene_status: i64 = hygiene_result.exit_status
-    headless_status: mutable i64 = 0
-    native_status: mutable i64 = 0
+    # -1 is an explicit skip. Zero is pass and positive values are failures.
+    headless_status: mutable i64 = -1
+    native_status: mutable i64 = -1
     if mode == "headless" or mode == "native":
         headless_result: ProcessCapture =
             empty_input: sview = ""
@@ -64,7 +65,7 @@ def main(arguments: darray[sview]) -> i64:
     status: mutable i64 = dependency_status
     status <- source_status if status == 0 and source_status != 0
     status <- hygiene_status if status == 0 and hygiene_status != 0
-    status <- headless_status if status == 0 and headless_status != 0
-    status <- native_status if status == 0 and native_status != 0
+    status <- headless_status if status == 0 and headless_status > 0
+    status <- native_status if status == 0 and native_status > 0
     return report_result.exit_status if report_result.exit_status != 0
     status
