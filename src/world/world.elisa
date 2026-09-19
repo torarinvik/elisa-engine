@@ -385,7 +385,7 @@ module World:
         # Dense iteration returns a checked world-branded reference instead of
         # making each caller reconstruct provenance from a raw numeric ID.
         def world_live_reference_at(world: World&, index: usize) -> EntityRef error[WorldError]:
-            raise WorldError.InvalidReference if index >= world.live_ids_count
+            raise WorldError.InvalidReference if not WorldReference::index_valid(index, world.live_ids_count)
             reference: EntityRef = EntityRef{world_epoch: world.epoch, id: world.live_ids[index]}
             raise WorldError.InvalidReference if not world_is_live(world, reference)
             reference

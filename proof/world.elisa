@@ -1,3 +1,9 @@
 # This proof covers the pure provenance predicate used by World. Mutable
 # registry/storage invariants are exercised by runtime lifecycle tests.
 include "../src/world/reference.elisa"
+
+extend WorldReference:
+    def prove_live_index(index: usize, count: usize) -> usize:
+        requires index < count
+        ensure result < count
+        return index

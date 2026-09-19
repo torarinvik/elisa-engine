@@ -4,3 +4,7 @@ module WorldReference:
         def epoch_matches(world_epoch: i64, reference_epoch: i64) -> bool:
             ensure result == (world_epoch == reference_epoch)
             world_epoch == reference_epoch
+
+        def index_valid(index: usize, count: usize) -> bool:
+            ensure result == (index < count)
+            index < count
