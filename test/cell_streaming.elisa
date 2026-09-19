@@ -1,0 +1,41 @@
+include "../src/world/cell_streaming.elisa"
+
+def main() -> i32:
+    stream: mutable WorldStreaming::Stream = WorldStreaming::Stream(1, 1)
+    return 1 if not WorldStreaming::stream_valid(&stream)
+    first: WorldStreaming::CellHandle = catch WorldStreaming::request(&stream, WorldStreaming::CellKey{x: 1, y: 1}, 4):
+        value: value
+        error failure: return 2
+    same: WorldStreaming::CellHandle = catch WorldStreaming::request(&stream, WorldStreaming::CellKey{x: 1, y: 1}, 5):
+        value: value
+        error failure: return 3
+    return 4 if first.slot != same.slot or first.generation != same.generation
+    dependency: i64 = catch WorldStreaming::dependency_generation(&stream, first):
+        value: value
+        error failure: return 5
+    return 5 if dependency != 5
+    stale: i32 = catch WorldStreaming::activate(&stream, first, 4):
+        ok: 0
+        WorldStreaming::StreamError.InvalidDependency: 1
+        error failure: 2
+    return 6 if stale != 1
+    activated: i32 = catch WorldStreaming::activate(&stream, first, 5):
+        ok: 0
+        error failure: 1
+    return 7 if activated != 0
+    return 9 if WorldStreaming::resident_count(&stream) != 1 or WorldStreaming::load_count(&stream) != 1
+    second: WorldStreaming::CellHandle = catch WorldStreaming::request(&stream, WorldStreaming::CellKey{x: 4, y: 4}, 8):
+        value: value
+        error failure: return 10
+    budgeted: i32 = catch WorldStreaming::activate(&stream, second, 8):
+        ok: 0
+        error failure: 1
+    return 11 if budgeted != 1
+    return 12 if WorldStreaming::trim(&stream, 4, 4, 1) != 1
+    return 13 if WorldStreaming::resident_count(&stream) != 0 or WorldStreaming::cancellation_count(&stream) != 1
+    activated_second: i32 = catch WorldStreaming::activate(&stream, second, 8):
+        ok: 0
+        error failure: 1
+    return 14 if activated_second != 0
+    return 15 if not WorldStreaming::stream_valid(&stream)
+    0

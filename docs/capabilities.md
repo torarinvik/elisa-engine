@@ -69,6 +69,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Bounded transform hierarchy with checked reparenting | Tested | `src/world/hierarchy.elisa`, `test/hierarchy.elisa`, `docs/validation/transform-hierarchy.md`; physics arbitration remains W02 |
 | Deferred structural world command buffer | Tested | `src/world/commands.elisa`, `test/world_commands.elisa`, `docs/validation/deferred-world-commands.md`; application to the primary registry remains W03 |
 | Versioned prefab instances with runtime remapping | Tested | `src/world/prefab.elisa`, `test/prefab.elisa`, `docs/validation/prefab-instances.md`; nested instance serialization remains W04 |
+| Generation-checked world-cell streaming | Tested | `src/world/cell_streaming.elisa`, `test/cell_streaming.elisa`, `docs/validation/world-cell-streaming.md`; native decode/upload scheduling remains W05 |
 | FFI ownership contracts, adversarial bridge | Tested | `src/backend/contracts.elisa`, `src/backend/fake_bridge.elisa`, `test/contracts.elisa`, `test/fake_bridge.elisa` |
 | Submission storage completion boundary | Tested | `src/runtime/lifetime.elisa`, `test/contracts.elisa` |
 | Scene resources rebuilt from canonical data | Tested | `src/backend/recording.elisa`, `test/recording.elisa` |

@@ -127,6 +127,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/world/prefab.elisa` defines versioned bounded nodes, stable authoring IDs, per-instance runtime remapping, transform overrides, and affine instance validation; `test/prefab.elisa` covers two instances, missing parents, cycles, and override isolation. Nested instances, serialized overrides, and primary-world integration remain.
 - [ ] **W05 · P1 · Streaming world cells** — After: W04, A04, F06.
   Extend bounded maze streaming into asynchronous scene-cell activation with dependencies, hysteresis, cancellation, and unload policy. Done: a player crosses cell boundaries while referenced resources remain valid; repeated travel stays within declared CPU/GPU memory budgets.
+  Progress: `src/world/cell_streaming.elisa` adds bounded generation-checked cell requests, dependency-generation validation, resident budgets, cancellation, and hysteretic trimming; `test/cell_streaming.elisa` covers coalescing, stale dependencies, budget rejection, unload, and reactivation. Native decode/upload scheduling and primary-world cell activation remain.
 - [ ] **W06 · P1 · Savegame schema and migrations** — After: W04.
   Serialize stable data and IDs, excluding native handles; add transactional writes, checksums, migration chains, and crash recovery. Done: old-version, truncated, oversized, and corrupt saves are tested; loading replaces the world atomically and reconstructs native state.
 - [ ] **W07 · P2 · Real parallel executor** — After: W03, F05.

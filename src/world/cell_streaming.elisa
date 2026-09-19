@@ -1,0 +1,175 @@
+# Bounded scene-cell streaming. Gameplay chooses which cells to request; this
+# module owns generation-checked requests, dependency generations, residency
+# budget, cancellation, and hysteretic unloading.
+module WorldStreaming:
+    private:
+        const module Limits:
+            MAX_CELLS: usize = 64
+            INVALID_SLOT: usize = MAX_CELLS
+            FIRST_GENERATION: i64 = 1
+            MAX_GENERATION: i64 = 9223372036854775807
+
+        def next_generation(current: i64) -> i64:
+            Limits::FIRST_GENERATION if current == 0 else current + 1
+
+        def live(state: CellState) -> bool:
+            state == CellState.Queued or state == CellState.Resident
+
+    public:
+        enum CellState:
+            Empty
+            Queued
+            Resident
+            Cancelled
+
+        enum StreamError:
+            InvalidKey
+            InvalidDependency
+            Capacity
+            UnknownCell
+            InvalidStage
+            BudgetExceeded
+            GenerationExhausted
+
+        struct CellKey:
+            x: i64
+            y: i64
+
+        struct CellHandle:
+            slot: usize
+            generation: i64
+
+        private:
+            struct Cell:
+                key: CellKey
+                generation: mutable i64
+                dependency_generation: mutable i64
+                state: mutable CellState
+
+        public:
+            affine struct Stream:
+                private:
+                    cells: mutable Cell[Limits::MAX_CELLS]
+                    count: mutable usize
+                    resident_count: mutable usize
+                    budget: usize
+                    hysteresis: i64
+                    loads: mutable usize
+                    unloads: mutable usize
+                    cancellations: mutable usize
+
+            def Stream(budget: usize, hysteresis: i64) -> Stream:
+                Stream{
+                    cells: zeroed,
+                    count: 0,
+                    resident_count: 0,
+                    budget: budget,
+                    hysteresis: hysteresis,
+                    loads: 0,
+                    unloads: 0,
+                    cancellations: 0,
+                }
+
+            def slot_of(stream: Stream&, key: CellKey) -> usize:
+                for index in 0..<Limits::MAX_CELLS |slot: usize = Limits::INVALID_SLOT| -> slot:
+                    break index if live(stream.cells[index].state) and stream.cells[index].key.x == key.x and stream.cells[index].key.y == key.y
+
+            def handle_valid(stream: Stream&, handle: CellHandle) -> bool:
+                handle.slot < Limits::MAX_CELLS and stream.cells[handle.slot].generation == handle.generation and live(stream.cells[handle.slot].state)
+
+            def state(stream: Stream&, handle: CellHandle) -> CellState:
+                return CellState.Empty if not handle_valid(stream, handle)
+                stream.cells[handle.slot].state
+
+            def request(stream: mutable Stream&, key: CellKey, dependency_generation: i64) -> CellHandle error[StreamError]:
+                raise StreamError.InvalidKey if key.x == 0 and key.y == 0
+                raise StreamError.InvalidDependency if dependency_generation <= 0
+                existing: usize = slot_of(stream, key)
+                if existing != Limits::INVALID_SLOT:
+                    stream.cells[existing].dependency_generation <- dependency_generation
+                    return CellHandle{slot: existing, generation: stream.cells[existing].generation}
+                raise StreamError.Capacity if stream.count >= Limits::MAX_CELLS
+                slot: usize =
+                    for index in 0..<Limits::MAX_CELLS |slot: usize = Limits::INVALID_SLOT, stream| -> slot:
+                        break index if not live(stream.cells[index].state)
+                raise StreamError.Capacity if slot == Limits::INVALID_SLOT
+                generation: mutable i64 = stream.cells[slot].generation
+                raise StreamError.GenerationExhausted if generation >= Limits::MAX_GENERATION
+                generation <- next_generation(generation)
+                stream.cells[slot] <- Cell{
+                    key: key,
+                    generation: generation,
+                    dependency_generation: dependency_generation,
+                    state: CellState.Queued,
+                }
+                stream.count <- stream.count + 1
+                CellHandle{slot: slot, generation: generation}
+
+            def dependency_generation(stream: Stream&, handle: CellHandle) -> i64 error[StreamError]:
+                raise StreamError.UnknownCell if not handle_valid(stream, handle)
+                stream.cells[handle.slot].dependency_generation
+
+            def activate(stream: mutable Stream&, handle: CellHandle, current_dependency: i64) -> void error[StreamError]:
+                raise StreamError.UnknownCell if not handle_valid(stream, handle)
+                raise StreamError.InvalidStage if stream.cells[handle.slot].state != CellState.Queued
+                raise StreamError.InvalidDependency if current_dependency != stream.cells[handle.slot].dependency_generation
+                raise StreamError.BudgetExceeded if stream.resident_count >= stream.budget
+                stream.cells[handle.slot].state <- CellState.Resident
+                stream.resident_count <- stream.resident_count + 1
+                stream.loads <- stream.loads + 1
+
+            def cancel(stream: mutable Stream&, handle: CellHandle) -> void error[StreamError]:
+                raise StreamError.UnknownCell if not handle_valid(stream, handle)
+                return if stream.cells[handle.slot].state == CellState.Cancelled
+                if stream.cells[handle.slot].state == CellState.Resident:
+                    stream.resident_count <- stream.resident_count - 1
+                    stream.unloads <- stream.unloads + 1
+                stream.cells[handle.slot].state <- CellState.Cancelled
+                stream.cancellations <- stream.cancellations + 1
+
+            def release(stream: mutable Stream&, handle: CellHandle) -> void error[StreamError]:
+                raise StreamError.UnknownCell if not handle_valid(stream, handle)
+                raise StreamError.InvalidStage if stream.cells[handle.slot].state != CellState.Resident
+                stream.resident_count <- stream.resident_count - 1
+                stream.cells[handle.slot].state <- CellState.Empty
+                stream.count <- stream.count - 1
+                stream.unloads <- stream.unloads + 1
+
+            def trim(stream: mutable Stream&, player_x: i64, player_y: i64, radius: i64) -> usize:
+                return 0 if radius < 0
+                threshold: i64 = radius + stream.hysteresis
+                changes: mutable usize = 0
+                for index in 0..<Limits::MAX_CELLS |changes, stream|:
+                    if live(stream.cells[index].state):
+                        dx: i64 = stream.cells[index].key.x - player_x
+                        dy: i64 = stream.cells[index].key.y - player_y
+                        distance: i64 = dx * dx + dy * dy
+                        if distance > threshold * threshold:
+                            handle: CellHandle = CellHandle{slot: index, generation: stream.cells[index].generation}
+                            _ = catch cancel(stream, handle):
+                                ok: 1
+                                error failure: 0
+                            stream.count <- stream.count - 1
+                            changes <- changes + 1
+                changes
+
+            def stream_valid(stream: Stream&) -> bool:
+                return false if stream.budget == 0 or stream.hysteresis < 0 or stream.count > Limits::MAX_CELLS or stream.resident_count > stream.budget
+                for index in 0..<Limits::MAX_CELLS:
+                    if live(stream.cells[index].state):
+                        return false if stream.cells[index].generation <= 0 or stream.cells[index].dependency_generation <= 0
+                        for earlier in 0..<index:
+                            return false if live(stream.cells[earlier].state) and stream.cells[earlier].key.x == stream.cells[index].key.x and stream.cells[earlier].key.y == stream.cells[index].key.y
+                true
+
+            def resident_count(stream: Stream&) -> usize:
+                stream.resident_count
+
+            def load_count(stream: Stream&) -> usize:
+                stream.loads
+
+            def unload_count(stream: Stream&) -> usize:
+                stream.unloads
+
+            def cancellation_count(stream: Stream&) -> usize:
+                stream.cancellations
