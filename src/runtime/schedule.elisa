@@ -64,6 +64,13 @@ module Schedule:
             total
 
     private:
+        def first_available_group(systems: System[8], groups: usize[8], index: usize) -> usize:
+            for group in 0..<Tune::MAX_SYSTEMS |selected: usize = Tune::MAX_SYSTEMS| -> selected:
+                clash: bool =
+                    for other in 0..<index |conflicting: bool = false| -> conflicting:
+                        conflicting <- true if groups[other] == group and systems_conflict(systems[other], systems[index])
+                break group if not clash
+
         module Order:
             public:
                 def position_of(order: usize[8], count: usize, id: usize) -> usize:
@@ -92,15 +99,8 @@ module Schedule:
             groups: mutable usize[8] = zeroed
             return groups if count > Tune::MAX_SYSTEMS
             for index in 0..<count |groups, systems|:
-                placed: mutable bool = false
-                for group in 0..<Tune::MAX_SYSTEMS |groups, systems, index, placed|:
-                    break if placed
-                    clash: bool =
-                        for other in 0..<index |conflicting: bool = false| -> conflicting:
-                            conflicting <- true if groups[other] == group and systems_conflict(systems[other], systems[index])
-                    if not clash:
-                        groups[index] <- group
-                        placed <- true
+                group: usize = first_available_group(systems, groups, index)
+                groups[index] <- group if group < Tune::MAX_SYSTEMS
             groups
 
         def wave_count(groups: usize[8], count: usize) -> usize:
