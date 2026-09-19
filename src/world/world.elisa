@@ -162,6 +162,35 @@ module World:
                 world.enemies[index].live <- false
             world.enemy_count <- write
 
+        struct RegistryCheck:
+            valid: bool
+            live: usize
+            actors: usize
+            enemies: usize
+
+        def registry_check(world: World&) -> RegistryCheck:
+            live: mutable usize = 0
+            actors: mutable usize = 0
+            enemies: mutable usize = 0
+            valid: mutable bool = true
+            for index in 0..<world.registry_count |live, actors, enemies, valid|:
+                row: RegistryRow = world.registry[index]
+                if row.live:
+                    live <- live + 1
+                    valid <- false if row.id <= EntityId::ENTITY_ID_INVALID or row.id > world.allocator.last_issued or not entity_kind_is_spawnable(row.kind)
+                    valid <- false if row.storage != entity_storage_kind(row.kind)
+                    if row.storage == StorageKind.Actor:
+                        actors <- actors + 1
+                        valid <- false if live_actor_matches(world, row.id) != 1
+                    else:
+                        enemies <- enemies + 1
+                        valid <- false if live_enemy_matches(world, row.id) != 1
+                    unique: bool =
+                        for earlier in 0..<index |unique: bool = true| -> unique:
+                            break false if world.registry[earlier].live and world.registry[earlier].id == row.id
+                    valid <- false if not unique
+            RegistryCheck{valid: valid, live: live, actors: actors, enemies: enemies}
+
     public:
         struct EntityRef:
             world_epoch: i64
@@ -302,27 +331,12 @@ module World:
 
         def world_is_valid(world: World&) -> bool:
             return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > Bounds::WORLD_MAX_ENTITIES or world.actor_count > Bounds::WORLD_MAX_ENTITIES or world.enemy_count > Bounds::WORLD_MAX_ENTITIES or world.live_count > world.registry_count
-            live: mutable usize = 0
-            actor_rows: mutable usize = 0
-            enemy_rows: mutable usize = 0
-            for index in 0..<world.registry_count:
-                row: RegistryRow = world.registry[index]
-                if row.live:
-                    live <- live + 1
-                    return false if row.id <= EntityId::ENTITY_ID_INVALID or row.id > world.allocator.last_issued or not entity_kind_is_spawnable(row.kind)
-                    return false if row.storage != entity_storage_kind(row.kind)
-                    if row.storage == StorageKind.Actor:
-                        actor_rows <- actor_rows + 1
-                        return false if live_actor_matches(world, row.id) != 1
-                    else:
-                        enemy_rows <- enemy_rows + 1
-                        return false if live_enemy_matches(world, row.id) != 1
-                    for other in 0..<index:
-                        return false if world.registry[other].live and world.registry[other].id == row.id
+            registry: RegistryCheck = registry_check(world)
+            return false if not registry.valid
             live_actors: usize =
                 for index in 0..<world.actor_count |count: usize = 0| -> count:
                     count <- count + 1 if world.actors[index].live
             live_enemies: usize =
                 for index in 0..<world.enemy_count |count: usize = 0| -> count:
                     count <- count + 1 if world.enemies[index].live
-            live == world.live_count and actor_rows == live_actors and enemy_rows == live_enemies
+            registry.live == world.live_count and registry.actors == live_actors and registry.enemies == live_enemies
