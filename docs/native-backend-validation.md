@@ -27,21 +27,23 @@ existing forced-exit workaround until F05 supplies orderly Wicked teardown.
 After device initialization the native gate queries the adapter name, shader
 format, viewport limit, video-memory budget/usage, mesh-shader, ray-tracing,
 and sparse-texture capabilities through Wicked's graphics device. Optional
-features are reported as `native` or `fallback`; they are not inferred from a
-linked library or from the machine-independent Elisa profile.
+features are reported as `native` or `fallback`; these values populate the
+versioned vendor-free `ElisaBackendProfile` and are not inferred from a linked
+library or from the machine-independent Elisa profile.
 Setting `ELISA_FORCE_OPTIONAL_FALLBACK=1` exercises the same fallback policy on
 hardware that exposes those features, proving that a linked capability does not
 silently become a gameplay requirement. Native profile population and typed
 Elisa bindings remain open F08 work.
 
-The SDL3 host records logical and physical window sizes, display changes,
-focus, minimize, restore, and close transitions. A minimized or zero-pixel
-window suspends simulation while the event queue remains live, so input edges
-are not lost during a resize. `native/frame_pacer.h` keeps simulation ticks at
-an integer nanosecond step, caps catch-up at four ticks, and exposes the
-presentation interpolation fraction without adding work to the Elisa world.
-The finite native gate injects focus/minimize/restore/pixel-size events and
-checks the state transitions and monotonic resize serial.
+The SDL3 host records logical and physical window sizes, display scale, display
+changes, fullscreen state, focus, minimize, restore, and close transitions. A
+minimized or zero-pixel window suspends simulation while the event queue remains
+live, so input edges are not lost during a resize. `native/frame_pacer.h` keeps
+simulation ticks at an integer nanosecond step, caps catch-up at four ticks, and
+exposes the presentation interpolation fraction without adding work to the
+Elisa world. The finite native gate injects focus/minimize/restore and
+pixel-size events, toggles fullscreen, and checks state transitions and the
+monotonic resize serial.
 
 `NativeApplication::shutdown()` provides the host-local half of orderly
 shutdown (GPU wait, window detachment, SDL destruction). The optional

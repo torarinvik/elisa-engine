@@ -11,6 +11,7 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
                "SDL logical window size") ||
         !check(initial.pixel_width > 0 && initial.pixel_height > 0,
                "SDL pixel window size") ||
+        !check(initial.display_scale > 0.0f, "SDL display scale") ||
         !check(initial.resize_serial > 0, "SDL initial resize serial")) {
         return false;
     }
@@ -31,10 +32,19 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
     event.type = SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED;
     SDL_PushEvent(&event);
     host.poll_events();
-    return check(host.window_state().focused && !host.simulation_suspended(),
-                 "SDL restore resumes simulation") &&
-        check(host.window_state().resize_serial >= initial.resize_serial,
-              "SDL resize serial remains monotonic");
+    if (!check(host.window_state().focused && !host.simulation_suspended(),
+                 "SDL restore resumes simulation") ||
+        !check(host.window_state().resize_serial >= initial.resize_serial,
+              "SDL resize serial remains monotonic")) {
+        return false;
+    }
+    if (!check(host.set_fullscreen(true), "SDL enters fullscreen") ||
+        !check(host.window_state().fullscreen, "SDL fullscreen state") ||
+        !check(host.set_fullscreen(false), "SDL leaves fullscreen") ||
+        !check(!host.window_state().fullscreen, "SDL windowed state")) {
+        return false;
+    }
+    return check(host.window_state().display_scale > 0.0f, "SDL restored display scale");
 }
 
 } // namespace probe

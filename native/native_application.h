@@ -25,9 +25,11 @@ public:
         int pixel_width = 0;
         int pixel_height = 0;
         int display_index = -1;
+        float display_scale = 1.0f;
         uint64_t resize_serial = 0;
         bool focused = true;
         bool minimized = false;
+        bool fullscreen = false;
 
         bool suspended() const {
             return minimized || pixel_width == 0 || pixel_height == 0;
@@ -120,6 +122,15 @@ public:
         close_requested_ = true;
     }
 
+    bool set_fullscreen(bool enabled) {
+        if (window_ == nullptr || !SDL_SetWindowFullscreen(window_, enabled)) {
+            return false;
+        }
+        window_state_.fullscreen = enabled;
+        refresh_window_state();
+        return true;
+    }
+
     // Releases work owned by this host before SDL disappears. Wicked's
     // process-wide worker services remain outside this wrapper; callers can
     // use this boundary to test whether the pinned build tolerates normal
@@ -187,6 +198,9 @@ private:
         window_state_.pixel_width = pixel_width;
         window_state_.pixel_height = pixel_height;
         window_state_.display_index = SDL_GetDisplayForWindow(window_);
+        const float scale = SDL_GetWindowDisplayScale(window_);
+        window_state_.display_scale = scale > 0.0f ? scale : 1.0f;
+        window_state_.fullscreen = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
     }
 
     void update_window_state(const SDL_Event& event) {
