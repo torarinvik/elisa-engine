@@ -51,6 +51,7 @@
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
+#include "pbr_material_bridge.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -107,6 +108,7 @@ int main(int argc, char** argv) {
     if (!probe_parallel_executor()) return 1;
     if (!probe_world_event_bridge()) return 1;
     if (!probe_lighting_bridge(scene)) return 1;
+    if (!probe_pbr_material_bridge(scene)) return 1;
     if (!probe_native_resource_handles(scene)) {
         return 1;
     }
@@ -437,8 +439,7 @@ int main(int argc, char** argv) {
     std::fprintf(stdout, "pre-frames aabb=%u matrices=%u objects=%u\n",
         (unsigned)scene.aabb_objects.size(), (unsigned)scene.matrix_objects.size(),
         (unsigned)scene.objects.GetCount());
-    // Pump platform events first: on macOS a window that never sees its
-    // event queue may never finish mapping its Metal layer.
+    // Pump platform events before the render settle loop.
     for (int pump = 0; pump < 60; ++pump) {
         if (!application_host.poll_events()) {
             return 0;
