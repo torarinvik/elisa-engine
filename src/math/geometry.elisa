@@ -227,7 +227,7 @@ module Geometry:
         # Use the standard library's native f32 square root, retaining the engine's
         # zero result for non-positive inputs.
         def sqrt_f32(value: f32) -> f32:
-            Scalar::ZERO if value <= Scalar::ZERO else sqrtf(value)
+            Scalar::ZERO if value <= Scalar::ZERO else ElisaMath::sqrtf(value)
 
         def vec3_length(value: Vec3) -> f32:
             sqrt_f32(vec3_length_squared(value))

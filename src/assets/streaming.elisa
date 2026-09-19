@@ -71,11 +71,11 @@ module Streaming:
             # Chebyshev distance in cells from the chunk's centre to the player.
             dx: i64 =
                 centre_x: i64 = chunk_x * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
-                abs_i64(centre_x - player_x)
+                ElisaMath::abs_i64(centre_x - player_x)
             dy: i64 =
                 centre_y: i64 = chunk_y * Tune::CHUNK_CELLS + Tune::CHUNK_CELLS / 2
-                abs_i64(centre_y - player_y)
-            max_i64(dx, dy)
+                ElisaMath::abs_i64(centre_y - player_y)
+            ElisaMath::max_i64(dx, dy)
 
         def chunk_overlaps_radius(state: StreamState&, chunk_x: i64, chunk_y: i64, player_x: i64, player_y: i64, radius: i64) -> bool:
             min_x: i64 = chunk_x * Tune::CHUNK_CELLS
