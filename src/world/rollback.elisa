@@ -1,0 +1,66 @@
+# Reversible world state for prediction and replay. The snapshot contains
+# gameplay/storage columns only; the allocator high-water mark remains owned by
+# World and is never restored backwards.
+include "./world.elisa"
+
+module WorldRollback:
+    private:
+        const module Bounds:
+            MAX_ENTITIES: usize = 256
+
+    public:
+        error RollbackError:
+            InvalidSnapshot
+            WrongWorld
+
+        struct Snapshot:
+            epoch: i64
+            registry: World::RegistryRow[Bounds::MAX_ENTITIES]
+            registry_count: usize
+            live_count: usize
+            live_ids: i64[Bounds::MAX_ENTITIES]
+            live_ids_count: usize
+            actors: World::ActorRecord[Bounds::MAX_ENTITIES]
+            actor_count: usize
+            enemies: World::EnemyRecord[Bounds::MAX_ENTITIES]
+            enemy_count: usize
+
+        def snapshot_valid(snapshot: Snapshot&) -> bool:
+            return false if snapshot.epoch <= 0
+            return false if snapshot.registry_count > Bounds::MAX_ENTITIES or snapshot.live_count > snapshot.registry_count
+            return false if snapshot.live_ids_count > Bounds::MAX_ENTITIES or snapshot.actor_count > Bounds::MAX_ENTITIES or snapshot.enemy_count > Bounds::MAX_ENTITIES
+            true
+
+        def capture(world: World::World&) -> Snapshot:
+            snapshot: mutable Snapshot = Snapshot{
+                epoch: world.epoch,
+                registry: zeroed,
+                registry_count: world.registry_count,
+                live_count: world.live_count,
+                live_ids: zeroed,
+                live_ids_count: world.live_ids_count,
+                actors: zeroed,
+                actor_count: world.actor_count,
+                enemies: zeroed,
+                enemy_count: world.enemy_count,
+            }
+            for index in 0..<Bounds::MAX_ENTITIES |snapshot, world|:
+                snapshot.registry[index] <- world.registry[index]
+                snapshot.live_ids[index] <- world.live_ids[index]
+                snapshot.actors[index] <- world.actors[index]
+                snapshot.enemies[index] <- world.enemies[index]
+            snapshot
+
+        def restore(world: mutable World::World&, snapshot: Snapshot&) -> void error[RollbackError]:
+            raise RollbackError.InvalidSnapshot if not snapshot_valid(&snapshot)
+            raise RollbackError.WrongWorld if world.epoch != snapshot.epoch
+            for index in 0..<Bounds::MAX_ENTITIES |world, snapshot|:
+                world.registry[index] <- snapshot.registry[index]
+                world.live_ids[index] <- snapshot.live_ids[index]
+                world.actors[index] <- snapshot.actors[index]
+                world.enemies[index] <- snapshot.enemies[index]
+            world.registry_count <- snapshot.registry_count
+            world.live_count <- snapshot.live_count
+            world.live_ids_count <- snapshot.live_ids_count
+            world.actor_count <- snapshot.actor_count
+            world.enemy_count <- snapshot.enemy_count

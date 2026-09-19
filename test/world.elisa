@@ -1,8 +1,10 @@
 include "../src/world/world.elisa"
 include "../src/world/persistence.elisa"
+include "../src/world/rollback.elisa"
 using World
 using EntityId
 using WorldPersistence
+using WorldRollback
 
 def world_error_code(failure: WorldError) -> i64:
     match failure:
@@ -118,6 +120,46 @@ def capacity_test() -> i32:
         WorldError.Capacity: 0
         error failure: 33
     return 34 if rejected != 0 or world.live_count != 256 or world.allocator.last_issued != 256
+    0
+
+def rollback_test() -> i32:
+    world: mutable World = catch World():
+        value: value
+        error failure: invalid_world()
+    actor: EntityRef = catch world_spawn(&world, Actor.Player):
+        value: value
+        error failure: invalid_reference()
+    enemy: EntityRef = catch world_spawn(&world, Enemy.Guard):
+        value: value
+        error failure: invalid_reference()
+    snapshot: Snapshot = capture(&world)
+    allocator_before: i64 = world.allocator.last_issued
+    _ = catch world_despawn(&world, actor):
+        ok: true
+        error failure: false
+    restored: i32 = catch restore(&world, &snapshot):
+        ok: 0
+        RollbackError.InvalidSnapshot: 1
+        RollbackError.WrongWorld: 2
+        error failure: 3
+    actor_after: ActorRecord = catch world_actor_record(&world, actor):
+        value: value
+        error failure: ActorRecord{id: -1, live: false, health: -1}
+    return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live
+    return 2 if world.allocator.last_issued != allocator_before
+    third: EntityRef = catch world_spawn(&world, Actor.Player):
+        value: value
+        error failure: invalid_reference()
+    return 3 if third.id != allocator_before + 1
+    other: mutable World = catch World():
+        value: value
+        error failure: invalid_world()
+    wrong_world: i32 = catch restore(&other, &snapshot):
+        ok: 0
+        RollbackError.InvalidSnapshot: 1
+        RollbackError.WrongWorld: 2
+        error failure: 3
+    return 4 if wrong_world != 2
     0
 
 def main() -> i32:
@@ -282,4 +324,6 @@ def main() -> i32:
     return churn if churn != 0
     capacity: i32 = capacity_test()
     return capacity if capacity != 0
+    rollback: i32 = rollback_test()
+    return 50 + rollback if rollback != 0
     corruption_test()

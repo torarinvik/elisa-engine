@@ -20,7 +20,7 @@ writes `build/validation.json`. Host evidence comes from
 | Capability | Label | Evidence |
 |---|---|---|
 | Monotonic `i64` identity, explicit exhaustion | Proved + Tested | `proof/entity_id.elisa`, `test/entity_id.elisa` |
-| Owning `World`, liveness, typed storage access, rollback, compaction | Proved + Tested | `proof/world.elisa`, `test/world.elisa` |
+| Owning `World`, liveness, typed storage access, rollback snapshots, compaction | Proved + Tested | `src/world/rollback.elisa`, `proof/world.elisa`, `test/world.elisa` |
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
 | Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
 | Persistent-to-runtime identity remapping with stale-reference rejection | Tested | `src/world/persistence.elisa`, `test/world.elisa` |
