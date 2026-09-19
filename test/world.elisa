@@ -154,18 +154,18 @@ def capacity_test() -> i32:
     world: mutable World = catch World():
         value: value
         error failure: invalid_world()
-    for step in 0..<256 |world|:
+    for step in 0..<World::MAX_ENTITIES |world|:
         reference: EntityRef = catch world_spawn(&world, Actor.Player):
             value: value
             error failure: invalid_reference()
         return 30 if reference.id != step.i64() + 1
-    return 31 if world_live_count(&world) != 256 or not world_is_valid(&world)
+    return 31 if world_live_count(&world) != World::MAX_ENTITIES or not world_is_valid(&world)
     rejected: i32 = catch world_spawn(&world, Actor.Player):
         value: 32
         WorldError.Capacity: 0
         error failure: 33
-    return 34 if rejected != 0 or world_live_count(&world) != 256 or world_last_issued(&world) != 256
-    return 35 if world_registry_count(&world) != 256 or world_actor_count(&world) != 256 or world_enemy_count(&world) != 0
+    return 34 if rejected != 0 or world_live_count(&world) != World::MAX_ENTITIES or world_last_issued(&world) != World::MAX_ENTITIES.i64()
+    return 35 if world_registry_count(&world) != World::MAX_ENTITIES or world_actor_count(&world) != World::MAX_ENTITIES or world_enemy_count(&world) != 0
     return 36 if not world_is_valid(&world)
     0
 
