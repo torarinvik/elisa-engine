@@ -1,0 +1,111 @@
+include "../math/geometry.elisa"
+
+# Versioned authoring nodes are separate from runtime identities. Instances
+# remap every node into their own runtime range and retain local overrides.
+module Prefab:
+    public:
+        const MAX_NODES: usize = 64
+        const ROOT: i64 = 0
+
+        struct Node:
+            authoring_id: i64
+            parent_id: i64
+            local: Geometry::Transform
+
+        struct Definition:
+            version: i64
+            nodes: Node[Prefab::MAX_NODES]
+            node_count: mutable usize
+
+        struct Binding:
+            authoring_id: i64
+            runtime_id: i64
+            local: Geometry::Transform
+
+        affine struct Instance:
+            private:
+                prefab_id: mutable i64
+                instance_id: mutable i64
+                bindings: mutable Binding[Prefab::MAX_NODES]
+                binding_count: mutable usize
+
+        def Definition() -> Definition:
+            Definition{version: 1, nodes: zeroed, node_count: 0}
+
+        def Instance() -> Instance:
+            Instance{prefab_id: 0, instance_id: 0, bindings: zeroed, binding_count: 0}
+
+        def node_slot(definition: Definition&, authoring_id: i64) -> usize:
+            for index in 0..<definition.node_count |slot: usize = Prefab::MAX_NODES| -> slot:
+                break index if definition.nodes[index].authoring_id == authoring_id
+
+        def parent_exists(definition: Definition&, parent_id: i64) -> bool:
+            parent_id == Prefab::ROOT or node_slot(definition, parent_id) != Prefab::MAX_NODES
+
+        def would_cycle(definition: Definition&, child_id: i64, parent_id: i64) -> bool:
+            cursor: mutable i64 = parent_id
+            for _ in 0..<Prefab::MAX_NODES:
+                return true if cursor == child_id
+                return false if cursor == Prefab::ROOT
+                parent_slot: usize = node_slot(definition, cursor)
+                return false if parent_slot == Prefab::MAX_NODES
+                cursor <- definition.nodes[parent_slot].parent_id
+            true
+
+        def definition_valid(definition: Definition&) -> bool:
+            return false if definition.version <= 0 or definition.node_count == 0 or definition.node_count > Prefab::MAX_NODES
+            for index in 0..<definition.node_count:
+                node: Node = definition.nodes[index]
+                return false if node.authoring_id <= 0 or node.parent_id < 0 or not parent_exists(definition, node.parent_id)
+                for earlier in 0..<index:
+                    return false if definition.nodes[earlier].authoring_id == node.authoring_id
+                return false if would_cycle(definition, node.authoring_id, node.parent_id)
+            true
+
+        def definition_add(definition: mutable Definition&, node: Node) -> bool:
+            return false if definition.node_count >= Prefab::MAX_NODES or node.authoring_id <= 0
+            return false if node_slot(definition, node.authoring_id) != Prefab::MAX_NODES
+            definition.nodes[definition.node_count] <- node
+            definition.node_count <- definition.node_count + 1
+            true
+
+        def instantiate(instance: mutable Instance&, definition: Definition&, prefab_id: i64,
+            instance_id: i64, runtime_base: i64) -> bool:
+            return false if prefab_id <= 0 or instance_id <= 0 or runtime_base <= 0 or not definition_valid(definition)
+            instance.prefab_id <- prefab_id
+            instance.instance_id <- instance_id
+            instance.binding_count <- definition.node_count
+            for index in 0..<definition.node_count |instance|:
+                instance.bindings[index] <- Binding{
+                    authoring_id: definition.nodes[index].authoring_id,
+                    runtime_id: runtime_base + index.i64() + 1,
+                    local: definition.nodes[index].local,
+                }
+            true
+
+        def instance_binding_count(instance: Instance&) -> usize:
+            instance.binding_count
+
+        def instance_override(instance: mutable Instance&, authoring_id: i64,
+            local: Geometry::Transform) -> bool:
+            for index in 0..<instance.binding_count:
+                if instance.bindings[index].authoring_id == authoring_id:
+                    instance.bindings[index].local <- local
+                    return true
+            false
+
+        def instance_runtime_id(instance: Instance&, authoring_id: i64) -> i64:
+            for index in 0..<instance.binding_count:
+                if instance.bindings[index].authoring_id == authoring_id:
+                    return instance.bindings[index].runtime_id
+            0
+
+        def instance_valid(instance: Instance&) -> bool:
+            return false if instance.prefab_id <= 0 or instance.instance_id <= 0 or instance.binding_count > Prefab::MAX_NODES
+            for index in 0..<instance.binding_count |valid: bool = true| -> valid:
+                row: Binding = instance.bindings[index]
+                valid <- false if row.authoring_id <= 0 or row.runtime_id <= 0
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if instance.bindings[earlier].runtime_id == row.runtime_id
+                valid <- valid and unique

@@ -1,0 +1,24 @@
+include "../src/world/prefab.elisa"
+
+def main() -> i32:
+    definition: mutable Prefab::Definition = Prefab::Definition()
+    identity: Geometry::Transform = Geometry::transform_identity()
+    root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0, local: identity}
+    child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10, local: Geometry::transform_translate(identity, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})}
+    return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
+    return 2 if not Prefab::definition_valid(&definition)
+    first: mutable Prefab::Instance = Prefab::Instance()
+    second: mutable Prefab::Instance = Prefab::Instance()
+    return 3 if not Prefab::instantiate(&first, &definition, 7, 1, 1000)
+    return 4 if not Prefab::instantiate(&second, &definition, 7, 2, 2000)
+    return 5 if not Prefab::instance_valid(&first) or not Prefab::instance_valid(&second)
+    return 6 if Prefab::instance_runtime_id(&first, 10) == Prefab::instance_runtime_id(&second, 10)
+    override: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0})
+    return 7 if not Prefab::instance_override(&first, 20, override) or Prefab::instance_binding_count(&first) != 2
+    missing: mutable Prefab::Definition = Prefab::Definition()
+    return 8 if not Prefab::definition_add(&missing, Prefab::Node{authoring_id: 1, parent_id: 99, local: identity}) or Prefab::definition_valid(&missing)
+    cycle: mutable Prefab::Definition = Prefab::Definition()
+    _ = Prefab::definition_add(&cycle, Prefab::Node{authoring_id: 1, parent_id: 2, local: identity})
+    _ = Prefab::definition_add(&cycle, Prefab::Node{authoring_id: 2, parent_id: 1, local: identity})
+    return 9 if Prefab::definition_valid(&cycle)
+    0

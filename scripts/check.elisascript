@@ -316,13 +316,18 @@ def main(arguments: darray[sview]) -> i64:
     commands_status <- run_visible(commands_binary, [])
     return commands_status if commands_status != 0
     println("Deferred world command tests passed.")
+    prefab_binary: sview = str(root.joinpath("build/prefab-test"))
+    prefab_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", prefab_binary, str(root.joinpath("test/prefab.elisa"))])
+    return prefab_status if prefab_status != 0
+    prefab_status <- run_visible(prefab_binary, [])
+    return prefab_status if prefab_status != 0
+    println("Prefab instance tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(image_compare_test_binary, [])
         if status != 0:
@@ -353,7 +358,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Maze vertical slice tests passed.")
 
     maze_game_test_binary: sview = str(root.joinpath("build/maze-game-test"))
@@ -362,7 +366,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(maze_game_test_binary, [])
         if status != 0:
@@ -377,7 +380,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(anim_test_binary, [])
         if status != 0:
@@ -392,7 +394,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(nav_test_binary, [])
         if status != 0:
@@ -407,7 +408,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(inspector_test_binary, [])
         if status != 0:

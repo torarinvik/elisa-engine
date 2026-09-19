@@ -124,6 +124,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/world/commands.elisa` provides a bounded affine spawn/despawn/reparent buffer with insertion order and atomic duplicate-write rejection; `test/world_commands.elisa` is part of the shared gate. Applying accepted commands to `World`, borrow lifetime diagnostics, and allocation-failure rollback remain.
 - [ ] **W04 · P1 · Scene and prefab instances** — After: W02, W03, A01.
   Define versioned scene/prefab data, stable authoring IDs, runtime remapping, nested instances, and overrides. Done: the same prefab can spawn twice without identity collisions; save/reload preserves overrides and rejects cycles or missing references with useful diagnostics.
+  Progress: `src/world/prefab.elisa` defines versioned bounded nodes, stable authoring IDs, per-instance runtime remapping, transform overrides, and affine instance validation; `test/prefab.elisa` covers two instances, missing parents, cycles, and override isolation. Nested instances, serialized overrides, and primary-world integration remain.
 - [ ] **W05 · P1 · Streaming world cells** — After: W04, A04, F06.
   Extend bounded maze streaming into asynchronous scene-cell activation with dependencies, hysteresis, cancellation, and unload policy. Done: a player crosses cell boundaries while referenced resources remain valid; repeated travel stays within declared CPU/GPU memory budgets.
 - [ ] **W06 · P1 · Savegame schema and migrations** — After: W04.
