@@ -1,0 +1,67 @@
+# Fixed-step pose publication. Simulation commits complete poses; rendering
+# reads an interpolated value and never advances the authoritative tick.
+include "../math/geometry.elisa"
+
+module PhysicsInterpolation:
+    private:
+        const module Limits:
+            MIN_ALPHA: f32 = 0.0
+            MAX_ALPHA: f32 = 1.0
+
+        def blend(start: f32, finish: f32, alpha: f32) -> f32:
+            start + (finish - start) * alpha
+
+        def transform_blend(start: Geometry::Transform, finish: Geometry::Transform, alpha: f32) -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{
+                    x: blend(start.position.x, finish.position.x, alpha),
+                    y: blend(start.position.y, finish.position.y, alpha),
+                    z: blend(start.position.z, finish.position.z, alpha),
+                },
+                rotation: Geometry::quat_normalize(Geometry::Quat{
+                    x: blend(start.rotation.x, finish.rotation.x, alpha),
+                    y: blend(start.rotation.y, finish.rotation.y, alpha),
+                    z: blend(start.rotation.z, finish.rotation.z, alpha),
+                    w: blend(start.rotation.w, finish.rotation.w, alpha),
+                }),
+                scale: Geometry::Vec3{
+                    x: blend(start.scale.x, finish.scale.x, alpha),
+                    y: blend(start.scale.y, finish.scale.y, alpha),
+                    z: blend(start.scale.z, finish.scale.z, alpha),
+                },
+            }
+
+    public:
+        affine struct Buffer:
+            private:
+                previous: mutable Geometry::Transform
+                current: mutable Geometry::Transform
+                tick: mutable i64
+                initialized: mutable bool
+                teleported: mutable bool
+
+        def Buffer(initial: Geometry::Transform) -> Buffer:
+            Buffer{previous: initial, current: initial, tick: 0, initialized: true, teleported: false}
+
+        def commit(buffer: mutable Buffer&, pose: Geometry::Transform, tick: i64, teleport: bool) -> bool:
+            return false if tick <= buffer.tick or not Geometry::vec3_is_finite(pose.position) or not Geometry::quat_is_finite(pose.rotation)
+            buffer.previous <- buffer.current if not teleport else pose
+            buffer.current <- pose
+            buffer.tick <- tick
+            buffer.teleported <- teleport
+            buffer.initialized <- true
+            true
+
+        def sample(buffer: Buffer&, alpha: f32) -> Geometry::Transform:
+            return buffer.current if not buffer.initialized or buffer.teleported or alpha <= Limits::MIN_ALPHA
+            return buffer.current if alpha >= Limits::MAX_ALPHA
+            transform_blend(buffer.previous, buffer.current, alpha)
+
+        def last_tick(buffer: Buffer&) -> i64:
+            buffer.tick
+
+        def clear_teleport(buffer: mutable Buffer&) -> void:
+            buffer.teleported <- false
+
+        def interpolation_valid(buffer: Buffer&) -> bool:
+            buffer.initialized and buffer.tick >= 0 and Geometry::vec3_is_finite(buffer.current.position) and Geometry::quat_is_finite(buffer.current.rotation)

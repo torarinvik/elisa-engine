@@ -1,0 +1,16 @@
+include "../src/physics/interpolation.elisa"
+
+def main() -> i32:
+    identity: Geometry::Transform = Geometry::transform_identity()
+    buffer: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(identity)
+    moved: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 10.0, y: 0.0, z: 0.0})
+    return 1 if not PhysicsInterpolation::commit(&buffer, moved, 1, false)
+    halfway: Geometry::Transform = PhysicsInterpolation::sample(&buffer, 0.5)
+    return 2 if halfway.position.x < 4.99 or halfway.position.x > 5.01
+    return 3 if PhysicsInterpolation::commit(&buffer, identity, 1, false)
+    return 4 if PhysicsInterpolation::commit(&buffer, identity, 2, true) == false
+    teleported: Geometry::Transform = PhysicsInterpolation::sample(&buffer, 0.5)
+    return 5 if teleported.position.x != 0.0
+    PhysicsInterpolation::clear_teleport(&buffer)
+    return 6 if PhysicsInterpolation::last_tick(&buffer) != 2 or not PhysicsInterpolation::interpolation_valid(&buffer)
+    0

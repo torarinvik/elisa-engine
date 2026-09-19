@@ -218,6 +218,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Implement raycasts, overlaps, shape casts, filters, triggers, and contact event queues with deterministic delivery policy. Done: nearest/all-hit queries, destroyed participants, overflow, and callback thread handoff are covered by real collision scenes and negative tests.
 - [ ] **P04 · P1 · Fixed-step integration and interpolation** — After: P02, W02.
   Connect engine clock, substeps, kinematic targets, simulation output, and interpolated render poses with one writer per transform. Done: varied render rates produce equivalent fixed-tick results; pause, teleport, sleeping, and hitch limits behave as documented.
+  Progress: `src/physics/interpolation.elisa` adds monotonic fixed-step pose publication, bounded alpha sampling, and one-sample teleport bypass; `test/physics_interpolation.elisa` covers fractional samples and duplicate ticks. Native Jolt pose commits, kinematic targets, sleeping, and hitch policy remain.
 - [ ] **P05 · P1 · Character controller** — After: P03, P04, I01.
   Implement supported Jolt character movement with slopes, steps, grounding, jump, crouch, moving platforms, and collision layers. Done: an interactive obstacle course has repeatable tests for corners, low ceilings, platform velocity, and frame-rate independence.
 - [ ] **P06 · P1 · Constraints and interactable objects** — After: P02, P03.

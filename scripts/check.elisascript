@@ -354,6 +354,12 @@ def main(arguments: darray[sview]) -> i64:
     asset_scene_status <- run_visible(asset_scene_binary, [])
     return asset_scene_status if asset_scene_status != 0
     println("Normalized asset scene tests passed.")
+    physics_interpolation_binary: sview = str(root.joinpath("build/physics-interpolation-test"))
+    physics_interpolation_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", physics_interpolation_binary, str(root.joinpath("test/physics_interpolation.elisa"))])
+    return physics_interpolation_status if physics_interpolation_status != 0
+    physics_interpolation_status <- run_visible(physics_interpolation_binary, [])
+    return physics_interpolation_status if physics_interpolation_status != 0
+    println("Physics interpolation tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -539,24 +545,19 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Animation codec selection tests passed.")
-
     catalogue_test_binary: sview = str(root.joinpath("build/catalogue-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", catalogue_test_binary, str(root.joinpath("test/catalogue.elisa"))])
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(catalogue_test_binary, [])
         if status != 0:
             return status
         status
-
     println("Asset catalogue tests passed.")
-
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
     for fixture in ["allocator_copy", "world_copy", "recorder_copy", "bridge_copy"]:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output):
@@ -572,7 +573,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     world_proof_source: sview = str(root.joinpath("proof/world.elisa"))
     _ =
         status: i64 = run_visible(prover, [world_proof_source])
