@@ -46,6 +46,13 @@ the rendered frame, checks dimensions and blank-frame rejection, and compares
 canonical structural markers. `scripts/godot_capture.elisascript` performs the
 corresponding Godot capture and comparison.
 
+Before compiling, the driver runs `scripts/check_dependency_manifest.py` against
+`native/dependency-manifest.json`. That preflight verifies the current Wicked
+CMake cache selected SDL3, checks git revisions and content hashes for required
+artifacts, and rejects SDL2 tokens in the active native target. It reports the
+configured machine's exact paths while keeping third-party files outside the
+engine checkout.
+
 The full workstation gate is:
 
 ```sh

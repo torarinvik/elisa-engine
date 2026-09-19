@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "platform": "macOS-native",
+  "driver": "scripts/wicked_probe.elisascript",
+  "build": {
+    "required_flags": ["-DSDL3=1"],
+    "forbidden_link_names": ["SDL2", "sdl2"],
+    "wicked_build_default": "build-elisa-sdl3",
+    "sdk_environment": "DEVELOPER_DIR",
+    "wicked_cache": {
+      "path": "build-elisa-sdl3/CMakeCache.txt",
+      "values": {"WICKED_USE_SDL3": "ON", "BUILD_SDL3": "ON"}
+    }
+  },
+  "libraries": [
+    {
+      "name": "WickedEngine",
+      "kind": "git",
+      "path_environment": "WICKED_ROOT",
+      "path_default": "../WickedEngine",
+      "revision": "af8585ef726f1705f7d126c8c3bdfc7d1eef303a",
+      "artifacts": [
+        "build-elisa-sdl3/WickedEngine/libWickedEngine.a",
+        "build-elisa-sdl3/WickedEngine/libJolt.a"
+      ]
+    },
+    {
+      "name": "SDL3",
+      "kind": "system",
+      "path_environment": "WICKED_SDL3_LIB_DIR",
+      "path_default": "/opt/homebrew/lib",
+      "artifacts": ["libSDL3.dylib"],
+      "include_environment": "WICKED_SDL3_INCLUDE_DIR",
+      "include_default": "/opt/homebrew/include/SDL3",
+      "include_artifacts": ["SDL.h"]
+    },
+    {
+      "name": "cgltf",
+      "kind": "file",
+      "path_default": "dependencies/cgltf",
+      "artifacts": [{"path": "cgltf.h", "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9"}]
+    },
+    {
+      "name": "miniaudio",
+      "kind": "file",
+      "path_default": "dependencies/miniaudio",
+      "artifacts": [{"path": "miniaudio.h", "sha256": "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410"}]
+    },
+    {
+      "name": "meshoptimizer",
+      "kind": "file",
+      "path_default": "dependencies/meshoptimizer",
+      "artifacts": ["meshoptimizer.h", "allocator.cpp", "vcacheoptimizer.cpp", "indexanalyzer.cpp"]
+    },
+    {
+      "name": "basisu",
+      "kind": "git",
+      "path_default": "dependencies/basisu",
+      "revision": "99f52d63aa6799cbdaecfe977111dc5ec3b31d47",
+      "artifacts": ["bin/basisu"]
+    },
+    {
+      "name": "ozz-animation",
+      "kind": "git",
+      "path_default": "dependencies/ozz",
+      "revision": "6cbdc790123aa4731d82e255df187b3a8a808256",
+      "artifacts": [
+        "build/src/base/libozz_base_r.a",
+        "build/src/animation/runtime/libozz_animation_r.a",
+        "build/src/animation/offline/libozz_animation_offline_r.a"
+      ]
+    },
+    {
+      "name": "recastnavigation",
+      "kind": "git",
+      "path_default": "dependencies/recast",
+      "revision": "6dc1667f580357e8a2154c28b7867bea7e8ad3a7",
+      "artifacts": ["build/Recast/libRecast.a", "build/Detour/libDetour.a"]
+    },
+    {
+      "name": "GameNetworkingSockets",
+      "kind": "git",
+      "path_default": "dependencies/gns",
+      "revision": "a424b7db649438acafb60c99cae6667587c42732",
+      "artifacts": ["build/src/libGameNetworkingSockets_s.a"]
+    },
+    {
+      "name": "tracy",
+      "kind": "git",
+      "path_default": "dependencies/tracy",
+      "revision": "30997d5ca6bb632cc10807a1da8a6d3de0aeeb3c",
+      "artifacts": ["public/TracyClient.cpp"]
+    }
+  ]
+}

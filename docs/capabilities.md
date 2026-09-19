@@ -126,6 +126,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Capability | Label | Evidence |
 |---|---|---|
 | Pinned toolchains and provenance | Implemented | `scripts/record_validation.py`, `build/validation.json` |
+| Native dependency manifest and stale-artifact checks | Implemented | `native/dependency-manifest.json`, `scripts/check_dependency_manifest.py`, native driver preflight |
 | Dependency provenance (pinned hashes/commits recorded) | Implemented | `dependency_provenance`, `dependencies` in validation |
 | Reproducible release archive (mesh + textures + KTX + fixture + C ABI + Godot extension) | Implemented | `scripts/package_release.py`, `release` in validation |
 | Automated platform testing | Partial | `.github/workflows/check.yml`: a Linux/macOS/Windows toolchain-free cook, KTX, source-length, and module-hygiene job plus a macOS job running the GNS, Basis, and ASan/UBSan boundary probes; the full gate still needs the pinned compiler/prover and a graphics session |
