@@ -20,7 +20,8 @@ module Sampler:
         const module Tune:
             MAX_JOINTS: usize = 16
             MAX_KEYS: usize = 8
-            STRIDE: usize = 8
+            MAX_TOTAL_KEYS: usize = MAX_JOINTS * MAX_KEYS
+            STRIDE: usize = MAX_KEYS
 
         def transform_of(clip: ClipData&, index: usize) -> Geometry::Transform:
             Geometry::Transform{
@@ -37,11 +38,11 @@ module Sampler:
 
         struct ClipData:
             length: i64
-            key_counts: mutable usize[16]
-            ticks: mutable i64[128]
-            positions: mutable Geometry::Vec3[128]
-            rotations: mutable Geometry::Quat[128]
-            scales: mutable Geometry::Vec3[128]
+            key_counts: mutable usize[Tune::MAX_JOINTS]
+            ticks: mutable i64[Tune::MAX_TOTAL_KEYS]
+            positions: mutable Geometry::Vec3[Tune::MAX_TOTAL_KEYS]
+            rotations: mutable Geometry::Quat[Tune::MAX_TOTAL_KEYS]
+            scales: mutable Geometry::Vec3[Tune::MAX_TOTAL_KEYS]
 
         def ClipData(length: i64) -> ClipData:
             ClipData{length: length if length >= 0 else 0, key_counts: zeroed, ticks: zeroed, positions: zeroed, rotations: zeroed, scales: zeroed}
