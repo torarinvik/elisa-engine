@@ -15,6 +15,9 @@ module EntityId:
         def EntityIdAllocator() -> EntityIdAllocator:
             EntityIdAllocator{last_issued: ENTITY_ID_INVALID}
 
+        def entity_id_last_issued(allocator: EntityIdAllocator&) -> i64:
+            allocator.last_issued
+
         # The pure transition is shared by the runtime allocator and its proofs.
         def entity_id_next(last_issued: i64) -> i64:
             requires last_issued >= ENTITY_ID_INVALID

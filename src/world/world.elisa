@@ -189,7 +189,7 @@ module World:
                 row: RegistryRow = world.registry[index]
                 if row.live:
                     live <- live + 1
-                    valid <- false if row.id <= EntityId::ENTITY_ID_INVALID or row.id > world.allocator.last_issued or not entity_kind_is_spawnable(row.kind)
+                    valid <- false if row.id <= EntityId::ENTITY_ID_INVALID or row.id > EntityId::entity_id_last_issued(&world.allocator) or not entity_kind_is_spawnable(row.kind)
                     valid <- false if row.storage != entity_storage_kind(row.kind)
                     if row.storage == StorageKind.Actor:
                         actors <- actors + 1
@@ -260,7 +260,7 @@ module World:
                     error EntityId::EntityIdError.MaxId: 2
             raise WorldError.IdentityInvalid if allocation_status == 1
             raise WorldError.IdentityExhausted if allocation_status == 2
-            id: i64 = world.allocator.last_issued
+            id: i64 = EntityId::entity_id_last_issued(&world.allocator)
             world.registry[registry_index] <- RegistryRow{id: id, kind: kind, live: true, storage: storage}
             world.registry_count <- world.registry_count + 1 if registry_index == world.registry_count
             if storage == StorageKind.Actor:
@@ -275,7 +275,7 @@ module World:
             EntityRef{world_epoch: world.epoch, id: id}
 
         def world_last_issued(world: World&) -> i64:
-            world.allocator.last_issued
+            EntityId::entity_id_last_issued(&world.allocator)
 
         def world_epoch(world: World&) -> i64:
             world.epoch
