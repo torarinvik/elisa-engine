@@ -19,8 +19,8 @@ module Schedule:
 
         struct System:
             id: i64
-            reads: bool[4]
-            writes: bool[4]
+            reads: bool[Tune::RESOURCES]
+            writes: bool[Tune::RESOURCES]
 
         def resource_count() -> usize:
             Tune::RESOURCES
@@ -53,7 +53,7 @@ module Schedule:
         def can_run_together(left: System&, right: System&) -> bool:
             not systems_conflict(left, right)
 
-        def parallel_pair_count(systems: System[8], count: usize) -> usize:
+        def parallel_pair_count(systems: System[Tune::MAX_SYSTEMS], count: usize) -> usize:
             return 0 if count > Tune::MAX_SYSTEMS
             total: usize =
                 for i in 0..<count |outer: usize = 0| -> outer:
@@ -64,7 +64,7 @@ module Schedule:
             total
 
     private:
-        def first_available_group(systems: System[8], groups: usize[8], index: usize) -> usize:
+        def first_available_group(systems: System[Tune::MAX_SYSTEMS], groups: usize[Tune::MAX_SYSTEMS], index: usize) -> usize:
             for group in 0..<Tune::MAX_SYSTEMS |selected: usize = Tune::MAX_SYSTEMS| -> selected:
                 clash: bool =
                     for other in 0..<index |conflicting: bool = false| -> conflicting:
@@ -73,11 +73,11 @@ module Schedule:
 
         module Order:
             public:
-                def position_of(order: usize[8], count: usize, id: usize) -> usize:
-                    for slot in 0..<count |found: usize = 8| -> found:
+                def position_of(order: usize[Schedule::Tune::MAX_SYSTEMS], count: usize, id: usize) -> usize:
+                    for slot in 0..<count |found: usize = Schedule::Tune::MAX_SYSTEMS| -> found:
                         found <- slot if order[slot] == id
 
-                def respects(order: usize[8], systems: System[8], count: usize) -> bool:
+                def respects(order: usize[Schedule::Tune::MAX_SYSTEMS], systems: System[Schedule::Tune::MAX_SYSTEMS], count: usize) -> bool:
                     return false if count > Schedule::Tune::MAX_SYSTEMS
                     for i in 0..<count |ok: bool = true| -> ok:
                         row_ok: bool =
@@ -87,7 +87,7 @@ module Schedule:
                         ok <- ok and row_ok
 
     public:
-        def schedule_respects(order: usize[8], systems: System[8], count: usize) -> bool:
+        def schedule_respects(order: usize[Tune::MAX_SYSTEMS], systems: System[Tune::MAX_SYSTEMS], count: usize) -> bool:
             Order::respects(order, systems, count)
 
         # Earliest-fit grouping: each system joins the first group that holds no
@@ -95,15 +95,15 @@ module Schedule:
         # writer is pushed past every reader and writer of the same resource.
         # Systems are visited in declared order, so the assignment is
         # deterministic and the plan it feeds is reproducible.
-        def assign_groups(systems: System[8], count: usize) -> usize[8]:
-            groups: mutable usize[8] = zeroed
+        def assign_groups(systems: System[Tune::MAX_SYSTEMS], count: usize) -> usize[Tune::MAX_SYSTEMS]:
+            groups: mutable usize[Tune::MAX_SYSTEMS] = zeroed
             return groups if count > Tune::MAX_SYSTEMS
             for index in 0..<count |groups, systems|:
                 group: usize = first_available_group(systems, groups, index)
                 groups[index] <- group if group < Tune::MAX_SYSTEMS
             groups
 
-        def wave_count(groups: usize[8], count: usize) -> usize:
+        def wave_count(groups: usize[Tune::MAX_SYSTEMS], count: usize) -> usize:
             return 0 if count == 0 or count > Tune::MAX_SYSTEMS
             highest: usize =
                 for index in 0..<count |top: usize = 0| -> top:

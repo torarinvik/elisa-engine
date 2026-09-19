@@ -12,7 +12,6 @@ module Executor:
     private:
         const module Limits:
             MAX_SYSTEMS: usize = 8
-            NO_GROUP: usize = 8
 
     public:
         error ExecError:
@@ -20,20 +19,20 @@ module Executor:
             BadPlan
 
         struct Plan:
-            order: mutable usize[8]
-            group: mutable usize[8]
+            order: mutable usize[Limits::MAX_SYSTEMS]
+            group: mutable usize[Limits::MAX_SYSTEMS]
             count: mutable usize
             group_count: mutable usize
 
         struct Work:
-            runs: mutable i64[8]
+            runs: mutable i64[Limits::MAX_SYSTEMS]
 
         # What a dispatched system may touch, plus the executor's own record of
         # the order it ran. Keeping the trace here makes execution observable
         # without the executor knowing anything about the systems.
         struct FrameState:
-            visits: mutable i64[8]
-            trace: mutable i64[8]
+            visits: mutable i64[Limits::MAX_SYSTEMS]
+            trace: mutable i64[Limits::MAX_SYSTEMS]
             length: mutable usize
 
         def FrameState() -> FrameState:
@@ -50,7 +49,7 @@ module Executor:
         # which assignment is legal; plan_valid is the guard that a plan a
         # caller supplies has not broken it. Keeping construction and
         # checking separate avoids re-deriving the analysis here.
-        def plan_from_groups(groups: usize[8], count: usize) -> Plan error[ExecError]:
+        def plan_from_groups(groups: usize[Limits::MAX_SYSTEMS], count: usize) -> Plan error[ExecError]:
             raise ExecError.Capacity if count > Limits::MAX_SYSTEMS
             plan: mutable Plan = Plan{order: zeroed, group: zeroed, count: count, group_count: 0}
             highest: usize =
@@ -65,13 +64,13 @@ module Executor:
         # requiring the caller to supply one. The result is checked by the same
         # plan_valid guard, so a bug in the analysis shows up as a rejected
         # plan rather than a race.
-        def plan_auto(systems: Schedule::System[8], count: usize) -> Plan error[ExecError]:
+        def plan_auto(systems: Schedule::System[Limits::MAX_SYSTEMS], count: usize) -> Plan error[ExecError]:
             plan_from_groups(Schedule::assign_groups(systems, count), count)
 
         # A plan is valid when every group is dense from zero and no group
         # contains a conflicting pair, which is the property a parallel
         # executor would have to preserve.
-        def plan_valid(plan: Plan&, systems: Schedule::System[8]) -> bool:
+        def plan_valid(plan: Plan&, systems: Schedule::System[Limits::MAX_SYSTEMS]) -> bool:
             return false if plan.count > Limits::MAX_SYSTEMS
             for index in 0..<plan.count |plan|:
                 return false if plan.group[index] >= plan.group_count
@@ -106,15 +105,15 @@ module Executor:
         # Serial execution order derived from the groups: groups in order, and
         # within a group the systems in declared order. A host or a test can
         # read this without executing anything.
-        def plan_sequence(plan: Plan&) -> i64[8]:
-            groups: mutable usize[8] = plan.group
+        def plan_sequence(plan: Plan&) -> i64[Limits::MAX_SYSTEMS]:
+            groups: mutable usize[Limits::MAX_SYSTEMS] = plan.group
             count: mutable usize = plan.count
             group_count: mutable usize = plan.group_count
-            sequence: mutable i64[8] = zeroed
+            sequence: mutable i64[Limits::MAX_SYSTEMS] = zeroed
             slot: mutable usize = 0
             for group in 0..<group_count |groups, count, group_count, sequence, slot|:
                 for index in 0..<count |groups, sequence, slot, group|:
-                    if groups[index] == group and slot < 8:
+                    if groups[index] == group and slot < Limits::MAX_SYSTEMS:
                         sequence[slot] <- index.i64()
                         slot <- slot + 1
             sequence
@@ -126,11 +125,11 @@ module Executor:
         # system; that keeps the executor independent of what systems do.
         def plan_execute(plan: Plan&, state: mutable FrameState&, dispatch: fn(mutable FrameState&, usize) -> void) -> void error[ExecError]:
             raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
-            sequence: i64[8] = plan_sequence(plan)
+            sequence: i64[Limits::MAX_SYSTEMS] = plan_sequence(plan)
             for slot in 0..<plan.count |state, sequence, dispatch|:
                 system: usize = sequence[slot].usize()
                 dispatch(state, system)
-                if state.length < 8:
+                if state.length < Limits::MAX_SYSTEMS:
                     state.trace[state.length] <- system.i64()
                     state.length <- state.length + 1
 
