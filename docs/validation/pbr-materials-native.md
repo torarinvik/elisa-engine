@@ -10,7 +10,7 @@ metalness, and roughness below the supported minimum. Destroying the handle
 removes its backing object and returns the scene object count to its baseline;
 foreign handles cannot update another bridge.
 
-The native gate exercises create, update, validation, foreign-owner rejection,
-and unload. The authored goal material also consumes a real KTX1 GPU resource;
-texture-slot selection, authored glTF material import, and transparent blend
-policy remain follow-up R04 work.
+The native gate exercises create, update, base-color texture-slot binding,
+validation, foreign-owner rejection, and unload. The authored goal material
+also consumes a real KTX1 GPU resource; authored glTF material import and
+transparent blend policy remain follow-up R04 work.

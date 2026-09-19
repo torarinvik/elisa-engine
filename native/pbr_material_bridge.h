@@ -59,6 +59,15 @@ public:
         return true;
     }
 
+    bool set_texture(NativeMaterialHandle handle, uint32_t slot, const wi::Resource& resource) {
+        if (!live(handle) || slot >= wi::scene::MaterialComponent::TEXTURESLOT_COUNT || !resource.IsValid()) return false;
+        auto* material = scene_.materials.GetComponent(slots_[handle.slot].entity);
+        if (material == nullptr) return false;
+        material->textures[slot].resource = resource;
+        material->SetDirty();
+        return true;
+    }
+
     bool destroy(NativeMaterialHandle handle) {
         if (!live(handle)) return false;
         scene_.Entity_Remove(slots_[handle.slot].entity);
@@ -123,10 +132,24 @@ inline bool probe_pbr_material_bridge(wi::scene::Scene& scene) {
     desc.roughness = 0.25f;
     desc.double_sided = true;
     const auto handle = bridge.create(desc);
+    wi::graphics::TextureDesc texture_desc;
+    texture_desc.width = texture_desc.height = texture_desc.depth = texture_desc.array_size = 1;
+    texture_desc.mip_levels = texture_desc.sample_count = 1;
+    texture_desc.format = wi::graphics::Format::R8G8B8A8_UNORM;
+    texture_desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
+    const uint32_t pixel = 0xFF3366CCu;
+    wi::graphics::SubresourceData texture_data{&pixel, 4, 4};
+    wi::graphics::Texture texture;
+    const bool texture_created = wi::graphics::GetDevice()->CreateTexture(&texture_desc, &texture_data, &texture);
+    wi::Resource texture_resource;
+    if (texture_created) texture_resource.SetTexture(texture);
     if (!check(bridge.live(handle), "pbr material creates a handle") ||
         !check(bridge.update(handle, desc) && !bridge.update(
             NativeMaterialHandle{handle.slot, handle.generation, 0}, desc),
             "pbr material updates and rejects foreign handle") ||
+        !check(texture_created && bridge.set_texture(handle, wi::scene::MaterialComponent::BASECOLORMAP,
+            texture_resource) && !bridge.set_texture(handle, wi::scene::MaterialComponent::TEXTURESLOT_COUNT,
+            texture_resource), "pbr material binds a texture slot") ||
         !check(!bridge.create(NativePbrDesc{desc.base_color, desc.emissive, 0.8f, 0.0f, true, true}).owner,
             "pbr material rejects invalid roughness")) return false;
     if (!check(bridge.destroy(handle) && !bridge.live(handle) && scene.objects.GetCount() == before,
