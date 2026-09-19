@@ -14,21 +14,69 @@ module WorldRollback:
             WrongWorld
 
         struct Snapshot:
-            epoch: i64
+            epoch: mutable i64
             registry: World::RegistryRow[Bounds::MAX_ENTITIES]
-            registry_count: usize
-            live_count: usize
+            registry_count: mutable usize
+            live_count: mutable usize
             live_ids: i64[Bounds::MAX_ENTITIES]
-            live_ids_count: usize
+            live_ids_count: mutable usize
             actors: World::ActorRecord[Bounds::MAX_ENTITIES]
-            actor_count: usize
+            actor_count: mutable usize
             enemies: World::EnemyRecord[Bounds::MAX_ENTITIES]
-            enemy_count: usize
+            enemy_count: mutable usize
+
+        private:
+            def storage_matches(kind: World::Entity, storage: World::StorageKind) -> bool:
+                match kind:
+                    World::Actor.Player:
+                        storage == World::StorageKind.Actor
+                    World::Enemy.Guard:
+                        storage == World::StorageKind.Enemy
+                    _:
+                        false
+
+            def registry_matches(snapshot: Snapshot&, id: i64, storage: World::StorageKind) -> usize:
+                for index in 0..<snapshot.registry_count |matches: usize = 0| -> matches:
+                    row: World::RegistryRow = snapshot.registry[index]
+                    matches <- matches + 1 if row.live and row.id == id and row.storage == storage
+
+            def live_registry_count(snapshot: Snapshot&) -> usize:
+                for index in 0..<snapshot.registry_count |count: usize = 0| -> count:
+                    count <- count + 1 if snapshot.registry[index].live
+
+            def live_actor_count(snapshot: Snapshot&) -> usize:
+                for index in 0..<snapshot.actor_count |count: usize = 0| -> count:
+                    count <- count + 1 if snapshot.actors[index].live
+
+            def live_enemy_count(snapshot: Snapshot&) -> usize:
+                for index in 0..<snapshot.enemy_count |count: usize = 0| -> count:
+                    count <- count + 1 if snapshot.enemies[index].live
 
         def snapshot_valid(snapshot: Snapshot&) -> bool:
             return false if snapshot.epoch <= 0
             return false if snapshot.registry_count > Bounds::MAX_ENTITIES or snapshot.live_count > snapshot.registry_count
             return false if snapshot.live_ids_count > Bounds::MAX_ENTITIES or snapshot.actor_count > Bounds::MAX_ENTITIES or snapshot.enemy_count > Bounds::MAX_ENTITIES
+            return false if snapshot.live_ids_count != snapshot.live_count or live_registry_count(snapshot) != snapshot.live_count
+            return false if live_actor_count(snapshot) + live_enemy_count(snapshot) != snapshot.live_count
+            for index in 0..<snapshot.registry_count |valid: bool = true| -> valid:
+                row: World::RegistryRow = snapshot.registry[index]
+                if row.live:
+                    valid <- false if row.id <= 0 or not storage_matches(row.kind, row.storage)
+                    unique: bool =
+                        for earlier in 0..<index |inner: bool = true| -> inner:
+                            inner <- false if snapshot.registry[earlier].live and snapshot.registry[earlier].id == row.id
+                    valid <- valid and unique
+                    valid <- false if registry_matches(snapshot, row.id, row.storage) != 1
+            for index in 0..<snapshot.live_ids_count |valid: bool = true| -> valid:
+                id: i64 = snapshot.live_ids[index]
+                valid <- false if id <= 0 or registry_matches(snapshot, id, World::StorageKind.None) != 0
+                actor_matches: usize = registry_matches(snapshot, id, World::StorageKind.Actor)
+                enemy_matches: usize = registry_matches(snapshot, id, World::StorageKind.Enemy)
+                valid <- false if actor_matches + enemy_matches != 1
+            for index in 0..<snapshot.actor_count |valid: bool = true| -> valid:
+                valid <- false if snapshot.actors[index].live and registry_matches(snapshot, snapshot.actors[index].id, World::StorageKind.Actor) != 1
+            for index in 0..<snapshot.enemy_count |valid: bool = true| -> valid:
+                valid <- false if snapshot.enemies[index].live and registry_matches(snapshot, snapshot.enemies[index].id, World::StorageKind.Enemy) != 1
             true
 
         def capture(world: World::World&) -> Snapshot error[RollbackError]:

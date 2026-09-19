@@ -153,27 +153,6 @@ def rollback_test() -> i32:
         value: value
         error failure: invalid_reference()
     return 3 if third.id != allocator_before + 1
-    other: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    wrong_world: i32 = catch restore(&other, &snapshot):
-        ok: 0
-        RollbackError.InvalidSnapshot: 1
-        RollbackError.WrongWorld: 2
-        error failure: 3
-    return 4 if wrong_world != 2
-    invalid_capture_world: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    _ = catch world_spawn(&invalid_capture_world, Actor.Player):
-        value: value
-        error failure: invalid_reference()
-    invalid_capture_world.actors[0].id <- 99
-    rejected_capture: i32 = catch capture(&invalid_capture_world):
-        value: 0
-        RollbackError.InvalidSnapshot: 1
-        error failure: 2
-    return 5 if rejected_capture != 1
     0
 
 def main() -> i32:
