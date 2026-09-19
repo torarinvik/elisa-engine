@@ -1,0 +1,26 @@
+include "../src/runtime/action_input.elisa"
+
+def main() -> i32:
+    input: mutable ActionInput::Input = ActionInput::Input()
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 1, device: ActionInput::Device.Gamepad, code: 10, chord_code: 0, deadzone: 0.2, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 1
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 10, value: 0.1, pressed: true, released: false, chord_down: false})
+    return 2 if ActionInput::action_down(&input, 1) or ActionInput::action_value(&input, 1) != 0.0
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 10, value: 0.8, pressed: true, released: false, chord_down: false})
+    return 3 if not ActionInput::action_down(&input, 1) or not ActionInput::action_pressed(&input, 1) or ActionInput::action_value(&input, 1) < 0.79
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 10, value: 0.0, pressed: false, released: true, chord_down: false})
+    return 4 if not ActionInput::action_released(&input, 1) or ActionInput::action_down(&input, 1)
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 2, device: ActionInput::Device.Keyboard, code: 20, chord_code: 21, deadzone: 0.0, context: ActionInput::Context.UI, live: true}):
+        ok: 0
+        error failure: return 5
+    ActionInput::set_context(&input, ActionInput::Context.UI)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 20, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 6 if ActionInput::action_down(&input, 2)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 20, value: 1.0, pressed: true, released: false, chord_down: true})
+    return 7 if not ActionInput::action_down(&input, 2)
+    ActionInput::set_connected(&input, ActionInput::Device.Keyboard, false)
+    return 8 if not ActionInput::action_released(&input, 2)
+    0

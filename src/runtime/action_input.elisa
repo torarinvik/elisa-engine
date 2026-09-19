@@ -1,0 +1,145 @@
+# Context-aware action input. Device codes are translated at the boundary;
+# gameplay and UI consume stable action IDs and frame transitions.
+include "../vendor/elisa_math.elisa"
+
+module ActionInput:
+    private:
+        const module Limits:
+            MAX_BINDINGS: usize = 32
+            MAX_ACTIONS: usize = 16
+            DEVICE_COUNT: usize = 3
+
+        def device_index(device: Device) -> usize:
+            return 0 if device == Device.Keyboard
+            return 1 if device == Device.Mouse
+            2
+
+        def state_slot(input: Input&, action: i64) -> usize:
+            for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS| -> slot:
+                break index if input.states[index].live and input.states[index].action == action
+
+        def binding_matches(binding: Binding, event: Event, context: Context) -> bool:
+            binding.live and binding.context == context and binding.device == event.device and binding.code == event.code and (binding.chord_code == 0 or event.chord_down)
+
+    public:
+        enum Device:
+            Keyboard
+            Mouse
+            Gamepad
+
+        enum Context:
+            Gameplay
+            UI
+
+        struct Binding:
+            action: i64
+            device: Device
+            code: i64
+            chord_code: i64
+            deadzone: f32
+            context: Context
+            live: bool
+
+        struct Event:
+            device: Device
+            code: i64
+            value: f32
+            pressed: bool
+            released: bool
+            chord_down: bool
+
+        struct ActionState:
+            action: i64
+            down: mutable bool
+            pressed: mutable bool
+            released: mutable bool
+            value: mutable f32
+            live: mutable bool
+
+        enum InputError:
+            InvalidAction
+            InvalidCode
+            InvalidDeadzone
+            Capacity
+            DuplicateBinding
+
+        affine struct Input:
+            private:
+                bindings: mutable Binding[Limits::MAX_BINDINGS]
+                states: mutable ActionState[Limits::MAX_ACTIONS]
+                binding_count: mutable usize
+                context: mutable Context
+                connected: mutable bool[Limits::DEVICE_COUNT]
+
+        def Input() -> Input:
+            Input{bindings: zeroed, states: zeroed, binding_count: 0, context: Context.Gameplay, connected: [true, true, true]}
+
+        def bind(input: mutable Input&, binding: Binding) -> void error[InputError]:
+            raise InputError.InvalidAction if binding.action <= 0
+            raise InputError.InvalidCode if binding.code <= 0
+            raise InputError.InvalidDeadzone if binding.deadzone < 0.0 or binding.deadzone >= 1.0
+            for index in 0..<input.binding_count:
+                existing: Binding = input.bindings[index]
+                raise InputError.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.context == binding.context
+            raise InputError.Capacity if input.binding_count >= Limits::MAX_BINDINGS
+            input.bindings[input.binding_count] <- binding
+            input.binding_count <- input.binding_count + 1
+            slot: mutable usize = state_slot(input, binding.action)
+            if slot == Limits::MAX_ACTIONS:
+                slot <- for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS, input| -> slot:
+                    break index if not input.states[index].live
+                raise InputError.Capacity if slot == Limits::MAX_ACTIONS
+                input.states[slot] <- ActionState{action: binding.action, down: false, pressed: false, released: false, value: 0.0, live: true}
+
+        def set_context(input: mutable Input&, context: Context) -> void:
+            input.context <- context
+            for index in 0..<Limits::MAX_ACTIONS |input|:
+                input.states[index].down <- false if input.states[index].live
+                input.states[index].value <- 0.0 if input.states[index].live
+
+        def set_connected(input: mutable Input&, device: Device, connected: bool) -> void:
+            input.connected[device_index(device)] <- connected
+            if not connected:
+                for index in 0..<Limits::MAX_ACTIONS |input|:
+                    input.states[index].down <- false if input.states[index].live
+                    input.states[index].released <- true if input.states[index].live
+
+        def begin_frame(input: mutable Input&) -> void:
+            for index in 0..<Limits::MAX_ACTIONS |input|:
+                if input.states[index].live:
+                    input.states[index].pressed <- false
+                    input.states[index].released <- false
+                    input.states[index].value <- 0.0
+
+        def apply(input: mutable Input&, event: Event) -> void:
+            return if not input.connected[device_index(event.device)]
+            for index in 0..<input.binding_count |input, event|:
+                binding: Binding = input.bindings[index]
+                if binding_matches(binding, event, input.context):
+                    slot: usize = state_slot(input, binding.action)
+                    if slot < Limits::MAX_ACTIONS:
+                        magnitude: f32 = event.value if ElisaMath::fabsf(event.value) >= binding.deadzone else 0.0
+                        if ElisaMath::fabsf(magnitude) > 0.0 or event.released:
+                            input.states[slot].value <- magnitude if ElisaMath::fabsf(magnitude) > ElisaMath::fabsf(input.states[slot].value)
+                            if event.pressed and not input.states[slot].down:
+                                input.states[slot].pressed <- true
+                            input.states[slot].down <- event.pressed or (input.states[slot].down and not event.released)
+                            input.states[slot].released <- true if event.released
+                            input.states[slot].down <- false if event.released
+
+        def action_down(input: Input&, action: i64) -> bool:
+            slot: usize = state_slot(input, action)
+            slot < Limits::MAX_ACTIONS and input.states[slot].down
+
+        def action_pressed(input: Input&, action: i64) -> bool:
+            slot: usize = state_slot(input, action)
+            slot < Limits::MAX_ACTIONS and input.states[slot].pressed
+
+        def action_released(input: Input&, action: i64) -> bool:
+            slot: usize = state_slot(input, action)
+            slot < Limits::MAX_ACTIONS and input.states[slot].released
+
+        def action_value(input: Input&, action: i64) -> f32:
+            slot: usize = state_slot(input, action)
+            return 0.0 if slot >= Limits::MAX_ACTIONS
+            input.states[slot].value

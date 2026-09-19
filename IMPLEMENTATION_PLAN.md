@@ -300,6 +300,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [ ] **I01 · P0 · Action input and binding maps** — After: F09.
   Extend portable input to keyboard, mouse, gamepad, analog axes, dead zones, chords, rebinding, and gameplay/UI contexts. Done: hotplug, lost focus, held/released transitions, and replayed input behave consistently in the persistent native host.
+  Progress: `src/runtime/action_input.elisa` now provides bounded context-aware bindings, analog dead-zone filtering, chord matching, per-frame edge transitions, and device disconnect cleanup; `test/action_input.elisa` covers the portable state machine. SDL3 event translation, rebinding persistence, focus-loss integration, and replay injection remain.
 - [ ] **I02 · P1 · UI rendering and interaction** — After: R03, I01, A04.
   Connect existing Elisa UI/layout/style models and suitable Elisa UI ecosystem modules to a persistent Wicked draw path, with clipping, scrolling, focus, and hit testing. Done: menus and HUD remain visible and interactive during gameplay rather than being removed before capture.
 - [ ] **I03 · P1 · Platform services and settings** — After: F09, W06.
