@@ -3,6 +3,13 @@
 # (which paint). A host reads a theme and applies it; it never chooses colors.
 # The canonical fixture carries the same values so both hosts render one theme.
 module UiStyle:
+    private:
+        const module Bounds:
+            CHANNEL_MIN: i64 = 0
+            CHANNEL_MAX: i64 = 255
+            MAX_PADDING: i64 = 64
+            MAX_BORDER: i64 = 16
+
     public:
         struct Color:
             r: i64
@@ -22,7 +29,7 @@ module UiStyle:
             Color{r: r, g: g, b: b, a: a}
 
         def color_valid(color: Color&) -> bool:
-            color.r >= 0 and color.r <= 255 and color.g >= 0 and color.g <= 255 and color.b >= 0 and color.b <= 255 and color.a >= 0 and color.a <= 255
+            color.r >= Bounds::CHANNEL_MIN and color.r <= Bounds::CHANNEL_MAX and color.g >= Bounds::CHANNEL_MIN and color.g <= Bounds::CHANNEL_MAX and color.b >= Bounds::CHANNEL_MIN and color.b <= Bounds::CHANNEL_MAX and color.a >= Bounds::CHANNEL_MIN and color.a <= Bounds::CHANNEL_MAX
 
         def theme_default() -> Theme:
             Theme{
@@ -35,7 +42,7 @@ module UiStyle:
             }
 
         def theme_valid(theme: Theme&) -> bool:
-            color_valid(theme.background) and color_valid(theme.text) and color_valid(theme.disabled) and color_valid(theme.focus) and theme.padding >= 0 and theme.padding <= 64 and theme.border >= 0 and theme.border <= 16
+            color_valid(theme.background) and color_valid(theme.text) and color_valid(theme.disabled) and color_valid(theme.focus) and theme.padding >= Bounds::CHANNEL_MIN and theme.padding <= Bounds::MAX_PADDING and theme.border >= Bounds::CHANNEL_MIN and theme.border <= Bounds::MAX_BORDER
 
         # The label color for one row state: focus wins over the normal color,
         # and a disabled row never shows the focus color.
