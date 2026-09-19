@@ -114,7 +114,10 @@ deterministic capture, cooked assets, audio, UI, and the measured frame budget.
 Before building the maze scene it also creates and destroys real Wicked cube
 resources through `NativeResourceRegistry`, checks generation reuse, rejects a
 stale handle, and rejects a handle passed to another scene. The registry is a
-logical lifetime layer; GPU-fence retirement is still a later F06 step.
+logical lifetime layer with a retirement queue: logical destruction invalidates
+the handle first, then `collect_retired` removes the real entity and permits
+slot reuse. A graphics-device fence can call that collection point; separate
+mesh/material/texture/body/voice handle families remain open F06 work.
 The shared native conversion in `native/coordinate_conventions.h` owns the
 right-handed Elisa-to-left-handed Wicked X flip and the grid spacing/origin;
 walls, markers, live input, and route replay all use that one conversion.

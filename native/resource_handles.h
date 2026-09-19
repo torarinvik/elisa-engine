@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace probe {
 
@@ -32,7 +33,7 @@ public:
     NativeResourceHandle create_cube(const std::string& name) {
         for (uint32_t slot = 0; slot < MAX_RESOURCES; ++slot) {
             Slot& state = slots_[slot];
-            if (state.live) {
+            if (state.live || state.retired) {
                 continue;
             }
             const wi::ecs::Entity entity = scene_.Entity_CreateCube(name);
@@ -70,11 +71,42 @@ public:
         return true;
     }
 
+    // Logical destruction is immediate, but the vendor entity remains in a
+    // retirement list until the caller has waited for its GPU submission.
+    bool destroy_deferred(NativeResourceHandle handle) {
+        if (!is_live(handle)) {
+            return false;
+        }
+        retired_.push_back({slots_[handle.slot].entity, handle.slot});
+        slots_[handle.slot].live = false;
+        slots_[handle.slot].retired = true;
+        return true;
+    }
+
+    size_t pending_retirements() const {
+        return retired_.size();
+    }
+
+    void collect_retired() {
+        for (const Retired& resource : retired_) {
+            scene_.Entity_Remove(resource.entity);
+            slots_[resource.slot].entity = wi::ecs::INVALID_ENTITY;
+            slots_[resource.slot].retired = false;
+        }
+        retired_.clear();
+    }
+
 private:
     struct Slot {
         wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
         uint32_t generation = 0;
         bool live = false;
+        bool retired = false;
+    };
+
+    struct Retired {
+        wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
+        uint32_t slot = NativeResourceHandle::INVALID_SLOT;
     };
 
     bool slot_valid(NativeResourceHandle handle) const {
@@ -84,6 +116,7 @@ private:
     wi::scene::Scene& scene_;
     uintptr_t owner_;
     std::array<Slot, MAX_RESOURCES> slots_{};
+    std::vector<Retired> retired_;
 };
 
 } // namespace probe
