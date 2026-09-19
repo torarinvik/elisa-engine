@@ -263,8 +263,13 @@ is published (`hunter_spawn_x/y`) and the test pins it to a valid open
 cell; `backends/scene_manifest.txt` carries `hunter=1,1`, the validator
 rejects drift or a spawn on the player/another marker, and both hosts
 draw the character with its own colour, which the checker verifies.
-What remains for this character is skeletal animation and unloading,
-which need the ozz integration; navigation itself is done and gated.
+The character composition now covers the complete gameplay side of this
+requirement: navigation and movement are driven by Elisa, the animation state
+and IK pose are engine-owned, and `test/maze.elisa` verifies unload rejects the
+stale entity reference and returns the world to zero live entities. The native
+ozz probe separately verifies the selected sampler library is linked and
+sampling; hosts consume the backend-neutral pose data rather than advancing
+character gameplay themselves.
 
 ## Game status as portable data (2026-09-18)
 
