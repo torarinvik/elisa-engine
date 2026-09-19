@@ -11,6 +11,7 @@ module Reload:
             CURRENT_VERSION: i64 = 2
             BASE_VERSION: i64 = 1
             SCALE_STEP: i64 = 2
+            MAX_IN_FLIGHT: usize = 64
 
     public:
         error ReloadError:
@@ -31,7 +32,7 @@ module Reload:
             Gate{running: 0, callbacks: 0, reloads: 0}
 
         def gate_valid(gate: Gate&) -> bool:
-            gate.running <= 64 and gate.callbacks <= 64
+            gate.running <= Tune::MAX_IN_FLIGHT and gate.callbacks <= Tune::MAX_IN_FLIGHT
 
         def gate_enter(gate: mutable Gate&) -> void:
             gate.running <- gate.running + 1
