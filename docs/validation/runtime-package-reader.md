@@ -22,6 +22,8 @@ generation attached to the selected path. `native/virtual_file_service.h` adds
 a bounded request table over that resolver: duplicate logical-name/section
 requests coalesce, cancellation is explicit, reads complete in a caller-
 supplied pump budget, and a remount invalidates queued work whose captured
-generation is stale. The probe covers override-backed zstd data, cancellation,
-and generation invalidation; worker-thread scheduling and dependency graph
-propagation remain A03/A04 follow-up.
+generation is stale. Requests also carry a dependency generation token, which
+is rejected before package allocation when it belongs to an older mount. The
+probe covers override-backed zstd data, cancellation, generation invalidation,
+and stale dependency tokens; worker-thread scheduling and dependency existence
+ordering remain A03/A04 follow-up.

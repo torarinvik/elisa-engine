@@ -102,7 +102,11 @@ inline bool probe_package_bounds(const std::string& valid_package) {
     const bool cancelled_read = vfs.cancel(cancelled) && vfs.state(cancelled) == VirtualReadState::Cancelled;
     const VirtualReadHandle stale = vfs.request("maze.elpk", "mesh");
     const bool remounted = vfs.mount(base_root, {}, 8);
-    const bool stale_read = remounted && vfs.pump(1) == 1 && vfs.state(stale) == VirtualReadState::Failed;
+    const VirtualReadHandle stale_dependency = vfs.request("maze.elpk", "mesh", 6);
+    const bool stale_read = remounted && vfs.pump(2) == 2 &&
+        vfs.state(stale) == VirtualReadState::Failed &&
+        vfs.state(stale_dependency) == VirtualReadState::Failed &&
+        vfs.error(stale_dependency) == "stale dependency generation";
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&

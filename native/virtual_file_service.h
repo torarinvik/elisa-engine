@@ -36,12 +36,14 @@ public:
         return true;
     }
 
-    VirtualReadHandle request(const std::string& logical_name, const std::string& section) {
+    VirtualReadHandle request(const std::string& logical_name, const std::string& section,
+        uint64_t dependency_generation = 0) {
         if (!mounted_ || !safe_package_path(logical_name) || section.empty()) return {};
         for (uint32_t slot = 0; slot < MAX_REQUESTS; ++slot) {
             Request& item = requests_[slot];
             if (item.state == VirtualReadState::Queued && item.logical_name == logical_name &&
-                item.section == section && item.mount_generation == generation_) {
+                item.section == section && item.mount_generation == generation_ &&
+                item.dependency_generation == dependency_generation) {
                 return {slot, item.generation};
             }
         }
@@ -53,6 +55,7 @@ public:
             item.logical_name = logical_name;
             item.section = section;
             item.mount_generation = generation_;
+            item.dependency_generation = dependency_generation;
             item.generation = previous_generation == UINT32_MAX ? 0 : previous_generation + 1;
             if (item.generation == 0) { item.state = VirtualReadState::Failed; return {}; }
             item.state = VirtualReadState::Queued;
@@ -75,6 +78,12 @@ public:
             if (item.state != VirtualReadState::Queued) continue;
             if (item.mount_generation != generation_) {
                 item.error = "stale mount generation";
+                item.state = VirtualReadState::Failed;
+                ++completed;
+                continue;
+            }
+            if (item.dependency_generation != 0 && item.dependency_generation != generation_) {
+                item.error = "stale dependency generation";
                 item.state = VirtualReadState::Failed;
                 ++completed;
                 continue;
@@ -132,6 +141,7 @@ private:
         std::vector<uint8_t> bytes;
         std::string error;
         uint64_t mount_generation = 0;
+        uint64_t dependency_generation = 0;
         uint32_t generation = 0;
         VirtualReadState state = VirtualReadState::Empty;
     };
