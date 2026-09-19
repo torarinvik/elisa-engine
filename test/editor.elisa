@@ -42,6 +42,29 @@ def asset_browser_test() -> i32:
         BrowserError.UnknownRow: 1
         error failure: 2
     return 47 if selected != 1 or browser_selected(&browser) != 0
+    second_id: Assets::AssetId = Assets::AssetId{high: 1, low: 3}
+    second_added: i32 = catch browser_add(&browser, second_id, 0):
+        ok: 0
+        BrowserError.Capacity: 1
+        BrowserError.InvalidAsset: 2
+        BrowserError.DuplicateAsset: 3
+        error failure: 4
+    return 48 if second_added != 0 or browser_count(&browser) != 2
+    selected_second: i32 = catch browser_select(&browser, 1):
+        ok: 0
+        BrowserError.UnknownRow: 1
+        error failure: 2
+    return 49 if selected_second != 0 or browser_selected(&browser) != 1
+    removed_first: i32 = catch browser_remove(&browser, id):
+        ok: 0
+        BrowserError.UnknownAsset: 1
+        error failure: 2
+    return 50 if removed_first != 0 or browser_count(&browser) != 1 or browser_selected(&browser) != 0 or not Assets::same_asset_id(browser_row(&browser, 0).id, second_id)
+    removed_second: i32 = catch browser_remove(&browser, second_id):
+        ok: 0
+        BrowserError.UnknownAsset: 1
+        error failure: 2
+    return 51 if removed_second != 0 or browser_count(&browser) != 0 or browser_selected(&browser) != 8
     0
 
 def inspector_number_field(target: i64, value: i64) -> Field:
