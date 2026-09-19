@@ -5,6 +5,17 @@ ElisaScript workflow. The full Wicked renderer remains a separate native spike;
 its source is kept outside this repository so upstream code and build artifacts
 do not become Elisa source.
 
+## Current status (2026-09-19)
+
+The native probe has since grown from the initial one-frame smoke into the
+SDL3/Metal rendered host used by the validation gate. It consumes the canonical
+Elisa scene, drives the maze through live input, checks deterministic captures,
+resource churn, authored assets, animation, navigation, audio, UI, and the
+frame budget. Godot runs the corresponding embedded session and cross-host
+semantic comparison. The historical investigation below is retained as the
+record of how the renderer path was isolated; its early red-frame conclusions
+are not the current capability status.
+
 ## Godot
 
 Homebrew Godot 4.7.2 was installed on 2026-09-17. The headless probe runs with:
@@ -45,7 +56,7 @@ create/update/render passed`, `scene despawn passed`, exit 0. This is the
 first in-session executed evidence for the native path; earlier records
 described the setup without a fresh run.
 
-## Frame capture (in progress, currently red)
+## Frame capture (historical renderer triage)
 
 `native/wicked_probe.cpp` now saves its frame to
 `build/wicked-frame.png` and `scripts/wicked_probe.elisascript` checks it
