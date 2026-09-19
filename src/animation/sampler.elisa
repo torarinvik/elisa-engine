@@ -95,7 +95,7 @@ module Sampler:
             upper: usize = lower + 1
             span: i64 = clip.ticks[upper] - clip.ticks[lower]
             weight: f32 = 0.0 if span <= 0 else (tick - clip.ticks[lower]).f32() / span.f32()
-            transform_lerp(transform_of(clip, lower), transform_of(clip, upper), weight)
+            Pose::transform_lerp(transform_of(clip, lower), transform_of(clip, upper), weight)
 
         def clip_sample_local(clip: ClipData&, joint: usize, tick: i64, fallback: Geometry::Transform) -> Geometry::Transform error[ClipError]:
             raise ClipError.InvalidTrack if joint >= Tune::MAX_JOINTS
