@@ -65,6 +65,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Capability | Label | Evidence |
 |---|---|---|
 | Canonical scene command stream, both hosts | Tested + Implemented | `src/backend/scene_bridge.elisa`, `test/scene_bridge.elisa`, `scripts/wicked_probe.elisascript`, `scripts/godot_capture.elisascript` |
+| Persistent one-to-many render extraction | Tested | `src/backend/render_snapshot.elisa`, `test/render_snapshot.elisa`, `docs/validation/render-extraction.md`; native submission remains an adapter |
 | FFI ownership contracts, adversarial bridge | Tested | `src/backend/contracts.elisa`, `src/backend/fake_bridge.elisa`, `test/contracts.elisa`, `test/fake_bridge.elisa` |
 | Submission storage completion boundary | Tested | `src/runtime/lifetime.elisa`, `test/contracts.elisa` |
 | Scene resources rebuilt from canonical data | Tested | `src/backend/recording.elisa`, `test/recording.elisa` |

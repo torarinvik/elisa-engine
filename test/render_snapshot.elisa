@@ -1,0 +1,22 @@
+include "../src/backend/render_snapshot.elisa"
+include "../src/world/world.elisa"
+
+def main() -> i32:
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 1
+    gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+        value: value
+        error failure: return 2
+    snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+    transform: Geometry::Transform = Geometry::transform_identity()
+    return 3 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, transform)
+    return 4 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 102, transform)
+    return 5 if RenderSnapshot::snapshot_count(&snapshot) != 2 or not RenderSnapshot::snapshot_valid(&snapshot)
+    moved: Geometry::Transform = Geometry::transform_translate(transform, Geometry::Vec3{x: 2.0, y: 0.0, z: 1.0})
+    return 6 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, moved)
+    return 7 if not RenderSnapshot::snapshot_remove(&snapshot, gameplay, 101)
+    return 8 if RenderSnapshot::snapshot_count(&snapshot) != 1
+    invalid: World::EntityRef = World::EntityRef{world_epoch: -1, id: 4}
+    return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, transform)
+    0

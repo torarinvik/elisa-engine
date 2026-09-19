@@ -99,7 +99,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(test_binary, [])
         if status != 0:
@@ -120,7 +119,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Checked world lifecycle tests passed.")
     world_storage_test_binary: sview = str(root.joinpath("build/world-storage-test"))
     storage_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", world_storage_test_binary, str(root.joinpath("test/world_storage.elisa"))])
@@ -295,22 +293,24 @@ def main(arguments: darray[sview]) -> i64:
         status
 
     println("Deterministic headless game tests passed.")
-
     bridge_scene_test_binary: sview = str(root.joinpath("build/scene-bridge-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", bridge_scene_test_binary, str(root.joinpath("test/scene_bridge.elisa"))])
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(bridge_scene_test_binary, [])
         if status != 0:
             return status
         status
-
     println("Canonical scene bridge tests passed.")
-
+    render_snapshot_binary: sview = str(root.joinpath("build/render-snapshot-test"))
+    render_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", render_snapshot_binary, str(root.joinpath("test/render_snapshot.elisa"))])
+    return render_status if render_status != 0
+    render_status <- run_visible(render_snapshot_binary, [])
+    return render_status if render_status != 0
+    println("Persistent render snapshot tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])

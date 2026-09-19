@@ -169,6 +169,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [ ] **R01 · P0 · Render extraction and entity mapping** — After: F04, F06, F07.
   Replace maze/manifest-specific rendering with an Elisa-owned frame snapshot or batched change stream and explicit one-to-many render IDs. Done: spawn/update/despawn reaches a persistent scene; vendor-only entities never become gameplay identities, and render updates cannot advance gameplay independently.
+  Progress: `src/backend/render_snapshot.elisa` adds a bounded persistent snapshot keyed by world-branded gameplay references and stable render IDs; one gameplay entity can fan out to multiple instances, updates preserve the row, and removal compacts it. `test/render_snapshot.elisa` is part of the shared gate; native Wicked submission still needs to consume this snapshot instead of maze-specific manifest data.
 - [ ] **R02 · P1 · Mesh/material/instance API** — After: R01, A04.
   Expose reusable static/skinned mesh instances, material slots, visibility, layers, and shared resources with batched updates. Done: hundreds of instances share one mesh/material; modifying or destroying an instance cannot corrupt another, and ABI traffic is measured.
 - [ ] **R03 · P1 · Cameras and viewports** — After: R01, F09, W02.

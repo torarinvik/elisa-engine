@@ -1,0 +1,58 @@
+include "../world/world.elisa"
+include "../math/geometry.elisa"
+
+# Persistent Elisa-owned render extraction. One gameplay identity may fan out
+# to several vendor render IDs, while every row keeps the checked world epoch.
+module RenderSnapshot:
+    public:
+        const MAX_ENTRIES: usize = 512
+
+        struct Entry:
+            gameplay: World::EntityRef
+            render_id: i64
+            transform: Geometry::Transform
+
+        affine struct Snapshot:
+            private:
+                entries: mutable Entry[RenderSnapshot::MAX_ENTRIES]
+                count: mutable usize
+
+        def Snapshot() -> Snapshot:
+            Snapshot{entries: zeroed, count: 0}
+
+        def snapshot_count(snapshot: Snapshot&) -> usize:
+            snapshot.count
+
+        def snapshot_bind(snapshot: mutable Snapshot&, gameplay: World::EntityRef,
+            render_id: i64, transform: Geometry::Transform) -> bool:
+            return false if gameplay.world_epoch <= 0 or gameplay.id <= 0 or render_id <= 0
+            for index in 0..<snapshot.count:
+                if snapshot.entries[index].gameplay.world_epoch == gameplay.world_epoch and snapshot.entries[index].gameplay.id == gameplay.id and snapshot.entries[index].render_id == render_id:
+                    snapshot.entries[index].transform <- transform
+                    return true
+            return false if snapshot.count >= RenderSnapshot::MAX_ENTRIES
+            snapshot.entries[snapshot.count] <- Entry{gameplay: gameplay, render_id: render_id, transform: transform}
+            snapshot.count <- snapshot.count + 1
+            true
+
+        def snapshot_remove(snapshot: mutable Snapshot&, gameplay: World::EntityRef, render_id: i64) -> bool:
+            for index in 0..<snapshot.count:
+                if snapshot.entries[index].gameplay.world_epoch == gameplay.world_epoch and snapshot.entries[index].gameplay.id == gameplay.id and snapshot.entries[index].render_id == render_id:
+                    for shift in index..<snapshot.count - 1:
+                        snapshot.entries[shift] <- snapshot.entries[shift + 1]
+                    snapshot.count <- snapshot.count - 1
+                    return true
+            false
+
+        def snapshot_entry(snapshot: Snapshot&, index: usize) -> Entry:
+            return Entry{gameplay: World::EntityRef{world_epoch: -1, id: -1}, render_id: -1, transform: Geometry::transform_identity()} if index >= snapshot.count
+            snapshot.entries[index]
+
+        def snapshot_valid(snapshot: Snapshot&) -> bool:
+            return false if snapshot.count > RenderSnapshot::MAX_ENTRIES
+            for index in 0..<snapshot.count |valid: bool = true| -> valid:
+                entry: Entry = snapshot.entries[index]
+                valid <- false if entry.gameplay.world_epoch <= 0 or entry.gameplay.id <= 0 or entry.render_id <= 0
+                for earlier in 0..<index:
+                    valid <- false if snapshot.entries[earlier].render_id == entry.render_id
+            true
