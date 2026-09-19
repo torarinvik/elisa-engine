@@ -1,0 +1,80 @@
+# Backend-neutral PBR material contract. Texture identities are assets, not
+# native handles; adapters choose the queried GPU format at upload time.
+include "../assets/descriptor.elisa"
+
+module Material:
+    public:
+        enum AlphaMode:
+            Opaque
+            Mask
+            Blend
+
+        enum TextureSlot:
+            BaseColor
+            Normal
+            MetallicRoughness
+            Occlusion
+            Emissive
+
+        struct Material:
+            base_color: mutable Assets::AssetId
+            normal: mutable Assets::AssetId
+            metallic_roughness: mutable Assets::AssetId
+            occlusion: mutable Assets::AssetId
+            emissive: mutable Assets::AssetId
+            base_color_factor: f32[4]
+            metallic_factor: mutable f32
+            roughness_factor: mutable f32
+            emissive_factor: f32[3]
+            alpha_cutoff: mutable f32
+            alpha_mode: AlphaMode
+            double_sided: bool
+
+        def Material() -> Material:
+            Material{
+                base_color: Assets::AssetId{high: 0, low: 0},
+                normal: Assets::AssetId{high: 0, low: 0},
+                metallic_roughness: Assets::AssetId{high: 0, low: 0},
+                occlusion: Assets::AssetId{high: 0, low: 0},
+                emissive: Assets::AssetId{high: 0, low: 0},
+                base_color_factor: [1.0, 1.0, 1.0, 1.0],
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+                emissive_factor: [0.0, 0.0, 0.0],
+                alpha_cutoff: 0.5,
+                alpha_mode: AlphaMode.Opaque,
+                double_sided: false,
+            }
+
+        def set_texture(material: mutable Material&, slot: TextureSlot, asset: Assets::AssetId) -> bool:
+            return false if not Assets::asset_id_valid(asset)
+            if slot == TextureSlot.BaseColor:
+                material.base_color <- asset
+            if slot == TextureSlot.Normal:
+                material.normal <- asset
+            if slot == TextureSlot.MetallicRoughness:
+                material.metallic_roughness <- asset
+            if slot == TextureSlot.Occlusion:
+                material.occlusion <- asset
+            if slot == TextureSlot.Emissive:
+                material.emissive <- asset
+            true
+
+        def set_factors(material: mutable Material&, metallic: f32, roughness: f32, alpha_cutoff: f32) -> bool:
+            return false if metallic < 0.0 or metallic > 1.0 or roughness < 0.0 or roughness > 1.0 or alpha_cutoff < 0.0 or alpha_cutoff > 1.0
+            material.metallic_factor <- metallic
+            material.roughness_factor <- roughness
+            material.alpha_cutoff <- alpha_cutoff
+            true
+
+        def material_valid(material: Material&) -> bool:
+            return false if material.metallic_factor < 0.0 or material.metallic_factor > 1.0 or material.roughness_factor < 0.0 or material.roughness_factor > 1.0 or material.alpha_cutoff < 0.0 or material.alpha_cutoff > 1.0
+            return false if material.alpha_mode == AlphaMode.Mask and not Assets::asset_id_valid(material.base_color)
+            true
+
+        def texture(material: Material&, slot: TextureSlot) -> Assets::AssetId:
+            return material.base_color if slot == TextureSlot.BaseColor
+            return material.normal if slot == TextureSlot.Normal
+            return material.metallic_roughness if slot == TextureSlot.MetallicRoughness
+            return material.occlusion if slot == TextureSlot.Occlusion
+            material.emissive

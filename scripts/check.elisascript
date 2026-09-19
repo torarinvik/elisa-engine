@@ -360,6 +360,12 @@ def main(arguments: darray[sview]) -> i64:
     physics_interpolation_status <- run_visible(physics_interpolation_binary, [])
     return physics_interpolation_status if physics_interpolation_status != 0
     println("Physics interpolation tests passed.")
+    material_binary: sview = str(root.joinpath("build/material-test"))
+    material_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", material_binary, str(root.joinpath("test/material.elisa"))])
+    return material_status if material_status != 0
+    material_status <- run_visible(material_binary, [])
+    return material_status if material_status != 0
+    println("PBR material tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -557,16 +563,13 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("Asset catalogue tests passed.")
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
     for fixture in ["allocator_copy", "world_copy", "recorder_copy", "bridge_copy"]:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output):
             return 1
-    println("Affine owner copy rejection tests passed.")
     for fixture in ["allocator_private_read", "allocator_private_construct", "allocator_private_zeroed", "world_private_write", "recorder_private_read", "bridge_private_write", "queue_private_read"]:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output, true):
             return 1
-    println("Private owner field rejection tests passed.")
     proof_source: sview = str(root.joinpath("proof/entity_id.elisa"))
     _ =
         status: i64 = run_visible(prover, [proof_source])
@@ -579,21 +582,18 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     report: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(prover), ["--json", proof_source], empty_input)
     _ = write_stderr(report.stderr)
     _ = write_text(root.joinpath("build/entity-id-proof.json"), report.stdout)
     return report.exit_status if report.exit_status != 0
-
     world_report: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(prover), ["--json", world_proof_source], empty_input)
     _ = write_stderr(world_report.stderr)
     _ = write_text(root.joinpath("build/world-proof.json"), world_report.stdout)
     return world_report.exit_status if world_report.exit_status != 0
-
     python: sview = get_environment_or("PYTHON_BIN", "python3")
     launcher: sview = get_environment_or("ELISASCRIPT_BIN", "elisascript")
     validation_status: i64 = run_visible(python, [str(root.joinpath("scripts/record_validation.py")), str(root), compiler, prover, launcher])
