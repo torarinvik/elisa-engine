@@ -21,17 +21,17 @@ module Save:
         struct Blob:
             version: i64
             count: usize
-            fields: mutable i64[8]
+            fields: mutable i64[Tune::MAX_FIELDS]
 
         def blob_valid(blob: Blob&) -> bool:
             return false if blob.version <= 0 or blob.count == 0 or blob.count > Tune::MAX_FIELDS
             blob.fields[0] == Tune::MAGIC
 
         # Writes the magic marker, the version, and the caller's fields.
-        def save_write(values: i64[8], count: usize) -> Blob error[SaveError]:
+        def save_write(values: i64[Tune::MAX_FIELDS], count: usize) -> Blob error[SaveError]:
             raise SaveError.Capacity if count + 1 > Tune::MAX_FIELDS
             blob: mutable Blob = Blob{version: Tune::VERSION, count: count + 1, fields: zeroed}
-            source: mutable i64[8] = values
+            source: mutable i64[Tune::MAX_FIELDS] = values
             blob.fields[0] <- Tune::MAGIC
             for index in 0..<count |blob, source|:
                 blob.fields[index + 1] <- source[index]
