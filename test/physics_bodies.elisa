@@ -1,0 +1,32 @@
+include "../src/physics/bodies.elisa"
+
+def main() -> i32:
+    world: mutable PhysicsBodies::World = PhysicsBodies::World()
+    sphere: PhysicsBodies::ShapeHandle = catch PhysicsBodies::shape_create(&world, PhysicsBodies::Shape{kind: PhysicsBodies::ShapeKind.Sphere, first: 0.5, second: 0.0, third: 0.0, child_count: 0}):
+        value: value
+        error failure: return 1
+    dynamic: PhysicsBodies::BodyHandle = catch PhysicsBodies::body_create(&world, PhysicsBodies::BodyKind.Dynamic, sphere, 2, 5.0):
+        value: value
+        error failure: return 2
+    static_body: PhysicsBodies::BodyHandle = catch PhysicsBodies::body_create(&world, PhysicsBodies::BodyKind.Static, sphere, 2, 0.0):
+        value: value
+        error failure: return 3
+    state: PhysicsBodies::BodyState = catch PhysicsBodies::body_read(&world, dynamic):
+        value: value
+        error failure: return 4
+    return 5 if state.authority != PhysicsBodies::Mover.Solver or state.mass != 5.0
+    return 6 if PhysicsBodies::body_count(&world) != 2 or PhysicsBodies::shape_count(&world) != 1
+    _ = catch PhysicsBodies::shape_destroy(&world, sphere):
+        ok: 0
+        error failure: return 7
+    _ = catch PhysicsBodies::body_destroy(&world, dynamic):
+        ok: 0
+        error failure: return 8
+    _ = catch PhysicsBodies::body_destroy(&world, static_body):
+        ok: 0
+        error failure: return 9
+    _ = catch PhysicsBodies::shape_destroy(&world, sphere):
+        ok: 0
+        error failure: return 10
+    return 11 if PhysicsBodies::body_count(&world) != 0 or PhysicsBodies::shape_count(&world) != 0 or not PhysicsBodies::world_valid(&world)
+    0

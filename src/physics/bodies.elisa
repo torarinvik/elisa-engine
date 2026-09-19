@@ -1,0 +1,144 @@
+# Elisa-owned body and shape lifecycle. Native Jolt adapters map these handles
+# to backend objects, but gameplay sees only generation-checked identities and
+# the selected motion authority.
+module PhysicsBodies:
+    private:
+        const module Limits:
+            MAX_SHAPES: usize = 64
+            MAX_BODIES: usize = 128
+            INVALID_SLOT: usize = MAX_BODIES
+            FIRST_GENERATION: i64 = 1
+            MAX_GENERATION: i64 = 9223372036854775807
+
+        def next_generation(current: i64) -> i64:
+            Limits::FIRST_GENERATION if current == 0 else current + 1
+
+    public:
+        enum ShapeKind:
+            Sphere
+            Box
+            Capsule
+            Compound
+
+        enum BodyKind:
+            Static
+            Kinematic
+            Dynamic
+
+        enum Mover:
+            Elisa
+            Solver
+
+        struct ShapeHandle:
+            slot: usize
+            generation: i64
+
+        struct BodyHandle:
+            slot: usize
+            generation: i64
+
+        struct Shape:
+            kind: ShapeKind
+            first: f32
+            second: f32
+            third: f32
+            child_count: usize
+
+        struct BodyState:
+            kind: BodyKind
+            shape: ShapeHandle
+            layer: i64
+            authority: Mover
+            mass: f32
+
+        enum BodyError:
+            InvalidShape
+            InvalidDimensions
+            Capacity
+            UnknownShape
+            UnknownBody
+            GenerationExhausted
+
+        private:
+            struct ShapeEntry:
+                generation: mutable i64
+                live: mutable bool
+                shape: mutable Shape
+
+            struct BodyEntry:
+                generation: mutable i64
+                live: mutable bool
+                state: mutable BodyState
+
+        public:
+            affine struct World:
+                private:
+                    shapes: mutable ShapeEntry[Limits::MAX_SHAPES]
+                    bodies: mutable BodyEntry[Limits::MAX_BODIES]
+                    shape_count: mutable usize
+                    body_count: mutable usize
+
+            def World() -> World:
+                World{shapes: zeroed, bodies: zeroed, shape_count: 0, body_count: 0}
+
+            def shape_valid(world: World&, handle: ShapeHandle) -> bool:
+                handle.slot < Limits::MAX_SHAPES and world.shapes[handle.slot].live and world.shapes[handle.slot].generation == handle.generation
+
+            def body_valid(world: World&, handle: BodyHandle) -> bool:
+                handle.slot < Limits::MAX_BODIES and world.bodies[handle.slot].live and world.bodies[handle.slot].generation == handle.generation
+
+            def shape_create(world: mutable World&, shape: Shape) -> ShapeHandle error[BodyError]:
+                raise BodyError.InvalidDimensions if shape.first <= 0.0 or shape.second < 0.0 or shape.third < 0.0 or shape.child_count > Limits::MAX_SHAPES
+                raise BodyError.Capacity if world.shape_count >= Limits::MAX_SHAPES
+                slot: usize =
+                    for index in 0..<Limits::MAX_SHAPES |slot: usize = Limits::MAX_SHAPES, world| -> slot:
+                        break index if not world.shapes[index].live
+                raise BodyError.Capacity if slot == Limits::MAX_SHAPES
+                generation: mutable i64 = world.shapes[slot].generation
+                raise BodyError.GenerationExhausted if generation >= Limits::MAX_GENERATION
+                generation <- next_generation(generation)
+                world.shapes[slot] <- ShapeEntry{generation: generation, live: true, shape: shape}
+                world.shape_count <- world.shape_count + 1
+                ShapeHandle{slot: slot, generation: generation}
+
+            def body_create(world: mutable World&, kind: BodyKind, shape: ShapeHandle, layer: i64, mass: f32) -> BodyHandle error[BodyError]:
+                raise BodyError.UnknownShape if not shape_valid(world, shape)
+                raise BodyError.InvalidDimensions if layer < 0 or mass < 0.0 or (kind == BodyKind.Dynamic and mass <= 0.0)
+                raise BodyError.Capacity if world.body_count >= Limits::MAX_BODIES
+                slot: usize =
+                    for index in 0..<Limits::MAX_BODIES |slot: usize = Limits::MAX_BODIES, world| -> slot:
+                        break index if not world.bodies[index].live
+                raise BodyError.Capacity if slot == Limits::MAX_BODIES
+                generation: mutable i64 = world.bodies[slot].generation
+                raise BodyError.GenerationExhausted if generation >= Limits::MAX_GENERATION
+                generation <- next_generation(generation)
+                world.bodies[slot] <- BodyEntry{generation: generation, live: true, state: BodyState{kind: kind, shape: shape, layer: layer, authority: Mover.Solver if kind == BodyKind.Dynamic else Mover.Elisa, mass: mass}}
+                world.body_count <- world.body_count + 1
+                BodyHandle{slot: slot, generation: generation}
+
+            def body_read(world: World&, handle: BodyHandle) -> BodyState error[BodyError]:
+                raise BodyError.UnknownBody if not body_valid(world, handle)
+                world.bodies[handle.slot].state
+
+            def body_destroy(world: mutable World&, handle: BodyHandle) -> void error[BodyError]:
+                raise BodyError.UnknownBody if not body_valid(world, handle)
+                world.bodies[handle.slot].live <- false
+                world.body_count <- world.body_count - 1
+
+            def shape_destroy(world: mutable World&, handle: ShapeHandle) -> void error[BodyError]:
+                raise BodyError.UnknownShape if not shape_valid(world, handle)
+                for index in 0..<Limits::MAX_BODIES:
+                    if world.bodies[index].live and world.bodies[index].state.shape.slot == handle.slot and world.bodies[index].state.shape.generation == handle.generation:
+                        return
+                world.shapes[handle.slot].live <- false
+                world.shape_count <- world.shape_count - 1
+
+            def body_count(world: World&) -> usize:
+                world.body_count
+
+            def shape_count(world: World&) -> usize:
+                world.shape_count
+
+            def world_valid(world: World&) -> bool:
+                return false if world.body_count > Limits::MAX_BODIES or world.shape_count > Limits::MAX_SHAPES
+                true

@@ -212,6 +212,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/physics/policy.elisa` now owns a monotonic `StepClock` that rejects overlapping and non-contiguous commits, and `test/physics_policy.elisa` covers duplicate/skip prevention. `native/physics_policy_probe.h` still proves the real Wicked pause/resume boundary; native fixed-step driving and per-body advancement evidence remain.
 - [ ] **P02 · P1 · Body and shape lifecycle** — After: P01, F06.
   Expose static/dynamic/kinematic bodies, reusable primitive/mesh/compound shapes, mass properties, layers, and motion authority. Done: body/shape sharing, capacity failure, create/destroy, and world unload preserve identity and ownership without exposing Jolt IDs publicly.
+  Progress: `src/physics/bodies.elisa` adds bounded generation-checked shapes and bodies, shared-shape lifetime protection, static/kinematic/dynamic authority, mass/layer validation, and unload counts; `test/physics_bodies.elisa` covers shared shape destruction and stale ownership. Native Jolt construction, compound mesh cooking, and broadphase layers remain.
 - [ ] **P03 · P1 · Collision queries and events** — After: P02, W08.
   Implement raycasts, overlaps, shape casts, filters, triggers, and contact event queues with deterministic delivery policy. Done: nearest/all-hit queries, destroyed participants, overflow, and callback thread handoff are covered by real collision scenes and negative tests.
 - [ ] **P04 · P1 · Fixed-step integration and interpolation** — After: P02, W02.

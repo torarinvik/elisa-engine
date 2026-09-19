@@ -342,6 +342,12 @@ def main(arguments: darray[sview]) -> i64:
     camera_status <- run_visible(camera_binary, [])
     return camera_status if camera_status != 0
     println("Camera and viewport tests passed.")
+    physics_bodies_binary: sview = str(root.joinpath("build/physics-bodies-test"))
+    physics_bodies_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", physics_bodies_binary, str(root.joinpath("test/physics_bodies.elisa"))])
+    return physics_bodies_status if physics_bodies_status != 0
+    physics_bodies_status <- run_visible(physics_bodies_binary, [])
+    return physics_bodies_status if physics_bodies_status != 0
+    println("Physics body lifecycle tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -449,9 +455,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Physics authority tests passed.")
-
     schedule_test_binary: sview = str(root.joinpath("build/schedule-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", schedule_test_binary, str(root.joinpath("test/schedule.elisa"))])
@@ -463,9 +467,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Runtime scheduler tests passed.")
-
     editor_test_binary: sview = str(root.joinpath("build/editor-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", editor_test_binary, str(root.joinpath("test/editor.elisa"))])
@@ -477,7 +479,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Editor undo and reload tests passed.")
     session_editor_binary: sview = str(root.joinpath("build/editor-session-test"))
     status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", session_editor_binary, str(root.joinpath("test/editor_session.elisa"))])
@@ -485,7 +486,6 @@ def main(arguments: darray[sview]) -> i64:
     status <- run_visible(session_editor_binary, [])
     return status if status != 0
     println("Editor session tests passed.")
-
     session_test_binary: sview = str(root.joinpath("build/session-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", session_test_binary, str(root.joinpath("test/session.elisa"))])
