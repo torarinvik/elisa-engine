@@ -387,12 +387,11 @@ postconditions.
 
 ## Next milestone
 
-A screenshot-driven pixel comparison using the declared tolerance, native
-solver linkage behind the physics authority policy, and an editor surface
-over the inspector/undo/reload foundation. `scripts/check.elisascript`
-stands at 593 of the 600-line file limit and must be split before further
-suites land. The project license is still explicitly undecided and blocks
-any distribution.
+The core foundation, gameplay, backend, authoring, and networking boundaries
+are exercised. The remaining product work is the explicitly deferred full
+editor widget suite, broader code reload tooling, and selecting a project
+license before distribution. The ElisaScript gate remains under the enforced
+600-line source-file limit.
 
 ### ElisaScript migration status
 
