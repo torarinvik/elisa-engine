@@ -11,6 +11,7 @@ module Session:
         const module Tune:
             MAX_CLIENTS: usize = 4
             MAX_IDS: usize = 8
+            MAX_DELAY_TICKS: i64 = 8
 
     public:
         enum SessionStage:
@@ -26,9 +27,9 @@ module Session:
 
         struct NetSession:
             stage: mutable SessionStage
-            clients: mutable Client[4]
+            clients: mutable Client[Tune::MAX_CLIENTS]
             client_count: mutable usize
-            owned: mutable u64[8]
+            owned: mutable u64[Tune::MAX_IDS]
             owned_count: mutable usize
             loss_every: mutable usize
             delay_ticks: mutable i64
@@ -87,14 +88,14 @@ module Session:
                     true
 
                 def set_profile(session: mutable Session::NetSession&, loss_every: usize, delay_ticks: i64) -> bool:
-                    return false if delay_ticks < 0 or delay_ticks > 8
+                    return false if delay_ticks < 0 or delay_ticks > Session::Tune::MAX_DELAY_TICKS
                     session.loss_every <- loss_every
                     session.delay_ticks <- delay_ticks
                     true
 
                 def drop(session: mutable Session::NetSession&, id: u64) -> bool:
                     slot: usize =
-                        for index in 0..<session.client_count |found: usize = 4, session| -> found:
+                        for index in 0..<session.client_count |found: usize = Session::Tune::MAX_CLIENTS, session| -> found:
                             found <- index if session.clients[index].id == id
                     return false if slot >= session.client_count
                     for shift in slot..<session.client_count - 1 |session|:
