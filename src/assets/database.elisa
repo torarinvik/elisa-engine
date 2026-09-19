@@ -68,14 +68,9 @@ module AssetCatalogue:
             return false if not catalogue_valid(catalogue)
             # A statement loop reads the catalogue directly; a value block would
             # capture a snapshot of the reference and miss a later mutation.
-            ok: mutable bool = true
-            for index in 0..<catalogue.count:
+            for index in 0..<catalogue.count |ok: bool = true| -> ok:
                 entry: Entry = catalogue.entries[index]
-                if not Assets::asset_id_valid(entry.id) or not Assets::asset_id_valid(entry.content):
-                    ok <- false
-                if entry.blob_bytes < 0 or entry.blob_bytes > Tune::MAX_BLOB_BYTES or entry.cooked_generation < 0:
-                    ok <- false
-            ok
+                break false if not Assets::asset_id_valid(entry.id) or not Assets::asset_id_valid(entry.content) or entry.blob_bytes < 0 or entry.blob_bytes > Tune::MAX_BLOB_BYTES or entry.cooked_generation < 0
 
         def lookup_generation(catalogue: Catalogue&, id: Assets::AssetId) -> i64:
             found: i64 =

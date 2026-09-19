@@ -173,15 +173,15 @@ module Geometry:
         # the point is inside. Invalid (reversed) bounds are not a shape, so
         # callers must check bounds3_valid first.
         def bounds3_distance(bounds: Bounds3, point: Vec3) -> f32:
-            dx: mutable f32 = Scalar::ZERO
-            dx <- bounds.minimum.x - point.x if point.x < bounds.minimum.x
-            dx <- point.x - bounds.maximum.x if point.x > bounds.maximum.x
-            dy: mutable f32 = Scalar::ZERO
-            dy <- bounds.minimum.y - point.y if point.y < bounds.minimum.y
-            dy <- point.y - bounds.maximum.y if point.y > bounds.maximum.y
-            dz: mutable f32 = Scalar::ZERO
-            dz <- bounds.minimum.z - point.z if point.z < bounds.minimum.z
-            dz <- point.z - bounds.maximum.z if point.z > bounds.maximum.z
+            dx: f32 =
+                value: f32 = bounds.minimum.x - point.x if point.x < bounds.minimum.x else Scalar::ZERO
+                bounds.maximum.x - point.x if point.x > bounds.maximum.x else value
+            dy: f32 =
+                value: f32 = bounds.minimum.y - point.y if point.y < bounds.minimum.y else Scalar::ZERO
+                bounds.maximum.y - point.y if point.y > bounds.maximum.y else value
+            dz: f32 =
+                value: f32 = bounds.minimum.z - point.z if point.z < bounds.minimum.z else Scalar::ZERO
+                bounds.maximum.z - point.z if point.z > bounds.maximum.z else value
             vec3_length(Vec3{x: dx, y: dy, z: dz})
 
         # Distance from a point to the nearest point of a ray, clamped at the
