@@ -14,12 +14,23 @@ SOURCE_ROOT = Path("src")
 ELISA_SUFFIX = ".elisa"
 TOP_LEVEL_MODULE = re.compile(r"^module\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 USING_DIRECTIVE = re.compile(r"^\s*using\s+[A-Za-z_][A-Za-z0-9_]*\s*$")
+OWNER_CONSTRUCTORS = {
+    "EntityIdAllocator": Path("src/entity_id.elisa"),
+    "World": Path("src/world/world.elisa"),
+    "SceneRecorder": Path("src/backend/recording.elisa"),
+    "Bridge": Path("src/backend/fake_bridge.elisa"),
+    "Queue": Path("src/runtime/lifetime.elisa"),
+}
+OWNER_CONSTRUCTION = {
+    name: re.compile(rf"\b{name}\s*\{{") for name in OWNER_CONSTRUCTORS
+}
 
 
 def policy(root: Path) -> dict[str, object]:
     source_root = root / SOURCE_ROOT
     violations: list[str] = []
     module_names: dict[str, Path] = {}
+    owner_constructors: list[str] = []
 
     for path in sorted(source_root.rglob(f"*{ELISA_SUFFIX}")):
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -43,10 +54,21 @@ def policy(root: Path) -> dict[str, object]:
                 violations.append(
                     f"{path.relative_to(root)}:{line_number}: production modules must qualify dependencies"
                 )
+            for name, pattern in OWNER_CONSTRUCTION.items():
+                if not pattern.search(line):
+                    continue
+                owner = OWNER_CONSTRUCTORS[name]
+                relative = path.relative_to(root)
+                owner_constructors.append(f"{relative}:{line_number}:{name}")
+                if relative != owner:
+                    violations.append(
+                        f"{relative}:{line_number}: {name} construction belongs in {owner}"
+                    )
 
     return {
         "status": "passed" if not violations else "failed",
         "modules": len(module_names),
+        "owner_constructors": owner_constructors,
         "violations": [str(item) for item in violations],
     }
 
