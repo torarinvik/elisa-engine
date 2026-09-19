@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -355,5 +356,64 @@ inline bool bake(const BakeInput& input, NavMeshArtifact& artifact, std::string&
     rcFreeContourSet(contours); rcFreePolyMesh(poly_mesh); rcFreePolyMeshDetail(detail_mesh);
     return true;
 }
+
+struct TileHandle {
+    static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
+    uint32_t slot = INVALID_SLOT;
+    uint32_t generation = 0;
+};
+
+class NavMeshTileStore {
+public:
+    static constexpr uint32_t MAX_TILES = 8;
+
+    TileHandle publish(const BakeInput& input, std::string& error) {
+        const uint32_t slot = free_slot();
+        if (slot == MAX_TILES) return {};
+        auto artifact = std::make_unique<NavMeshArtifact>();
+        if (!bake(input, *artifact, error)) return {};
+        Tile& tile = tiles_[slot];
+        if (tile.generation == UINT32_MAX) return {};
+        tile.generation = tile.generation == 0 ? 1 : tile.generation + 1;
+        tile.artifact = std::move(artifact);
+        return TileHandle{slot, tile.generation};
+    }
+
+    bool live(TileHandle handle) const {
+        return handle.slot < MAX_TILES && tiles_[handle.slot].artifact != nullptr &&
+            tiles_[handle.slot].generation == handle.generation;
+    }
+
+    bool unload(TileHandle handle) {
+        if (!live(handle)) return false;
+        tiles_[handle.slot].artifact.reset();
+        return true;
+    }
+
+    QueryStatus query_path(TileHandle handle, const float start[3], const float end[3],
+        const float extents[3], PathResult& result, uint16_t include_flags = 0xffff) const {
+        if (!live(handle)) {
+            result = {};
+            result.status = QueryStatus::InvalidInput;
+            return result.status;
+        }
+        return tiles_[handle.slot].artifact->query_path(start, end, extents, result, include_flags);
+    }
+
+private:
+    struct Tile {
+        std::unique_ptr<NavMeshArtifact> artifact;
+        uint32_t generation = 0;
+    };
+
+    uint32_t free_slot() const {
+        for (uint32_t index = 0; index < MAX_TILES; ++index) {
+            if (tiles_[index].artifact == nullptr) return index;
+        }
+        return MAX_TILES;
+    }
+
+    std::array<Tile, MAX_TILES> tiles_{};
+};
 
 } // namespace probe::nav

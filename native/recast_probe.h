@@ -98,6 +98,14 @@ inline bool probe_recast_navigation() {
     if (!check(!probe::nav::bake(malformed, rejected, error), "recast rejects bad indices")) {
         return false;
     }
+    probe::nav::NavMeshTileStore store;
+    const auto tile = store.publish(input, error);
+    probe::nav::PathResult tile_path;
+    if (!check(store.live(tile) && store.query_path(tile, start, end, extents, tile_path) == probe::nav::QueryStatus::Success,
+        "detour tile store queries a live generation") ||
+        !check(store.unload(tile) && !store.live(tile) &&
+            store.query_path(tile, start, end, extents, tile_path) == probe::nav::QueryStatus::InvalidInput,
+            "detour tile store rejects stale generation")) return false;
     std::fprintf(stdout, "recast: polys=%d navdata=%d path_polys=%d path_points=%d source=%u\n",
         metadata.polygon_count, metadata.nav_data_size, successful_polys, successful_points,
         metadata.source_generation);

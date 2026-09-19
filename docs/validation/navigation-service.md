@@ -29,15 +29,18 @@ are rejected with explicit `InvalidInput` or `NoPath` results. The adapter has
 fixed query capacities and reports `Partial` when a result exceeds them.
 
 `NavMeshArtifact` releases the Detour query and mesh and all Recast allocations
-on every path, including failed allocation and serialization paths. The copied
-serialized tile is available to a future versioned cook cache; this slice does
-not yet load multi-tile bundles or stream them asynchronously.
+on every path, including failed allocation and serialization paths. The
+generation-checked `NavMeshTileStore` publishes bounded artifacts, rejects
+stale handles after unload, and exposes the same bounded query result without
+letting a pending caller use a replaced tile. The copied serialized tile is
+available to a future versioned cook cache; multi-tile async streaming is still
+open.
 
 ## Scope
 
 This is an integrated native adapter used by the real Wicked validation host,
 not yet a complete gameplay navigation service. The existing Elisa maze still
 uses its bounded BFS policy. N01 remains open for multi-room/stair bake assets,
-area/link metadata, and debug overlays; N02 remains open for generation-tagged
-tile ownership and gameplay agent corridor following. N03 and N04 are not
-claimed by this probe.
+area/link metadata, and debug overlays; N02 remains open for gameplay agent
+corridor following and richer area/link queries. N03 and N04 are not claimed by
+this probe.
