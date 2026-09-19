@@ -47,6 +47,7 @@
 #include "physics_body_bridge.h"
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
+#include "parallel_executor.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -99,6 +100,7 @@ int main(int argc, char** argv) {
     if (!probe_physics_body_bridge(scene)) return 1;
     if (!probe_action_input_bridge()) return 1;
     if (!probe_camera_bridge(scene)) return 1;
+    if (!probe_parallel_executor()) return 1;
     if (!probe_native_resource_handles(scene)) {
         return 1;
     }

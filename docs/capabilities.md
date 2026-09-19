@@ -50,7 +50,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | C ABI bridge-call cost | Tested | `native/embed_probe.cpp` (100k exported query calls, `per_call_ns` printed) |
 | Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
 | Godot host embeds Elisa gameplay through a hand-written GDExtension | Tested + Implemented | `backends/godot-embed/`, `scripts/godot_embed_probe.py` (full session matches the native embedding) |
-| Declared read/write sets, derived execution waves | Tested | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa` |
+| Declared read/write sets, derived execution waves | Tested + Implemented | `src/runtime/schedule.elisa`, `src/runtime/executor.elisa`, `test/schedule.elisa`, `native/parallel_executor.h`, [parallel executor validation](validation/parallel-executor.md) |
 | Inspected counters, budgets, submitted bytes | Tested | `src/tooling/inspector.elisa`, `test/inspector.elisa` |
 | Bounded editor inspector fields, selection, validation, and dirty edits | Tested | `src/tooling/inspector_view.elisa`, `test/editor.elisa` |
 | Bounded editor asset browser with generation and stale-state tracking | Tested | `src/tooling/asset_browser.elisa`, `test/editor.elisa` |
