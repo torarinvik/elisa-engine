@@ -40,6 +40,7 @@
 #include "capability_probe.h"
 #include "frame_pacing_probe.h"
 #include "window_lifecycle_probe.h"
+#include "physics_policy_probe.h"
 using namespace probe;
 
 int main(int argc, char** argv) {
@@ -337,9 +338,7 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "markers created=%u\n", (unsigned)marker_entities.size());
 
-    // Physics: a dynamic box far off-camera (x=20) so it cannot occlude any
-    // projected marker or wall sample. Elisa owns the policy; this checks the
-    // Jolt integration actually simulates: gravity must pull it down.
+    // Physics: Elisa owns this off-camera Jolt body's simulation policy.
     wi::physics::SetSimulationEnabled(true);
     const auto physics_box = scene.Entity_CreateCube("elisa_physics_box");
     if (!check(physics_box != wi::ecs::INVALID_ENTITY, "physics cube entity")) {
@@ -357,6 +356,7 @@ int main(int argc, char** argv) {
     physics_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
     physics_transform->UpdateTransform();
     const float physics_start_y = physics_transform->GetPosition().y;
+    if (!probe_physics_pause(application, *physics_transform)) return 1;
 
     // Gameplay over time: walk the character along the route Elisa published,
     // one cell per frame, so the host shows movement rather than a teleport.

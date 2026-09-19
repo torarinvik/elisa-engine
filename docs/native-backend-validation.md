@@ -122,6 +122,10 @@ logical lifetime layer with a retirement queue: logical destruction invalidates
 the handle first, then `collect_retired` removes the real entity and permits
 slot reuse. A graphics-device fence can call that collection point; separate
 mesh/material/texture/body/voice handle families remain open F06 work.
+The same gate pauses a real Jolt rigid body for two frames through
+`native/physics_policy_probe.h`, then resumes gravity; this is the current
+ownership evidence while the full Elisa fixed-step physics service remains
+open.
 The shared native conversion in `native/coordinate_conventions.h` owns the
 right-handed Elisa-to-left-handed Wicked X flip and the grid spacing/origin;
 walls, markers, live input, and route replay all use that one conversion.
