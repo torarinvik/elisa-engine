@@ -8,55 +8,62 @@ def main() -> i32:
     return 4 if select_solver(false, true) != SolverKind.GodotPhysics or select_solver(false, false) != SolverKind.None
     return 5 if not commit_order_ok(7, 8) or commit_order_ok(7, 7) or commit_order_ok(7, 9)
 
+    clock: mutable StepClock = StepClock()
+    first_tick: i64 = begin_step(&clock)
+    return 6 if first_tick != 1 or begin_step(&clock) != -1
+    return 7 if not commit_step(&clock, first_tick) or commit_step(&clock, first_tick)
+    second_tick: i64 = begin_step(&clock)
+    return 8 if second_tick != 2 or not commit_step(&clock, second_tick)
+
     claim: mutable SolverClaim = SolverClaim(SolverKind.Jolt)
-    return 6 if not claim_valid(&claim) or claim_holds(&claim, 11)
+    return 9 if not claim_valid(&claim) or claim_holds(&claim, 11)
     claimed: i32 = catch claim_body(&claim, 11, BodyKind.Dynamic):
         ok: 0
         error failure: 1
-    return 7 if claimed != 0 or not claim_holds(&claim, 11) or claim.count != 1
+    return 10 if claimed != 0 or not claim_holds(&claim, 11) or claim.count != 1
 
     kinematic: i32 = catch claim_body(&claim, 12, BodyKind.Kinematic):
         value: 1
         ClaimError.WrongKind: 0
         error failure: 2
-    return 8 if kinematic != 0 or claim.count != 1
+    return 11 if kinematic != 0 or claim.count != 1
 
     double: i32 = catch claim_body(&claim, 11, BodyKind.Dynamic):
         value: 1
         ClaimError.AlreadyClaimed: 0
         error failure: 2
-    return 9 if double != 0
+    return 12 if double != 0
 
     none_claim: mutable SolverClaim = SolverClaim(SolverKind.None)
     mismatch: i32 = catch claim_body(&none_claim, 13, BodyKind.Dynamic):
         value: 1
         ClaimError.SolverMismatch: 0
         error failure: 2
-    return 10 if mismatch != 0
+    return 13 if mismatch != 0
 
     for extra in 0..<7 |claim|:
         added: i32 = catch claim_body(&claim, 20 + extra.i64(), BodyKind.Dynamic):
             ok: 0
             error failure: 1
-        return 11 if added != 0
-    return 12 if claim.count != 8
+        return 14 if added != 0
+    return 15 if claim.count != 8
     full: i32 = catch claim_body(&claim, 99, BodyKind.Dynamic):
         value: 1
         ClaimError.Capacity: 0
         error failure: 2
-    return 13 if full != 0
+    return 16 if full != 0
 
     released: i32 = catch release_body(&claim, 11):
         ok: 0
         error failure: 1
-    return 14 if released != 0 or claim_holds(&claim, 11) or claim.count != 7
+    return 17 if released != 0 or claim_holds(&claim, 11) or claim.count != 7
     missing: i32 = catch release_body(&claim, 11):
         value: 1
         ClaimError.UnknownBody: 0
         error failure: 2
-    return 15 if missing != 0
+    return 18 if missing != 0
     reclaimed: i32 = catch claim_body(&claim, 99, BodyKind.Dynamic):
         ok: 0
         error failure: 1
-    return 16 if reclaimed != 0 or not claim_valid(&claim)
+    return 19 if reclaimed != 0 or not claim_valid(&claim)
     0

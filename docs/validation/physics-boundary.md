@@ -10,4 +10,7 @@ The full SDL3/Metal native gate passed this pause/resume check on both
 determinism runs. This proves the ownership boundary and pause behavior, not
 the complete P01 fixed-step service: explicit engine tick scheduling,
 interpolation, body-handle lifecycle, and a competing-simulation rejection are
-still open tasks.
+still open tasks. The portable policy now also exposes an Elisa-owned
+`StepClock`; `test/physics_policy.elisa` proves that a tick can be active only
+once and commits must be contiguous. Native tick driving, interpolation,
+body-handle lifecycle, and competing-simulation rejection remain P01 work.

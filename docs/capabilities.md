@@ -57,7 +57,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Bounded editor session composing panels, asset selection/loading, widgets, revisions, field undo/redo, and validated commit | Tested | `src/tooling/editor_session.elisa`, `test/editor_session.elisa` |
 | Spawn/despawn churn with allocated bytes | Tested + Implemented | `native/churn_probe.h` (median/p95/worst plus steady-state heap delta, guard at 2 MiB), native runner |
 | Generation/owner-checked handles with fence-delayed retirement queue | Tested + Implemented | `native/resource_handles.h`, `native/voice_handles.h`, `native/resource_handle_probe.h`, native Wicked probe; mesh/material/texture/body and miniaudio voice families invalidate logically before serial-gated collection |
-| Elisa-owned Jolt simulation enable/pause boundary | Tested | `native/physics_policy_probe.h`, native Wicked gate; paused simulation holds a real dynamic body before gravity resumes, while fixed-step service ownership remains P01 work |
+| Elisa-owned Jolt simulation enable/pause boundary | Tested | `native/physics_policy_probe.h`, native Wicked gate, and `Physics::StepClock` in `src/physics/policy.elisa`; paused simulation holds a real dynamic body and portable ticks commit contiguously, while native tick driving remains P01 work |
 | Debug collision geometry (solid cells + markers, bounded boxes) | Tested + Implemented | `src/tooling/debug_geometry.elisa`, `examples/maze/debug.elisa`, `test/inspector.elisa`, `test/maze_game.elisa`, Godot wireframe overlay in `backends/godot/capture.gd` |
 
 ## Backends

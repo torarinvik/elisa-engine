@@ -35,6 +35,11 @@ module Physics:
             bodies: mutable i64[Tune::MAX_BODIES]
             count: mutable usize
 
+        struct StepClock:
+            next_tick: mutable i64
+            committed_tick: mutable i64
+            active_tick: mutable i64
+
         def mover_for(kind: BodyKind) -> Mover:
             Mover.Solver if kind == BodyKind.Dynamic else Mover.Elisa
 
@@ -45,6 +50,9 @@ module Physics:
 
         def SolverClaim(solver: SolverKind) -> SolverClaim:
             SolverClaim{solver: solver, bodies: zeroed, count: 0}
+
+        def StepClock() -> StepClock:
+            StepClock{next_tick: 0, committed_tick: 0, active_tick: 0}
 
         def claim_valid(claim: SolverClaim&) -> bool:
             return false if claim.count > Tune::MAX_BODIES
@@ -57,6 +65,18 @@ module Physics:
 
         def commit_order_ok(last_tick: i64, tick: i64) -> bool:
             tick == last_tick + 1
+
+        def begin_step(clock: mutable StepClock&) -> i64:
+            return -1 if clock.active_tick != 0
+            clock.next_tick <- clock.next_tick + 1
+            clock.active_tick <- clock.next_tick
+            clock.active_tick
+
+        def commit_step(clock: mutable StepClock&, tick: i64) -> bool:
+            return false if clock.active_tick == 0 or tick != clock.active_tick or not commit_order_ok(clock.committed_tick, tick)
+            clock.committed_tick <- tick
+            clock.active_tick <- 0
+            true
 
     private:
         module Claims:

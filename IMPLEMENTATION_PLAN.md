@@ -203,6 +203,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [ ] **P01 · P0 · Jolt ownership and stepping boundary** — After: F04, F07, R01.
   Decide from pinned source whether to expose Wicked's Jolt world or a separately controlled service; link one compatible Jolt build and disable competing simulation for managed bodies. Done: a fixed-step test proves each body advances exactly once and render updates do not secretly step it.
+  Progress: `src/physics/policy.elisa` now owns a monotonic `StepClock` that rejects overlapping and non-contiguous commits, and `test/physics_policy.elisa` covers duplicate/skip prevention. `native/physics_policy_probe.h` still proves the real Wicked pause/resume boundary; native fixed-step driving and per-body advancement evidence remain.
 - [ ] **P02 · P1 · Body and shape lifecycle** — After: P01, F06.
   Expose static/dynamic/kinematic bodies, reusable primitive/mesh/compound shapes, mass properties, layers, and motion authority. Done: body/shape sharing, capacity failure, create/destroy, and world unload preserve identity and ownership without exposing Jolt IDs publicly.
 - [ ] **P03 · P1 · Collision queries and events** — After: P02, W08.
