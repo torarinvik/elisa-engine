@@ -1,33 +1,34 @@
 # IDs are positive i64 values, local to one world lifetime. Zero is unissued.
 # The world must own one allocator and never copy or reset it while IDs survive.
 module EntityId:
-    const ENTITY_ID_INVALID: i64 = 0
-    const ENTITY_ID_MAX: i64 = 9223372036854775807
-    
-    error EntityIdError:
-        MaxId
-        InvalidId
+    public:
+        const ENTITY_ID_INVALID: i64 = 0
+        const ENTITY_ID_MAX: i64 = 9223372036854775807
 
-    affine struct EntityIdAllocator:
-        last_issued: mutable i64
+        error EntityIdError:
+            MaxId
+            InvalidId
 
-    # The pure transition is shared by the runtime allocator and its proofs.
-    def entity_id_next(last_issued: i64) -> i64:
-        requires last_issued >= ENTITY_ID_INVALID
-        requires last_issued < ENTITY_ID_MAX
-        ensure result > last_issued
-        ensure result == last_issued + 1
-        last_issued + 1
+        affine struct EntityIdAllocator:
+            last_issued: mutable i64
 
-    def entity_id_allocate(allocator: mutable EntityIdAllocator&) -> i64 error[EntityIdError]:
-        cursor: i64 = allocator.last_issued
-        # Zero is the valid initial cursor. The maximum ID is issued when the
-        # cursor is one below it; a cursor already at the maximum is exhausted.
-        if cursor < ENTITY_ID_INVALID:
-            raise EntityIdError.InvalidId
-        elif cursor >= ENTITY_ID_MAX:
-            raise EntityIdError.MaxId
-        else:
-            candidate: i64 = entity_id_next(cursor)
-            allocator.last_issued <- candidate
-            candidate
+        # The pure transition is shared by the runtime allocator and its proofs.
+        def entity_id_next(last_issued: i64) -> i64:
+            requires last_issued >= ENTITY_ID_INVALID
+            requires last_issued < ENTITY_ID_MAX
+            ensure result > last_issued
+            ensure result == last_issued + 1
+            last_issued + 1
+
+        def entity_id_allocate(allocator: mutable EntityIdAllocator&) -> i64 error[EntityIdError]:
+            cursor: i64 = allocator.last_issued
+            # Zero is the valid initial cursor. The maximum ID is issued when the
+            # cursor is one below it; a cursor already at the maximum is exhausted.
+            if cursor < ENTITY_ID_INVALID:
+                raise EntityIdError.InvalidId
+            elif cursor >= ENTITY_ID_MAX:
+                raise EntityIdError.MaxId
+            else:
+                candidate: i64 = entity_id_next(cursor)
+                allocator.last_issued <- candidate
+                candidate
