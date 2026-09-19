@@ -16,6 +16,11 @@ module SceneBridge:
             MAX_VIEWPORT_HEIGHT: i32 = 8192
             MAX_SCENE_COMMANDS: usize = 256
 
+        const module Fixture:
+            EPOCH: i64 = 7
+            OBJECT_ID: i64 = 3
+            CAMERA_ID: i64 = 4
+
     public:
         error BridgeError:
             InvalidEpoch
@@ -136,10 +141,10 @@ module SceneBridge:
             try Build::from_recorder(recorder, object, camera, camera_position, viewport_width, viewport_height)
 
         def canonical_fixture_epoch() -> i64:
-            7
+            Fixture::EPOCH
 
         def canonical_fixture_object() -> World::EntityRef:
-            World::EntityRef{world_epoch: canonical_fixture_epoch(), id: 3}
+            World::EntityRef{world_epoch: canonical_fixture_epoch(), id: Fixture::OBJECT_ID}
 
         def canonical_fixture_camera() -> World::EntityRef:
-            World::EntityRef{world_epoch: canonical_fixture_epoch(), id: 4}
+            World::EntityRef{world_epoch: canonical_fixture_epoch(), id: Fixture::CAMERA_ID}
