@@ -5,8 +5,44 @@
 
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace probe {
+
+inline void put_package_u16(std::vector<uint8_t>& bytes, size_t offset, uint16_t value) {
+    bytes[offset] = static_cast<uint8_t>(value);
+    bytes[offset + 1] = static_cast<uint8_t>(value >> 8);
+}
+
+inline void put_package_u64(std::vector<uint8_t>& bytes, size_t offset, uint64_t value) {
+    for (size_t index = 0; index < 8; ++index) bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8));
+}
+
+inline void write_binary_package_fixture(const std::filesystem::path& path, bool overlap,
+    bool invalid_compression = false) {
+    const uint16_t count = overlap ? 2 : 1;
+    const size_t index_end = BinaryPackageIndex::HEADER_BYTES + count * BinaryPackageIndex::ENTRY_BYTES;
+    const size_t file_size = index_end + (overlap ? 16 : 4);
+    std::vector<uint8_t> bytes(file_size, 0);
+    bytes[0] = 'E'; bytes[1] = 'L'; bytes[2] = 'P'; bytes[3] = 'K';
+    put_package_u16(bytes, 4, 1);
+    put_package_u16(bytes, 6, count);
+    put_package_u64(bytes, 8, BinaryPackageIndex::HEADER_BYTES);
+    put_package_u64(bytes, 16, count * BinaryPackageIndex::ENTRY_BYTES);
+    for (uint16_t index = 0; index < count; ++index) {
+        const size_t entry = BinaryPackageIndex::HEADER_BYTES + index * BinaryPackageIndex::ENTRY_BYTES;
+        const std::string name = index == 0 ? "mesh" : "texture";
+        for (size_t character = 0; character < name.size(); ++character) bytes[entry + character] = name[character];
+        const uint64_t offset = overlap ? index_end : index_end;
+        put_package_u64(bytes, entry + 16, offset);
+        put_package_u64(bytes, entry + 24, overlap ? 16 : 4);
+        put_package_u64(bytes, entry + 32, overlap ? 16 : 4);
+        bytes[entry + 40] = invalid_compression ? 2 : 0;
+        bytes[offset + (index == 0 ? 0 : 1)] = 0xA5;
+    }
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
 
 inline bool probe_package_bounds(const std::string& valid_package) {
     const std::filesystem::path root = std::filesystem::temp_directory_path() / "elisa-package-probe";
@@ -17,10 +53,19 @@ inline bool probe_package_bounds(const std::string& valid_package) {
     std::ofstream(traversal) << "format=elisa-cooked-v2\nsource=../outside.pkg\n";
     const std::filesystem::path malformed = root / "malformed.pkg";
     std::ofstream(malformed) << "not-a-section\n";
+    const std::filesystem::path binary = root / "valid.elpk";
+    const std::filesystem::path overlap = root / "overlap.elpk";
+    const std::filesystem::path compressed = root / "compression.elpk";
+    write_binary_package_fixture(binary, false);
+    write_binary_package_fixture(overlap, true);
+    write_binary_package_fixture(compressed, false, true);
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&
-        check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected");
+        check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected") &&
+        check(read_binary_package_index(binary.string()).valid, "binary package index") &&
+        check(!read_binary_package_index(overlap.string()).valid, "binary package overlap rejected") &&
+        check(!read_binary_package_index(compressed.string()).valid, "binary package compression rejected");
     std::filesystem::remove_all(root);
     return result;
 }
