@@ -69,14 +69,14 @@ module WorldRollback:
                     valid <- false if registry_matches(snapshot, row.id, row.storage) != 1
             for index in 0..<snapshot.live_ids_count |valid: bool = true| -> valid:
                 id: i64 = snapshot.live_ids[index]
-                valid <- false if id <= 0 or registry_matches(snapshot, id, World::StorageKind.None) != 0
+                valid <- false if id <= 0
                 actor_matches: usize = registry_matches(snapshot, id, World::StorageKind.Actor)
                 enemy_matches: usize = registry_matches(snapshot, id, World::StorageKind.Enemy)
                 valid <- false if actor_matches + enemy_matches != 1
             for index in 0..<snapshot.actor_count |valid: bool = true| -> valid:
-                valid <- false if snapshot.actors[index].live and registry_matches(snapshot, snapshot.actors[index].id, World::StorageKind.Actor) != 1
+                valid <- false if snapshot.actors[index].live and (snapshot.actors[index].id <= 0 or snapshot.actors[index].health < 0 or registry_matches(snapshot, snapshot.actors[index].id, World::StorageKind.Actor) != 1)
             for index in 0..<snapshot.enemy_count |valid: bool = true| -> valid:
-                valid <- false if snapshot.enemies[index].live and registry_matches(snapshot, snapshot.enemies[index].id, World::StorageKind.Enemy) != 1
+                valid <- false if snapshot.enemies[index].live and (snapshot.enemies[index].id <= 0 or snapshot.enemies[index].threat < 0 or registry_matches(snapshot, snapshot.enemies[index].id, World::StorageKind.Enemy) != 1)
             true
 
         def capture(world: World::World&) -> Snapshot error[RollbackError]:
