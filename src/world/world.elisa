@@ -275,6 +275,15 @@ module World:
         def world_last_issued(world: World&) -> i64:
             world.allocator.last_issued
 
+        def world_epoch(world: World&) -> i64:
+            world.epoch
+
+        def world_live_count(world: World&) -> usize:
+            world.live_count
+
+        def world_registry_count(world: World&) -> usize:
+            world.registry_count
+
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT

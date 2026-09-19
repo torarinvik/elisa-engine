@@ -75,8 +75,8 @@ module Inspector:
                 def snapshot(world: World::World&, recorder: Backend::SceneRecorder&, tick: i64, frame_micros: i64, errors: usize) -> Inspector::Snapshot:
                     Inspector::Snapshot{
                         tick: tick,
-                        live_entities: world.live_count,
-                        registry_slots: world.registry_count,
+                        live_entities: World::world_live_count(world),
+                        registry_slots: World::world_registry_count(world),
                         queued_commands: recorder.command_count,
                         queued_bytes: Backend::recorder_submitted_bytes(recorder),
                         frame_micros: frame_micros,

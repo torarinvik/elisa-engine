@@ -87,14 +87,14 @@ def main() -> i32:
     character: mutable Character = catch character_spawn(&world, hunter_spawn_x(), hunter_spawn_y()):
         value: value
         error failure: return 49
-    return 50 if world.live_count != 1 or not world_is_valid(&world) or not character_valid(&character)
+    return 50 if world_live_count(&world) != 1 or not world_is_valid(&world) or not character_valid(&character)
     return 51 if character_hip_y(&character) < 0.899 or character_hip_y(&character) > 0.901
     return 52 if character_knee_y(&character) < 0.449 or character_knee_y(&character) > 0.451
     moved_character: bool = character_step(&character, 2, 6)
     return 53 if not moved_character or character_cell_x(&character) != 2 or character_cell_y(&character) != 1
     return 54 if not character_valid(&character)
     removed_character: bool = character_unload(&world, character.entity)
-    return 55 if not removed_character or world.live_count != 0 or not world_is_valid(&world)
+    return 55 if not removed_character or world_live_count(&world) != 0 or not world_is_valid(&world)
     dangling_character: i32 = catch world_lookup(&world, character.entity):
         value: 1
         WorldError.InvalidReference: 0

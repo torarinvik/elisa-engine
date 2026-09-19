@@ -50,7 +50,7 @@ def churn_test() -> i32:
     world: mutable World = catch World():
         value: value
         error failure: invalid_world()
-    return 20 if world.epoch < 1
+    return 20 if world_epoch(&world) < 1
     references: mutable EntityRef[64] = zeroed
     expected_actor: mutable bool[64] = zeroed
     random_state: i64 =
@@ -74,7 +74,7 @@ def churn_test() -> i32:
     world_compact(&world)
     return 25 if not world_is_valid(&world)
     # The compact live-id column stays consistent through churn and compaction.
-    return 29 if not world_live_column_valid(&world) or world_live_ids_count(&world) != world.live_count
+    return 29 if not world_live_column_valid(&world) or world_live_ids_count(&world) != world_live_count(&world)
     for step in 0..<64 |world, references, expected_actor|:
         expected_live: bool = step % 3 != 0
         return 26 if world_is_live(&world, references[step]) != expected_live
@@ -114,12 +114,12 @@ def capacity_test() -> i32:
             value: value
             error failure: invalid_reference()
         return 30 if reference.id != step.i64() + 1
-    return 31 if world.live_count != 256 or not world_is_valid(&world)
+    return 31 if world_live_count(&world) != 256 or not world_is_valid(&world)
     rejected: i32 = catch world_spawn(&world, Actor.Player):
         value: 32
         WorldError.Capacity: 0
         error failure: 33
-    return 34 if rejected != 0 or world.live_count != 256 or world_last_issued(&world) != 256
+    return 34 if rejected != 0 or world_live_count(&world) != 256 or world_last_issued(&world) != 256
     0
 
 def rollback_test() -> i32:
@@ -176,7 +176,7 @@ def main() -> i32:
         catch World():
             value: value
             error failure: invalid_world()
-    return 11 if world.epoch < 1
+    return 11 if world_epoch(&world) < 1
 
     first: EntityRef =
         catch world_spawn(&world, Actor.Player):
@@ -328,7 +328,7 @@ def main() -> i32:
     # The freed slot is reused, so the column order follows the registry, not
     # spawn order; what matters is that it holds exactly the live ids.
     return 16 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
-    return 17 if world_live_ids_count(&world) != world.live_count or world_live_id_at(&world, 2) != -1
+    return 17 if world_live_ids_count(&world) != world_live_count(&world) or world_live_id_at(&world, 2) != -1
     churn: i32 = churn_test()
     return churn if churn != 0
     capacity: i32 = capacity_test()

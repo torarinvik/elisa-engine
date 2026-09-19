@@ -27,11 +27,11 @@ def lifecycle_audit() -> i32:
             error failure: return 31
         return 32 if player.player.id <= previous_id
         previous_id <- player.player.id
-        return 33 if world.live_count != 1 or not world_is_valid(&world) or recorder_live_count(&recorder) != 1
+        return 33 if world_live_count(&world) != 1 or not world_is_valid(&world) or recorder_live_count(&recorder) != 1
         removed: bool = catch world_despawn(&world, player.player):
             ok: true
             error failure: false
-        return 34 if not removed or world.live_count != 0
+        return 34 if not removed or world_live_count(&world) != 0
         dangling: i32 = catch world_lookup(&world, player.player):
             value: 1
             WorldError.InvalidReference: 0
@@ -49,7 +49,7 @@ def lifecycle_audit() -> i32:
             error failure: 2
         return 38 if double_destroy != 0
         world_compact(&world)
-        return 39 if world.registry_count != 0 or world.actor_count != 0 or not world_is_valid(&world)
+        return 39 if world_registry_count(&world) != 0 or world.actor_count != 0 or not world_is_valid(&world)
     0
 
 def main() -> i32:
@@ -130,5 +130,5 @@ def main() -> i32:
         value: 1
         GameError.RecordingFailure: 0
         error failure: 2
-    return 18 if rejected_spawn != 0 or third_world.live_count != 0 or world_last_issued(&third_world) != 1 or not world_is_valid(&third_world)
+    return 18 if rejected_spawn != 0 or world_live_count(&third_world) != 0 or world_last_issued(&third_world) != 1 or not world_is_valid(&third_world)
     0
