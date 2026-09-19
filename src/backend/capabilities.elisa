@@ -4,6 +4,7 @@ module Capabilities:
     private:
         const module Bounds:
             MAX_FEATURES: usize = 8
+            MIN_SERVICE_VERSION: i64 = 1
 
     public:
         enum BackendKind:
@@ -21,6 +22,12 @@ module Capabilities:
             Callbacks
             AssetLoading
 
+        enum BackendLimit:
+            Entities
+            TextureDimension
+            UploadBytes
+            Workers
+
         struct BackendCapabilities:
             input: bool
             rendering: bool
@@ -31,9 +38,17 @@ module Capabilities:
             callbacks: bool
             asset_loading: bool
 
+        struct BackendLimits:
+            max_entities: i64
+            max_texture_dimension: i64
+            max_upload_bytes: i64
+            workers: i64
+
         struct BackendProfile:
             kind: BackendKind
             capabilities: BackendCapabilities
+            limits: BackendLimits
+            service_version: i64
 
         def backend_supports(profile: BackendProfile, feature: BackendFeature) -> bool:
             match feature:
@@ -54,6 +69,28 @@ module Capabilities:
                 BackendFeature.AssetLoading:
                     profile.capabilities.asset_loading
 
+        def backend_limit(profile: BackendProfile, limit: BackendLimit) -> i64:
+            match limit:
+                BackendLimit.Entities:
+                    profile.limits.max_entities
+                BackendLimit.TextureDimension:
+                    profile.limits.max_texture_dimension
+                BackendLimit.UploadBytes:
+                    profile.limits.max_upload_bytes
+                BackendLimit.Workers:
+                    profile.limits.workers
+
+        def backend_limit_supports(profile: BackendProfile, limit: BackendLimit, requested: i64) -> bool:
+            requested > 0 and backend_limit(profile, limit) >= requested
+
+        def backend_profile_valid(profile: BackendProfile) -> bool:
+            version_ok: bool = profile.service_version >= Bounds::MIN_SERVICE_VERSION
+            entities_ok: bool = profile.limits.max_entities > 0
+            texture_ok: bool = profile.limits.max_texture_dimension > 0
+            upload_ok: bool = profile.limits.max_upload_bytes > 0
+            workers_ok: bool = profile.limits.workers > 0
+            version_ok and entities_ok and texture_ok and upload_ok and workers_ok
+
         def backend_requirements_met(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> bool:
             return false if count > Bounds::MAX_FEATURES
             for index in 0..<count |met: bool = true| -> met:
@@ -72,4 +109,6 @@ module Capabilities:
                     callbacks: false,
                     asset_loading: false,
                 },
+                limits: BackendLimits{max_entities: 256, max_texture_dimension: 1, max_upload_bytes: 1048576, workers: 1},
+                service_version: Bounds::MIN_SERVICE_VERSION,
             }
