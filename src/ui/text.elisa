@@ -15,13 +15,13 @@ module UiText:
             width: i64
 
         struct Run:
-            words: mutable Word[32]
+            words: mutable Word[Tune::MAX_WORDS]
             count: mutable usize
 
         struct Wrapped:
             line_count: mutable usize
-            line_starts: mutable usize[16]
-            line_widths: mutable i64[16]
+            line_starts: mutable usize[Tune::MAX_LINES]
+            line_widths: mutable i64[Tune::MAX_LINES]
 
         def Run() -> Run:
             Run{words: zeroed, count: 0}

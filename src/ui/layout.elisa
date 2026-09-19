@@ -28,9 +28,9 @@ module UiLayout:
             rect: mutable Rect
 
         struct Layout:
-            nodes: mutable Node[32]
+            nodes: mutable Node[Tune::MAX_NODES]
             count: mutable usize
-            cursor: mutable i64[32]
+            cursor: mutable i64[Tune::MAX_NODES]
 
         def Layout() -> Layout:
             Layout{nodes: zeroed, count: 0, cursor: zeroed}
