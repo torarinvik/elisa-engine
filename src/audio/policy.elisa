@@ -24,8 +24,8 @@ module AudioPolicy:
 
         struct Device:
             spatial: mutable bool
-            voices: mutable i64[8]
-            kinds: mutable VoiceKind[8]
+            voices: mutable i64[Tune::MAX_VOICES]
+            kinds: mutable VoiceKind[Tune::MAX_VOICES]
             count: mutable usize
 
         def Device(spatial: bool) -> Device:
@@ -71,7 +71,7 @@ module AudioPolicy:
 
                 def halt(device: mutable Device&, id: i64) -> void error[AudioError]:
                     slot: usize =
-                        for index in 0..<device.count |found: usize = 8, device| -> found:
+                        for index in 0..<device.count |found: usize = AudioPolicy::Tune::MAX_VOICES, device| -> found:
                             found <- index if device.voices[index] == id
                     raise AudioError.UnknownVoice if slot >= device.count
                     for shift in slot..<device.count - 1 |device|:

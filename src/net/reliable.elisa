@@ -19,8 +19,8 @@ module Reliable:
         struct Sender:
             base: mutable i64
             next: mutable i64
-            records: mutable Net::ReplRecord[8]
-            live: mutable bool[8]
+            records: mutable Net::ReplRecord[Tune::WINDOW]
+            live: mutable bool[Tune::WINDOW]
             sent: mutable usize
             retransmits: mutable usize
 
@@ -39,7 +39,7 @@ module Reliable:
         # reuse the original sequence and an ack unambiguously clears it.
         def sender_send(sender: mutable Sender&, record: Net::ReplRecord) -> i64 error[ReliableError]:
             raise ReliableError.WindowFull if sender.next - sender.base >= Tune::WINDOW.i64()
-            slot: usize = (sender.next % 8).usize()
+            slot: usize = (sender.next % Tune::WINDOW.i64()).usize()
             sender.records[slot] <- record
             sender.live[slot] <- true
             sequence: i64 = sender.next
@@ -51,20 +51,20 @@ module Reliable:
         # record, so a gap holds the window until it is filled.
         def sender_ack(sender: mutable Sender&, sequence: i64) -> bool:
             return false if sequence < sender.base or sequence >= sender.next
-            slot: usize = (sequence % 8).usize()
+            slot: usize = (sequence % Tune::WINDOW.i64()).usize()
             if not sender.live[slot]:
                 return false
             sender.live[slot] <- false
             for guard in 0..<Tune::WINDOW |sender|:
                 break if sender.base >= sender.next
-                head: usize = (sender.base % 8).usize()
+                head: usize = (sender.base % Tune::WINDOW.i64()).usize()
                 break if sender.live[head]
                 sender.base <- sender.base + 1
             true
 
         def sender_oldest(sender: Sender&) -> i64:
             return -1 if sender.base >= sender.next
-            head: usize = (sender.base % 8).usize()
+            head: usize = (sender.base % Tune::WINDOW.i64()).usize()
             return -1 if not sender.live[head]
             sender.base
 
@@ -74,7 +74,7 @@ module Reliable:
 
         def sender_retransmit(sender: mutable Sender&) -> i64 error[ReliableError]:
             raise ReliableError.UnknownSequence if sender.base >= sender.next
-            head: usize = (sender.base % 8).usize()
+            head: usize = (sender.base % Tune::WINDOW.i64()).usize()
             raise ReliableError.UnknownSequence if not sender.live[head]
             sender.retransmits <- sender.retransmits + 1
             sender.base

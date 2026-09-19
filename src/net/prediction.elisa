@@ -20,7 +20,7 @@ module Predict:
         struct Prediction:
             confirmed: mutable Net::ReplRecord
             predicted: mutable Net::ReplRecord
-            pending: mutable i64[16]
+            pending: mutable i64[Tune::MAX_PENDING]
             pending_count: mutable usize
             corrections: mutable usize
 
