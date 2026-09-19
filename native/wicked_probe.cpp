@@ -36,6 +36,8 @@
 #include "probe_diagnostics.h"
 #include "png_capture.h"
 #include "native_application.h"
+#include "resource_handles.h"
+#include "resource_handle_probe.h"
 
 using namespace probe;
 
@@ -86,6 +88,9 @@ int main(int argc, char** argv) {
     wi::Application& application = application_host.wicked();
 
     wi::scene::Scene scene;
+    if (!probe_native_resource_handles(scene)) {
+        return 1;
+    }
     const auto object = scene.Entity_CreateCube("elisa_cube_" + std::to_string(entity_id));
     const auto camera = scene.Entity_CreateCamera("elisa_camera_" + std::to_string(camera_id), width, height);
     // A point lamp: without any light the standard material shades black and

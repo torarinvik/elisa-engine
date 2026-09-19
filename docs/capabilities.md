@@ -46,6 +46,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Bounded editor widget surface with buttons, toggles, sliders, and hit testing | Tested | `src/ui/widgets.elisa`, `test/inspector.elisa` |
 | Bounded editor session composing panels, asset selection/loading, widgets, revisions, field undo/redo, and validated commit | Tested | `src/tooling/editor_session.elisa`, `test/editor_session.elisa` |
 | Spawn/despawn churn with allocated bytes | Tested + Implemented | `native/churn_probe.h` (median/p95/worst plus steady-state heap delta, guard at 2 MiB), native runner |
+| Generation- and owner-checked native resource handles | Tested + Implemented | `native/resource_handles.h`, `native/resource_handle_probe.h`, native Wicked probe; GPU-fence retirement remains F06 follow-up |
 | Debug collision geometry (solid cells + markers, bounded boxes) | Tested + Implemented | `src/tooling/debug_geometry.elisa`, `examples/maze/debug.elisa`, `test/inspector.elisa`, `test/maze_game.elisa`, Godot wireframe overlay in `backends/godot/capture.gd` |
 
 ## Backends
