@@ -6,7 +6,7 @@ include "./world.elisa"
 module WorldRollback:
     private:
         const module Bounds:
-            MAX_ENTITIES: usize = 256
+            MAX_ENTITIES: usize = World::MAX_ENTITIES
 
     public:
         error RollbackError:

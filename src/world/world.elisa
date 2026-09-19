@@ -7,6 +7,8 @@ include "./reference.elisa"
 
 module World:
     public:
+        const MAX_ENTITIES: usize = 256
+
         # Entity is an upward-composed hierarchy.  Actor and Enemy refine the
         # root; callers match the leaf while the world stores the root type.
         enum Entity:
@@ -30,14 +32,13 @@ module World:
 
     private:
         const module Bounds:
-            WORLD_MAX_ENTITIES: usize = 256
             WORLD_FIRST_EPOCH: i64 = 1
             WORLD_MAX_EPOCH: i64 = 9223372036854775807
             DEFAULT_ACTOR_HEALTH: i64 = 100
             DEFAULT_ENEMY_THREAT: i64 = 1
 
         const module Sentinel:
-            WORLD_INVALID_SLOT: usize = World::Bounds::WORLD_MAX_ENTITIES
+            WORLD_INVALID_SLOT: usize = World::MAX_ENTITIES
 
         global mutable next_world_epoch: i64 = 0
 
@@ -91,15 +92,15 @@ module World:
                 break index if world.registry[index].live and world.registry[index].id == reference.id
 
         def free_registry_slot(world: World&) -> usize:
-            for index in 0..<world.registry_count |slot: usize = world.registry_count if world.registry_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
+            for index in 0..<world.registry_count |slot: usize = world.registry_count if world.registry_count < World::MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
                 break index if not world.registry[index].live
 
         def free_actor_slot(world: World&) -> usize:
-            for index in 0..<world.actor_count |slot: usize = world.actor_count if world.actor_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
+            for index in 0..<world.actor_count |slot: usize = world.actor_count if world.actor_count < World::MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
                 break index if not world.actors[index].live
 
         def free_enemy_slot(world: World&) -> usize:
-            for index in 0..<world.enemy_count |slot: usize = world.enemy_count if world.enemy_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
+            for index in 0..<world.enemy_count |slot: usize = world.enemy_count if world.enemy_count < World::MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
                 break index if not world.enemies[index].live
 
         def actor_slot(world: World&, id: i64) -> usize:
@@ -132,7 +133,7 @@ module World:
 
         def remove_live_id(world: mutable World&, id: i64) -> void:
             slot: usize =
-                for index in 0..<world.live_ids_count |found: usize = Bounds::WORLD_MAX_ENTITIES, world| -> found:
+                for index in 0..<world.live_ids_count |found: usize = World::MAX_ENTITIES, world| -> found:
                     found <- index if world.live_ids[index] == id
             return if slot >= world.live_ids_count
             for shift in slot..<world.live_ids_count - 1 |world|:
@@ -217,16 +218,16 @@ module World:
             # so callers cannot copy the owner while references remain live.
             allocator: mutable EntityId::EntityIdAllocator
             epoch: i64
-            registry: mutable RegistryRow[Bounds::WORLD_MAX_ENTITIES]
+            registry: mutable RegistryRow[World::MAX_ENTITIES]
             registry_count: mutable usize
             live_count: mutable usize
             # Compact live-entity column: the ids of live entities in a dense
             # array, so iteration is O(live) rather than O(registry capacity).
-            live_ids: mutable i64[Bounds::WORLD_MAX_ENTITIES]
+            live_ids: mutable i64[World::MAX_ENTITIES]
             live_ids_count: mutable usize
-            actors: mutable ActorRecord[Bounds::WORLD_MAX_ENTITIES]
+            actors: mutable ActorRecord[World::MAX_ENTITIES]
             actor_count: mutable usize
-            enemies: mutable EnemyRecord[Bounds::WORLD_MAX_ENTITIES]
+            enemies: mutable EnemyRecord[World::MAX_ENTITIES]
             enemy_count: mutable usize
 
         def World() -> World error[WorldError]:
@@ -399,7 +400,7 @@ module World:
             true
 
         def world_is_valid(world: World&) -> bool:
-            return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > Bounds::WORLD_MAX_ENTITIES or world.actor_count > Bounds::WORLD_MAX_ENTITIES or world.enemy_count > Bounds::WORLD_MAX_ENTITIES or world.live_count > world.registry_count
+            return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > World::MAX_ENTITIES or world.actor_count > World::MAX_ENTITIES or world.enemy_count > World::MAX_ENTITIES or world.live_count > world.registry_count
             registry: RegistryCheck = registry_check(world)
             return false if not registry.valid
             live_actors: usize =
