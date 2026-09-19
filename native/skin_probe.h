@@ -4,6 +4,7 @@
 // native host does no skinning; it only moves the vertices Elisa computed.
 #include "probe_core.h"
 #include "probe_support.h"
+#include "coordinate_fixture.h"
 #include "package_load.h"
 
 #include <cstdio>

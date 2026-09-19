@@ -1,6 +1,7 @@
 #pragma once
 
 #include "coordinate_conventions.h"
+#include "coordinate_fixture.h"
 #include "coordinate_abi.h"
 #include "probe_core.h"
 
@@ -29,9 +30,10 @@ inline bool probe_coordinate_conventions() {
             "coordinate finite point")) {
         return false;
     }
-    const XMFLOAT3 translation(4.25f, -1.5f, 7.75f);
-    const XMFLOAT3 scale(-2.0f, 0.5f, 3.0f);
-    const XMFLOAT3 local(-0.75f, 2.25f, 1.125f);
+    const auto fixture = coordinates::asymmetric_fixture();
+    const XMFLOAT3 translation = fixture.position;
+    const XMFLOAT3 scale = fixture.scale;
+    const XMFLOAT3 local = fixture.local_point;
     const XMFLOAT3 transformed = coordinates::transform_point(local, translation, scale);
     const XMFLOAT3 backend_transformed = coordinates::to_wicked(transformed);
     const XMFLOAT3 reconstructed = coordinates::from_wicked(backend_transformed);
@@ -49,8 +51,8 @@ inline bool probe_coordinate_conventions() {
         !check(!elisa_transform_payload_valid(nullptr), "coordinate ABI rejects null transform")) {
         return false;
     }
-    const XMFLOAT3 camera_origin(-3.5f, 2.0f, 8.25f);
-    const XMFLOAT3 camera_forward(0.2f, -0.1f, -1.0f);
+    const XMFLOAT3 camera_origin = fixture.ray_origin;
+    const XMFLOAT3 camera_forward = fixture.ray_direction;
     const XMFLOAT3 ray_origin = coordinates::to_wicked(camera_origin);
     const XMFLOAT3 ray_direction = coordinates::to_wicked_direction(camera_forward);
     if (!check(coordinates::near_equal(camera_origin, coordinates::from_wicked(ray_origin)),
@@ -58,6 +60,18 @@ inline bool probe_coordinate_conventions() {
         !check(coordinates::near_equal(camera_forward,
             coordinates::from_wicked_direction(ray_direction)),
             "picking ray direction round trip")) {
+        return false;
+    }
+    if (!check(coordinates::near_equal(coordinates::render_position(fixture), backend_transformed),
+            "render fixture uses shared conversion") ||
+        !check(coordinates::near_equal(coordinates::skinned_position(fixture), backend_transformed),
+            "skin fixture uses shared conversion") ||
+        !check(coordinates::near_equal(coordinates::physics_position(fixture),
+            coordinates::to_wicked(translation)), "physics fixture uses shared conversion") ||
+        !check(coordinates::near_equal(coordinates::picking_origin(fixture), ray_origin),
+            "picking fixture uses shared conversion") ||
+        !check(coordinates::near_equal(coordinates::picking_direction(fixture), ray_direction),
+            "picking direction uses shared conversion")) {
         return false;
     }
     std::fprintf(stdout, "coordinates: point=(%.2f,%.2f,%.2f) scale_parity=%d ray=(%.2f,%.2f,%.2f)\n",

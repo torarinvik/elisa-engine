@@ -134,8 +134,9 @@ right-handed Elisa-to-left-handed Wicked X flip and the grid spacing/origin;
 walls, markers, live input, and route replay all use that one conversion. The
 native gate also runs `native/coordinate_probe.h`, which round-trips an
 asymmetric point and camera ray, checks finite values and negative/nonuniform
-scale winding parity, and verifies that the same conversion is available to
-skinned payloads. Full matrix/quaternion ownership remains an open F07 task.
+scale winding parity, and drives `native/coordinate_fixture.h` through the
+render, physics, skin, and picking adapters. Full matrix/quaternion submission
+and captured reference images remain open F07 follow-up work.
 
 The offline cooker records each package in a versioned SQLite catalogue. Its
 WAL journal and immediate write transaction make a crashed cook roll back

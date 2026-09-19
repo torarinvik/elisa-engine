@@ -41,6 +41,7 @@
 #include "frame_pacing_probe.h"
 #include "window_lifecycle_probe.h"
 #include "physics_policy_probe.h"
+#include "coordinate_fixture.h"
 #include "package_bounds_probe.h"
 using namespace probe;
 
@@ -354,15 +355,15 @@ int main(int argc, char** argv) {
     physics_body.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
     physics_body.mass = 1.0f;
     physics_body.box.halfextents = XMFLOAT3(0.3f, 0.3f, 0.3f);
-    physics_transform->translation_local = to_wicked_space(20.0f, 5.0f, 0.0f);
+    const auto physics_fixture = coordinates::asymmetric_fixture();
+    physics_transform->translation_local = coordinates::physics_position(physics_fixture);
+    physics_transform->translation_local.y = 5.0f;
     physics_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
     physics_transform->UpdateTransform();
     const float physics_start_y = physics_transform->GetPosition().y;
     if (!probe_physics_pause(application, *physics_transform)) return 1;
 
-    // Gameplay over time: walk the character along the route Elisa published,
-    // one cell per frame, so the host shows movement rather than a teleport.
-    // The route itself is Elisa's pathfinding result, not the host's.
+    // Walk the Elisa-published route so the host shows movement.
     std::vector<std::pair<int, int>> hunter_route;
     {
         const auto route_it = manifest.find("hunter_route");
@@ -575,8 +576,6 @@ int main(int argc, char** argv) {
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);
     scene.Entity_Remove(lamp);
-    // Despawn the whole maze wall set, then probe one representative for
-    // the same object/mesh teardown guarantee the entity cube gets.
     for (const auto& wall : wall_entities) {
         scene.Entity_Remove(wall);
     }

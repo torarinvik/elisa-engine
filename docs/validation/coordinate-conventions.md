@@ -19,11 +19,11 @@ coordinates: point=(1.25,-2.50,3.75) scale_parity=1 ray=(-0.20,-0.10,-1.00)
 The probe verifies the profile's ABI size and metadata, rejects a depth mismatch
 and null/degenerate payloads, then checks position and direction round trips,
 finite values, negative scale winding parity, and picking-ray origin/direction
-round trips. Existing
-wall, marker, route, physics, and skinned-quad paths consume the same conversion
-functions, so a second native sign convention cannot silently enter those
-paths.
+round trips. `native/coordinate_fixture.h` feeds the same asymmetric fixture
+through render, physics, skin, and picking adapters and compares their reflected
+positions. Existing wall, marker, route, physics, and skinned-quad paths consume
+the shared conversion functions, so a second native sign convention cannot
+silently enter those paths.
 
-F07 remains open: render/physics transform ownership and a captured asymmetric
-scene with ray-hit and skinning reference images still need to become one
-reusable Elisa-facing transform service.
+Full matrix/quaternion submission and captured reference images remain future
+work; the cross-subsystem transform ownership boundary is now executable.
