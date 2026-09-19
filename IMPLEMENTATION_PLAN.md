@@ -192,6 +192,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/backend/material.elisa` provides the backend-neutral PBR descriptor and alpha/double-sided policy; `test/material.elisa` covers valid and invalid channel/factor combinations. Wicked material upload, authored reference captures, and tangent/color validation remain.
 - [ ] **R05 · P1 · Lights, shadows, and environment** — After: R03, R04.
   Add directional/point/spot lights, sky/environment maps, shadow settings, exposure, and feature-dependent lighting controls. Done: moving lights, shadow bias, transparent objects, and indoor/outdoor scenes have stable reference captures and explicit quality/cost settings.
+  Progress: `native/lighting_bridge.h` now owns generation-checked directional/point/spot descriptors, color/intensity/range/cone validation, shadow flags, realtime environment probes, and unload baselines in the Wicked gate. Sky assets, exposure/quality profiles, shadow-bias policy, and reference captures remain.
 - [ ] **R06 · P1 · Debug drawing and picking** — After: R03, W02.
   Provide scoped lines, shapes, text, depth-tested overlays, entity picking, and selection outlines from Elisa data. Done: render/physics/nav bounds can be compared in one view, picking returns checked world references, and disabled debug drawing has no steady-state allocations.
 - [ ] **R07 · P1 · Post-processing and quality profiles** — After: R05, F08.
