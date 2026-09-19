@@ -1,6 +1,8 @@
 include "../src/world/world.elisa"
+include "../src/world/persistence.elisa"
 using World
 using EntityId
+using WorldPersistence
 
 def world_error_code(failure: WorldError) -> i64:
     match failure:
@@ -137,6 +139,30 @@ def main() -> i32:
     return 2 if not world_is_live(&world, first) or not world_is_live(&world, second)
     return 3 if not world_is_valid(&world)
 
+    bindings: mutable Table = Table()
+    bound: i32 = catch bind(&bindings, &world, 7001, first):
+        ok: 0
+        BindingError.InvalidPersistent: 1
+        BindingError.InvalidReference: 2
+        BindingError.DuplicatePersistent: 3
+        BindingError.Capacity: 4
+        error failure: 5
+    return 30 if bound != 0 or binding_count(&bindings) != 1 or not table_valid(&bindings, &world)
+    resolved: EntityRef = catch resolve(&bindings, &world, 7001):
+        value: value
+        error failure: invalid_reference()
+    return 31 if resolved.id != first.id or resolved.world_epoch != first.world_epoch
+    duplicate_binding: i32 = catch bind(&bindings, &world, 7001, second):
+        ok: 0
+        BindingError.DuplicatePersistent: 1
+        error failure: 2
+    return 32 if duplicate_binding != 1
+    wrong_world_binding: i32 = catch bind(&bindings, &world, 7002, World::EntityRef{world_epoch: first.world_epoch + 1, id: first.id}):
+        ok: 0
+        BindingError.InvalidReference: 1
+        error failure: 2
+    return 33 if wrong_world_binding != 1
+
     first_lookup: EntityLookup =
         catch world_lookup(&world, first):
             value: value
@@ -197,6 +223,16 @@ def main() -> i32:
         WorldError.InvalidReference: 0
         error failure: 10
     return 21 if dead_actor != 0
+    stale_binding: i32 = catch resolve(&bindings, &world, 7001):
+        value: 9
+        BindingError.StaleReference: 0
+        error failure: 9
+    return 34 if stale_binding != 0
+    removed_binding: i32 = catch unbind(&bindings, 7001):
+        ok: 0
+        BindingError.UnknownPersistent: 1
+        error failure: 2
+    return 35 if removed_binding != 0 or binding_count(&bindings) != 1
 
     other: World =
         catch World():

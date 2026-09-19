@@ -1,0 +1,72 @@
+# Persistent-to-runtime identity bindings. Stable save or replication IDs are
+# never used as storage handles; this table resolves them to a live, branded
+# EntityRef and can be rebuilt after loading a world.
+include "./world.elisa"
+
+module WorldPersistence:
+    private:
+        const module Bounds:
+            MAX_BINDINGS: usize = 256
+            INVALID_SLOT: usize = MAX_BINDINGS
+
+    public:
+        error BindingError:
+            Capacity
+            InvalidPersistent
+            DuplicatePersistent
+            UnknownPersistent
+            InvalidReference
+            StaleReference
+
+        struct Binding:
+            persistent: i64
+            runtime: World::EntityRef
+            live: mutable bool
+
+        affine struct Table:
+            entries: mutable Binding[Bounds::MAX_BINDINGS]
+            count: mutable usize
+
+        def Table() -> Table:
+            Table{entries: zeroed, count: 0}
+
+        def table_valid(table: Table&, world: World::World&) -> bool:
+            return false if table.count > Bounds::MAX_BINDINGS
+            for index in 0..<table.count |valid: bool = true| -> valid:
+                row: Binding = table.entries[index]
+                valid <- false if row.persistent <= 0 or not row.live
+                valid <- false if not World::world_is_live(world, row.runtime)
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if table.entries[earlier].live and table.entries[earlier].persistent == row.persistent
+                valid <- valid and unique
+
+        private:
+            def slot_of(table: Table&, persistent: i64) -> usize:
+                for index in 0..<table.count |slot: usize = Bounds::INVALID_SLOT| -> slot:
+                    break index if table.entries[index].live and table.entries[index].persistent == persistent
+
+        public:
+            def binding_count(table: Table&) -> usize:
+                table.count
+
+            def bind(table: mutable Table&, world: World::World&, persistent: i64, runtime: World::EntityRef) -> void error[BindingError]:
+                raise BindingError.InvalidPersistent if persistent <= 0
+                raise BindingError.InvalidReference if not World::world_is_live(world, runtime)
+                raise BindingError.DuplicatePersistent if slot_of(table, persistent) != Bounds::INVALID_SLOT
+                raise BindingError.Capacity if table.count >= Bounds::MAX_BINDINGS
+                table.entries[table.count] <- Binding{persistent: persistent, runtime: runtime, live: true}
+                table.count <- table.count + 1
+
+            def resolve(table: Table&, world: World::World&, persistent: i64) -> World::EntityRef error[BindingError]:
+                raise BindingError.InvalidPersistent if persistent <= 0
+                slot: usize = slot_of(table, persistent)
+                raise BindingError.UnknownPersistent if slot == Bounds::INVALID_SLOT
+                runtime: World::EntityRef = table.entries[slot].runtime
+                raise BindingError.StaleReference if not World::world_is_live(world, runtime)
+                runtime
+
+            def unbind(table: mutable Table&, persistent: i64) -> void error[BindingError]:
+                slot: usize = slot_of(table, persistent)
+                raise BindingError.UnknownPersistent if slot == Bounds::INVALID_SLOT
+                table.entries[slot].live <- false

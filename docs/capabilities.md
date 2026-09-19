@@ -23,6 +23,7 @@ writes `build/validation.json`. Host evidence comes from
 | Owning `World`, liveness, typed storage access, rollback, compaction | Proved + Tested | `proof/world.elisa`, `test/world.elisa` |
 | Upward-composed hierarchy (`Enemy ⊆ Actor ⊆ Entity`) | Tested | `World::entity_is_actor/entity_is_enemy`, `test/world.elisa` |
 | Compact live-entity column (O(live) iteration) | Tested | `World::world_live_column_valid`, `test/world.elisa` |
+| Persistent-to-runtime identity remapping with stale-reference rejection | Tested | `src/world/persistence.elisa`, `test/world.elisa` |
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
