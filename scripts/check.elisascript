@@ -52,8 +52,7 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     _ = write_stderr(result.stderr)
     result.exit_status
 
-
-def rejects_ownership_copy(compiler: sview, source: sview, output: sview) -> bool:
+def rejects_owner_violation(compiler: sview, source: sview, output: sview, privacy: bool = false) -> bool:
     # A compiler crash leaves a nonzero status and an empty diagnostic. Retry
     # only that case once; a changed non-empty diagnostic is not retried, so a
     # real contract change still fails.
@@ -62,14 +61,15 @@ def rejects_ownership_copy(compiler: sview, source: sview, output: sview) -> boo
             empty_input: sview = ""
             capture_process_result(executable(compiler), ["-emit", "obj", "-o", output, source], empty_input)
         if rejection.exit_status == 0:
-            eprint("An affine owner was copied without a compiler error.")
+            eprint("An invalid owner operation was accepted.")
             return false
+        return "is private to module" in rejection.stderr if privacy
         return true if "linear value" in rejection.stderr
         return true if "expects " in rejection.stderr and ", got " in rejection.stderr and "&" in rejection.stderr
         if rejection.stderr != "":
             _ = write_stderr(rejection.stderr)
             break
-    eprint("The negative ownership fixture failed for another reason.")
+    eprint("The negative owner fixture failed for another reason.")
     false
 
 def main(arguments: darray[sview]) -> i64:
@@ -555,16 +555,14 @@ def main(arguments: darray[sview]) -> i64:
     println("Asset catalogue tests passed.")
 
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
-    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/allocator_copy.elisa")), rejection_output):
-        return 1
-    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/world_copy.elisa")), rejection_output):
-        return 1
-    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/recorder_copy.elisa")), rejection_output):
-        return 1
-    if not rejects_ownership_copy(compiler, str(root.joinpath("test/negative/bridge_copy.elisa")), rejection_output):
-        return 1
-
+    for fixture in ["allocator_copy", "world_copy", "recorder_copy", "bridge_copy"]:
+        if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output):
+            return 1
     println("Affine owner copy rejection tests passed.")
+    for fixture in ["allocator_private_read", "allocator_private_construct", "allocator_private_zeroed", "world_private_write", "recorder_private_read", "bridge_private_write", "queue_private_read"]:
+        if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output, true):
+            return 1
+    println("Private owner field rejection tests passed.")
 
     proof_source: sview = str(root.joinpath("proof/entity_id.elisa"))
     _ =

@@ -90,11 +90,11 @@ def main() -> i32:
             error failure: return 6
         return 7 if first_steps != second_steps
 
-    return 8 if first_clock.tick_count != 4 or first_recorder.command_count != 5
+    return 8 if first_clock.tick_count != 4 or Backend::recorder_command_count(&first_recorder) != 5
     return 9 if first.transform.position.x != 0.25 or first.transform.position.z != -0.25
     return 10 if not world_is_live(&first_world, first.player) or not world_is_valid(&first_world)
 
-    for index in 0..<first_recorder.command_count |first_recorder, second_recorder|:
+    for index in 0..<Backend::recorder_command_count(&first_recorder) |first_recorder, second_recorder|:
         left: SceneCommand = catch recorded_command(&first_recorder, index):
             value: value
             error failure: return 11
@@ -103,12 +103,12 @@ def main() -> i32:
             error failure: return 12
         return 13 if left.kind != right.kind or left.reference.id != right.reference.id or left.transform.position.x != right.transform.position.x or left.transform.position.z != right.transform.position.z or not same_asset_id(left.visual.mesh, right.visual.mesh)
 
-    before: usize = first_recorder.command_count
+    before: usize = Backend::recorder_command_count(&first_recorder)
     invalid: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, -1):
         value: 1
         GameError.ClockFailure: 0
         error failure: 2
-    return 14 if invalid != 0 or first_recorder.command_count != before
+    return 14 if invalid != 0 or Backend::recorder_command_count(&first_recorder) != before
 
     for index in before..<256 |first_recorder|:
         filled: i32 = catch submit_update(&first_recorder, first.player, first.transform):
@@ -121,7 +121,7 @@ def main() -> i32:
         value: 1
         GameError.RecordingFailure: 0
         error failure: 2
-    return 16 if full != 0 or first_clock.tick_count != prior_ticks or first.transform.position.z != prior_z or first_recorder.command_count != 256
+    return 16 if full != 0 or first_clock.tick_count != prior_ticks or first.transform.position.z != prior_z or Backend::recorder_command_count(&first_recorder) != 256
 
     third_world: mutable World = catch World():
         value: value

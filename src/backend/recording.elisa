@@ -40,12 +40,13 @@ module Backend:
             CommandOutOfBounds
 
         affine struct SceneRecorder:
-            commands: mutable SceneCommand[Backend::Limits::MAX_COMMANDS]
-            command_count: mutable usize
-            seen: mutable World::EntityRef[Backend::Limits::MAX_COMMANDS]
-            visuals: mutable Assets::VisualAsset[Backend::Limits::MAX_COMMANDS]
-            seen_live: mutable u8[Backend::Limits::MAX_COMMANDS]
-            seen_count: mutable usize
+            private:
+                commands: mutable SceneCommand[Backend::Limits::MAX_COMMANDS]
+                command_count: mutable usize
+                seen: mutable World::EntityRef[Backend::Limits::MAX_COMMANDS]
+                visuals: mutable Assets::VisualAsset[Backend::Limits::MAX_COMMANDS]
+                seen_live: mutable u8[Backend::Limits::MAX_COMMANDS]
+                seen_count: mutable usize
 
     private:
         module Recording:
@@ -117,6 +118,9 @@ module Backend:
 
         # Number of backend objects still live. Restart/unload audits read this
         # to prove resources return to baseline rather than accumulate.
+        def recorder_command_count(recorder: SceneRecorder&) -> usize:
+            recorder.command_count
+
         def recorder_live_count(recorder: SceneRecorder&) -> usize:
             Recording::live_count(recorder)
 

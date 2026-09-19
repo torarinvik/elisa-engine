@@ -1,0 +1,4 @@
+include "../../src/runtime/lifetime.elisa"
+
+def invalid(queue: Lifetime::Queue&) -> usize:
+    queue.count

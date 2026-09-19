@@ -1,0 +1,4 @@
+include "../../src/entity_id.elisa"
+
+def invalid(allocator: EntityId::EntityIdAllocator&) -> i64:
+    allocator.last_issued

@@ -84,14 +84,19 @@ module SceneBridge:
                 def ref_valid(reference: World::EntityRef) -> bool:
                     reference.world_epoch > 0 and reference.id > 0
 
-                def object_command_count(recorder: Backend::SceneRecorder&, object: World::EntityRef) -> usize:
-                    for index in 0..<recorder.command_count |count: usize = 0| -> count:
-                        command: Backend::SceneCommand = recorder.commands[index]
+                def command_at(recorder: Backend::SceneRecorder&, index: usize) -> Backend::SceneCommand error[SceneBridge::BridgeError]:
+                    catch Backend::recorded_command(recorder, index):
+                        value: value
+                        error failure: raise SceneBridge::BridgeError.UnexpectedCommand
+
+                def object_command_count(recorder: Backend::SceneRecorder&, object: World::EntityRef) -> usize error[SceneBridge::BridgeError]:
+                    for index in 0..<Backend::recorder_command_count(recorder) |count: usize = 0| -> count:
+                        command: Backend::SceneCommand = try command_at(recorder, index)
                         count <- count + 1 if command.reference.world_epoch == object.world_epoch and command.reference.id == object.id
 
-                def camera_command_count(recorder: Backend::SceneRecorder&, camera: World::EntityRef) -> usize:
-                    for index in 0..<recorder.command_count |count: usize = 0| -> count:
-                        command: Backend::SceneCommand = recorder.commands[index]
+                def camera_command_count(recorder: Backend::SceneRecorder&, camera: World::EntityRef) -> usize error[SceneBridge::BridgeError]:
+                    for index in 0..<Backend::recorder_command_count(recorder) |count: usize = 0| -> count:
+                        command: Backend::SceneCommand = try command_at(recorder, index)
                         count <- count + 1 if command.reference.world_epoch == camera.world_epoch and command.reference.id == camera.id
 
             public:
@@ -99,12 +104,18 @@ module SceneBridge:
                     raise SceneBridge::BridgeError.InvalidEpoch if not ref_valid(object) or not ref_valid(camera)
                     raise SceneBridge::BridgeError.IdentityMismatch if object.world_epoch != camera.world_epoch or object.id == camera.id
                     raise SceneBridge::BridgeError.InvalidViewport if not SceneBridge::viewport_valid(viewport_width, viewport_height)
-                    raise SceneBridge::BridgeError.Capacity if recorder.command_count > SceneBridge::Limits::MAX_SCENE_COMMANDS
-                    raise SceneBridge::BridgeError.UnexpectedCommand if camera_command_count(recorder, camera) != 0
-                    raise SceneBridge::BridgeError.MissingCreate if object_command_count(recorder, object) < 3
+                    raise SceneBridge::BridgeError.Capacity if Backend::recorder_command_count(recorder) > SceneBridge::Limits::MAX_SCENE_COMMANDS
+                    camera_commands_present: bool =
+                        count: usize = try camera_command_count(recorder, camera)
+                        count != 0
+                    raise SceneBridge::BridgeError.UnexpectedCommand if camera_commands_present
+                    object_commands_missing: bool =
+                        count: usize = try object_command_count(recorder, object)
+                        count < 3
+                    raise SceneBridge::BridgeError.MissingCreate if object_commands_missing
                     scan: LifecycleScan =
-                        for index in 0..<recorder.command_count |scan: LifecycleScan = LifecycleScan{saw_create: false, saw_update: false, saw_destroy: false, order_ok: true, last_position: Geometry::vec3_zero()}| -> scan:
-                            command: Backend::SceneCommand = recorder.commands[index]
+                        for index in 0..<Backend::recorder_command_count(recorder) |scan: LifecycleScan = LifecycleScan{saw_create: false, saw_update: false, saw_destroy: false, order_ok: true, last_position: Geometry::vec3_zero()}| -> scan:
+                            command: Backend::SceneCommand = try command_at(recorder, index)
                             is_object: bool = refs_equal(command.reference, object)
                             scan.order_ok <- false if not is_object
                             if is_object:

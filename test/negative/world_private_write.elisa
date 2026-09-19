@@ -1,0 +1,4 @@
+include "../../src/world/world.elisa"
+
+def invalid(world: mutable World::World&) -> void:
+    world.registry_count <- 0

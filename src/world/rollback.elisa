@@ -3,7 +3,7 @@
 # World and is never restored backwards.
 include "./world.elisa"
 
-module WorldRollback:
+module World::Rollback:
     private:
         const module Bounds:
             MAX_ENTITIES: usize = World::MAX_ENTITIES

@@ -104,6 +104,9 @@ printf 'Runtime scheduler tests passed.\n'
 "$COMPILER" -emit exe -o "$ENGINE_ROOT/build/editor-test" "$ENGINE_ROOT/test/editor.elisa"
 "$ENGINE_ROOT/build/editor-test"
 printf 'Editor undo and reload tests passed.\n'
+"$COMPILER" -emit exe -o "$ENGINE_ROOT/build/editor-session-test" "$ENGINE_ROOT/test/editor_session.elisa"
+"$ENGINE_ROOT/build/editor-session-test"
+printf 'Editor session tests passed.\n'
 "$COMPILER" -emit exe -o "$ENGINE_ROOT/build/session-test" "$ENGINE_ROOT/test/session.elisa"
 "$ENGINE_ROOT/build/session-test"
 printf 'Net session tests passed.\n'
@@ -123,12 +126,16 @@ rejects_ownership_copy() {
     local diagnostic status=0
     diagnostic="$("$COMPILER" -emit obj -o "$ENGINE_ROOT/build/ownership-negative.o" "$1" 2>&1)" || status=$?
     if [[ "$status" == 0 ]]; then
-        printf 'An affine owner was copied without a compiler error.\n' >&2
+        printf 'An invalid owner operation was accepted.\n' >&2
         return 1
+    fi
+    if [[ "${2:-}" == private ]]; then
+        [[ "$diagnostic" == *"is private to module"* ]]
+        return $?
     fi
     if [[ "$diagnostic" != *"linear value"* && "$diagnostic" != *"expects "*", got "*\&* ]]; then
         printf '%s\n' "$diagnostic" >&2
-        printf 'The negative ownership fixture failed for another reason.\n' >&2
+        printf 'The negative owner fixture failed for another reason.\n' >&2
         return 1
     fi
 }
@@ -137,6 +144,10 @@ rejects_ownership_copy "$ENGINE_ROOT/test/negative/world_copy.elisa"
 rejects_ownership_copy "$ENGINE_ROOT/test/negative/recorder_copy.elisa"
 rejects_ownership_copy "$ENGINE_ROOT/test/negative/bridge_copy.elisa"
 printf 'Affine owner copy rejection tests passed.\n'
+for fixture in allocator_private_read allocator_private_construct allocator_private_zeroed world_private_write recorder_private_read bridge_private_write queue_private_read; do
+    rejects_ownership_copy "$ENGINE_ROOT/test/negative/$fixture.elisa" private
+done
+printf 'Private owner field rejection tests passed.\n'
 "$PROVER" "$ENGINE_ROOT/proof/entity_id.elisa"
 "$PROVER" "$ENGINE_ROOT/proof/world.elisa"
 "$PROVER" --json "$ENGINE_ROOT/proof/entity_id.elisa" > "$ENGINE_ROOT/build/entity-id-proof.json"
@@ -199,7 +210,7 @@ with tempfile.TemporaryDirectory(prefix='engine script parity ') as td:
     tools.mkdir()
     comp = tools / 'elisac-stage1'
     proof = tools / 'elisa-proof'
-    comp.write_text('#!/bin/sh\ncase "$5" in\n  */test/negative/*)\n    printf \'negative\\n\' >> "$CHECK_TRACE"\n    [ "${CHECK_FAIL:-}" = negative-accepted ] && exit 0\n    if [ "${CHECK_FAIL:-}" = negative-wrong-diagnostic ]; then\n      printf \'unrelated compiler failure\\n\' >&2\n    else\n      printf \'linear value cannot be copied\\n\' >&2\n    fi\n    exit 1\n    ;;\nesac\nprintf \'compiler diagnostic\\n\' >&2\nprintf \'compile\\n\' >> "$CHECK_TRACE"\n[ "${CHECK_FAIL:-}" = compile ] && exit 7\n[ "$#" -ge 5 ] || exit 99\nprintf \'#!/bin/sh\\nprintf "test\\\\n" >> "$CHECK_TRACE"\\n[ "${CHECK_FAIL:-}" = test ] && exit 8\\nexit 0\\n\' > "$4"\nchmod +x "$4"\n')
+    comp.write_text('#!/bin/sh\ncase "$5" in\n  */test/negative/*)\n    printf \'negative\\n\' >> "$CHECK_TRACE"\n    [ "${CHECK_FAIL:-}" = negative-accepted ] && exit 0\n    if [ "${CHECK_FAIL:-}" = negative-wrong-diagnostic ]; then\n      printf \'unrelated compiler failure\\n\' >&2\n    else\n      case "$5" in\n        *_private_*) printf \'field is private to module\\n\' >&2 ;;\n        *) printf \'linear value cannot be copied\\n\' >&2 ;;\n      esac\n    fi\n    exit 1\n    ;;\nesac\nprintf \'compiler diagnostic\\n\' >&2\nprintf \'compile\\n\' >> "$CHECK_TRACE"\n[ "${CHECK_FAIL:-}" = compile ] && exit 7\n[ "$#" -ge 5 ] || exit 99\nprintf \'#!/bin/sh\\nprintf "test\\\\n" >> "$CHECK_TRACE"\\n[ "${CHECK_FAIL:-}" = test ] && exit 8\\nexit 0\\n\' > "$4"\nchmod +x "$4"\n')
     comp.chmod(0o755)
     proof.write_text('#!/bin/sh\nprintf \'prover diagnostic\\n\' >&2\nif [ "$1" = --json ]; then\n printf \'json\\n\' >> "$CHECK_TRACE"\n printf \'{"verification_state":"proved"}\\n\'\n [ "${CHECK_FAIL:-}" = json ] && exit 10\nelse\n printf \'proof\\n\' >> "$CHECK_TRACE"\n printf \'proof passed\\n\'\n [ "${CHECK_FAIL:-}" = proof ] && exit 9\nfi\nexit 0\n')
     proof.chmod(0o755)

@@ -4,112 +4,116 @@ using World
 using Geometry
 using Assets
 
-def sample_visual() -> VisualAsset:
-    VisualAsset{
-        mesh: AssetId{high: 1, low: 1},
-        material: AssetId{high: 1, low: 2},
-        local_bounds: Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}},
-    }
+module Backend::Tests:
+    def sample_visual() -> VisualAsset:
+        VisualAsset{
+            mesh: AssetId{high: 1, low: 1},
+            material: AssetId{high: 1, low: 2},
+            local_bounds: Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}},
+        }
 
-def main() -> i32:
-    first: EntityRef = EntityRef{world_epoch: 1, id: 1}
-    second: EntityRef = EntityRef{world_epoch: 1, id: 2}
-    wrong_world: EntityRef = EntityRef{world_epoch: 2, id: 1}
-    invalid: EntityRef = EntityRef{world_epoch: 0, id: 1}
-    initial: Transform = transform_identity()
-    moved: Transform = transform_translate(initial, Vec3{x: 2.0, y: 0.0, z: -3.0})
-    visual: VisualAsset = sample_visual()
-    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+    def run() -> i32:
+        first: EntityRef = EntityRef{world_epoch: 1, id: 1}
+        second: EntityRef = EntityRef{world_epoch: 1, id: 2}
+        wrong_world: EntityRef = EntityRef{world_epoch: 2, id: 1}
+        invalid: EntityRef = EntityRef{world_epoch: 0, id: 1}
+        initial: Transform = transform_identity()
+        moved: Transform = transform_translate(initial, Vec3{x: 2.0, y: 0.0, z: -3.0})
+        visual: VisualAsset = sample_visual()
+        recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
 
-    missing: i32 = catch submit_update(&recorder, first, moved):
-        ok: 1
-        SceneError.UnknownObject: 0
-        error failure: 2
-    return 1 if missing != 0 or recorder.command_count != 0
+        missing: i32 = catch submit_update(&recorder, first, moved):
+            ok: 1
+            SceneError.UnknownObject: 0
+            error failure: 2
+        return 1 if missing != 0 or Backend::recorder_command_count(&recorder) != 0
 
-    invalid_result: i32 = catch submit_create(&recorder, invalid, initial, visual):
-        ok: 1
-        SceneError.InvalidReference: 0
-        error failure: 2
-    return 2 if invalid_result != 0 or recorder.seen_count != 0
+        invalid_result: i32 = catch submit_create(&recorder, invalid, initial, visual):
+            ok: 1
+            SceneError.InvalidReference: 0
+            error failure: 2
+        return 2 if invalid_result != 0 or recorder.seen_count != 0
 
-    bad_visual: VisualAsset = VisualAsset{mesh: visual.mesh, material: visual.mesh, local_bounds: visual.local_bounds}
-    invalid_asset: i32 = catch submit_create(&recorder, first, initial, bad_visual):
-        ok: 1
-        SceneError.InvalidAsset: 0
-        error failure: 2
-    return 16 if invalid_asset != 0 or recorder.command_count != 0 or recorder.seen_count != 0
+        bad_visual: VisualAsset = VisualAsset{mesh: visual.mesh, material: visual.mesh, local_bounds: visual.local_bounds}
+        invalid_asset: i32 = catch submit_create(&recorder, first, initial, bad_visual):
+            ok: 1
+            SceneError.InvalidAsset: 0
+            error failure: 2
+        return 16 if invalid_asset != 0 or Backend::recorder_command_count(&recorder) != 0 or recorder.seen_count != 0
 
-    created: i32 = catch submit_create(&recorder, first, initial, visual):
-        ok: 0
-        error failure: 1
-    return 3 if created != 0 or not Backend::recorder_is_live(&recorder, first)
-
-    duplicate: i32 = catch submit_create(&recorder, first, initial, visual):
-        ok: 1
-        SceneError.DuplicateCreate: 0
-        error failure: 2
-    return 4 if duplicate != 0 or recorder.command_count != 1
-
-    wrong: i32 = catch submit_destroy(&recorder, wrong_world):
-        ok: 1
-        SceneError.UnknownObject: 0
-        error failure: 2
-    return 5 if wrong != 0 or recorder.command_count != 1
-
-    updated: i32 = catch submit_update(&recorder, first, moved):
-        ok: 0
-        error failure: 1
-    return 6 if updated != 0
-    destroyed: i32 = catch submit_destroy(&recorder, first):
-        ok: 0
-        error failure: 1
-    return 7 if destroyed != 0 or Backend::recorder_is_live(&recorder, first)
-
-    dead: i32 = catch submit_update(&recorder, first, moved):
-        ok: 1
-        SceneError.DestroyedObject: 0
-        error failure: 2
-    return 8 if dead != 0 or recorder.command_count != 3
-
-    created_again: i32 = catch submit_create(&recorder, first, initial, visual):
-        ok: 1
-        SceneError.DuplicateCreate: 0
-        error failure: 2
-    return 9 if created_again != 0
-
-    other_created: i32 = catch submit_create(&recorder, second, initial, visual):
-        ok: 0
-        error failure: 1
-    return 10 if other_created != 0 or recorder.command_count != 4
-
-    first_command: SceneCommand = catch recorded_command(&recorder, 0):
-        value: value
-        error failure: SceneCommand{kind: SceneCommandKind.Destroy, reference: invalid, transform: initial, visual: visual}
-    second_command: SceneCommand = catch recorded_command(&recorder, 1):
-        value: value
-        error failure: SceneCommand{kind: SceneCommandKind.Destroy, reference: invalid, transform: initial, visual: visual}
-    third_command: SceneCommand = catch recorded_command(&recorder, 2):
-        value: value
-        error failure: SceneCommand{kind: SceneCommandKind.Create, reference: invalid, transform: initial, visual: visual}
-    return 11 if first_command.kind != SceneCommandKind.Create or second_command.kind != SceneCommandKind.Update or third_command.kind != SceneCommandKind.Destroy
-    return 12 if second_command.transform.position.x != 2.0 or second_command.transform.position.z != -3.0
-    return 17 if not same_asset_id(first_command.visual.mesh, visual.mesh) or not same_asset_id(second_command.visual.material, visual.material) or not same_asset_id(third_command.visual.mesh, visual.mesh)
-
-    out_of_bounds: i32 = catch recorded_command(&recorder, 4):
-        value: 1
-        SceneError.CommandOutOfBounds: 0
-        error failure: 2
-    return 13 if out_of_bounds != 0
-
-    for index in 4..<256 |recorder|:
-        appended: i32 = catch submit_update(&recorder, second, moved):
+        created: i32 = catch submit_create(&recorder, first, initial, visual):
             ok: 0
             error failure: 1
-        return 14 if appended != 0
-    full: i32 = catch submit_destroy(&recorder, second):
-        ok: 1
-        SceneError.Capacity: 0
-        error failure: 2
-    return 15 if full != 0 or recorder.command_count != 256 or not Backend::recorder_is_live(&recorder, second)
-    0
+        return 3 if created != 0 or not Backend::recorder_is_live(&recorder, first)
+
+        duplicate: i32 = catch submit_create(&recorder, first, initial, visual):
+            ok: 1
+            SceneError.DuplicateCreate: 0
+            error failure: 2
+        return 4 if duplicate != 0 or Backend::recorder_command_count(&recorder) != 1
+
+        wrong: i32 = catch submit_destroy(&recorder, wrong_world):
+            ok: 1
+            SceneError.UnknownObject: 0
+            error failure: 2
+        return 5 if wrong != 0 or Backend::recorder_command_count(&recorder) != 1
+
+        updated: i32 = catch submit_update(&recorder, first, moved):
+            ok: 0
+            error failure: 1
+        return 6 if updated != 0
+        destroyed: i32 = catch submit_destroy(&recorder, first):
+            ok: 0
+            error failure: 1
+        return 7 if destroyed != 0 or Backend::recorder_is_live(&recorder, first)
+
+        dead: i32 = catch submit_update(&recorder, first, moved):
+            ok: 1
+            SceneError.DestroyedObject: 0
+            error failure: 2
+        return 8 if dead != 0 or Backend::recorder_command_count(&recorder) != 3
+
+        created_again: i32 = catch submit_create(&recorder, first, initial, visual):
+            ok: 1
+            SceneError.DuplicateCreate: 0
+            error failure: 2
+        return 9 if created_again != 0
+
+        other_created: i32 = catch submit_create(&recorder, second, initial, visual):
+            ok: 0
+            error failure: 1
+        return 10 if other_created != 0 or Backend::recorder_command_count(&recorder) != 4
+
+        first_command: SceneCommand = catch recorded_command(&recorder, 0):
+            value: value
+            error failure: SceneCommand{kind: SceneCommandKind.Destroy, reference: invalid, transform: initial, visual: visual}
+        second_command: SceneCommand = catch recorded_command(&recorder, 1):
+            value: value
+            error failure: SceneCommand{kind: SceneCommandKind.Destroy, reference: invalid, transform: initial, visual: visual}
+        third_command: SceneCommand = catch recorded_command(&recorder, 2):
+            value: value
+            error failure: SceneCommand{kind: SceneCommandKind.Create, reference: invalid, transform: initial, visual: visual}
+        return 11 if first_command.kind != SceneCommandKind.Create or second_command.kind != SceneCommandKind.Update or third_command.kind != SceneCommandKind.Destroy
+        return 12 if second_command.transform.position.x != 2.0 or second_command.transform.position.z != -3.0
+        return 17 if not same_asset_id(first_command.visual.mesh, visual.mesh) or not same_asset_id(second_command.visual.material, visual.material) or not same_asset_id(third_command.visual.mesh, visual.mesh)
+
+        out_of_bounds: i32 = catch recorded_command(&recorder, 4):
+            value: 1
+            SceneError.CommandOutOfBounds: 0
+            error failure: 2
+        return 13 if out_of_bounds != 0
+
+        for index in 4..<256 |recorder|:
+            appended: i32 = catch submit_update(&recorder, second, moved):
+                ok: 0
+                error failure: 1
+            return 14 if appended != 0
+        full: i32 = catch submit_destroy(&recorder, second):
+            ok: 1
+            SceneError.Capacity: 0
+            error failure: 2
+        return 15 if full != 0 or Backend::recorder_command_count(&recorder) != 256 or not Backend::recorder_is_live(&recorder, second)
+        0
+
+def main() -> i32:
+    Backend::Tests::run()

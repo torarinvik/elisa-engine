@@ -1,0 +1,4 @@
+include "../../src/entity_id.elisa"
+
+def invalid() -> EntityId::EntityIdAllocator:
+    zeroed

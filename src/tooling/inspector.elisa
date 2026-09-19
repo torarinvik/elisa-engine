@@ -81,7 +81,7 @@ module Inspector:
                         tick: tick,
                         live_entities: World::world_live_count(world),
                         registry_slots: World::world_registry_count(world),
-                        queued_commands: recorder.command_count,
+                        queued_commands: Backend::recorder_command_count(recorder),
                         queued_bytes: Backend::recorder_submitted_bytes(recorder),
                         frame_micros: frame_micros,
                         errors: errors,

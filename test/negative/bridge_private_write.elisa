@@ -1,0 +1,4 @@
+include "../../src/backend/fake_bridge.elisa"
+
+def invalid(bridge: mutable FakeBridge::Bridge&) -> void:
+    bridge.resources[0].live <- 0

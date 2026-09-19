@@ -214,21 +214,22 @@ module World:
             kind: Entity
 
         affine struct World:
-            # The allocator is only advanced by world_spawn.  World is affine
-            # so callers cannot copy the owner while references remain live.
-            allocator: mutable EntityId::EntityIdAllocator
-            epoch: i64
-            registry: mutable RegistryRow[World::MAX_ENTITIES]
-            registry_count: mutable usize
-            live_count: mutable usize
-            # Compact live-entity column: the ids of live entities in a dense
-            # array, so iteration is O(live) rather than O(registry capacity).
-            live_ids: mutable i64[World::MAX_ENTITIES]
-            live_ids_count: mutable usize
-            actors: mutable ActorRecord[World::MAX_ENTITIES]
-            actor_count: mutable usize
-            enemies: mutable EnemyRecord[World::MAX_ENTITIES]
-            enemy_count: mutable usize
+            private:
+                # The allocator is only advanced by world_spawn.  World is affine
+                # so callers cannot copy the owner while references remain live.
+                allocator: mutable EntityId::EntityIdAllocator
+                epoch: i64
+                registry: mutable RegistryRow[World::MAX_ENTITIES]
+                registry_count: mutable usize
+                live_count: mutable usize
+                # Compact live-entity column: the ids of live entities in a dense
+                # array, so iteration is O(live) rather than O(registry capacity).
+                live_ids: mutable i64[World::MAX_ENTITIES]
+                live_ids_count: mutable usize
+                actors: mutable ActorRecord[World::MAX_ENTITIES]
+                actor_count: mutable usize
+                enemies: mutable EnemyRecord[World::MAX_ENTITIES]
+                enemy_count: mutable usize
 
         def World() -> World error[WorldError]:
             epoch: i64 = try next_epoch()

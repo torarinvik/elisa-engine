@@ -57,9 +57,10 @@ module FakeBridge:
             generation: i64
 
         affine struct Bridge:
-            resources: mutable ResourceState[FakeBridge::Limits::MAX_RESOURCES]
-            uploads: mutable UploadState[FakeBridge::Limits::MAX_UPLOADS]
-            callbacks: mutable CallbackState[FakeBridge::Limits::MAX_CALLBACKS]
+            private:
+                resources: mutable ResourceState[FakeBridge::Limits::MAX_RESOURCES]
+                uploads: mutable UploadState[FakeBridge::Limits::MAX_UPLOADS]
+                callbacks: mutable CallbackState[FakeBridge::Limits::MAX_CALLBACKS]
 
     private:
         module State:

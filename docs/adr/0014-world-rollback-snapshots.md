@@ -10,7 +10,7 @@ identity. A snapshot that rewinds the allocator would make a surviving
 
 ## Decision
 
-`WorldRollback::Snapshot` stores the epoch, registry, dense live-ID column, and
+`World::Rollback::Snapshot` stores the epoch, registry, dense live-ID column, and
 typed actor/enemy storage. `capture` accepts only a valid world, and `restore`
 checks the epoch and the internal registry/column/storage invariants before
 copying state. The allocator is owned by `World` and is intentionally absent

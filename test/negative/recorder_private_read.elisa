@@ -1,0 +1,4 @@
+include "../../src/backend/recording.elisa"
+
+def invalid(recorder: Backend::SceneRecorder&) -> usize:
+    recorder.command_count

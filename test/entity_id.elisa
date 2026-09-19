@@ -1,50 +1,54 @@
 include "../src/entity_id.elisa"
 using EntityId
 
+module EntityId::Tests:
+    def run() -> i32:
+        initial: i32 =
+            allocator: mutable EntityIdAllocator = EntityIdAllocator()
+            first: i64 = catch entity_id_allocate(&allocator):
+                value: value
+                error failure: ENTITY_ID_INVALID
+            second: i64 = catch entity_id_allocate(&allocator):
+                value: value
+                error failure: ENTITY_ID_INVALID
+            if first != 1 or second != 2 or allocator.last_issued != 2:
+                1
+            else:
+                0
+        return initial if initial != 0
+
+        edge_code: i32 =
+            edge: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_MAX - 1}
+            final_id: i64 = catch entity_id_allocate(&edge):
+                value: value
+                error failure: ENTITY_ID_INVALID
+            exhausted: i32 = catch entity_id_allocate(&edge):
+                value: 2
+                EntityIdError.MaxId: 0
+                EntityIdError.InvalidId: 2
+            exhausted_again: i32 = catch entity_id_allocate(&edge):
+                value: 2
+                EntityIdError.MaxId: 0
+                EntityIdError.InvalidId: 2
+            if final_id != ENTITY_ID_MAX or exhausted != 0 or exhausted_again != 0:
+                2
+            elif edge.last_issued != ENTITY_ID_MAX:
+                3
+            else:
+                0
+        return edge_code if edge_code != 0
+
+        invalid_code: i32 =
+            invalid: mutable EntityIdAllocator = EntityIdAllocator{last_issued: -1}
+            rejected: i32 = catch entity_id_allocate(&invalid):
+                value: 4
+                EntityIdError.InvalidId: 0
+                EntityIdError.MaxId: 4
+            if rejected != 0 or invalid.last_issued != -1:
+                4
+            else:
+                0
+        invalid_code
+
 def main() -> i32:
-    initial: i32 =
-        allocator: mutable EntityIdAllocator = EntityIdAllocator()
-        first: i64 = catch entity_id_allocate(&allocator):
-            value: value
-            error failure: ENTITY_ID_INVALID
-        second: i64 = catch entity_id_allocate(&allocator):
-            value: value
-            error failure: ENTITY_ID_INVALID
-        if first != 1 or second != 2 or allocator.last_issued != 2:
-            1
-        else:
-            0
-    return initial if initial != 0
-
-    edge_code: i32 =
-        edge: mutable EntityIdAllocator = EntityIdAllocator{last_issued: ENTITY_ID_MAX - 1}
-        final_id: i64 = catch entity_id_allocate(&edge):
-            value: value
-            error failure: ENTITY_ID_INVALID
-        exhausted: i32 = catch entity_id_allocate(&edge):
-            value: 2
-            EntityIdError.MaxId: 0
-            EntityIdError.InvalidId: 2
-        exhausted_again: i32 = catch entity_id_allocate(&edge):
-            value: 2
-            EntityIdError.MaxId: 0
-            EntityIdError.InvalidId: 2
-        if final_id != ENTITY_ID_MAX or exhausted != 0 or exhausted_again != 0:
-            2
-        elif edge.last_issued != ENTITY_ID_MAX:
-            3
-        else:
-            0
-    return edge_code if edge_code != 0
-
-    invalid_code: i32 =
-        invalid: mutable EntityIdAllocator = EntityIdAllocator{last_issued: -1}
-        rejected: i32 = catch entity_id_allocate(&invalid):
-            value: 4
-            EntityIdError.InvalidId: 0
-            EntityIdError.MaxId: 4
-        if rejected != 0 or invalid.last_issued != -1:
-            4
-        else:
-            0
-    invalid_code
+    EntityId::Tests::run()

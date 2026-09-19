@@ -1,0 +1,4 @@
+include "../../src/entity_id.elisa"
+
+def invalid() -> EntityId::EntityIdAllocator:
+    EntityId::EntityIdAllocator{last_issued: 7}

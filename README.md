@@ -349,12 +349,13 @@ over a real loopback connection, and `python3 scripts/gns_probe.py` builds and
 runs it. Replication, authority, prediction, interpolation, and recovery remain
 Elisa modules above the transport.
 
-The current stage1 compiler rejects direct copies of the affine allocator,
-World, and scene recorder from borrowed parameters; the check script verifies those rejection
-diagnostics. The allocator field and registry storage are still publicly
-representable, so arbitrary Elisa callers can construct or mutate invalid World
-values. Full encapsulation and ownership enforcement remain open. World proofs
-cover the pure epoch predicate, not mutable registry consistency.
+The compiler rejects direct copies of affine owners from borrowed parameters and
+enforces module-private fields for the allocator, World, scene recorder, fake
+bridge, and lifetime queue. External callers use constructors and public
+operations; direct private field reads, writes, and brace construction are
+rejected by the compiler and exercised by the check script. See
+[field privacy](docs/field-privacy.md) for the module boundary and syntax.
+World proofs cover the pure epoch predicate, not mutable registry consistency.
 
 ### Checks
 

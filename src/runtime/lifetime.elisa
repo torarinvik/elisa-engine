@@ -22,9 +22,10 @@ module Lifetime:
             live: mutable bool
 
         affine struct Queue:
-            submissions: mutable Submission[Bounds::MAX_SUBMISSIONS]
-            count: mutable usize
-            next_serial: mutable i64
+            private:
+                submissions: mutable Submission[Bounds::MAX_SUBMISSIONS]
+                count: mutable usize
+                next_serial: mutable i64
 
         def Queue() -> Queue:
             Queue{submissions: zeroed, count: 0, next_serial: 1}

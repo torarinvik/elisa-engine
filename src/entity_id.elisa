@@ -10,7 +10,8 @@ module EntityId:
             InvalidId
 
         affine struct EntityIdAllocator:
-            last_issued: mutable i64
+            private:
+                last_issued: mutable i64
 
         def EntityIdAllocator() -> EntityIdAllocator:
             EntityIdAllocator{last_issued: ENTITY_ID_INVALID}

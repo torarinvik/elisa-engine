@@ -4,403 +4,406 @@ include "../src/world/rollback.elisa"
 using World
 using EntityId
 using WorldPersistence
-using WorldRollback
 
-def world_error_code(failure: WorldError) -> i64:
-    match failure:
-        WorldError.EpochExhausted:
-            1
-        WorldError.IdentityExhausted:
-            2
-        WorldError.IdentityInvalid:
-            3
-        WorldError.Capacity:
-            4
-        WorldError.InvalidKind:
-            5
-        WorldError.InvalidReference:
-            6
-        WorldError.StorageMismatch:
-            7
-        WorldError.InvalidValue:
-            8
+module World::Tests:
+    def world_error_code(failure: WorldError) -> i64:
+        match failure:
+            WorldError.EpochExhausted:
+                1
+            WorldError.IdentityExhausted:
+                2
+            WorldError.IdentityInvalid:
+                3
+            WorldError.Capacity:
+                4
+            WorldError.InvalidKind:
+                5
+            WorldError.InvalidReference:
+                6
+            WorldError.StorageMismatch:
+                7
+            WorldError.InvalidValue:
+                8
 
-def invalid_world() -> World:
-    World{
-        allocator: EntityIdAllocator{last_issued: EntityId::ENTITY_ID_INVALID},
-        epoch: -1,
-        registry: zeroed,
-        registry_count: 0,
-        live_count: 0,
-        live_ids: zeroed,
-        live_ids_count: 0,
-        actors: zeroed,
-        actor_count: 0,
-        enemies: zeroed,
-        enemy_count: 0,
-    }
+    def invalid_world() -> World:
+        World{
+            allocator: EntityIdAllocator(),
+            epoch: -1,
+            registry: zeroed,
+            registry_count: 0,
+            live_count: 0,
+            live_ids: zeroed,
+            live_ids_count: 0,
+            actors: zeroed,
+            actor_count: 0,
+            enemies: zeroed,
+            enemy_count: 0,
+        }
 
-def invalid_reference() -> EntityRef:
-    EntityRef{world_epoch: -1, id: -1}
+    def invalid_reference() -> EntityRef:
+        EntityRef{world_epoch: -1, id: -1}
 
-def invalid_lookup(reference: EntityRef) -> EntityLookup:
-    EntityLookup{reference: reference, kind: Entity.Unknown}
+    def invalid_lookup(reference: EntityRef) -> EntityLookup:
+        EntityLookup{reference: reference, kind: Entity.Unknown}
 
-def block_tuple_test() -> i32:
-    folded_left, folded_right =
-        for item in 0..<4 |left: i64 = 0, right: i64 = 1| -> left, right:
-            left <- left + item
-            right <- right * 2
-    return 61 if folded_left != 6 or folded_right != 16
-    0
+    def block_tuple_test() -> i32:
+        folded_left, folded_right =
+            for item in 0..<4 |left: i64 = 0, right: i64 = 1| -> left, right:
+                left <- left + item
+                right <- right * 2
+        return 61 if folded_left != 6 or folded_right != 16
+        0
 
-def churn_test() -> i32:
-    world: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    return 20 if world_epoch(&world) < 1
-    references: mutable EntityRef[64] = zeroed
-    expected_actor: mutable bool[64] = zeroed
-    random_state: i64 =
-        for step in 0..<64 |seed: i64 = 17, world, references, expected_actor| -> seed:
-            seed <- (seed * 37 + 17) % 997
-            kind: Entity = Actor.Player if seed % 2 == 0 else Enemy.Guard
-            reference: EntityRef = catch world_spawn(&world, kind):
-                value: value
-                error failure: invalid_reference()
-            return 21 if reference.id != step.i64() + 1
-            references[step] <- reference
-            expected_actor[step] <- seed % 2 == 0
-            return 22 if not world_is_valid(&world)
-    return 23 if random_state < 0
-    for step in 0..<64 |world, references|:
-        if step % 3 == 0:
-            removed: bool = catch world_despawn(&world, references[step]):
-                ok: true
-                error failure: false
-            return 24 if not removed or world_is_live(&world, references[step])
-    world_compact(&world)
-    return 25 if not world_is_valid(&world)
-    # The compact live-id column stays consistent through churn and compaction.
-    return 29 if not world_live_column_valid(&world) or world_live_ids_count(&world) != world_live_count(&world)
-    for step in 0..<64 |world, references, expected_actor|:
-        expected_live: bool = step % 3 != 0
-        return 26 if world_is_live(&world, references[step]) != expected_live
-        if expected_live:
-            lookup: EntityLookup = catch world_lookup(&world, references[step]):
-                value: value
-                error failure: invalid_lookup(references[step])
-            return 28 if (lookup.kind is Actor.Player) != expected_actor[step]
-    replacement: EntityRef = catch world_spawn(&world, Actor.Player):
-        value: value
-        error failure: invalid_reference()
-    return 27 if replacement.id != 65 or not world_is_live(&world, replacement)
-    0
-
-def corruption_test() -> i32:
-    world: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    reference: EntityRef = catch world_spawn(&world, Actor.Player):
-        value: value
-        error failure: invalid_reference()
-    return 40 if not world_is_valid(&world)
-    world.actors[0].id <- reference.id + 1
-    return 41 if world_is_valid(&world)
-    world.actors[0].id <- reference.id
-    return 42 if not world_is_valid(&world)
-    world.registry[0].storage <- StorageKind.Enemy
-    return 43 if world_is_valid(&world)
-    0
-
-def lifecycle_interleaving_test() -> i32:
-    world: mutable World =
-        catch World():
+    def churn_test() -> i32:
+        world: mutable World = catch World():
             value: value
             error failure: invalid_world()
-    references: mutable EntityRef[32] = zeroed
-    live: mutable bool[32] = zeroed
-    live_slots: mutable usize = 0
-    seed: mutable i64 = 19
-    for step in 0..<256 |seed, world, references, live, live_slots|:
-        seed <- (seed * 73 + 19) % 997
-        slot: usize = (seed % 32).usize()
-        if seed % 3 == 0 and live[slot]:
-            removed: i32 = catch world_despawn(&world, references[slot]):
-                ok: 0
-                error failure: 1
-            return 60 if removed != 0
-            live[slot] <- false
-            live_slots <- live_slots - 1
-            if seed % 3 != 0 and not live[slot] and live_slots < 32:
+        return 20 if world_epoch(&world) < 1
+        references: mutable EntityRef[64] = zeroed
+        expected_actor: mutable bool[64] = zeroed
+        random_state: i64 =
+            for step in 0..<64 |seed: i64 = 17, world, references, expected_actor| -> seed:
+                seed <- (seed * 37 + 17) % 997
                 kind: Entity = Actor.Player if seed % 2 == 0 else Enemy.Guard
                 reference: EntityRef = catch world_spawn(&world, kind):
-                    value: invalid_reference()
-                    WorldError.EpochExhausted: EntityRef{world_epoch: -1, id: -1}
-                    WorldError.IdentityExhausted: EntityRef{world_epoch: -2, id: -2}
-                    WorldError.IdentityInvalid: EntityRef{world_epoch: -3, id: -3}
-                    WorldError.Capacity: EntityRef{world_epoch: -4, id: -4}
-                    WorldError.InvalidKind: EntityRef{world_epoch: -5, id: -5}
-                    WorldError.InvalidReference: EntityRef{world_epoch: -6, id: -6}
-                    WorldError.StorageMismatch: EntityRef{world_epoch: -7, id: -7}
-                    WorldError.InvalidValue: EntityRef{world_epoch: -8, id: -8}
-                return 60 - reference.id if reference.id <= 0
-                references[slot] <- reference
-                live[slot] <- true
-                live_slots <- live_slots + 1
-        return 62 if not world_is_valid(&world)
-        return 63 if world_live_count(&world) != live_slots
-    return 64 if seed < 0 or not world_is_valid(&world)
-    world_compact(&world)
-    return 65 if not world_is_valid(&world) or world_live_count(&world) != live_slots
-    for slot in 0..<32 |references, live|:
-        if live[slot]:
-            return 66 if not world_is_live(&world, references[slot])
-    0
+                    value: value
+                    error failure: invalid_reference()
+                return 21 if reference.id != step.i64() + 1
+                references[step] <- reference
+                expected_actor[step] <- seed % 2 == 0
+                return 22 if not world_is_valid(&world)
+        return 23 if random_state < 0
+        for step in 0..<64 |world, references|:
+            if step % 3 == 0:
+                removed: bool = catch world_despawn(&world, references[step]):
+                    ok: true
+                    error failure: false
+                return 24 if not removed or world_is_live(&world, references[step])
+        world_compact(&world)
+        return 25 if not world_is_valid(&world)
+        # The compact live-id column stays consistent through churn and compaction.
+        return 29 if not world_live_column_valid(&world) or world_live_ids_count(&world) != world_live_count(&world)
+        for step in 0..<64 |world, references, expected_actor|:
+            expected_live: bool = step % 3 != 0
+            return 26 if world_is_live(&world, references[step]) != expected_live
+            if expected_live:
+                lookup: EntityLookup = catch world_lookup(&world, references[step]):
+                    value: value
+                    error failure: invalid_lookup(references[step])
+                return 28 if (lookup.kind is Actor.Player) != expected_actor[step]
+        replacement: EntityRef = catch world_spawn(&world, Actor.Player):
+            value: value
+            error failure: invalid_reference()
+        return 27 if replacement.id != 65 or not world_is_live(&world, replacement)
+        0
 
-def capacity_test() -> i32:
-    world: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    for step in 0..<World::MAX_ENTITIES |world|:
+    def corruption_test() -> i32:
+        world: mutable World = catch World():
+            value: value
+            error failure: invalid_world()
         reference: EntityRef = catch world_spawn(&world, Actor.Player):
             value: value
             error failure: invalid_reference()
-        return 30 if reference.id != step.i64() + 1
-    return 31 if world_live_count(&world) != World::MAX_ENTITIES or not world_is_valid(&world)
-    rejected: i32 = catch world_spawn(&world, Actor.Player):
-        value: 32
-        WorldError.Capacity: 0
-        error failure: 33
-    return 34 if rejected != 0 or world_live_count(&world) != World::MAX_ENTITIES or world_last_issued(&world) != World::MAX_ENTITIES.i64()
-    return 35 if world_registry_count(&world) != World::MAX_ENTITIES or world_actor_count(&world) != World::MAX_ENTITIES or world_enemy_count(&world) != 0
-    return 36 if not world_is_valid(&world)
-    0
+        return 40 if not world_is_valid(&world)
+        world.actors[0].id <- reference.id + 1
+        return 41 if world_is_valid(&world)
+        world.actors[0].id <- reference.id
+        return 42 if not world_is_valid(&world)
+        world.registry[0].storage <- StorageKind.Enemy
+        return 43 if world_is_valid(&world)
+        0
 
-def rollback_test() -> i32:
-    world: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    actor: EntityRef = catch world_spawn(&world, Actor.Player):
-        value: value
-        error failure: invalid_reference()
-    enemy: EntityRef = catch world_spawn(&world, Enemy.Guard):
-        value: value
-        error failure: invalid_reference()
-    snapshot: Snapshot = catch capture(&world):
-        value: value
-        error failure: Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
-    allocator_before: i64 = world_last_issued(&world)
-    _ = catch world_despawn(&world, actor):
-        ok: true
-        error failure: false
-    restored: i32 = catch restore(&world, &snapshot):
-        ok: 0
-        RollbackError.InvalidSnapshot: 1
-        RollbackError.WrongWorld: 2
-        error failure: 3
-    actor_after: ActorRecord = catch world_actor_record(&world, actor):
-        value: value
-        error failure: ActorRecord{id: -1, live: false, health: -1}
-    return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live
-    return 2 if world_last_issued(&world) != allocator_before
-    third: EntityRef = catch world_spawn(&world, Actor.Player):
-        value: value
-        error failure: invalid_reference()
-    return 3 if third.id != allocator_before + 1
-    other: mutable World = catch World():
-        value: value
-        error failure: invalid_world()
-    wrong_world: i32 = catch restore(&other, &snapshot):
-        ok: 0
-        RollbackError.InvalidSnapshot: 1
-        RollbackError.WrongWorld: 2
-        error failure: 3
-    return 4 if wrong_world != 2
-    invalid_snapshot: Snapshot = Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
-    rejected_snapshot: i32 = catch restore(&world, &invalid_snapshot):
-        ok: 0
-        RollbackError.InvalidSnapshot: 1
-        RollbackError.WrongWorld: 2
-        error failure: 3
-    return 5 if rejected_snapshot != 1
-    0
+    def lifecycle_interleaving_test() -> i32:
+        world: mutable World =
+            catch World():
+                value: value
+                error failure: invalid_world()
+        references: mutable EntityRef[32] = zeroed
+        live: mutable bool[32] = zeroed
+        live_slots: mutable usize = 0
+        seed: mutable i64 = 19
+        for step in 0..<256 |seed, world, references, live, live_slots|:
+            seed <- (seed * 73 + 19) % 997
+            slot: usize = (seed % 32).usize()
+            if seed % 3 == 0 and live[slot]:
+                removed: i32 = catch world_despawn(&world, references[slot]):
+                    ok: 0
+                    error failure: 1
+                return 60 if removed != 0
+                live[slot] <- false
+                live_slots <- live_slots - 1
+                if seed % 3 != 0 and not live[slot] and live_slots < 32:
+                    kind: Entity = Actor.Player if seed % 2 == 0 else Enemy.Guard
+                    reference: EntityRef = catch world_spawn(&world, kind):
+                        value: invalid_reference()
+                        WorldError.EpochExhausted: EntityRef{world_epoch: -1, id: -1}
+                        WorldError.IdentityExhausted: EntityRef{world_epoch: -2, id: -2}
+                        WorldError.IdentityInvalid: EntityRef{world_epoch: -3, id: -3}
+                        WorldError.Capacity: EntityRef{world_epoch: -4, id: -4}
+                        WorldError.InvalidKind: EntityRef{world_epoch: -5, id: -5}
+                        WorldError.InvalidReference: EntityRef{world_epoch: -6, id: -6}
+                        WorldError.StorageMismatch: EntityRef{world_epoch: -7, id: -7}
+                        WorldError.InvalidValue: EntityRef{world_epoch: -8, id: -8}
+                    return 60 - reference.id if reference.id <= 0
+                    references[slot] <- reference
+                    live[slot] <- true
+                    live_slots <- live_slots + 1
+            return 62 if not world_is_valid(&world)
+            return 63 if world_live_count(&world) != live_slots
+        return 64 if seed < 0 or not world_is_valid(&world)
+        world_compact(&world)
+        return 65 if not world_is_valid(&world) or world_live_count(&world) != live_slots
+        for slot in 0..<32 |references, live|:
+            if live[slot]:
+                return 66 if not world_is_live(&world, references[slot])
+        0
 
-def main() -> i32:
-    world: World =
-        catch World():
+    def capacity_test() -> i32:
+        world: mutable World = catch World():
             value: value
             error failure: invalid_world()
-    return 11 if world_epoch(&world) < 1
+        for step in 0..<World::MAX_ENTITIES |world|:
+            reference: EntityRef = catch world_spawn(&world, Actor.Player):
+                value: value
+                error failure: invalid_reference()
+            return 30 if reference.id != step.i64() + 1
+        return 31 if world_live_count(&world) != World::MAX_ENTITIES or not world_is_valid(&world)
+        rejected: i32 = catch world_spawn(&world, Actor.Player):
+            value: 32
+            WorldError.Capacity: 0
+            error failure: 33
+        return 34 if rejected != 0 or world_live_count(&world) != World::MAX_ENTITIES or world_last_issued(&world) != World::MAX_ENTITIES.i64()
+        return 35 if world_registry_count(&world) != World::MAX_ENTITIES or world_actor_count(&world) != World::MAX_ENTITIES or world_enemy_count(&world) != 0
+        return 36 if not world_is_valid(&world)
+        0
 
-    first: EntityRef =
-        catch world_spawn(&world, Actor.Player):
+    def rollback_test() -> i32:
+        world: mutable World = catch World():
+            value: value
+            error failure: invalid_world()
+        actor: EntityRef = catch world_spawn(&world, Actor.Player):
             value: value
             error failure: invalid_reference()
-    second: EntityRef =
-        catch world_spawn(&world, Enemy.Guard):
+        enemy: EntityRef = catch world_spawn(&world, Enemy.Guard):
             value: value
             error failure: invalid_reference()
-    return 1 if first.id != 1 or second.id != 2 or first.world_epoch == 0 or first.world_epoch != second.world_epoch
-    return 2 if not world_is_live(&world, first) or not world_is_live(&world, second)
-    return 3 if not world_is_valid(&world)
-
-    bindings: mutable Table = Table()
-    bound: i32 = catch bind(&bindings, &world, 7001, first):
-        ok: 0
-        BindingError.InvalidPersistent: 1
-        BindingError.InvalidReference: 2
-        BindingError.DuplicatePersistent: 3
-        BindingError.Capacity: 4
-        error failure: 5
-    return 30 if bound != 0 or binding_count(&bindings) != 1 or not table_valid(&bindings, &world)
-    resolved: EntityRef = catch resolve(&bindings, &world, 7001):
-        value: value
-        error failure: invalid_reference()
-    return 31 if resolved.id != first.id or resolved.world_epoch != first.world_epoch
-    duplicate_binding: i32 = catch bind(&bindings, &world, 7001, second):
-        ok: 0
-        BindingError.DuplicatePersistent: 1
-        error failure: 2
-    return 32 if duplicate_binding != 1
-    wrong_world_binding: i32 = catch bind(&bindings, &world, 7002, World::EntityRef{world_epoch: first.world_epoch + 1, id: first.id}):
-        ok: 0
-        BindingError.InvalidReference: 1
-        error failure: 2
-    return 33 if wrong_world_binding != 1
-
-    first_lookup: EntityLookup =
-        catch world_lookup(&world, first):
+        snapshot: World::Rollback::Snapshot = catch World::Rollback::capture(&world):
             value: value
-            error failure: invalid_lookup(first)
-    return 4 if not (first_lookup.kind is Actor.Player)
-    first_actor: ActorRecord =
-        catch world_actor_record(&world, first):
+            error failure: World::Rollback::Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
+        allocator_before: i64 = world_last_issued(&world)
+        _ = catch world_despawn(&world, actor):
+            ok: true
+            error failure: false
+        restored: i32 = catch World::Rollback::restore(&world, &snapshot):
+            ok: 0
+            RollbackError.InvalidSnapshot: 1
+            RollbackError.WrongWorld: 2
+            error failure: 3
+        actor_after: ActorRecord = catch world_actor_record(&world, actor):
             value: value
             error failure: ActorRecord{id: -1, live: false, health: -1}
-    return 18 if first_actor.id != first.id or first_actor.health != 100 or not first_actor.live
-    updated_health: i32 = catch world_actor_set_health(&world, first, 75):
-        ok: 0
-        WorldError.InvalidReference: 1
-        WorldError.StorageMismatch: 2
-        WorldError.InvalidValue: 3
-        error failure: 4
-    updated_actor: ActorRecord = catch world_actor_record(&world, first):
-        value: value
-        error failure: ActorRecord{id: -1, live: false, health: -1}
-    return 22 if updated_health != 0 or updated_actor.health != 75
-    invalid_health: i32 = catch world_actor_set_health(&world, first, -1):
-        ok: 0
-        WorldError.InvalidValue: 1
-        error failure: 2
-    return 23 if invalid_health != 1
-    wrong_actor: i32 = catch world_actor_record(&world, second):
-        value: 9
-        WorldError.StorageMismatch: 0
-        error failure: 9
-    return 24 if wrong_actor != 0
-    second_enemy: EnemyRecord =
-        catch world_enemy_record(&world, second):
-            value: value
-            error failure: EnemyRecord{id: -1, live: false, threat: -1}
-    return 25 if second_enemy.id != second.id or second_enemy.threat != 1 or not second_enemy.live
-    updated_threat: i32 = catch world_enemy_set_threat(&world, second, 4):
-        ok: 0
-        WorldError.InvalidReference: 1
-        WorldError.StorageMismatch: 2
-        WorldError.InvalidValue: 3
-        error failure: 4
-    return 26 if updated_threat != 0
-
-    despawned: bool =
-        catch world_despawn(&world, first):
-            ok:
-                true
-            error failure:
-                false
-    return 5 if not despawned or world_is_live(&world, first)
-    dead: i32 = catch world_lookup(&world, first):
-        value: 7
-        WorldError.InvalidReference: 0
-        error failure: 7
-    return dead if dead != 0
-    dead_actor: i32 = catch world_actor_record(&world, first):
-        value: 10
-        WorldError.InvalidReference: 0
-        error failure: 10
-    return 21 if dead_actor != 0
-    stale_binding: i32 = catch resolve(&bindings, &world, 7001):
-        value: 9
-        BindingError.StaleReference: 0
-        error failure: 9
-    return 34 if stale_binding != 0
-    rebound: i32 = catch rebind(&bindings, &world, 7001, second):
-        ok: 0
-        BindingError.InvalidPersistent: 1
-        BindingError.InvalidReference: 2
-        BindingError.Capacity: 3
-        error failure: 4
-    rebound_reference: EntityRef = catch resolve(&bindings, &world, 7001):
-        value: value
-        error failure: invalid_reference()
-    return 36 if rebound != 0 or rebound_reference.id != second.id or not table_valid(&bindings, &world)
-    removed_binding: i32 = catch unbind(&bindings, 7001):
-        ok: 0
-        BindingError.UnknownPersistent: 1
-        error failure: 2
-    return 35 if removed_binding != 0 or binding_count(&bindings) != 0 or not table_valid(&bindings, &world)
-
-    other: World =
-        catch World():
-            value: value
-            error failure: invalid_world()
-    wrong_world: i32 = catch world_lookup(&other, second):
-        value: 8
-        WorldError.InvalidReference: 0
-        error failure: 8
-    return wrong_world if wrong_world != 0
-
-    third: EntityRef =
-        catch world_spawn(&world, Actor.Player):
+        return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live
+        return 2 if world_last_issued(&world) != allocator_before
+        third: EntityRef = catch world_spawn(&world, Actor.Player):
             value: value
             error failure: invalid_reference()
-    return 6 if third.id != 3
-    world_compact(&world)
-    return 7 if not world_is_live(&world, second) or not world_is_live(&world, third)
-    return 8 if not world_is_valid(&world)
-    compact_lookup: EntityLookup =
-        catch world_lookup(&world, second):
+        return 3 if third.id != allocator_before + 1
+        other: mutable World = catch World():
             value: value
-            error failure: invalid_lookup(second)
-    return 9 if not (compact_lookup.kind is Enemy.Guard)
-    return 10 if not world_reference_epoch_matches(first.world_epoch, second.world_epoch)
-    # Upward composition: Guard is an Enemy and therefore an Actor; Player is an
-    # Actor but not an Enemy; Unknown refines none of them.
-    return 12 if not entity_is_actor(Actor.Player) or entity_is_enemy(Actor.Player)
-    return 13 if not entity_is_actor(Enemy.Guard) or not entity_is_enemy(Enemy.Guard)
-    return 14 if entity_is_actor(Entity.Unknown) or entity_is_enemy(Entity.Unknown)
-    return 15 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
-    live_reference: EntityRef = catch world_live_reference_at(&world, 0):
-        value: value
-        error failure: invalid_reference()
-    return 18 if live_reference.world_epoch != world_epoch(&world) or not world_is_live(&world, live_reference)
-    missing_live_reference: i32 = catch world_live_reference_at(&world, 2):
-        value: 1
-        WorldError.InvalidReference: 0
-        error failure: 2
-    return 19 if missing_live_reference != 0
-    # The freed slot is reused, so the column order follows the registry, not
-    # spawn order; what matters is that it holds exactly the live ids.
-    return 16 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
-    return 17 if world_live_ids_count(&world) != world_live_count(&world)
-    churn: i32 = churn_test()
-    return churn if churn != 0
-    interleaving: i32 = lifecycle_interleaving_test()
-    return interleaving if interleaving != 0
-    capacity: i32 = capacity_test()
-    return capacity if capacity != 0
-    rollback: i32 = rollback_test()
-    return 50 + rollback if rollback != 0
-    block_tuple: i32 = block_tuple_test()
-    return block_tuple if block_tuple != 0
-    corruption_test()
+            error failure: invalid_world()
+        wrong_world: i32 = catch World::Rollback::restore(&other, &snapshot):
+            ok: 0
+            RollbackError.InvalidSnapshot: 1
+            RollbackError.WrongWorld: 2
+            error failure: 3
+        return 4 if wrong_world != 2
+        invalid_snapshot: World::Rollback::Snapshot = World::Rollback::Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
+        rejected_snapshot: i32 = catch World::Rollback::restore(&world, &invalid_snapshot):
+            ok: 0
+            RollbackError.InvalidSnapshot: 1
+            RollbackError.WrongWorld: 2
+            error failure: 3
+        return 5 if rejected_snapshot != 1
+        0
+
+    def run() -> i32:
+        world: World =
+            catch World():
+                value: value
+                error failure: invalid_world()
+        return 11 if world_epoch(&world) < 1
+
+        first: EntityRef =
+            catch world_spawn(&world, Actor.Player):
+                value: value
+                error failure: invalid_reference()
+        second: EntityRef =
+            catch world_spawn(&world, Enemy.Guard):
+                value: value
+                error failure: invalid_reference()
+        return 1 if first.id != 1 or second.id != 2 or first.world_epoch == 0 or first.world_epoch != second.world_epoch
+        return 2 if not world_is_live(&world, first) or not world_is_live(&world, second)
+        return 3 if not world_is_valid(&world)
+
+        bindings: mutable Table = Table()
+        bound: i32 = catch bind(&bindings, &world, 7001, first):
+            ok: 0
+            BindingError.InvalidPersistent: 1
+            BindingError.InvalidReference: 2
+            BindingError.DuplicatePersistent: 3
+            BindingError.Capacity: 4
+            error failure: 5
+        return 30 if bound != 0 or binding_count(&bindings) != 1 or not table_valid(&bindings, &world)
+        resolved: EntityRef = catch resolve(&bindings, &world, 7001):
+            value: value
+            error failure: invalid_reference()
+        return 31 if resolved.id != first.id or resolved.world_epoch != first.world_epoch
+        duplicate_binding: i32 = catch bind(&bindings, &world, 7001, second):
+            ok: 0
+            BindingError.DuplicatePersistent: 1
+            error failure: 2
+        return 32 if duplicate_binding != 1
+        wrong_world_binding: i32 = catch bind(&bindings, &world, 7002, World::EntityRef{world_epoch: first.world_epoch + 1, id: first.id}):
+            ok: 0
+            BindingError.InvalidReference: 1
+            error failure: 2
+        return 33 if wrong_world_binding != 1
+
+        first_lookup: EntityLookup =
+            catch world_lookup(&world, first):
+                value: value
+                error failure: invalid_lookup(first)
+        return 4 if not (first_lookup.kind is Actor.Player)
+        first_actor: ActorRecord =
+            catch world_actor_record(&world, first):
+                value: value
+                error failure: ActorRecord{id: -1, live: false, health: -1}
+        return 18 if first_actor.id != first.id or first_actor.health != 100 or not first_actor.live
+        updated_health: i32 = catch world_actor_set_health(&world, first, 75):
+            ok: 0
+            WorldError.InvalidReference: 1
+            WorldError.StorageMismatch: 2
+            WorldError.InvalidValue: 3
+            error failure: 4
+        updated_actor: ActorRecord = catch world_actor_record(&world, first):
+            value: value
+            error failure: ActorRecord{id: -1, live: false, health: -1}
+        return 22 if updated_health != 0 or updated_actor.health != 75
+        invalid_health: i32 = catch world_actor_set_health(&world, first, -1):
+            ok: 0
+            WorldError.InvalidValue: 1
+            error failure: 2
+        return 23 if invalid_health != 1
+        wrong_actor: i32 = catch world_actor_record(&world, second):
+            value: 9
+            WorldError.StorageMismatch: 0
+            error failure: 9
+        return 24 if wrong_actor != 0
+        second_enemy: EnemyRecord =
+            catch world_enemy_record(&world, second):
+                value: value
+                error failure: EnemyRecord{id: -1, live: false, threat: -1}
+        return 25 if second_enemy.id != second.id or second_enemy.threat != 1 or not second_enemy.live
+        updated_threat: i32 = catch world_enemy_set_threat(&world, second, 4):
+            ok: 0
+            WorldError.InvalidReference: 1
+            WorldError.StorageMismatch: 2
+            WorldError.InvalidValue: 3
+            error failure: 4
+        return 26 if updated_threat != 0
+
+        despawned: bool =
+            catch world_despawn(&world, first):
+                ok:
+                    true
+                error failure:
+                    false
+        return 5 if not despawned or world_is_live(&world, first)
+        dead: i32 = catch world_lookup(&world, first):
+            value: 7
+            WorldError.InvalidReference: 0
+            error failure: 7
+        return dead if dead != 0
+        dead_actor: i32 = catch world_actor_record(&world, first):
+            value: 10
+            WorldError.InvalidReference: 0
+            error failure: 10
+        return 21 if dead_actor != 0
+        stale_binding: i32 = catch resolve(&bindings, &world, 7001):
+            value: 9
+            BindingError.StaleReference: 0
+            error failure: 9
+        return 34 if stale_binding != 0
+        rebound: i32 = catch rebind(&bindings, &world, 7001, second):
+            ok: 0
+            BindingError.InvalidPersistent: 1
+            BindingError.InvalidReference: 2
+            BindingError.Capacity: 3
+            error failure: 4
+        rebound_reference: EntityRef = catch resolve(&bindings, &world, 7001):
+            value: value
+            error failure: invalid_reference()
+        return 36 if rebound != 0 or rebound_reference.id != second.id or not table_valid(&bindings, &world)
+        removed_binding: i32 = catch unbind(&bindings, 7001):
+            ok: 0
+            BindingError.UnknownPersistent: 1
+            error failure: 2
+        return 35 if removed_binding != 0 or binding_count(&bindings) != 0 or not table_valid(&bindings, &world)
+
+        other: World =
+            catch World():
+                value: value
+                error failure: invalid_world()
+        wrong_world: i32 = catch world_lookup(&other, second):
+            value: 8
+            WorldError.InvalidReference: 0
+            error failure: 8
+        return wrong_world if wrong_world != 0
+
+        third: EntityRef =
+            catch world_spawn(&world, Actor.Player):
+                value: value
+                error failure: invalid_reference()
+        return 6 if third.id != 3
+        world_compact(&world)
+        return 7 if not world_is_live(&world, second) or not world_is_live(&world, third)
+        return 8 if not world_is_valid(&world)
+        compact_lookup: EntityLookup =
+            catch world_lookup(&world, second):
+                value: value
+                error failure: invalid_lookup(second)
+        return 9 if not (compact_lookup.kind is Enemy.Guard)
+        return 10 if not world_reference_epoch_matches(first.world_epoch, second.world_epoch)
+        # Upward composition: Guard is an Enemy and therefore an Actor; Player is an
+        # Actor but not an Enemy; Unknown refines none of them.
+        return 12 if not entity_is_actor(Actor.Player) or entity_is_enemy(Actor.Player)
+        return 13 if not entity_is_actor(Enemy.Guard) or not entity_is_enemy(Enemy.Guard)
+        return 14 if entity_is_actor(Entity.Unknown) or entity_is_enemy(Entity.Unknown)
+        return 15 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
+        live_reference: EntityRef = catch world_live_reference_at(&world, 0):
+            value: value
+            error failure: invalid_reference()
+        return 18 if live_reference.world_epoch != world_epoch(&world) or not world_is_live(&world, live_reference)
+        missing_live_reference: i32 = catch world_live_reference_at(&world, 2):
+            value: 1
+            WorldError.InvalidReference: 0
+            error failure: 2
+        return 19 if missing_live_reference != 0
+        # The freed slot is reused, so the column order follows the registry, not
+        # spawn order; what matters is that it holds exactly the live ids.
+        return 16 if world_live_ids_count(&world) != 2 or not world_live_column_valid(&world)
+        return 17 if world_live_ids_count(&world) != world_live_count(&world)
+        churn: i32 = churn_test()
+        return churn if churn != 0
+        interleaving: i32 = lifecycle_interleaving_test()
+        return interleaving if interleaving != 0
+        capacity: i32 = capacity_test()
+        return capacity if capacity != 0
+        rollback: i32 = rollback_test()
+        return 50 + rollback if rollback != 0
+        block_tuple: i32 = block_tuple_test()
+        return block_tuple if block_tuple != 0
+        corruption_test()
+
+def main() -> i32:
+    World::Tests::run()
