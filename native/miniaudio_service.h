@@ -212,6 +212,37 @@ public:
         return true;
     }
 
+    bool set_voice_velocity(VoiceHandle handle, float x, float y, float z) {
+        if (!voice_live(handle)) return false;
+        Voice& voice = voices_[handle.slot];
+        voice.velocity[0] = x;
+        voice.velocity[1] = y;
+        voice.velocity[2] = z;
+        return true;
+    }
+
+    bool set_voice_occlusion(VoiceHandle handle, float occlusion) {
+        if (!voice_live(handle) || occlusion < 0.0f || occlusion > 1.0f) return false;
+        voices_[handle.slot].occlusion = occlusion;
+        return true;
+    }
+
+    float voice_doppler_ratio(VoiceHandle handle) const {
+        if (!voice_live(handle)) return 1.0f;
+        const Voice& voice = voices_[handle.slot];
+        const float dx = voice.position[0] - listener_.position[0];
+        const float dy = voice.position[1] - listener_.position[1];
+        const float dz = voice.position[2] - listener_.position[2];
+        const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (distance <= 0.0001f) return 1.0f;
+        const float relative_speed = ((voice.velocity[0] - listener_.velocity[0]) * dx +
+            (voice.velocity[1] - listener_.velocity[1]) * dy +
+            (voice.velocity[2] - listener_.velocity[2]) * dz) / distance;
+        const float denominator = 343.0f + relative_speed;
+        if (denominator <= 171.5f) return 2.0f;
+        return std::clamp(343.0f / denominator, 0.5f, 2.0f);
+    }
+
     bool voice_live(VoiceHandle handle) const {
         return handle.slot < MAX_VOICES && voices_[handle.slot].live &&
             voices_[handle.slot].generation == handle.generation;
@@ -246,9 +277,11 @@ private:
         float gain = 1.0f;
         uint32_t priority = 0;
         float position[3] = {};
+        float velocity[3] = {};
         float minimum_distance = 1.0f;
         float maximum_distance = 32.0f;
         bool spatialized = false;
+        float occlusion = 0.0f;
         bool live = false;
     };
 
@@ -289,7 +322,7 @@ private:
                         (voice.maximum_distance - voice.minimum_distance);
                 }
             }
-            const float gain = voice.gain * bus_gains_[voice.bus] * spatial_gain;
+            const float gain = voice.gain * bus_gains_[voice.bus] * spatial_gain * (1.0f - voice.occlusion);
             for (uint32_t frame = 0; frame < frames; ++frame) {
                 if (voice.cursor >= clip.samples.size() / clip.channels) {
                     if (!voice.looped) { voice.live = false; break; }

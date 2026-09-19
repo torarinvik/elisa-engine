@@ -156,10 +156,16 @@ inline bool probe_miniaudio() {
     }
     service.stop(muted);
     const audio::VoiceHandle near_source = service.play(clip, false, audio::Bus::Sfx);
-    if (!check(service.set_voice_position(near_source, 1.0f, 2.0f, 3.0f) &&
-        service.set_voice_range(near_source, 1.0f, 4.0f), "miniaudio service attaches a source")) {
+    if (!check(service.set_voice_position(near_source, 1.0f, 2.0f, 7.0f) &&
+        service.set_voice_range(near_source, 1.0f, 8.0f) &&
+        service.set_voice_velocity(near_source, 0.0f, 0.0f, -12.0f) &&
+        service.set_voice_occlusion(near_source, 0.25f) &&
+        service.voice_doppler_ratio(near_source) > 1.0f,
+        "miniaudio service attaches a moving occluded source")) {
         return false;
     }
+    if (!check(!service.set_voice_occlusion(near_source, 1.1f),
+            "miniaudio service rejects invalid occlusion")) return false;
     std::vector<int16_t> near_mix(8);
     service.mix_for_test(near_mix.data(), 8);
     bool near_signal = false;

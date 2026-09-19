@@ -14,3 +14,7 @@ or audio-library types.
 `test/audio_spatial.elisa` covers attachment, duplicate rejection, cone and
 distance gain, Doppler response, full occlusion, and safe detach. The shared
 gate compiles and runs this fixture.
+
+The native miniaudio gate now accepts listener/source velocities, applies a
+validated occlusion factor in the callback mix, exposes a bounded Doppler ratio,
+and rejects invalid occlusion values while retaining stale-handle checks.

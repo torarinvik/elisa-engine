@@ -119,7 +119,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Physics authority (one solver per body) | Tested | `src/physics/policy.elisa`, `test/physics_policy.elisa` |
 | Audio generation/ownership policy | Tested | `src/audio/policy.elisa`, `test/audio_policy.elisa` |
 | Distance attenuation (spatial groundwork) | Tested | `AudioPolicy::attenuation`, `test/audio_policy.elisa` |
-| World-attached spatial source policy (cone, occlusion, Doppler) | Tested | `src/audio/spatial.elisa`, `test/audio_spatial.elisa`, [spatial-audio validation](validation/spatial-audio.md) |
+| World-attached spatial source policy (cone, occlusion, Doppler) | Tested + Implemented | `src/audio/spatial.elisa`, `test/audio_spatial.elisa`, `native/miniaudio_service.h`, `native/miniaudio_probe.h`, [spatial-audio validation](validation/spatial-audio.md) |
 
 ## Assets
 
