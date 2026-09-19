@@ -71,6 +71,9 @@ inline bool probe_miniaudio() {
     }
 
     audio::Service service;
+    if (!check(!service.initialize_null(0, 1), "miniaudio service rejects an invalid device")) {
+        return false;
+    }
     if (!check(service.initialize_null(rate, 1), "miniaudio service initializes")) {
         return false;
     }
@@ -105,8 +108,28 @@ inline bool probe_miniaudio() {
             "miniaudio service stops the looped voice")) {
         return false;
     }
+    service.set_listener(audio::ListenerState{{1.0f, 2.0f, 3.0f}, {0.5f, 0.0f, -0.5f}});
+    const audio::ListenerState listener = service.listener();
+    if (!check(listener.position[0] == 1.0f && listener.position[2] == 3.0f &&
+        listener.velocity[0] == 0.5f, "miniaudio service stores listener state")) {
+        return false;
+    }
+    if (!check(service.reopen_null(), "miniaudio service reopens the device")) {
+        return false;
+    }
+    const audio::VoiceHandle reopened = service.play(clip);
+    if (!check(reopened.slot < audio::MAX_VOICES && service.active_voices() == 1,
+            "miniaudio service reuses decoded clips after reopen")) {
+        return false;
+    }
+    std::vector<int16_t> reopened_mix(8);
+    service.mix_for_test(reopened_mix.data(), 8);
+    if (!check(reopened_mix[0] != 0, "miniaudio service mixes after reopen")) {
+        return false;
+    }
     service.shutdown();
-    return check(!service.voice_live(second), "miniaudio service invalidates voices on shutdown");
+    return check(!service.voice_live(second) && !service.voice_live(reopened),
+        "miniaudio service invalidates voices on shutdown");
 }
 
 } // namespace probe

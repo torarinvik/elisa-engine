@@ -260,7 +260,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [ ] **S01 · P1 · miniaudio engine service** — After: F04, F05, F06.
   Establish one native audio-device/mixer owner, disabling or isolating overlapping Wicked/FAudio playback paths. Done: reusable clip/voice/listener APIs play real sounds and handle device loss/reopen, initialization failure, and shutdown without leaked callbacks or duplicate output.
-  Progress: `native/miniaudio_service.h` now owns one null-backed miniaudio device, bounded decoded clips, generation-checked voices, allocation-free callback mixing, stale-handle rejection, initialization cleanup, and shutdown invalidation; device recovery/reopen, streaming, listener/spatial attachment, and gameplay integration remain.
+  Progress: `native/miniaudio_service.h` now owns one null-backed miniaudio device, bounded decoded clips, generation-checked voices, allocation-free callback mixing, explicit invalid-initialization cleanup, listener state, device reopen, stale-handle rejection, and shutdown invalidation; streaming, listener spatialization, and gameplay integration remain.
 - [ ] **S02 · P1 · Streaming, buses, and voice budgets** — After: S01, A04.
   Add decoded/streamed assets, seek/loop, music/SFX/UI buses, gain ramps, priorities, virtualization, and voice limits. Done: long tracks stream within budget; cancellation, queue underrun, and voice stealing are tested without allocation or blocking IO in the audio callback.
 - [ ] **S03 · P1 · Spatial audio and world attachment** — After: S01, W02, P03.

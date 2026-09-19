@@ -25,6 +25,11 @@ struct VoiceHandle {
     uint32_t generation = 0;
 };
 
+struct ListenerState {
+    float position[3] = {};
+    float velocity[3] = {};
+};
+
 class Service {
 public:
     Service() = default;
@@ -59,6 +64,20 @@ public:
             return false;
         }
         return true;
+    }
+
+    // Reopen only the device/context while retaining decoded clips. Voices
+    // are stopped before the callback is detached, so no callback can observe
+    // a half-reopened device and callers must explicitly replay them.
+    bool reopen_null() {
+        if (!initialized_) return false;
+        const uint32_t rate = sample_rate_;
+        const uint32_t channels = channels_;
+        for (Voice& voice : voices_) voice.live = false;
+        ma_device_uninit(&device_);
+        ma_context_uninit(&context_);
+        initialized_ = false;
+        return initialize_null(rate, channels);
     }
 
     void shutdown() {
@@ -122,6 +141,10 @@ public:
         voice.live = true;
         return VoiceHandle{slot, voice.generation};
     }
+
+    void set_listener(ListenerState state) { listener_ = state; }
+
+    ListenerState listener() const { return listener_; }
 
     bool stop(VoiceHandle handle) {
         if (handle.slot >= MAX_VOICES || !voices_[handle.slot].live ||
@@ -202,6 +225,7 @@ private:
     uint32_t sample_rate_ = 0;
     uint32_t channels_ = 0;
     bool initialized_ = false;
+    ListenerState listener_{};
 };
 
 } // namespace probe::audio
