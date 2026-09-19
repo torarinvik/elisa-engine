@@ -25,6 +25,20 @@ module WorldRollback:
             enemies: World::EnemyRecord[Bounds::MAX_ENTITIES]
             enemy_count: mutable usize
 
+        def Snapshot() -> Snapshot:
+            Snapshot{
+                epoch: 0,
+                registry: zeroed,
+                registry_count: 0,
+                live_count: 0,
+                live_ids: zeroed,
+                live_ids_count: 0,
+                actors: zeroed,
+                actor_count: 0,
+                enemies: zeroed,
+                enemy_count: 0,
+            }
+
         private:
             def storage_matches(kind: World::Entity, storage: World::StorageKind) -> bool:
                 match kind:
@@ -86,18 +100,13 @@ module WorldRollback:
         def capture(world: World::World&) -> Snapshot error[RollbackError]:
             raise RollbackError.InvalidSnapshot if not World::world_is_valid(world)
             raise RollbackError.InvalidSnapshot if not World::world_live_column_valid(world)
-            snapshot: mutable Snapshot = Snapshot{
-                epoch: world.epoch,
-                registry: zeroed,
-                registry_count: world.registry_count,
-                live_count: world.live_count,
-                live_ids: zeroed,
-                live_ids_count: world.live_ids_count,
-                actors: zeroed,
-                actor_count: world.actor_count,
-                enemies: zeroed,
-                enemy_count: world.enemy_count,
-            }
+            snapshot: mutable Snapshot = Snapshot()
+            snapshot.epoch <- world.epoch
+            snapshot.registry_count <- world.registry_count
+            snapshot.live_count <- world.live_count
+            snapshot.live_ids_count <- world.live_ids_count
+            snapshot.actor_count <- world.actor_count
+            snapshot.enemy_count <- world.enemy_count
             for index in 0..<Bounds::MAX_ENTITIES |snapshot, world|:
                 snapshot.registry[index] <- world.registry[index]
                 snapshot.live_ids[index] <- world.live_ids[index]
