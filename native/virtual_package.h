@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <string>
@@ -36,6 +37,50 @@ inline bool safe_package_path(const std::string& value) {
         start = end + 1;
     }
     return true;
+}
+
+struct PackageResolution {
+    std::string path;
+    uint64_t generation = 0;
+    bool override_used = false;
+    bool found = false;
+    std::string error;
+};
+
+inline PackageResolution resolve_package_path(const std::filesystem::path& base_root,
+    const std::vector<std::filesystem::path>& override_roots, const std::string& logical_name,
+    uint64_t generation) {
+    PackageResolution result;
+    if (!safe_package_path(logical_name)) {
+        result.error = "unsafe package name";
+        return result;
+    }
+    if (generation == 0 || override_roots.size() > 16) {
+        result.error = "invalid package generation or override count";
+        return result;
+    }
+    const auto candidate = [&logical_name](const std::filesystem::path& root) {
+        return (root / std::filesystem::path(logical_name)).lexically_normal();
+    };
+    for (const auto& root : override_roots) {
+        const std::filesystem::path path = candidate(root);
+        if (std::filesystem::is_regular_file(path)) {
+            result.path = path.string();
+            result.generation = generation;
+            result.override_used = true;
+            result.found = true;
+            return result;
+        }
+    }
+    const std::filesystem::path path = candidate(base_root);
+    if (std::filesystem::is_regular_file(path)) {
+        result.path = path.string();
+        result.generation = generation;
+        result.found = true;
+        return result;
+    }
+    result.error = "package is missing";
+    return result;
 }
 
 inline PackageIndex read_package_index(const std::string& path) {

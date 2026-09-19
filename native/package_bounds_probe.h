@@ -71,6 +71,12 @@ inline bool probe_package_bounds(const std::string& valid_package) {
     const std::filesystem::path overlap = root / "overlap.elpk";
     const std::filesystem::path compressed = root / "compression.elpk";
     const std::filesystem::path zstd = root / "zstd.elpk";
+    const std::filesystem::path base_root = root / "base";
+    const std::filesystem::path override_root = root / "override";
+    std::filesystem::create_directories(base_root);
+    std::filesystem::create_directories(override_root);
+    std::ofstream(base_root / "maze.elpk") << "base";
+    std::ofstream(override_root / "maze.elpk") << "override";
     write_binary_package_fixture(binary, false);
     write_binary_package_fixture(overlap, true);
     write_binary_package_fixture(compressed, false, true);
@@ -86,7 +92,14 @@ inline bool probe_package_bounds(const std::string& valid_package) {
         check(!read_binary_package_index(overlap.string()).valid, "binary package overlap rejected") &&
         check(!read_binary_package_index(compressed.string()).valid, "binary package compression rejected") &&
         check(read_binary_package_section(zstd.string(), zstd_index, "mesh", section, section_error) &&
-            std::string(section.begin(), section.end()) == "elisa-bundle-section", "zstd binary section read");
+            std::string(section.begin(), section.end()) == "elisa-bundle-section", "zstd binary section read") &&
+        check(resolve_package_path(base_root, {override_root}, "maze.elpk", 7).found &&
+            resolve_package_path(base_root, {override_root}, "maze.elpk", 7).override_used &&
+            resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
+        check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
+            !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
+        check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&
+        check(!resolve_package_path(base_root, {}, "maze.elpk", 0).found, "package zero generation rejected");
     std::filesystem::remove_all(root);
     return result;
 }

@@ -16,5 +16,7 @@ traversal, malformed, missing-package, valid-binary-index, and overlapping
 binary-section fixtures. The reader is the runtime side of the current text
 package format and a reusable binary index boundary. `read_binary_package_section`
 also decompresses bounded zstd sections and the gate verifies the decoded
-payload. Overrides, async reads, and generation-tagged dependencies remain the
-broader A03/A04 follow-up.
+payload. `resolve_package_path` selects an explicit override root before the
+shipped base root, rejects traversal and invalid generations, and returns the
+generation attached to the selected path. Async reads and dependency-generation
+propagation remain the broader A03/A04 follow-up.
