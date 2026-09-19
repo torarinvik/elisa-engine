@@ -449,8 +449,8 @@ instance per cue the Elisa game emitted for the fixture
 `maze_fixture_cue_count` and re-checked by the validator). Observed:
 `decoded samples=400 rate=8000 channels=1 cue plays=4`.
 
-The Godot host does not play cues yet; only the native side has audio
-integration, and playback is verified structurally (decode plus one play
+The Godot host now consumes the same cue stream and plays each cue through its
+headless audio path. Playback is verified structurally (decode plus one play
 call per cue), not by listening.
 
 The probe reached 592 of the 600-line file limit, so its support code
