@@ -203,8 +203,10 @@ roadmap "an integration order, not a command to add every dependency
 immediately," and each of these is either optional for the first game or needs a
 toolchain not present in this environment:
 
-- **General UI layout/style system.** The menu model and host widgets exist, but
-  there is no general layout, styling, or text-flow system.
+- **Full editor widget suite.** The engine-owned menu, box layout, style, and
+  text-flow foundations are implemented and tested. A broader editor widget
+  library and richer authoring surfaces remain deferred until a concrete
+  editor workflow requires them.
 
 Architectural decisions behind these boundaries are recorded in
 [docs/adr/](adr/): ADR-0011 on the canonical fixture as the backend contract,
