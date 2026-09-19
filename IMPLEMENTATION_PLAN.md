@@ -87,8 +87,8 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 ## F — native foundation and lifecycle
 
-- [ ] **F01 · P0 · Evidence and integration inventory** — After: none.
-  Inspect `native/`, `src/backend/`, fetchers, CI, and the pinned Wicked fork; classify each service as policy, probe, reusable adapter, or game-integrated. Done: one inventory names entry points, owners, exact build identities, gaps, and commands; reconcile outdated completion claims without erasing historical evidence.
+- [x] **F01 · P0 · Evidence and integration inventory** — After: none.
+  Inspect `native/`, `src/backend/`, fetchers, CI, and the pinned Wicked fork; classify each service as policy, probe, reusable adapter, or game-integrated. Done: one inventory names entry points, owners, exact build identities, gaps, and commands; reconcile outdated completion claims without erasing historical evidence. Evidence: [`docs/native-integration-inventory.md`](docs/native-integration-inventory.md), committed as `f9cc344`; `wc -l docs/native-integration-inventory.md` (88) and `python3 scripts/check_source_length.py` passed. This inventory records the current finite-probe limitations; it does not claim F02–F10 completion.
 - [ ] **F02 · P0 · Persistent native application** — After: F01.
   Extract reusable startup/frame/shutdown code from `native/wicked_probe.cpp`; keep the probe as a client. Done: a visible maze runs until user close, pauses/resumes, restarts a world, and accepts real input without hardcoded frame counts or a manifest defining gameplay authority.
 - [ ] **F03 · P0 · Reproducible native dependency build** — After: F01.
