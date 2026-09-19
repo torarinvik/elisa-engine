@@ -140,8 +140,14 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
     }
     const bool self_test = std::getenv("ELISA_PERSISTENT_SELF_TEST") != nullptr;
     if (self_test) enqueue_persistent_self_test();
+    host.reset_fixed_clock();
+    auto previous = std::chrono::steady_clock::now() -
+        std::chrono::nanoseconds(FixedStepPacer::STEP_NANOS);
+    int fixed_ticks = 0;
     std::fprintf(stdout, "persistent host: W/A/S/D move, P pause/resume, R restart, close window to exit\n");
-    while (host.poll_events([&](const SDL_Event& event) {
+    bool running = true;
+    while (running) {
+        running = host.poll_events([&](const SDL_Event& event) {
         if (event.type != SDL_EVENT_KEY_DOWN || !event.key.down) {
             return;
         }
@@ -165,13 +171,19 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
                 ++moves;
             }
         }
-    })) {
+        });
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - previous).count();
+        previous = now;
         host.run_frame();
+        host.advance_fixed(elapsed, [&] { ++fixed_ticks; });
         wi::helper::Sleep(16);
     }
     if (self_test && (!check(pause_toggles == 2, "persistent pause/resume") ||
         !check(restarts == 1, "persistent restart") || !check(moves == 1, "persistent input") ||
-        !check(host.close_requested(), "persistent close"))) return 1;
+        !check(host.close_requested(), "persistent close") ||
+        !check(fixed_ticks > 0, "persistent fixed simulation tick"))) return 1;
+    std::fprintf(stdout, "persistent host: fixed_ticks=%d\n", fixed_ticks);
     std::fprintf(stdout, "persistent host: close requested\n");
     return 0;
 }

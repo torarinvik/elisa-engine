@@ -7,10 +7,12 @@
 #include "wiApplication.h"
 #include "wiGraphics.h"
 #include "wiInitializer.h"
+#include "frame_pacer.h"
 
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#include <chrono>
 #include <utility>
 
 namespace probe {
@@ -103,6 +105,15 @@ public:
 
     void run_frame() {
         application_.Run();
+    }
+
+    template <typename Step>
+    int advance_fixed(int64_t elapsed_nanos, Step&& step) {
+        return pacer_.advance(elapsed_nanos, std::forward<Step>(step));
+    }
+
+    void reset_fixed_clock() {
+        pacer_ = FixedStepPacer{};
     }
 
     void request_close() {
@@ -205,6 +216,7 @@ private:
 
     SDL_Window* window_ = nullptr;
     wi::Application application_;
+    FixedStepPacer pacer_;
     WindowState window_state_;
     bool initialized_ = false;
     bool close_requested_ = false;

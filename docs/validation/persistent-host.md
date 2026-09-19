@@ -15,7 +15,11 @@ build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
   "$PWD/backends/scene_manifest.txt" "$PWD/build/persistent-selftest.png" alwaysactive
 ```
 
-It exited `0` after logging pause, resume, restart, and close. The interactive
-visible-window path remains hardware-dependent in this headless session and is
-therefore not marked as the complete F02 milestone. The known Wicked global
-worker shutdown limitation remains tracked under F05.
+It exited `0` after logging pause, resume, restart, close, and at least one
+fixed simulation tick. `NativeApplication::advance_fixed` uses the bounded
+integer-nanosecond accumulator from `native/frame_pacer.h`, so the event loop
+can present at a variable cadence without coupling gameplay updates to the
+render call. The interactive visible-window path remains hardware-dependent in
+this headless session and is therefore not marked as the complete F02
+milestone. The known Wicked global worker shutdown limitation remains tracked
+under F05.
