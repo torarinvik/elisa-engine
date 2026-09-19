@@ -162,6 +162,13 @@ def rollback_test() -> i32:
         RollbackError.WrongWorld: 2
         error failure: 3
     return 4 if wrong_world != 2
+    invalid_snapshot: Snapshot = Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
+    rejected_snapshot: i32 = catch restore(&world, &invalid_snapshot):
+        ok: 0
+        RollbackError.InvalidSnapshot: 1
+        RollbackError.WrongWorld: 2
+        error failure: 3
+    return 5 if rejected_snapshot != 1
     0
 
 def main() -> i32:
