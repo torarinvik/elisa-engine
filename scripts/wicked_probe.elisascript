@@ -70,9 +70,30 @@ def main(arguments: darray[sview]) -> i64:
     archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
     if archive_status != 0:
         return archive_status
-    sdl_include: sview = get_environment_or("WICKED_SDL_INCLUDE_DIR", "/opt/homebrew/include")
-    sdl_library: sview = get_environment_or("WICKED_SDL_LIB_DIR", "/opt/homebrew/lib")
+    # Wicked's platform layer is built against SDL2. Prefer the pinned real
+    # SDL2 (scripts/fetch_sdl2.py) over Homebrew's sdl2-compat shim, which
+    # dlopens SDL3 from a library initializer and hangs the AddressSanitizer
+    # probe when SDL3 cannot load. Linux installs real SDL2 and can point
+    # WICKED_SDL_INCLUDE_DIR / WICKED_SDL_LIB_DIR at it instead.
+    pinned_sdl2: Path = root.joinpath("dependencies/sdl2")
+    pinned_sdl2_include: sview = str(pinned_sdl2.joinpath("include"))
+    pinned_sdl2_library: sview = str(pinned_sdl2.joinpath("build"))
+    sdl_include: sview =
+        configured_include: sview = get_environment_or("WICKED_SDL_INCLUDE_DIR", "")
+        if configured_include != "":
+            configured_include
+        else:
+            pinned_sdl2_include if is_file(path(str(pinned_sdl2.joinpath("include/SDL2/SDL.h")))) else "/opt/homebrew/include"
+    sdl_library: sview =
+        configured_library: sview = get_environment_or("WICKED_SDL_LIB_DIR", "")
+        if configured_library != "":
+            configured_library
+        else:
+            pinned_sdl2_library if is_file(path(str(pinned_sdl2.joinpath("build/libSDL2-2.0.0.dylib")))) else "/opt/homebrew/lib"
     sdl_subinclude: sview = str(path(sdl_include).joinpath("SDL2"))
+    # freetype/harfbuzz/zstd stay Homebrew-side; only SDL2 is pinned.
+    brew_include: sview = get_environment_or("WICKED_BREW_INCLUDE_DIR", "/opt/homebrew/include")
+    brew_library: sview = get_environment_or("WICKED_BREW_LIB_DIR", "/opt/homebrew/lib")
     utility_lib: Path = library_root.joinpath("Utility/libUtility.a")
     faudio_lib: Path = library_root.joinpath("Utility/FAudio/libFAudio.a")
     lua_lib: Path = library_root.joinpath("LUA/libLUA.a")
@@ -104,8 +125,8 @@ def main(arguments: darray[sview]) -> i64:
         if not is_file(path(ozz_lib)):
             eprint("Missing ozz library; run python3 scripts/fetch_ozz.py first.")
             return 2
-    freetype_include: sview = str(path(sdl_include).joinpath("freetype2"))
-    harfbuzz_include: sview = str(path(sdl_include).joinpath("harfbuzz"))
+    freetype_include: sview = str(path(brew_include).joinpath("freetype2"))
+    harfbuzz_include: sview = str(path(brew_include).joinpath("harfbuzz"))
     tracy: Path = root.joinpath("dependencies/tracy")
     if not is_file(path(str(tracy.joinpath("public/TracyClient.cpp")))):
         eprint("Missing Tracy; run python3 scripts/fetch_tracy.py first.")
@@ -150,11 +171,13 @@ def main(arguments: darray[sview]) -> i64:
         str(meshopt.joinpath("indexanalyzer.cpp")),
         str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(recast_libs[0]), str(recast_libs[1]),
-        "-L", sdl_library, "-lfreetype", "-lharfbuzz", "-lzstd",
+        "-L", sdl_library, "-lSDL2",
+        "-L", brew_library, "-lfreetype", "-lharfbuzz", "-lzstd",
         embed_archive,
         str(library_root.joinpath("libWickedEngine.a")),
         str(library_root.joinpath("libJolt.a")), str(utility_lib),
-        str(faudio_lib), str(lua_lib), "-L", sdl_library, "-lSDL2",
+        str(faudio_lib), str(lua_lib),
+        "-Wl,-rpath,@executable_path",
         "-framework", "Foundation", "-framework", "CoreFoundation",
         "-framework", "CoreGraphics", "-framework", "CoreText", "-framework", "ImageIO",
         "-framework", "Metal", "-framework", "QuartzCore", "-framework", "AppKit",

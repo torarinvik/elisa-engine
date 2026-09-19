@@ -132,8 +132,14 @@ WICKED_BUILD="../WickedEngine/build-elisa-arm-o0" \
 elisascript scripts/wicked_probe.elisascript
 ```
 
-Set `WICKED_SDL_INCLUDE_DIR` and `WICKED_SDL_LIB_DIR` when SDL2 is installed
-outside Homebrew's `/opt/homebrew` prefix. SDL2 is an upstream Wicked
+Run `python3 scripts/fetch_sdl2.py` first. It pins and builds real SDL2 under
+`dependencies/sdl2`, and the probe prefers it over Homebrew's `sdl2-compat`:
+the shim dlopens SDL3 from a library initializer, so when SDL3 cannot load it
+hangs the AddressSanitizer probe before `main` rather than reporting anything.
+Set `WICKED_SDL_INCLUDE_DIR` and `WICKED_SDL_LIB_DIR` to override that choice —
+for instance on Linux, which installs real SDL2 system-wide. Freetype,
+harfbuzz and zstd stay Homebrew-side under `WICKED_BREW_INCLUDE_DIR` and
+`WICKED_BREW_LIB_DIR`. SDL2 is an upstream Wicked
 constraint only: SDL2 and SDL3 export the same symbols and cannot link into
 one binary. Everywhere the engine chooses, the default is SDL3
 (`src/backend/sdl3.elisa`, the SDL3 platform probe, and the standalone
