@@ -119,7 +119,7 @@ def capacity_test() -> i32:
         value: 32
         WorldError.Capacity: 0
         error failure: 33
-    return 34 if rejected != 0 or world.live_count != 256 or world.allocator.last_issued != 256
+    return 34 if rejected != 0 or world.live_count != 256 or world_last_issued(&world) != 256
     0
 
 def rollback_test() -> i32:
@@ -135,7 +135,7 @@ def rollback_test() -> i32:
     snapshot: Snapshot = catch capture(&world):
         value: value
         error failure: Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
-    allocator_before: i64 = world.allocator.last_issued
+    allocator_before: i64 = world_last_issued(&world)
     _ = catch world_despawn(&world, actor):
         ok: true
         error failure: false
@@ -148,7 +148,7 @@ def rollback_test() -> i32:
         value: value
         error failure: ActorRecord{id: -1, live: false, health: -1}
     return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live
-    return 2 if world.allocator.last_issued != allocator_before
+    return 2 if world_last_issued(&world) != allocator_before
     third: EntityRef = catch world_spawn(&world, Actor.Player):
         value: value
         error failure: invalid_reference()

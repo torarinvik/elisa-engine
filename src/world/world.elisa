@@ -33,6 +33,8 @@ module World:
             WORLD_MAX_ENTITIES: usize = 256
             WORLD_FIRST_EPOCH: i64 = 1
             WORLD_MAX_EPOCH: i64 = 9223372036854775807
+            DEFAULT_ACTOR_HEALTH: i64 = 100
+            DEFAULT_ENEMY_THREAT: i64 = 1
 
         const module Sentinel:
             WORLD_INVALID_SLOT: usize = World::Bounds::WORLD_MAX_ENTITIES
@@ -220,7 +222,7 @@ module World:
             live_count: mutable usize
             # Compact live-entity column: the ids of live entities in a dense
             # array, so iteration is O(live) rather than O(registry capacity).
-            live_ids: mutable i64[256]
+            live_ids: mutable i64[Bounds::WORLD_MAX_ENTITIES]
             live_ids_count: mutable usize
             actors: mutable ActorRecord[Bounds::WORLD_MAX_ENTITIES]
             actor_count: mutable usize
@@ -260,15 +262,18 @@ module World:
             world.registry[registry_index] <- RegistryRow{id: id, kind: kind, live: true, storage: storage}
             world.registry_count <- world.registry_count + 1 if registry_index == world.registry_count
             if storage == StorageKind.Actor:
-                world.actors[storage_index] <- ActorRecord{id: id, live: true, health: 100}
+                world.actors[storage_index] <- ActorRecord{id: id, live: true, health: Bounds::DEFAULT_ACTOR_HEALTH}
                 world.actor_count <- world.actor_count + 1 if storage_index == world.actor_count
             else:
-                world.enemies[storage_index] <- EnemyRecord{id: id, live: true, threat: 1}
+                world.enemies[storage_index] <- EnemyRecord{id: id, live: true, threat: Bounds::DEFAULT_ENEMY_THREAT}
                 world.enemy_count <- world.enemy_count + 1 if storage_index == world.enemy_count
             world.live_count <- world.live_count + 1
             world.live_ids[world.live_ids_count] <- id
             world.live_ids_count <- world.live_ids_count + 1
             EntityRef{world_epoch: world.epoch, id: id}
+
+        def world_last_issued(world: World&) -> i64:
+            world.allocator.last_issued
 
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
             index: usize = registry_slot(world, reference)

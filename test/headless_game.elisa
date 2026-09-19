@@ -130,5 +130,5 @@ def main() -> i32:
         value: 1
         GameError.RecordingFailure: 0
         error failure: 2
-    return 18 if rejected_spawn != 0 or third_world.live_count != 0 or third_world.allocator.last_issued != 1 or not world_is_valid(&third_world)
+    return 18 if rejected_spawn != 0 or third_world.live_count != 0 or world_last_issued(&third_world) != 1 or not world_is_valid(&third_world)
     0
