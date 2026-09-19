@@ -15,6 +15,9 @@ namespace probe::audio {
 constexpr uint32_t MAX_CLIPS = 16;
 constexpr uint32_t MAX_VOICES = 32;
 
+enum class Bus : uint8_t { Music = 0, Sfx = 1, Ui = 2, Count = 3 };
+constexpr uint32_t BUS_COUNT = static_cast<uint32_t>(Bus::Count);
+
 struct ClipHandle {
     uint32_t slot = UINT32_MAX;
     uint32_t generation = 0;
@@ -125,21 +128,58 @@ public:
         return ClipHandle{slot, clip.generation};
     }
 
-    VoiceHandle play(ClipHandle clip, bool looped = false) {
+    VoiceHandle play(ClipHandle clip, bool looped = false, Bus bus = Bus::Sfx,
+        float gain = 1.0f, uint32_t priority = 0) {
         if (!clip_valid(clip)) return {};
+        if (!bus_valid(bus) || gain < 0.0f || gain > 4.0f) return {};
         uint32_t slot = MAX_VOICES;
-        for (uint32_t index = 0; index < MAX_VOICES; ++index) {
-            if (!voices_[index].live) { slot = index; break; }
+        if (active_bus_voices(bus) >= bus_budgets_[bus_index(bus)]) {
+            uint32_t victim = MAX_VOICES;
+            for (uint32_t index = 0; index < MAX_VOICES; ++index) {
+                const Voice& voice = voices_[index];
+                if (voice.live && voice.bus == bus_index(bus) &&
+                    voice.priority < priority &&
+                    (victim == MAX_VOICES || voice.priority < voices_[victim].priority)) {
+                    victim = index;
+                }
+            }
+            if (victim < MAX_VOICES) {
+                voices_[victim].live = false;
+                slot = victim;
+            }
+        } else {
+            for (uint32_t index = 0; index < MAX_VOICES; ++index) {
+                if (!voices_[index].live) { slot = index; break; }
+            }
         }
         if (slot == MAX_VOICES) return {};
         Voice& voice = voices_[slot];
         voice.clip = clip.slot;
         voice.cursor = 0;
         voice.looped = looped;
+        voice.bus = bus_index(bus);
+        voice.gain = gain;
+        voice.priority = priority;
         voice.generation = voice.generation == UINT32_MAX ? 0 : voice.generation + 1;
         if (voice.generation == 0) { voice = {}; return {}; }
         voice.live = true;
         return VoiceHandle{slot, voice.generation};
+    }
+
+    bool set_bus_gain(Bus bus, float gain) {
+        if (!bus_valid(bus) || gain < 0.0f || gain > 4.0f) return false;
+        bus_gains_[bus_index(bus)] = gain;
+        return true;
+    }
+
+    float bus_gain(Bus bus) const {
+        return bus_valid(bus) ? bus_gains_[bus_index(bus)] : 0.0f;
+    }
+
+    bool set_voice_budget(Bus bus, uint32_t budget) {
+        if (!bus_valid(bus) || budget > MAX_VOICES) return false;
+        bus_budgets_[bus_index(bus)] = budget;
+        return true;
     }
 
     void set_listener(ListenerState state) { listener_ = state; }
@@ -183,8 +223,26 @@ private:
         uint32_t generation = 0;
         size_t cursor = 0;
         bool looped = false;
+        uint8_t bus = static_cast<uint8_t>(Bus::Sfx);
+        float gain = 1.0f;
+        uint32_t priority = 0;
         bool live = false;
     };
+
+    static constexpr uint32_t bus_index(Bus bus) {
+        return static_cast<uint32_t>(bus);
+    }
+
+    static constexpr bool bus_valid(Bus bus) {
+        return bus_index(bus) < bus_index(Bus::Count);
+    }
+
+    uint32_t active_bus_voices(Bus bus) const {
+        const uint8_t index = static_cast<uint8_t>(bus_index(bus));
+        uint32_t count = 0;
+        for (const Voice& voice : voices_) count += voice.live && voice.bus == index ? 1 : 0;
+        return count;
+    }
 
     bool clip_valid(ClipHandle handle) const {
         return handle.slot < MAX_CLIPS && clips_[handle.slot].live &&
@@ -196,6 +254,7 @@ private:
         for (Voice& voice : voices_) {
             if (!voice.live || voice.clip >= MAX_CLIPS || !clips_[voice.clip].live) continue;
             Clip& clip = clips_[voice.clip];
+            const float gain = voice.gain * bus_gains_[voice.bus];
             for (uint32_t frame = 0; frame < frames; ++frame) {
                 if (voice.cursor >= clip.samples.size() / clip.channels) {
                     if (!voice.looped) { voice.live = false; break; }
@@ -203,8 +262,8 @@ private:
                 }
                 for (uint32_t channel = 0; channel < channels_; ++channel) {
                     const uint32_t source_channel = std::min(channel, clip.channels - 1);
-                    const int mixed = output[frame * channels_ + channel] +
-                        clip.samples[voice.cursor * clip.channels + source_channel];
+                    const int mixed = output[frame * channels_ + channel] + static_cast<int>(
+                        clip.samples[voice.cursor * clip.channels + source_channel] * gain);
                     output[frame * channels_ + channel] = static_cast<int16_t>(
                         std::clamp(mixed, -32768, 32767));
                 }
@@ -226,6 +285,8 @@ private:
     uint32_t channels_ = 0;
     bool initialized_ = false;
     ListenerState listener_{};
+    std::array<float, BUS_COUNT> bus_gains_{{1.0f, 1.0f, 1.0f}};
+    std::array<uint32_t, BUS_COUNT> bus_budgets_{{MAX_VOICES, MAX_VOICES, MAX_VOICES}};
 };
 
 } // namespace probe::audio

@@ -263,6 +263,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `native/miniaudio_service.h` now owns one null-backed miniaudio device, bounded decoded clips, generation-checked voices, allocation-free callback mixing, explicit invalid-initialization cleanup, listener state, device reopen, stale-handle rejection, and shutdown invalidation; streaming, listener spatialization, and gameplay integration remain.
 - [ ] **S02 · P1 · Streaming, buses, and voice budgets** — After: S01, A04.
   Add decoded/streamed assets, seek/loop, music/SFX/UI buses, gain ramps, priorities, virtualization, and voice limits. Done: long tracks stream within budget; cancellation, queue underrun, and voice stealing are tested without allocation or blocking IO in the audio callback.
+  Progress: the bounded miniaudio service now exposes Music/SFX/UI buses, per-bus gain and voice budgets, priority-based deterministic voice stealing, and callback-side mixing with no allocation; streamed assets, seek/cancellation, gain ramps, virtualization policy, and underrun tests remain.
 - [ ] **S03 · P1 · Spatial audio and world attachment** — After: S01, W02, P03.
   Implement listeners, distance/cone attenuation, velocity/Doppler policy, and basic occlusion using engine transforms and query results. Done: moving sources/listeners sound consistent with scene scale, and entity destruction safely detaches active voices.
 - [ ] **S04 · P2 · Steam Audio integration** — After: S03, A11.

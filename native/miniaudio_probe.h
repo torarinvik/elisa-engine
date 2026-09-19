@@ -127,6 +127,33 @@ inline bool probe_miniaudio() {
     if (!check(reopened_mix[0] != 0, "miniaudio service mixes after reopen")) {
         return false;
     }
+    if (!check(service.set_voice_budget(audio::Bus::Ui, 1) &&
+        !service.set_voice_budget(audio::Bus::Ui, audio::MAX_VOICES + 1),
+        "miniaudio service enforces bus voice budgets")) {
+        return false;
+    }
+    const audio::VoiceHandle low_priority = service.play(clip, false, audio::Bus::Ui, 1.0f, 1);
+    const audio::VoiceHandle rejected = service.play(clip, false, audio::Bus::Ui, 1.0f, 0);
+    const audio::VoiceHandle high_priority = service.play(clip, false, audio::Bus::Ui, 1.0f, 2);
+    if (!check(low_priority.slot < audio::MAX_VOICES && rejected.slot == UINT32_MAX &&
+        high_priority.slot == low_priority.slot && !service.voice_live(low_priority) &&
+        service.voice_live(high_priority), "miniaudio service applies priority voice stealing")) {
+        return false;
+    }
+    service.stop(reopened);
+    service.stop(high_priority);
+    if (!check(service.set_bus_gain(audio::Bus::Music, 0.0f) && service.bus_gain(audio::Bus::Music) == 0.0f,
+            "miniaudio service sets bus gain")) {
+        return false;
+    }
+    const audio::VoiceHandle muted = service.play(clip, false, audio::Bus::Music);
+    std::vector<int16_t> muted_mix(8);
+    service.mix_for_test(muted_mix.data(), 8);
+    bool silent = true;
+    for (const int16_t sample : muted_mix) silent = silent && sample == 0;
+    if (!check(muted.slot < audio::MAX_VOICES && silent, "miniaudio service mutes a bus without stopping voices")) {
+        return false;
+    }
     service.shutdown();
     return check(!service.voice_live(second) && !service.voice_live(reopened),
         "miniaudio service invalidates voices on shutdown");
