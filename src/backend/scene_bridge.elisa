@@ -64,6 +64,13 @@ module SceneBridge:
     private:
         module Build:
             private:
+                struct LifecycleScan:
+                    saw_create: mutable bool
+                    saw_update: mutable bool
+                    saw_destroy: mutable bool
+                    order_ok: mutable bool
+                    last_position: mutable Geometry::Vec3
+
                 def refs_equal(left: World::EntityRef, right: World::EntityRef) -> bool:
                     left.world_epoch == right.world_epoch and left.id == right.id
 
@@ -81,50 +88,45 @@ module SceneBridge:
                         count <- count + 1 if command.reference.world_epoch == camera.world_epoch and command.reference.id == camera.id
 
             public:
-                def from_recorder(recorder: Backend::SceneRecorder&, object: World::EntityRef, camera: World::EntityRef, camera_position: Geometry::Vec3, viewport_width: i32, viewport_height: i32) -> CanonicalScene error[BridgeError]:
-                    raise BridgeError.InvalidEpoch if not ref_valid(object) or not ref_valid(camera)
-                    raise BridgeError.IdentityMismatch if object.world_epoch != camera.world_epoch or object.id == camera.id
-                    raise BridgeError.InvalidViewport if viewport_width <= 0 or viewport_height <= 0 or viewport_width > 8192 or viewport_height > 8192
-                    raise BridgeError.Capacity if recorder.command_count > SceneBridge::Limits::MAX_SCENE_COMMANDS
-                    raise BridgeError.UnexpectedCommand if camera_command_count(recorder, camera) != 0
-                    raise BridgeError.MissingCreate if object_command_count(recorder, object) < 3
-                    saw_create: mutable bool = false
-                    saw_update: mutable bool = false
-                    saw_destroy: mutable bool = false
-                    order_ok: mutable bool = true
-                    last_position: mutable Geometry::Vec3 = Geometry::vec3_zero()
-                    for index in 0..<recorder.command_count |recorder, object, saw_create, saw_update, saw_destroy, order_ok, last_position|:
-                        command: Backend::SceneCommand = recorder.commands[index]
-                        is_object: bool = refs_equal(command.reference, object)
-                        if not is_object:
-                            order_ok <- false
-                        if is_object:
-                            if command.kind == Backend::SceneCommandKind.Create:
-                                order_ok <- false if saw_create
-                                saw_create <- true
-                                last_position <- command.transform.position
-                            if command.kind == Backend::SceneCommandKind.Update:
-                                order_ok <- false if not saw_create or saw_destroy
-                                saw_update <- true
-                                last_position <- command.transform.position
-                            if command.kind == Backend::SceneCommandKind.Destroy:
-                                order_ok <- false if not saw_create or saw_destroy
-                                saw_destroy <- true
-                    raise BridgeError.UnexpectedCommand if not order_ok
-                    raise BridgeError.MissingCreate if not saw_create
-                    raise BridgeError.MissingUpdate if not saw_update
-                    raise BridgeError.MissingDestroy if not saw_destroy
-                    CanonicalScene{
+                def from_recorder(recorder: Backend::SceneRecorder&, object: World::EntityRef, camera: World::EntityRef, camera_position: Geometry::Vec3, viewport_width: i32, viewport_height: i32) -> SceneBridge::CanonicalScene error[SceneBridge::BridgeError]:
+                    raise SceneBridge::BridgeError.InvalidEpoch if not ref_valid(object) or not ref_valid(camera)
+                    raise SceneBridge::BridgeError.IdentityMismatch if object.world_epoch != camera.world_epoch or object.id == camera.id
+                    raise SceneBridge::BridgeError.InvalidViewport if viewport_width <= 0 or viewport_height <= 0 or viewport_width > 8192 or viewport_height > 8192
+                    raise SceneBridge::BridgeError.Capacity if recorder.command_count > SceneBridge::Limits::MAX_SCENE_COMMANDS
+                    raise SceneBridge::BridgeError.UnexpectedCommand if camera_command_count(recorder, camera) != 0
+                    raise SceneBridge::BridgeError.MissingCreate if object_command_count(recorder, object) < 3
+                    scan: LifecycleScan =
+                        for index in 0..<recorder.command_count |scan: LifecycleScan = LifecycleScan{saw_create: false, saw_update: false, saw_destroy: false, order_ok: true, last_position: Geometry::vec3_zero()}| -> scan:
+                            command: Backend::SceneCommand = recorder.commands[index]
+                            is_object: bool = refs_equal(command.reference, object)
+                            scan.order_ok <- false if not is_object
+                            if is_object:
+                                if command.kind == Backend::SceneCommandKind.Create:
+                                    scan.order_ok <- false if scan.saw_create
+                                    scan.saw_create <- true
+                                    scan.last_position <- command.transform.position
+                                if command.kind == Backend::SceneCommandKind.Update:
+                                    scan.order_ok <- false if not scan.saw_create or scan.saw_destroy
+                                    scan.saw_update <- true
+                                    scan.last_position <- command.transform.position
+                                if command.kind == Backend::SceneCommandKind.Destroy:
+                                    scan.order_ok <- false if not scan.saw_create or scan.saw_destroy
+                                    scan.saw_destroy <- true
+                    raise SceneBridge::BridgeError.UnexpectedCommand if not scan.order_ok
+                    raise SceneBridge::BridgeError.MissingCreate if not scan.saw_create
+                    raise SceneBridge::BridgeError.MissingUpdate if not scan.saw_update
+                    raise SceneBridge::BridgeError.MissingDestroy if not scan.saw_destroy
+                    SceneBridge::CanonicalScene{
                         epoch: object.world_epoch,
                         object: object,
                         camera: camera,
-                        object_position: last_position,
+                        object_position: scan.last_position,
                         camera_position: camera_position,
                         viewport_width: viewport_width,
                         viewport_height: viewport_height,
-                        saw_create: saw_create,
-                        saw_update: saw_update,
-                        saw_destroy: saw_destroy,
+                        saw_create: scan.saw_create,
+                        saw_update: scan.saw_update,
+                        saw_destroy: scan.saw_destroy,
                     }
 
     public:
