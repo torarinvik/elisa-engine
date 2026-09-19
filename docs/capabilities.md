@@ -127,7 +127,7 @@ writes `build/validation.json`. Host evidence comes from
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |
 | UBSan full graphics probe | Tested | `ELISA_SANITIZER=undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; found and fixed signed-shift UB in `native/package_load.h` |
-| ASan full graphics probe | Partial | The instrumented run reaches `main` and reports an upstream Wicked defect (heap-buffer-overflow in `wiHelper.cpp:971`'s stb callback, reached from `saveTextureToFile`). A screenshot path that avoids `saveTextureToMemoryFile` is the remaining work; ADR-0010 has the historical trace. The same probe runs under UBSan, and the boundary harness keeps the ASan+UBSan pair |
+| ASan full graphics probe | Tested | `ELISA_SANITIZER=address,undefined CXX=scripts/cxx_sanitize.py elisascript scripts/wicked_probe.elisascript`; the SDL3-native Wicked build passes scene creation, churn, rendering, live input, deterministic capture, and the frame budget under ASan+UBSan |
 | Live input driving the embedding hosts | Tested + Implemented | `native/embed_probe.cpp` (SDL3 event → move code) and `backends/godot-embed/godot_embed_probe.gd` (synthetic key → move code → `maze_step`) |
 | Live input driving the native rendered host | Tested + Implemented | `native/live_game_probe.h`, `scripts/wicked_probe.elisascript` (live frame non-blank after an SDL key drives the game) |
 | Live input driving the Godot rendered capture | Tested + Implemented | `scripts/build_godot_extension.py`, `backends/godot/capture.gd` (synthetic key → `maze_step` → live marker → verified live frame) |
@@ -158,8 +158,10 @@ Re-run on the current tree:
   UBSan finding over the boundary libraries.
 - `ELISA_SANITIZER=undefined CXX="$PWD/scripts/cxx_sanitize.py" elisascript
   scripts/wicked_probe.elisascript` — exit 0, the full graphics probe under
-  UBSan with no report. The AddressSanitizer flavor uses the SDL3-native Wicked
-  build and does not depend on the old sdl2-compat shim.
+  UBSan with no report.
+- `ELISA_SANITIZER=address,undefined CXX="$PWD/scripts/cxx_sanitize.py" elisascript
+  scripts/wicked_probe.elisascript` — exit 0, the full SDL3-native graphics
+  probe under ASan+UBSan with no report.
 - `elisascript scripts/wicked_probe.elisascript` — exit 0; frame verified,
   budget met; churn, ozz, Recast/Detour, miniaudio, text, zstd, reload, texture
   (including the KTX container), UDP, menu, pose, and Wicked-GUI checks all pass.

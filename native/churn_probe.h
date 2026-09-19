@@ -72,9 +72,21 @@ inline bool run_churn_probe(wi::scene::Scene& scene, const std::map<std::string,
         (long long)samples.back());
     std::fprintf(stdout, "churn memory: before_bytes=%zu steady_bytes=%zu after_bytes=%zu steady_delta_bytes=%lld\n",
         heap_before, steady_heap, heap_after, steady_delta);
-    // Two MiB of slack covers allocator bookkeeping; a per-round leak of the
-    // 64-cube batch would exceed it long before the final round.
-    if (!check(steady_delta < 2LL * 1024 * 1024, "churn heap stays near its steady state")) {
+    // ASan's quarantine and libc++ allocation metadata are charged to the
+    // process heap statistics, so its baseline noise is larger even when the
+    // scene returns to the same object counts. The sanitizer still reports
+    // invalid accesses; this threshold only avoids treating that bookkeeping
+    // as a gameplay leak. A per-round leak remains far above either bound.
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    constexpr long long heap_slack_bytes = 16LL * 1024 * 1024;
+#else
+    constexpr long long heap_slack_bytes = 2LL * 1024 * 1024;
+#endif
+#else
+    constexpr long long heap_slack_bytes = 2LL * 1024 * 1024;
+#endif
+    if (!check(steady_delta < heap_slack_bytes, "churn heap stays near its steady state")) {
         return false;
     }
     return true;

@@ -11,10 +11,10 @@ process, so a sanitizer finding turns into a nonzero exit status the runner
 already relays. The probe exits with `std::_Exit`, so leak detection does not
 run; this catches memory and undefined-behaviour errors during the run.
 
-`ELISA_SANITIZER=undefined` selects a UBSan-only build. That flavor is what the
-full graphics probe currently runs under: AddressSanitizer aborts before `main`
-inside this session's sandbox, while the boundary harness still runs the full
-ASan+UBSan pair.
+`ELISA_SANITIZER=undefined` selects a UBSan-only build. The full graphics probe
+runs successfully under both UBSan and ASan+UBSan with the SDL3-native Wicked
+build; the boundary harness runs the same sanitizer pair over the smaller FFI
+surface.
 """
 
 import os
