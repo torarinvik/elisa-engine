@@ -1,12 +1,12 @@
-"""Enforce the repository's maximum Elisa source-file length."""
+"""Enforce the repository's maximum engine-source file length."""
 
 from pathlib import Path
 import sys
 
 
 MAX_SOURCE_LINES = 600
-SOURCE_ROOTS = ("src", "test", "proof", "examples", "scripts")
-SOURCE_SUFFIXES = (".elisa", ".elisascript")
+SOURCE_ROOTS = ("src", "test", "proof", "examples", "scripts", "native", "backends")
+SOURCE_SUFFIXES = (".elisa", ".elisascript", ".cpp", ".h", ".py", ".gd")
 
 
 def source_files(root: Path):
