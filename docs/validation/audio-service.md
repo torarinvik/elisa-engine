@@ -5,8 +5,9 @@ miniaudio context and playback device, decodes bounded clips before publishing
 them, and mixes fixed clip and voice slots in the device callback. It provides
 music, SFX, and UI buses with bounded budgets, gain, and priority-based voice
 stealing. Clip and voice handles carry generations, so a stopped or shut-down
-voice cannot be used accidentally. It also exposes explicit listener state and
-a device reopen operation; the callback performs no allocation or file IO.
+voice cannot be used accidentally. It also exposes explicit listener state,
+distance attenuation for spatialized sources, and a device reopen operation;
+the callback performs no allocation or file IO.
 
 ## Evidence
 
@@ -24,6 +25,6 @@ sanitized boundary harness passed: no AddressSanitizer or UBSan finding
 ```
 
 The null backend makes this check deterministic on headless machines. Device
-reopen and bounded bus/voice policy are covered here. Streamed clips, gain
-ramping, spatial attachment, and gameplay event ownership remain follow-up
-work under S02–S05.
+reopen, bounded bus/voice policy, and listener-relative distance attenuation
+are covered here. Streamed clips, gain ramping, occlusion, Doppler, entity
+attachment, and gameplay event ownership remain follow-up work under S02–S05.

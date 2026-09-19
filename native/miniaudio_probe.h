@@ -154,6 +154,30 @@ inline bool probe_miniaudio() {
     if (!check(muted.slot < audio::MAX_VOICES && silent, "miniaudio service mutes a bus without stopping voices")) {
         return false;
     }
+    service.stop(muted);
+    const audio::VoiceHandle near_source = service.play(clip, false, audio::Bus::Sfx);
+    if (!check(service.set_voice_position(near_source, 1.0f, 2.0f, 3.0f) &&
+        service.set_voice_range(near_source, 1.0f, 4.0f), "miniaudio service attaches a source")) {
+        return false;
+    }
+    std::vector<int16_t> near_mix(8);
+    service.mix_for_test(near_mix.data(), 8);
+    bool near_signal = false;
+    for (const int16_t sample : near_mix) near_signal = near_signal || sample != 0;
+    if (!check(near_signal, "miniaudio service attenuates at the listener")) {
+        return false;
+    }
+    if (!check(service.set_voice_position(near_source, 100.0f, 100.0f, 100.0f),
+            "miniaudio service moves a source")) {
+        return false;
+    }
+    std::vector<int16_t> far_mix(8);
+    service.mix_for_test(far_mix.data(), 8);
+    bool far_silent = true;
+    for (const int16_t sample : far_mix) far_silent = far_silent && sample == 0;
+    if (!check(far_silent, "miniaudio service attenuates a distant source")) {
+        return false;
+    }
     service.shutdown();
     return check(!service.voice_live(second) && !service.voice_live(reopened),
         "miniaudio service invalidates voices on shutdown");

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -193,6 +194,24 @@ public:
         return true;
     }
 
+    bool set_voice_position(VoiceHandle handle, float x, float y, float z) {
+        if (!voice_live(handle)) return false;
+        Voice& voice = voices_[handle.slot];
+        voice.position[0] = x;
+        voice.position[1] = y;
+        voice.position[2] = z;
+        voice.spatialized = true;
+        return true;
+    }
+
+    bool set_voice_range(VoiceHandle handle, float minimum, float maximum) {
+        if (!voice_live(handle) || minimum < 0.0f || maximum <= minimum) return false;
+        Voice& voice = voices_[handle.slot];
+        voice.minimum_distance = minimum;
+        voice.maximum_distance = maximum;
+        return true;
+    }
+
     bool voice_live(VoiceHandle handle) const {
         return handle.slot < MAX_VOICES && voices_[handle.slot].live &&
             voices_[handle.slot].generation == handle.generation;
@@ -226,6 +245,10 @@ private:
         uint8_t bus = static_cast<uint8_t>(Bus::Sfx);
         float gain = 1.0f;
         uint32_t priority = 0;
+        float position[3] = {};
+        float minimum_distance = 1.0f;
+        float maximum_distance = 32.0f;
+        bool spatialized = false;
         bool live = false;
     };
 
@@ -254,7 +277,19 @@ private:
         for (Voice& voice : voices_) {
             if (!voice.live || voice.clip >= MAX_CLIPS || !clips_[voice.clip].live) continue;
             Clip& clip = clips_[voice.clip];
-            const float gain = voice.gain * bus_gains_[voice.bus];
+            float spatial_gain = 1.0f;
+            if (voice.spatialized) {
+                const float dx = voice.position[0] - listener_.position[0];
+                const float dy = voice.position[1] - listener_.position[1];
+                const float dz = voice.position[2] - listener_.position[2];
+                const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (distance >= voice.maximum_distance) spatial_gain = 0.0f;
+                else if (distance > voice.minimum_distance) {
+                    spatial_gain = (voice.maximum_distance - distance) /
+                        (voice.maximum_distance - voice.minimum_distance);
+                }
+            }
+            const float gain = voice.gain * bus_gains_[voice.bus] * spatial_gain;
             for (uint32_t frame = 0; frame < frames; ++frame) {
                 if (voice.cursor >= clip.samples.size() / clip.channels) {
                     if (!voice.looped) { voice.live = false; break; }
