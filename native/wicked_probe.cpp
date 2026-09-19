@@ -35,6 +35,7 @@
 #include "tracy_probe.h"
 #include "audio_probe.h"
 #include "probe_diagnostics.h"
+#include "png_capture.h"
 
 using namespace probe;
 
@@ -543,7 +544,7 @@ int main(int argc, char** argv) {
     if (!check(presented.IsValid(), "presented frame")) {
         return 1;
     }
-    if (!check(wi::helper::saveTextureToFile(presented, screenshot_path), "frame encode")) {
+    if (!check(save_rgba_png(presented, screenshot_path), "frame encode")) {
         return 1;
     }
     std::fprintf(stdout, "scene screenshot saved\n");

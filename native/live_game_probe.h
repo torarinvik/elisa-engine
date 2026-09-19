@@ -12,6 +12,7 @@
 #include "probe_core.h"
 #include "probe_support.h"
 #include "libmaze.h"
+#include "png_capture.h"
 
 #include <SDL2/SDL.h>
 #include <cstdio>
@@ -93,7 +94,7 @@ inline bool probe_live_game_rendering(wi::Application& application, wi::scene::S
         return false;
     }
     const std::string live_path = live_screenshot_path(screenshot_path);
-    if (!check(wi::helper::saveTextureToFile(presented, live_path), "live frame encode")) {
+    if (!check(save_rgba_png(presented, live_path), "live frame encode")) {
         return false;
     }
     std::fprintf(stdout, "wicked live game: key=d move=%d player=(%d,%d) frame=%s\n",
