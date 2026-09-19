@@ -3,6 +3,7 @@
 # cannot create a second authoritative copy of editor state.
 include "inspector_view.elisa"
 include "asset_browser.elisa"
+include "editor.elisa"
 include "../ui/widgets.elisa"
 
 module EditorSession:
@@ -23,6 +24,8 @@ module EditorSession:
             WidgetCapacity
             WidgetInvalid
             WidgetDuplicate
+            HistoryEmpty
+            HistoryApply
 
         struct Session:
             inspector: mutable InspectorView::Model
@@ -31,6 +34,7 @@ module EditorSession:
             panel: mutable Panel
             revision: mutable i64
             dirty: mutable bool
+            history: mutable Editor::History
 
         def Session() -> Session:
             Session{
@@ -40,12 +44,14 @@ module EditorSession:
                 panel: Panel.Inspector,
                 revision: 0,
                 dirty: false,
+                history: Editor::History(),
             }
 
         def session_valid(session: Session&) -> bool:
             return false if not InspectorView::model_valid(&session.inspector)
             return false if not AssetBrowser::browser_valid(&session.assets)
             return false if not UiWidgets::surface_valid(&session.widgets)
+            return false if not Editor::history_valid(&session.history)
             session.revision >= 0
 
         def active_panel(session: Session&) -> Panel:
@@ -73,6 +79,7 @@ module EditorSession:
                         raise EditorSession::SessionError.FieldUnknown if code == 1
                         raise EditorSession::SessionError.FieldInvalid if code == 2
                         raise EditorSession::SessionError.FieldRange if code == 3
+                        raise EditorSession::SessionError.HistoryApply if code == 4
 
                     def map_asset_error(code: i32) -> void error[EditorSession::SessionError]:
                         raise EditorSession::SessionError.AssetCapacity if code == 1
@@ -96,10 +103,27 @@ module EditorSession:
                 result
 
             def edit_field(session: mutable Session&, target: i64, next_value: i64) -> void error[SessionError]:
+                raise SessionError.HistoryApply if Editor::history_full(&session.history)
+                before: i64 = InspectorView::field_value(&session.inspector, target)
                 result: i32 = apply_field(&session.inspector, target, next_value)
-                raise SessionError.FieldUnknown if result == 1
-                raise SessionError.FieldInvalid if result == 2
-                raise SessionError.FieldRange if result == 3
+                Changes::map_field_error(result)
+                raise SessionError.HistoryApply if not Editor::history_push(&session.history, target, before, next_value)
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
+            def undo_edit(session: mutable Session&) -> void error[SessionError]:
+                raise SessionError.HistoryEmpty if not Editor::history_can_undo(&session.history)
+                change: Editor::UndoResult = Editor::history_undo(&session.history)
+                result: i32 = apply_field(&session.inspector, change.target, change.value)
+                Changes::map_field_error(result)
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
+            def redo_edit(session: mutable Session&) -> void error[SessionError]:
+                raise SessionError.HistoryEmpty if not Editor::history_can_redo(&session.history)
+                change: Editor::UndoResult = Editor::history_redo(&session.history)
+                result: i32 = apply_field(&session.inspector, change.target, change.value)
+                Changes::map_field_error(result)
                 session.revision <- session.revision + 1
                 session.dirty <- true
 

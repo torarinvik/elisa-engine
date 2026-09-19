@@ -19,6 +19,24 @@ def main() -> i32:
         SessionError.FieldRange: 3
         error failure: 4
     return 3 if edited != 0 or revision(&session) != 1
+    undone: i32 = catch undo_edit(&session):
+        ok: 0
+        SessionError.HistoryEmpty: 1
+        SessionError.FieldUnknown: 2
+        SessionError.FieldInvalid: 3
+        SessionError.FieldRange: 4
+        SessionError.HistoryApply: 5
+        error failure: 6
+    return 4 if undone != 0 or InspectorView::field_at(&session.inspector, 0).value != 1 or revision(&session) != 2
+    redone: i32 = catch redo_edit(&session):
+        ok: 0
+        SessionError.HistoryEmpty: 1
+        SessionError.FieldUnknown: 2
+        SessionError.FieldInvalid: 3
+        SessionError.FieldRange: 4
+        SessionError.HistoryApply: 5
+        error failure: 6
+    return 5 if redone != 0 or InspectorView::field_at(&session.inspector, 0).value != 5 or revision(&session) != 3
     id: Assets::AssetId = Assets::AssetId{high: 4, low: 5}
     added: i32 = catch add_asset(&session, id, 0):
         ok: 0
@@ -27,8 +45,8 @@ def main() -> i32:
         SessionError.AssetDuplicate: 3
         SessionError.AssetUnknown: 4
         error failure: 5
-    return 4 if added != 0
-    return 5 if revision(&session) != 2 or not dirty(&session)
+    return 6 if added != 0
+    return 7 if revision(&session) != 4 or not dirty(&session)
     widget: UiWidgets::Widget = UiWidgets::Widget{id: 9, kind: UiWidgets::WidgetKind.Button, x: 0, y: 0, width: 8, height: 8, value: 0, minimum: 0, maximum: 0, enabled: true, visible: true}
     attached: i32 = catch attach_widget(&session, widget):
         ok: 0
@@ -36,8 +54,8 @@ def main() -> i32:
         SessionError.WidgetInvalid: 2
         SessionError.WidgetDuplicate: 3
         error failure: 4
-    return 6 if attached != 0
-    return 7 if revision(&session) != 3
-    return 8 if not dirty(&session)
-    return 9 if not session_valid(&session)
+    return 8 if attached != 0
+    return 9 if revision(&session) != 5
+    return 10 if not dirty(&session)
+    return 11 if not session_valid(&session)
     0

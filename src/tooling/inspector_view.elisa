@@ -75,6 +75,11 @@ module InspectorView:
                 return Field{target: 0, kind: FieldKind.Number, value: 0, minimum: 0, maximum: 0, editable: false} if index >= model.count
                 model.fields[index]
 
+            def field_value(model: Model&, target: i64) -> i64:
+                index: usize = Find::index_of(model, target)
+                return 0 if index == Bounds::INVALID_INDEX
+                model.fields[index].value
+
             def add_field(model: mutable Model&, field: Field) -> void error[FieldError]:
                 raise FieldError.Capacity if model.count >= Bounds::MAX_FIELDS
                 raise FieldError.InvalidField if not field_valid(field)

@@ -21,6 +21,7 @@ module Editor:
             position: mutable usize
 
         struct UndoResult:
+            target: i64
             value: i64
             applied: bool
 
@@ -40,6 +41,9 @@ module Editor:
 
         def history_can_redo(history: History&) -> bool:
             history.position < history.length
+
+        def history_full(history: History&) -> bool:
+            history.length >= Tune::MAX_EDITS
 
         def Reloads() -> Reloads:
             Reloads{assets: zeroed, generations: zeroed, count: 0}
@@ -69,13 +73,13 @@ module Editor:
                     true
 
                 def step_back(history: mutable Editor::History&) -> Editor::UndoResult:
-                    return Editor::UndoResult{value: 0, applied: false} if history.position == 0
+                    return Editor::UndoResult{target: 0, value: 0, applied: false} if history.position == 0
                     history.position <- history.position - 1
-                    Editor::UndoResult{value: history.edits[history.position].before, applied: true}
+                    Editor::UndoResult{target: history.edits[history.position].target, value: history.edits[history.position].before, applied: true}
 
                 def step_forward(history: mutable Editor::History&) -> Editor::UndoResult:
-                    return Editor::UndoResult{value: 0, applied: false} if history.position >= history.length
-                    result: Editor::UndoResult = Editor::UndoResult{value: history.edits[history.position].after, applied: true}
+                    return Editor::UndoResult{target: 0, value: 0, applied: false} if history.position >= history.length
+                    result: Editor::UndoResult = Editor::UndoResult{target: history.edits[history.position].target, value: history.edits[history.position].after, applied: true}
                     history.position <- history.position + 1
                     result
 
