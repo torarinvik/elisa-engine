@@ -21,8 +21,7 @@ rendered host used by the validation workflow.
 The SDL3 window and Wicked application boundary now live in
 `native/native_application.h`. `native/wicked_probe.cpp` consumes that
 `NativeApplication` lifecycle instead of creating SDL and Wicked state inline;
-the probe still deliberately runs a finite diagnostic client and uses the
-existing forced-exit workaround until F05 supplies orderly Wicked teardown.
+both finite and persistent modes use the same ordered shutdown boundary.
 
 After device initialization the native gate queries the adapter name, shader
 format, viewport limit, video-memory budget/usage, mesh-shader, ray-tracing,
@@ -45,13 +44,13 @@ Elisa world. The finite native gate injects focus/minimize/restore and
 pixel-size events, toggles fullscreen, and checks state transitions and the
 monotonic resize serial.
 
-`NativeApplication::shutdown()` provides the host-local half of orderly
-shutdown (GPU wait, window detachment, SDL destruction). The optional
-`ELISA_ORDERLY_SHUTDOWN=1` probe is intentionally not part of the green gate:
-the pinned Wicked worker systems still lack a public process-wide shutdown and
-the full graphics run does not complete that mode reliably. This limitation is
-tracked in [`docs/validation/orderly-shutdown.md`](validation/orderly-shutdown.md)
-and keeps F05 open.
+`NativeApplication::shutdown()` waits for GPU work, destroys the Wicked
+application before SDL, calls the pinned SDL3-safe `wi::audio::Shutdown()` hook,
+then destroys the window and quits SDL. `ELISA_ORDERLY_SHUTDOWN=1` exercises
+the boundary in both finite gate passes; persistent close/restart is also
+covered by `ELISA_PERSISTENT_SELF_TEST=1`. The pinned worker systems still do
+not expose a general callback-drain API, so repeated restart leak accounting
+remains open under F05.
 
 ## Prerequisites and commands
 
@@ -155,8 +154,8 @@ For manual host work, set `ELISA_PERSISTENT_HOST=1` before launching the built
 probe. The same scene then opens as a visible client and runs until SDL close;
 W/A/S/D reaches Elisa through the C ABI, P pauses input, and R restarts the
 Elisa game state. The default validation invocation remains finite. Persistent
-mode still ends at the known forced-exit boundary until F05 can prove Wicked's
-ordered global teardown, and it requires an interactive graphics session.
+mode returns through the same host shutdown boundary and requires an
+interactive graphics session.
 For a deterministic event-loop check, add `ELISA_PERSISTENT_SELF_TEST=1`; the
 probe injects pause/resume, restart, movement, and close events and exits 0 only
 when all state transitions are observed. This validates the reusable loop but

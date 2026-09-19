@@ -5,6 +5,7 @@
 // uses the same object as any future persistent game host, while its finite
 // diagnostics remain a client concern.
 #include "wiApplication.h"
+#include "wiAudio.h"
 #include "wiGraphics.h"
 #include "wiInitializer.h"
 #include "frame_pacer.h"
@@ -13,6 +14,7 @@
 
 #include <cstdio>
 #include <chrono>
+#include <memory>
 #include <utility>
 
 namespace probe {
@@ -44,7 +46,7 @@ public:
     };
 
     NativeApplication() = default;
-    ~NativeApplication() = default;
+    ~NativeApplication() { shutdown(); }
     NativeApplication(const NativeApplication&) = delete;
     NativeApplication& operator=(const NativeApplication&) = delete;
 
@@ -76,8 +78,9 @@ public:
             SDL_Quit();
             return false;
         }
-        application_.SetWindow(reinterpret_cast<wi::platform::window_type>(cocoa_window));
-        application_.Initialize();
+        application_ = std::make_unique<wi::Application>();
+        application_->SetWindow(reinterpret_cast<wi::platform::window_type>(cocoa_window));
+        application_->Initialize();
         wi::initializer::WaitForInitializationsToFinish();
         initialized_ = true;
         close_requested_ = false;
@@ -106,7 +109,7 @@ public:
     }
 
     void run_frame() {
-        application_.Run();
+        application_->Run();
     }
 
     template <typename Step>
@@ -131,10 +134,9 @@ public:
         return true;
     }
 
-    // Releases work owned by this host before SDL disappears. Wicked's
-    // process-wide worker services remain outside this wrapper; callers can
-    // use this boundary to test whether the pinned build tolerates normal
-    // C++ destruction instead of the finite probe's forced exit.
+    // Releases host-owned work before SDL disappears. The pinned Wicked
+    // audio hook is called while SDL is alive; process-wide worker accounting
+    // remains a separate engine-level contract.
     void shutdown() {
         if (!initialized_) {
             return;
@@ -142,7 +144,12 @@ public:
         if (wi::graphics::GetDevice() != nullptr) {
             wi::graphics::GetDevice()->WaitForGPU();
         }
-        application_.window = nullptr;
+        if (application_ != nullptr) {
+            application_->window = nullptr;
+            application_.reset();
+            wi::graphics::GetDevice() = nullptr;
+        }
+        wi::audio::Shutdown();
         if (window_ != nullptr) {
             SDL_DestroyWindow(window_);
             window_ = nullptr;
@@ -169,11 +176,11 @@ public:
     }
 
     wi::Application& wicked() {
-        return application_;
+        return *application_;
     }
 
     const wi::Application& wicked() const {
-        return application_;
+        return *application_;
     }
 
 private:
@@ -229,7 +236,7 @@ private:
     }
 
     SDL_Window* window_ = nullptr;
-    wi::Application application_;
+    std::unique_ptr<wi::Application> application_;
     FixedStepPacer pacer_;
     WindowState window_state_;
     bool initialized_ = false;

@@ -430,10 +430,9 @@ int main(int argc, char** argv) {
     }
     if (persistent_host) {
         const int persistent_status = run_persistent_game(application_host, scene, object);
-        // Wicked's global worker systems still lack a public shutdown API;
-        // F05 replaces this final process boundary with ordered teardown.
-        std::fflush(stdout);
-        std::_Exit(persistent_status);
+        application_host.shutdown();
+        std::fprintf(stdout, "orderly native shutdown passed\n");
+        return persistent_status;
     }
     std::fprintf(stdout, "pre-frames aabb=%u matrices=%u objects=%u\n",
         (unsigned)scene.aabb_objects.size(), (unsigned)scene.matrix_objects.size(),
@@ -593,8 +592,7 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "scene despawn passed\n");
 
-    if (std::getenv("ELISA_ORDERLY_SHUTDOWN") != nullptr) { application_host.shutdown(); std::fprintf(stdout, "orderly native shutdown passed\n"); return 0; }
-    // The finite probe keeps the known global-worker workaround.
-    std::fflush(stdout);
-    std::_Exit(0);
+    application_host.shutdown();
+    std::fprintf(stdout, "orderly native shutdown passed\n");
+    return 0;
 }

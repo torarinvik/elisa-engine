@@ -31,7 +31,7 @@ The checked world, private owner fields, expression style, affine rejection fixt
 maze gameplay, scene recorder, asset cooking, and implementation-linked proofs exist.
 Preserve them. The current runtime executor is a **serial reference**, not a thread pool.
 `native/wicked_probe.cpp` is a finite diagnostic host: it uses a canonical manifest,
-synthetic input, library probes, and `std::_Exit(0)`. It is not a general game runner.
+synthetic input, and library probes. It is not a general game runner.
 Jolt currently appears through Wicked's physics path; ozz, Recast/Detour, miniaudio,
 Tracy, text, and GNS have integration evidence of varying depth, often probe-only.
 A linked library, a policy enum, or one successful scene is not a public runtime service.
@@ -98,6 +98,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Evidence: [`docs/validation/service-abi.md`](docs/validation/service-abi.md), `python3 scripts/embed_probe.py` passed the generated Elisa archive through `ElisaServiceV1`, including create/update/query/destroy, version/size/allocator/buffer/stale-handle rejection, and ABI static assertions; committed with the implementation. F02 remains a separate persistent-host gate.
 - [ ] **F05 · P0 · Orderly startup and shutdown** — After: F04.
   Replace the normal runner's `_Exit` path with ordered world teardown, callback drain, audio stop, GPU completion, and worker/device/window cleanup; investigate and patch pinned Wicked lifetime gaps. Done: partial-initialization failure and repeated scene restart leak no resources; normal process exit succeeds without forced termination.
+  Progress: `NativeApplication` now owns Wicked through an explicit destruction boundary, waits for GPU work, clears the global graphics device, calls the pinned Wicked `wi::audio::Shutdown()` SDL3 lifetime hook, destroys the window, and quits SDL; both finite probe passes and the persistent self-test return normally with `ELISA_ORDERLY_SHUTDOWN=1`. Repeated restart leak accounting and a general worker/callback drain API remain.
 - [ ] **F06 · P0 · Native resource handles and retirement** — After: F04.
   Generalize existing generation/epoch and submission-lifetime contracts to real mesh, material, texture, body, and voice handles; separate logical destruction from fence-delayed release. Done: stale/cross-world handles, generation exhaustion, failed creation, and destroy-while-in-flight are exercised against real resources.
   Progress: `native/resource_handles.h` now tags deferred entity retirement with a GPU submission serial; the native probe proves logical invalidation, incomplete-fence retention, completed-fence collection, stale/cross-scene rejection, slot protection, and generation reuse. Dedicated material, texture, body, voice pools and generation-exhaustion injection remain.
