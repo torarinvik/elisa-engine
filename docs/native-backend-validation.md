@@ -104,6 +104,15 @@ The shared native conversion in `native/coordinate_conventions.h` owns the
 right-handed Elisa-to-left-handed Wicked X flip and the grid spacing/origin;
 walls, markers, live input, and route replay all use that one conversion.
 
+The offline cooker records each package in a versioned SQLite catalogue. Its
+WAL journal and immediate write transaction make a crashed cook roll back
+without corrupting prior rows; source/content/settings keys and a unique cache
+key make repeated or concurrent requests converge on one ready artifact. The
+catalogue also stores embedded-source dependencies and a diagnostic row. The
+cooker self-test opens the database again after a rollback and checks the
+single-row cache invariant, while `record_validation_assets.py` checks the
+schema and dependency/cache rows produced by the real maze cook.
+
 For manual host work, set `ELISA_PERSISTENT_HOST=1` before launching the built
 probe. The same scene then opens as a visible client and runs until SDL close;
 W/A/S/D reaches Elisa through the C ABI, P pauses input, and R restarts the

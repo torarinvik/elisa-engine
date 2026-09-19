@@ -14,6 +14,7 @@ rather than producing a package that disagrees with the fixture.
 """
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -203,23 +204,49 @@ def normalized_geometry(document: dict, buffer: bytes):
 
 
 def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> Path:
-    # The toolkit keeps a persistent catalogue (SQLite) of cooked assets, so a
-    # later tool can look up a source by its content hash without re-parsing the
-    # package. The runtime does not read this database.
+    # SQLite is the editor/tooling catalogue. WAL plus an immediate transaction
+    # makes an interrupted cook recoverable and serializes concurrent cooks;
+    # unique cache keys make duplicate requests idempotent after restart.
     database = root / "build/catalogue.db"
     database.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database)
+    source_id = hashlib.sha256(("source:" + asset_rel).encode()).hexdigest()
+    settings_hash = hashlib.sha256((PACKAGE_FORMAT + ":default").encode()).hexdigest()
+    cache_key = hashlib.sha256((source_id + digest + settings_hash).encode()).hexdigest()
+    connection = sqlite3.connect(database, timeout=30.0)
     try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute("PRAGMA foreign_keys=ON")
         connection.execute(
             "CREATE TABLE IF NOT EXISTS assets ("
-            "source TEXT PRIMARY KEY, sha256 TEXT NOT NULL, "
-            "triangles INTEGER NOT NULL, positions INTEGER NOT NULL)"
+            "source TEXT PRIMARY KEY, sha256 TEXT NOT NULL, triangles INTEGER NOT NULL, positions INTEGER NOT NULL, "
+            "source_id TEXT NOT NULL DEFAULT '', settings_hash TEXT NOT NULL DEFAULT '', "
+            "artifact_variant TEXT NOT NULL DEFAULT 'mesh-default', generation INTEGER NOT NULL DEFAULT 0)"
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(assets)")}
+        for name, declaration in (("source_id", "TEXT NOT NULL DEFAULT ''"), ("settings_hash", "TEXT NOT NULL DEFAULT ''"), ("artifact_variant", "TEXT NOT NULL DEFAULT 'mesh-default'"), ("generation", "INTEGER NOT NULL DEFAULT 0")):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE assets ADD COLUMN {name} {declaration}")
+        connection.executescript(
+            "CREATE TABLE IF NOT EXISTS dependencies (source TEXT NOT NULL, dependency TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY(source, dependency, kind));"
+            "CREATE TABLE IF NOT EXISTS diagnostics (source TEXT NOT NULL, severity TEXT NOT NULL, code TEXT NOT NULL, message TEXT NOT NULL, PRIMARY KEY(source, code));"
+            "CREATE TABLE IF NOT EXISTS cook_cache (cache_key TEXT PRIMARY KEY, source TEXT NOT NULL, content_hash TEXT NOT NULL, settings_hash TEXT NOT NULL, artifact_path TEXT NOT NULL, status TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS catalogue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        )
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("INSERT OR REPLACE INTO catalogue_meta(key, value) VALUES ('schema', '2')")
         connection.execute(
-            "INSERT INTO assets (source, sha256, triangles, positions) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(source) DO UPDATE SET "
-            "sha256=excluded.sha256, triangles=excluded.triangles, positions=excluded.positions",
-            (asset_rel, digest, counts["triangles"], counts["positions"]),
+            "INSERT INTO assets (source, sha256, triangles, positions, source_id, settings_hash, artifact_variant, generation) VALUES (?, ?, ?, ?, ?, ?, ?, 0) "
+            "ON CONFLICT(source) DO UPDATE SET sha256=excluded.sha256, triangles=excluded.triangles, positions=excluded.positions, source_id=excluded.source_id, settings_hash=excluded.settings_hash, artifact_variant=excluded.artifact_variant",
+            (asset_rel, digest, counts["triangles"], counts["positions"], source_id, settings_hash, "mesh-default"),
+        )
+        connection.execute("INSERT OR IGNORE INTO dependencies(source, dependency, kind) VALUES (?, ?, 'embedded-source')", (asset_rel, asset_rel))
+        connection.execute("DELETE FROM diagnostics WHERE source = ?", (asset_rel,))
+        connection.execute("INSERT INTO diagnostics(source, severity, code, message) VALUES (?, 'info', 'cook-ready', 'deterministic package recorded')", (asset_rel,))
+        connection.execute(
+            "INSERT INTO cook_cache(cache_key, source, content_hash, settings_hash, artifact_path, status) VALUES (?, ?, ?, ?, ?, 'ready') "
+            "ON CONFLICT(cache_key) DO UPDATE SET artifact_path=excluded.artifact_path, status='ready'",
+            (cache_key, asset_rel, digest, settings_hash, f"build/cooked/{Path(asset_rel).stem}.pkg"),
         )
         connection.commit()
     finally:
@@ -415,6 +442,28 @@ def self_test() -> int:
             failures += 1
         except declared:
             pass
+    # Catalogue recovery: a rolled-back writer leaves a valid database, and a
+    # repeated request after reopening reuses one deterministic cache row.
+    with tempfile.TemporaryDirectory(prefix="elisa-catalogue-") as workdir:
+        catalogue_root = Path(workdir)
+        sample_counts = {"triangles": 12, "positions": 24}
+        record_catalogue(catalogue_root, "examples/maze/assets/maze_tile.gltf", "abc", sample_counts)
+        connection = sqlite3.connect(catalogue_root / "build/catalogue.db")
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("INSERT OR IGNORE INTO diagnostics(source, severity, code, message) VALUES ('crash', 'error', 'partial', 'rolled back')")
+        connection.rollback()
+        connection.close()
+        def duplicate_request(_index: int) -> None:
+            record_catalogue(catalogue_root, "examples/maze/assets/maze_tile.gltf", "abc", sample_counts)
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            list(workers.map(duplicate_request, (0, 1)))
+        connection = sqlite3.connect(catalogue_root / "build/catalogue.db")
+        rows = connection.execute("SELECT COUNT(*), COUNT(DISTINCT cache_key) FROM cook_cache").fetchone()
+        schema = connection.execute("SELECT value FROM catalogue_meta WHERE key = 'schema'").fetchone()[0]
+        connection.close()
+        if rows != (1, 1) or schema != "2":
+            print("self-test: catalogue recovery/cache invariants failed", file=sys.stderr)
+            failures += 1
     # Fuzz the import boundary: structurally random documents must be rejected
     # with a declared error, never with an undeclared exception type.
     rng = random.Random(20260918)

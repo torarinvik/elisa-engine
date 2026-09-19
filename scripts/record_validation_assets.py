@@ -101,10 +101,13 @@ def asset_catalogue_database(root: Path) -> dict:
         raise ValueError("asset catalogue database is missing")
     connection = sqlite3.connect(database)
     try:
-        rows = connection.execute("SELECT source, sha256, triangles, positions FROM assets").fetchall()
+        rows = connection.execute("SELECT source, sha256, triangles, positions, source_id, settings_hash FROM assets").fetchall()
+        cache_rows = connection.execute("SELECT COUNT(*), COUNT(DISTINCT cache_key) FROM cook_cache WHERE status = 'ready'").fetchone()
+        dependency_rows = connection.execute("SELECT COUNT(*) FROM dependencies").fetchone()[0]
+        schema = connection.execute("SELECT value FROM catalogue_meta WHERE key = 'schema'").fetchone()
     finally:
         connection.close()
-    if len(rows) != 1:
+    if len(rows) != 1 or cache_rows != (1, 1) or dependency_rows < 1 or schema != ("2",):
         raise ValueError(f"asset catalogue expected one row, found {len(rows)}")
     manifest_values = {}
     for line in (root / "backends/scene_manifest.txt").read_text(encoding="utf-8").splitlines():
@@ -114,11 +117,11 @@ def asset_catalogue_database(root: Path) -> dict:
         key, value = text.split("=", 1)
         manifest_values[key.strip()] = value.strip()
     expected_triangles = int(manifest_values.get("mesh_triangles", "0"))
-    if rows[0][2] != expected_triangles:
+    if rows[0][2] != expected_triangles or not rows[0][4] or not rows[0][5]:
         raise ValueError(
             f"asset catalogue triangles {rows[0][2]} disagree with the fixture's {expected_triangles}")
     return {"sha256": sha256_file(database), "assets": len(rows),
-            "triangles": rows[0][2], "positions": rows[0][3]}
+            "triangles": rows[0][2], "positions": rows[0][3], "cache_rows": cache_rows[0]}
 
 
 def asset_import_self_test(root: Path) -> dict:

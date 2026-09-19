@@ -38,6 +38,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Host embedding via C ABI (drive + query + play through) | Tested + Implemented | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` |
 | Versioned C ABI descriptor, feature negotiation, bounded spans | Tested + Implemented | `native/service_abi.h`, `maze_abi_version`, `maze_feature_bits`, malformed-descriptor checks in `native/embed_probe.cpp` |
 | Stable source/content/artifact asset descriptor with schema, variant, settings, and dependencies | Tested | `src/assets/descriptor.elisa`, `test/assets.elisa` |
+| Transactional asset catalogue with dependency graph and deterministic cook cache | Tested + Implemented | `scripts/cook_assets.py`, `scripts/record_validation_assets.py`; WAL recovery, concurrent duplicate requests, diagnostics, dependencies, and cache reuse are covered by the cooker self-test and validation record |
 | C ABI bridge-call cost | Tested | `native/embed_probe.cpp` (100k exported query calls, `per_call_ns` printed) |
 | Embedded game agrees with the canonical fixture | Tested | `native/embed_probe.cpp` (`embed fixture` check) |
 | Godot host embeds Elisa gameplay through a hand-written GDExtension | Tested + Implemented | `backends/godot-embed/`, `scripts/godot_embed_probe.py` (full session matches the native embedding) |

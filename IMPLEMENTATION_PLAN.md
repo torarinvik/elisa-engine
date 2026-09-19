@@ -135,8 +135,9 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [x] **A01 · P0 · Stable asset identity and schema** — After: F01.
   Extend descriptors with distinct source identity, content hash, artifact variant, schema version, dependencies, and import settings. Done: renames preserve references; changing content/settings/tool versions invalidates exactly the affected artifacts; IDs are not process hashes or filesystem paths. Evidence: `Assets::AssetDescriptor` and `test/assets.elisa` in commit `f17ace0`; `../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/assets-test test/assets.elisa && build/assets-test` passed, including path-rename, content-change, schema, variant, and malformed-identity cases.
-- [ ] **A02 · P1 · Incremental asset database** — After: A01.
+- [x] **A02 · P1 · Incremental asset database** — After: A01.
   Extend the existing SQLite catalogue into a transactional dependency graph, import diagnostics, and deterministic cook cache; select the content-hash implementation from the chosen stack. Done: interrupted cooks recover, concurrent requests deduplicate, and reproducible cache hits survive process restart.
+  Evidence: [`docs/validation/asset-catalogue.md`](docs/validation/asset-catalogue.md), `scripts/cook_assets.py --self-test` passed (`7 crafted + 96 fuzzed documents rejected` plus rollback/concurrency/cache checks), real `python3 scripts/cook_assets.py "$PWD"` produced schema-2 catalogue rows, and `record_validation_assets.py` accepted the dependency/cache invariants; committed with the implementation.
 - [ ] **A03 · P1 · Runtime package and virtual filesystem** — After: A01, F04.
   Evolve current cooked packages into bounded indexed bundles with zstd, alignment, versioning, overrides, and async-friendly reads. Done: runtime loading works outside the checkout; traversal, overlapping sections, decompression bombs, and missing dependencies are rejected before allocation or upload.
 - [ ] **A04 · P1 · Asynchronous resource loader** — After: A02, A03, F06.
