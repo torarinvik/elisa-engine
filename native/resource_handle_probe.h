@@ -1,51 +1,95 @@
 #pragma once
 
 #include "probe_core.h"
+#include "probe_support.h"
 #include "resource_handles.h"
+#include "voice_handles.h"
 
 #include <cstdio>
 
 namespace probe {
 
 inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
-    NativeResourceRegistry resource_registry(scene);
-    const NativeResourceHandle handle_probe = resource_registry.create_cube("elisa_handle_probe");
-    if (!check(resource_registry.is_live(handle_probe), "native handle creation") ||
-        !check(resource_registry.resolve(handle_probe) != wi::ecs::INVALID_ENTITY, "native handle resolution")) {
+    NativeResourceRegistry registry(scene);
+    const NativeResourceHandle mesh = registry.create_cube("elisa_handle_mesh");
+    const NativeResourceHandle material = registry.create_material("elisa_handle_material");
+    const NativeResourceHandle body = registry.create_body("elisa_handle_body");
+    const NativeResourceHandle texture = registry.create_texture();
+    if (!check(registry.is_live(mesh) && mesh.kind == NativeResourceKind::Mesh,
+            "mesh handle creation") ||
+        !check(registry.is_live(material) && material.kind == NativeResourceKind::Material,
+            "material handle creation") ||
+        !check(registry.is_live(body) && scene.rigidbodies.GetComponent(registry.resolve(body)) != nullptr,
+            "body handle creation") ||
+        !check(registry.is_live(texture) && registry.resolve_texture(texture) != nullptr,
+            "texture handle creation")) {
         return false;
     }
-    const wi::ecs::Entity handle_entity = resource_registry.resolve(handle_probe);
-    if (!check(resource_registry.destroy_deferred(handle_probe, 7), "native handle logical destruction") ||
-        !check(!resource_registry.is_live(handle_probe), "stale native handle rejection") ||
-        !check(resource_registry.pending_retirements() == 1, "native handle retirement queued") ||
-        !check(scene.objects.GetComponent(handle_entity) != nullptr, "native handle waits for retirement")) {
+    const wi::ecs::Entity mesh_entity = registry.resolve(mesh);
+    if (!check(mesh_entity != wi::ecs::INVALID_ENTITY, "mesh handle resolution") ||
+        !check(registry.destroy(mesh), "mesh handle destruction") ||
+        !check(!registry.is_live(mesh), "stale mesh handle rejection") ||
+        !check(!registry.destroy(mesh), "double mesh destruction rejection")) {
         return false;
     }
-    const NativeResourceHandle reused_handle = resource_registry.create_cube("elisa_handle_reused");
-    if (!check(reused_handle.slot != handle_probe.slot, "native handle retirement protects slot") ||
-        !check(resource_registry.destroy(reused_handle), "reused native handle destruction")) {
+    if (!check(registry.destroy_deferred(texture, 7), "texture logical destruction") ||
+        !check(!registry.is_live(texture) && registry.pending_retirements() == 1,
+            "texture retirement queued") ||
+        !check(registry.resolve_texture(texture) == nullptr, "stale texture rejection")) {
         return false;
     }
-    resource_registry.collect_retired(6);
-    if (!check(resource_registry.pending_retirements() == 1 &&
-        scene.objects.GetComponent(handle_entity) != nullptr,
-        "native handle waits for incomplete submission")) {
+    registry.collect_retired(6);
+    if (!check(registry.pending_retirements() == 1, "texture waits for incomplete submission")) {
         return false;
     }
-    resource_registry.collect_retired(7);
-    if (!check(resource_registry.pending_retirements() == 0, "native handle retirement collected") ||
-        !check(scene.objects.GetComponent(handle_entity) == nullptr, "native handle resource removed")) {
+    registry.collect_retired(7);
+    if (!check(registry.pending_retirements() == 0, "texture retirement collected") ||
+        !check(registry.destroy(material), "material handle destruction") ||
+        !check(registry.destroy(body), "body handle destruction")) {
         return false;
     }
-    const NativeResourceHandle reclaimed = resource_registry.create_cube("elisa_handle_reclaimed");
-    if (!check(reclaimed.slot == handle_probe.slot && reclaimed.generation != handle_probe.generation,
-            "native handle generation increment") ||
-        !check(resource_registry.destroy(reclaimed), "reclaimed native handle destruction")) {
+    const NativeResourceHandle reclaimed = registry.create_cube("elisa_handle_reclaimed");
+    if (!check(reclaimed.kind == NativeResourceKind::Mesh && reclaimed.generation != mesh.generation,
+            "mesh generation reuse") ||
+        !check(registry.destroy(reclaimed), "reclaimed mesh destruction")) {
+        return false;
+    }
+    if (!check(registry.force_generation_for_test(NativeResourceKind::Material, material.slot, UINT32_MAX),
+            "material generation exhaustion setup") ||
+        !check(registry.create_material("elisa_generation_exhausted").slot == NativeResourceHandle::INVALID_SLOT,
+            "material generation exhaustion rejection")) {
         return false;
     }
     wi::scene::Scene other_scene;
     NativeResourceRegistry other_registry(other_scene);
-    return check(!other_registry.is_live(handle_probe), "cross-scene native handle rejection");
+    return check(!other_registry.is_live(material), "cross-scene resource rejection");
+}
+
+inline bool probe_native_voice_handles() {
+    audio::Service service;
+    if (!check(service.initialize_null(), "voice service initialization")) return false;
+    const std::vector<uint8_t> wav = make_test_wav(64, 8000);
+    const audio::ClipHandle clip = service.decode_clip(wav.data(), wav.size(), 8000, 1);
+    if (!check(clip.slot < audio::MAX_CLIPS, "voice clip creation")) return false;
+    NativeVoiceRegistry registry(service);
+    const NativeResourceHandle voice = registry.play(clip);
+    if (!check(registry.is_live(voice) && voice.kind == NativeResourceKind::Voice,
+            "voice handle creation")) return false;
+    if (!check(registry.destroy_deferred(voice, 3), "voice logical destruction") ||
+        !check(!registry.is_live(voice), "stale voice handle rejection")) return false;
+    registry.collect_retired(2);
+    registry.collect_retired(3);
+    if (!check(!service.voice_live(audio::VoiceHandle{voice.slot, voice.generation}),
+            "voice fence retirement")) return false;
+    const NativeResourceHandle reclaimed = registry.play(clip);
+    if (!check(reclaimed.generation != voice.generation, "voice generation reuse") ||
+        !check(registry.destroy(reclaimed), "voice destruction")) return false;
+    if (!check(registry.force_generation_for_test(reclaimed.slot, UINT32_MAX),
+            "voice generation exhaustion setup") ||
+        !check(registry.play(clip).slot == NativeResourceHandle::INVALID_SLOT,
+            "voice generation exhaustion rejection")) return false;
+    service.shutdown();
+    return check(!registry.is_live(reclaimed), "voice shutdown invalidation");
 }
 
 } // namespace probe

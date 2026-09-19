@@ -91,9 +91,11 @@ int main(int argc, char** argv) {
     }
     if (!probe_fixed_step_pacing()) return 1;
     if (!persistent_host && !probe_window_lifecycle(application_host)) return 1;
-
     wi::scene::Scene scene;
     if (!probe_native_resource_handles(scene)) {
+        return 1;
+    }
+    if (!probe_native_voice_handles()) {
         return 1;
     }
     const auto object = scene.Entity_CreateCube("elisa_cube_" + std::to_string(entity_id));
