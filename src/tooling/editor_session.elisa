@@ -188,3 +188,7 @@ module EditorSession:
 
             def clear_dirty(session: mutable Session&) -> void:
                 session.dirty <- false
+
+            def session_commit(session: mutable Session&) -> void error[SessionError]:
+                raise SessionError.InvalidSession if not session_valid(session)
+                session.dirty <- false
