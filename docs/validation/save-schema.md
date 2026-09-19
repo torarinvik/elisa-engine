@@ -11,5 +11,8 @@ abort leaves the document unchanged. The bounded document rejects invalid IDs,
 field counts, unknown records, corrupt checksums, and capacity overflow.
 
 `test/save_schema.elisa` covers commit, readback, migration, checksum
-validation, and abort isolation. File-level journaling and crash recovery still
-belong to the native persistence layer.
+validation, and abort isolation. `scripts/save_journal.py` adds the file-level
+transaction boundary: canonical bytes are fsynced before a journal record, the
+replacement is atomic, and recovery verifies the journal hash before completing
+an interrupted write. A corrupt or mismatched journal is discarded while the
+last complete target remains readable. Its self-test runs in the shared gate.
