@@ -207,9 +207,9 @@ int main(int argc, char** argv) {
             const std::filesystem::path asset_path = (manifest_dir / ".." / asset_it->second).lexically_normal();
             const int expected_triangles = std::stoi(triangles_it->second);
             const AssetSummary summary = import_gltf_triangles(asset_path.string());
-            std::fprintf(stdout, "mesh asset: triangles=%d expected=%d positions=%d nodes=%d primitives=%d cameras=%d lights=%d skins=%d animations=%d channels=%d morphs=%d\n",
+            std::fprintf(stdout, "mesh asset: triangles=%d expected=%d positions=%d nodes=%d primitives=%d materials=%d textures=%d cameras=%d lights=%d skins=%d animations=%d channels=%d morphs=%d\n",
                 summary.triangles, expected_triangles, summary.positions, summary.nodes, summary.primitives,
-                summary.cameras, summary.lights, summary.skins, summary.animations,
+                summary.materials, summary.texture_references, summary.cameras, summary.lights, summary.skins, summary.animations,
                 summary.animation_channels, summary.morph_targets);
             if (!check(summary.ok && summary.triangles == expected_triangles && summary.nodes > 0 &&
                 summary.primitives > 0 && summary.unsupported_extensions == 0, "normalized glTF scene traversal")) {

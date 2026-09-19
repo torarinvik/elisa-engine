@@ -22,6 +22,8 @@ struct AssetSummary {
     int positions = 0;
     int nodes = 0;
     int primitives = 0;
+    int materials = 0;
+    int texture_references = 0;
     int cameras = 0;
     int lights = 0;
     int skins = 0;
@@ -42,11 +44,25 @@ inline AssetSummary import_gltf_triangles(const std::string& path) {
     const bool loaded = cgltf_load_buffers(&options, data, path.c_str()) == cgltf_result_success;
     if (loaded && cgltf_validate(data) == cgltf_result_success) {
         summary.nodes = static_cast<int>(data->nodes_count);
+        summary.materials = static_cast<int>(data->materials_count);
         summary.cameras = static_cast<int>(data->cameras_count);
         summary.lights = static_cast<int>(data->lights_count);
         summary.skins = static_cast<int>(data->skins_count);
         summary.animations = static_cast<int>(data->animations_count);
         summary.unsupported_extensions = static_cast<int>(data->extensions_required_count);
+        for (cgltf_size material_index = 0; material_index < data->materials_count; ++material_index) {
+            const cgltf_material& material = data->materials[material_index];
+            if (material.has_pbr_metallic_roughness) {
+                const auto& pbr = material.pbr_metallic_roughness;
+                if (pbr.metallic_factor < 0.0f || pbr.metallic_factor > 1.0f ||
+                    pbr.roughness_factor < 0.0f || pbr.roughness_factor > 1.0f) summary.unsupported_extensions += 1;
+                if (pbr.base_color_texture.texture != nullptr) ++summary.texture_references;
+                if (pbr.metallic_roughness_texture.texture != nullptr) ++summary.texture_references;
+            }
+            if (material.normal_texture.texture != nullptr) ++summary.texture_references;
+            if (material.occlusion_texture.texture != nullptr) ++summary.texture_references;
+            if (material.emissive_texture.texture != nullptr) ++summary.texture_references;
+        }
         if (data->nodes_count > 4096 || data->meshes_count > 4096 || data->animations_count > 256) {
             summary.unsupported_extensions += 1;
         }
@@ -62,6 +78,10 @@ inline AssetSummary import_gltf_triangles(const std::string& path) {
                 const cgltf_primitive& primitive = mesh.primitives[primitive_index];
                 summary.primitives += 1;
                 summary.morph_targets += static_cast<int>(primitive.targets_count);
+                if (primitive.material != nullptr && (data->materials == nullptr ||
+                    primitive.material < data->materials || primitive.material >= data->materials + data->materials_count)) {
+                    summary.unsupported_extensions += 1;
+                }
                 if (primitive.type != cgltf_primitive_type_triangles || primitive.has_draco_mesh_compression) {
                     summary.unsupported_extensions += 1;
                 }
