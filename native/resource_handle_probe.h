@@ -60,6 +60,26 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
             "material generation exhaustion rejection")) {
         return false;
     }
+    const size_t objects_before_pressure = scene.objects.GetCount();
+    for (int round = 0; round < 4; ++round) {
+        std::vector<NativeResourceHandle> pressure;
+        pressure.reserve(16);
+        for (int index = 0; index < 16; ++index) {
+            pressure.push_back(registry.create_cube("elisa_handle_pressure"));
+        }
+        for (const NativeResourceHandle handle : pressure) {
+            if (!check(registry.is_live(handle) && registry.destroy(handle),
+                       "resource pressure destroy")) {
+                return false;
+            }
+        }
+        if (!check(scene.objects.GetCount() == objects_before_pressure,
+                   "resource pressure returns object baseline")) {
+            return false;
+        }
+    }
+    std::fprintf(stdout, "resource handle pressure: rounds=4 batch=16 baseline=%u\n",
+        (unsigned)objects_before_pressure);
     wi::scene::Scene other_scene;
     NativeResourceRegistry other_registry(other_scene);
     return check(!other_registry.is_live(material), "cross-scene resource rejection");
