@@ -11,9 +11,11 @@ import sys
 
 
 SOURCE_ROOT = Path("src")
+EXAMPLE_ROOT = Path("examples")
 ELISA_SUFFIX = ".elisa"
 TOP_LEVEL_MODULE = re.compile(r"^module\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 USING_DIRECTIVE = re.compile(r"^\s*using\s+[A-Za-z_][A-Za-z0-9_]*\s*$")
+LEGACY_CONSTRUCTOR = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_new\s*\(")
 OWNER_CONSTRUCTORS = {
     "EntityIdAllocator": Path("src/entity_id.elisa"),
     "World": Path("src/world/world.elisa"),
@@ -32,38 +34,48 @@ def policy(root: Path) -> dict[str, object]:
     module_names: dict[str, Path] = {}
     owner_constructors: list[str] = []
 
-    for path in sorted(source_root.rglob(f"*{ELISA_SUFFIX}")):
+    source_paths = sorted(source_root.rglob(f"*{ELISA_SUFFIX}"))
+    source_paths.extend(sorted((root / EXAMPLE_ROOT).rglob(f"*{ELISA_SUFFIX}")))
+    for path in source_paths:
         lines = path.read_text(encoding="utf-8").splitlines()
-        module = next(
-            (match for line in lines if (match := TOP_LEVEL_MODULE.match(line))),
-            None,
-        )
-        if module is None:
-            violations.append(f"{path.relative_to(root)}: missing top-level module declaration")
-        else:
-            name = module.group(1)
-            previous = module_names.get(name)
-            if previous is not None:
-                violations.append(
-                    f"{path.relative_to(root)}: module {name} duplicates {previous.relative_to(root)}"
-                )
-            module_names[name] = path
+        relative = path.relative_to(root)
+        is_production = relative.parts[0] == SOURCE_ROOT.name
+        if is_production:
+            module = next(
+                (match for line in lines if (match := TOP_LEVEL_MODULE.match(line))),
+                None,
+            )
+            if module is None:
+                violations.append(f"{relative}: missing top-level module declaration")
+            else:
+                name = module.group(1)
+                previous = module_names.get(name)
+                if previous is not None:
+                    violations.append(
+                        f"{relative}: module {name} duplicates {previous.relative_to(root)}"
+                    )
+                module_names[name] = path
 
         for line_number, line in enumerate(lines, start=1):
-            if USING_DIRECTIVE.match(line):
+            if is_production and USING_DIRECTIVE.match(line):
                 violations.append(
-                    f"{path.relative_to(root)}:{line_number}: production modules must qualify dependencies"
+                    f"{relative}:{line_number}: production modules must qualify dependencies"
                 )
             for name, pattern in OWNER_CONSTRUCTION.items():
+                if not is_production:
+                    break
                 if not pattern.search(line):
                     continue
                 owner = OWNER_CONSTRUCTORS[name]
-                relative = path.relative_to(root)
                 owner_constructors.append(f"{relative}:{line_number}:{name}")
                 if relative != owner:
                     violations.append(
                         f"{relative}:{line_number}: {name} construction belongs in {owner}"
                     )
+            if LEGACY_CONSTRUCTOR.search(line):
+                violations.append(
+                    f"{path.relative_to(root)}:{line_number}: use named constructor syntax instead of *_new(...)"
+                )
 
     return {
         "status": "passed" if not violations else "failed",
