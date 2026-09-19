@@ -68,19 +68,16 @@ module FakeBridge:
                 FakeBridge::Limits::FIRST_GENERATION if current == 0 else current + 1
 
             def free_resource_slot(bridge: FakeBridge::Bridge&) -> usize:
-                for index in 0..<FakeBridge::Limits::MAX_RESOURCES:
-                    return index if bridge.resources[index].live == 0
-                FakeBridge::Limits::INVALID_SLOT
+                for index in 0..<FakeBridge::Limits::MAX_RESOURCES |slot: usize = FakeBridge::Limits::INVALID_SLOT| -> slot:
+                    break index if bridge.resources[index].live == 0
 
             def free_upload_slot(bridge: FakeBridge::Bridge&) -> usize:
-                for index in 0..<FakeBridge::Limits::MAX_UPLOADS:
-                    return index if bridge.uploads[index].live == 0
-                FakeBridge::Limits::INVALID_SLOT
+                for index in 0..<FakeBridge::Limits::MAX_UPLOADS |slot: usize = FakeBridge::Limits::INVALID_SLOT| -> slot:
+                    break index if bridge.uploads[index].live == 0
 
             def free_callback_slot(bridge: FakeBridge::Bridge&) -> usize:
-                for index in 0..<FakeBridge::Limits::MAX_CALLBACKS:
-                    return index if bridge.callbacks[index].live == 0
-                FakeBridge::Limits::INVALID_SLOT
+                for index in 0..<FakeBridge::Limits::MAX_CALLBACKS |slot: usize = FakeBridge::Limits::INVALID_SLOT| -> slot:
+                    break index if bridge.callbacks[index].live == 0
 
             def resource_valid(bridge: FakeBridge::Bridge&, handle: FakeBridge::ResourceHandle) -> bool:
                 handle.slot < FakeBridge::Limits::MAX_RESOURCES and bridge.resources[handle.slot].live != 0 and bridge.resources[handle.slot].generation == handle.generation
