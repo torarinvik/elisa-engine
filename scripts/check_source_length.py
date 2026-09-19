@@ -5,11 +5,14 @@ import sys
 
 
 MAX_SOURCE_LINES = 600
-SOURCE_ROOTS = ("src", "test", "proof", "examples", "scripts", "native", "backends")
-SOURCE_SUFFIXES = (".elisa", ".elisascript", ".cpp", ".h", ".py", ".gd")
+SOURCE_ROOTS = ("src", "test", "proof", "examples", "scripts", "native", "backends", "docs")
+SOURCE_SUFFIXES = (".elisa", ".elisascript", ".cpp", ".h", ".py", ".gd", ".md")
 
 
 def source_files(root: Path):
+    plan = root / "Elisa_Engine_Architecture_and_Plan.md"
+    if plan.is_file():
+        yield plan
     for directory in SOURCE_ROOTS:
         base = root / directory
         if base.is_dir():
