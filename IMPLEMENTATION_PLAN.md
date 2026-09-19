@@ -107,7 +107,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 - [ ] **F09 · P0 · SDL3 lifecycle and frame pacing** — After: F02, F07.
   Handle focus, high-DPI resize, minimize, fullscreen, display changes, close, and suspended simulation; separate fixed ticks from presentation. Done: zero-sized windows and variable render cadence do not corrupt simulation, busy-spin, stretch viewports, or lose input transitions. Progress: `NativeApplication::advance_fixed` now wires the bounded integer-nanosecond pacer into the persistent SDL3 loop and the self-test proves a fixed tick after queued input/close; high-DPI/fullscreen and full gameplay tick ownership remain.
 - [ ] **F10 · P0 · Native-first validation command** — After: F03, F05, F08, F09.
-  Add composable ElisaScript quick/headless/native-GPU checks over existing gates, with structured evidence and provenance. Done: the native gate runs without Godot installed, invalidates stale success, distinguishes skip from pass, and retains shared-contract and optional Godot regression commands.
+  Add composable ElisaScript quick/headless/native-GPU checks over existing gates, with structured evidence and provenance. Done: the native gate runs without Godot installed, invalidates stale success, distinguishes skip from pass, and retains shared-contract and optional Godot regression commands. Progress: `scripts/native_gate.elisascript` now provides quick/headless/native modes, clears stale reports, writes `build/native-gate.json`, and keeps Godot out of the native prerequisites; persistent provenance, hardware-unverified reporting, and F05 completion remain.
 
 ## W — world, scenes, persistence, and execution
 

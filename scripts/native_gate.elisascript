@@ -1,0 +1,70 @@
+# Native-first validation composition.
+# Modes: quick (policy checks), headless (quick + sanitizer boundary), native
+# (headless + the SDL3/Wicked gate). Godot is intentionally not a prerequisite.
+
+def run_visible(program: sview, arguments: darray[sview]) -> i64:
+    result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(program), arguments, empty_input)
+    _ = write_stdout(result.stdout)
+    _ = write_stderr(result.stderr)
+    result.exit_status
+
+def main(arguments: darray[sview]) -> i64:
+    if arguments.count > 1:
+        eprint("usage: elisascript scripts/native_gate.elisascript [quick|headless|native]")
+        return 2
+    mode: sview = "quick" if arguments.count == 0 else arguments[0]
+    return 2 if mode != "quick" and mode != "headless" and mode != "native"
+    root: Path = Script::source_path().parent().parent()
+    report_path: Path = root.joinpath("build/native-gate.json")
+    _ = create_directories(root.joinpath("build"))
+    _ = write_text(report_path, "{}\n")
+    python: sview = get_environment_or("PYTHON_BIN", "python3")
+    launcher: sview = get_environment_or("ELISASCRIPT_BIN", "elisascript")
+    dependency_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(python), ["scripts/check_dependency_manifest.py", "--root", "."], empty_input)
+    _ = write_stdout(dependency_result.stdout)
+    _ = write_stderr(dependency_result.stderr)
+    dependency_status: i64 = dependency_result.exit_status
+    source_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(python), ["scripts/check_source_length.py"], empty_input)
+    _ = write_stdout(source_result.stdout)
+    _ = write_stderr(source_result.stderr)
+    source_status: i64 = source_result.exit_status
+    hygiene_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(python), ["scripts/check_module_hygiene.py"], empty_input)
+    _ = write_stdout(hygiene_result.stdout)
+    _ = write_stderr(hygiene_result.stderr)
+    hygiene_status: i64 = hygiene_result.exit_status
+    headless_status: mutable i64 = 0
+    native_status: mutable i64 = 0
+    if mode == "headless" or mode == "native":
+        headless_result: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(python), [str(root.joinpath("scripts/run_boundary_sanitized.py"))], empty_input)
+        _ = write_stdout(headless_result.stdout)
+        _ = write_stderr(headless_result.stderr)
+        headless_status <- headless_result.exit_status
+    if mode == "native":
+        native_result: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(launcher), [str(root.joinpath("scripts/wicked_probe.elisascript"))], empty_input)
+        _ = write_stdout(native_result.stdout)
+        _ = write_stderr(native_result.stderr)
+        native_status <- native_result.exit_status
+    report_result: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(python), [str(root.joinpath("scripts/write_native_gate_report.py")), str(report_path), mode, str(dependency_status), str(source_status), str(hygiene_status), str(headless_status), str(native_status)], empty_input)
+    _ = write_stdout(report_result.stdout)
+    _ = write_stderr(report_result.stderr)
+    status: mutable i64 = dependency_status
+    status <- source_status if status == 0 and source_status != 0
+    status <- hygiene_status if status == 0 and hygiene_status != 0
+    status <- headless_status if status == 0 and headless_status != 0
+    status <- native_status if status == 0 and native_status != 0
+    return report_result.exit_status if report_result.exit_status != 0
+    status
