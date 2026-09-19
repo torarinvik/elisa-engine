@@ -41,4 +41,18 @@ def main() -> i32:
         PackageError.InvalidSource: 0
         error failure: 2
     return 8 if source_rejected != 0
+
+    overflow_mesh: SourceAsset = SourceAsset{id: AssetId{high: 18446744073709551615, low: 0}, path: "models/overflow.gltf", format: SourceFormat.Gltf}
+    overflow_high: i32 = catch cook_package(overflow_mesh, material, bounds):
+        value: 1
+        PackageError.ContentOverflow: 0
+        error failure: 2
+    return 9 if overflow_high != 0
+
+    overflow_low: SourceAsset = SourceAsset{id: AssetId{high: 1, low: 18446744073709551615}, path: "models/overflow-low.gltf", format: SourceFormat.Gltf}
+    overflow_low_result: i32 = catch cook_package(overflow_low, material, bounds):
+        value: 1
+        PackageError.ContentOverflow: 0
+        error failure: 2
+    return 10 if overflow_low_result != 0
     0
