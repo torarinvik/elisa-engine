@@ -66,6 +66,17 @@ module WorldPersistence:
                 raise BindingError.StaleReference if not World::world_is_live(world, runtime)
                 runtime
 
+            def rebind(table: mutable Table&, world: World::World&, persistent: i64, runtime: World::EntityRef) -> void error[BindingError]:
+                raise BindingError.InvalidPersistent if persistent <= 0
+                raise BindingError.InvalidReference if not World::world_is_live(world, runtime)
+                slot: usize = slot_of(table, persistent)
+                if slot == Bounds::INVALID_SLOT:
+                    raise BindingError.Capacity if table.count >= Bounds::MAX_BINDINGS
+                    table.entries[table.count] <- Binding{persistent: persistent, runtime: runtime, live: true}
+                    table.count <- table.count + 1
+                else:
+                    table.entries[slot].runtime <- runtime
+
             def unbind(table: mutable Table&, persistent: i64) -> void error[BindingError]:
                 slot: usize = slot_of(table, persistent)
                 raise BindingError.UnknownPersistent if slot == Bounds::INVALID_SLOT

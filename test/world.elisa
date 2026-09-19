@@ -228,6 +228,16 @@ def main() -> i32:
         BindingError.StaleReference: 0
         error failure: 9
     return 34 if stale_binding != 0
+    rebound: i32 = catch rebind(&bindings, &world, 7001, second):
+        ok: 0
+        BindingError.InvalidPersistent: 1
+        BindingError.InvalidReference: 2
+        BindingError.Capacity: 3
+        error failure: 4
+    rebound_reference: EntityRef = catch resolve(&bindings, &world, 7001):
+        value: value
+        error failure: invalid_reference()
+    return 36 if rebound != 0 or rebound_reference.id != second.id or not table_valid(&bindings, &world)
     removed_binding: i32 = catch unbind(&bindings, 7001):
         ok: 0
         BindingError.UnknownPersistent: 1
