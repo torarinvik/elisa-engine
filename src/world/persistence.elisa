@@ -69,4 +69,7 @@ module WorldPersistence:
             def unbind(table: mutable Table&, persistent: i64) -> void error[BindingError]:
                 slot: usize = slot_of(table, persistent)
                 raise BindingError.UnknownPersistent if slot == Bounds::INVALID_SLOT
-                table.entries[slot].live <- false
+                for shift in slot..<table.count - 1 |table|:
+                    table.entries[shift] <- table.entries[shift + 1]
+                table.entries[table.count - 1].live <- false
+                table.count <- table.count - 1

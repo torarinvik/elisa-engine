@@ -232,7 +232,7 @@ def main() -> i32:
         ok: 0
         BindingError.UnknownPersistent: 1
         error failure: 2
-    return 35 if removed_binding != 0 or binding_count(&bindings) != 1
+    return 35 if removed_binding != 0 or binding_count(&bindings) != 0 or not table_valid(&bindings, &world)
 
     other: World =
         catch World():
