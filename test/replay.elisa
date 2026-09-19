@@ -1,0 +1,28 @@
+include "../src/runtime/replay.elisa"
+
+def main() -> i32:
+    left: mutable Replay::Recorder = Replay::Recorder(Replay::DeterminismScope.SameBuild)
+    right: mutable Replay::Recorder = Replay::Recorder(Replay::DeterminismScope.SameBuild)
+    first: Replay::Frame = Replay::Frame{tick: 1, input: 3, random_seed: 7, world_digest: 11, physics_digest: 13, render_digest: 17}
+    second: Replay::Frame = Replay::Frame{tick: 2, input: 4, random_seed: 7, world_digest: 19, physics_digest: 23, render_digest: 29}
+    _ = catch Replay::append(&left, first):
+        ok: 0
+        error failure: return 1
+    _ = catch Replay::append(&left, second):
+        ok: 0
+        error failure: return 2
+    _ = catch Replay::append(&right, first):
+        ok: 0
+        error failure: return 3
+    return 4 if Replay::first_divergent_tick(&left, &right) != 2
+    _ = catch Replay::append(&right, second):
+        ok: 0
+        error failure: return 5
+    return 6 if Replay::first_divergent_tick(&left, &right) != -1 or Replay::frame_count(&left) != 2
+    duplicate: i32 = catch Replay::append(&right, second):
+        ok: 0
+        Replay::ReplayError.NonMonotonicTick: 1
+        error failure: 2
+    return 7 if duplicate != 1
+    return 8 if not Replay::recorder_valid(&left) or Replay::scope(&left) != Replay::DeterminismScope.SameBuild
+    0

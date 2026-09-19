@@ -78,6 +78,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Normalized glTF scene contract | Tested | `src/assets/scene.elisa`, `test/asset_scene.elisa`, `docs/validation/asset-scene.md`; cgltf traversal and upload remain A05 |
 | Fixed-step physics pose interpolation | Tested | `src/physics/interpolation.elisa`, `test/physics_interpolation.elisa`, `docs/validation/physics-interpolation.md`; Jolt pose commits remain P04 |
 | Shared PBR material and texture-slot contract | Tested | `src/backend/material.elisa`, `test/material.elisa`, `docs/validation/materials.md`; native color/transcode ABI remains A06/R04 |
+| Tick-stamped replay divergence diagnostics | Tested | `src/runtime/replay.elisa`, `test/replay.elisa`, `docs/validation/replay-diagnostics.md`; persistent trace I/O remains W09 |
 | FFI ownership contracts, adversarial bridge | Tested | `src/backend/contracts.elisa`, `src/backend/fake_bridge.elisa`, `test/contracts.elisa`, `test/fake_bridge.elisa` |
 | Submission storage completion boundary | Tested | `src/runtime/lifetime.elisa`, `test/contracts.elisa` |
 | Scene resources rebuilt from canonical data | Tested | `src/backend/recording.elisa`, `test/recording.elisa` |

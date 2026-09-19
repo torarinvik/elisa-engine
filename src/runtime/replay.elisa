@@ -1,0 +1,68 @@
+# Bounded replay and state diagnostics. A recorder stores tick-stamped input,
+# seed, and subsystem digests; comparison returns the first divergent tick.
+module Replay:
+    private:
+        const module Limits:
+            MAX_FRAMES: usize = 256
+            INVALID_TICK: i64 = -1
+
+    public:
+        enum ReplayError:
+            Capacity
+            NonMonotonicTick
+            InvalidTick
+
+        enum DeterminismScope:
+            SameBuild
+            CrossBuild
+
+        struct Frame:
+            tick: i64
+            input: i64
+            random_seed: i64
+            world_digest: i64
+            physics_digest: i64
+            render_digest: i64
+
+        affine struct Recorder:
+            private:
+                frames: mutable Frame[Limits::MAX_FRAMES]
+                count: mutable usize
+                scope: DeterminismScope
+
+        def Recorder(scope: DeterminismScope) -> Recorder:
+            Recorder{frames: zeroed, count: 0, scope: scope}
+
+        def append(recorder: mutable Recorder&, frame: Frame) -> void error[ReplayError]:
+            raise ReplayError.InvalidTick if frame.tick < 0
+            raise ReplayError.Capacity if recorder.count >= Limits::MAX_FRAMES
+            if recorder.count > 0:
+                raise ReplayError.NonMonotonicTick if frame.tick <= recorder.frames[recorder.count - 1].tick
+            recorder.frames[recorder.count] <- frame
+            recorder.count <- recorder.count + 1
+
+        def frame_count(recorder: Recorder&) -> usize:
+            recorder.count
+
+        def frame_at(recorder: Recorder&, index: usize) -> Frame:
+            return Frame{tick: Limits::INVALID_TICK, input: 0, random_seed: 0, world_digest: 0, physics_digest: 0, render_digest: 0} if index >= recorder.count
+            recorder.frames[index]
+
+        def first_divergent_tick(left: Recorder&, right: Recorder&) -> i64:
+            shared: usize = left.count if left.count < right.count else right.count
+            for index in 0..<shared:
+                a: Frame = left.frames[index]
+                b: Frame = right.frames[index]
+                return a.tick if a.tick != b.tick or a.input != b.input or a.random_seed != b.random_seed or a.world_digest != b.world_digest or a.physics_digest != b.physics_digest or a.render_digest != b.render_digest
+            return left.frames[shared].tick if left.count > shared
+            return right.frames[shared].tick if right.count > shared
+            Limits::INVALID_TICK
+
+        def scope(recorder: Recorder&) -> DeterminismScope:
+            recorder.scope
+
+        def recorder_valid(recorder: Recorder&) -> bool:
+            return false if recorder.count > Limits::MAX_FRAMES
+            for index in 1..<recorder.count:
+                return false if recorder.frames[index].tick <= recorder.frames[index - 1].tick
+            true

@@ -138,6 +138,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/world/events.elisa` adds bounded typed events, explicit six-phase ordering, listener subscriptions, unsubscription, phase-gated emission, and single-delivery drains; `test/world_events.elisa` covers phase regression and listener removal. Callback execution, worker handoff, and world borrow integration remain.
 - [ ] **W09 · P2 · Replay and state diagnostics** — After: W06, W08.
   Record tick-stamped input, random seeds, decisions, and state digests with scoped determinism guarantees. Done: replay finds the first divergent subsystem/tick; floating-point and solver/build boundaries are declared instead of promising cross-platform bit identity.
+  Progress: `src/runtime/replay.elisa` records bounded tick/input/seed/world/physics/render frames, declares same-build versus cross-build scope, and reports the first divergent tick; `test/replay.elisa` covers matching, divergence, and duplicate ticks. Persistent trace I/O, input serialization, and digest production remain.
 - [ ] **W10 · P2 · Storage scale and world proofs** — After: W03, W07.
   Benchmark hot iteration, spawn/despawn, lookup, and compaction; improve measured layouts and grow implementation-linked proofs where supported. Done: representative small/large worlds show before/after timings and memory, and proof claims name exact invariants rather than claiming whole-engine safety.
 

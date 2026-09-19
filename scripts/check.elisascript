@@ -341,31 +341,31 @@ def main(arguments: darray[sview]) -> i64:
     return camera_status if camera_status != 0
     camera_status <- run_visible(camera_binary, [])
     return camera_status if camera_status != 0
-    println("Camera and viewport tests passed.")
     physics_bodies_binary: sview = str(root.joinpath("build/physics-bodies-test"))
     physics_bodies_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", physics_bodies_binary, str(root.joinpath("test/physics_bodies.elisa"))])
     return physics_bodies_status if physics_bodies_status != 0
     physics_bodies_status <- run_visible(physics_bodies_binary, [])
     return physics_bodies_status if physics_bodies_status != 0
-    println("Physics body lifecycle tests passed.")
     asset_scene_binary: sview = str(root.joinpath("build/asset-scene-test"))
     asset_scene_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_scene_binary, str(root.joinpath("test/asset_scene.elisa"))])
     return asset_scene_status if asset_scene_status != 0
     asset_scene_status <- run_visible(asset_scene_binary, [])
     return asset_scene_status if asset_scene_status != 0
-    println("Normalized asset scene tests passed.")
     physics_interpolation_binary: sview = str(root.joinpath("build/physics-interpolation-test"))
     physics_interpolation_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", physics_interpolation_binary, str(root.joinpath("test/physics_interpolation.elisa"))])
     return physics_interpolation_status if physics_interpolation_status != 0
     physics_interpolation_status <- run_visible(physics_interpolation_binary, [])
     return physics_interpolation_status if physics_interpolation_status != 0
-    println("Physics interpolation tests passed.")
     material_binary: sview = str(root.joinpath("build/material-test"))
     material_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", material_binary, str(root.joinpath("test/material.elisa"))])
     return material_status if material_status != 0
     material_status <- run_visible(material_binary, [])
     return material_status if material_status != 0
-    println("PBR material tests passed.")
+    replay_binary: sview = str(root.joinpath("build/replay-test"))
+    replay_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", replay_binary, str(root.joinpath("test/replay.elisa"))])
+    return replay_status if replay_status != 0
+    replay_status <- run_visible(replay_binary, [])
+    return replay_status if replay_status != 0
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
