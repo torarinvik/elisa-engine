@@ -1,5 +1,6 @@
 #pragma once
 
+#include "capability_abi.h"
 #include "probe_core.h"
 #include "wiGraphicsDevice.h"
 #include "wiRenderer.h"
@@ -22,11 +23,26 @@ inline bool probe_graphics_capabilities() {
     const bool raytracing = raytracing_native && !force_fallback;
     const bool sparse = sparse_native && !force_fallback;
     const uint32_t viewport_count = device->GetMaxViewportCount();
+    const ElisaBackendProfile profile = {
+        sizeof(ElisaBackendProfile), ELISA_CAPABILITY_ABI_VERSION,
+        ELISA_CAPABILITY_RENDERING | ELISA_CAPABILITY_NATIVE_WINDOW |
+            ELISA_CAPABILITY_ASYNC_UPLOAD | ELISA_CAPABILITY_ASSET_LOADING,
+        (raytracing ? ELISA_OPTIONAL_RAYTRACING : 0ull) |
+            (sparse ? ELISA_OPTIONAL_SPARSE_TEXTURES : 0ull) |
+            (mesh_shader ? ELISA_OPTIONAL_MESH_SHADERS : 0ull),
+        viewport_count, 1u, static_cast<uint64_t>(memory.budget),
+        static_cast<uint64_t>(memory.usage),
+    };
+    if (!check(elisa_validate_backend_profile(&profile) == ELISA_CAPABILITY_OK,
+            "versioned capability profile")) {
+        return false;
+    }
     std::fprintf(stdout,
-        "graphics capabilities: adapter=%s shader_format=%d mesh=%d raytracing=%d sparse=%d viewports=%u memory=%llu/%llu\n",
+        "graphics capabilities: adapter=%s shader_format=%d mesh=%d raytracing=%d sparse=%d viewports=%u memory=%llu/%llu profile=0x%llx optional=0x%llx\n",
         device->GetAdapterName().c_str(), (int)device->GetShaderFormat(),
         mesh_shader ? 1 : 0, raytracing ? 1 : 0, sparse ? 1 : 0,
-        viewport_count, (unsigned long long)memory.usage, (unsigned long long)memory.budget);
+        viewport_count, (unsigned long long)memory.usage, (unsigned long long)memory.budget,
+        (unsigned long long)profile.capability_bits, (unsigned long long)profile.optional_bits);
     if (!check(viewport_count > 0, "graphics viewport capability")) {
         return false;
     }
@@ -38,7 +54,10 @@ inline bool probe_graphics_capabilities() {
     if (!check(!force_fallback || (!raytracing && !sparse), "optional fallback policy")) {
         return false;
     }
-    return true;
+    ElisaBackendProfile bad_version = profile;
+    bad_version.abi_version += 1;
+    return check(elisa_validate_backend_profile(&bad_version) == ELISA_CAPABILITY_UNSUPPORTED_VERSION,
+        "capability version mismatch rejection");
 }
 
 } // namespace probe

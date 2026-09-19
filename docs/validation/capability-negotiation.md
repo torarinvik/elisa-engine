@@ -13,9 +13,9 @@ the first missing feature, the same request reports `Fallback` when fallback
 is allowed, and a nine-feature request is `Invalid`. The test passed on
 2026-09-19 with the stage-1 compiler.
 
-The native `native/capability_probe.h` remains the source of truth for queried
-graphics limits and optional ray-tracing/sparse-texture fallback. Its
-`ELISA_FORCE_OPTIONAL_FALLBACK=1` gate proves that advertised device features
-are not silently treated as required. A future versioned C ABI can populate an
-Elisa `BackendProfile` directly; this slice keeps that transport boundary out
-of the public vendor-free module.
+The native `native/capability_probe.h` now fills the vendor-free
+`ElisaBackendProfile` in `native/capability_abi.h` from the queried device
+limits. Its `ELISA_FORCE_OPTIONAL_FALLBACK=1` gate proves that advertised device
+features are not silently treated as required, and the probe rejects an ABI
+version mismatch before handing the profile to policy. Resource-specific
+feature population and platform-specific worker counts remain follow-up work.
