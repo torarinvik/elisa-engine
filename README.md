@@ -1,10 +1,10 @@
 # Elisa Engine
 
 An experimental Elisa-native game engine built around algebraic entity hierarchies,
-numeric identity, and specialist engine libraries. SDL3 and headless Godot and
-Wicked host probes are now exercised, and the Godot host embeds Elisa gameplay
-through a hand-written GDExtension over the same C ABI the native host uses
-(ADR-0013); the full Wicked renderer remains planned.
+numeric identity, and specialist engine libraries. SDL3, headless Godot, and
+Wicked Metal scene rendering are exercised, and the Godot host embeds Elisa
+gameplay through a hand-written GDExtension over the same C ABI the native host
+uses (ADR-0013). Broader renderer productization remains incremental work.
 [Native backend validation](docs/native-backend-validation.md)
 records the pinned external Wicked checkout and its macOS build notes.
 Binding architecture decisions live in [docs/adr/](docs/adr/); anything the
@@ -33,9 +33,9 @@ is an early implementation, not yet a persistent asset identity system.
 
 `src/math/geometry.elisa` defines backend-neutral vector, quaternion, transform,
 bounds, and ray values. Its convention is metres in a right-handed frame, +Y up
-and -Z forward. The initial operations cover translation, vector arithmetic,
-point-in-bounds, bounds overlap, and ray evaluation; quaternion composition and
-matrix conversion remain future work.
+and -Z forward. Operations cover translation, vector arithmetic, quaternion
+composition and rotation, TRS composition/inverse application, column-major
+matrix conversion, point-in-bounds, bounds overlap, and ray evaluation.
 
 `src/backend/recording.elisa` defines value-only scene commands and a bounded
 headless recorder. It rejects updates before creation, duplicate creation,
@@ -56,8 +56,9 @@ backend handles. It validates source descriptors and portable visual references,
 cooks validated visuals into content-hashed packages, tracks catalogue
 generations with stale-package rejection, and binds everything into a
 shippable maze bundle (assets, scene identity, required capabilities,
-determinism scope, frame budget). Byte-level importers, transcoding, and
-streaming remain future work. `src/runtime/input.elisa`
+determinism scope, frame budget). Native probes exercise bounded import,
+transcoding, reload, and streaming; the Elisa asset modules own the portable
+policy. `src/runtime/input.elisa`
 maps portable keyboard/controller buttons to gameplay actions and rejects
 ambiguous bindings. A host still needs to translate platform-specific events
 to those button values.
@@ -97,10 +98,11 @@ lifecycle ordering in headless mode. This is a host-contract probe, not the
 full GDExtension backend; the Elisa world remains the authoritative simulation.
 
 `native/wicked_probe.cpp` and `scripts/wicked_probe.elisascript` provide the
-optional native Wicked scene probe. It creates an Elisa-named cube and camera,
-updates the transform, renders one hidden Metal frame through Wicked's
-`RenderPath3D`, and checks despawn against the external static libraries without
-copying WickedEngine into this repository.
+native Wicked scene host. It consumes the canonical Elisa scene, creates
+game-authored maze geometry, exercises Jolt and the specialist libraries,
+renders hidden Metal frames through Wicked's `RenderPath3D`, compares captures,
+and checks despawn against the external static libraries without copying
+WickedEngine into this repository.
 
 `examples/maze/assets/maze_tile.gltf` is the first authored source
 asset; the Godot host loads it through its own glTF importer and the
