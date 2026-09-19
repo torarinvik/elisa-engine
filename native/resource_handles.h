@@ -101,6 +101,31 @@ public:
         return handle.kind == NativeResourceKind::Texture && is_live(handle) ? &state->texture : nullptr;
     }
 
+    bool set_material_color(NativeResourceHandle handle, XMFLOAT4 color) {
+        if (handle.kind != NativeResourceKind::Material || !is_live(handle)) return false;
+        auto* material = scene_.materials.GetComponent(resolve(handle));
+        if (material == nullptr) return false;
+        material->baseColor = color;
+        material->SetDirty();
+        return true;
+    }
+
+    bool set_visible(NativeResourceHandle handle, bool visible) {
+        if (!is_entity_kind(handle.kind) || !is_live(handle)) return false;
+        auto* object = scene_.objects.GetComponent(resolve(handle));
+        if (object == nullptr) return false;
+        object->SetRenderable(visible);
+        return true;
+    }
+
+    bool set_layer(NativeResourceHandle handle, uint32_t layer_mask) {
+        if (!is_entity_kind(handle.kind) || !is_live(handle)) return false;
+        auto* object = scene_.objects.GetComponent(resolve(handle));
+        if (object == nullptr) return false;
+        object->filterMask = layer_mask;
+        return true;
+    }
+
     bool destroy(NativeResourceHandle handle) {
         Slot* state = state_for(handle);
         if (state == nullptr || !is_live(handle)) return false;

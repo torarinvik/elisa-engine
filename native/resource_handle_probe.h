@@ -25,6 +25,9 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
             "texture handle creation")) {
         return false;
     }
+    if (!check(registry.set_material_color(material, XMFLOAT4(0.2f, 0.8f, 0.4f, 1.0f)) &&
+        registry.set_visible(mesh, false) && registry.set_layer(mesh, 0x4u) &&
+        registry.set_visible(mesh, true), "render resource instance updates")) return false;
     const wi::ecs::Entity mesh_entity = registry.resolve(mesh);
     if (!check(mesh_entity != wi::ecs::INVALID_ENTITY, "mesh handle resolution") ||
         !check(registry.destroy(mesh), "mesh handle destruction") ||

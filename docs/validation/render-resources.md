@@ -11,3 +11,8 @@ of the underlying asset. `test/render_resources.elisa` covers two instances,
 independent transform updates, shared-reference counts, destruction, and stale
 handle rejection. Device uploads and material ABI encoding remain native R02
 work.
+
+The native Wicked gate also applies material color, visibility, and layer-mask
+updates through `NativeResourceRegistry` handles before destroying the
+resources, proving the instance update path stays behind the owner-checked
+native boundary.
