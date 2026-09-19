@@ -6,8 +6,6 @@
 # not that a real socket works.
 include "./wire.elisa"
 
-using Wire
-
 module Loopback:
     private:
         const module Limits:
@@ -49,7 +47,7 @@ module Loopback:
             raise LinkError.Capacity if link.count >= Limits::MAX_PACKETS
             sequence: usize = link.count
             frame: u8[Wire::FRAME_BYTES] =
-                catch encode(record):
+                catch Wire::encode(record):
                     value: value
                     error failure: zeroed
             link.packets[sequence] <- Packet{
@@ -78,7 +76,7 @@ module Loopback:
                     packet: Packet = link.packets[index]
                     if not packet.delivered and not packet.dropped and Net::should_deliver(index, link.loss_every) and now_tick >= Net::arrival_tick(packet.send_tick, link.delay_ticks):
                         record: Net::ReplRecord =
-                            catch decode(packet.bytes, packet.length):
+                            catch Wire::decode(packet.bytes, packet.length):
                                 value: value
                                 error failure: Net::ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Net::Owner.Server}
                         if record.revision > newest:
@@ -97,7 +95,7 @@ module Loopback:
                         link.delivered_count <- link.delivered_count + 1
             raise LinkError.UnknownPacket if chosen >= link.count
             packet: Packet = link.packets[chosen]
-            catch decode(packet.bytes, packet.length):
+            catch Wire::decode(packet.bytes, packet.length):
                 value: value
                 error failure: Net::ReplRecord{persistent: 0, x: 0, y: 0, revision: -1, owner: Net::Owner.Server}
 

@@ -13,8 +13,6 @@
 include "../math/geometry.elisa"
 include "./pose.elisa"
 
-using Pose
-
 module Sampler:
     private:
         const module Tune:
@@ -109,8 +107,8 @@ module Sampler:
             for index in 0..<skeleton.count |sampled, clip, skeleton, tick|:
                 joint: Pose::Joint = skeleton.joints[index]
                 local: Geometry::Transform = clip_sample_local_or(clip, index, tick, joint.local)
-                _ = skeleton_add(&sampled, joint.parent, local)
-            evaluated: Pose::Pose = catch pose_evaluate(&sampled):
+                _ = Pose::skeleton_add(&sampled, joint.parent, local)
+            evaluated: Pose::Pose = catch Pose::pose_evaluate(&sampled):
                 value: value
                 error failure: Pose::Pose{models: zeroed, count: 0}
             raise ClipError.InvalidSkeleton if not Pose::pose_valid(&evaluated)

@@ -4,29 +4,22 @@ include "../backend/recording.elisa"
 include "./clock.elisa"
 include "./input.elisa"
 
-using World
-using Geometry
-using Backend
-using Runtime
-using Input
-using Assets
-
 module HeadlessGame:
     private:
         const module Motion:
             STEP_DISTANCE: f32 = 0.25
             ZERO: f32 = 0.0
 
-        def action_displacement(action: Action) -> Vec3:
+        def action_displacement(action: Input::Action) -> Geometry::Vec3:
             match action:
-                Action.Left:
-                    Vec3{x: -Motion::STEP_DISTANCE, y: Motion::ZERO, z: Motion::ZERO}
-                Action.Right:
-                    Vec3{x: Motion::STEP_DISTANCE, y: Motion::ZERO, z: Motion::ZERO}
-                Action.Forward:
-                    Vec3{x: Motion::ZERO, y: Motion::ZERO, z: -Motion::STEP_DISTANCE}
-                Action.Idle:
-                    vec3_zero()
+                Input::Action.Left:
+                    Geometry::Vec3{x: -Motion::STEP_DISTANCE, y: Motion::ZERO, z: Motion::ZERO}
+                Input::Action.Right:
+                    Geometry::Vec3{x: Motion::STEP_DISTANCE, y: Motion::ZERO, z: Motion::ZERO}
+                Input::Action.Forward:
+                    Geometry::Vec3{x: Motion::ZERO, y: Motion::ZERO, z: -Motion::STEP_DISTANCE}
+                Input::Action.Idle:
+                    Geometry::vec3_zero()
 
     public:
         error GameError:
@@ -35,40 +28,40 @@ module HeadlessGame:
             ClockFailure
 
         struct PlayerState:
-            player: EntityRef
-            transform: mutable Transform
+            player: World::EntityRef
+            transform: mutable Geometry::Transform
 
-        def spawn_player(world: mutable World::World&, recorder: mutable Backend::SceneRecorder&, visual: VisualAsset) -> PlayerState error[GameError]:
-            player: EntityRef = catch world_spawn(world, Actor.Player):
+        def spawn_player(world: mutable World::World&, recorder: mutable Backend::SceneRecorder&, visual: Assets::VisualAsset) -> PlayerState error[GameError]:
+            player: World::EntityRef = catch World::world_spawn(world, World::Actor.Player):
                 value: value
-                error failure: EntityRef{world_epoch: 0, id: 0}
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
             raise GameError.WorldFailure if player.id == 0
-            transform: Transform = transform_identity()
-            created: bool = catch submit_create(recorder, player, transform, visual):
+            transform: Geometry::Transform = Geometry::transform_identity()
+            created: bool = catch Backend::submit_create(recorder, player, transform, visual):
                 ok: true
                 error failure: false
             if not created:
-                rolled_back: bool = catch world_despawn(world, player):
+                rolled_back: bool = catch World::world_despawn(world, player):
                     ok: true
                     error failure: false
                 raise GameError.WorldFailure if not rolled_back
                 raise GameError.RecordingFailure
             PlayerState{player: player, transform: transform}
 
-        def advance_player(player: mutable PlayerState&, clock: mutable StepClock&, recorder: mutable Backend::SceneRecorder&, action: Action, elapsed_micros: i64) -> usize error[GameError]:
-            preview: mutable StepClock = StepClock{accumulated_micros: clock.accumulated_micros, tick_count: clock.tick_count}
-            steps: usize = catch advance(&preview, elapsed_micros):
+        def advance_player(player: mutable PlayerState&, clock: mutable Runtime::StepClock&, recorder: mutable Backend::SceneRecorder&, action: Input::Action, elapsed_micros: i64) -> usize error[GameError]:
+            preview: mutable Runtime::StepClock = Runtime::StepClock{accumulated_micros: clock.accumulated_micros, tick_count: clock.tick_count}
+            steps: usize = catch Runtime::advance(&preview, elapsed_micros):
                 value: value
-                error failure: max_catch_up_steps() + 1
-            raise GameError.ClockFailure if steps > max_catch_up_steps()
-            raise GameError.RecordingFailure if not can_submit_updates(recorder, player.player, steps)
-            committed_steps: usize = catch advance(clock, elapsed_micros):
+                error failure: Runtime::max_catch_up_steps() + 1
+            raise GameError.ClockFailure if steps > Runtime::max_catch_up_steps()
+            raise GameError.RecordingFailure if not Backend::can_submit_updates(recorder, player.player, steps)
+            committed_steps: usize = catch Runtime::advance(clock, elapsed_micros):
                 value: value
-                error failure: max_catch_up_steps() + 1
+                error failure: Runtime::max_catch_up_steps() + 1
             raise GameError.ClockFailure if committed_steps != steps
             for tick in 0..<steps |player, recorder|:
-                next_transform: Transform = transform_translate(player.transform, action_displacement(action))
-                submitted: bool = catch submit_update(recorder, player.player, next_transform):
+                next_transform: Geometry::Transform = Geometry::transform_translate(player.transform, action_displacement(action))
+                submitted: bool = catch Backend::submit_update(recorder, player.player, next_transform):
                     ok: true
                     error failure: false
                 raise GameError.RecordingFailure if not submitted
