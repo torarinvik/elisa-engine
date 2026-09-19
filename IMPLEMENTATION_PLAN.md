@@ -133,8 +133,8 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 ## A — assets, cooking, loading, and content pipelines
 
-- [ ] **A01 · P0 · Stable asset identity and schema** — After: F01.
-  Extend descriptors with distinct source identity, content hash, artifact variant, schema version, dependencies, and import settings. Done: renames preserve references; changing content/settings/tool versions invalidates exactly the affected artifacts; IDs are not process hashes or filesystem paths.
+- [x] **A01 · P0 · Stable asset identity and schema** — After: F01.
+  Extend descriptors with distinct source identity, content hash, artifact variant, schema version, dependencies, and import settings. Done: renames preserve references; changing content/settings/tool versions invalidates exactly the affected artifacts; IDs are not process hashes or filesystem paths. Evidence: `Assets::AssetDescriptor` and `test/assets.elisa` in commit `f17ace0`; `../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/assets-test test/assets.elisa && build/assets-test` passed, including path-rename, content-change, schema, variant, and malformed-identity cases.
 - [ ] **A02 · P1 · Incremental asset database** — After: A01.
   Extend the existing SQLite catalogue into a transactional dependency graph, import diagnostics, and deterministic cook cache; select the content-hash implementation from the chosen stack. Done: interrupted cooks recover, concurrent requests deduplicate, and reproducible cache hits survive process restart.
 - [ ] **A03 · P1 · Runtime package and virtual filesystem** — After: A01, F04.
