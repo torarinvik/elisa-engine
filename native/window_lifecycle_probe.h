@@ -47,4 +47,28 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
     return check(host.window_state().display_scale > 0.0f, "SDL restored display scale");
 }
 
+inline bool probe_repeated_host_lifecycle() {
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        NativeApplication host;
+        NativeApplication::Config config;
+        config.title = "elisa-lifecycle-check";
+        config.width = 160;
+        config.height = 120;
+        config.hidden = true;
+        if (!check(host.initialize(config), "repeated host initialize")) {
+            return false;
+        }
+        if (!check(host.window() != nullptr && !host.close_requested(), "repeated host state")) {
+            host.shutdown();
+            return false;
+        }
+        host.shutdown();
+        if (!check(host.window() == nullptr && host.close_requested(), "repeated host shutdown")) {
+            return false;
+        }
+    }
+    std::fprintf(stdout, "repeated host lifecycle: cycles=2 passed\n");
+    return true;
+}
+
 } // namespace probe

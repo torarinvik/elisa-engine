@@ -44,7 +44,6 @@
 #include "coordinate_fixture.h"
 #include "package_bounds_probe.h"
 using namespace probe;
-
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
         std::fprintf(stderr, "usage: wicked_probe <wicked-source-directory> <scene-manifest> [screenshot-png] [alwaysactive]\n");
@@ -109,7 +108,6 @@ int main(int argc, char** argv) {
         !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
         return 1;
     }
-
     // Maze wall geometry from the Elisa-owned topology. Rendered as an
     // unlit vertical wall map so the frame proves the native host draws
     // game-authored content, not a single test cube. The plane sits at
@@ -139,7 +137,6 @@ int main(int argc, char** argv) {
             }
         }
     }
-
     const auto walls_it = manifest.find("walls");
     const auto wall_cells = walls_it == manifest.end()
         ? std::vector<std::pair<int, int>>{}
@@ -178,7 +175,6 @@ int main(int argc, char** argv) {
     if (!wall_cells.empty() && wall_entities.size() + walls_hidden != wall_cells.size()) {
         return 1;
     }
-
     // Game markers the Elisa rules place: key, door, hazards, goal. Zones
     // carry their own unlit colour so a captured frame can be checked for
     // the right object at the right cell.
@@ -271,8 +267,6 @@ int main(int argc, char** argv) {
             }
         }
     }
-
-
     wi::ecs::Entity hunter_marker = wi::ecs::INVALID_ENTITY;
     bool goal_used_cooked = false;
     for (const auto& spec : marker_specs) {
@@ -434,6 +428,9 @@ int main(int argc, char** argv) {
     if (persistent_host) {
         const int persistent_status = run_persistent_game(application_host, scene, object);
         application_host.shutdown();
+        if (persistent_status == 0 && !probe_repeated_host_lifecycle()) {
+            return 1;
+        }
         std::fprintf(stdout, "orderly native shutdown passed\n");
         return persistent_status;
     }
@@ -594,6 +591,9 @@ int main(int argc, char** argv) {
     std::fprintf(stdout, "scene despawn passed\n");
 
     application_host.shutdown();
+    if (!probe_repeated_host_lifecycle()) {
+        return 1;
+    }
     std::fprintf(stdout, "orderly native shutdown passed\n");
     return 0;
 }

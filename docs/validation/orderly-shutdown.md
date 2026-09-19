@@ -15,5 +15,7 @@ elisascript scripts/wicked_probe.elisascript
 ```
 
 Result: both native render passes completed, printed `orderly native shutdown
-passed`, and exited zero. The pinned worker systems still have no general
-callback-drain API, and repeated restart leak accounting remains open under F05.
+passed`, and exited zero. The probe now performs two additional hidden SDL3/Wicked
+initialize/shutdown cycles after scene teardown, exercising the cleanup boundary
+repeatedly. The pinned worker systems still have no general callback-drain API,
+and allocator-pressure accounting remains open under F05.
