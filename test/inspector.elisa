@@ -1,11 +1,53 @@
 include "../src/tooling/inspector.elisa"
 include "../src/tooling/debug_geometry.elisa"
+include "../src/ui/widgets.elisa"
 using World
 using Backend
 using Geometry
 using Assets
 using DebugGeometry
 using Inspector
+using UiWidgets
+
+def widgets_test() -> i32:
+    surface: mutable Surface = surface_new()
+    button: Widget = Widget{id: 1, kind: WidgetKind.Button, x: 10, y: 10, width: 20, height: 20, value: 0, minimum: 0, maximum: 0, enabled: true, visible: true}
+    slider: Widget = Widget{id: 2, kind: WidgetKind.Slider, x: 40, y: 10, width: 20, height: 20, value: 5, minimum: 0, maximum: 10, enabled: true, visible: true}
+    added: i32 = catch add_widget(&surface, button):
+        ok: 0
+        WidgetError.Capacity: 1
+        WidgetError.InvalidWidget: 2
+        WidgetError.DuplicateId: 3
+        error failure: 4
+    return 22 if added != 0
+    added_slider: i32 = catch add_widget(&surface, slider):
+        ok: 0
+        WidgetError.Capacity: 1
+        WidgetError.InvalidWidget: 2
+        WidgetError.DuplicateId: 3
+        error failure: 4
+    return 23 if added_slider != 0 or widget_count(&surface) != 2
+    return 24 if hit_test(&surface, 15, 15) != 1 or hit_test(&surface, 100, 100) != -1
+    updated: i32 = catch set_value(&surface, 2, 8):
+        ok: 0
+        WidgetError.UnknownWidget: 1
+        WidgetError.Disabled: 2
+        WidgetError.OutOfRange: 3
+        error failure: 4
+    return 25 if updated != 0
+    disabled: i32 = catch set_enabled(&surface, 2, false):
+        ok: 0
+        WidgetError.UnknownWidget: 1
+        error failure: 2
+    return 26 if disabled != 0
+    blocked: i32 = catch set_value(&surface, 2, 9):
+        ok: 0
+        WidgetError.UnknownWidget: 1
+        WidgetError.Disabled: 2
+        WidgetError.OutOfRange: 3
+        error failure: 4
+    return 27 if blocked != 2 or not surface_valid(&surface)
+    0
 
 def sample_visual() -> VisualAsset:
     VisualAsset{
@@ -15,6 +57,8 @@ def sample_visual() -> VisualAsset:
     }
 
 def main() -> i32:
+    widgets: i32 = widgets_test()
+    return widgets if widgets != 0
     budget: PerfBudget = default_budget()
     return 1 if not budget_valid(&budget) or budget.max_frame_micros != 16667
     counters: mutable PerfCounters = counters_new()

@@ -1,0 +1,95 @@
+# Bounded editor widgets. Elisa owns widget identity, geometry, enabled state,
+# and values; a host only draws the validated surface and forwards interactions.
+# The fixed array keeps the authoring surface deterministic and allocation-free.
+module UiWidgets:
+    private:
+        const module WidgetBounds:
+            MAX_WIDGETS: usize = 16
+
+    public:
+        enum WidgetKind:
+            Button
+            Toggle
+            Slider
+
+        error WidgetError:
+            Capacity
+            InvalidWidget
+            DuplicateId
+            UnknownWidget
+            Disabled
+            OutOfRange
+
+        struct Widget:
+            id: i64
+            kind: WidgetKind
+            x: i64
+            y: i64
+            width: i64
+            height: i64
+            value: mutable i64
+            minimum: i64
+            maximum: i64
+            enabled: mutable bool
+            visible: bool
+
+        struct Surface:
+            widgets: mutable Widget[16]
+            count: mutable usize
+
+        def surface_new() -> Surface:
+            Surface{widgets: zeroed, count: 0}
+
+        def widget_valid(widget: Widget) -> bool:
+            return false if widget.id <= 0 or widget.width <= 0 or widget.height <= 0
+            return false if widget.minimum > widget.maximum or widget.value < widget.minimum or widget.value > widget.maximum
+            return false if widget.kind == WidgetKind.Toggle and (widget.minimum < 0 or widget.maximum > 1)
+            true
+
+        def surface_valid(surface: Surface&) -> bool:
+            return false if surface.count > WidgetBounds::MAX_WIDGETS
+            for index in 0..<surface.count |valid: bool = true| -> valid:
+                valid <- false if not widget_valid(surface.widgets[index])
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if surface.widgets[earlier].id == surface.widgets[index].id
+                valid <- valid and unique
+            true
+
+        private:
+            module WidgetFind:
+                public:
+                    def index_of(surface: Surface&, id: i64) -> usize:
+                        for index in 0..<surface.count |found: usize = UiWidgets::WidgetBounds::MAX_WIDGETS| -> found:
+                            found <- index if surface.widgets[index].id == id
+
+        public:
+            def widget_count(surface: Surface&) -> usize:
+                surface.count
+
+            def add_widget(surface: mutable Surface&, widget: Widget) -> void error[WidgetError]:
+                raise WidgetError.Capacity if surface.count >= WidgetBounds::MAX_WIDGETS
+                raise WidgetError.InvalidWidget if not widget_valid(widget)
+                raise WidgetError.DuplicateId if WidgetFind::index_of(surface, widget.id) < WidgetBounds::MAX_WIDGETS
+                surface.widgets[surface.count] <- widget
+                surface.count <- surface.count + 1
+
+            def set_enabled(surface: mutable Surface&, id: i64, enabled: bool) -> void error[WidgetError]:
+                index: usize = WidgetFind::index_of(surface, id)
+                raise WidgetError.UnknownWidget if index >= WidgetBounds::MAX_WIDGETS
+                surface.widgets[index].enabled <- enabled
+
+            def set_value(surface: mutable Surface&, id: i64, value: i64) -> void error[WidgetError]:
+                index: usize = WidgetFind::index_of(surface, id)
+                raise WidgetError.UnknownWidget if index >= WidgetBounds::MAX_WIDGETS
+                raise WidgetError.Disabled if not surface.widgets[index].enabled
+                raise WidgetError.OutOfRange if value < surface.widgets[index].minimum or value > surface.widgets[index].maximum
+                updated: mutable Widget = surface.widgets[index]
+                updated.value <- value
+                surface.widgets[index] <- updated
+
+            def hit_test(surface: Surface&, x: i64, y: i64) -> i64:
+                for index in 0..<surface.count |hit: i64 = -1| -> hit:
+                    widget: Widget = surface.widgets[index]
+                    inside: bool = widget.visible and widget.enabled and x >= widget.x and y >= widget.y and x < widget.x + widget.width and y < widget.y + widget.height
+                    break widget.id if inside
