@@ -181,6 +181,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `src/backend/render_resources.elisa` provides generation-checked instance handles, shared mesh/material asset IDs, transform/visibility/layer updates, and reference counting; `test/render_resources.elisa` verifies independent updates and stale-handle rejection. Wicked upload, material slots, batching, and ABI traffic measurement remain.
 - [ ] **R03 · P1 · Cameras and viewports** — After: R01, F09, W02.
   Implement perspective/orthographic cameras, camera switching, aspect policy, render-to-texture, picking rays, and editor/game views. Done: resize, split view, offscreen targets, frustum boundaries, and asymmetric projections behave correctly at high DPI.
+  Progress: `src/backend/camera.elisa` provides validated perspective/orthographic state, high-DPI viewport resizing, TRS-aware picking rays, and clip-plane policy; `test/camera.elisa` covers both projections and resize scale. Camera switching, render targets, frustum culling, and native submission remain.
 - [ ] **R04 · P1 · PBR material workflow** — After: R02, A05, A06.
   Expose Wicked-backed base color, metallic/roughness, normals, emissive, transparency, double-sidedness, and supported material features via engine descriptors. Done: a material reference scene and authored imports validate texture channels, tangent conventions, and color handling.
 - [ ] **R05 · P1 · Lights, shadows, and environment** — After: R03, R04.

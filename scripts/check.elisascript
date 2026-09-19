@@ -336,6 +336,12 @@ def main(arguments: darray[sview]) -> i64:
     render_resources_status <- run_visible(render_resources_binary, [])
     return render_resources_status if render_resources_status != 0
     println("Render resource tests passed.")
+    camera_binary: sview = str(root.joinpath("build/camera-test"))
+    camera_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", camera_binary, str(root.joinpath("test/camera.elisa"))])
+    return camera_status if camera_status != 0
+    camera_status <- run_visible(camera_binary, [])
+    return camera_status if camera_status != 0
+    println("Camera and viewport tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -384,7 +390,6 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("Complete maze game tests passed.")
-
     anim_test_binary: sview = str(root.joinpath("build/anim-state-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", anim_test_binary, str(root.joinpath("test/anim_state.elisa"))])
@@ -397,7 +402,6 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("Animation state tests passed.")
-
     nav_test_binary: sview = str(root.joinpath("build/grid-nav-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", nav_test_binary, str(root.joinpath("test/grid_nav.elisa"))])
@@ -410,7 +414,6 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("Grid navigation tests passed.")
-
     inspector_test_binary: sview = str(root.joinpath("build/inspector-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", inspector_test_binary, str(root.joinpath("test/inspector.elisa"))])
@@ -423,7 +426,6 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("Inspector and performance counter tests passed.")
-
     replication_test_binary: sview = str(root.joinpath("build/replication-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", replication_test_binary, str(root.joinpath("test/replication.elisa"))])
@@ -435,9 +437,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Replication and determinism scope tests passed.")
-
     physics_test_binary: sview = str(root.joinpath("build/physics-policy-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", physics_test_binary, str(root.joinpath("test/physics_policy.elisa"))])

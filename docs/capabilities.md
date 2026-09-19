@@ -73,6 +73,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Versioned transactional save records | Tested | `src/world/save_schema.elisa`, `test/save_schema.elisa`, `docs/validation/save-schema.md`; crash recovery journal remains W06 |
 | Typed world event queue and service phases | Tested | `src/world/events.elisa`, `test/world_events.elisa`, `docs/validation/world-events.md`; native callback delivery remains W08 |
 | Shared mesh/material render instances | Tested | `src/backend/render_resources.elisa`, `test/render_resources.elisa`, `docs/validation/render-resources.md`; Wicked upload/ABI adapter remains R02 |
+| Perspective and orthographic camera rays | Tested | `src/backend/camera.elisa`, `test/camera.elisa`, `docs/validation/cameras-viewports.md`; render targets and camera scheduling remain R03 |
 | FFI ownership contracts, adversarial bridge | Tested | `src/backend/contracts.elisa`, `src/backend/fake_bridge.elisa`, `test/contracts.elisa`, `test/fake_bridge.elisa` |
 | Submission storage completion boundary | Tested | `src/runtime/lifetime.elisa`, `test/contracts.elisa` |
 | Scene resources rebuilt from canonical data | Tested | `src/backend/recording.elisa`, `test/recording.elisa` |

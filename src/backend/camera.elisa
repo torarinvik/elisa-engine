@@ -1,0 +1,99 @@
+# Backend-neutral cameras and viewports. Projection and picking stay in Elisa;
+# Wicked or Godot adapters consume the resulting ray and camera state.
+include "../math/geometry.elisa"
+include "../vendor/elisa_math.elisa"
+
+module Camera:
+    private:
+        const module Limits:
+            MAX_VIEWPORT: i32 = 16384
+            MIN_FOV: f32 = 0.01
+            MAX_FOV: f32 = 3.13
+            MIN_CLIP: f32 = 0.0001
+
+    public:
+        enum Projection:
+            Perspective
+            Orthographic
+
+        struct Viewport:
+            width: i32
+            height: i32
+            display_scale: f32
+
+        affine struct State:
+            private:
+                projection: mutable Projection
+                viewport: mutable Viewport
+                transform: mutable Geometry::Transform
+                fov_radians: mutable f32
+                ortho_height: mutable f32
+                near_clip: mutable f32
+                far_clip: mutable f32
+
+        def State(width: i32, height: i32) -> State:
+            State{
+                projection: Projection.Perspective,
+                viewport: Viewport{width: width, height: height, display_scale: 1.0},
+                transform: Geometry::transform_identity(),
+                fov_radians: 1.04719755,
+                ortho_height: 10.0,
+                near_clip: 0.1,
+                far_clip: 1000.0,
+            }
+
+        def viewport_valid(viewport: Viewport) -> bool:
+            viewport.width > 0 and viewport.height > 0 and viewport.width <= Limits::MAX_VIEWPORT and viewport.height <= Limits::MAX_VIEWPORT and viewport.display_scale > 0.0
+
+        def state_valid(state: State&) -> bool:
+            viewport_valid(state.viewport) and state.near_clip >= Limits::MIN_CLIP and state.far_clip > state.near_clip and state.fov_radians >= Limits::MIN_FOV and state.fov_radians <= Limits::MAX_FOV and state.ortho_height > 0.0
+
+        def resize(state: mutable State&, width: i32, height: i32, display_scale: f32) -> bool:
+            next: Viewport = Viewport{width: width, height: height, display_scale: display_scale}
+            return false if not viewport_valid(next)
+            state.viewport <- next
+            true
+
+        def set_transform(state: mutable State&, transform: Geometry::Transform) -> bool:
+            return false if not Geometry::quat_is_finite(transform.rotation) or not Geometry::vec3_is_finite(transform.position)
+            state.transform <- transform
+            true
+
+        def set_perspective(state: mutable State&, fov_radians: f32, near_clip: f32, far_clip: f32) -> bool:
+            return false if fov_radians < Limits::MIN_FOV or fov_radians > Limits::MAX_FOV or near_clip < Limits::MIN_CLIP or far_clip <= near_clip
+            state.projection <- Projection.Perspective
+            state.fov_radians <- fov_radians
+            state.near_clip <- near_clip
+            state.far_clip <- far_clip
+            true
+
+        def set_orthographic(state: mutable State&, height: f32, near_clip: f32, far_clip: f32) -> bool:
+            return false if height <= 0.0 or near_clip < Limits::MIN_CLIP or far_clip <= near_clip
+            state.projection <- Projection.Orthographic
+            state.ortho_height <- height
+            state.near_clip <- near_clip
+            state.far_clip <- far_clip
+            true
+
+        def ray(state: State&, pixel_x: f32, pixel_y: f32) -> Geometry::Ray3:
+            return Geometry::Ray3{origin: state.transform.position, direction: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}} if not viewport_valid(state.viewport)
+            ndc_x: f32 = pixel_x / state.viewport.width.f32() * 2.0 - 1.0
+            ndc_y: f32 = 1.0 - pixel_y / state.viewport.height.f32() * 2.0
+            aspect: f32 = state.viewport.width.f32() / state.viewport.height.f32()
+            local_origin: mutable Geometry::Vec3 = Geometry::vec3_zero()
+            local_direction: mutable Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}
+            if state.projection == Projection.Perspective:
+                half_height: f32 = ElisaMath::tanf(state.fov_radians * 0.5)
+                local_direction <- Geometry::vec3_normalize(Geometry::Vec3{x: ndc_x * aspect * half_height, y: ndc_y * half_height, z: -1.0})
+            else:
+                local_origin <- Geometry::Vec3{x: ndc_x * state.ortho_height * aspect * 0.5, y: ndc_y * state.ortho_height * 0.5, z: 0.0}
+            Geometry::Ray3{
+                origin: Geometry::transform_apply_point(state.transform, local_origin),
+                direction: Geometry::quat_rotate(state.transform.rotation, local_direction),
+            }
+
+        def projection(state: State&) -> Projection:
+            state.projection
+
+        def viewport(state: State&) -> Viewport:
+            state.viewport
