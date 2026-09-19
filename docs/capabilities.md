@@ -32,6 +32,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Deterministic fixed-step headless game | Tested | `test/headless_game.elisa` |
 | Host input path (device keys to portable names) | Tested | `src/runtime/input.elisa`, `native/input_probe.h`, `backends/godot/probe.gd`; SDL3 is used by the engine, standalone host, and Wicked host |
 | Shared Elisa-to-Wicked coordinate conversion for grid content | Tested + Implemented | `native/coordinate_conventions.h`, native wall/marker/live-input/route rendering |
+| Bidirectional coordinate, ray, asymmetric-scale, and winding-parity checks | Tested + Implemented | `native/coordinate_conventions.h`, `native/coordinate_probe.h`, native gate output `coordinates:`; full matrix/quaternion service remains F07 |
 | Versioned backend profiles with queried limits and feature requirements | Tested | `src/backend/capabilities.elisa`, `test/capabilities.elisa`; native feature population remains F08 work |
 | Native graphics capability and memory query with explicit optional fallbacks | Tested + Implemented | `native/capability_probe.h`, Wicked `GraphicsDevice::CheckCapability`, memory/viewport queries, and `ELISA_FORCE_OPTIONAL_FALLBACK=1` policy path in the native gate |
 | SDL3 window lifecycle state and bounded fixed-step pacing | Tested + Implemented | `native/native_application.h`, `native/frame_pacer.h`, `native/window_lifecycle_probe.h`; focus/minimize/restore/resize transitions and capped catch-up run in the native gate |

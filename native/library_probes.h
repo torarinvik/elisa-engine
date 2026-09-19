@@ -17,6 +17,7 @@
 #include "input_probe.h"
 #include "skin_probe.h"
 #include "layout_probe.h"
+#include "coordinate_probe.h"
 
 #include <map>
 #include <string>
@@ -59,6 +60,9 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
         return false;
     }
     if (!run_layout_probe(scene)) {
+        return false;
+    }
+    if (!probe_coordinate_conventions()) {
         return false;
     }
     return true;

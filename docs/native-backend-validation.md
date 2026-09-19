@@ -128,7 +128,11 @@ ownership evidence while the full Elisa fixed-step physics service remains
 open.
 The shared native conversion in `native/coordinate_conventions.h` owns the
 right-handed Elisa-to-left-handed Wicked X flip and the grid spacing/origin;
-walls, markers, live input, and route replay all use that one conversion.
+walls, markers, live input, and route replay all use that one conversion. The
+native gate also runs `native/coordinate_probe.h`, which round-trips an
+asymmetric point and camera ray, checks finite values and negative/nonuniform
+scale winding parity, and verifies that the same conversion is available to
+skinned payloads. Full matrix/quaternion ownership remains an open F07 task.
 
 The offline cooker records each package in a versioned SQLite catalogue. Its
 WAL journal and immediate write transaction make a crashed cook roll back
