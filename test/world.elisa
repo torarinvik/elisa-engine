@@ -16,6 +16,8 @@ def world_error_code(failure: WorldError) -> i64:
             5
         WorldError.InvalidReference:
             6
+        WorldError.StorageMismatch:
+            7
 
 def invalid_world() -> World:
     World{
@@ -138,6 +140,21 @@ def main() -> i32:
             value: value
             error failure: invalid_lookup(first)
     return 4 if not (first_lookup.kind is Actor.Player)
+    first_actor: ActorRecord =
+        catch world_actor_record(&world, first):
+            value: value
+            error failure: ActorRecord{id: -1, live: false, health: -1}
+    return 18 if first_actor.id != first.id or first_actor.health != 100 or not first_actor.live
+    wrong_actor: i32 = catch world_actor_record(&world, second):
+        value: 9
+        WorldError.StorageMismatch: 0
+        error failure: 9
+    return 19 if wrong_actor != 0
+    second_enemy: EnemyRecord =
+        catch world_enemy_record(&world, second):
+            value: value
+            error failure: EnemyRecord{id: -1, live: false, threat: -1}
+    return 20 if second_enemy.id != second.id or second_enemy.threat != 1 or not second_enemy.live
 
     despawned: bool =
         catch world_despawn(&world, first):
@@ -151,6 +168,11 @@ def main() -> i32:
         WorldError.InvalidReference: 0
         error failure: 7
     return dead if dead != 0
+    dead_actor: i32 = catch world_actor_record(&world, first):
+        value: 10
+        WorldError.InvalidReference: 0
+        error failure: 10
+    return 21 if dead_actor != 0
 
     other: World =
         catch World():

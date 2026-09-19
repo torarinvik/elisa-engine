@@ -25,6 +25,7 @@ module World:
             Capacity
             InvalidKind
             InvalidReference
+            StorageMismatch
 
     private:
         const module Bounds:
@@ -97,6 +98,14 @@ module World:
         def free_enemy_slot(world: World&) -> usize:
             for index in 0..<world.enemy_count |slot: usize = world.enemy_count if world.enemy_count < Bounds::WORLD_MAX_ENTITIES else Sentinel::WORLD_INVALID_SLOT| -> slot:
                 break index if not world.enemies[index].live
+
+        def actor_slot(world: World&, id: i64) -> usize:
+            for index in 0..<world.actor_count |slot: usize = Sentinel::WORLD_INVALID_SLOT| -> slot:
+                break index if world.actors[index].live and world.actors[index].id == id
+
+        def enemy_slot(world: World&, id: i64) -> usize:
+            for index in 0..<world.enemy_count |slot: usize = Sentinel::WORLD_INVALID_SLOT| -> slot:
+                break index if world.enemies[index].live and world.enemies[index].id == id
 
         def mark_actor_dead(world: mutable World&, id: i64) -> bool:
             for index in 0..<world.actor_count |condition=false, world| -> condition:
@@ -275,6 +284,25 @@ module World:
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
             EntityLookup{reference: reference, kind: world.registry[index].kind}
+
+        # Typed snapshots keep storage ownership inside World while giving a
+        # system a checked value for its access phase. The registry is checked
+        # first, so a dead or wrong-world reference never reaches a column.
+        def world_actor_record(world: World&, reference: EntityRef) -> ActorRecord error[WorldError]:
+            registry_index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if registry_index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.StorageMismatch if world.registry[registry_index].storage != StorageKind.Actor
+            index: usize = actor_slot(world, reference.id)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            world.actors[index]
+
+        def world_enemy_record(world: World&, reference: EntityRef) -> EnemyRecord error[WorldError]:
+            registry_index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if registry_index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.StorageMismatch if world.registry[registry_index].storage != StorageKind.Enemy
+            index: usize = enemy_slot(world, reference.id)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            world.enemies[index]
 
         def world_is_live(world: World&, reference: EntityRef) -> bool:
             registry_slot(world, reference) != Sentinel::WORLD_INVALID_SLOT
