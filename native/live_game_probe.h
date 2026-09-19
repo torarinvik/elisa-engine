@@ -13,6 +13,7 @@
 #include "png_capture.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -38,6 +39,22 @@ inline int move_code_for_key(SDL_Keycode code) {
 inline std::string live_screenshot_path(const char* screenshot_path) {
     const std::filesystem::path path(screenshot_path);
     return (path.parent_path() / (path.stem().string() + "-live" + path.extension().string())).string();
+}
+
+inline void enqueue_persistent_self_test() {
+    SDL_Event event{};
+    const SDL_Keycode keys[] = {SDLK_P, SDLK_P, SDLK_R, SDLK_D};
+    for (SDL_Keycode key : keys) {
+        event = SDL_Event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.type = SDL_EVENT_KEY_DOWN;
+        event.key.down = true;
+        event.key.key = key;
+        SDL_PushEvent(&event);
+    }
+    event = SDL_Event{};
+    event.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+    SDL_PushEvent(&event);
 }
 
 inline bool probe_live_game_rendering(wi::Application& application, wi::scene::Scene& scene,
@@ -105,6 +122,9 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
         return 1;
     }
     bool paused = false;
+    int pause_toggles = 0;
+    int restarts = 0;
+    int moves = 0;
     auto place_player = [&scene, object]() {
         auto* transform = scene.transforms.GetComponent(object);
         if (transform == nullptr) {
@@ -118,6 +138,8 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
     if (!place_player()) {
         return 1;
     }
+    const bool self_test = std::getenv("ELISA_PERSISTENT_SELF_TEST") != nullptr;
+    if (self_test) enqueue_persistent_self_test();
     std::fprintf(stdout, "persistent host: W/A/S/D move, P pause/resume, R restart, close window to exit\n");
     while (host.poll_events([&](const SDL_Event& event) {
         if (event.type != SDL_EVENT_KEY_DOWN || !event.key.down) {
@@ -125,12 +147,14 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
         }
         if (event.key.key == SDLK_P) {
             paused = !paused;
+            ++pause_toggles;
             std::fprintf(stdout, "persistent host: %s\n", paused ? "paused" : "resumed");
             return;
         }
         if (event.key.key == SDLK_R) {
             maze_start();
             place_player();
+            ++restarts;
             std::fprintf(stdout, "persistent host: restarted\n");
             return;
         }
@@ -138,12 +162,16 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
             const int move = move_code_for_key(event.key.key);
             if (move >= 0 && maze_step(move) == 1) {
                 place_player();
+                ++moves;
             }
         }
     })) {
         host.run_frame();
         wi::helper::Sleep(16);
     }
+    if (self_test && (!check(pause_toggles == 2, "persistent pause/resume") ||
+        !check(restarts == 1, "persistent restart") || !check(moves == 1, "persistent input") ||
+        !check(host.close_requested(), "persistent close"))) return 1;
     std::fprintf(stdout, "persistent host: close requested\n");
     return 0;
 }

@@ -151,6 +151,10 @@ W/A/S/D reaches Elisa through the C ABI, P pauses input, and R restarts the
 Elisa game state. The default validation invocation remains finite. Persistent
 mode still ends at the known forced-exit boundary until F05 can prove Wicked's
 ordered global teardown, and it requires an interactive graphics session.
+For a deterministic event-loop check, add `ELISA_PERSISTENT_SELF_TEST=1`; the
+probe injects pause/resume, restart, movement, and close events and exits 0 only
+when all state transitions are observed. This validates the reusable loop but
+does not replace visible-window verification.
 
 ## Render comparison
 
