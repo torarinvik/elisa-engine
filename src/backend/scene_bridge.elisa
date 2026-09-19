@@ -12,6 +12,8 @@ module SceneBridge:
             MANIFEST_VERSION: i64 = 1
             VIEWPORT_WIDTH: i32 = 320
             VIEWPORT_HEIGHT: i32 = 200
+            MAX_VIEWPORT_WIDTH: i32 = 8192
+            MAX_VIEWPORT_HEIGHT: i32 = 8192
             MAX_SCENE_COMMANDS: usize = 256
 
     public:
@@ -47,7 +49,7 @@ module SceneBridge:
             Limits::VIEWPORT_HEIGHT
 
         def viewport_valid(width: i32, height: i32) -> bool:
-            width > 0 and height > 0 and width <= 8192 and height <= 8192
+            width > 0 and height > 0 and width <= Limits::MAX_VIEWPORT_WIDTH and height <= Limits::MAX_VIEWPORT_HEIGHT
 
         def scene_valid(scene: CanonicalScene&) -> bool:
             return false if scene.epoch <= 0 or scene.object.world_epoch != scene.epoch or scene.camera.world_epoch != scene.epoch
@@ -91,7 +93,7 @@ module SceneBridge:
                 def from_recorder(recorder: Backend::SceneRecorder&, object: World::EntityRef, camera: World::EntityRef, camera_position: Geometry::Vec3, viewport_width: i32, viewport_height: i32) -> SceneBridge::CanonicalScene error[SceneBridge::BridgeError]:
                     raise SceneBridge::BridgeError.InvalidEpoch if not ref_valid(object) or not ref_valid(camera)
                     raise SceneBridge::BridgeError.IdentityMismatch if object.world_epoch != camera.world_epoch or object.id == camera.id
-                    raise SceneBridge::BridgeError.InvalidViewport if viewport_width <= 0 or viewport_height <= 0 or viewport_width > 8192 or viewport_height > 8192
+                    raise SceneBridge::BridgeError.InvalidViewport if not SceneBridge::viewport_valid(viewport_width, viewport_height)
                     raise SceneBridge::BridgeError.Capacity if recorder.command_count > SceneBridge::Limits::MAX_SCENE_COMMANDS
                     raise SceneBridge::BridgeError.UnexpectedCommand if camera_command_count(recorder, camera) != 0
                     raise SceneBridge::BridgeError.MissingCreate if object_command_count(recorder, object) < 3
