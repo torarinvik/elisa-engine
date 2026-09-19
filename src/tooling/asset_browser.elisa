@@ -68,6 +68,20 @@ module AssetBrowser:
                 browser.count <- browser.count + 1
                 browser.selected <- 0 if browser.selected == Bounds::INVALID_INDEX
 
+            def browser_remove(browser: mutable Browser&, id: Assets::AssetId) -> void error[BrowserError]:
+                slot: usize = Find::row_of(browser, id)
+                raise BrowserError.UnknownAsset if slot == Bounds::INVALID_INDEX
+                for shift in slot..<browser.count - 1 |browser|:
+                    browser.rows[shift] <- browser.rows[shift + 1]
+                browser.rows[browser.count - 1].loaded <- false
+                browser.count <- browser.count - 1
+                if browser.count == 0:
+                    browser.selected <- Bounds::INVALID_INDEX
+                elif browser.selected >= browser.count:
+                    browser.selected <- browser.count - 1
+                elif slot < browser.selected:
+                    browser.selected <- browser.selected - 1
+
             def browser_select(browser: mutable Browser&, index: usize) -> void error[BrowserError]:
                 raise BrowserError.UnknownRow if index >= browser.count
                 browser.selected <- index

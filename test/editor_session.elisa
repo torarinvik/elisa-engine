@@ -76,6 +76,11 @@ def main() -> i32:
         SessionError.AssetInvalid: 2
         error failure: 3
     return 18 if invalid_generation != 2
+    removed: i32 = catch remove_asset(&session, id):
+        ok: 0
+        SessionError.AssetUnknown: 1
+        error failure: 2
+    return 19 if removed != 0 or AssetBrowser::browser_count(&session.assets) != 0 or selected_asset(&session) != 8 or not asset_is_stale(&session, id, 0)
     widget: UiWidgets::Widget = UiWidgets::Widget{id: 9, kind: UiWidgets::WidgetKind.Button, x: 0, y: 0, width: 8, height: 8, value: 0, minimum: 0, maximum: 0, enabled: true, visible: true}
     attached: i32 = catch attach_widget(&session, widget):
         ok: 0
@@ -84,7 +89,7 @@ def main() -> i32:
         SessionError.WidgetDuplicate: 3
         error failure: 4
     return 8 if attached != 0
-    return 9 if revision(&session) != 6
+    return 9 if revision(&session) != 7
     return 10 if not dirty(&session)
     return 11 if not session_valid(&session)
     0

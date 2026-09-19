@@ -211,7 +211,7 @@ immediately," and each of these is either optional for the first game or needs a
 toolchain not present in this environment:
 
 - **Richer editor authoring.** The bounded session, inspector, asset browser,
-  widget surface, and inspector field undo/redo are implemented; richer
+  asset removal, widget surface, and inspector field undo/redo are implemented; richer
   content workflows remain deferred until the editor has a concrete asset
   editing path.
 

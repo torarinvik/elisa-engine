@@ -161,6 +161,15 @@ module EditorSession:
                 session.revision <- session.revision + 1
                 session.dirty <- true
 
+            def remove_asset(session: mutable Session&, id: Assets::AssetId) -> void error[SessionError]:
+                result: i32 = catch AssetBrowser::browser_remove(&session.assets, id):
+                    ok: 0
+                    AssetBrowser::BrowserError.UnknownAsset: 1
+                    error failure: 2
+                raise SessionError.AssetUnknown if result != 0
+                session.revision <- session.revision + 1
+                session.dirty <- true
+
             def asset_is_stale(session: Session&, id: Assets::AssetId, generation: i64) -> bool:
                 AssetBrowser::browser_is_stale(&session.assets, id, generation)
 
