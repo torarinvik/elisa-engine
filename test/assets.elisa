@@ -12,9 +12,54 @@ def main() -> i32:
     blank_source: SourceAsset = SourceAsset{id: mesh, path: "", format: SourceFormat.Gltf}
     return 3 if source_asset_valid(blank_source)
 
+    descriptor: AssetDescriptor = AssetDescriptor{
+        source: source,
+        content: AssetId{high: 22, low: 1},
+        artifact: AssetId{high: 22, low: 2},
+        import_settings: AssetId{high: 22, low: 3},
+        variant: ArtifactVariant.Runtime,
+        dependencies: zeroed,
+        dependency_count: 0,
+        schema_version: 1,
+    }
+    return 4 if not asset_descriptor_valid(descriptor)
+    changed_content: AssetDescriptor = AssetDescriptor{
+        source: source,
+        content: AssetId{high: 22, low: 4},
+        artifact: descriptor.artifact,
+        import_settings: descriptor.import_settings,
+        variant: descriptor.variant,
+        dependencies: zeroed,
+        dependency_count: 0,
+        schema_version: descriptor.schema_version,
+    }
+    return 5 if same_descriptor_generation(descriptor, changed_content)
+    changed_path: AssetDescriptor = AssetDescriptor{
+        source: SourceAsset{id: source.id, path: "renamed/player.gltf", format: source.format},
+        content: descriptor.content,
+        artifact: descriptor.artifact,
+        import_settings: descriptor.import_settings,
+        variant: descriptor.variant,
+        dependencies: zeroed,
+        dependency_count: 0,
+        schema_version: descriptor.schema_version,
+    }
+    return 6 if not same_descriptor_generation(descriptor, changed_path)
+    invalid_descriptor: AssetDescriptor = AssetDescriptor{
+        source: source,
+        content: AssetId{high: 0, low: 0},
+        artifact: descriptor.artifact,
+        import_settings: descriptor.import_settings,
+        variant: descriptor.variant,
+        dependencies: zeroed,
+        dependency_count: 0,
+        schema_version: 1,
+    }
+    return 7 if asset_descriptor_valid(invalid_descriptor)
+
     bounds: Bounds3 = Bounds3{minimum: Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Vec3{x: 1.0, y: 1.0, z: 1.0}}
     visual: VisualAsset = VisualAsset{mesh: mesh, material: material, local_bounds: bounds}
-    return 4 if not visual_asset_valid(visual)
+    return 8 if not visual_asset_valid(visual)
     invalid_visual: VisualAsset = VisualAsset{mesh: mesh, material: mesh, local_bounds: bounds}
-    return 5 if visual_asset_valid(invalid_visual)
+    return 9 if visual_asset_valid(invalid_visual)
     0

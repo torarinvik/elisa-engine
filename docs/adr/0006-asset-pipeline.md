@@ -15,6 +15,11 @@ bytes in the shipped runtime expands the attack surface.
 - Asset IDs are stable across world lifetimes and distinct from entity
   IDs and backend handles. Packages carry content IDs; the catalogue
   tracks cooked generations with bounded blobs (1 MiB cap).
+- `Assets::AssetDescriptor` keeps source identity, content identity, artifact
+  identity, import-settings identity, artifact variant, schema version, and a
+  bounded dependency list separate. Renaming a source path therefore preserves
+  the source identity, while content or settings changes produce a new
+  generation.
 - Same content re-registers idempotently; changed content must go
   through an explicit recook that bumps the generation. Stale
   (id, content, generation) triples never validate.

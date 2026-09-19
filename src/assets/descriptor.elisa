@@ -6,6 +6,7 @@ module Assets:
     private:
         const module Sentinel:
             ZERO: u64 = 0
+            FIRST_SCHEMA_VERSION: i64 = 1
 
     public:
         struct AssetId:
@@ -17,6 +18,14 @@ module Assets:
             Png
             Wav
 
+        enum ArtifactVariant:
+            Runtime
+            Editor
+            Debug
+
+        const module DescriptorTune:
+            MAX_DEPENDENCIES: usize = 4
+
         struct SourceAsset:
             id: AssetId
             path: sview
@@ -27,6 +36,19 @@ module Assets:
             material: AssetId
             local_bounds: Geometry::Bounds3
 
+        # A cooked artifact is identified independently from its source path,
+        # content, and importer settings. Paths remain authoring metadata and
+        # never become runtime handles or process-local identities.
+        struct AssetDescriptor:
+            source: SourceAsset
+            content: AssetId
+            artifact: AssetId
+            import_settings: AssetId
+            variant: ArtifactVariant
+            dependencies: AssetId[DescriptorTune::MAX_DEPENDENCIES]
+            dependency_count: usize
+            schema_version: i64
+
         def asset_id_valid(id: AssetId) -> bool:
             id.high != Sentinel::ZERO or id.low != Sentinel::ZERO
 
@@ -35,6 +57,27 @@ module Assets:
 
         def source_asset_valid(source: SourceAsset) -> bool:
             asset_id_valid(source.id) and source.path != ""
+
+        def asset_descriptor_valid(descriptor: AssetDescriptor) -> bool:
+            source_ok: bool = source_asset_valid(descriptor.source)
+            content_ok: bool = asset_id_valid(descriptor.content)
+            artifact_ok: bool = asset_id_valid(descriptor.artifact)
+            settings_ok: bool = asset_id_valid(descriptor.import_settings)
+            dependencies_ok: bool = descriptor.dependency_count <= DescriptorTune::MAX_DEPENDENCIES
+            dependencies_valid: bool =
+                for index in 0..<descriptor.dependency_count |valid: bool = true| -> valid:
+                    break false if not asset_id_valid(descriptor.dependencies[index])
+            version_ok: bool = descriptor.schema_version >= Sentinel::FIRST_SCHEMA_VERSION
+            source_ok and content_ok and artifact_ok and settings_ok and dependencies_ok and dependencies_valid and version_ok
+
+        def same_descriptor_generation(left: AssetDescriptor, right: AssetDescriptor) -> bool:
+            same_source: bool = same_asset_id(left.source.id, right.source.id)
+            same_content: bool = same_asset_id(left.content, right.content)
+            same_settings: bool = same_asset_id(left.import_settings, right.import_settings)
+            same_schema: bool = left.schema_version == right.schema_version
+            same_variant: bool = left.variant == right.variant
+            same_dependencies: bool = left.dependency_count == right.dependency_count
+            same_source and same_content and same_settings and same_schema and same_variant and same_dependencies
 
         def visual_asset_valid(visual: VisualAsset) -> bool:
             asset_id_valid(visual.mesh) and asset_id_valid(visual.material) and not same_asset_id(visual.mesh, visual.material) and Geometry::bounds3_valid(visual.local_bounds)
