@@ -132,7 +132,9 @@ def rollback_test() -> i32:
     enemy: EntityRef = catch world_spawn(&world, Enemy.Guard):
         value: value
         error failure: invalid_reference()
-    snapshot: Snapshot = capture(&world)
+    snapshot: Snapshot = catch capture(&world):
+        value: value
+        error failure: Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
     allocator_before: i64 = world.allocator.last_issued
     _ = catch world_despawn(&world, actor):
         ok: true
@@ -160,6 +162,18 @@ def rollback_test() -> i32:
         RollbackError.WrongWorld: 2
         error failure: 3
     return 4 if wrong_world != 2
+    invalid_capture_world: mutable World = catch World():
+        value: value
+        error failure: invalid_world()
+    _ = catch world_spawn(&invalid_capture_world, Actor.Player):
+        value: value
+        error failure: invalid_reference()
+    invalid_capture_world.actors[0].id <- 99
+    rejected_capture: i32 = catch capture(&invalid_capture_world):
+        value: 0
+        RollbackError.InvalidSnapshot: 1
+        error failure: 2
+    return 5 if rejected_capture != 1
     0
 
 def main() -> i32:

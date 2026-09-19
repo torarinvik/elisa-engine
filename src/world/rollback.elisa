@@ -31,7 +31,8 @@ module WorldRollback:
             return false if snapshot.live_ids_count > Bounds::MAX_ENTITIES or snapshot.actor_count > Bounds::MAX_ENTITIES or snapshot.enemy_count > Bounds::MAX_ENTITIES
             true
 
-        def capture(world: World::World&) -> Snapshot:
+        def capture(world: World::World&) -> Snapshot error[RollbackError]:
+            raise RollbackError.InvalidSnapshot if not World::world_is_valid(world)
             snapshot: mutable Snapshot = Snapshot{
                 epoch: world.epoch,
                 registry: zeroed,
