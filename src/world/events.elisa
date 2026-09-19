@@ -1,0 +1,137 @@
+# Typed world events and service phases. The queue is intentionally callback
+# free: native or gameplay code drains a phase explicitly, so reentrant
+# delivery cannot mutate the world while a phase borrow is active.
+module WorldEvents:
+    private:
+        const module Limits:
+            MAX_EVENTS: usize = 64
+            MAX_SUBSCRIPTIONS: usize = 16
+            INVALID_SLOT: usize = MAX_SUBSCRIPTIONS
+
+        def phase_value(phase: Phase) -> usize:
+            return 0 if phase == Phase.Input
+            return 1 if phase == Phase.Simulation
+            return 2 if phase == Phase.Physics
+            return 3 if phase == Phase.Animation
+            return 4 if phase == Phase.Render
+            5
+
+        def subscription_slot(queue: Queue&, listener_id: i64) -> usize:
+            for index in 0..<Limits::MAX_SUBSCRIPTIONS |slot: usize = Limits::INVALID_SLOT| -> slot:
+                break index if queue.subscriptions[index].live and queue.subscriptions[index].listener_id == listener_id
+
+        def subscription_matches(queue: Queue&, listener_id: i64, phase: Phase) -> bool:
+            return true if listener_id == 0
+            slot: usize = subscription_slot(queue, listener_id)
+            slot != Limits::INVALID_SLOT and queue.subscriptions[slot].phase == phase
+
+    public:
+        enum Phase:
+            Input
+            Simulation
+            Physics
+            Animation
+            Render
+            Audio
+
+        enum EventKind:
+            Spawn
+            Despawn
+            Damage
+            AudioCue
+
+        enum EventError:
+            InactiveFrame
+            InvalidPhase
+            PhaseRegression
+            Capacity
+            DuplicateListener
+            UnknownListener
+            InvalidListener
+
+        struct Event:
+            phase: Phase
+            kind: EventKind
+            listener_id: i64
+            entity_id: i64
+            payload: i64
+            delivered: mutable bool
+
+        private:
+            struct Subscription:
+                listener_id: i64
+                phase: Phase
+                live: mutable bool
+
+        public:
+            affine struct Queue:
+                private:
+                    events: mutable Event[Limits::MAX_EVENTS]
+                    event_count: mutable usize
+                    subscriptions: mutable Subscription[Limits::MAX_SUBSCRIPTIONS]
+                    phase: mutable Phase
+                    frame_active: mutable bool
+                    delivered: mutable usize
+
+            def Queue() -> Queue:
+                Queue{events: zeroed, event_count: 0, subscriptions: zeroed, phase: Phase.Input, frame_active: false, delivered: 0}
+
+            def begin_frame(queue: mutable Queue&) -> void:
+                queue.events <- zeroed
+                queue.event_count <- 0
+                queue.phase <- Phase.Input
+                queue.frame_active <- true
+                queue.delivered <- 0
+
+            def current_phase(queue: Queue&) -> Phase:
+                queue.phase
+
+            def advance_phase(queue: mutable Queue&, next: Phase) -> void error[EventError]:
+                raise EventError.InactiveFrame if not queue.frame_active
+                raise EventError.PhaseRegression if phase_value(next) != phase_value(queue.phase) + 1
+                queue.phase <- next
+
+            def subscribe(queue: mutable Queue&, listener_id: i64, phase: Phase) -> void error[EventError]:
+                raise EventError.InvalidListener if listener_id <= 0
+                raise EventError.DuplicateListener if subscription_slot(queue, listener_id) != Limits::INVALID_SLOT
+                slot: usize =
+                    for index in 0..<Limits::MAX_SUBSCRIPTIONS |slot: usize = Limits::INVALID_SLOT, queue| -> slot:
+                        break index if not queue.subscriptions[index].live
+                raise EventError.Capacity if slot == Limits::INVALID_SLOT
+                queue.subscriptions[slot] <- Subscription{listener_id: listener_id, phase: phase, live: true}
+
+            def unsubscribe(queue: mutable Queue&, listener_id: i64) -> void error[EventError]:
+                slot: usize = subscription_slot(queue, listener_id)
+                raise EventError.UnknownListener if slot == Limits::INVALID_SLOT
+                queue.subscriptions[slot].live <- false
+
+            def emit(queue: mutable Queue&, event: Event) -> void error[EventError]:
+                raise EventError.InactiveFrame if not queue.frame_active
+                raise EventError.InvalidPhase if phase_value(event.phase) < phase_value(queue.phase)
+                raise EventError.InvalidListener if event.listener_id < 0 or event.entity_id <= 0
+                raise EventError.UnknownListener if event.listener_id > 0 and subscription_slot(queue, event.listener_id) == Limits::INVALID_SLOT
+                raise EventError.Capacity if queue.event_count >= Limits::MAX_EVENTS
+                queue.events[queue.event_count] <- event
+                queue.event_count <- queue.event_count + 1
+
+            def dispatch(queue: mutable Queue&, phase: Phase) -> usize error[EventError]:
+                raise EventError.InactiveFrame if not queue.frame_active
+                raise EventError.InvalidPhase if phase_value(phase) != phase_value(queue.phase)
+                delivered_now: mutable usize = 0
+                for index in 0..<queue.event_count |delivered_now, queue|:
+                    event: Event = queue.events[index]
+                    if event.phase == phase and not event.delivered and subscription_matches(queue, event.listener_id, phase):
+                        queue.events[index].delivered <- true
+                        delivered_now <- delivered_now + 1
+                queue.delivered <- queue.delivered + delivered_now
+                delivered_now
+
+            def end_frame(queue: mutable Queue&) -> usize:
+                queue.frame_active <- false
+                queue.delivered
+
+            def event_count(queue: Queue&) -> usize:
+                queue.event_count
+
+            def delivered_count(queue: Queue&) -> usize:
+                queue.delivered

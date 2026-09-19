@@ -135,6 +135,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Keep `src/runtime/executor.elisa` as the serial oracle; execute proven-independent work on a reusable worker pool using Elisa concurrency facilities where suitable. Done: cancellation, shutdown, dependencies, and effect/resource conflicts are tested; parallel results match the serial reference for deterministic systems.
 - [ ] **W08 · P2 · World events and service phases** — After: W03, F04.
   Define bounded typed event queues and an explicit input/simulation/physics/animation/render/audio order, including overflow and unsubscribe behavior. Done: reentrant callbacks, listener destruction, and worker-to-main delivery cannot mutate a world during an invalid access phase.
+  Progress: `src/world/events.elisa` adds bounded typed events, explicit six-phase ordering, listener subscriptions, unsubscription, phase-gated emission, and single-delivery drains; `test/world_events.elisa` covers phase regression and listener removal. Callback execution, worker handoff, and world borrow integration remain.
 - [ ] **W09 · P2 · Replay and state diagnostics** — After: W06, W08.
   Record tick-stamped input, random seeds, decisions, and state digests with scoped determinism guarantees. Done: replay finds the first divergent subsystem/tick; floating-point and solver/build boundaries are declared instead of promising cross-platform bit identity.
 - [ ] **W10 · P2 · Storage scale and world proofs** — After: W03, W07.

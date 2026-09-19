@@ -324,6 +324,12 @@ def main(arguments: darray[sview]) -> i64:
     save_schema_status <- run_visible(save_schema_binary, [])
     return save_schema_status if save_schema_status != 0
     println("Save schema tests passed.")
+    world_events_binary: sview = str(root.joinpath("build/world-events-test"))
+    world_events_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", world_events_binary, str(root.joinpath("test/world_events.elisa"))])
+    return world_events_status if world_events_status != 0
+    world_events_status <- run_visible(world_events_binary, [])
+    return world_events_status if world_events_status != 0
+    println("World event phase tests passed.")
     image_compare_test_binary: sview = str(root.joinpath("build/image-compare-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", image_compare_test_binary, str(root.joinpath("test/image_compare.elisa"))])
@@ -452,7 +458,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(schedule_test_binary, [])
         if status != 0:
@@ -467,7 +472,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(editor_test_binary, [])
         if status != 0:
@@ -488,7 +492,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(session_test_binary, [])
         if status != 0:
@@ -503,7 +506,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(bundle_test_binary, [])
         if status != 0:
@@ -518,7 +520,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(audio_test_binary, [])
         if status != 0:
@@ -533,7 +534,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     _ =
         status: i64 = run_visible(codec_test_binary, [])
         if status != 0:
