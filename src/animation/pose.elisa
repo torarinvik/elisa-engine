@@ -49,11 +49,11 @@ module Pose:
             local: Geometry::Transform
 
         struct Skeleton:
-            joints: mutable Joint[16]
+            joints: mutable Joint[Tune::MAX_JOINTS]
             count: mutable usize
 
         struct Pose:
-            models: mutable Geometry::Transform[16]
+            models: mutable Geometry::Transform[Tune::MAX_JOINTS]
             count: mutable usize
 
         def Skeleton() -> Skeleton:
@@ -80,7 +80,7 @@ module Pose:
 
         def pose_evaluate(skeleton: Skeleton&) -> Pose error[PoseError]:
             raise PoseError.InvalidSkeleton if not skeleton_valid(skeleton)
-            models: mutable Geometry::Transform[16] = zeroed
+            models: mutable Geometry::Transform[Tune::MAX_JOINTS] = zeroed
             for index in 0..<skeleton.count |models, skeleton|:
                 parent: i64 = skeleton.joints[index].parent
                 local: Geometry::Transform = skeleton.joints[index].local
@@ -103,7 +103,7 @@ module Pose:
         def pose_blend(left: Pose&, right: Pose&, weight: f32) -> Pose error[PoseError]:
             raise PoseError.ShapeMismatch if left.count != right.count
             raise PoseError.InvalidSkeleton if left.count > Tune::MAX_JOINTS
-            models: mutable Geometry::Transform[16] = zeroed
+            models: mutable Geometry::Transform[Tune::MAX_JOINTS] = zeroed
             for index in 0..<left.count |models, left, right, weight|:
                 models[index] <- transform_lerp(left.models[index], right.models[index], weight)
             Pose{models: models, count: left.count}
