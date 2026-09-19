@@ -1,6 +1,7 @@
 #pragma once
 
 #include "coordinate_conventions.h"
+#include "coordinate_abi.h"
 #include "probe_core.h"
 
 #include <cstdio>
@@ -8,6 +9,17 @@
 namespace probe {
 
 inline bool probe_coordinate_conventions() {
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    if (!check(elisa_coordinate_profile_valid(&profile), "coordinate ABI profile") ||
+        !check(sizeof(ElisaCoordinateProfile) == 32 && sizeof(ElisaTransformPayload) == 40,
+            "coordinate ABI layout")) {
+        return false;
+    }
+    ElisaCoordinateProfile invalid_profile = profile;
+    invalid_profile.depth_range = 2;
+    if (!check(!elisa_coordinate_profile_valid(&invalid_profile), "coordinate ABI rejects depth mismatch")) {
+        return false;
+    }
     const XMFLOAT3 point(1.25f, -2.5f, 3.75f);
     const XMFLOAT3 wicked = coordinates::to_wicked(point);
     const XMFLOAT3 round_trip = coordinates::from_wicked(wicked);
@@ -29,6 +41,12 @@ inline bool probe_coordinate_conventions() {
             "positive scale includes handedness reflection") ||
         !check(!coordinates::winding_reversed(scale),
             "negative scale restores winding parity")) {
+        return false;
+    }
+    const ElisaTransformPayload payload{{transformed.x, transformed.y, transformed.z},
+        {0.0f, 0.0f, 0.0f, 1.0f}, {scale.x, scale.y, scale.z}};
+    if (!check(elisa_transform_payload_valid(&payload), "coordinate transform payload") ||
+        !check(!elisa_transform_payload_valid(nullptr), "coordinate ABI rejects null transform")) {
         return false;
     }
     const XMFLOAT3 camera_origin(-3.5f, 2.0f, 8.25f);
