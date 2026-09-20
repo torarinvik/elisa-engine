@@ -171,6 +171,7 @@ Typed provider-map validation on 2026-09-20:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/capabilities-test test/capabilities.elisa && build/capabilities-test` passed, covering provider identity, native routes, disallowed fallback state, and wrong-service rejection.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both the SDL3/Metal application smoke and startup-failure cleanup smoke.
+- The application smoke now rejects a silent-audio initialization with a sample rate below the named minimum, shuts the host down after the fallback error, verifies the backend profile is unavailable, then negotiates again and successfully initializes silent audio.
 - Source-length, module-hygiene, dependency-manifest, and `git diff --check` policies passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed on the merged tree. The portable suite, including Godot 4.7.2 compatibility, passed; Elisa Proof proved both files (17/17 and 6/6 obligations) and replayed all 23 certificates.
 

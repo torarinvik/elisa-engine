@@ -14,12 +14,20 @@ initialization fails. Audio calls require the initialized application's owner
 thread. The callback mixes fixed voice slots without allocating; decoded clips
 are published only after a complete bounded read.
 
+The public API names its accepted sample-rate range (8 kHz–192 kHz) and channel
+count (one or two); Elisa and the C ABI both reject invalid configurations.
+
 The application native smoke creates a short 8 kHz mono WAV, initializes the
 silent device, decodes the clip, plays and stops one voice, and checks that
 application shutdown closes the service. Stale clip/voice generations are
 preserved across service restarts. The standalone Wicked probe continues to
 run the miniaudio decoder, null-device, and mixer checks through the shared
 implementation translation unit.
+
+The startup smoke also negotiates `MiniaudioSilent`, rejects a sample rate
+below the public minimum, shuts down the application after that adapter error,
+checks that the host profile is closed, then renegotiates and successfully
+initializes the silent device.
 
 Validation on 2026-09-20: the full `DEVELOPER_DIR=/Library/Developer/CommandLineTools
 ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript

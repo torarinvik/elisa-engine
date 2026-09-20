@@ -25,6 +25,13 @@ enum {
     ELISA_AUDIO_BUS_UI = 2,
 };
 
+enum {
+    ELISA_AUDIO_MIN_SAMPLE_RATE_HZ = 8000,
+    ELISA_AUDIO_MAX_SAMPLE_RATE_HZ = 192000,
+    ELISA_AUDIO_MIN_CHANNEL_COUNT = 1,
+    ELISA_AUDIO_MAX_CHANNEL_COUNT = 2,
+};
+
 int32_t elisa_audio_v1_initialize_silent(uint32_t sample_rate, uint32_t channels);
 int32_t elisa_audio_v1_initialize_default(uint32_t sample_rate, uint32_t channels);
 int32_t elisa_audio_v1_decode_file(const char* path, uint32_t* slot, uint32_t* generation);

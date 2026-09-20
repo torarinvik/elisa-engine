@@ -255,6 +255,23 @@ def check_startup_requirements(config: Application::Config) -> i32:
         return 138
     return 34 if report.state != RequirementState.Fallback or report.fallback_count != 1
     return 106 if report.decisions[0].feature != BackendFeature.Audio or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+    return 139 if report.decisions[0].fallback_provider != BackendFallbackProvider.MiniaudioSilent
+    failed_audio_init: i32 = catch AudioRuntime::initialize_silent(
+        AudioRuntime::MIN_SAMPLE_RATE_HZ - 1, AudioRuntime::MIN_CHANNEL_COUNT):
+        value: 0
+        AudioRuntime::AudioError.InvalidArgument: 1
+        error failure: 2
+    return 140 if failed_audio_init != 1
+    return 141 if not Application::shutdown()
+    failed_fallback_profile: i32 = catch Application::backend_profile():
+        value: 1
+        Application::BackendProfileError.NotInitialized: 0
+        error failure: 2
+    return 142 if failed_fallback_profile != 0
+    fallback_retry: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, audio_required, 1, silent_audio_fallback, true, &report)
+    return 143 if fallback_retry != Application::InitializeStatus.FallbackRequired
+    return 144 if report.decision_count != 1 or report.decisions[0].fallback_provider != BackendFallbackProvider.MiniaudioSilent
     audio_fallback_result: i32 = catch exercise_silent_audio():
         value: value
         error failure: return 94
