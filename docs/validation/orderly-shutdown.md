@@ -212,6 +212,30 @@ not recur. The small scene/host heap changes and post-churn deltas remain
 unattributed; F05 is still partial, and this two-pass gate is not a substitute
 for repeating the 512-cycle soak.
 
+## Gate after compact FBX vertex indexing (2026-09-20)
+
+After FBX skin influences moved into a separate indexing stream, the full SDL3/
+Wicked gate passed twice on the updated Mac toolchain:
+
+```text
+DEVELOPER_DIR="$(xcode-select -p)" \
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" \
+ELISA_ALLOW_STALE_STAGE1=1 elisascript scripts/wicked_probe.elisascript
+
+Native frame verified: dimensions, determinism, Elisa topology.
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 gpu_delta_bytes=0 heap_delta_bytes=560
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 gpu_delta_bytes=0 heap_delta_bytes=-1680
+host lifecycle heap: delta_bytes=3840 (both passes)
+churn memory: steady_delta_bytes=282304 (both passes)
+frame time: median_us=1842/p95_us=3522 and median_us=1274/p95_us=1585
+orderly native shutdown passed
+```
+
+Both passes exercised FBX import/cooking, the ordinary application lifecycle,
+the render-scene bridge, Wicked library probes, orderly shutdown, and exact
+frame comparison. GPU usage stayed flat. The host and post-churn heap changes
+remain unattributed; F05 is still partial.
+
 ## Native gate after tangent-frame and checked-startup integration (2026-09-20)
 
 The next full SDL3/Wicked gate passed after cooking tangent frames into FBX

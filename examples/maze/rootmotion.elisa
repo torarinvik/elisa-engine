@@ -43,7 +43,7 @@ module MazeRootMotion:
             _ = clip_add_key(&clip, 0, 0, transform_identity())
             forward: Transform = Transform{position: Vec3{x: step_length, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()}
             _ = clip_add_key(&clip, 0, Tune::CLIP_TICKS, forward)
-            clip
+            return move clip
 
         def Walker() -> Walker:
             Walker{tick: 0, travelled: 0.0, cells: 0}

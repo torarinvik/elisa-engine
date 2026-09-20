@@ -2,6 +2,8 @@
 module AnimationLimits:
     public:
         const MAX_JOINTS: usize = 64
-        const MAX_KEYS_PER_TRACK: usize = 8
+        # Dynamic clip keys are loaded once, then sampled without allocation.
+        # This ceiling keeps a single clip below the cooked-package budget.
+        const MAX_KEYS_PER_CLIP: usize = 262144
         const MAX_EVENTS_PER_CLIP: usize = 32
         const ENGINE_METERS_PER_UNIT: f32 = 1.0

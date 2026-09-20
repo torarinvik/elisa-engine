@@ -36,10 +36,14 @@ module AnimationAssets:
                     row_valid <- false if not near(product, expected)
                 valid <- false if not row_valid
 
-        def clip_header_valid(clip: AnimationClip&) -> bool:
+        def clip_identity_valid(clip: AnimationClip&) -> bool:
             return false if clip.clip_id.value <= 0 or clip.rig_id.value <= 0 or clip.duration_ticks <= 0 or clip.ticks_per_second <= 0
-            return false if clip.tracks.length != clip.duration_ticks or not Sampler::clip_valid(&clip.tracks)
             return false if clip.event_count > AnimationLimits::MAX_EVENTS_PER_CLIP
+            true
+
+        def clip_header_valid(clip: AnimationClip&) -> bool:
+            return false if not clip_identity_valid(clip)
+            return false if Sampler::clip_length(&clip.tracks) != clip.duration_ticks or not Sampler::clip_valid(&clip.tracks)
             ordered: bool = for index in 0..<clip.event_count |ordered: bool = true| -> ordered:
                 event: ClipEvent = clip.events[index]
                 ordered <- false if event.event_id.value <= 0 or event.tick < 0 or event.tick > clip.duration_ticks
@@ -75,14 +79,15 @@ module AnimationAssets:
             event_id: EventId
             tick: i64
 
-        struct AnimationClip:
-            clip_id: mutable ClipId
-            rig_id: mutable RigId
-            duration_ticks: mutable i64
-            ticks_per_second: mutable i64
-            tracks: mutable Sampler::ClipData
-            events: mutable ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]
-            event_count: mutable usize
+        affine struct AnimationClip:
+            private:
+                clip_id: mutable ClipId
+                rig_id: mutable RigId
+                duration_ticks: mutable i64
+                ticks_per_second: mutable i64
+                tracks: mutable Sampler::ClipData
+                events: mutable ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]
+                event_count: mutable usize
 
         error AnimationAssetError:
             InvalidSkeleton
@@ -145,7 +150,10 @@ module AnimationAssets:
 
         def clip_add_key(clip: mutable AnimationClip&, skeleton: SkeletonAsset&,
             joint_index: usize, tick: i64, local: Geometry::Transform) -> bool:
-            return false if not skeleton_asset_valid(skeleton) or not clip_header_valid(clip)
+            # Appending many keys must remain linear in key count. Full bind-pose
+            # validation runs once in clip_asset_valid before runtime sampling.
+            return false if skeleton.rig_id.value <= 0 or skeleton.joint_count == 0 or skeleton.joint_count > AnimationLimits::MAX_JOINTS
+            return false if not clip_identity_valid(clip)
             return false if clip.rig_id.value != skeleton.rig_id.value
             return false if joint_index >= skeleton.joint_count or not local_transform_valid(local)
             Sampler::clip_add_key(&clip.tracks, joint_index, tick, local)
@@ -165,13 +173,8 @@ module AnimationAssets:
                 return false if Sampler::clip_key_count(&clip.tracks, joint) == 0
                 count: usize = Sampler::clip_key_count(&clip.tracks, joint)
                 valid: bool = for slot in 0..<count |valid: bool = true| -> valid:
-                    key: usize = joint * AnimationLimits::MAX_KEYS_PER_TRACK + slot
-                    local: Geometry::Transform = Geometry::Transform{
-                        position: clip.tracks.positions[key],
-                        rotation: clip.tracks.rotations[key],
-                        scale: clip.tracks.scales[key],
-                    }
-                    valid <- false if not local_transform_valid(local)
+                    key: Sampler::ClipKey = Sampler::clip_key_at(&clip.tracks, joint, slot)
+                    valid <- false if not local_transform_valid(key.local)
                 complete <- false if not valid
             return false if not complete
             unused: bool = for joint in skeleton.joint_count..<AnimationLimits::MAX_JOINTS |unused: bool = true| -> unused:

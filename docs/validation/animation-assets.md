@@ -16,10 +16,12 @@ units, missing tracks, unordered events, incompatible rigs, sampled poses,
 and out-of-range sampling.
 
 This is an in-memory contract prototype, not a production cooked animation
-format. `Sampler::ClipData` currently permits eight keys per joint, so it is
-only suitable for bounded tests and small probes. A serialized animation
-package, realistic variable-length/compressed tracks, FBX animation import,
-and a production ozz runtime path remain open under C01/C02/A09.
+format. `Sampler::ClipData` stores keys in one contiguous dynamic buffer, with
+ordered contiguous tracks and binary-search sampling. Loading can append up to
+262,144 keys per clip; sampling does not allocate. Callers append tracks in
+ascending joint order and keys in non-decreasing tick order. A serialized
+animation package, FBX animation import, and a production ozz runtime path
+remain open under C01/C02/A09.
 
 Validation command:
 
