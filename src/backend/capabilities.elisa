@@ -68,6 +68,18 @@ module Capabilities:
             Unavailable
             Invalid
 
+        # A declared fallback must still be initialized by its owner before
+        # gameplay. This route tells the caller exactly which service needs it.
+        enum BackendFeatureResolution:
+            Native
+            DeclaredFallback
+            Unavailable
+            Invalid
+
+        struct BackendFeatureDecision:
+            feature: BackendFeature
+            resolution: BackendFeatureResolution
+
         struct BackendCapabilities:
             input: bool
             rendering: bool
@@ -111,6 +123,23 @@ module Capabilities:
             first_missing: BackendFeature
             missing_count: usize
             fallback_count: usize
+            decision_count: usize
+            decisions: BackendFeatureDecision[Bounds::MAX_FEATURES]
+
+        def backend_requirement_invalid_report() -> BackendRequirementReport:
+            invalid_decision: BackendFeatureDecision = BackendFeatureDecision{
+                feature: BackendFeature.Input,
+                resolution: BackendFeatureResolution.Invalid,
+            }
+            BackendRequirementReport{
+                state: RequirementState.Invalid,
+                first_missing: BackendFeature.Input,
+                missing_count: 0,
+                fallback_count: 0,
+                decision_count: 0,
+                decisions: [invalid_decision, invalid_decision, invalid_decision, invalid_decision,
+                    invalid_decision, invalid_decision, invalid_decision, invalid_decision],
+            }
 
         struct BackendProfile:
             kind: BackendKind
@@ -324,24 +353,25 @@ module Capabilities:
         def backend_requirement_report(profile: BackendProfile,
             required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
             fallbacks: BackendCapabilities, allow_fallback: bool) -> BackendRequirementReport:
-            invalid: BackendRequirementReport = BackendRequirementReport{
-                state: RequirementState.Invalid,
-                first_missing: BackendFeature.Input,
-                missing_count: 0,
-                fallback_count: 0,
-            }
+            invalid: BackendRequirementReport = backend_requirement_invalid_report()
             return invalid if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
             missing_count: mutable usize = 0
             fallback_count: mutable usize = 0
             first_missing: mutable BackendFeature = BackendFeature.Input
-            for index in 0..<count |missing_count, fallback_count, first_missing|:
+            decisions: mutable BackendFeatureDecision[Bounds::MAX_FEATURES] = invalid.decisions
+            for index in 0..<count |missing_count, fallback_count, first_missing, decisions|:
                 feature: BackendFeature = required[index]
-                if not backend_supports(profile, feature):
+                resolution: mutable BackendFeatureResolution = BackendFeatureResolution.Unavailable
+                if backend_supports(profile, feature):
+                    resolution <- BackendFeatureResolution.Native
+                else:
                     if allow_fallback and fallback_supports(fallbacks, feature):
+                        resolution <- BackendFeatureResolution.DeclaredFallback
                         fallback_count <- fallback_count + 1
                     else:
                         first_missing <- feature if missing_count == 0
                         missing_count <- missing_count + 1
+                decisions[index] <- BackendFeatureDecision{feature: feature, resolution: resolution}
             state: mutable RequirementState = RequirementState.Ready
             if missing_count > 0:
                 state <- RequirementState.Unavailable
@@ -352,6 +382,8 @@ module Capabilities:
                 first_missing: first_missing,
                 missing_count: missing_count,
                 fallback_count: fallback_count,
+                decision_count: count,
+                decisions: decisions,
             }
 
         def negotiate_requirements(profile: BackendProfile,

@@ -2,7 +2,7 @@ include "../src/backend/requirements.elisa"
 using Capabilities
 using BackendRequirements
 
-def one_feature(feature: BackendFeature) -> BackendFeature[8]:
+def one_feature(feature: BackendFeature) -> BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS]:
     [feature, feature, feature, feature, feature, feature, feature, feature]
 
 def fallback_for(feature: BackendFeature) -> BackendCapabilities:
@@ -41,19 +41,45 @@ def fallback_matrix_valid() -> bool:
         texture_formats: BackendTextureFormats{rgba8: false, bc1: false, r16_float: false},
         service_version: 1,
     }
-    features: BackendFeature[8] = [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Physics, BackendFeature.Audio, BackendFeature.NativeWindow, BackendFeature.AsyncUpload, BackendFeature.Callbacks, BackendFeature.AssetLoading]
-    for index in 0..<8 |valid: bool = true| -> valid:
+    features: BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS] = [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Physics, BackendFeature.Audio, BackendFeature.NativeWindow, BackendFeature.AsyncUpload, BackendFeature.Callbacks, BackendFeature.AssetLoading]
+    feature_matrix: bool = for index in 0..<MAX_BACKEND_FEATURE_REQUIREMENTS |valid: bool = true| -> valid:
         feature: BackendFeature = features[index]
-        required: BackendFeature[8] = one_feature(feature)
+        required: BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS] = one_feature(feature)
         fallback: BackendCapabilities = fallback_for(feature)
         report: mutable BackendRequirementReport = backend_requirement_report(profile, required, 1, fallback, true)
         break false if backend_feature_code(feature) != index.i32() + 1
         break false if report.state != RequirementState.Fallback or report.missing_count != 0 or report.fallback_count != 1
+        break false if report.decision_count != 1 or report.decisions[0].feature != feature or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
         break false if fallback_requirement_count(profile, required, 1, fallback) != 1
         break false if negotiate_requirements(profile, required, 1, fallback, false) != RequirementState.Unavailable
+        report <- backend_requirement_report(profile, required, 1, fallback, false)
+        break false if report.state != RequirementState.Unavailable or report.decisions[0].resolution != BackendFeatureResolution.Unavailable
         break false if negotiate_requirements(profile, required, 1, no_services, true) != RequirementState.Unavailable
         report <- backend_requirement_report(profile, required, 1, no_services, true)
         break false if report.state != RequirementState.Unavailable or report.first_missing != feature or report.missing_count != 1 or report.fallback_count != 0
+        break false if report.decisions[0].resolution != BackendFeatureResolution.Unavailable
+    return false if not feature_matrix
+
+    partial_fallbacks: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: true, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    mixed_required: BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS] = [
+        BackendFeature.Physics, BackendFeature.Audio, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input,
+    ]
+    mixed_report: BackendRequirementReport = backend_requirement_report(
+        profile, mixed_required, 2, partial_fallbacks, true)
+    return false if mixed_report.state != RequirementState.Unavailable
+    return false if mixed_report.decision_count != 2 or mixed_report.fallback_count != 1 or mixed_report.missing_count != 1
+    return false if mixed_report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+    return false if mixed_report.decisions[1].feature != BackendFeature.Audio or mixed_report.decisions[1].resolution != BackendFeatureResolution.Unavailable
+    invalid_report: BackendRequirementReport = backend_requirement_report(
+        profile, features, MAX_BACKEND_FEATURE_REQUIREMENTS + 1, no_services, true)
+    return false if invalid_report.state != RequirementState.Invalid or invalid_report.decision_count != 0
+    return false if invalid_report.decisions[0].resolution != BackendFeatureResolution.Invalid
+    true
 
 def aggregate_requirements_valid(profile: BackendProfile) -> bool:
     service_fallbacks: BackendCapabilities = BackendCapabilities{
@@ -101,6 +127,7 @@ def aggregate_requirements_valid(profile: BackendProfile) -> bool:
     report: mutable BackendRequirementsReport = backend_requirements_report(profile, requirements)
     return false if report.state != RequirementState.Fallback
     return false if report.services.state != RequirementState.Ready
+    return false if report.services.decision_count != 2 or report.services.decisions[0].resolution != BackendFeatureResolution.Native or report.services.decisions[1].resolution != BackendFeatureResolution.Native
     return false if report.optional_features.state != RequirementState.Ready
     return false if report.limits.state != RequirementState.Fallback or report.limits.fallback_count != 1
     return false if report.limits.granted[0] != 16 or report.limits.granted[1] != 12

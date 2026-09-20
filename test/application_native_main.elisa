@@ -106,12 +106,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         input: false, rendering: false, physics: false, audio: false,
         native_window: false, async_upload: false, callbacks: false, asset_loading: false,
     }
-    report: mutable BackendRequirementReport = BackendRequirementReport{
-        state: RequirementState.Invalid,
-        first_missing: BackendFeature.Input,
-        missing_count: 0,
-        fallback_count: 0,
-    }
+    report: mutable BackendRequirementReport = Capabilities::backend_requirement_invalid_report()
     profile_requirements: BackendRequirements::BackendStartupRequirements = BackendRequirements::BackendStartupRequirements{
         services: required,
         service_count: 3,
@@ -177,6 +172,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         config, required, 3, no_fallbacks, false, &report)
     return 27 if opened != Application::InitializeStatus.Ready
     return 28 if report.state != RequirementState.Ready or report.missing_count != 0
+    return 103 if report.decision_count != 3 or report.decisions[0].feature != BackendFeature.Input or report.decisions[0].resolution != BackendFeatureResolution.Native
     return 29 if not Application::shutdown()
 
     missing_physics: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
@@ -188,6 +184,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         config, missing_physics, 1, no_fallbacks, false, &report)
     return 30 if rejected != Application::InitializeStatus.RequirementsUnavailable
     return 31 if report.state != RequirementState.Unavailable or report.first_missing != BackendFeature.Physics or report.missing_count != 1
+    return 104 if report.decisions[0].feature != BackendFeature.Physics or report.decisions[0].resolution != BackendFeatureResolution.Unavailable
     closed_profile: i32 = catch Application::backend_profile():
         value: 1
         Application::BackendProfileError.NotInitialized: 0
@@ -201,6 +198,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
     physics_fallback_status: Application::InitializeStatus = Application::initialize_with_requirements(
         config, missing_physics, 1, physics_fallback, true, &report)
     return 97 if physics_fallback_status != Application::InitializeStatus.FallbackRequired
+    return 105 if report.decisions[0].feature != BackendFeature.Physics or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
     physics_world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
         value: value
         error failure: return 98
@@ -247,6 +245,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         return 137 if fallback_status == Application::InitializeStatus.ShutdownFailed
         return 138
     return 34 if report.state != RequirementState.Fallback or report.fallback_count != 1
+    return 106 if report.decisions[0].feature != BackendFeature.Audio or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
     audio_fallback_result: i32 = catch exercise_silent_audio():
         value: value
         error failure: return 94

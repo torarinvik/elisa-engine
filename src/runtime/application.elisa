@@ -331,12 +331,7 @@ module Application:
             required: Capabilities::BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS],
             count: usize, fallbacks: Capabilities::BackendCapabilities, allow_fallback: bool,
             report: mutable Capabilities::BackendRequirementReport&) -> InitializeStatus:
-            report <- Capabilities::BackendRequirementReport{
-                state: Capabilities::RequirementState.Invalid,
-                first_missing: Capabilities::BackendFeature.Input,
-                missing_count: 0,
-                fallback_count: 0,
-            }
+            report <- Capabilities::backend_requirement_invalid_report()
             opened: InitializeStatus = initialize(config)
             return opened if opened != InitializeStatus.Ready
             profile: Capabilities::BackendProfile = catch backend_profile():
