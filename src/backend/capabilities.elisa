@@ -24,6 +24,8 @@ module Capabilities:
             NATIVE_FORMAT_BITS: i64 = 7
 
     public:
+        const MAX_BACKEND_FEATURE_REQUIREMENTS: usize = Bounds::MAX_FEATURES
+
         enum BackendKind:
             Headless
             Native

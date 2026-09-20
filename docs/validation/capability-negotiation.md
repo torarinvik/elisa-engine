@@ -52,6 +52,17 @@ available; Physics and Audio remain unavailable until public engine services
 own those integrations. The lifecycle smoke checks those capabilities, queried
 viewport and memory limits, and rejection after shutdown.
 
+`Application::initialize_with_requirements()` negotiates a bounded set of
+required services immediately after host initialization and before the caller
+enters gameplay. `Ready` means every requested service is native. If every
+missing service has a caller-declared fallback and fallback use is allowed, it
+returns `FallbackRequired` with the host still initialized; the caller must
+apply that fallback before gameplay. Invalid or unavailable requirements close
+the host and return the first missing feature and counts in the report. A failed
+rollback is surfaced as `ShutdownFailed`. The native lifecycle smoke checks
+the ready path, unsupported Physics rejection and rollback, declared Audio
+fallback reporting, and invalid-count rejection and rollback.
+
 ABI version 2 carries
 RGBA8, BC1, and R16F resource-format support, memory budget/usage, and the
 actual high-priority and streaming worker counts. Typed C queries expose
@@ -77,3 +88,12 @@ capability-policy checks. On the Apple M5 it reported profile bits `0xb3`,
 optional bits `0x7`, formats `0x7`, 16 viewports, and 9 graphics / 1 streaming
 workers. The application smoke verified Physics and Audio stay unavailable
 until Elisa-owned service adapters are integrated.
+
+The checked-startup additions also passed the native application smoke: the
+required Input/Rendering/NativeWindow set returned `Ready`; a Physics
+requirement returned `RequirementsUnavailable` and left no initialized host; a
+declared Audio fallback returned `FallbackRequired`; and a count beyond the
+public bounded capacity returned `InvalidRequirements` with the host shut
+down. The full `DEVELOPER_DIR="$(xcode-select -p)" elisascript
+scripts/check.elisascript` suite passed, including its proof obligations and
+certificate replay.

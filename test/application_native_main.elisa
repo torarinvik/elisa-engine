@@ -16,6 +16,70 @@ def check_native_profile() -> i32:
     return 24 if profile.limits.memory_usage_bytes > profile.limits.memory_budget_bytes
     0
 
+def check_startup_requirements(config: Application::Config) -> i32:
+    required: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
+        BackendFeature.Input, BackendFeature.Rendering, BackendFeature.NativeWindow,
+        BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input,
+    ]
+    no_fallbacks: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: false, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    report: mutable BackendRequirementReport = BackendRequirementReport{
+        state: RequirementState.Invalid,
+        first_missing: BackendFeature.Input,
+        missing_count: 0,
+        fallback_count: 0,
+    }
+    opened: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, required, 3, no_fallbacks, false, &report)
+    return 27 if opened != Application::InitializeStatus.Ready
+    return 28 if report.state != RequirementState.Ready or report.missing_count != 0
+    return 29 if not Application::shutdown()
+
+    missing_physics: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
+        BackendFeature.Physics, BackendFeature.Input, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input,
+    ]
+    rejected: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, missing_physics, 1, no_fallbacks, false, &report)
+    return 30 if rejected != Application::InitializeStatus.RequirementsUnavailable
+    return 31 if report.state != RequirementState.Unavailable or report.first_missing != BackendFeature.Physics or report.missing_count != 1
+    closed_profile: i32 = catch Application::backend_profile():
+        value: 1
+        Application::BackendProfileError.NotInitialized: 0
+        error failure: 2
+    return 32 if closed_profile != 0
+
+    audio_required: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
+        BackendFeature.Audio, BackendFeature.Input, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
+        BackendFeature.Input, BackendFeature.Input,
+    ]
+    silent_audio_fallback: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: false, audio: true,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    fallback_status: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, audio_required, 1, silent_audio_fallback, true, &report)
+    return 33 if fallback_status != Application::InitializeStatus.FallbackRequired
+    return 34 if report.state != RequirementState.Fallback or report.fallback_count != 1
+    return 35 if not Application::shutdown()
+
+    invalid_count: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, required, Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS + 1,
+        no_fallbacks, false, &report)
+    return 36 if invalid_count != Application::InitializeStatus.InvalidRequirements
+    return 37 if report.state != RequirementState.Invalid
+    invalid_profile: i32 = catch Application::backend_profile():
+        value: 1
+        Application::BackendProfileError.NotInitialized: 0
+        error failure: 2
+    return 38 if invalid_profile != 0
+    0
+
 def main() -> i32:
     config: Application::Config = Application::default_config()
     opened: Application::InitializeStatus = Application::initialize(config)
@@ -45,4 +109,5 @@ def main() -> i32:
         Application::BackendProfileError.NotInitialized: 0
         error failure: 2
     return 25 if closed_profile != 0
+    return 33 if check_startup_requirements(config) != 0
     0
