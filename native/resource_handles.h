@@ -8,10 +8,11 @@
 #include "wiScene.h"
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <string>
-#include <vector>
+#include <utility>
 
 namespace probe {
 
@@ -36,6 +37,7 @@ struct NativeInstanceUpdate {
 class NativeResourceRegistry {
 public:
     static constexpr uint32_t MAX_RESOURCES = 64;
+    static constexpr size_t MAX_PENDING_RETIREMENTS = 64;
 
     struct Telemetry {
         uint64_t creations = 0;
@@ -43,6 +45,7 @@ public:
         uint64_t logical_destructions = 0;
         uint64_t retirements_enqueued = 0;
         uint64_t retirements_collected = 0;
+        uint64_t retirement_capacity_rejections = 0;
         uint64_t peak_pending_retirements = 0;
         uint64_t batched_update_calls = 0;
         uint64_t batched_update_rows = 0;
@@ -50,10 +53,12 @@ public:
     };
 
     explicit NativeResourceRegistry(wi::scene::Scene& scene)
-        : scene_(scene), owner_(reinterpret_cast<uintptr_t>(&scene)) {}
+        : scene_(scene), owner_(next_owner_identity()) {}
 
     NativeResourceRegistry(const NativeResourceRegistry&) = delete;
     NativeResourceRegistry& operator=(const NativeResourceRegistry&) = delete;
+    NativeResourceRegistry(NativeResourceRegistry&&) = delete;
+    NativeResourceRegistry& operator=(NativeResourceRegistry&&) = delete;
 
     NativeResourceHandle create_cube(const std::string& name) {
         return create_entity(NativeResourceKind::Mesh, [&] { return scene_.Entity_CreateCube(name); });
@@ -208,25 +213,32 @@ public:
     bool destroy_deferred(NativeResourceHandle handle, uint64_t submission_serial = 0) {
         Slot* state = state_for(handle);
         if (state == nullptr || !is_live(handle)) return false;
-        retired_.push_back({handle.kind, state->entity, state->texture, handle.slot, submission_serial});
+        if (retired_count_ == retired_.size()) {
+            ++telemetry_.retirement_capacity_rejections;
+            return false;
+        }
+        retired_[retired_count_++] = Retired{handle.kind, state->entity, state->texture, handle.slot, submission_serial};
         state->live = false;
         state->retired = true;
         ++telemetry_.logical_destructions;
         ++telemetry_.retirements_enqueued;
-        if (retired_.size() > telemetry_.peak_pending_retirements) {
-            telemetry_.peak_pending_retirements = retired_.size();
+        if (retired_count_ > telemetry_.peak_pending_retirements) {
+            telemetry_.peak_pending_retirements = retired_count_;
         }
         return true;
     }
 
-    size_t pending_retirements() const { return retired_.size(); }
+    size_t pending_retirements() const { return retired_count_; }
     const Telemetry& telemetry() const { return telemetry_; }
 
     void collect_retired(uint64_t completed_serial = UINT64_MAX) {
+        const size_t count = retired_count_;
         size_t write = 0;
-        for (const Retired& resource : retired_) {
+        for (size_t read = 0; read < count; ++read) {
+            Retired& resource = retired_[read];
             if (resource.serial > completed_serial) {
-                retired_[write++] = resource;
+                if (write != read) retired_[write] = std::move(resource);
+                ++write;
                 continue;
             }
             if (is_entity_kind(resource.kind) && resource.entity != wi::ecs::INVALID_ENTITY) {
@@ -238,7 +250,8 @@ public:
             state.retired = false;
             ++telemetry_.retirements_collected;
         }
-        retired_.resize(write);
+        for (size_t index = write; index < count; ++index) retired_[index] = {};
+        retired_count_ = write;
     }
 
     // Test-only fault injection makes generation exhaustion deterministic
@@ -252,6 +265,11 @@ public:
     }
 
 private:
+    static uintptr_t next_owner_identity() {
+        static std::atomic<uintptr_t> next{1};
+        return next.fetch_add(1, std::memory_order_relaxed);
+    }
+
     struct Slot {
         wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
         wi::graphics::Texture texture;
@@ -348,7 +366,8 @@ private:
     wi::scene::Scene& scene_;
     uintptr_t owner_;
     std::array<std::array<Slot, MAX_RESOURCES>, static_cast<size_t>(NativeResourceKind::Count)> slots_{};
-    std::vector<Retired> retired_;
+    std::array<Retired, MAX_PENDING_RETIREMENTS> retired_{};
+    size_t retired_count_ = 0;
     Telemetry telemetry_;
 };
 

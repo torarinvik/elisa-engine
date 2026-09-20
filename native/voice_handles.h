@@ -7,8 +7,8 @@
 #include "resource_handles.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
-#include <vector>
 
 namespace probe {
 
@@ -17,14 +17,23 @@ public:
     static constexpr uint32_t MAX_VOICES = audio::MAX_VOICES;
 
     explicit NativeVoiceRegistry(audio::Service& service)
-        : service_(service), owner_(reinterpret_cast<uintptr_t>(&service)) {}
+        : service_(service), owner_(next_owner_identity()) {}
+
+    NativeVoiceRegistry(const NativeVoiceRegistry&) = delete;
+    NativeVoiceRegistry& operator=(const NativeVoiceRegistry&) = delete;
+    NativeVoiceRegistry(NativeVoiceRegistry&&) = delete;
+    NativeVoiceRegistry& operator=(NativeVoiceRegistry&&) = delete;
 
     NativeResourceHandle play(audio::ClipHandle clip) {
         for (uint32_t slot = 0; slot < MAX_VOICES; ++slot) {
             VoiceSlot& state = voices_[slot];
             if (state.live || state.retired) continue;
             const audio::VoiceHandle voice = service_.play(clip);
-            if (voice.slot >= audio::MAX_VOICES || !next_generation(state)) return {};
+            if (voice.slot >= audio::MAX_VOICES) return {};
+            if (!next_generation(state)) {
+                service_.stop(voice);
+                return {};
+            }
             state.voice = voice;
             state.live = true;
             return NativeResourceHandle{slot, state.generation, owner_, NativeResourceKind::Voice};
@@ -49,17 +58,23 @@ public:
     bool destroy_deferred(NativeResourceHandle handle, uint64_t submission_serial) {
         VoiceSlot* state = state_for(handle);
         if (state == nullptr || !is_live(handle)) return false;
+        if (retired_count_ == retired_.size()) return false;
+        retired_[retired_count_++] = Retired{handle.slot, submission_serial};
         state->live = false;
         state->retired = true;
-        retired_.push_back({handle.slot, submission_serial});
         return true;
     }
 
+    size_t pending_retirements() const { return retired_count_; }
+
     void collect_retired(uint64_t completed_serial = UINT64_MAX) {
+        const size_t count = retired_count_;
         size_t write = 0;
-        for (const Retired& resource : retired_) {
+        for (size_t read = 0; read < count; ++read) {
+            const Retired& resource = retired_[read];
             if (resource.serial > completed_serial) {
-                retired_[write++] = resource;
+                if (write != read) retired_[write] = resource;
+                ++write;
                 continue;
             }
             VoiceSlot& state = voices_[resource.slot];
@@ -67,7 +82,8 @@ public:
             state.voice = {};
             state.retired = false;
         }
-        retired_.resize(write);
+        for (size_t index = write; index < count; ++index) retired_[index] = {};
+        retired_count_ = write;
     }
 
     bool force_generation_for_test(uint32_t slot, uint32_t generation) {
@@ -77,6 +93,11 @@ public:
     }
 
 private:
+    static uintptr_t next_owner_identity() {
+        static std::atomic<uintptr_t> next{1};
+        return next.fetch_add(1, std::memory_order_relaxed);
+    }
+
     struct VoiceSlot {
         audio::VoiceHandle voice;
         uint32_t generation = 0;
@@ -108,7 +129,8 @@ private:
     audio::Service& service_;
     uintptr_t owner_;
     std::array<VoiceSlot, MAX_VOICES> voices_{};
-    std::vector<Retired> retired_;
+    std::array<Retired, MAX_VOICES> retired_{};
+    size_t retired_count_ = 0;
 };
 
 } // namespace probe

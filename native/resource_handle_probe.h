@@ -6,6 +6,7 @@
 #include "voice_handles.h"
 
 #include <cstdio>
+#include <vector>
 
 namespace probe {
 
@@ -104,9 +105,37 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
         (unsigned)objects_before_pressure, (unsigned long long)telemetry.creations,
         (unsigned long long)telemetry.failed_creations, (unsigned long long)telemetry.retirements_collected,
         (unsigned long long)telemetry.retirements_enqueued, (unsigned long long)telemetry.peak_pending_retirements);
+    NativeResourceRegistry duplicate_registry(scene);
+    if (!check(!duplicate_registry.is_live(material), "cross-registry resource rejection")) return false;
     wi::scene::Scene other_scene;
     NativeResourceRegistry other_registry(other_scene);
-    return check(!other_registry.is_live(material), "cross-scene resource rejection");
+    if (!check(!other_registry.is_live(material), "cross-scene resource rejection")) return false;
+
+    wi::scene::Scene pressure_scene;
+    NativeResourceRegistry bounded_registry(pressure_scene);
+    for (uint32_t index = 0; index < NativeResourceRegistry::MAX_PENDING_RETIREMENTS; ++index) {
+        const NativeResourceHandle handle = bounded_registry.create_cube("elisa_retirement_pressure");
+        if (!check(bounded_registry.is_live(handle) && bounded_registry.destroy_deferred(handle, 11),
+                "bounded retirement queue fill")) return false;
+    }
+    const NativeResourceHandle overflow = bounded_registry.create_material("elisa_retirement_overflow");
+    if (!check(bounded_registry.is_live(overflow) &&
+            !bounded_registry.destroy_deferred(overflow, 11) && bounded_registry.is_live(overflow) &&
+            bounded_registry.pending_retirements() == NativeResourceRegistry::MAX_PENDING_RETIREMENTS,
+            "retirement queue full rejection is atomic")) return false;
+    bounded_registry.collect_retired(10);
+    if (!check(bounded_registry.pending_retirements() == NativeResourceRegistry::MAX_PENDING_RETIREMENTS,
+            "retirement queue waits for serial")) return false;
+    bounded_registry.collect_retired(11);
+    if (!check(bounded_registry.pending_retirements() == 0 &&
+            bounded_registry.telemetry().retirement_capacity_rejections == 1 &&
+            bounded_registry.destroy_deferred(overflow, 11),
+            "bounded retirement capacity reclaimed")) return false;
+    bounded_registry.collect_retired(11);
+    if (!check(pressure_scene.objects.GetCount() == 0,
+            "bounded retirement returns object baseline")) return false;
+
+    return true;
 }
 
 inline bool probe_native_voice_handles() {
@@ -121,8 +150,10 @@ inline bool probe_native_voice_handles() {
     const NativeResourceHandle voice = registry.play(clip);
     if (!check(registry.is_live(voice) && voice.kind == NativeResourceKind::Voice,
             "voice handle creation")) return false;
-    if (!check(registry.destroy_deferred(voice, 3), "voice logical destruction") ||
-        !check(!registry.is_live(voice), "stale voice handle rejection")) return false;
+    NativeVoiceRegistry duplicate_registry(service);
+    if (!check(!duplicate_registry.is_live(voice), "cross-registry voice rejection")) return false;
+    if (!check(registry.destroy_deferred(voice, 3) && registry.pending_retirements() == 1,
+            "voice logical destruction") || !check(!registry.is_live(voice), "stale voice handle rejection")) return false;
     registry.collect_retired(2);
     registry.collect_retired(3);
     if (!check(!service.voice_live(audio::VoiceHandle{voice.slot, voice.generation}),
@@ -132,8 +163,8 @@ inline bool probe_native_voice_handles() {
         !check(registry.destroy(reclaimed), "voice destruction")) return false;
     if (!check(registry.force_generation_for_test(reclaimed.slot, UINT32_MAX),
             "voice generation exhaustion setup") ||
-        !check(registry.play(clip).slot == NativeResourceHandle::INVALID_SLOT,
-            "voice generation exhaustion rejection")) return false;
+        !check(registry.play(clip).slot == NativeResourceHandle::INVALID_SLOT && service.active_voices() == 0,
+            "voice generation exhaustion stops untracked playback")) return false;
     service.shutdown();
     return check(!registry.is_live(reclaimed), "voice shutdown invalidation");
 }
