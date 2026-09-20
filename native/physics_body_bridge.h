@@ -4,8 +4,10 @@
 // components. Jolt entity IDs stay inside this adapter and are never exposed.
 #include "probe_core.h"
 #include "wiScene.h"
+#include "wiPhysics.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -75,6 +77,12 @@ public:
         return result;
     }
 
+    bool step_fixed(float dt) {
+        if (!std::isfinite(dt) || dt <= 0.0f || dt > 1.0f / 30.0f) return false;
+        scene_.Update(dt);
+        return true;
+    }
+
 private:
     struct Slot {
         wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -112,6 +120,20 @@ inline bool probe_physics_body_bridge(wi::scene::Scene& scene) {
         !check(!bridge.live(kinematic) && !bridge.destroy(kinematic), "physics bridge rejects stale body") ||
         !check(bridge.destroy(static_body) && bridge.destroy(dynamic) && bridge.live_count() == 0 &&
             scene.rigidbodies.GetCount() == before, "physics bridge unloads bodies")) return false;
+    wi::physics::SetSimulationEnabled(true);
+    wi::physics::SetInterpolationEnabled(false);
+    const PhysicsBodyHandle stepped = bridge.create(PhysicsBodyKind::Dynamic, 1.0f, 4);
+    auto* stepped_transform = scene.transforms.GetComponent(bridge.resolve(stepped));
+    if (!check(stepped_transform != nullptr, "physics bridge step transform")) return false;
+    stepped_transform->translation_local.y = 4.0f;
+    stepped_transform->UpdateTransform();
+    constexpr float FIXED_DT = 1.0f / 120.0f;
+    const float start_y = stepped_transform->GetPosition().y;
+    if (!check(bridge.step_fixed(FIXED_DT), "physics bridge fixed step one") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge fixed step two")) return false;
+    const float after_two_steps = stepped_transform->GetPosition().y;
+    if (!check(after_two_steps < start_y, "physics bridge advances fixed body once per tick")) return false;
+    if (!check(bridge.destroy(stepped), "physics bridge fixed-step unload")) return false;
     return true;
 }
 
