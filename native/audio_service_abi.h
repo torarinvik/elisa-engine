@@ -26,6 +26,11 @@ enum {
 };
 
 enum {
+    ELISA_AUDIO_PROVIDER_SILENT = 1,
+    ELISA_AUDIO_PROVIDER_DEFAULT = 2,
+};
+
+enum {
     ELISA_AUDIO_MIN_SAMPLE_RATE_HZ = 8000,
     ELISA_AUDIO_MAX_SAMPLE_RATE_HZ = 192000,
     ELISA_AUDIO_MIN_CHANNEL_COUNT = 1,
@@ -34,6 +39,7 @@ enum {
 
 int32_t elisa_audio_v1_initialize_silent(uint32_t sample_rate, uint32_t channels);
 int32_t elisa_audio_v1_initialize_default(uint32_t sample_rate, uint32_t channels);
+int32_t elisa_audio_v1_probe_provider(int32_t provider);
 int32_t elisa_audio_v1_decode_file(const char* path, uint32_t* slot, uint32_t* generation);
 int32_t elisa_audio_v1_play(uint32_t clip_slot, uint32_t clip_generation, int32_t looped,
     int32_t bus, float gain, uint32_t priority, uint32_t* slot, uint32_t* generation);

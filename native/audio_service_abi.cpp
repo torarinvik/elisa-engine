@@ -76,6 +76,40 @@ extern "C" int32_t elisa_audio_v1_initialize_default(uint32_t sample_rate, uint3
     return initialize_audio(sample_rate, channels, false);
 }
 
+extern "C" int32_t elisa_audio_v1_probe_provider(int32_t provider) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    if (provider != ELISA_AUDIO_PROVIDER_SILENT && provider != ELISA_AUDIO_PROVIDER_DEFAULT) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    AudioService& state = audio_service();
+    if (state.initialized) return ELISA_AUDIO_INVALID_STATE;
+
+    probe::audio::Service candidate;
+    bool available = false;
+    try {
+        available = provider == ELISA_AUDIO_PROVIDER_SILENT
+            ? candidate.initialize_null(ELISA_AUDIO_MIN_SAMPLE_RATE_HZ, ELISA_AUDIO_MIN_CHANNEL_COUNT)
+            : candidate.initialize_default(ELISA_AUDIO_MIN_SAMPLE_RATE_HZ, ELISA_AUDIO_MIN_CHANNEL_COUNT);
+    } catch (...) {
+        candidate.shutdown();
+        return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+    }
+    if (!available) {
+        candidate.shutdown();
+        return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+    }
+#if defined(ELISA_AUDIO_TEST_PROBE)
+    if (state.fail_next_initialize_after_open) {
+        state.fail_next_initialize_after_open = false;
+        candidate.shutdown();
+        return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+    }
+#endif
+    candidate.shutdown();
+    return ELISA_AUDIO_OK;
+}
+
 #if defined(ELISA_AUDIO_TEST_PROBE)
 extern "C" int32_t elisa_audio_v1_test_fail_next_initialize_after_open(void) {
     const int32_t owner_status = require_application_owner();

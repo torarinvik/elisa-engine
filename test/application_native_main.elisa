@@ -199,6 +199,33 @@ def check_startup_requirements(config: Application::Config) -> i32:
         error failure: 2
     return 32 if closed_profile != 0
 
+    physics_profile_fallbacks: BackendFallbackProviders = BackendFallbackProviders{
+        input: BackendFallbackProvider.None,
+        rendering: BackendFallbackProvider.None,
+        physics: BackendFallbackProvider.JoltPhysics,
+        audio: BackendFallbackProvider.None,
+        native_window: BackendFallbackProvider.None,
+        async_upload: BackendFallbackProvider.None,
+        callbacks: BackendFallbackProvider.None,
+        asset_loading: BackendFallbackProvider.None,
+    }
+    physics_profile_requirements: mutable BackendRequirements::BackendStartupRequirements = profile_requirements
+    physics_profile_requirements.services[3] <- BackendFeature.Physics
+    physics_profile_requirements.service_count <- 4
+    physics_profile_requirements.service_fallbacks <- physics_profile_fallbacks
+    physics_profile_requirements.allow_service_fallbacks <- true
+    probe_host: Application::InitializeStatus = Application::initialize(config)
+    return 157 if probe_host != Application::InitializeStatus.Ready
+    return 158 if NativeApplicationTestProbe::elisa_physics_v1_test_fail_next_initialize_after_scene() != 0
+    return 159 if not Application::shutdown()
+    physics_probe_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+    physics_probe_status: Application::InitializeStatus = Application::initialize_with_profile_requirements(
+        config, physics_profile_requirements, &physics_probe_report)
+    return 160 if physics_probe_status != Application::InitializeStatus.RequirementsUnavailable
+    return 161 if physics_probe_report.state != RequirementState.Unavailable
+    return 162 if physics_probe_report.services.decisions[3].resolution != BackendFeatureResolution.ProviderUnavailable
+    return 163 if physics_probe_report.services.decisions[3].fallback_provider != BackendFallbackProvider.JoltPhysics
+
     physics_fallback: BackendFallbackProviders = BackendFallbackProviders{
         input: BackendFallbackProvider.None,
         rendering: BackendFallbackProvider.None,
@@ -270,7 +297,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         callbacks: BackendFallbackProvider.None,
         asset_loading: BackendFallbackProvider.None,
     }
-    fallback_status: Application::InitializeStatus = Application::initialize_with_requirements(
+    fallback_status: mutable Application::InitializeStatus = Application::initialize_with_requirements(
         config, audio_required, 1, silent_audio_fallback, true, &report)
     if fallback_status != Application::InitializeStatus.FallbackRequired:
         _ = Application::shutdown()
@@ -286,6 +313,17 @@ def check_startup_requirements(config: Application::Config) -> i32:
     return 34 if report.state != RequirementState.Fallback or report.fallback_count != 1
     return 106 if report.decisions[0].feature != BackendFeature.Audio or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
     return 139 if report.decisions[0].fallback_provider != BackendFallbackProvider.MiniaudioSilent
+    return 164 if NativeApplicationTestProbe::elisa_audio_v1_test_fail_next_initialize_after_open() != 0
+    return 165 if not Application::shutdown()
+    unavailable_audio_status: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, audio_required, 1, silent_audio_fallback, true, &report)
+    return 166 if unavailable_audio_status != Application::InitializeStatus.RequirementsUnavailable
+    return 167 if report.state != RequirementState.Unavailable or report.missing_count != 1
+    return 168 if report.decisions[0].resolution != BackendFeatureResolution.ProviderUnavailable
+    return 169 if report.decisions[0].fallback_provider != BackendFallbackProvider.MiniaudioSilent
+    fallback_status <- Application::initialize_with_requirements(
+        config, audio_required, 1, silent_audio_fallback, true, &report)
+    return 170 if fallback_status != Application::InitializeStatus.FallbackRequired
     failed_audio_init: i32 = catch AudioRuntime::initialize_silent(
         AudioRuntime::MIN_SAMPLE_RATE_HZ - 1, AudioRuntime::MIN_CHANNEL_COUNT):
         value: 0
