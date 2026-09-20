@@ -23,6 +23,16 @@ inline size_t scene_restart_heap_bytes_in_use() {
     return stats.size_in_use;
 }
 
+inline void hold_scene_restart_inspection(const char* environment_name, const char* description) {
+    const char* configured_seconds = std::getenv(environment_name);
+    if (configured_seconds == nullptr) return;
+    const int seconds = std::atoi(configured_seconds);
+    if (seconds <= 0) return;
+    std::fprintf(stdout, "%s: %d seconds\n", description, seconds);
+    std::fflush(stdout);
+    std::this_thread::sleep_for(std::chrono::seconds(seconds));
+}
+
 inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     auto* device = wi::graphics::GetDevice();
     if (!check(device != nullptr, "scene restart graphics device")) return false;
@@ -107,6 +117,8 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
         if (cycle + 1 == WARMUP_CYCLES) {
             warm_gpu_bytes = gpu_bytes;
             warm_heap_bytes = heap_bytes;
+            hold_scene_restart_inspection(
+                "ELISA_SCENE_RESTART_WARMUP_HOLD_SECONDS", "scene restart warm-up inspection hold");
         }
         final_gpu_bytes = gpu_bytes;
         final_heap_bytes = heap_bytes;
@@ -152,15 +164,8 @@ inline bool probe_scene_despawn(wi::scene::Scene& scene, wi::ecs::Entity object,
 
 inline int run_scene_restart_diagnostic(NativeApplication& host) {
     const bool restart_ok = probe_in_process_scene_restarts(host);
-    const char* hold_seconds = std::getenv("ELISA_SCENE_RESTART_HOLD_SECONDS");
-    if (hold_seconds != nullptr) {
-        const int seconds = std::atoi(hold_seconds);
-        if (seconds > 0) {
-            std::fprintf(stdout, "scene restart inspection hold: %d seconds\n", seconds);
-            std::fflush(stdout);
-            std::this_thread::sleep_for(std::chrono::seconds(seconds));
-        }
-    }
+    hold_scene_restart_inspection(
+        "ELISA_SCENE_RESTART_HOLD_SECONDS", "scene restart final inspection hold");
     host.shutdown();
     return restart_ok ? 0 : 1;
 }

@@ -1,6 +1,7 @@
 #include "render_scene_abi.h"
 
 #include "application_abi.h"
+#include "wiHelper.h"
 #include "wiApplication.h"
 #include "wiGraphics.h"
 #include "wiJobSystem.h"
@@ -488,5 +489,23 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(v
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
-    return elisa_application_v1_active_path_center_differs_from_corner(state.path.get());
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.width == 0 || desc.height == 0 || pixel_size == 0 ||
+        !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * pixel_size) {
+        return 0;
+    }
+    const size_t center = (size_t(desc.height / 2) * desc.width + desc.width / 2) * pixel_size;
+    bool differs = false;
+    for (size_t index = 0; index < pixel_size; ++index) {
+        differs = differs || pixels[index] != pixels[center + index];
+    }
+    if (!differs) {
+        std::fprintf(stderr, "render evidence: render-path center/corner match format=%u size=%ux%u\n",
+            uint32_t(desc.format), desc.width, desc.height);
+    }
+    return differs ? 1 : 0;
 }
