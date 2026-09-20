@@ -108,10 +108,14 @@ module Application:
 
         enum InitializeStatus:
             Ready
+            FallbackRequired
+            RequirementsUnavailable
+            InvalidRequirements
             InvalidArgument
             AlreadyRunning
             UnsupportedAbi
             BackendUnavailable
+            ShutdownFailed
 
         enum PumpStatus:
             Running
@@ -143,6 +147,41 @@ module Application:
             return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
             return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
             InitializeStatus.BackendUnavailable
+
+        def shutdown_after_rejection(status: InitializeStatus) -> InitializeStatus:
+            return status if shutdown()
+            InitializeStatus.ShutdownFailed
+
+        # Rejected requirements shut the just-started host back down. A fallback
+        # result leaves it running and tells the caller to apply its declared
+        # fallback before entering gameplay. `report` is meaningful for Ready,
+        # FallbackRequired, RequirementsUnavailable, and InvalidRequirements.
+        def initialize_with_requirements(config: Config,
+            required: Capabilities::BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS],
+            count: usize, fallbacks: Capabilities::BackendCapabilities, allow_fallback: bool,
+            report: mutable Capabilities::BackendRequirementReport&) -> InitializeStatus:
+            report <- Capabilities::BackendRequirementReport{
+                state: Capabilities::RequirementState.Invalid,
+                first_missing: Capabilities::BackendFeature.Input,
+                missing_count: 0,
+                fallback_count: 0,
+            }
+            opened: InitializeStatus = initialize(config)
+            return opened if opened != InitializeStatus.Ready
+            profile: Capabilities::BackendProfile = catch backend_profile():
+                value: value
+                error failure: return shutdown_after_rejection(InitializeStatus.BackendUnavailable)
+            report <- Capabilities::backend_requirement_report(profile, required, count,
+                fallbacks, allow_fallback)
+            match report.state:
+                Capabilities::RequirementState.Invalid:
+                    shutdown_after_rejection(InitializeStatus.InvalidRequirements)
+                Capabilities::RequirementState.Unavailable:
+                    shutdown_after_rejection(InitializeStatus.RequirementsUnavailable)
+                Capabilities::RequirementState.Fallback:
+                    InitializeStatus.FallbackRequired
+                Capabilities::RequirementState.Ready:
+                    InitializeStatus.Ready
 
         # This is a startup-time snapshot of the initialized host. Capabilities
         # describe engine-owned services, not every linked vendor feature.
