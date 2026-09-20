@@ -36,8 +36,9 @@ The native scene records gameplay and asset identity with each snapshot-owned
 instance and reuses a handle only when its mesh and material IDs are unchanged.
 The snapshot adapter still renders default boxes; it does not resolve those IDs
 to cooked packages or material descriptors. That loader integration belongs to
-A03/A04. World transforms also remain in the separate binding table until the
-general transform-component work is complete.
+A03/A04. `World` now stores a validated transform per entity. Render binding
+rows contain the visual asset and stable ID; extraction reads the entity pose
+for each bound row, so one-to-many visuals share an authoritative world pose.
 
 `RenderScene::set_texture` attaches a project-relative base-color, normal,
 packed surface, or emissive image to one live instance. The engine canonicalizes
@@ -52,11 +53,12 @@ can shade through Wicked's PBR material path.
 
 `src/runtime/world_rendering.elisa` adds an Elisa-owned `WorldRendering`
 binding table and extractor. Callers bind one or more stable render IDs and
-transforms to a checked `World::EntityRef`; extraction verifies world liveness,
-rebuilds a render snapshot, and prunes references after despawn or world
-replacement. The portable fixture covers one-to-many bindings, transform
-updates, duplicate IDs, foreign-world references, capacity, and stale-row
-cleanup. The native scene smoke now spawns real `World` entities, extracts
+visual assets to a checked `World::EntityRef`; `World::world_set_transform`
+updates the shared pose. Extraction verifies world liveness, reads the pose into
+each render row, rebuilds a snapshot, and prunes references after despawn or
+world replacement. The portable fixture covers one-to-many bindings, shared
+transform updates and fan-out, duplicate IDs, foreign-world references,
+capacity, and stale-row cleanup. The native scene smoke now spawns real `World` entities, extracts
 their render rows, syncs twice to verify handle reuse, and despawns them to
 verify native retirement. It also changes an asset ID, injects failure after
 one replacement has been created, verifies the prior frame and identity
@@ -128,13 +130,19 @@ identity remain intact, then retrying and verifying update and despawn. The
 ordinary application smoke passed both lifecycle binaries. Source-length,
 module-hygiene, dependency-manifest, and `git diff --check` checks passed.
 
+World-pose follow-up, 2026-09-20: the portable render-snapshot/world-rendering
+fixture passes with transforms stored in `World`; one entity's transform is
+copied to each of its bound render IDs. The SDL3/Metal render-scene smoke also
+passes with this API and verifies transaction rollback, retry, identity and
+despawn against native Wicked instances. Storage and hierarchy fixtures pass.
+
 This is an initial renderer. It owns one active scene and orthographic camera,
 uses unlit colors unless emission selects PBR shading, maps snapshot rows to
 default boxes, and loads static cooked geometry packages. Texture assignment
 is per instance; shared mesh/material ownership and complete imported material
 descriptors remain future work.
-Transforms are currently stored in the separate render binding table rather
-than extracted from a general world transform component. The general
+Transforms are stored in the checked `World` registry and extracted by the
+snapshot adapter. The general
 `InstanceBatch` remains an Elisa-side collection of checked handles and does
 not batch arbitrary renderer calls; snapshot reconciliation has its own
 transactional native submission. The renderer does not yet expose shared mesh

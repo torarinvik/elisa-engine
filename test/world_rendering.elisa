@@ -29,39 +29,62 @@ module WorldRenderingValidation:
             foreign: World::EntityRef = catch World::world_spawn(&other_world, World::Actor.Player):
                 value: value
                 error failure: return 5
+            initial_transform: Geometry::Transform = catch World::world_transform(&world, player):
+                value: value
+                error failure: return 22
+            return 23 if initial_transform.position.x != 0.0 or initial_transform.position.y != 0.0 or initial_transform.position.z != 0.0 or initial_transform.scale.x != 1.0 or initial_transform.scale.y != 1.0 or initial_transform.scale.z != 1.0
+            fallback_transform: Geometry::Transform = World::world_transform_or_identity(&world, foreign)
+            return 25 if fallback_transform.scale.x != 1.0 or fallback_transform.scale.y != 1.0 or fallback_transform.scale.z != 1.0
 
             bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
             identity: Geometry::Transform = Geometry::transform_identity()
             visual: Assets::VisualAsset = sample_visual(1)
-            first: i32 = catch WorldRendering::bind(&bindings, &world, player, 101, visual, identity):
+            first: i32 = catch WorldRendering::bind(&bindings, &world, player, 101, visual):
                 ok: 0
                 error failure: 1
-            second: i32 = catch WorldRendering::bind(&bindings, &world, player, 102, visual, identity):
+            second: i32 = catch WorldRendering::bind(&bindings, &world, player, 102, visual):
                 ok: 0
                 error failure: 1
-            third: i32 = catch WorldRendering::bind(&bindings, &world, guard, 103, visual, identity):
+            third: i32 = catch WorldRendering::bind(&bindings, &world, guard, 103, visual):
                 ok: 0
                 error failure: 1
             return 6 if first != 0 or second != 0 or third != 0 or WorldRendering::binding_count(bindings) != 3
 
             updated: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 1.0})
             updated_visual: Assets::VisualAsset = sample_visual(2)
-            update_status: i32 = catch WorldRendering::bind(&bindings, &world, player, 101, updated_visual, updated):
+            transform_status: i32 = catch World::world_set_transform(&world, player, updated):
                 ok: 0
                 error failure: 1
-            duplicate: i32 = catch WorldRendering::bind(&bindings, &world, guard, 101, visual, identity):
+            update_status: i32 = catch WorldRendering::bind(&bindings, &world, player, 101, updated_visual):
+                ok: 0
+                error failure: 1
+            duplicate: i32 = catch WorldRendering::bind(&bindings, &world, guard, 101, visual):
                 ok: 0
                 WorldRendering::WorldRenderingError.DuplicateRenderId: 1
                 error failure: 2
-            invalid_reference: i32 = catch WorldRendering::bind(&bindings, &world, foreign, 104, visual, identity):
+            invalid_reference: i32 = catch WorldRendering::bind(&bindings, &world, foreign, 104, visual):
                 ok: 0
                 WorldRendering::WorldRenderingError.InvalidReference: 1
                 error failure: 2
-            invalid_id: i32 = catch WorldRendering::bind(&bindings, &world, player, 0, visual, identity):
+            invalid_id: i32 = catch WorldRendering::bind(&bindings, &world, player, 0, visual):
                 ok: 0
                 WorldRendering::WorldRenderingError.InvalidRenderId: 1
                 error failure: 2
-            return 7 if update_status != 0 or duplicate != 1 or invalid_reference != 1 or invalid_id != 1
+            invalid_transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::vec3_zero(),
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 1.0, y: 0.0, z: 1.0},
+            }
+            rejected_transform: i32 = catch World::world_set_transform(&world, player, invalid_transform):
+                ok: 0
+                World::WorldError.InvalidValue: 1
+                error failure: 2
+            foreign_transform: i32 = catch World::world_set_transform(&world, foreign, identity):
+                ok: 0
+                World::WorldError.InvalidReference: 1
+                error failure: 2
+            return 7 if transform_status != 0 or update_status != 0 or duplicate != 1 or invalid_reference != 1 or invalid_id != 1
+            return 21 if rejected_transform != 1 or foreign_transform != 1 or not World::world_is_valid(&world)
             return 8 if WorldRendering::binding_count(bindings) != 3
 
             snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
@@ -71,6 +94,8 @@ module WorldRenderingValidation:
             return 9 if extract_status != 0 or RenderSnapshot::snapshot_count(snapshot) != 3 or not RenderSnapshot::snapshot_valid(snapshot)
             moved_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 0)
             return 10 if moved_entry.gameplay.id != player.id or moved_entry.transform.position.x != 2.0 or moved_entry.transform.position.z != 1.0 or moved_entry.visual.mesh.low != 2
+            fanout_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 1)
+            return 24 if fanout_entry.gameplay.id != player.id or fanout_entry.transform.position.x != 2.0 or fanout_entry.transform.position.z != 1.0
 
             despawn_guard: i32 = catch World::world_despawn(&world, guard):
                 ok: 0
@@ -92,12 +117,12 @@ module WorldRenderingValidation:
             full_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
             for index in 0..<WorldRendering::MAX_BINDINGS |full_bindings, world, player, identity|:
                 render_id: i64 = 1000 + index.i64()
-                bind_status: i32 = catch WorldRendering::bind(&full_bindings, &world, player, render_id, visual, identity):
+                bind_status: i32 = catch WorldRendering::bind(&full_bindings, &world, player, render_id, visual):
                     ok: 0
                     error failure: 1
                 return 15 if bind_status != 0
             return 16 if WorldRendering::binding_count(full_bindings) != WorldRendering::MAX_BINDINGS
-            full_rejected: i32 = catch WorldRendering::bind(&full_bindings, &world, player, 9999, visual, identity):
+            full_rejected: i32 = catch WorldRendering::bind(&full_bindings, &world, player, 9999, visual):
                 ok: 0
                 WorldRendering::WorldRenderingError.Capacity: 1
                 error failure: 2
