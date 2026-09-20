@@ -360,3 +360,29 @@ in-process scene restart: cycles=512 warmup_cycles=16 measured_cycles=496
 The churn increase was deferred GPU retirement rather than persistent scene
 growth. F05 remains partial because the small host-cycle heap changes still need
 stack-level attribution; scene restarts remain bounded and GPU usage stays flat.
+
+## Native gate after gamepad delivery and native module splits (macOS 27.0, 2026-09-20)
+
+The merged SDL3 input, cooked skeletal-animation, and native source-split changes
+passed the full Elisa suite and two native-gate runs:
+
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+  elisascript scripts/check.elisascript
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+  elisascript scripts/native_gate.elisascript native
+
+full Elisa suite: passed, including Godot 4.7.2 and both proof suites
+source-length policy: passed (600-line maximum)
+module hygiene policy: passed (83 production modules)
+native gate: passed twice; exact frame comparison and live-input render passed
+scene restart heap deltas: -272 and -272 bytes; GPU deltas: 0 and 0 bytes
+host lifecycle heap deltas: 4656 and 16608 bytes
+post-retirement churn deltas: -90272 and -97088 bytes
+native frame samples: 1236 us and 1298 us median; 2971 us and 3188 us p95
+```
+
+The SDL3/Metal application and cooked-mesh smoke tests also passed. The host
+heap measurements still vary and need stack-level attribution; F05 remains
+partial. The settled churn samples no longer show the earlier suballocator
+growth, and the scene restart checks reported no GPU increase.
