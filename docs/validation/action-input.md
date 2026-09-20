@@ -50,6 +50,16 @@ loss clears transient state without marking connected devices unplugged. Its
 probe covers alternate bindings, per-device disconnect, and held values across
 frames. The native adapter never exposes SDL codes to gameplay.
 
+On every gamepad disconnect, the runtime clears held state before applying
+whether another controller remains connected. This prevents a button held on
+the removed controller from sticking in the shared logical gamepad state. The
+portable regression test disconnects one of two logical controllers, checks
+the release edge, then verifies input from the still-connected controller
+works on the next frame.
+
+The action-input fixture imports `src/runtime/public.elisa`, verifying that
+ordinary games receive the event router from the default module set.
+
 After adding `ActionInputRuntime`, the focused stage1 action-input executable
 and `test/application_gamepad_codes.cpp` both passed. The SDL3/Metal
 `scripts/application_native_smoke.py` also passed with an Elisa client draining

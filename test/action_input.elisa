@@ -1,4 +1,4 @@
-include "../src/runtime/action_input_runtime.elisa"
+include "../src/runtime/public.elisa"
 
 const TEST_MOUSE_LEFT: i64 = 1
 
@@ -96,6 +96,19 @@ def application_input_tests() -> i32:
     ActionInputRuntime::apply_application_event(&input,
         application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, false))
     return 75 if ActionInput::action_down(&input, 92) or not ActionInput::action_released(&input, 92)
+
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadConnected, 0, 1.0, true, false, true))
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadButton, gamepad.code, 1.0, true, false, false))
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, true))
+    return 88 if ActionInput::action_down(&input, 92) or not ActionInput::action_released(&input, 92)
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadButton, gamepad.code, 1.0, true, false, false))
+    return 89 if not ActionInput::action_down(&input, 92) or not ActionInput::action_pressed(&input, 92)
 
     trigger_code: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftTrigger)
     trigger: ActionInput::Binding = ActionInput::Binding{

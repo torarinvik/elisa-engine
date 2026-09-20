@@ -51,6 +51,7 @@ module ActionInputRuntime:
                 Application::InputEventKind.GamepadConnected:
                     ActionInput::set_connected(input, ActionInput::Device.Gamepad, true)
                 Application::InputEventKind.GamepadDisconnected:
+                    ActionInput::clear_device_state(input, ActionInput::Device.Gamepad)
                     ActionInput::set_connected(input, ActionInput::Device.Gamepad, event.connected)
                 Application::InputEventKind.FocusLost:
                     clear_transient_state(input)

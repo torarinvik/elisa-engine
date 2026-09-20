@@ -101,6 +101,7 @@ def main() -> int:
         str(ROOT / "native/elisa_native_fallbacks.cpp"),
         str(ROOT / "native/audio_service_abi.cpp"),
         str(ROOT / "native/miniaudio_implementation.cpp"),
+        str(ROOT / "native/physics_service_abi.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
         str(archive), str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),

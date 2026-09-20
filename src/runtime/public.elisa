@@ -3,8 +3,11 @@
 # the engine checkout's filesystem layout.
 include "./application.elisa"
 include "./action_input.elisa"
+include "./action_input_runtime.elisa"
 include "./render_scene.elisa"
 include "./render_snapshot_scene.elisa"
 include "./world_rendering.elisa"
 include "../math/geometry.elisa"
 include "./clock.elisa"
+include "../audio/runtime.elisa"
+include "../physics/runtime.elisa"

@@ -1,0 +1,145 @@
+# Opt-in Elisa-owned fixed-step physics world backed by the native Jolt host.
+include "../math/geometry.elisa"
+
+module PhysicsRuntime:
+    private:
+        const module Status:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = -1
+            INVALID_STATE: i32 = -2
+            WRONG_THREAD: i32 = -3
+            CAPACITY: i32 = -4
+            INVALID_HANDLE: i32 = -5
+            BACKEND_FAILURE: i32 = -6
+            STALE_WORLD: i32 = -7
+            BODY_STATIC: i32 = 0
+            BODY_KINEMATIC: i32 = 1
+            BODY_DYNAMIC: i32 = 2
+
+        @callconv(c)
+        extern elisa_physics_v1_initialize(world_generation: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_create_box(world_generation: u64, kind: i32,
+            position_x: f32, position_y: f32, position_z: f32,
+            half_x: f32, half_y: f32, half_z: f32, mass: f32,
+            slot: mutable u32&, body_generation: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_fixed_step(world_generation: u64,
+            delta_seconds: f32, tick: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_body_position(world_generation: u64, slot: u32,
+            body_generation: u64, x: mutable f32&, y: mutable f32&, z: mutable f32&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_destroy_body(world_generation: u64,
+            slot: u32, body_generation: u64) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_shutdown(world_generation: u64) -> i32
+
+        def check_status(status: i32) -> void error[PhysicsError]:
+            raise PhysicsError.InvalidArgument if status == Status::INVALID_ARGUMENT
+            raise PhysicsError.ApplicationUnavailable if status == Status::INVALID_STATE
+            raise PhysicsError.WrongThread if status == Status::WRONG_THREAD
+            raise PhysicsError.Capacity if status == Status::CAPACITY
+            raise PhysicsError.InvalidHandle if status == Status::INVALID_HANDLE
+            raise PhysicsError.BackendFailure if status == Status::BACKEND_FAILURE
+            raise PhysicsError.StaleWorld if status == Status::STALE_WORLD
+            raise PhysicsError.BackendFailure if status != Status::OK
+
+        def kind_code(kind: BodyKind) -> i32:
+            match kind:
+                BodyKind.Static:
+                    Status::BODY_STATIC
+                BodyKind.Kinematic:
+                    Status::BODY_KINEMATIC
+                BodyKind.Dynamic:
+                    Status::BODY_DYNAMIC
+
+    public:
+        enum BodyKind:
+            Static
+            Kinematic
+            Dynamic
+
+        error PhysicsError:
+            InvalidArgument
+            ApplicationUnavailable
+            WrongThread
+            Capacity
+            InvalidHandle
+            StaleWorld
+            BackendFailure
+
+        struct BodyDesc:
+            kind: BodyKind
+            position: Geometry::Vec3
+            half_extents: Geometry::Vec3
+            mass: f32
+
+        struct BodyHandle:
+            private:
+                world_generation: u64
+                slot: u32
+                generation: u64
+
+        affine struct World:
+            private:
+                generation: u64
+                tick: mutable u64
+                live: mutable bool
+
+        def World() -> World error[PhysicsError]:
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_initialize(&generation)
+            try check_status(status)
+            World{generation: generation, tick: 0, live: true}
+
+        def fixed_step(world: mutable World&, delta_seconds: f32) -> u64 error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            tick: mutable u64 = 0
+            status: i32 = elisa_physics_v1_fixed_step(world.generation, delta_seconds, &tick)
+            try check_status(status)
+            world.tick <- tick
+            tick
+
+        def committed_tick(world: World&) -> u64:
+            world.tick
+
+        def body_create(world: World&, description: BodyDesc) -> BodyHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_create_box(world.generation,
+                kind_code(description.kind), description.position.x, description.position.y,
+                description.position.z, description.half_extents.x, description.half_extents.y,
+                description.half_extents.z, description.mass, &slot, &generation)
+            try check_status(status)
+            BodyHandle{world_generation: world.generation, slot: slot, generation: generation}
+
+        def body_position(world: World&, body: BodyHandle) -> Geometry::Vec3 error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            raise PhysicsError.StaleWorld if body.world_generation != world.generation
+            x: mutable f32 = 0.0
+            y: mutable f32 = 0.0
+            z: mutable f32 = 0.0
+            status: i32 = elisa_physics_v1_body_position(world.generation,
+                body.slot, body.generation, &x, &y, &z)
+            try check_status(status)
+            Geometry::Vec3{x: x, y: y, z: z}
+
+        def body_destroy(world: World&, body: BodyHandle) -> void error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            raise PhysicsError.StaleWorld if body.world_generation != world.generation
+            status: i32 = elisa_physics_v1_destroy_body(world.generation,
+                body.slot, body.generation)
+            try check_status(status)
+
+        def shutdown(world: mutable World&) -> void error[PhysicsError]:
+            return if not world.live
+            status: i32 = elisa_physics_v1_shutdown(world.generation)
+            try check_status(status)
+            world.live <- false
