@@ -112,6 +112,21 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
     if (!check(!other_registry.is_live(material), "cross-scene resource rejection")) return false;
 
     wi::scene::Scene pressure_scene;
+    NativeResourceRegistry slot_registry(pressure_scene);
+    std::vector<NativeResourceHandle> slots;
+    slots.reserve(NativeResourceRegistry::MAX_RESOURCES);
+    for (uint32_t index = 0; index < NativeResourceRegistry::MAX_RESOURCES; ++index) {
+        const NativeResourceHandle handle = slot_registry.create_cube("elisa_resource_slot_pressure");
+        if (!check(slot_registry.is_live(handle), "resource pool slot allocation")) return false;
+        slots.push_back(handle);
+    }
+    if (!check(slot_registry.create_cube("elisa_resource_slot_overflow").slot == NativeResourceHandle::INVALID_SLOT,
+            "resource pool rejects capacity overflow")) return false;
+    for (const NativeResourceHandle handle : slots) {
+        if (!check(slot_registry.destroy(handle), "resource pool slot release")) return false;
+    }
+    if (!check(pressure_scene.objects.GetCount() == 0, "resource pool returns object baseline")) return false;
+
     NativeResourceRegistry bounded_registry(pressure_scene);
     for (uint32_t index = 0; index < NativeResourceRegistry::MAX_PENDING_RETIREMENTS; ++index) {
         const NativeResourceHandle handle = bounded_registry.create_cube("elisa_retirement_pressure");
