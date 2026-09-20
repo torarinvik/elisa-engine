@@ -8,6 +8,7 @@
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
+#include "wiSpriteFont.h"
 #include "wiTrailRenderer.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
@@ -43,6 +44,8 @@ constexpr float MAX_ORTHOGRAPHIC_HEIGHT = 1.0e6f;
 constexpr float MIN_ORTHOGRAPHIC_HEIGHT = 1.0e-3f;
 constexpr uint32_t PIPELINE_WAIT_ATTEMPTS = 40;
 constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
+
+#include "render_scene_text_internal.inc"
 
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -81,6 +84,7 @@ struct RenderSceneService {
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
+    std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
     std::thread::id owner_thread{};
@@ -142,6 +146,8 @@ bool valid_color(float red, float green, float blue, float alpha) {
         red >= 0.0f && red <= 1.0f && green >= 0.0f && green <= 1.0f &&
         blue >= 0.0f && blue <= 1.0f && alpha >= 0.0f && alpha <= 1.0f;
 }
+
+#include "render_scene_text_helpers.inc"
 
 bool on_owner_thread(const RenderSceneService& state) {
     return state.owner_thread == std::this_thread::get_id();
@@ -237,17 +243,6 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
         state.instances[slot].generation == generation;
 }
 
-size_t decode_arc_handle(const RenderSceneService& state, int64_t handle) {
-    if (handle <= 0) return MAX_ELECTRIC_ARCS;
-    const uint64_t value = uint64_t(handle);
-    const uint64_t encoded_slot = value & HANDLE_SLOT_MASK;
-    if (encoded_slot == 0 || encoded_slot > MAX_ELECTRIC_ARCS) return MAX_ELECTRIC_ARCS;
-    const size_t slot = size_t(encoded_slot - 1);
-    const uint64_t generation = value >> HANDLE_SLOT_BITS;
-    const ElectricArcSlot& arc = state.electric_arcs[slot];
-    return generation != 0 && arc.live && arc.generation == generation ? slot : MAX_ELECTRIC_ARCS;
-}
-
 #include "render_scene_animation_internal.inc"
 
 size_t find_free_slot(const RenderSceneService& state) {
@@ -270,6 +265,7 @@ void reset_unlocked(RenderSceneService& state) {
         if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
     }
     if (state.path != nullptr) {
+        state.path->ClearFonts();
         state.path->scene = nullptr;
         state.path->camera = nullptr;
         state.path.reset();
@@ -292,6 +288,11 @@ void reset_unlocked(RenderSceneService& state) {
         arc.branch.Clear();
         arc.visible = false;
         arc.live = false;
+    }
+    for (OverlayTextSlot& text : state.overlay_texts) {
+        text.font.SetHidden(true);
+        try { text.font.SetText(""); } catch (...) {}
+        text.live = false;
     }
     state.camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;
@@ -538,6 +539,8 @@ extern "C" int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t vis
     object->SetRenderable(visible != 0);
     return ELISA_RENDER_SCENE_OK;
 }
+
+#include "render_scene_text_abi.inc"
 
 extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     RenderSceneService& state = service();

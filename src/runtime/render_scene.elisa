@@ -75,6 +75,22 @@ module RenderScene:
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_create_text(text: cstr, x: f32, y: f32,
+            font_size: i32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_text(handle: i64, text: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_text_i64(handle: i64, prefix: cstr, value: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_text_visible(handle: i64, visible: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_text(handle: i64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_create_electric_arc(width: f32, amplitude: f32, seed: u32) -> i64
 
         @callconv(c)
@@ -112,7 +128,7 @@ module RenderScene:
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
 
     public:
-        # Bounded native slots and owner-side batch storage share this limit.
+        # Native slots and owner-side batches use the same arc capacity.
         const MAX_ELECTRIC_ARCS: usize = 1024
 
         enum Primitive:
@@ -147,10 +163,18 @@ module RenderScene:
             private:
                 native_value: i64
 
+        # A checked, generation-safe screen-space text item owned by the
+        # engine's 2D render path. Position uses the logical canvas origin.
+        struct OverlayTextHandle:
+            # A generation-checked engine identifier, never a vendor object or
+            # pointer. Its integer form stays usable in game-owned state.
+            id: i64
+
         struct ElectricArcBatch:
             private:
                 handles: mutable ElectricArcHandle[RenderScene::MAX_ELECTRIC_ARCS]
                 count: mutable usize
+
 
         # A compact owner-side collection avoids exposing the representation of
         # opaque handles to projects. It is useful for batches such as maze
@@ -291,6 +315,29 @@ module RenderScene:
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
             try check_status(elisa_render_scene_v1_set_visible(handle.native_value, visible_value))
+
+        def create_overlay_text(text: cstr, x: f32, y: f32, font_size: i32,
+            color: Color) -> OverlayTextHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_text(text, x, y, font_size,
+                color.red, color.green, color.blue, color.alpha)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            OverlayTextHandle{id: native_value}
+
+        def set_overlay_text(handle: OverlayTextHandle, text: cstr) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text(handle.id, text))
+
+        def set_overlay_text_i64(handle: OverlayTextHandle, prefix: cstr,
+            value: i64) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text_i64(handle.id, prefix, value))
+
+        def set_overlay_text_visible(handle: OverlayTextHandle, visible: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text_visible(
+                handle.id, 1 if visible else 0))
+
+        def destroy_overlay_text(handle: OverlayTextHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_text(handle.id))
 
         # Creates a reusable jagged, additive ribbon. Elisa supplies the live
         # connector endpoints and phase each frame; the engine keeps endpoints

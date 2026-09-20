@@ -11,6 +11,9 @@ include "../src/math/geometry.elisa"
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
 
 @callconv(c)
+extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
+
+@callconv(c)
 extern elisa_render_scene_v1_last_frame_center_patch_hash() -> u64
 
 @callconv(c)
@@ -139,6 +142,34 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 94 if arc_shown != 0
+
+    hud_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+        "LIVES  3", 16.0, 14.0, 24,
+        RenderScene::Color{red: 0.92, green: 0.97, blue: 1.0, alpha: 1.0}):
+        value: value
+        error failure: return 76
+    invalid_hud_text: i32 = catch RenderScene::create_overlay_text("bad", 0.0, 0.0, 4,
+        RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 77 if invalid_hud_text != 1
+    text_update: i32 = catch RenderScene::set_overlay_text(hud_text, "LIVES  2"):
+        ok: 0
+        error failure: 2
+    return 83 if text_update != 0
+    text_hidden: i32 = catch RenderScene::set_overlay_text_visible(hud_text, false):
+        ok: 0
+        error failure: 2
+    return 84 if text_hidden != 0
+    text_shown: i32 = catch RenderScene::set_overlay_text_visible(hud_text, true):
+        ok: 0
+        error failure: 2
+    return 85 if text_shown != 0
+    text_number_update: i32 = catch RenderScene::set_overlay_text_i64(hud_text, "LIVES  ", 2):
+        ok: 0
+        error failure: 2
+    return 86 if text_number_update != 0
 
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
@@ -269,6 +300,9 @@ def exercise_render_scene() -> i32:
         return 19 if Application::pump() != Application::PumpStatus.Running
         rendered_geometry <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
     return 20 if rendered_geometry == 0
+    for attempt in 0..<4:
+        return 78 if Application::pump() != Application::PumpStatus.Running
+    return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
 
     # Elisa gameplay identities and stable render IDs reconcile into persistent
     # native handles; repeated submissions update in place and removals retire.
@@ -426,6 +460,16 @@ def exercise_render_scene() -> i32:
     return 101 if stale_electric_arc != 1
     return 102 if elisa_render_scene_v1_test_arc_capacity() != 1
 
+    destroyed_hud_text: i32 = catch RenderScene::destroy_overlay_text(hud_text):
+        ok: 0
+        error failure: 1
+    return 80 if destroyed_hud_text != 0
+    stale_hud_text: i32 = catch RenderScene::set_overlay_text(hud_text, "STALE"):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 81 if stale_hud_text != 1
+
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0
         error failure: 1
@@ -454,6 +498,11 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 26 if replacement_init != 0
+    stale_text_after_scene_replacement: i32 = catch RenderScene::set_overlay_text_visible(hud_text, true):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 82 if stale_text_after_scene_replacement != 1
     stale_after_scene_replacement: i32 = catch RenderScene::set_visible(sphere, true):
         ok: 0
         RenderScene::RenderSceneError.UnknownHandle: 1

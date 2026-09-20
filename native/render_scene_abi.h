@@ -65,6 +65,12 @@ int32_t elisa_render_scene_v1_set_emissive(
     int64_t handle, float red, float green, float blue, float strength);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
+int64_t elisa_render_scene_v1_create_text(const char* text, float x, float y,
+    int32_t font_size, float red, float green, float blue, float alpha);
+int32_t elisa_render_scene_v1_set_text(int64_t handle, const char* text);
+int32_t elisa_render_scene_v1_set_text_i64(int64_t handle, const char* prefix, int64_t value);
+int32_t elisa_render_scene_v1_set_text_visible(int64_t handle, int32_t visible);
+int32_t elisa_render_scene_v1_destroy_text(int64_t handle);
 int64_t elisa_render_scene_v1_create_electric_arc(float width, float amplitude, uint32_t seed);
 int32_t elisa_render_scene_v1_update_electric_arc(int64_t handle,
     float start_x, float start_y, float start_z,
