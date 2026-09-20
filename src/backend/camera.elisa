@@ -54,6 +54,19 @@ module Camera:
             state.viewport <- next
             true
 
+        # A minimized or occluded SDL window can report a zero pixel extent.
+        # Preserve that suspended state without allowing a renderer to build a
+        # divide-by-zero projection; the next non-zero resize restores validity.
+        def resize_or_suspend(state: mutable State&, width: i32, height: i32, display_scale: f32) -> bool:
+            return false if width < 0 or height < 0 or display_scale <= 0.0
+            if width == 0 or height == 0:
+                state.viewport <- Viewport{width: 0, height: 0, display_scale: display_scale}
+                return true
+            resize(state, width, height, display_scale)
+
+        def viewport_suspended(state: State&) -> bool:
+            state.viewport.width == 0 or state.viewport.height == 0
+
         def set_transform(state: mutable State&, transform: Geometry::Transform) -> bool:
             return false if not Geometry::quat_is_finite(transform.rotation) or not Geometry::vec3_is_finite(transform.position)
             state.transform <- transform
