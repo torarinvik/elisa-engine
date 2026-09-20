@@ -8,6 +8,7 @@
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
+#include "wiSpriteFont.h"
 #include "wiTrailRenderer.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
@@ -34,6 +35,11 @@ namespace {
 
 constexpr size_t MAX_INSTANCES = 256;
 constexpr size_t MAX_ELECTRIC_ARCS = 1024;
+constexpr size_t MAX_OVERLAY_TEXTS = 32;
+constexpr unsigned TEXT_SLOT_BITS = 6;
+constexpr uint64_t TEXT_SLOT_MASK = (uint64_t(1) << TEXT_SLOT_BITS) - 1;
+constexpr uint64_t MAX_TEXT_GENERATION = uint64_t(std::numeric_limits<int64_t>::max()) >> TEXT_SLOT_BITS;
+constexpr size_t MAX_OVERLAY_TEXT_BYTES = 256;
 constexpr unsigned HANDLE_SLOT_BITS = 11;
 constexpr uint64_t HANDLE_SLOT_MASK = (uint64_t(1) << HANDLE_SLOT_BITS) - 1;
 constexpr uint64_t MAX_GENERATION = uint64_t(std::numeric_limits<int64_t>::max()) >> HANDLE_SLOT_BITS;
@@ -75,12 +81,19 @@ struct ElectricArcSlot {
     bool live = false;
 };
 
+struct OverlayTextSlot {
+    wi::SpriteFont font;
+    uint64_t generation = 0;
+    bool live = false;
+};
+
 struct RenderSceneService {
     std::mutex mutex;
     std::unique_ptr<wi::scene::Scene> scene;
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
+    std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
     std::thread::id owner_thread{};
@@ -153,6 +166,33 @@ bool valid_color(float red, float green, float blue, float alpha) {
     return finite(red) && finite(green) && finite(blue) && finite(alpha) &&
         red >= 0.0f && red <= 1.0f && green >= 0.0f && green <= 1.0f &&
         blue >= 0.0f && blue <= 1.0f && alpha >= 0.0f && alpha <= 1.0f;
+}
+
+bool valid_overlay_text(const char* text, float x, float y, int32_t font_size,
+    float red, float green, float blue, float alpha) {
+    if (text == nullptr || !bounded(x, float(MAX_VIEWPORT)) || !bounded(y, float(MAX_VIEWPORT)) ||
+        font_size < 8 || font_size > 128 || !valid_color(red, green, blue, alpha)) return false;
+    for (size_t index = 0; index <= MAX_OVERLAY_TEXT_BYTES; ++index) {
+        if (text[index] == '\0') return true;
+    }
+    return false;
+}
+
+bool valid_overlay_text_value(const char* text) {
+    if (text == nullptr) return false;
+    for (size_t index = 0; index <= MAX_OVERLAY_TEXT_BYTES; ++index) {
+        if (text[index] == '\0') return true;
+    }
+    return false;
+}
+
+bool valid_overlay_text_prefix(const char* prefix) {
+    if (prefix == nullptr) return false;
+    // A signed 64-bit decimal value needs at most 20 bytes.
+    for (size_t index = 0; index <= MAX_OVERLAY_TEXT_BYTES - 20; ++index) {
+        if (prefix[index] == '\0') return true;
+    }
+    return false;
 }
 
 bool on_owner_thread(const RenderSceneService& state) {
@@ -260,6 +300,36 @@ size_t decode_arc_handle(const RenderSceneService& state, int64_t handle) {
     return generation != 0 && arc.live && arc.generation == generation ? slot : MAX_ELECTRIC_ARCS;
 }
 
+size_t find_free_text_slot(const RenderSceneService& state) {
+    for (size_t index = 0; index < MAX_OVERLAY_TEXTS; ++index) {
+        if (!state.overlay_texts[index].live) return index;
+    }
+    return MAX_OVERLAY_TEXTS;
+}
+
+size_t decode_text_handle(const RenderSceneService& state, int64_t handle) {
+    if (handle <= 0) return MAX_OVERLAY_TEXTS;
+    const uint64_t value = uint64_t(handle);
+    const uint64_t encoded_slot = value & TEXT_SLOT_MASK;
+    if (encoded_slot == 0 || encoded_slot > MAX_OVERLAY_TEXTS) return MAX_OVERLAY_TEXTS;
+    const size_t slot = size_t(encoded_slot - 1);
+    const uint64_t generation = value >> TEXT_SLOT_BITS;
+    const OverlayTextSlot& text = state.overlay_texts[slot];
+    return generation != 0 && text.live && text.generation == generation ? slot : MAX_OVERLAY_TEXTS;
+}
+
+void apply_overlay_text(wi::SpriteFont& font, const char* text, float x, float y,
+    int32_t font_size, float red, float green, float blue, float alpha) {
+    font.SetText(text);
+    font.params.position = XMFLOAT3(x, y, 0.0f);
+    font.params.size = font_size;
+    font.params.color = wi::Color::fromFloat4(XMFLOAT4(red, green, blue, alpha));
+    font.params.shadowColor = wi::Color(0, 0, 0, 220);
+    font.params.shadow_offset_x = 1.0f;
+    font.params.shadow_offset_y = 2.0f;
+    font.SetHidden(false);
+}
+
 #include "render_scene_animation_internal.inc"
 
 size_t find_free_slot(const RenderSceneService& state) {
@@ -282,6 +352,7 @@ void reset_unlocked(RenderSceneService& state) {
         if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
     }
     if (state.path != nullptr) {
+        state.path->ClearFonts();
         state.path->scene = nullptr;
         state.path->camera = nullptr;
         state.path.reset();
@@ -304,6 +375,11 @@ void reset_unlocked(RenderSceneService& state) {
         arc.branch.Clear();
         arc.visible = false;
         arc.live = false;
+    }
+    for (OverlayTextSlot& text : state.overlay_texts) {
+        text.font.SetHidden(true);
+        try { text.font.SetText(""); } catch (...) {}
+        text.live = false;
     }
     state.camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;
@@ -548,6 +624,98 @@ extern "C" int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t vis
     wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(state.instances[slot].entity);
     if (object == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     object->SetRenderable(visible != 0);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int64_t elisa_render_scene_v1_create_text(const char* text,
+    float x, float y, int32_t font_size, float red, float green, float blue, float alpha) {
+    if (!valid_overlay_text(text, x, y, font_size, red, green, blue, alpha)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = find_free_text_slot(state);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_CAPACITY;
+    OverlayTextSlot& entry = state.overlay_texts[slot];
+    if (entry.generation >= MAX_TEXT_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    try {
+        apply_overlay_text(entry.font, text, x, y, font_size, red, green, blue, alpha);
+        state.path->AddFont(&entry.font);
+    } catch (...) {
+        state.path->RemoveFont(&entry.font);
+        entry.font.SetHidden(true);
+        entry.live = false;
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    ++entry.generation;
+    entry.live = true;
+    return int64_t((entry.generation << TEXT_SLOT_BITS) | uint64_t(slot + 1));
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_text(int64_t handle, const char* text) {
+    if (!valid_overlay_text_value(text)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    try {
+        state.overlay_texts[slot].font.SetText(text);
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_text_i64(int64_t handle,
+    const char* prefix, int64_t value) {
+    if (!valid_overlay_text_prefix(prefix)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    std::array<char, MAX_OVERLAY_TEXT_BYTES + 1> formatted{};
+    const int written = std::snprintf(formatted.data(), formatted.size(), "%s%lld",
+        prefix, static_cast<long long>(value));
+    if (written < 0 || size_t(written) > MAX_OVERLAY_TEXT_BYTES) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    try {
+        state.overlay_texts[slot].font.SetText(formatted.data());
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_text_visible(int64_t handle, int32_t visible) {
+    if (visible != 0 && visible != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    state.overlay_texts[slot].font.SetHidden(visible == 0);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_destroy_text(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    OverlayTextSlot& entry = state.overlay_texts[slot];
+    state.path->RemoveFont(&entry.font);
+    entry.font.SetHidden(true);
+    entry.live = false;
     return ELISA_RENDER_SCENE_OK;
 }
 
