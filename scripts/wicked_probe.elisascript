@@ -224,6 +224,19 @@ def main(arguments: darray[sview]) -> i64:
 
     println("Native frame verified: dimensions, determinism, Elisa topology.")
 
+    coordinate_reference: sview = str(root.joinpath("backends/coordinate_reference.png"))
+    coordinate_first: sview = str(root.joinpath("build/wicked-frame-coordinates.png"))
+    coordinate_rerun: sview = str(root.joinpath("build/wicked-frame-rerun-coordinates.png"))
+    coordinate_golden_status: i64 = run_visible(python, [compare, "compare", coordinate_reference, coordinate_rerun])
+    if coordinate_golden_status != 0:
+        return coordinate_golden_status
+    coordinate_repeat_status: i64 = run_visible(python, [compare, "compare", coordinate_first, coordinate_rerun,
+        "--per-channel", "0", "--mean", "0"])
+    if coordinate_repeat_status != 0:
+        return coordinate_repeat_status
+
+    println("Coordinate reference matches the asymmetric signed-scale render.")
+
     # Measured frame time against the fixture budget: median and p95, not a
     # "zero overhead" claim.
     stats_path: sview = str(root.joinpath("build/frame-stats.txt"))

@@ -12,8 +12,13 @@ rejects shear and singular scale before mutating the destination.
 
 The native gate exercises `native/coordinate_probe.h` after the real scene,
 physics, skin payload, and camera path have run. The fixture uses an asymmetric
-point, camera ray, translation, and negative nonuniform scale. Its output on
-2026-09-19 was:
+point, camera ray, translation, and negative nonuniform scale. A second render
+submits a rotated, negative nonuniform cuboid and three differently colored
+markers through the transform bridge, then saves a separate reference image.
+The committed reference is [`backends/coordinate_reference.png`](../../backends/coordinate_reference.png).
+The gate requires exact pixels between the two runs and compares the rerun to
+the committed reference with the screenshot comparator's default tolerance.
+The coordinate probe output is:
 
 ```text
 coordinates: point=(1.25,-2.50,3.75) scale_parity=1 ray=(-0.20,-0.10,-1.00)
@@ -39,5 +44,7 @@ ELISA_ALLOW_STALE_STAGE1=1 ~/.local/bin/elisascript scripts/wicked_probe.elisasc
 ```
 
 Result: exit status 0; both native frame runs passed the coordinate probe,
-scene topology and determinism checks, and the frame-time budget. Captured
-reference-image validation across a rendered asymmetric scene remains open.
+scene topology and determinism checks, the asymmetric signed-scale reference
+comparison, and the frame-time budget. This closes the rendered-reference
+capture portion of F07. Tangent parity still lacks a production consumer, and
+physics, skinning, and picking still need end-to-end signed-scale fixtures.

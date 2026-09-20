@@ -549,7 +549,7 @@ int main(int argc, char** argv) {
     if (!probe_live_game_rendering(application, scene, object, screenshot_path)) {
         return 1;
     }
-    if (!run_library_probes(application, scene, manifest)) {
+    if (!run_library_probes(application, scene, manifest, screenshot_path)) {
         return 1;
     }
     if (!probe_debug_draw_bridge()) {
