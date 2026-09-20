@@ -44,8 +44,23 @@ character mesh is selected instead of the auxiliary sphere, and that the large
 fence file parses under the configured limits. The synthetic triangle checks
 unit conversion, node translation, finite generated normals, and valid indices.
 
-This stage only parses metadata and decodes one mesh. It does not yet preserve
-the full node hierarchy, material subsets or texture paths, skin weights or
-bind poses, or animation curves. It does not emit the engine's normalized
-package and is not connected to an Elisa asset-load or render call. A05/C01
-integration and real Wicked rendering remain the A09 completion criteria.
+The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
+existing `elisa-cooked-v2` geometry package with source identity and hash,
+float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It
+validates all decoded lengths, finite values, indices, and the runtime reader's
+64 MiB package/16 MiB section limits before reporting success. Run
+`python3 scripts/cook_fbx_asset.py --self-test` for the synthetic package test.
+For a real source, supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
+DESTINATION.pkg`; the asset key is stored in the package and must be a safe
+relative path.
+
+`native/package_load.h` now reads the optional UV channel and copies it into
+Wicked's first UV set. A native reader check loaded the generated walking
+package: 83,442 triangles, 97,679 normalized vertices, and one UV per vertex.
+The Wicked gate also has a package fixture that checks UV preservation.
+
+Import and cooking still select one mesh. They do not preserve the full node
+hierarchy, material subsets or texture paths, skin weights or bind poses, or
+animation curves. The cooker's mesh output is not connected to an Elisa
+asset-load or render call. A05/C01 integration and real Wicked rendering remain
+the A09 completion criteria.

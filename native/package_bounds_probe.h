@@ -70,6 +70,15 @@ inline bool probe_package_bounds(const std::string& valid_package,
     std::ofstream(traversal) << "format=elisa-cooked-v2\nsource=../outside.pkg\n";
     const std::filesystem::path malformed = root / "malformed.pkg";
     std::ofstream(malformed) << "not-a-section\n";
+    const std::filesystem::path uv_package_path = root / "uv-package.pkg";
+    {
+        std::ofstream uv_package(uv_package_path);
+        uv_package << "format=elisa-cooked-v2\nsource=triangle.fbx\ntriangles=1\n"
+            << "positions=3\nindices=3\npositions_b64=" << std::string(48, 'A')
+            << "\nnormals_b64=" << std::string(48, 'A') << "\nuvs_b64="
+            << std::string(32, 'A') << "\nindices_b64=AAAAAAEAAAACAAAA\n";
+    }
+    const CookedPackage uv_package = load_cooked_package(uv_package_path.string());
     const std::filesystem::path binary = root / "valid.elpk";
     const std::filesystem::path overlap = root / "overlap.elpk";
     const std::filesystem::path compressed = root / "compression.elpk";
@@ -137,6 +146,8 @@ inline bool probe_package_bounds(const std::string& valid_package,
     const NativeAssetHandle stale_asset = loader.request("maze.elpk", "mesh", 8);
     const bool asset_stale = loader.pump(1, 1) == 0 && loader.state(stale_asset) == NativeAssetState::Failed;
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
+        check(uv_package.loaded && uv_package.uv_data.size() == 6,
+            "cooked FBX UV channel survives native package loading") &&
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&
         check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected") &&

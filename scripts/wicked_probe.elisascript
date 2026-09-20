@@ -80,6 +80,11 @@ def main(arguments: darray[sview]) -> i64:
             [str(root.joinpath("scripts/test_fbx_import.py"))])
         if fbx_import_status != 0:
             return fbx_import_status
+        fbx_cook_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/cook_fbx_asset.py")), "--self-test"])
+        if fbx_cook_status != 0:
+            return fbx_cook_status
         archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
         if archive_status != 0:
             return archive_status

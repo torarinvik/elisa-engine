@@ -160,8 +160,11 @@ Tracy source with `python3 scripts/fetch_tracy.py`. The game's own navigation de
 The bounded FBX import stage can be checked independently with
 `python3 scripts/test_fbx_import.py`; pass `--assets-root /path/to/assets` to
 also inspect the supplied WallGame walking, running, and fence FBX sources.
-This verifies parsing and first-mesh normalization only. It does not produce a
-cooked package or prove materials, skinning, animation, or runtime rendering.
+`python3 scripts/cook_fbx_asset.py --self-test` verifies a normalized geometry
+package, and the tool accepts a source FBX, a project-relative asset key, and
+an output `.pkg` path for real assets. This currently packages the largest
+triangle mesh only; materials, skinning, animation and runtime rendering are
+still pending.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
