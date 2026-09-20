@@ -66,10 +66,6 @@ int32_t elisa_render_scene_v1_shutdown(void);
 uint64_t elisa_render_scene_v1_instance_count(void);
 int32_t elisa_render_scene_v1_is_initialized(void);
 
-// Native smoke evidence: checks that rendered scene geometry changes a known
-// center pixel from the clear corner pixel.
-int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(void);
-
 #ifdef __cplusplus
 }
 #endif

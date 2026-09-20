@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import shlex
 import shutil
 import subprocess
@@ -89,6 +90,7 @@ def main() -> int:
     command = [
         cxx, "-std=c++17", "-O0", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
+        "-DELISA_RENDER_SCENE_TEST_PROBE=1",
         "-I", str(build), "-I", str(ROOT / "native"), "-I", str(wicked_source),
         "-I", str(utility), "-I", str(wicked_source / "Utility/metal"),
         "-I", str(wicked_source / "Utility/DirectXMath"),

@@ -1,6 +1,7 @@
 #pragma once
 
-// Test-only readback probe, included by render_scene_abi.cpp.
+// Test-only GPU readback. render_scene_native_smoke.py enables this symbol;
+// ordinary game binaries do not include a blocking probe in the render ABI.
 extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

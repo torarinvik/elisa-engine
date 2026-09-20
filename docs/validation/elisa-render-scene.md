@@ -71,7 +71,9 @@ transform updates, removed-row retirement, and that the rendered center pixel
 differs from the clear corner. The native pixel probe waits up to 400 ms for
 asynchronous pipeline creation, waits for GPU work, and reads the `RenderPath3D`
 offscreen target rather than the swapchain backbuffer. The bounded frame retry
-still handles a slow first Metal frame. The smoke requires the pinned macOS
+still handles a slow first Metal frame. That blocking readback probe is
+compiled only for this smoke; regular application builds do not expose it from
+the render ABI. The smoke requires the pinned macOS
 SDL3/Metal Wicked libraries; the Elisa module itself can also be compiled
 without those native dependencies. `elisascript scripts/check.elisascript`
 passes the combined persistent-snapshot and world-rendering portable fixture.

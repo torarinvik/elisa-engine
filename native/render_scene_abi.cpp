@@ -545,4 +545,6 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
     return state.initialized ? 1 : 0;
 }
 
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 #include "render_scene_pixel_probe.h"
+#endif

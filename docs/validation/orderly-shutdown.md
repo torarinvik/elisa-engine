@@ -211,3 +211,26 @@ The scene GPU baseline stayed flat and the previous one-time host heap step did
 not recur. The small scene/host heap changes and post-churn deltas remain
 unattributed; F05 is still partial, and this two-pass gate is not a substitute
 for repeating the 512-cycle soak.
+
+## Native gate after tangent-frame and checked-startup integration (2026-09-20)
+
+The next full SDL3/Wicked gate passed after cooking tangent frames into FBX
+packages and adding service requirements to ordinary application startup:
+
+```text
+DEVELOPER_DIR="$(xcode-select -p)" ELISA_ALLOW_STALE_STAGE1=1 \
+  elisascript scripts/wicked_probe.elisascript
+
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 gpu_delta_bytes=0 heap_delta_bytes=4256
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 gpu_delta_bytes=0 heap_delta_bytes=0
+host lifecycle heap: delta_bytes=14080 and 15456
+churn memory: steady_delta_bytes=277184 and 279744
+deterministic frame comparison: peak=0.0000 mean=0.0000
+Native live-input frame rendered from the embedded game.
+```
+
+Both passes reported the Apple M5's native profile (`profile=0xb3`,
+`formats=0x7`, workers `9/1`). The gate exercised the checked application
+startup path, cooked geometry loading, actual Metal scene rendering, and
+repeat-frame comparison. GPU usage stayed flat after warm-up. The host and
+post-churn heap deltas remain unattributed, so F05 is still partial.
