@@ -45,7 +45,8 @@ def main() -> int:
     host = build / "embed-probe"
     build_result = subprocess.run(
         [cxx, "-std=c++17", "-I", str(build), "-I", sdl_include,
-         str(ENGINE_ROOT / "native/embed_probe.cpp"), str(archive),
+         str(ENGINE_ROOT / "native/embed_probe.cpp"),
+         str(ENGINE_ROOT / "native/elisa_native_fallbacks.cpp"), str(archive),
          "-L", sdl_library, "-lSDL3", "-o", str(host)],
         capture_output=True, text=True, check=False,
     )

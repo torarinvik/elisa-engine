@@ -11,11 +11,14 @@ fallbacks available for currently missing features. The resolver is bounded
 by the existing eight-feature contract; another helper reports the first
 missing feature.
 
-`BackendProfile` carries typed RGBA8/BC1/R16F support and memory budget/usage.
+`BackendProfile` carries typed RGBA8/BC1/R16F support, optional ray-tracing,
+sparse-texture and mesh-shader support, queried viewport/worker limits, and
+memory budget/usage. Native fields the host does not measure are recorded as
+unknown zero limits; they cannot satisfy a resource-capacity requirement.
 `negotiate_limit` applies the same state machine to entity counts, texture
 dimensions, upload bytes, worker budgets, and remaining memory. A request that
-fits is `Ready`; an oversized positive request is either `Fallback` or
-`Unavailable` according to policy; zero requests and invalid profiles are
+fits is `Ready`; an oversized or unknown positive request is either `Fallback`
+or `Unavailable` according to policy; zero requests and invalid profiles are
 `Invalid`. Texture-format negotiation mirrors the native policy: BC1 is
 rejected for authored alpha and normal maps, RGBA8 is the safe fallback, and
 missing formats stay unavailable rather than being advertised optimistically.
@@ -23,10 +26,23 @@ missing formats stay unavailable rather than being advertised optimistically.
 `test/capabilities.elisa` tests a native profile where audio is missing. It
 stays `Unavailable` both when no fallback is declared and when fallback is
 globally disallowed. It becomes `Fallback` only when the caller declares a
-silent-audio handler; a nine-feature request remains `Invalid`.
+silent-audio handler; a nine-feature request remains `Invalid`. It also tests
+each of the eight service fallback fields independently, decodes optional
+native features and queried worker/viewport limits, and rejects a renderer
+without viewports or optional features claimed without rendering.
 
 The native `native/capability_probe.h` fills the vendor-free
-`ElisaBackendProfile` from queried Wicked device limits. ABI version 2 carries
+`ElisaBackendProfile` from queried Wicked device limits, then passes that report
+through the generated `maze_backend_configure` C ABI into Elisa's
+`BackendProfile`. The native game start checks the required Rendering and Input
+services against this live profile. The gate removes Input and confirms startup
+becomes unavailable, restores it, and confirms malformed profile input leaves
+the previous valid profile active. The SDL3 host's bounded runtime-hook
+fallbacks return the supplied fallback values; its profile leaves Callbacks
+unavailable, and weak definitions allow a real host callback registry to
+override them.
+
+ABI version 2 carries
 RGBA8, BC1, and R16F resource-format support, memory budget/usage, and the
 actual high-priority and streaming worker counts. Typed C queries expose
 individual capability bits, supported formats, and viewport/worker/memory
@@ -39,7 +55,5 @@ Validation on 2026-09-20: `scripts/check.elisascript` passed, including
 `test/capabilities.elisa` and `test/maze_bundle.elisa`.
 The two-pass Wicked native gate also exited 0 after querying the Apple M5
 profile (`formats=0x7`, `workers=9/1`), checking unknown-bit and typed-query
-rejection, and exercising a synthetic texture-format fallback matrix. The
-caller-declared service fallback cases also pass. Feeding a live host profile
-into each runtime service and expanding the service-specific fallback matrix
-remain open.
+rejection, exercising a synthetic texture-format fallback matrix, and
+negotiating the live profile through Elisa before gameplay starts.

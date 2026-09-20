@@ -20,6 +20,7 @@ def native_profile() -> BackendProfile:
             callbacks: false,
             asset_loading: true,
         },
+        optional_capabilities: BackendOptionalCapabilities{ray_tracing: false, sparse_textures: false, mesh_shaders: false},
         limits: BackendLimits{
             max_entities: 4096,
             max_texture_dimension: 8192,
@@ -27,6 +28,9 @@ def native_profile() -> BackendProfile:
             workers: 4,
             memory_budget_bytes: 536870912,
             memory_usage_bytes: 0,
+            max_viewports: 1,
+            graphics_workers: 1,
+            streaming_workers: 1,
         },
         texture_formats: BackendTextureFormats{rgba8: true, bc1: true, r16_float: false},
         service_version: 1,

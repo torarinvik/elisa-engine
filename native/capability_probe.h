@@ -1,6 +1,7 @@
 #pragma once
 
 #include "capability_abi.h"
+#include "libmaze.h"
 #include "probe_core.h"
 #include "wiGraphicsDevice.h"
 #include "wiJobSystem.h"
@@ -9,8 +10,27 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 namespace probe {
+
+inline int32_t configure_elisa_backend(const ElisaBackendProfile& profile) {
+    if (profile.memory_budget_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
+        profile.memory_usage_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return -3;
+    }
+    return maze_backend_configure(
+        static_cast<int64_t>(profile.capability_bits),
+        static_cast<int64_t>(profile.optional_bits),
+        profile.max_viewports,
+        profile.max_workers,
+        static_cast<int64_t>(profile.memory_budget_bytes),
+        static_cast<int64_t>(profile.memory_usage_bytes),
+        static_cast<int64_t>(profile.resource_format_bits),
+        profile.graphics_workers,
+        profile.streaming_workers,
+        profile.abi_version);
+}
 
 inline bool probe_graphics_capabilities() {
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
@@ -48,7 +68,7 @@ inline bool probe_graphics_capabilities() {
     const uint32_t streaming_workers = wi::jobsystem::GetThreadCount(wi::jobsystem::Priority::Streaming);
     const ElisaBackendProfile profile = {
         sizeof(ElisaBackendProfile), ELISA_CAPABILITY_ABI_VERSION,
-        ELISA_CAPABILITY_RENDERING | ELISA_CAPABILITY_NATIVE_WINDOW |
+        ELISA_CAPABILITY_INPUT | ELISA_CAPABILITY_RENDERING | ELISA_CAPABILITY_NATIVE_WINDOW |
             ELISA_CAPABILITY_ASYNC_UPLOAD | ELISA_CAPABILITY_ASSET_LOADING,
         (raytracing ? ELISA_OPTIONAL_RAYTRACING : 0ull) |
             (sparse ? ELISA_OPTIONAL_SPARSE_TEXTURES : 0ull) |
@@ -60,6 +80,19 @@ inline bool probe_graphics_capabilities() {
             "versioned capability profile")) {
         return false;
     }
+    if (!check(configure_elisa_backend(profile) == 0 && maze_backend_status() == 0,
+            "native capability profile reaches Elisa runtime")) return false;
+    ElisaBackendProfile no_input_profile = profile;
+    no_input_profile.capability_bits &= ~ELISA_CAPABILITY_INPUT;
+    if (!check(configure_elisa_backend(no_input_profile) == 0 && maze_backend_status() == -2 &&
+            maze_start() == -2 && maze_session_create() == 0,
+            "Elisa runtime rejects startup and sessions without required input") ||
+        !check(configure_elisa_backend(profile) == 0 && maze_backend_status() == 0,
+            "Elisa runtime accepts restored host profile")) return false;
+    ElisaBackendProfile malformed_runtime_profile = profile;
+    malformed_runtime_profile.optional_bits |= 1ull << 40;
+    if (!check(configure_elisa_backend(malformed_runtime_profile) == -3 && maze_backend_status() == 0,
+            "invalid runtime profile is rejected without replacing the active profile")) return false;
     uint64_t reported_limit = 0;
     if (!check(elisa_backend_profile_supports_capability(&profile, ELISA_CAPABILITY_RENDERING) &&
             !elisa_backend_profile_supports_capability(&profile, ELISA_CAPABILITY_AUDIO) &&

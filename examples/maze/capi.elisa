@@ -6,17 +6,59 @@
 # made -emit c-archive omit a nested-module function (see ADR-0012), so the
 # export surface stays flat, which emits reliably.
 include "./game.elisa"
+include "../../src/backend/capabilities.elisa"
 
 using Maze
 using MazeGame
+using Capabilities
+
+const module CapiPolicy:
+    PROFILE_READY: i32 = 0
+    PROFILE_UNCONFIGURED: i32 = -1
+    PROFILE_UNAVAILABLE: i32 = -2
+    PROFILE_INVALID: i32 = -3
+    START_UNAVAILABLE: i32 = -2
+    GAME_FEATURES: i64 = 31
+    FEATURE_BACKEND_PROFILE: i64 = 32
+    FEATURE_BACKEND_STATUS: i64 = 64
 
 global mutable embedded_game: MazeGame = MazeGame::MazeGame()
 global mutable embedded_session_live: bool = false
 global mutable embedded_session_generation: i64 = 0
+global mutable embedded_backend_profile: BackendProfile = headless_profile()
+global mutable embedded_backend_profile_configured: bool = false
 
 def capi_start() -> i32:
+    return CapiPolicy::START_UNAVAILABLE if embedded_backend_profile_configured and capi_backend_status() != CapiPolicy::PROFILE_READY
     MazeGame::game_start(&embedded_game)
     MazeGame::game_status_code(embedded_game.status).i32()
+
+# The native host passes the already validated, vendor-free ABI-v2 report.
+# Unqueried resource capacities remain unknown in Elisa rather than fabricated.
+def capi_backend_configure(capability_bits: i64, optional_bits: i64,
+    max_viewports: i64, max_workers: i64, memory_budget_bytes: i64,
+    memory_usage_bytes: i64, resource_format_bits: i64,
+    graphics_workers: i64, streaming_workers: i64, service_version: i64) -> i32:
+    return CapiPolicy::PROFILE_INVALID if embedded_session_live
+    return CapiPolicy::PROFILE_INVALID if not backend_native_bits_valid(capability_bits, optional_bits, resource_format_bits)
+    candidate: BackendProfile = backend_profile_from_native(capability_bits, optional_bits,
+        max_viewports, max_workers, memory_budget_bytes, memory_usage_bytes,
+        resource_format_bits, graphics_workers, streaming_workers, service_version)
+    return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(candidate)
+    embedded_backend_profile <- candidate
+    embedded_backend_profile_configured <- true
+    CapiPolicy::PROFILE_READY
+
+def capi_backend_status() -> i32:
+    return CapiPolicy::PROFILE_UNCONFIGURED if not embedded_backend_profile_configured
+    return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(embedded_backend_profile)
+    required: BackendFeature[2] = [BackendFeature.Rendering, BackendFeature.Input]
+    no_fallbacks: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: false, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    state: RequirementState = negotiate_requirements(embedded_backend_profile, required, 2, no_fallbacks, false)
+    CapiPolicy::PROFILE_READY if state == RequirementState.Ready else CapiPolicy::PROFILE_UNAVAILABLE
 
 # Direction codes mirror the portable move order the host maps to:
 # 0 north, 1 south, 2 west, 3 east.
@@ -67,14 +109,14 @@ def capi_abi_version() -> i32:
     1
 
 def capi_feature_bits() -> i64:
-    # Input, world-query, status, and the generation-checked session are v1.
-    31
+    CapiPolicy::GAME_FEATURES + CapiPolicy::FEATURE_BACKEND_PROFILE + CapiPolicy::FEATURE_BACKEND_STATUS
 
 def capi_session_valid(handle: i64) -> bool:
     embedded_session_live and handle > 0 and handle == embedded_session_generation
 
 def capi_session_create() -> i64:
     return 0 if embedded_session_live or embedded_session_generation == 9223372036854775807
+    return 0 if embedded_backend_profile_configured and capi_backend_status() != CapiPolicy::PROFILE_READY
     embedded_session_generation <- embedded_session_generation + 1
     embedded_session_live <- true
     capi_start()
@@ -114,3 +156,5 @@ export fn maze_session_create() -> i64 = capi_session_create
 export fn maze_session_update(handle: i64, direction: i32) -> i32 = capi_session_update
 export fn maze_session_query(handle: i64, query: i32) -> i64 = capi_session_query
 export fn maze_session_destroy(handle: i64) -> i32 = capi_session_destroy
+export fn maze_backend_configure(capability_bits: i64, optional_bits: i64, max_viewports: i64, max_workers: i64, memory_budget_bytes: i64, memory_usage_bytes: i64, resource_format_bits: i64, graphics_workers: i64, streaming_workers: i64, service_version: i64) -> i32 = capi_backend_configure
+export fn maze_backend_status() -> i32 = capi_backend_status

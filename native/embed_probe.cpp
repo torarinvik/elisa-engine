@@ -116,7 +116,8 @@ int main(int argc, char** argv) {
     };
     if (elisa_validate_descriptor(&descriptor,
             ELISA_SERVICE_FEATURE_INPUT | ELISA_SERVICE_FEATURE_WORLD_QUERY | ELISA_SERVICE_FEATURE_STATUS |
-            ELISA_SERVICE_FEATURE_SESSION | ELISA_SERVICE_FEATURE_BOUNDED_QUERY) != ELISA_SERVICE_OK) {
+            ELISA_SERVICE_FEATURE_SESSION | ELISA_SERVICE_FEATURE_BOUNDED_QUERY |
+            ELISA_SERVICE_FEATURE_BACKEND_PROFILE | ELISA_SERVICE_FEATURE_BACKEND_STATUS) != ELISA_SERVICE_OK) {
         std::fprintf(stderr, "embed: service descriptor rejected\n");
         return 12;
     }

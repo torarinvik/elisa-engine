@@ -20,6 +20,14 @@ missing allocator, undersized query buffer, stale handle, malformed span, and
 truncated descriptor. Compile-time assertions cover handle size, buffer layout,
 and allocator alignment.
 
+The descriptor also advertises the additive backend-profile operations. A
+native host calls `maze_backend_configure` with the already validated ABI-v2
+capability report, then queries `maze_backend_status` before starting the game.
+The required render/input pair is enforced by `maze_start` and session creation;
+hosts that do not configure a profile retain the legacy embedding behavior.
+The separate profile validation is recorded in
+[`capability-negotiation.md`](capability-negotiation.md).
+
 The ABI remains scalar for this first service; future services may add typed
 bounded payloads by extending the versioned table instead of exposing vendor
 objects.

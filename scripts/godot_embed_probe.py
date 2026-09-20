@@ -70,7 +70,8 @@ def main() -> int:
     compile_result = run([
         cxx, "-std=c++17", "-O1", "-dynamiclib",
         "-I", str(header_dir), "-I", str(build),
-        str(addons / "elisa_godot_bridge.cpp"), str(archive),
+        str(addons / "elisa_godot_bridge.cpp"),
+        str(ENGINE_ROOT / "native" / "elisa_native_fallbacks.cpp"), str(archive),
         "-o", str(dylib),
     ])
     relay(compile_result)

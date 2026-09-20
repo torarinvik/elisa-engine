@@ -5,6 +5,23 @@ module Capabilities:
         const module Bounds:
             MAX_FEATURES: usize = 8
             MIN_SERVICE_VERSION: i64 = 1
+            CAP_INPUT: i64 = 1
+            CAP_RENDERING: i64 = 2
+            CAP_PHYSICS: i64 = 4
+            CAP_AUDIO: i64 = 8
+            CAP_NATIVE_WINDOW: i64 = 16
+            CAP_ASYNC_UPLOAD: i64 = 32
+            CAP_CALLBACKS: i64 = 64
+            CAP_ASSET_LOADING: i64 = 128
+            OPTIONAL_RAY_TRACING: i64 = 1
+            OPTIONAL_SPARSE_TEXTURES: i64 = 2
+            OPTIONAL_MESH_SHADERS: i64 = 4
+            FORMAT_RGBA8: i64 = 1
+            FORMAT_BC1: i64 = 2
+            FORMAT_R16_FLOAT: i64 = 4
+            NATIVE_CAPABILITY_BITS: i64 = 255
+            NATIVE_OPTIONAL_BITS: i64 = 7
+            NATIVE_FORMAT_BITS: i64 = 7
 
     public:
         enum BackendKind:
@@ -28,6 +45,14 @@ module Capabilities:
             UploadBytes
             Workers
             MemoryBytes
+            Viewports
+            GraphicsWorkers
+            StreamingWorkers
+
+        enum BackendOptionalFeature:
+            RayTracing
+            SparseTextures
+            MeshShaders
 
         enum BackendTextureFormat:
             Rgba8
@@ -51,6 +76,11 @@ module Capabilities:
             callbacks: bool
             asset_loading: bool
 
+        struct BackendOptionalCapabilities:
+            ray_tracing: bool
+            sparse_textures: bool
+            mesh_shaders: bool
+
         struct BackendLimits:
             max_entities: i64
             max_texture_dimension: i64
@@ -58,6 +88,9 @@ module Capabilities:
             workers: i64
             memory_budget_bytes: i64
             memory_usage_bytes: i64
+            max_viewports: i64
+            graphics_workers: i64
+            streaming_workers: i64
 
         struct BackendTextureFormats:
             rgba8: bool
@@ -71,6 +104,7 @@ module Capabilities:
         struct BackendProfile:
             kind: BackendKind
             capabilities: BackendCapabilities
+            optional_capabilities: BackendOptionalCapabilities
             limits: BackendLimits
             texture_formats: BackendTextureFormats
             service_version: i64
@@ -93,6 +127,15 @@ module Capabilities:
                     profile.capabilities.callbacks
                 BackendFeature.AssetLoading:
                     profile.capabilities.asset_loading
+
+        def backend_supports_optional(profile: BackendProfile, feature: BackendOptionalFeature) -> bool:
+            match feature:
+                BackendOptionalFeature.RayTracing:
+                    profile.optional_capabilities.ray_tracing
+                BackendOptionalFeature.SparseTextures:
+                    profile.optional_capabilities.sparse_textures
+                BackendOptionalFeature.MeshShaders:
+                    profile.optional_capabilities.mesh_shaders
 
         def fallback_supports(fallbacks: BackendCapabilities, feature: BackendFeature) -> bool:
             match feature:
@@ -125,19 +168,76 @@ module Capabilities:
                     profile.limits.workers
                 BackendLimit.MemoryBytes:
                     profile.limits.memory_budget_bytes - profile.limits.memory_usage_bytes
+                BackendLimit.Viewports:
+                    profile.limits.max_viewports
+                BackendLimit.GraphicsWorkers:
+                    profile.limits.graphics_workers
+                BackendLimit.StreamingWorkers:
+                    profile.limits.streaming_workers
 
         def backend_limit_supports(profile: BackendProfile, limit: BackendLimit, requested: i64) -> bool:
             requested > 0 and backend_limit(profile, limit) >= requested
 
         def backend_profile_valid(profile: BackendProfile) -> bool:
             version_ok: bool = profile.service_version >= Bounds::MIN_SERVICE_VERSION
-            entities_ok: bool = profile.limits.max_entities > 0
-            texture_ok: bool = profile.limits.max_texture_dimension > 0
-            upload_ok: bool = profile.limits.max_upload_bytes > 0
-            workers_ok: bool = profile.limits.workers > 0
+            entities_ok: bool = profile.limits.max_entities >= 0
+            texture_ok: bool = profile.limits.max_texture_dimension >= 0
+            upload_ok: bool = profile.limits.max_upload_bytes >= 0
+            workers_ok: bool = profile.limits.workers >= 0 and profile.limits.max_viewports >= 0 and profile.limits.graphics_workers >= 0 and profile.limits.streaming_workers >= 0
             memory_ok: bool = profile.limits.memory_budget_bytes > 0 and profile.limits.memory_usage_bytes >= 0 and profile.limits.memory_usage_bytes <= profile.limits.memory_budget_bytes
             formats_ok: bool = profile.capabilities.rendering or (not profile.texture_formats.rgba8 and not profile.texture_formats.bc1 and not profile.texture_formats.r16_float)
-            version_ok and entities_ok and texture_ok and upload_ok and workers_ok and memory_ok and formats_ok
+            optional_ok: bool = profile.capabilities.rendering or (not profile.optional_capabilities.ray_tracing and not profile.optional_capabilities.sparse_textures and not profile.optional_capabilities.mesh_shaders)
+            viewport_ok: bool = not profile.capabilities.rendering or profile.limits.max_viewports > 0
+            version_ok and entities_ok and texture_ok and upload_ok and workers_ok and memory_ok and formats_ok and optional_ok and viewport_ok
+
+        # Native ABI v2 reports only values the host can query. Resource-type
+        # capacities that the ABI does not measure remain zero (unknown), so
+        # they can never accidentally satisfy a limit requirement.
+        def backend_profile_from_native(capabilities: i64, optional: i64,
+            max_viewports: i64, max_workers: i64, memory_budget: i64, memory_usage: i64,
+            formats: i64, graphics_workers: i64, streaming_workers: i64,
+            service_version: i64) -> BackendProfile:
+            BackendProfile{
+                kind: BackendKind.Native,
+                capabilities: BackendCapabilities{
+                    input: capabilities / Bounds::CAP_INPUT % 2 == 1,
+                    rendering: capabilities / Bounds::CAP_RENDERING % 2 == 1,
+                    physics: capabilities / Bounds::CAP_PHYSICS % 2 == 1,
+                    audio: capabilities / Bounds::CAP_AUDIO % 2 == 1,
+                    native_window: capabilities / Bounds::CAP_NATIVE_WINDOW % 2 == 1,
+                    async_upload: capabilities / Bounds::CAP_ASYNC_UPLOAD % 2 == 1,
+                    callbacks: capabilities / Bounds::CAP_CALLBACKS % 2 == 1,
+                    asset_loading: capabilities / Bounds::CAP_ASSET_LOADING % 2 == 1,
+                },
+                optional_capabilities: BackendOptionalCapabilities{
+                    ray_tracing: optional / Bounds::OPTIONAL_RAY_TRACING % 2 == 1,
+                    sparse_textures: optional / Bounds::OPTIONAL_SPARSE_TEXTURES % 2 == 1,
+                    mesh_shaders: optional / Bounds::OPTIONAL_MESH_SHADERS % 2 == 1,
+                },
+                limits: BackendLimits{
+                    max_entities: 0,
+                    max_texture_dimension: 0,
+                    max_upload_bytes: 0,
+                    workers: max_workers,
+                    memory_budget_bytes: memory_budget,
+                    memory_usage_bytes: memory_usage,
+                    max_viewports: max_viewports,
+                    graphics_workers: graphics_workers,
+                    streaming_workers: streaming_workers,
+                },
+                texture_formats: BackendTextureFormats{
+                    rgba8: formats / Bounds::FORMAT_RGBA8 % 2 == 1,
+                    bc1: formats / Bounds::FORMAT_BC1 % 2 == 1,
+                    r16_float: formats / Bounds::FORMAT_R16_FLOAT % 2 == 1,
+                },
+                service_version: service_version,
+            }
+
+        def backend_native_bits_valid(capabilities: i64, optional: i64, formats: i64) -> bool:
+            capabilities_ok: bool = capabilities >= 0 and capabilities <= Bounds::NATIVE_CAPABILITY_BITS
+            optional_ok: bool = optional >= 0 and optional <= Bounds::NATIVE_OPTIONAL_BITS
+            formats_ok: bool = formats >= 0 and formats <= Bounds::NATIVE_FORMAT_BITS
+            capabilities_ok and optional_ok and formats_ok
 
         def backend_format_supported(profile: BackendProfile, format: BackendTextureFormat) -> bool:
             match format:
@@ -229,6 +329,11 @@ module Capabilities:
                     callbacks: false,
                     asset_loading: false,
                 },
+                optional_capabilities: BackendOptionalCapabilities{
+                    ray_tracing: false,
+                    sparse_textures: false,
+                    mesh_shaders: false,
+                },
                 limits: BackendLimits{
                     max_entities: 256,
                     max_texture_dimension: 1,
@@ -236,6 +341,9 @@ module Capabilities:
                     workers: 1,
                     memory_budget_bytes: 67108864,
                     memory_usage_bytes: 8388608,
+                    max_viewports: 0,
+                    graphics_workers: 0,
+                    streaming_workers: 0,
                 },
                 texture_formats: BackendTextureFormats{rgba8: false, bc1: false, r16_float: false},
                 service_version: Bounds::MIN_SERVICE_VERSION,

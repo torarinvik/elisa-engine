@@ -31,9 +31,11 @@ def fallback_matrix_valid() -> bool:
     profile: BackendProfile = BackendProfile{
         kind: BackendKind.Native,
         capabilities: no_services,
+        optional_capabilities: BackendOptionalCapabilities{ray_tracing: false, sparse_textures: false, mesh_shaders: false},
         limits: BackendLimits{
             max_entities: 1, max_texture_dimension: 1, max_upload_bytes: 1,
             workers: 1, memory_budget_bytes: 1, memory_usage_bytes: 0,
+            max_viewports: 0, graphics_workers: 0, streaming_workers: 0,
         },
         texture_formats: BackendTextureFormats{rgba8: false, bc1: false, r16_float: false},
         service_version: 1,
@@ -50,6 +52,25 @@ def fallback_matrix_valid() -> bool:
 
 def main() -> i32:
     return 41 if not fallback_matrix_valid()
+    return 42 if not backend_native_bits_valid(255, 7, 7)
+    return 43 if backend_native_bits_valid(256, 0, 0) or backend_native_bits_valid(0, 8, 0) or backend_native_bits_valid(0, 0, 8)
+    live_native: BackendProfile = backend_profile_from_native(19, 5, 16, 12, 1073741824, 268435456, 3, 8, 4, 2)
+    return 44 if not backend_profile_valid(live_native)
+    return 45 if not backend_supports(live_native, BackendFeature.Input) or not backend_supports(live_native, BackendFeature.Rendering)
+    return 46 if not backend_supports_optional(live_native, BackendOptionalFeature.RayTracing) or backend_supports_optional(live_native, BackendOptionalFeature.SparseTextures) or not backend_supports_optional(live_native, BackendOptionalFeature.MeshShaders)
+    return 47 if not backend_limit_supports(live_native, BackendLimit.Viewports, 16) or not backend_limit_supports(live_native, BackendLimit.GraphicsWorkers, 8) or not backend_limit_supports(live_native, BackendLimit.StreamingWorkers, 4)
+    return 48 if negotiate_limit(live_native, BackendLimit.Entities, 1, false) != RequirementState.Unavailable
+    no_viewports: BackendProfile = backend_profile_from_native(3, 0, 0, 1, 1024, 0, 1, 1, 1, 2)
+    return 49 if backend_profile_valid(no_viewports)
+    no_renderer_optional: BackendProfile = BackendProfile{
+        kind: BackendKind.Headless,
+        capabilities: headless_profile().capabilities,
+        optional_capabilities: BackendOptionalCapabilities{ray_tracing: true, sparse_textures: false, mesh_shaders: false},
+        limits: headless_profile().limits,
+        texture_formats: headless_profile().texture_formats,
+        service_version: 1,
+    }
+    return 50 if backend_profile_valid(no_renderer_optional)
     headless: BackendProfile = headless_profile()
     return 1 if headless.kind != BackendKind.Headless or not backend_profile_valid(headless)
     return 2 if not backend_supports(headless, BackendFeature.Input)
@@ -65,6 +86,7 @@ def main() -> i32:
     invalid_memory: BackendProfile = BackendProfile{
         kind: headless.kind,
         capabilities: headless.capabilities,
+        optional_capabilities: headless.optional_capabilities,
         limits: BackendLimits{
             max_entities: headless.limits.max_entities,
             max_texture_dimension: headless.limits.max_texture_dimension,
@@ -72,6 +94,9 @@ def main() -> i32:
             workers: headless.limits.workers,
             memory_budget_bytes: headless.limits.memory_budget_bytes,
             memory_usage_bytes: headless.limits.memory_budget_bytes + 1,
+            max_viewports: headless.limits.max_viewports,
+            graphics_workers: headless.limits.graphics_workers,
+            streaming_workers: headless.limits.streaming_workers,
         },
         texture_formats: headless.texture_formats,
         service_version: headless.service_version,
@@ -96,6 +121,7 @@ def main() -> i32:
             callbacks: true,
             asset_loading: true,
         },
+        optional_capabilities: BackendOptionalCapabilities{ray_tracing: true, sparse_textures: false, mesh_shaders: true},
         limits: BackendLimits{
             max_entities: 4096,
             max_texture_dimension: 8192,
@@ -103,6 +129,9 @@ def main() -> i32:
             workers: 4,
             memory_budget_bytes: 268435456,
             memory_usage_bytes: 67108864,
+            max_viewports: 16,
+            graphics_workers: 8,
+            streaming_workers: 4,
         },
         texture_formats: BackendTextureFormats{rgba8: true, bc1: true, r16_float: true},
         service_version: 1,
@@ -144,6 +173,7 @@ def main() -> i32:
     no_rgba: BackendProfile = BackendProfile{
         kind: native.kind,
         capabilities: native.capabilities,
+        optional_capabilities: native.optional_capabilities,
         limits: native.limits,
         texture_formats: BackendTextureFormats{rgba8: false, bc1: true, r16_float: true},
         service_version: native.service_version,
@@ -157,6 +187,7 @@ def main() -> i32:
     invalid_formats: BackendProfile = BackendProfile{
         kind: headless.kind,
         capabilities: headless.capabilities,
+        optional_capabilities: headless.optional_capabilities,
         limits: headless.limits,
         texture_formats: BackendTextureFormats{rgba8: true, bc1: false, r16_float: false},
         service_version: headless.service_version,
