@@ -13,4 +13,20 @@ def main() -> i32:
     return 5 if WorldStorage::catalog_actor_count(&catalog) != 0 or WorldStorage::catalog_projectile_count(&catalog) != 1
     return 6 if not WorldStorage::catalog_destroy_projectile(&catalog, projectile)
     return 7 if WorldStorage::catalog_projectile_count(&catalog) != 0
+    dense_ids: mutable i64[WorldStorage::MAX_ROWS] = zeroed
+    for index in 0..<WorldStorage::MAX_ROWS:
+        dense_ids[index] <- WorldStorage::catalog_spawn_actor(&catalog, 1000)
+        return 8 if dense_ids[index] <= 0
+    return 9 if WorldStorage::catalog_actor_count(&catalog) != WorldStorage::MAX_ROWS
+    return 10 if WorldStorage::catalog_spawn_actor(&catalog, 9999) != -1
+    first_dense: i64 = dense_ids[0]
+    middle_dense: i64 = dense_ids[WorldStorage::MAX_ROWS / 2]
+    last_dense: i64 = dense_ids[WorldStorage::MAX_ROWS - 1]
+    return 11 if not WorldStorage::catalog_destroy_actor(&catalog, middle_dense)
+    return 12 if WorldStorage::catalog_actor_count(&catalog) != WorldStorage::MAX_ROWS - 1
+    replacement: i64 = WorldStorage::catalog_spawn_actor(&catalog, 9999)
+    return 13 if replacement <= last_dense
+    return 14 if WorldStorage::catalog_actor_count(&catalog) != WorldStorage::MAX_ROWS
+    return 15 if WorldStorage::catalog_actor(&catalog, first_dense).health != 1000
+    return 16 if WorldStorage::catalog_actor(&catalog, last_dense).health != 1000
     0
