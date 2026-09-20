@@ -1,0 +1,93 @@
+# Reconcile an Elisa-owned render snapshot with the persistent runtime scene.
+# Keeping the presenter inside RenderScene lets opaque handles stay private.
+include "../backend/render_snapshot.elisa"
+
+extend RenderScene:
+    private:
+        const module SnapshotLimits:
+            MAX_BINDINGS: usize = 256
+            INVALID_SLOT: usize = MAX_BINDINGS
+
+        const module SnapshotDefaults:
+            PRIMITIVE: Primitive = Primitive.Box
+            RED: f32 = 0.8
+            GREEN: f32 = 0.8
+            BLUE: f32 = 0.85
+            ALPHA: f32 = 1.0
+
+        struct SnapshotBinding:
+            render_id: i64
+            handle: InstanceHandle
+
+    public:
+        # A presenter owns native handles for exactly one RenderScene lifetime.
+        affine struct SnapshotPresenter:
+            private:
+                bindings: mutable SnapshotBinding[SnapshotLimits::MAX_BINDINGS]
+                count: mutable usize
+
+        def SnapshotPresenter() -> SnapshotPresenter:
+            SnapshotPresenter{bindings: zeroed, count: 0}
+
+        def snapshot_binding_count(presenter: SnapshotPresenter&) -> usize:
+            presenter.count
+
+    private:
+        def snapshot_binding_slot(presenter: SnapshotPresenter&, render_id: i64) -> usize:
+            for index in 0..<presenter.count |slot: usize = SnapshotLimits::INVALID_SLOT| -> slot:
+                break index if presenter.bindings[index].render_id == render_id
+
+        def snapshot_contains(snapshot: RenderSnapshot::Snapshot&, render_id: i64) -> bool:
+            for index in 0..<RenderSnapshot::snapshot_count(snapshot) |found: bool = false| -> found:
+                found <- true if RenderSnapshot::snapshot_entry(snapshot, index).render_id == render_id
+
+    public:
+        # Stable render IDs update in place; missing rows are retired before new
+        # rows are created so a full-capacity replacement needs no spare slots.
+        def sync_snapshot(presenter: mutable SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not RenderSnapshot::snapshot_valid(snapshot)
+            raise RenderSceneError.Capacity if RenderSnapshot::snapshot_count(snapshot) > SnapshotLimits::MAX_BINDINGS
+
+            for attempt in 0..<SnapshotLimits::MAX_BINDINGS |index: usize = 0, presenter|:
+                break if index >= presenter.count
+                render_id: i64 = presenter.bindings[index].render_id
+                if not RenderScene::snapshot_contains(snapshot, render_id):
+                    try RenderScene::destroy(presenter.bindings[index].handle)
+                    for shift in index..<presenter.count - 1 |presenter|:
+                        presenter.bindings[shift] <- presenter.bindings[shift + 1]
+                    presenter.count <- presenter.count - 1
+                else:
+                    index <- index + 1
+
+            for index in 0..<RenderSnapshot::snapshot_count(snapshot) |presenter|:
+                entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, index)
+                slot: usize = RenderScene::snapshot_binding_slot(presenter, entry.render_id)
+                if slot == SnapshotLimits::INVALID_SLOT:
+                    color: Color = Color{red: SnapshotDefaults::RED, green: SnapshotDefaults::GREEN, blue: SnapshotDefaults::BLUE, alpha: SnapshotDefaults::ALPHA}
+                    handle: InstanceHandle = try RenderScene::create(SnapshotDefaults::PRIMITIVE, entry.transform, color)
+                    presenter.bindings[presenter.count] <- SnapshotBinding{render_id: entry.render_id, handle: handle}
+                    presenter.count <- presenter.count + 1
+                else:
+                    try RenderScene::update_transform(presenter.bindings[slot].handle, entry.transform)
+
+        # Clear before shutting down or replacing the underlying RenderScene.
+        def clear_snapshot(presenter: mutable SnapshotPresenter&) -> void error[RenderSceneError]:
+            for attempt in 0..<SnapshotLimits::MAX_BINDINGS |presenter|:
+                break if presenter.count == 0
+                slot: usize = presenter.count - 1
+                try RenderScene::destroy(presenter.bindings[slot].handle)
+                presenter.bindings[slot] <- zeroed
+                presenter.count <- presenter.count - 1
+
+module RenderSnapshotScene:
+    public:
+        # The presenter and native handles remain owned by RenderScene; this
+        # facade names the snapshot-to-scene integration surface.
+        def binding_count(presenter: RenderScene::SnapshotPresenter&) -> usize:
+            RenderScene::snapshot_binding_count(presenter)
+
+        def sync(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::sync_snapshot(presenter, snapshot)
+
+        def clear(presenter: mutable RenderScene::SnapshotPresenter&) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::clear_snapshot(presenter)

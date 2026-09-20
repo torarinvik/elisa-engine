@@ -2,10 +2,16 @@
 # scene through the public engine module. The one evidence import is test-only.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/math/geometry.elisa"
 
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
+
+def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> i32:
+    catch RenderSnapshotScene::sync(presenter, snapshot):
+        ok: 0
+        error failure: 1
 
 def main() -> i32:
     config: Application::Config = Application::Config{
@@ -164,9 +170,36 @@ def main() -> i32:
     return 17 if bad_resize != 1
 
     return 18 if Application::pump() != Application::PumpStatus.Running
-    return 19 if Application::pump() != Application::PumpStatus.Running
-    rendered_geometry: i32 = elisa_render_scene_v1_last_frame_center_differs_from_corner()
+    rendered_geometry: mutable i32 = 0
+    for attempt in 0..<8 |rendered_geometry|:
+        break if rendered_geometry != 0
+        return 19 if Application::pump() != Application::PumpStatus.Running
+        rendered_geometry <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
     return 20 if rendered_geometry == 0
+
+    # Elisa gameplay identities and stable render IDs reconcile into persistent
+    # native handles; repeated submissions update in place and removals retire.
+    snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+    presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+    gameplay_a: World::EntityRef = World::EntityRef{world_epoch: 1, id: 701}
+    gameplay_b: World::EntityRef = World::EntityRef{world_epoch: 1, id: 702}
+    return 40 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay_a, 701, box_transform)
+    return 41 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay_b, 702, sphere_transform)
+    return 42 if sync_snapshot(&presenter, snapshot) != 0
+    return 43 if RenderSnapshotScene::binding_count(presenter) != 2 or RenderScene::instance_count() != 5
+    return 44 if sync_snapshot(&presenter, snapshot) != 0
+    return 45 if RenderSnapshotScene::binding_count(presenter) != 2 or RenderScene::instance_count() != 5
+
+    moved_transform: Geometry::Transform = Geometry::transform_translate(box_transform,
+        Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
+    return 46 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay_a, 701, moved_transform)
+    return 47 if sync_snapshot(&presenter, snapshot) != 0
+    return 48 if not RenderSnapshot::snapshot_remove(&snapshot, gameplay_b, 702)
+    return 49 if sync_snapshot(&presenter, snapshot) != 0
+    return 50 if RenderSnapshotScene::binding_count(presenter) != 1 or RenderScene::instance_count() != 4
+    empty_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+    return 51 if sync_snapshot(&presenter, empty_snapshot) != 0
+    return 52 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
 
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0

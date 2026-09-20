@@ -4,5 +4,6 @@
 include "./application.elisa"
 include "./action_input.elisa"
 include "./render_scene.elisa"
+include "./render_snapshot_scene.elisa"
 include "../math/geometry.elisa"
 include "./clock.elisa"
