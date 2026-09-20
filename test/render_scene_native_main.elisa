@@ -34,15 +34,10 @@ def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: 
         ok: 0
         error failure: 1
 
-def set_world_pose(world: mutable World::World&, gameplay: World::EntityRef,
-    transform: Geometry::Transform) -> i32:
-    catch World::world_set_transform(world, gameplay, transform):
-        ok: 0
-        error failure: 1
-
-def bind_world_render(bindings: mutable WorldRendering::Bindings&, world: World::World&,
-    gameplay: World::EntityRef, render_id: i64, visual: Assets::VisualAsset) -> i32:
-    catch WorldRendering::bind(bindings, world, gameplay, render_id, visual):
+def bind_world_render(bindings: mutable WorldRendering::Bindings&, world: mutable World::World&,
+    gameplay: World::EntityRef, render_id: i64, visual: Assets::VisualAsset,
+    local_transform: Geometry::Transform) -> i32:
+    catch WorldRendering::bind(bindings, world, gameplay, render_id, visual, local_transform):
         ok: 0
         error failure: 1
 
@@ -341,14 +336,25 @@ def exercise_render_scene() -> i32:
     gameplay_b: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
         value: value
         error failure: return 40
+    player_transform_status: i32 = catch World::world_set_transform(&world, gameplay_a, box_transform):
+        ok: 0
+        World::WorldError.InvalidValue: 41
+        World::WorldError.InvalidReference: 42
+        error failure: 43
+    guard_transform_status: i32 = catch World::world_set_transform(&world, gameplay_b, sphere_transform):
+        ok: 0
+        World::WorldError.InvalidValue: 44
+        World::WorldError.InvalidReference: 45
+        error failure: 46
+    return player_transform_status if player_transform_status != 0
+    return guard_transform_status if guard_transform_status != 0
     snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
     presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
     render_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
-    return 41 if set_world_pose(world, gameplay_a, box_transform) != 0
-    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(701)) != 0
-    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 703, render_visual(703)) != 0
-    return 41 if set_world_pose(world, gameplay_b, sphere_transform) != 0
-    return 41 if bind_world_render(&render_bindings, world, gameplay_b, 702, render_visual(702)) != 0
+    local_offset: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 0.0, y: 0.25, z: 0.0})
+    return 115 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(701), Geometry::transform_identity()) != 0
+    return 116 if bind_world_render(&render_bindings, world, gameplay_a, 703, render_visual(703), local_offset) != 0
+    return 117 if bind_world_render(&render_bindings, world, gameplay_b, 702, render_visual(702), Geometry::transform_identity()) != 0
     return 42 if extract_world_render(world, &render_bindings, &snapshot) != 0
     return 43 if RenderSnapshot::snapshot_count(snapshot) != 3
     return 44 if sync_snapshot(&presenter, snapshot) != 0
@@ -359,10 +365,13 @@ def exercise_render_scene() -> i32:
 
     moved_transform: Geometry::Transform = Geometry::transform_translate(box_transform,
         Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
-    return 100 if set_world_pose(world, gameplay_a, moved_transform) != 0
-    return 100 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701)) != 0
-    return 101 if bind_world_render(&render_bindings, world, gameplay_a, 704, render_visual(704)) != 0
-    return 102 if bind_world_render(&render_bindings, world, gameplay_a, 705, render_visual(705)) != 0
+    moved_player_transform: i32 = catch World::world_set_transform(&world, gameplay_a, moved_transform):
+        ok: 0
+        error failure: 100
+    return 100 if moved_player_transform != 0
+    return 100 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701), Geometry::transform_identity()) != 0
+    return 101 if bind_world_render(&render_bindings, world, gameplay_a, 704, render_visual(704), local_offset) != 0
+    return 102 if bind_world_render(&render_bindings, world, gameplay_a, 705, render_visual(705), Geometry::transform_identity()) != 0
     return 103 if extract_world_render(world, &render_bindings, &snapshot) != 0 or RenderSnapshot::snapshot_count(snapshot) != 5
     return 104 if elisa_render_scene_v1_test_snapshot_fail_after_creates(1) != 0
     objects_before_failed_batch: u64 = elisa_render_scene_v1_test_object_count()
@@ -377,12 +386,14 @@ def exercise_render_scene() -> i32:
     return 114 if elisa_render_scene_v1_test_object_count() != objects_before_failed_batch + 2
     return 110 if elisa_render_scene_v1_test_snapshot_identity_matches(
         gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) == 0
-    stable_pose: Geometry::Transform = Geometry::transform_translate(moved_transform,
+    stable_transform: Geometry::Transform = Geometry::transform_translate(moved_transform,
         Geometry::Vec3{x: 0.25, y: 0.0, z: 0.0})
-    stable_pose_status: i32 = set_world_pose(world, gameplay_a, stable_pose)
-    stable_update: i32 = bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701))
-    return 108 if stable_pose_status != 0
-    return 108 if stable_update != 0 or extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
+    stable_world_update: i32 = catch World::world_set_transform(&world, gameplay_a, stable_transform):
+        ok: 0
+        error failure: 108
+    stable_update: i32 = bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701),
+        Geometry::transform_identity())
+    return 108 if stable_world_update != 0 or stable_update != 0 or extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
     return 109 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
     despawn_b: i32 = catch World::world_despawn(&world, gameplay_b):
         ok: 0
