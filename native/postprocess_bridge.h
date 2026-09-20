@@ -21,6 +21,7 @@ struct NativePostProcessDesc {
     bool fxaa = false;
     bool ambient_occlusion = false;
     bool screen_space_reflections = false;
+    bool fog = true;
     bool depth_effects = true;
 };
 
@@ -36,6 +37,7 @@ public:
         path_.setFXAAEnabled(desc.fxaa);
         path_.setAO(desc.ambient_occlusion ? wi::RenderPath3D::AO_SSAO : wi::RenderPath3D::AO_DISABLED);
         path_.setSSREnabled(desc.screen_space_reflections);
+        if (path_.scene != nullptr) path_.scene->weather.SetHeightFog(desc.fog);
         path_.setDepthOfFieldEnabled(desc.depth_effects);
         path_.resolutionScale = desc.render_scale;
         path_.setFSREnabled(false);
@@ -69,6 +71,7 @@ private:
 
 inline bool probe_postprocess_bridge(wi::RenderPath3D& path) {
     PostProcessBridge bridge(path);
+    const bool original_fog = path.scene != nullptr && path.scene->weather.IsHeightFog();
     NativePostProcessDesc desc;
     desc.tonemap = NativeTonemap::Uchimura;
     desc.upscaler = NativeUpscaler::Fsr2;
@@ -77,21 +80,26 @@ inline bool probe_postprocess_bridge(wi::RenderPath3D& path) {
     desc.fxaa = true;
     desc.ambient_occlusion = true;
     desc.screen_space_reflections = true;
+    desc.fog = false;
     if (!check(bridge.apply(desc, false) == PostProcessApply::Fallback,
         "postprocess reports unsupported upscaler fallback") ||
         !check(path.getTonemap() == wi::renderer::Tonemap::Uchimura &&
             path.getBloomThreshold() == 2.0f && path.getFXAAEnabled() &&
             path.getAO() == wi::RenderPath3D::AO_SSAO && path.getSSREnabled() &&
-            path.resolutionScale == 0.5f, "postprocess applies validated profile") ||
+            path.resolutionScale == 0.5f && path.scene != nullptr && !path.scene->weather.IsHeightFog(),
+            "postprocess applies validated profile") ||
         !check(bridge.apply(NativePostProcessDesc{}, true) == PostProcessApply::Applied &&
-            path.getTonemap() == wi::renderer::Tonemap::ACES && path.resolutionScale == 1.0f,
+            path.getTonemap() == wi::renderer::Tonemap::ACES && path.resolutionScale == 1.0f &&
+            path.scene != nullptr && path.scene->weather.IsHeightFog(),
             "postprocess applies supported default")) {
         return false;
     }
     NativePostProcessDesc invalid;
     invalid.render_scale = 2.0f;
-    return check(bridge.apply(invalid, true) == PostProcessApply::Invalid,
+    const bool rejected = check(bridge.apply(invalid, true) == PostProcessApply::Invalid,
         "postprocess rejects invalid scale");
+    if (path.scene != nullptr) path.scene->weather.SetHeightFog(original_fog);
+    return rejected;
 }
 
 } // namespace probe

@@ -63,6 +63,7 @@ module Quality:
             profile.fxaa <- true
             profile.ambient_occlusion <- false
             profile.screen_space_reflections <- false
+            profile.fog <- false
             profile.depth_effects <- false
             profile
 

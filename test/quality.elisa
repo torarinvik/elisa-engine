@@ -5,7 +5,7 @@ def main() -> i32:
     return 1 if not Quality::profile_valid(profile)
     return 2 if profile.tonemap != Quality::Tonemap.Aces or profile.bloom_threshold != 1.0
     low: Quality::Profile = Quality::low()
-    return 3 if not Quality::profile_valid(low) or low.render_scale != 0.5 or low.bloom
+    return 3 if not Quality::profile_valid(low) or low.render_scale != 0.5 or low.bloom or low.fog
     high: Quality::Profile = Quality::high()
     return 4 if not Quality::profile_valid(high) or not high.ambient_occlusion or not high.screen_space_reflections
     invalid: mutable Quality::Profile = profile
