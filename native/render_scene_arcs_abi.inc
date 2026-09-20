@@ -3,6 +3,17 @@
 // only the interior samples.
 namespace {
 
+size_t decode_arc_handle(const RenderSceneService& state, int64_t handle) {
+    if (handle <= 0) return MAX_ELECTRIC_ARCS;
+    const uint64_t value = uint64_t(handle);
+    const uint64_t encoded_slot = value & HANDLE_SLOT_MASK;
+    if (encoded_slot == 0 || encoded_slot > MAX_ELECTRIC_ARCS) return MAX_ELECTRIC_ARCS;
+    const size_t slot = size_t(encoded_slot - 1);
+    const uint64_t generation = value >> HANDLE_SLOT_BITS;
+    const ElectricArcSlot& arc = state.electric_arcs[slot];
+    return generation != 0 && arc.live && arc.generation == generation ? slot : MAX_ELECTRIC_ARCS;
+}
+
 namespace ArcTuning {
 
 constexpr size_t POINT_COUNT = 9;
