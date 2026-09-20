@@ -29,6 +29,16 @@ inside the `RenderScene` module so native handles stay opaque. Clear the
 presenter before an explicit scene shutdown; application shutdown releases all
 native scene resources automatically.
 
+`src/runtime/world_rendering.elisa` adds an Elisa-owned `WorldRendering`
+binding table and extractor. Callers bind one or more stable render IDs and
+transforms to a checked `World::EntityRef`; extraction verifies world liveness,
+rebuilds a render snapshot, and prunes references after despawn or world
+replacement. The portable fixture covers one-to-many bindings, transform
+updates, duplicate IDs, foreign-world references, capacity, and stale-row
+cleanup. The native scene smoke now spawns real `World` entities, extracts
+their render rows, syncs twice to verify handle reuse, and despawns them to
+verify native retirement.
+
 Calling `RenderScene::shutdown` releases the render path and all owned scene
 resources. The engine also registers a shutdown hook: application shutdown
 detaches the active path, then releases the scene before Wicked tears down its
@@ -47,9 +57,18 @@ transform updates, removed-row retirement, and that the rendered center pixel
 differs from the clear corner. The bounded frame retry makes the pixel check
 independent of the first Metal frame's completion timing. The smoke requires the pinned
 macOS SDL3/Metal Wicked libraries; the Elisa module itself can also be compiled
-without those native dependencies.
+without those native dependencies. `elisascript scripts/check.elisascript`
+passes the combined persistent-snapshot and world-rendering portable fixture.
+Evidence for commit `f2266fd` on 2026-09-20:
+
+- `elisascript scripts/check.elisascript` — passed the portable, Godot, and Elisa Proof suite, including world extraction.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/render_scene_native_smoke.py` — passed against SDL3/Metal/Wicked with live Elisa `World` entities.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` — passed with the public runtime bundle including `WorldRendering`.
+- `python3 scripts/check_source_length.py` and `python3 scripts/check_module_hygiene.py` — passed.
 
 This is an initial generic primitive renderer. It owns one active scene and
 orthographic camera, uses unlit colors, and maps snapshot rows to default boxes.
-It does not yet expose authored mesh or texture loading, parenting, a single
-transactional native batch submission, lighting, or editor tooling.
+Transforms are currently stored in the separate render binding table rather
+than extracted from a general world transform component. It does not yet expose
+authored mesh or texture loading, parenting, a single transactional native batch
+submission, lighting, or editor tooling.
