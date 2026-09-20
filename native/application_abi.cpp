@@ -1,4 +1,5 @@
 #include "application_abi.h"
+#include "audio_service_abi.h"
 #include "application_input_codes.h"
 #include "backend_capability_query.h"
 #include "native_application.h"
@@ -466,6 +467,7 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     // A runtime service may own the active path. Detach it before ordered
     // shutdown hooks release its scene and path objects.
     service.host.wicked().ActivatePath(nullptr);
+    elisa_audio_v1_shutdown_from_application();
     service.host.shutdown();
     service.initialized = false;
     service.backend_profile = {};

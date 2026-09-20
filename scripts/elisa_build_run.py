@@ -92,6 +92,7 @@ def resolve_native_paths(args: argparse.Namespace) -> dict[str, Path]:
         "wicked_build": wicked_build,
         "wicked_source": wicked_root / "WickedEngine",
         "libraries": wicked_build / "WickedEngine",
+        "miniaudio_include": ENGINE_ROOT / "dependencies/miniaudio",
         "sdl_include": sdl_include,
         "sdl_library": sdl_library,
         "brew_include": brew_include,
@@ -116,6 +117,7 @@ def required_native_files(paths: dict[str, Path]) -> list[Path]:
         paths["sdl_library"] / "libSDL3.dylib",
         paths["brew_include"] / "freetype2/ft2build.h",
         paths["brew_include"] / "harfbuzz/hb.h",
+        paths["miniaudio_include"] / "miniaudio.h",
     ] + [
         paths["brew_library"] / f"lib{name}.{suffix}"
         for name in ("freetype", "harfbuzz", "zstd")
@@ -341,9 +343,12 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-I", str(sdl_include), "-I", str(sdl_include / "SDL3"),
         "-I", str(brew_include), "-I", str(brew_include / "freetype2"),
         "-I", str(brew_include / "harfbuzz"),
+        "-I", str(paths["miniaudio_include"]),
         str(ENGINE_ROOT / "native/application_abi.cpp"),
         str(ENGINE_ROOT / "native/render_scene_abi.cpp"),
         str(ENGINE_ROOT / "native/elisa_native_fallbacks.cpp"),
+        str(ENGINE_ROOT / "native/audio_service_abi.cpp"),
+        str(ENGINE_ROOT / "native/miniaudio_implementation.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
         str(archive), str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),

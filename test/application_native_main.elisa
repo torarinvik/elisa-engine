@@ -1,6 +1,7 @@
 # End-to-end application lifecycle smoke: the generated executable entry is
 # Elisa main; it imports only the public engine module and owns the loop calls.
 include "../src/backend/requirements.elisa"
+include "../src/audio/runtime.elisa"
 include "../src/runtime/action_input_runtime.elisa"
 using Capabilities
 
@@ -15,6 +16,17 @@ def check_native_profile() -> i32:
     return 22 if backend_supports(profile, BackendFeature.Physics) or backend_supports(profile, BackendFeature.Audio)
     return 23 if not backend_limit_supports(profile, BackendLimit.Viewports, 1)
     return 24 if profile.limits.memory_usage_bytes > profile.limits.memory_budget_bytes
+    0
+
+def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
+    try AudioRuntime::initialize_silent(8000, 1)
+    try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, 0.75)
+    clip: AudioRuntime::ClipHandle = try AudioRuntime::decode_file("test/fixtures/audio-smoke.wav")
+    voice: AudioRuntime::VoiceHandle = try AudioRuntime::play(
+        clip, true, AudioRuntime::Bus.Effects, 1.0, 1)
+    count: usize = try AudioRuntime::active_voice_count()
+    raise AudioRuntime::AudioError.UnknownStatus if count != 1
+    try AudioRuntime::stop(voice)
     0
 
 def check_startup_requirements(config: Application::Config) -> i32:
@@ -128,7 +140,16 @@ def check_startup_requirements(config: Application::Config) -> i32:
         config, audio_required, 1, silent_audio_fallback, true, &report)
     return 33 if fallback_status != Application::InitializeStatus.FallbackRequired
     return 34 if report.state != RequirementState.Fallback or report.fallback_count != 1
+    audio_fallback_result: i32 = catch exercise_silent_audio():
+        value: value
+        error failure: return 94
+    return 95 if audio_fallback_result != 0
     return 35 if not Application::shutdown()
+    closed_audio_status: i32 = catch AudioRuntime::active_voice_count():
+        value: 1
+        AudioRuntime::AudioError.ApplicationUnavailable: 0
+        error failure: 2
+    return 96 if closed_audio_status != 0
 
     invalid_count: Application::InitializeStatus = Application::initialize_with_requirements(
         config, required, Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS + 1,
