@@ -358,7 +358,7 @@ def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
         source = Path(workdir) / "tile.png"
         source.write_bytes(write_png(size, size, pixels))
         result = subprocess.run(
-            [basisu, "-ktx2", "-uastc", "-srgb", str(source), "-output_file", str(output)],
+            [basisu, "-ktx2", "-uastc", "-linear", str(source), "-output_file", str(output)],
             capture_output=True, text=True, check=False,
         )
     if result.returncode != 0 or not output.is_file():
