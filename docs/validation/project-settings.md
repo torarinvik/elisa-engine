@@ -35,7 +35,9 @@ Validation covers manifest path resolution, command-line precedence, spaces in
 paths, UTF-8 titles, invalid values, process environment delivery, and native
 window startup with dimensions read from a temporary project manifest:
 
+- Implementation commit: `34ca176` (`Add Elisa project manifest settings`).
 - `python3 scripts/test_elisa_build_run.py` — passed on 2026-09-20 (6 tests).
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript scripts/wicked_probe.elisascript build` — passed on 2026-09-20, including runner tests, lifecycle smoke, and live render-scene smoke.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` — passed on 2026-09-20 using SDL3, Wicked, and Metal.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/elisa_build_run.py build --project examples/minimal_application` — passed on 2026-09-20.
 
