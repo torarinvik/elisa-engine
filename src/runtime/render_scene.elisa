@@ -75,6 +75,20 @@ module RenderScene:
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_create_electric_arc(width: f32, amplitude: f32, seed: u32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_update_electric_arc(handle: i64,
+            start_x: f32, start_y: f32, start_z: f32,
+            end_x: f32, end_y: f32, end_z: f32, phase: f32, visibility: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_electric_arc_visible(handle: i64, visible: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_electric_arc(handle: i64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_destroy(handle: i64) -> i32
 
         @callconv(c)
@@ -124,6 +138,17 @@ module RenderScene:
             private:
                 native_value: i64
 
+        # Dynamic, socket-to-socket electrical ribbon. Its geometry and Wicked
+        # TrailRenderer ownership stay inside the engine.
+        struct ElectricArcHandle:
+            private:
+                native_value: i64
+
+        struct ElectricArcBatch:
+            private:
+                handles: mutable ElectricArcHandle[256]
+                count: mutable usize
+
         # A compact owner-side collection avoids exposing the representation of
         # opaque handles to projects. It is useful for batches such as maze
         # tiles that are created once and shown or hidden as topology changes.
@@ -156,6 +181,20 @@ module RenderScene:
             batch.count <- batch.count + 1
 
         def batch_get(batch: InstanceBatch&, index: usize) -> InstanceHandle error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if index >= batch.count
+            batch.handles[index]
+
+        def ElectricArcBatch() -> ElectricArcBatch:
+            ElectricArcBatch{handles: zeroed, count: 0}
+
+        def electric_arc_batch_append(batch: mutable ElectricArcBatch&,
+            handle: ElectricArcHandle) -> void error[RenderSceneError]:
+            raise RenderSceneError.Capacity if batch.count >= 256
+            batch.handles[batch.count] <- handle
+            batch.count <- batch.count + 1
+
+        def electric_arc_batch_get(batch: ElectricArcBatch&,
+            index: usize) -> ElectricArcHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if index >= batch.count
             batch.handles[index]
 
@@ -246,6 +285,28 @@ module RenderScene:
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
             try check_status(elisa_render_scene_v1_set_visible(handle.native_value, visible_value))
+
+        # Creates a reusable jagged, additive ribbon. Elisa supplies the live
+        # connector endpoints and phase each frame; the engine keeps endpoints
+        # pinned while generating the interior flicker and blue halo.
+        def create_electric_arc(width: f32, amplitude: f32, seed: u32) -> ElectricArcHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_electric_arc(width, amplitude, seed)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            ElectricArcHandle{native_value: native_value}
+
+        def update_electric_arc(handle: ElectricArcHandle, start: Geometry::Vec3,
+            end: Geometry::Vec3, phase: f32, visibility: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_update_electric_arc(handle.native_value,
+                start.x, start.y, start.z, end.x, end.y, end.z, phase, visibility))
+
+        def set_electric_arc_visible(handle: ElectricArcHandle, visible: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_electric_arc_visible(
+                handle.native_value, 1 if visible else 0))
+
+        def destroy_electric_arc(handle: ElectricArcHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_electric_arc(handle.native_value))
 
         def destroy(handle: InstanceHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy(handle.native_value))

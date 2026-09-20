@@ -65,6 +65,12 @@ int32_t elisa_render_scene_v1_set_emissive(
     int64_t handle, float red, float green, float blue, float strength);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
+int64_t elisa_render_scene_v1_create_electric_arc(float width, float amplitude, uint32_t seed);
+int32_t elisa_render_scene_v1_update_electric_arc(int64_t handle,
+    float start_x, float start_y, float start_z,
+    float end_x, float end_y, float end_z, float phase, float visibility);
+int32_t elisa_render_scene_v1_set_electric_arc_visible(int64_t handle, int32_t visible);
+int32_t elisa_render_scene_v1_destroy_electric_arc(int64_t handle);
 int32_t elisa_render_scene_v1_destroy(int64_t handle);
 int32_t elisa_render_scene_v1_shutdown(void);
 uint64_t elisa_render_scene_v1_instance_count(void);
