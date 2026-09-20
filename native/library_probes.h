@@ -62,7 +62,7 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
     if (!run_layout_probe(scene)) {
         return false;
     }
-    if (!probe_coordinate_conventions()) {
+    if (!probe_coordinate_conventions(scene)) {
         return false;
     }
     return true;
