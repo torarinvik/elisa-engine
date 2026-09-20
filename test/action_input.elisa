@@ -1,5 +1,151 @@
-include "../src/runtime/action_input.elisa"
-include "../src/runtime/application.elisa"
+include "../src/runtime/action_input_runtime.elisa"
+
+const TEST_MOUSE_LEFT: i64 = 1
+
+def application_event(kind: Application::InputEventKind, code: i64, value: f32,
+    pressed: bool, released: bool, connected: bool) -> Application::InputEvent:
+    Application::InputEvent{
+        kind: kind,
+        device: 0,
+        code: code,
+        value: value,
+        pressed: pressed,
+        released: released,
+        chord_down: false,
+        connected: connected,
+    }
+
+def application_input_tests() -> i32:
+    input: mutable ActionInput::Input = ActionInput::Input()
+    key_a: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.A)
+    left_shift: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.LeftShift)
+    chord: ActionInput::Binding = ActionInput::Binding{
+        action: 90,
+        device: ActionInput::Device.Keyboard,
+        code: key_a,
+        chord_code: left_shift,
+        deadzone: 0.0,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 65 if ActionInput::bind_checked(&input, chord) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
+    return 66 if ActionInput::action_down(&input, 90)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.Key, left_shift, 1.0, true, false, false))
+    return 67 if not ActionInput::action_down(&input, 90) or not ActionInput::action_pressed(&input, 90)
+
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.Key, left_shift, 0.0, false, true, false))
+    return 68 if ActionInput::action_down(&input, 90) or not ActionInput::action_released(&input, 90)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.Key, key_a, 0.0, false, true, false))
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.Key, left_shift, 1.0, true, false, false))
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
+    return 69 if not ActionInput::action_down(&input, 90) or not ActionInput::action_pressed(&input, 90)
+
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.FocusLost, 0, 0.0, false, true, false))
+    return 70 if ActionInput::action_down(&input, 90) or not ActionInput::action_released(&input, 90)
+
+    mouse: ActionInput::Binding = ActionInput::Binding{
+        action: 91,
+        device: ActionInput::Device.Mouse,
+        code: TEST_MOUSE_LEFT,
+        chord_code: 0,
+        deadzone: 0.0,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 71 if ActionInput::bind_checked(&input, mouse) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.MouseButton, TEST_MOUSE_LEFT, 1.0, true, false, false))
+    return 72 if not ActionInput::action_down(&input, 91)
+
+    gamepad: ActionInput::Binding = ActionInput::Binding{
+        action: 92,
+        device: ActionInput::Device.Gamepad,
+        code: Application::gamepad_button_code(Application::GamepadButtonCode.South),
+        chord_code: 0,
+        deadzone: 0.0,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 73 if ActionInput::bind_checked(&input, gamepad) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadConnected, 0, 1.0, true, false, true))
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadButton, gamepad.code, 1.0, true, false, false))
+    return 74 if not ActionInput::action_down(&input, 92)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, false))
+    return 75 if ActionInput::action_down(&input, 92) or not ActionInput::action_released(&input, 92)
+
+    remaining_controller: mutable ActionInput::Input = ActionInput::Input()
+    remaining_binding: ActionInput::Binding = gamepad
+    remaining_binding.action <- 93
+    return 85 if ActionInput::bind_checked(&remaining_controller, remaining_binding) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&remaining_controller,
+        application_event(Application::InputEventKind.GamepadConnected, 0, 1.0, true, false, true))
+    ActionInputRuntime::apply_application_event(&remaining_controller,
+        application_event(Application::InputEventKind.GamepadButton, remaining_binding.code, 1.0, true, false, false))
+    ActionInputRuntime::apply_application_event(&remaining_controller,
+        application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, true))
+    return 86 if ActionInput::action_down(&remaining_controller, 93) or not ActionInput::action_released(&remaining_controller, 93)
+    ActionInputRuntime::apply_application_event(&remaining_controller,
+        application_event(Application::InputEventKind.GamepadButton, remaining_binding.code, 1.0, true, false, false))
+    return 87 if not ActionInput::action_down(&remaining_controller, 93)
+
+    trigger_code: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftTrigger)
+    trigger: ActionInput::Binding = ActionInput::Binding{
+        action: 94,
+        device: ActionInput::Device.Gamepad,
+        code: trigger_code,
+        chord_code: 0,
+        deadzone: 0.2,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 82 if ActionInput::bind_checked(&input, trigger) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadConnected, 0, 1.0, true, false, true))
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadAxis, trigger_code, 0.6, true, false, false))
+    return 83 if not ActionInput::action_down(&input, 94) or ActionInput::action_value(&input, 94) < 0.59
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadAxis, trigger_code, 0.1, true, false, false))
+    return 84 if ActionInput::action_down(&input, 94) or not ActionInput::action_released(&input, 94)
+
+    multiple_chords: mutable ActionInput::Input = ActionInput::Input()
+    shift_binding: ActionInput::Binding = chord
+    shift_binding.action <- 93
+    east_code: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.E)
+    east_binding: ActionInput::Binding = shift_binding
+    east_binding.chord_code <- east_code
+    return 78 if ActionInput::bind_checked(&multiple_chords, shift_binding) != ActionInput::BindResult.Bound
+    return 79 if ActionInput::bind_checked(&multiple_chords, east_binding) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&multiple_chords,
+        application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
+    ActionInputRuntime::apply_application_event(&multiple_chords,
+        application_event(Application::InputEventKind.Key, left_shift, 1.0, true, false, false))
+    ActionInputRuntime::apply_application_event(&multiple_chords,
+        application_event(Application::InputEventKind.Key, east_code, 1.0, true, false, false))
+    ActionInput::begin_frame(&multiple_chords)
+    ActionInputRuntime::apply_application_event(&multiple_chords,
+        application_event(Application::InputEventKind.Key, left_shift, 0.0, false, true, false))
+    return 80 if not ActionInput::action_down(&multiple_chords, 93) or ActionInput::action_released(&multiple_chords, 93)
+    ActionInput::begin_frame(&multiple_chords)
+    ActionInputRuntime::apply_application_event(&multiple_chords,
+        application_event(Application::InputEventKind.Key, east_code, 0.0, false, true, false))
+    return 81 if ActionInput::action_down(&multiple_chords, 93) or not ActionInput::action_released(&multiple_chords, 93)
+    0
 
 def test_binding(action: i64, code: i64, deadzone: f32) -> ActionInput::Binding:
     ActionInput::Binding{action: action, device: ActionInput::Device.Keyboard, code: code, chord_code: 0, deadzone: deadzone, context: ActionInput::Context.Gameplay, live: true}
@@ -9,6 +155,16 @@ def checked_binding_tests() -> i32:
     return 40 if ActionInput::bind_checked(&invalid_input, test_binding(0, 1, 0.0)) != ActionInput::BindResult.InvalidAction
     return 41 if ActionInput::bind_checked(&invalid_input, test_binding(1, 0, 0.0)) != ActionInput::BindResult.InvalidCode
     return 42 if ActionInput::bind_checked(&invalid_input, test_binding(1, 1, 1.0)) != ActionInput::BindResult.InvalidDeadzone
+    invalid_chord: ActionInput::Binding = ActionInput::Binding{
+        action: 1, device: ActionInput::Device.Keyboard, code: 1, chord_code: -1,
+        deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true,
+    }
+    return 76 if ActionInput::bind_checked(&invalid_input, invalid_chord) != ActionInput::BindResult.InvalidCode
+    same_key_chord: ActionInput::Binding = ActionInput::Binding{
+        action: 1, device: ActionInput::Device.Keyboard, code: 1, chord_code: 1,
+        deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true,
+    }
+    return 77 if ActionInput::bind_checked(&invalid_input, same_key_chord) != ActionInput::BindResult.InvalidCode
 
     checked_input: mutable ActionInput::Input = ActionInput::Input()
     first: ActionInput::Binding = test_binding(1, 10, 0.0)
@@ -69,6 +225,8 @@ def checked_binding_tests() -> i32:
 def main() -> i32:
     checked: i32 = checked_binding_tests()
     return checked if checked != 0
+    application_tests: i32 = application_input_tests()
+    return application_tests if application_tests != 0
     return 59 if Application::keyboard_key_code(Application::KeyboardKeyCode.A) != 2001
     return 60 if Application::keyboard_key_code(Application::KeyboardKeyCode.ArrowDown) != 2016
     return 61 if Application::gamepad_button_code(Application::GamepadButtonCode.South) != 1001

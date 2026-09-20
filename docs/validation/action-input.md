@@ -32,6 +32,15 @@ engine key/button/axis codes, while
 axis/token conversion. The shared gate compiles and runs the Elisa fixtures
 with the stage1 compiler.
 
+`ActionInputRuntime`, included in `src/runtime/public.elisa`, drains queued
+application events and translates them to this API. Projects declare their
+bindings and consume actions without duplicating key, mouse, focus-loss,
+overflow, or controller-hotplug routing. Any gamepad disconnect clears held
+gamepad state before applying the event's aggregate connected flag, so another
+connected controller does not preserve keys held by the disconnected one. The
+fixture verifies that case and that input works again while another controller
+remains connected.
+
 For the checked-binding change, `elisac-stage1 -emit exe -o
 build/action-input-test test/action_input.elisa && build/action-input-test`
 passed. `DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript

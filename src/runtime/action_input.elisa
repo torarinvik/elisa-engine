@@ -35,9 +35,6 @@ module ActionInput:
             input.states[slot].released <- true if was_down and not down
             input.states[slot].value <- value
 
-        def binding_matches(binding: Binding, event: Event, context: Context) -> bool:
-            binding.live and binding.context == context and binding.device == event.device and binding.code == event.code and (binding.chord_code == 0 or event.chord_down)
-
     public:
         enum Device:
             Keyboard
@@ -95,21 +92,35 @@ module ActionInput:
                 bindings: mutable Binding[Limits::MAX_BINDINGS]
                 binding_down: mutable bool[Limits::MAX_BINDINGS]
                 binding_values: mutable f32[Limits::MAX_BINDINGS]
+                source_down: mutable bool[Limits::MAX_BINDINGS]
+                source_values: mutable f32[Limits::MAX_BINDINGS]
+                chord_down: mutable bool[Limits::MAX_BINDINGS]
                 states: mutable ActionState[Limits::MAX_ACTIONS]
                 binding_count: mutable usize
                 context: mutable Context
                 connected: mutable bool[Limits::DEVICE_COUNT]
 
         def Input() -> Input:
-            Input{bindings: zeroed, binding_down: zeroed, binding_values: zeroed, states: zeroed, binding_count: 0, context: Context.Gameplay, connected: [true, true, true]}
+            Input{
+                bindings: zeroed,
+                binding_down: zeroed,
+                binding_values: zeroed,
+                source_down: zeroed,
+                source_values: zeroed,
+                chord_down: zeroed,
+                states: zeroed,
+                binding_count: 0,
+                context: Context.Gameplay,
+                connected: [true, true, true],
+            }
 
         def bind_checked(input: mutable Input&, binding: Binding) -> BindResult:
             return BindResult.InvalidAction if binding.action <= 0
-            return BindResult.InvalidCode if binding.code <= 0
+            return BindResult.InvalidCode if binding.code <= 0 or binding.chord_code < 0 or binding.chord_code == binding.code
             return BindResult.InvalidDeadzone if binding.deadzone < 0.0 or binding.deadzone >= 1.0
             for index in 0..<input.binding_count:
                 existing: Binding = input.bindings[index]
-                return BindResult.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.context == binding.context
+                return BindResult.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.chord_code == binding.chord_code and existing.context == binding.context
             return BindResult.Capacity if input.binding_count >= Limits::MAX_BINDINGS
             # Find all required storage before mutating either table. A full
             # action table must not consume a binding slot on failure.
@@ -139,6 +150,9 @@ module ActionInput:
             for index in 0..<input.binding_count |input|:
                 input.binding_down[index] <- false
                 input.binding_values[index] <- 0.0
+                input.source_down[index] <- false
+                input.source_values[index] <- 0.0
+                input.chord_down[index] <- false
             for index in 0..<Limits::MAX_ACTIONS |input|:
                 input.states[index].down <- false if input.states[index].live
                 input.states[index].value <- 0.0 if input.states[index].live
@@ -150,6 +164,9 @@ module ActionInput:
                     if input.bindings[index].device == device:
                         input.binding_down[index] <- false
                         input.binding_values[index] <- 0.0
+                        input.source_down[index] <- false
+                        input.source_values[index] <- 0.0
+                        input.chord_down[index] <- false
                 for index in 0..<Limits::MAX_ACTIONS |input|:
                     refresh_action(input, index)
 
@@ -160,6 +177,9 @@ module ActionInput:
                 if input.bindings[index].device == device:
                     input.binding_down[index] <- false
                     input.binding_values[index] <- 0.0
+                    input.source_down[index] <- false
+                    input.source_values[index] <- 0.0
+                    input.chord_down[index] <- false
             for index in 0..<Limits::MAX_ACTIONS |input|:
                 refresh_action(input, index)
 
@@ -173,12 +193,19 @@ module ActionInput:
             return if not input.connected[device_index(event.device)]
             for index in 0..<input.binding_count |input, event|:
                 binding: Binding = input.bindings[index]
-                if binding_matches(binding, event, input.context):
+                if binding.live and binding.context == input.context and binding.device == event.device:
+                    if binding.code == event.code:
+                        magnitude: f32 = event.value if ElisaMath::fabsf(event.value) >= binding.deadzone else 0.0
+                        input.source_values[index] <- magnitude if not event.released else 0.0
+                        input.source_down[index] <- event.pressed and not event.released and ElisaMath::fabsf(magnitude) > 0.0
+                    if binding.chord_code != 0 and binding.chord_code == event.code:
+                        input.chord_down[index] <- event.pressed and not event.released and ElisaMath::fabsf(event.value) >= binding.deadzone
                     slot: usize = state_slot(input, binding.action)
                     if slot < Limits::MAX_ACTIONS:
-                        magnitude: f32 = event.value if ElisaMath::fabsf(event.value) >= binding.deadzone else 0.0
-                        input.binding_values[index] <- magnitude if not event.released else 0.0
-                        input.binding_down[index] <- event.pressed and not event.released and ElisaMath::fabsf(magnitude) > 0.0
+                        chord_active: bool = binding.chord_code == 0 or input.chord_down[index] or event.chord_down
+                        active: bool = input.source_down[index] and chord_active
+                        input.binding_down[index] <- active
+                        input.binding_values[index] <- input.source_values[index] if active else 0.0
                         refresh_action(input, slot)
 
         def action_down(input: Input&, action: i64) -> bool:
