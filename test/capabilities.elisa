@@ -8,6 +8,10 @@ def main() -> i32:
     return 3 if backend_supports(headless, BackendFeature.Rendering)
     return 4 if not backend_limit_supports(headless, BackendLimit.Entities, 64)
     return 5 if backend_limit_supports(headless, BackendLimit.TextureDimension, 2)
+    return 18 if negotiate_limit(headless, BackendLimit.Entities, 64, false) != RequirementState.Ready
+    return 19 if negotiate_limit(headless, BackendLimit.TextureDimension, 2, false) != RequirementState.Unavailable
+    return 20 if negotiate_limit(headless, BackendLimit.TextureDimension, 2, true) != RequirementState.Fallback
+    return 21 if negotiate_limit(headless, BackendLimit.TextureDimension, 0, true) != RequirementState.Invalid
 
     required: BackendFeature[8] = [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Physics, BackendFeature.Audio, BackendFeature.NativeWindow, BackendFeature.AsyncUpload, BackendFeature.Callbacks, BackendFeature.AssetLoading]
     return 6 if not backend_requirements_met(headless, required, 1)
@@ -38,4 +42,7 @@ def main() -> i32:
     return 15 if negotiate_requirements(native, required, 8, true) != RequirementState.Fallback
     return 16 if fallback_requirement_count(native, required, 8) != 1
     return 17 if negotiate_requirements(native, required, 9, true) != RequirementState.Invalid
+    return 22 if negotiate_limit(native, BackendLimit.UploadBytes, 16777216, false) != RequirementState.Ready
+    return 23 if negotiate_limit(native, BackendLimit.UploadBytes, 16777217, false) != RequirementState.Unavailable
+    return 24 if negotiate_limit(native, BackendLimit.UploadBytes, 16777217, true) != RequirementState.Fallback
     0

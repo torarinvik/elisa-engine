@@ -97,6 +97,15 @@ module Capabilities:
             workers_ok: bool = profile.limits.workers > 0
             version_ok and entities_ok and texture_ok and upload_ok and workers_ok
 
+        # Limits use the same explicit policy as feature bits: callers can
+        # choose a bounded fallback instead of silently accepting a smaller
+        # resource than they requested.
+        def negotiate_limit(profile: BackendProfile, limit: BackendLimit,
+            requested: i64, allow_fallback: bool) -> RequirementState:
+            return RequirementState.Invalid if not backend_profile_valid(profile) or requested <= 0
+            return RequirementState.Ready if backend_limit(profile, limit) >= requested
+            RequirementState.Fallback if allow_fallback else RequirementState.Unavailable
+
         def backend_requirements_met(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> bool:
             return false if count > Bounds::MAX_FEATURES
             for index in 0..<count |met: bool = true| -> met:

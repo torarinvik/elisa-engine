@@ -7,6 +7,11 @@ required feature, and an invalid profile or oversized requirement list. The
 resolver is bounded by the existing eight-feature contract; helper queries
 report the first missing feature and the number of fallback features.
 
+`negotiate_limit` applies the same state machine to requested entity counts,
+texture dimensions, upload bytes, and worker budgets. A request that fits is
+`Ready`; an oversized positive request is either `Fallback` or `Unavailable`
+according to policy; zero requests and invalid profiles are `Invalid`.
+
 `test/capabilities.elisa` compiles and runs these cases against a native
 profile: rendering/physics/audio requirements fail with audio identified as
 the first missing feature, the same request reports `Fallback` when fallback
