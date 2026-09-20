@@ -110,6 +110,13 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
     return ELISA_PHYSICS_OK;
 }
 
+extern "C" int32_t elisa_physics_v1_probe_provider(void) {
+    uint64_t world_generation = 0;
+    const int32_t initialized = elisa_physics_v1_initialize(&world_generation);
+    if (initialized != ELISA_PHYSICS_OK) return initialized;
+    return elisa_physics_v1_shutdown(world_generation);
+}
+
 #if defined(ELISA_PHYSICS_TEST_PROBE)
 extern "C" int32_t elisa_physics_v1_test_fail_next_initialize_after_scene(void) {
     const int32_t owner_status = require_application_owner();

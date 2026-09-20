@@ -25,6 +25,7 @@ enum {
 };
 
 int32_t elisa_physics_v1_initialize(uint64_t* world_generation);
+int32_t elisa_physics_v1_probe_provider(void);
 int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z,
     float half_x, float half_y, float half_z, float mass,

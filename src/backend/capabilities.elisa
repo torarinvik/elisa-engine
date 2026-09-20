@@ -87,12 +87,22 @@ module Capabilities:
             callbacks: BackendFallbackProvider
             asset_loading: BackendFallbackProvider
 
+        # Runtime evidence for engine-owned adapters. CallerDefined means the
+        # application owns its own provider and is checked by that caller.
+        struct BackendProviderAvailability:
+            mutable jolt_physics: bool
+            mutable miniaudio_silent: bool
+            mutable miniaudio_default: bool
+            mutable synchronous_upload: bool
+            mutable synchronous_asset_loading: bool
+
         # A declared fallback must still be initialized by its owner before
         # gameplay. This route tells the caller exactly which service needs it.
         enum BackendFeatureResolution:
             Native
             DeclaredFallback
             FallbackDisallowed
+            ProviderUnavailable
             Unavailable
             Invalid
 
@@ -252,6 +262,24 @@ module Capabilities:
                     provider == BackendFallbackProvider.CallerDefined
                 BackendFeature.AssetLoading:
                     provider == BackendFallbackProvider.CallerDefined or provider == BackendFallbackProvider.SynchronousAssetLoading
+
+        def fallback_provider_available(availability: BackendProviderAvailability,
+            provider: BackendFallbackProvider) -> bool:
+            match provider:
+                BackendFallbackProvider.None:
+                    true
+                BackendFallbackProvider.CallerDefined:
+                    true
+                BackendFallbackProvider.JoltPhysics:
+                    availability.jolt_physics
+                BackendFallbackProvider.MiniaudioSilent:
+                    availability.miniaudio_silent
+                BackendFallbackProvider.MiniaudioDefault:
+                    availability.miniaudio_default
+                BackendFallbackProvider.SynchronousUpload:
+                    availability.synchronous_upload
+                BackendFallbackProvider.SynchronousAssetLoading:
+                    availability.synchronous_asset_loading
 
         # Stable diagnostic codes for the flat C embedding surface. Keep these
         # independent of the compiler's internal enum representation.
@@ -452,6 +480,44 @@ module Capabilities:
                 missing_count: missing_count,
                 fallback_count: fallback_count,
                 decision_count: count,
+                decisions: decisions,
+            }
+
+        # A declaration selects a handler, but it does not prove the adapter
+        # exists in this runtime. Replace unavailable selections with explicit
+        # decisions before the application is allowed to continue startup.
+        def backend_requirement_apply_provider_availability(report: BackendRequirementReport,
+            availability: BackendProviderAvailability) -> BackendRequirementReport:
+            return report if report.state == RequirementState.Invalid or report.fallback_count == 0
+            decisions: mutable BackendFeatureDecision[Bounds::MAX_FEATURES] = report.decisions
+            first_missing: mutable BackendFeature = BackendFeature.Input
+            missing_count: mutable usize = 0
+            fallback_count: mutable usize = 0
+            for index in 0..<report.decision_count |decisions, first_missing, missing_count, fallback_count|:
+                decision: BackendFeatureDecision = decisions[index]
+                resolution: mutable BackendFeatureResolution = decision.resolution
+                if decision.resolution == BackendFeatureResolution.DeclaredFallback:
+                    if not fallback_provider_available(availability, decision.fallback_provider):
+                        resolution <- BackendFeatureResolution.ProviderUnavailable
+                        decisions[index] <- BackendFeatureDecision{
+                            feature: decision.feature,
+                            resolution: resolution,
+                            fallback_provider: decision.fallback_provider,
+                        }
+                    else:
+                        fallback_count <- fallback_count + 1
+                if resolution == BackendFeatureResolution.FallbackDisallowed or resolution == BackendFeatureResolution.ProviderUnavailable or resolution == BackendFeatureResolution.Unavailable:
+                    first_missing <- decision.feature if missing_count == 0
+                    missing_count <- missing_count + 1
+            state: mutable RequirementState = RequirementState.Ready
+            state <- RequirementState.Fallback if fallback_count > 0
+            state <- RequirementState.Unavailable if missing_count > 0
+            BackendRequirementReport{
+                state: state,
+                first_missing: first_missing,
+                missing_count: missing_count,
+                fallback_count: fallback_count,
+                decision_count: report.decision_count,
                 decisions: decisions,
             }
 

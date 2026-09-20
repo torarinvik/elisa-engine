@@ -36,6 +36,12 @@ enum {
 };
 
 enum {
+    ELISA_APPLICATION_PROVIDER_JOLT_PHYSICS = 1,
+    ELISA_APPLICATION_PROVIDER_MINIAUDIO_SILENT = 2,
+    ELISA_APPLICATION_PROVIDER_MINIAUDIO_DEFAULT = 3,
+};
+
+enum {
     ELISA_APPLICATION_WINDOW_FOCUSED = 1u << 0,
     ELISA_APPLICATION_WINDOW_MINIMIZED = 1u << 1,
     ELISA_APPLICATION_WINDOW_FULLSCREEN = 1u << 2,
@@ -66,6 +72,9 @@ int32_t elisa_application_v1_backend_profile(
     int64_t* max_workers, int64_t* memory_budget, int64_t* memory_usage,
     int64_t* formats, int64_t* graphics_workers, int64_t* streaming_workers,
     int64_t* service_version);
+// Performs a bounded real initialization/teardown probe for an engine-owned
+// fallback adapter. Returns 1 when usable, 0 when unavailable, or an app error.
+int32_t elisa_application_v1_fallback_provider_available(int32_t provider);
 int32_t elisa_application_v1_pump(void);
 // One typed scalar-output call avoids compiler-specific aggregate layout.
 // Event flags are coalesced edges since the previous successful read; window

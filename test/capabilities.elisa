@@ -85,6 +85,41 @@ def fallback_matrix_valid() -> bool:
     return false if mixed_report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
     return false if mixed_report.decisions[0].fallback_provider != BackendFallbackProvider.JoltPhysics
     return false if mixed_report.decisions[1].feature != BackendFeature.Audio or mixed_report.decisions[1].resolution != BackendFeatureResolution.Unavailable
+
+    unavailable_adapters: BackendProviderAvailability = BackendProviderAvailability{
+        jolt_physics: false,
+        miniaudio_silent: false,
+        miniaudio_default: false,
+        synchronous_upload: false,
+        synchronous_asset_loading: false,
+    }
+    unavailable_report: BackendRequirementReport = backend_requirement_apply_provider_availability(
+        mixed_report, unavailable_adapters)
+    return false if unavailable_report.state != RequirementState.Unavailable
+    return false if unavailable_report.first_missing != BackendFeature.Physics or unavailable_report.missing_count != 2 or unavailable_report.fallback_count != 0
+    return false if unavailable_report.decisions[0].resolution != BackendFeatureResolution.ProviderUnavailable
+    return false if unavailable_report.decisions[0].fallback_provider != BackendFallbackProvider.JoltPhysics
+    return false if unavailable_report.decisions[1].resolution != BackendFeatureResolution.Unavailable
+
+    available_jolt: BackendProviderAvailability = BackendProviderAvailability{
+        jolt_physics: true,
+        miniaudio_silent: false,
+        miniaudio_default: false,
+        synchronous_upload: false,
+        synchronous_asset_loading: false,
+    }
+    available_report: BackendRequirementReport = backend_requirement_apply_provider_availability(
+        backend_requirement_report(profile, one_feature(BackendFeature.Physics), 1,
+            partial_fallbacks, true), available_jolt)
+    return false if available_report.state != RequirementState.Fallback or available_report.fallback_count != 1
+    return false if available_report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+
+    unavailable_sync: BackendRequirementReport = backend_requirement_apply_provider_availability(
+        backend_requirement_report(profile, one_feature(BackendFeature.AsyncUpload), 1,
+            fallback_for(BackendFeature.AsyncUpload), true), unavailable_adapters)
+    return false if unavailable_sync.state != RequirementState.Unavailable
+    return false if unavailable_sync.decisions[0].resolution != BackendFeatureResolution.ProviderUnavailable
+
     wrong_provider: BackendFallbackProviders = BackendFallbackProviders{
         input: BackendFallbackProvider.None,
         rendering: BackendFallbackProvider.None,

@@ -238,6 +238,34 @@ extern "C" int32_t elisa_application_v1_backend_profile(
     return ELISA_APPLICATION_OK;
 }
 
+extern "C" int32_t elisa_application_v1_fallback_provider_available(int32_t provider) {
+    ApplicationService& service = application_service();
+    {
+        std::lock_guard<std::mutex> guard(service.mutex);
+        if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+        if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    }
+
+    int32_t status = ELISA_APPLICATION_INVALID_ARGUMENT;
+    switch (provider) {
+        case ELISA_APPLICATION_PROVIDER_JOLT_PHYSICS:
+            status = elisa_physics_v1_probe_provider();
+            break;
+        case ELISA_APPLICATION_PROVIDER_MINIAUDIO_SILENT:
+            status = elisa_audio_v1_probe_provider(ELISA_AUDIO_PROVIDER_SILENT);
+            break;
+        case ELISA_APPLICATION_PROVIDER_MINIAUDIO_DEFAULT:
+            status = elisa_audio_v1_probe_provider(ELISA_AUDIO_PROVIDER_DEFAULT);
+            break;
+        default:
+            return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    if (status == ELISA_PHYSICS_WRONG_THREAD || status == ELISA_AUDIO_WRONG_THREAD) {
+        return ELISA_APPLICATION_WRONG_THREAD;
+    }
+    return status == ELISA_PHYSICS_OK || status == ELISA_AUDIO_OK ? 1 : 0;
+}
+
 extern "C" int32_t elisa_application_v1_pump(void) {
     ApplicationService& service = application_service();
     std::lock_guard<std::mutex> guard(service.mutex);

@@ -14,6 +14,11 @@ module Application:
             PROFILE_UNAVAILABLE: i32 = -6
             EMPTY_PROFILE_VALUE: i64 = 0
 
+        const module FallbackProviderCode:
+            JOLT_PHYSICS: i32 = 1
+            MINIAUDIO_SILENT: i32 = 2
+            MINIAUDIO_DEFAULT: i32 = 3
+
         const module NativeEvents:
             CLOSE_REQUESTED: u32 = 1
             RESIZED: u32 = 2
@@ -120,6 +125,9 @@ module Application:
             max_viewports: mutable i64&, max_workers: mutable i64&, memory_budget: mutable i64&,
             memory_usage: mutable i64&, formats: mutable i64&, graphics_workers: mutable i64&,
             streaming_workers: mutable i64&, service_version: mutable i64&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_fallback_provider_available(provider: i32) -> i32
 
         @callconv(c)
         extern elisa_application_v1_pump() -> i32
@@ -326,6 +334,58 @@ module Application:
             return status if shutdown()
             InitializeStatus.ShutdownFailed
 
+        def apply_fallback_provider_availability(
+            report: Capabilities::BackendRequirementReport) -> Capabilities::BackendRequirementReport:
+            availability: mutable Capabilities::BackendProviderAvailability =
+                Capabilities::BackendProviderAvailability{
+                    jolt_physics: false,
+                    miniaudio_silent: false,
+                    miniaudio_default: false,
+                    synchronous_upload: false,
+                    synchronous_asset_loading: false,
+                }
+            jolt_checked: mutable bool = false
+            jolt_available: mutable bool = false
+            silent_checked: mutable bool = false
+            silent_available: mutable bool = false
+            default_checked: mutable bool = false
+            default_available: mutable bool = false
+            for index in 0..<report.decision_count |report, availability, jolt_checked, jolt_available, silent_checked, silent_available, default_checked, default_available|:
+                decision: Capabilities::BackendFeatureDecision = report.decisions[index]
+                if decision.resolution == Capabilities::BackendFeatureResolution.DeclaredFallback:
+                    match decision.fallback_provider:
+                        Capabilities::BackendFallbackProvider.JoltPhysics:
+                            if not jolt_checked:
+                                jolt_available <- elisa_application_v1_fallback_provider_available(
+                                    FallbackProviderCode::JOLT_PHYSICS) == 1
+                                jolt_checked <- true
+                            availability.jolt_physics <- jolt_available
+                        Capabilities::BackendFallbackProvider.MiniaudioSilent:
+                            if not silent_checked:
+                                silent_available <- elisa_application_v1_fallback_provider_available(
+                                    FallbackProviderCode::MINIAUDIO_SILENT) == 1
+                                silent_checked <- true
+                            availability.miniaudio_silent <- silent_available
+                        Capabilities::BackendFallbackProvider.MiniaudioDefault:
+                            if not default_checked:
+                                default_available <- elisa_application_v1_fallback_provider_available(
+                                    FallbackProviderCode::MINIAUDIO_DEFAULT) == 1
+                                default_checked <- true
+                            availability.miniaudio_default <- default_available
+                        Capabilities::BackendFallbackProvider.SynchronousUpload:
+                            continue
+                        Capabilities::BackendFallbackProvider.SynchronousAssetLoading:
+                            continue
+                        _:
+                            continue
+            Capabilities::backend_requirement_apply_provider_availability(report, availability)
+
+        def apply_profile_provider_availability(
+            report: BackendRequirements::BackendRequirementsReport) -> BackendRequirements::BackendRequirementsReport:
+            services: Capabilities::BackendRequirementReport =
+                apply_fallback_provider_availability(report.services)
+            BackendRequirements::backend_requirements_with_services(report, services)
+
         # Rejected requirements shut the just-started host back down. A fallback
         # result leaves it running and tells the caller to apply its declared
         # fallback before entering gameplay. `report` is meaningful for Ready,
@@ -342,6 +402,8 @@ module Application:
                 error failure: return shutdown_after_rejection(InitializeStatus.BackendUnavailable)
             report <- Capabilities::backend_requirement_report(profile, required, count,
                 fallbacks, allow_fallback)
+            if report.fallback_count > 0:
+                report <- apply_fallback_provider_availability(report)
             match report.state:
                 Capabilities::RequirementState.Invalid:
                     shutdown_after_rejection(InitializeStatus.InvalidRequirements)
@@ -365,6 +427,8 @@ module Application:
                 value: value
                 error failure: return shutdown_after_rejection(InitializeStatus.BackendUnavailable)
             report <- BackendRequirements::backend_requirements_report(profile, requirements)
+            if report.services.fallback_count > 0:
+                report <- apply_profile_provider_availability(report)
             match report.state:
                 Capabilities::RequirementState.Invalid:
                     shutdown_after_rejection(InitializeStatus.InvalidRequirements)

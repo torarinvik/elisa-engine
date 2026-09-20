@@ -239,3 +239,14 @@ module BackendRequirements:
                 limits: limits,
                 textures: textures,
             }
+
+        def backend_requirements_with_services(report: BackendRequirementsReport,
+            services: Capabilities::BackendRequirementReport) -> BackendRequirementsReport:
+            BackendRequirementsReport{
+                state: combined_state(services.state, report.optional_features.state,
+                    report.limits.state, report.textures.state),
+                services: services,
+                optional_features: report.optional_features,
+                limits: report.limits,
+                textures: report.textures,
+            }
