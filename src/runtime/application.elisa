@@ -1,6 +1,6 @@
 # Generic, process-level application lifecycle. Platform and renderer types stay
 # behind the engine-owned native ABI; game code sees only configuration/status.
-include "../backend/capabilities.elisa"
+include "../backend/requirements.elisa"
 module Application:
     private:
         const module NativeStatus:
@@ -173,6 +173,29 @@ module Application:
                 error failure: return shutdown_after_rejection(InitializeStatus.BackendUnavailable)
             report <- Capabilities::backend_requirement_report(profile, required, count,
                 fallbacks, allow_fallback)
+            match report.state:
+                Capabilities::RequirementState.Invalid:
+                    shutdown_after_rejection(InitializeStatus.InvalidRequirements)
+                Capabilities::RequirementState.Unavailable:
+                    shutdown_after_rejection(InitializeStatus.RequirementsUnavailable)
+                Capabilities::RequirementState.Fallback:
+                    InitializeStatus.FallbackRequired
+                Capabilities::RequirementState.Ready:
+                    InitializeStatus.Ready
+
+        # Validate the complete renderer/content contract before gameplay. The
+        # report carries the selected limit values and texture formats so an
+        # allowed downgrade has a concrete value to apply.
+        def initialize_with_profile_requirements(config: Config,
+            requirements: BackendRequirements::BackendStartupRequirements,
+            report: mutable BackendRequirements::BackendRequirementsReport&) -> InitializeStatus:
+            report <- BackendRequirements::backend_requirements_invalid_report()
+            opened: InitializeStatus = initialize(config)
+            return opened if opened != InitializeStatus.Ready
+            profile: Capabilities::BackendProfile = catch backend_profile():
+                value: value
+                error failure: return shutdown_after_rejection(InitializeStatus.BackendUnavailable)
+            report <- BackendRequirements::backend_requirements_report(profile, requirements)
             match report.state:
                 Capabilities::RequirementState.Invalid:
                     shutdown_after_rejection(InitializeStatus.InvalidRequirements)

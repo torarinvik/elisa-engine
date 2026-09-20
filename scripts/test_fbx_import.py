@@ -45,6 +45,7 @@ def main() -> int:
         compile_command = [cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(ROOT / "native"),
             str(ROOT / "native/fbx_asset_import_test.cpp"), str(ufbx_object), "-o", str(test_binary)]
         if args.cooked_skin is not None:
+            compile_command.insert(1, "-DELISA_TEST_COOKED_SKIN")
             zstd_flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "libzstd"],
                 cwd=ROOT, text=True).split()
             compile_command.extend(zstd_flags)

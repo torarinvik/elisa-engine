@@ -1,0 +1,246 @@
+# Bounded startup requirements stay in Elisa; this module resolves a whole
+# application's requested services, device limits, and texture formats.
+include "capabilities.elisa"
+module BackendRequirements:
+    private:
+        const module Bounds:
+            MAX_FEATURE_REQUIREMENTS: usize = Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS
+            MAX_OPTIONAL_REQUIREMENTS: usize = Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS
+            MAX_LIMIT_REQUIREMENTS: usize = 8
+            MAX_TEXTURE_REQUIREMENTS: usize = 8
+
+        def optional_fallback_supports(fallbacks: Capabilities::BackendOptionalCapabilities,
+            feature: Capabilities::BackendOptionalFeature) -> bool:
+            match feature:
+                Capabilities::BackendOptionalFeature.RayTracing:
+                    fallbacks.ray_tracing
+                Capabilities::BackendOptionalFeature.SparseTextures:
+                    fallbacks.sparse_textures
+                Capabilities::BackendOptionalFeature.MeshShaders:
+                    fallbacks.mesh_shaders
+
+        def combined_state(services: Capabilities::RequirementState,
+            optional_features: Capabilities::RequirementState,
+            limits: Capabilities::RequirementState,
+            textures: Capabilities::RequirementState) -> Capabilities::RequirementState:
+            return Capabilities::RequirementState.Invalid if services == Capabilities::RequirementState.Invalid or optional_features == Capabilities::RequirementState.Invalid or limits == Capabilities::RequirementState.Invalid or textures == Capabilities::RequirementState.Invalid
+            return Capabilities::RequirementState.Unavailable if services == Capabilities::RequirementState.Unavailable or optional_features == Capabilities::RequirementState.Unavailable or limits == Capabilities::RequirementState.Unavailable or textures == Capabilities::RequirementState.Unavailable
+            return Capabilities::RequirementState.Fallback if services == Capabilities::RequirementState.Fallback or optional_features == Capabilities::RequirementState.Fallback or limits == Capabilities::RequirementState.Fallback or textures == Capabilities::RequirementState.Fallback
+            Capabilities::RequirementState.Ready
+
+    public:
+        const MAX_BACKEND_OPTIONAL_REQUIREMENTS: usize = Bounds::MAX_OPTIONAL_REQUIREMENTS
+        const MAX_BACKEND_LIMIT_REQUIREMENTS: usize = Bounds::MAX_LIMIT_REQUIREMENTS
+        const MAX_BACKEND_TEXTURE_REQUIREMENTS: usize = Bounds::MAX_TEXTURE_REQUIREMENTS
+
+        struct BackendLimitRequirement:
+            limit: Capabilities::BackendLimit
+            preferred: i64
+            minimum: i64
+
+        struct BackendOptionalRequirementReport:
+            state: Capabilities::RequirementState
+            first_missing: Capabilities::BackendOptionalFeature
+            missing_count: usize
+            fallback_count: usize
+
+        struct BackendLimitRequirementReport:
+            state: Capabilities::RequirementState
+            first_missing: Capabilities::BackendLimit
+            missing_count: usize
+            fallback_count: usize
+            granted: i64[Bounds::MAX_LIMIT_REQUIREMENTS]
+
+        struct BackendTextureRequirement:
+            requested: Capabilities::BackendTextureFormat
+            normal_map: bool
+            has_alpha: bool
+            allow_fallback: bool
+
+        struct BackendTextureRequirementReport:
+            state: Capabilities::RequirementState
+            first_missing: Capabilities::BackendTextureFormat
+            missing_count: usize
+            fallback_count: usize
+            decisions: Capabilities::TextureFormatDecision[Bounds::MAX_TEXTURE_REQUIREMENTS]
+
+        struct BackendStartupRequirements:
+            services: mutable Capabilities::BackendFeature[Bounds::MAX_FEATURE_REQUIREMENTS]
+            service_count: mutable usize
+            service_fallbacks: mutable Capabilities::BackendCapabilities
+            allow_service_fallbacks: mutable bool
+            optional_features: mutable Capabilities::BackendOptionalFeature[Bounds::MAX_OPTIONAL_REQUIREMENTS]
+            optional_feature_count: mutable usize
+            optional_fallbacks: mutable Capabilities::BackendOptionalCapabilities
+            allow_optional_fallbacks: mutable bool
+            limits: mutable BackendLimitRequirement[Bounds::MAX_LIMIT_REQUIREMENTS]
+            limit_count: mutable usize
+            textures: mutable BackendTextureRequirement[Bounds::MAX_TEXTURE_REQUIREMENTS]
+            texture_count: mutable usize
+
+        struct BackendRequirementsReport:
+            state: Capabilities::RequirementState
+            services: Capabilities::BackendRequirementReport
+            optional_features: BackendOptionalRequirementReport
+            limits: BackendLimitRequirementReport
+            textures: BackendTextureRequirementReport
+
+        def backend_requirements_invalid_report() -> BackendRequirementsReport:
+            invalid: Capabilities::RequirementState = Capabilities::RequirementState.Invalid
+            invalid_texture: Capabilities::TextureFormatDecision = Capabilities::TextureFormatDecision{
+                state: invalid,
+                format: Capabilities::BackendTextureFormat.Unsupported,
+            }
+            BackendRequirementsReport{
+                state: invalid,
+                services: Capabilities::BackendRequirementReport{
+                    state: invalid,
+                    first_missing: Capabilities::BackendFeature.Input,
+                    missing_count: 0,
+                    fallback_count: 0,
+                },
+                optional_features: BackendOptionalRequirementReport{
+                    state: invalid,
+                    first_missing: Capabilities::BackendOptionalFeature.RayTracing,
+                    missing_count: 0,
+                    fallback_count: 0,
+                },
+                limits: BackendLimitRequirementReport{
+                    state: invalid,
+                    first_missing: Capabilities::BackendLimit.Entities,
+                    missing_count: 0,
+                    fallback_count: 0,
+                    granted: zeroed,
+                },
+                textures: BackendTextureRequirementReport{
+                    state: invalid,
+                    first_missing: Capabilities::BackendTextureFormat.Unsupported,
+                    missing_count: 0,
+                    fallback_count: 0,
+                    decisions: [invalid_texture, invalid_texture, invalid_texture, invalid_texture,
+                        invalid_texture, invalid_texture, invalid_texture, invalid_texture],
+                },
+            }
+
+        def backend_optional_requirement_report(profile: Capabilities::BackendProfile,
+            required: Capabilities::BackendOptionalFeature[Bounds::MAX_OPTIONAL_REQUIREMENTS],
+            count: usize, fallbacks: Capabilities::BackendOptionalCapabilities,
+            allow_fallback: bool) -> BackendOptionalRequirementReport:
+            invalid: BackendOptionalRequirementReport = BackendOptionalRequirementReport{
+                state: Capabilities::RequirementState.Invalid,
+                first_missing: Capabilities::BackendOptionalFeature.RayTracing,
+                missing_count: 0,
+                fallback_count: 0,
+            }
+            return invalid if count > Bounds::MAX_OPTIONAL_REQUIREMENTS or not Capabilities::backend_profile_valid(profile)
+            first_missing: mutable Capabilities::BackendOptionalFeature = Capabilities::BackendOptionalFeature.RayTracing
+            missing_count: mutable usize = 0
+            fallback_count: mutable usize = 0
+            for index in 0..<count |first_missing, missing_count, fallback_count|:
+                feature: Capabilities::BackendOptionalFeature = required[index]
+                if not Capabilities::backend_supports_optional(profile, feature):
+                    if allow_fallback and optional_fallback_supports(fallbacks, feature):
+                        fallback_count <- fallback_count + 1
+                    else:
+                        first_missing <- feature if missing_count == 0
+                        missing_count <- missing_count + 1
+            state: mutable Capabilities::RequirementState = Capabilities::RequirementState.Ready
+            if missing_count > 0:
+                state <- Capabilities::RequirementState.Unavailable
+            else:
+                state <- Capabilities::RequirementState.Fallback if fallback_count > 0
+            BackendOptionalRequirementReport{state: state, first_missing: first_missing, missing_count: missing_count, fallback_count: fallback_count}
+
+        def backend_limit_requirement_report(profile: Capabilities::BackendProfile,
+            required: BackendLimitRequirement[Bounds::MAX_LIMIT_REQUIREMENTS],
+            count: usize) -> BackendLimitRequirementReport:
+            invalid: BackendLimitRequirementReport = BackendLimitRequirementReport{
+                state: Capabilities::RequirementState.Invalid,
+                first_missing: Capabilities::BackendLimit.Entities,
+                missing_count: 0,
+                fallback_count: 0,
+                granted: zeroed,
+            }
+            return invalid if count > Bounds::MAX_LIMIT_REQUIREMENTS or not Capabilities::backend_profile_valid(profile)
+            first_missing: mutable Capabilities::BackendLimit = Capabilities::BackendLimit.Entities
+            missing_count: mutable usize = 0
+            fallback_count: mutable usize = 0
+            granted: mutable i64[Bounds::MAX_LIMIT_REQUIREMENTS] = zeroed
+            for index in 0..<count |first_missing, missing_count, fallback_count, granted|:
+                requirement: BackendLimitRequirement = required[index]
+                if requirement.minimum <= 0 or requirement.preferred < requirement.minimum:
+                    return invalid
+                available: i64 = Capabilities::backend_limit(profile, requirement.limit)
+                granted[index] <- available
+                if available >= requirement.preferred:
+                    continue
+                if available >= requirement.minimum:
+                    fallback_count <- fallback_count + 1
+                else:
+                    first_missing <- requirement.limit if missing_count == 0
+                    missing_count <- missing_count + 1
+            state: mutable Capabilities::RequirementState = Capabilities::RequirementState.Ready
+            if missing_count > 0:
+                state <- Capabilities::RequirementState.Unavailable
+            else:
+                state <- Capabilities::RequirementState.Fallback if fallback_count > 0
+            BackendLimitRequirementReport{state: state, first_missing: first_missing, missing_count: missing_count, fallback_count: fallback_count, granted: granted}
+
+        def backend_texture_requirement_report(profile: Capabilities::BackendProfile,
+            required: BackendTextureRequirement[Bounds::MAX_TEXTURE_REQUIREMENTS],
+            count: usize) -> BackendTextureRequirementReport:
+            invalid_decision: Capabilities::TextureFormatDecision = Capabilities::TextureFormatDecision{
+                state: Capabilities::RequirementState.Invalid,
+                format: Capabilities::BackendTextureFormat.Unsupported,
+            }
+            invalid: BackendTextureRequirementReport = BackendTextureRequirementReport{
+                state: Capabilities::RequirementState.Invalid,
+                first_missing: Capabilities::BackendTextureFormat.Unsupported,
+                missing_count: 0,
+                fallback_count: 0,
+                decisions: [invalid_decision, invalid_decision, invalid_decision, invalid_decision,
+                    invalid_decision, invalid_decision, invalid_decision, invalid_decision],
+            }
+            return invalid if count > Bounds::MAX_TEXTURE_REQUIREMENTS or not Capabilities::backend_profile_valid(profile)
+            first_missing: mutable Capabilities::BackendTextureFormat = Capabilities::BackendTextureFormat.Unsupported
+            missing_count: mutable usize = 0
+            fallback_count: mutable usize = 0
+            decisions: mutable Capabilities::TextureFormatDecision[Bounds::MAX_TEXTURE_REQUIREMENTS] = [invalid_decision, invalid_decision, invalid_decision, invalid_decision, invalid_decision, invalid_decision, invalid_decision, invalid_decision]
+            for index in 0..<count |first_missing, missing_count, fallback_count, decisions|:
+                requirement: BackendTextureRequirement = required[index]
+                decision: Capabilities::TextureFormatDecision = Capabilities::negotiate_texture_format(
+                    profile, requirement.requested, requirement.normal_map, requirement.has_alpha,
+                    requirement.allow_fallback)
+                return invalid if decision.state == Capabilities::RequirementState.Invalid
+                decisions[index] <- decision
+                if decision.state == Capabilities::RequirementState.Fallback:
+                    fallback_count <- fallback_count + 1
+                if decision.state == Capabilities::RequirementState.Unavailable:
+                    first_missing <- requirement.requested if missing_count == 0
+                    missing_count <- missing_count + 1
+            state: mutable Capabilities::RequirementState = Capabilities::RequirementState.Ready
+            if missing_count > 0:
+                state <- Capabilities::RequirementState.Unavailable
+            else:
+                state <- Capabilities::RequirementState.Fallback if fallback_count > 0
+            BackendTextureRequirementReport{state: state, first_missing: first_missing, missing_count: missing_count, fallback_count: fallback_count, decisions: decisions}
+
+        def backend_requirements_report(profile: Capabilities::BackendProfile,
+            required: BackendStartupRequirements) -> BackendRequirementsReport:
+            services: Capabilities::BackendRequirementReport = Capabilities::backend_requirement_report(
+                profile, required.services, required.service_count, required.service_fallbacks,
+                required.allow_service_fallbacks)
+            optional_features: BackendOptionalRequirementReport = backend_optional_requirement_report(
+                profile, required.optional_features, required.optional_feature_count,
+                required.optional_fallbacks, required.allow_optional_fallbacks)
+            limits: BackendLimitRequirementReport = backend_limit_requirement_report(
+                profile, required.limits, required.limit_count)
+            textures: BackendTextureRequirementReport = backend_texture_requirement_report(
+                profile, required.textures, required.texture_count)
+            BackendRequirementsReport{
+                state: combined_state(services.state, optional_features.state, limits.state, textures.state),
+                services: services,
+                optional_features: optional_features,
+                limits: limits,
+                textures: textures,
+            }

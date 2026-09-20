@@ -1,5 +1,7 @@
 #include "fbx_asset_import.h"
+#if defined(ELISA_TEST_COOKED_SKIN)
 #include "cooked_geometry_package.h"
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -80,6 +82,7 @@ int decode_mesh(const std::filesystem::path& path) {
     return 0;
 }
 
+#if defined(ELISA_TEST_COOKED_SKIN)
 int cooked_skin_test(const std::filesystem::path& path) {
     elisa::assets::CookedGeometry geometry;
     std::string error;
@@ -106,6 +109,7 @@ int cooked_skin_test(const std::filesystem::path& path) {
         geometry.skin_bone_names.size(), geometry.positions.size() / 3);
     return ok ? 0 : 1;
 }
+#endif
 
 int supplied_assets_test(const std::filesystem::path& root) {
     const std::filesystem::path walking = root / "walking anim" /
@@ -182,9 +186,13 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--decode") {
         return decode_mesh(argv[2]);
     }
+#if defined(ELISA_TEST_COOKED_SKIN)
     if (argc == 3 && std::string(argv[1]) == "--cooked-skin") {
         return cooked_skin_test(argv[2]);
     }
     std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
+#else
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --assets-root DIR | --decode FILE\n");
+#endif
     return 2;
 }
