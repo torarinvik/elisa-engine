@@ -125,8 +125,11 @@ inline bool probe_package_bounds(const std::string& valid_package,
     const bool loader_mounted = loader.mount(base_root, {override_root}, 9);
     const NativeAssetHandle asset = loader.request("maze.elpk", "mesh");
     const NativeAssetHandle duplicate_asset = loader.request("maze.elpk", "mesh");
+    auto loader_worker = loader.pump_io_async(1);
+    const bool loader_worker_done = loader_worker.get() == 1;
     const bool asset_loaded = loader_mounted && asset.slot == duplicate_asset.slot &&
-        loader.pump(1, 1) == 1 && loader.state(asset) == NativeAssetState::Resident &&
+        loader_worker_done && loader.upload_ready(1) == 1 &&
+        loader.state(asset) == NativeAssetState::Resident &&
         loader.texture(asset) != nullptr && loader.telemetry().coalesced == 1;
     const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
     const bool asset_cancelled = loader.cancel(cancelled_asset) &&

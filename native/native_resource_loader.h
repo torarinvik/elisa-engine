@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -76,8 +77,16 @@ public:
         return true;
     }
 
+    std::future<uint32_t> pump_io_async(uint32_t io_budget = 1) {
+        return files_.pump_async(io_budget);
+    }
+
     uint32_t pump(uint32_t io_budget = 1, uint32_t upload_budget = 1) {
         files_.pump(io_budget);
+        return upload_ready(upload_budget);
+    }
+
+    uint32_t upload_ready(uint32_t upload_budget = 1) {
         uint32_t uploaded = 0;
         for (Item& item : items_) {
             if (item.state != NativeAssetState::Queued) continue;
