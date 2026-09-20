@@ -74,6 +74,26 @@ def check_startup_requirements(config: Application::Config) -> i32:
     return 42 if profile_report.textures.decisions[0].format != BackendTextureFormat.Rgba8
     return 43 if not Application::shutdown()
 
+    fallback_requirements: mutable BackendRequirements::BackendStartupRequirements = profile_requirements
+    fallback_requirements.textures[0] <- BackendRequirements::BackendTextureRequirement{
+        requested: BackendTextureFormat.Bc1,
+        normal_map: true,
+        has_alpha: false,
+        allow_fallback: true,
+    }
+    fallback_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+    fallback_opened: Application::InitializeStatus = Application::initialize_with_profile_requirements(
+        config, fallback_requirements, &fallback_report)
+    return 87 if fallback_opened != Application::InitializeStatus.FallbackRequired
+    return 88 if fallback_report.state != RequirementState.Fallback or fallback_report.textures.state != RequirementState.Fallback
+    return 89 if fallback_report.textures.fallback_count != 1
+    return 90 if fallback_report.textures.decisions[0].state != RequirementState.Fallback or fallback_report.textures.decisions[0].format != BackendTextureFormat.Rgba8
+    fallback_profile: BackendProfile = catch Application::backend_profile():
+        value: value
+        error failure: return 91
+    return 92 if fallback_profile.kind != BackendKind.Native
+    return 93 if not Application::shutdown()
+
     opened: Application::InitializeStatus = Application::initialize_with_requirements(
         config, required, 3, no_fallbacks, false, &report)
     return 27 if opened != Application::InitializeStatus.Ready

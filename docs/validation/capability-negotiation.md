@@ -118,6 +118,13 @@ down. The full `DEVELOPER_DIR="$(xcode-select -p)" elisascript
 scripts/check.elisascript` suite passed, including its proof obligations and
 certificate replay.
 
+The latest SDL3/Metal application smoke also covers a concrete texture
+downgrade. It requests BC1 for a normal map with fallback enabled, receives
+`FallbackRequired` with RGBA8 selected in the per-texture report, confirms the
+native application is still initialized while the caller can apply the choice,
+then shuts down cleanly. This verifies the report is actionable; texture
+loading and assignment still belong to the caller.
+
 Aggregate negotiation validation on 2026-09-20:
 
 - `DEVELOPER_DIR="$(xcode-select -p)" ../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/capabilities-test test/capabilities.elisa && build/capabilities-test` passed.

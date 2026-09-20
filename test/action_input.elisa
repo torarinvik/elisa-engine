@@ -54,6 +54,16 @@ def application_input_tests() -> i32:
         application_event(Application::InputEventKind.FocusLost, 0, 0.0, false, true, false))
     return 70 if ActionInput::action_down(&input, 90) or not ActionInput::action_released(&input, 90)
 
+    overflow_input: mutable ActionInput::Input = ActionInput::Input()
+    plain_key: ActionInput::Binding = test_binding(95, key_a, 0.0)
+    return 85 if ActionInput::bind_checked(&overflow_input, plain_key) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&overflow_input,
+        application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
+    ActionInput::begin_frame(&overflow_input)
+    ActionInputRuntime::apply_application_event(&overflow_input,
+        application_event(Application::InputEventKind.Overflow, 0, 0.0, false, true, false))
+    return 86 if ActionInput::action_down(&overflow_input, 95) or not ActionInput::action_released(&overflow_input, 95)
+
     mouse: ActionInput::Binding = ActionInput::Binding{
         action: 91,
         device: ActionInput::Device.Mouse,
@@ -87,20 +97,18 @@ def application_input_tests() -> i32:
         application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, false))
     return 75 if ActionInput::action_down(&input, 92) or not ActionInput::action_released(&input, 92)
 
-    remaining_controller: mutable ActionInput::Input = ActionInput::Input()
-    remaining_binding: ActionInput::Binding = gamepad
-    remaining_binding.action <- 95
-    return 85 if ActionInput::bind_checked(&remaining_controller, remaining_binding) != ActionInput::BindResult.Bound
-    ActionInputRuntime::apply_application_event(&remaining_controller,
+    ActionInputRuntime::apply_application_event(&input,
         application_event(Application::InputEventKind.GamepadConnected, 0, 1.0, true, false, true))
-    ActionInputRuntime::apply_application_event(&remaining_controller,
-        application_event(Application::InputEventKind.GamepadButton, remaining_binding.code, 1.0, true, false, false))
-    ActionInputRuntime::apply_application_event(&remaining_controller,
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadButton, gamepad.code, 1.0, true, false, false))
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
         application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, true))
-    return 86 if ActionInput::action_down(&remaining_controller, 95) or not ActionInput::action_released(&remaining_controller, 95)
-    ActionInputRuntime::apply_application_event(&remaining_controller,
-        application_event(Application::InputEventKind.GamepadButton, remaining_binding.code, 1.0, true, false, false))
-    return 87 if not ActionInput::action_down(&remaining_controller, 95)
+    return 88 if ActionInput::action_down(&input, 92) or not ActionInput::action_released(&input, 92)
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input,
+        application_event(Application::InputEventKind.GamepadButton, gamepad.code, 1.0, true, false, false))
+    return 89 if not ActionInput::action_down(&input, 92) or not ActionInput::action_pressed(&input, 92)
 
     trigger_code: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftTrigger)
     trigger: ActionInput::Binding = ActionInput::Binding{
