@@ -12,3 +12,9 @@ The Wicked probe also exercises `native/render_snapshot_bridge.h`: it creates
 two native rows for one logical fanout, updates one independently, rejects an
 unknown removal, and returns the scene object count to its baseline. Vendor
 entities remain separate from gameplay references.
+
+The native bridge also accepts a bounded batch. It validates every render ID,
+position, and scale before creating entities or changing transforms, rejects
+duplicate IDs, and rolls back newly created entities when staging fails. The
+probe covers a successful two-row fanout batch and an invalid batch that leaves
+the native object count and live-row set unchanged.
