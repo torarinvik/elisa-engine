@@ -17,6 +17,8 @@ enum class NativeLightKind : uint8_t { Directional, Point, Spot };
 struct NativeLightDesc {
     NativeLightKind kind = NativeLightKind::Point;
     XMFLOAT3 color = XMFLOAT3(1, 1, 1);
+    XMFLOAT3 position = XMFLOAT3(0, 0, 0);
+    XMFLOAT3 direction = XMFLOAT3(0, -1, 0);
     float intensity = 1.0f;
     float range = 10.0f;
     float outer_cone = XM_PIDIV4;
@@ -62,7 +64,7 @@ public:
         const uint32_t slot = free_light();
         if (slot == MAX_LIGHTS) return {};
         const auto entity = scene_.Entity_CreateLight(
-            "elisa_light_" + std::to_string(slot), XMFLOAT3(0, 0, 0), desc.color,
+            "elisa_light_" + std::to_string(slot), desc.position, desc.color,
             desc.intensity, desc.range, light_type(desc.kind), desc.outer_cone, desc.inner_cone);
         if (entity == wi::ecs::INVALID_ENTITY) return {};
         auto& state = lights_[slot];
@@ -81,6 +83,21 @@ public:
         if (!live(handle) || !valid_desc(desc)) return false;
         apply(lights_[handle.slot].entity, desc);
         return true;
+    }
+
+    bool light_matches(NativeLightHandle handle, const NativeLightDesc& desc) const {
+        if (!live(handle)) return false;
+        const wi::ecs::Entity entity = lights_[handle.slot].entity;
+        const auto* light = scene_.lights.GetComponent(entity);
+        const auto* transform = scene_.transforms.GetComponent(entity);
+        if (light == nullptr || transform == nullptr) return false;
+        const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
+        const XMFLOAT3 position = transform->translation_local;
+        return light->type == light_type(desc.kind) && close(position.x, desc.position.x) &&
+            close(position.y, desc.position.y) && close(position.z, desc.position.z) &&
+            close(light->direction.x, desc.direction.x / XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)))) &&
+            close(light->direction.y, desc.direction.y / XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)))) &&
+            close(light->direction.z, desc.direction.z / XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction))));
     }
 
     bool destroy_light(NativeLightHandle handle) {
@@ -167,7 +184,13 @@ private:
     }
 
     static bool valid_desc(const NativeLightDesc& desc) {
-        return finite_color(desc.color) && std::isfinite(desc.intensity) && desc.intensity >= 0.0f &&
+        const auto finite_vector = [](const XMFLOAT3& value) {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        };
+        const float direction_length = XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)));
+        return finite_color(desc.color) && finite_vector(desc.position) && finite_vector(desc.direction) &&
+            (desc.kind == NativeLightKind::Point || direction_length > 0.0001f) &&
+            std::isfinite(desc.intensity) && desc.intensity >= 0.0f &&
             std::isfinite(desc.range) && desc.range > 0.0f && std::isfinite(desc.outer_cone) &&
             std::isfinite(desc.inner_cone) && desc.outer_cone > 0.0f && desc.inner_cone >= 0.0f &&
             desc.inner_cone <= desc.outer_cone && (desc.kind != NativeLightKind::Directional || desc.range > 0.0f);
@@ -185,7 +208,15 @@ private:
     void apply(wi::ecs::Entity entity, const NativeLightDesc& desc) {
         auto* light = scene_.lights.GetComponent(entity);
         if (light == nullptr) return;
+        auto* transform = scene_.transforms.GetComponent(entity);
+        if (transform != nullptr) {
+            transform->translation_local = desc.position;
+            transform->SetDirty();
+            transform->UpdateTransform();
+        }
         light->color = desc.color;
+        light->position = desc.position;
+        XMStoreFloat3(&light->direction, XMVector3Normalize(XMLoadFloat3(&desc.direction)));
         light->intensity = desc.intensity;
         light->range = desc.range;
         light->outerConeAngle = desc.outer_cone;
@@ -217,10 +248,13 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
     LightingBridge bridge(scene);
     NativeLightDesc point;
     point.color = XMFLOAT3(0.3f, 0.7f, 1.0f);
+    point.position = XMFLOAT3(1.0f, 2.0f, 3.0f);
     point.cast_shadow = true;
     const auto point_handle = bridge.create_light(point);
     NativeLightDesc spot = point;
     spot.kind = NativeLightKind::Spot;
+    spot.direction = XMFLOAT3(0.0f, -1.0f, 0.0f);
+    spot.position = XMFLOAT3(-4.0f, 1.0f, 2.0f);
     spot.outer_cone = 0.8f;
     const auto spot_handle = bridge.create_light(spot);
     const auto environment = bridge.create_environment(64, 50.0f, true);
@@ -239,7 +273,8 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
         scene.lights.GetCount() == lights_before + 2, "lighting creates typed resources") ||
         !check(bridge.update_light(point_handle, spot) && !bridge.update_light(
             NativeLightHandle{point_handle.slot, point_handle.generation, 0}, point),
-            "lighting updates and rejects foreign handle") ||
+            "lighting moves and rejects foreign handle") ||
+        !check(bridge.light_matches(point_handle, spot), "lighting updates Wicked transform and direction") ||
         !check(bridge.apply_environment(weather) && !bridge.apply_environment(invalid_weather) &&
             scene.weather.skyExposure == 1.25f && scene.weather.fogDensity == 0.02f && scene.weather.IsHeightFog(),
             "lighting applies validated sky and fog policy") ||

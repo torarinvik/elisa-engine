@@ -20,6 +20,7 @@ module Lighting:
         struct Light:
             kind: LightKind
             color: Geometry::Vec3
+            position: Geometry::Vec3
             direction: Geometry::Vec3
             intensity: f32
             range: f32
@@ -38,7 +39,7 @@ module Lighting:
             fog_enabled: bool
 
         def light_valid(light: Light) -> bool:
-            return false if not Geometry::vec3_is_finite(light.color) or not Geometry::vec3_is_finite(light.direction)
+            return false if not Geometry::vec3_is_finite(light.color) or not Geometry::vec3_is_finite(light.position) or not Geometry::vec3_is_finite(light.direction)
             return false if not finite(light.intensity) or not finite(light.range) or not finite(light.inner_cone) or not finite(light.outer_cone)
             return false if light.color.x < 0.0 or light.color.y < 0.0 or light.color.z < 0.0 or light.intensity < 0.0 or light.range <= 0.0
             return false if light.kind != LightKind.Point and Geometry::vec3_length_squared(light.direction) <= Limits::ZERO_VECTOR_SQUARED
