@@ -29,7 +29,9 @@ int32_t require_application_owner() {
 int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
     const int32_t owner_status = require_application_owner();
     if (owner_status != ELISA_AUDIO_OK) return owner_status;
-    if (sample_rate < 8000 || sample_rate > 192000 || channels == 0 || channels > 2) {
+    if (sample_rate < ELISA_AUDIO_MIN_SAMPLE_RATE_HZ ||
+        sample_rate > ELISA_AUDIO_MAX_SAMPLE_RATE_HZ ||
+        channels < ELISA_AUDIO_MIN_CHANNEL_COUNT || channels > ELISA_AUDIO_MAX_CHANNEL_COUNT) {
         return ELISA_AUDIO_INVALID_ARGUMENT;
     }
     AudioService& state = audio_service();

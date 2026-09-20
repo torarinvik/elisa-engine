@@ -28,6 +28,12 @@ module AudioRuntime:
                 generation: u32
 
     private:
+        const module Limits:
+            MIN_SAMPLE_RATE_HZ: u32 = 8000
+            MAX_SAMPLE_RATE_HZ: u32 = 192000
+            MIN_CHANNEL_COUNT: u32 = 1
+            MAX_CHANNEL_COUNT: u32 = 2
+
         const module Status:
             OK: i32 = 0
             INVALID_ARGUMENT: i32 = -1
@@ -86,10 +92,19 @@ module AudioRuntime:
                     Status::BUS_UI
 
     public:
+        const MIN_SAMPLE_RATE_HZ: u32 = Limits::MIN_SAMPLE_RATE_HZ
+        const MAX_SAMPLE_RATE_HZ: u32 = Limits::MAX_SAMPLE_RATE_HZ
+        const MIN_CHANNEL_COUNT: u32 = Limits::MIN_CHANNEL_COUNT
+        const MAX_CHANNEL_COUNT: u32 = Limits::MAX_CHANNEL_COUNT
+
         def initialize_silent(sample_rate: u32, channels: u32) -> void error[AudioError]:
+            raise AudioError.InvalidArgument if sample_rate < MIN_SAMPLE_RATE_HZ or sample_rate > MAX_SAMPLE_RATE_HZ
+            raise AudioError.InvalidArgument if channels < MIN_CHANNEL_COUNT or channels > MAX_CHANNEL_COUNT
             try check_status(elisa_audio_v1_initialize_silent(sample_rate, channels))
 
         def initialize_default(sample_rate: u32, channels: u32) -> void error[AudioError]:
+            raise AudioError.InvalidArgument if sample_rate < MIN_SAMPLE_RATE_HZ or sample_rate > MAX_SAMPLE_RATE_HZ
+            raise AudioError.InvalidArgument if channels < MIN_CHANNEL_COUNT or channels > MAX_CHANNEL_COUNT
             try check_status(elisa_audio_v1_initialize_default(sample_rate, channels))
 
         def decode_file(path: cstr) -> ClipHandle error[AudioError]:
