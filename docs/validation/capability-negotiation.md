@@ -155,8 +155,9 @@ eight features for declared-fallback and unavailable outcomes, a mixed request
 with both a usable fallback and an unavailable service, and native routing in
 the aggregate report. The real SDL3/Metal application smoke verifies native
 Input routing, unavailable Physics rejection, and declared Physics and Audio
-fallback routing before their adapters run. `elisascript scripts/check.elisascript`
-and `DEVELOPER_DIR=/Library/Developer/CommandLineTools
+fallback routing before their adapters run. Engine commit `cbb5f39` passed the
+post-commit native smoke. `elisascript scripts/check.elisascript` and
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools
 ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
 python3 scripts/application_native_smoke.py` passed. F08 remains partial: the
 report makes decisions explicit but does not initialize fallback providers;
