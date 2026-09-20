@@ -94,6 +94,25 @@ module Capabilities:
                 BackendFeature.AssetLoading:
                     profile.capabilities.asset_loading
 
+        def fallback_supports(fallbacks: BackendCapabilities, feature: BackendFeature) -> bool:
+            match feature:
+                BackendFeature.Input:
+                    fallbacks.input
+                BackendFeature.Rendering:
+                    fallbacks.rendering
+                BackendFeature.Physics:
+                    fallbacks.physics
+                BackendFeature.Audio:
+                    fallbacks.audio
+                BackendFeature.NativeWindow:
+                    fallbacks.native_window
+                BackendFeature.AsyncUpload:
+                    fallbacks.async_upload
+                BackendFeature.Callbacks:
+                    fallbacks.callbacks
+                BackendFeature.AssetLoading:
+                    fallbacks.asset_loading
+
         def backend_limit(profile: BackendProfile, limit: BackendLimit) -> i64:
             match limit:
                 BackendLimit.Entities:
@@ -170,14 +189,18 @@ module Capabilities:
             for index in 0..<count |met: bool = true| -> met:
                 break false if not backend_supports(profile, required[index])
 
-        def negotiate_requirements(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize, allow_fallback: bool) -> RequirementState:
+        def negotiate_requirements(profile: BackendProfile,
+            required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
+            fallbacks: BackendCapabilities, allow_fallback: bool) -> RequirementState:
             return RequirementState.Invalid if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
             missing: mutable bool = false
             fallback: mutable bool = false
             for index in 0..<count |missing, fallback|:
                 if not backend_supports(profile, required[index]):
-                    missing <- true if not allow_fallback
-                    fallback <- true if allow_fallback
+                    if allow_fallback and fallback_supports(fallbacks, required[index]):
+                        fallback <- true
+                    else:
+                        missing <- true
             return RequirementState.Unavailable if missing
             RequirementState.Fallback if fallback else RequirementState.Ready
 
@@ -186,10 +209,12 @@ module Capabilities:
             for index in 0..<count |missing: BackendFeature = BackendFeature.Input| -> missing:
                 break required[index] if not backend_supports(profile, required[index])
 
-        def fallback_requirement_count(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> usize:
+        def fallback_requirement_count(profile: BackendProfile,
+            required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
+            fallbacks: BackendCapabilities) -> usize:
             return 0 if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
             for index in 0..<count |fallback: usize = 0| -> fallback:
-                fallback <- fallback + 1 if not backend_supports(profile, required[index])
+                fallback <- fallback + 1 if not backend_supports(profile, required[index]) and fallback_supports(fallbacks, required[index])
 
         def headless_profile() -> BackendProfile:
             BackendProfile{
