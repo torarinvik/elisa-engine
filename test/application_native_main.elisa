@@ -270,7 +270,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
     return 38 if invalid_profile != 0
     0
 
-def main() -> i32:
+def exercise_application() -> i32:
     config: Application::Config = Application::default_config()
     opened: Application::InitializeStatus = Application::initialize(config)
     return 1 if opened != Application::InitializeStatus.Ready
@@ -315,3 +315,12 @@ def main() -> i32:
     startup_status: i32 = check_startup_requirements(config)
     return startup_status if startup_status != 0
     0
+
+# The outer entry owns cleanup for every assertion path in the smoke body.
+# This mirrors the host contract: returning early from game code still closes
+# runtime services before the native process exits.
+def main() -> i32:
+    result: i32 = exercise_application()
+    shutdown_ok: bool = Application::shutdown()
+    return 103 if not shutdown_ok
+    result

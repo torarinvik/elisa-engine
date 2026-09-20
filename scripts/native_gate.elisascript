@@ -10,6 +10,9 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     _ = write_stderr(result.stderr)
     result.exit_status
 
+def run_native_stage(program: sview, arguments: darray[sview]) -> i64:
+    run_process(executable(program), arguments)
+
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 1:
         eprint("usage: elisascript scripts/native_gate.elisascript [quick|headless|native]")
@@ -43,6 +46,7 @@ def main(arguments: darray[sview]) -> i64:
     hygiene_status: i64 = hygiene_result.exit_status
     # -1 is an explicit skip. Zero is pass and positive values are failures.
     headless_status: mutable i64 = -1
+    application_status: mutable i64 = -1
     native_status: mutable i64 = -1
     if mode == "headless" or mode == "native":
         headless_result: ProcessCapture =
@@ -52,42 +56,24 @@ def main(arguments: darray[sview]) -> i64:
         _ = write_stderr(headless_result.stderr)
         headless_status <- headless_result.exit_status
     if mode == "native":
-        native_build_result: ProcessCapture =
-            empty_input: sview = ""
-            capture_process_result(executable(launcher), [str(root.joinpath("scripts/wicked_probe.elisascript")), "build"], empty_input)
-        _ = write_stdout(native_build_result.stdout)
-        _ = write_stderr(native_build_result.stderr)
-        native_status <- native_build_result.exit_status
+        application_status <- run_native_stage(python, [str(root.joinpath("scripts/application_native_smoke.py"))])
+        native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "build"])
         if native_status == 0:
-            native_frame_result: ProcessCapture =
-                empty_input: sview = ""
-                capture_process_result(executable(launcher), [str(root.joinpath("scripts/wicked_probe.elisascript")), "frame"], empty_input)
-            _ = write_stdout(native_frame_result.stdout)
-            _ = write_stderr(native_frame_result.stderr)
-            native_status <- native_frame_result.exit_status
+            native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "frame"])
         if native_status == 0:
-            native_rerun_result: ProcessCapture =
-                empty_input: sview = ""
-                capture_process_result(executable(launcher), [str(root.joinpath("scripts/wicked_probe.elisascript")), "rerun"], empty_input)
-            _ = write_stdout(native_rerun_result.stdout)
-            _ = write_stderr(native_rerun_result.stderr)
-            native_status <- native_rerun_result.exit_status
+            native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "rerun"])
         if native_status == 0:
-            native_verify_result: ProcessCapture =
-                empty_input: sview = ""
-                capture_process_result(executable(launcher), [str(root.joinpath("scripts/wicked_probe.elisascript")), "verify"], empty_input)
-            _ = write_stdout(native_verify_result.stdout)
-            _ = write_stderr(native_verify_result.stderr)
-            native_status <- native_verify_result.exit_status
+            native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "verify"])
     report_result: ProcessCapture =
         empty_input: sview = ""
-        capture_process_result(executable(python), [str(root.joinpath("scripts/write_native_gate_report.py")), str(report_path), mode, str(dependency_status), str(source_status), str(hygiene_status), str(headless_status), str(native_status)], empty_input)
+        capture_process_result(executable(python), [str(root.joinpath("scripts/write_native_gate_report.py")), str(report_path), mode, str(dependency_status), str(source_status), str(hygiene_status), str(headless_status), str(application_status), str(native_status)], empty_input)
     _ = write_stdout(report_result.stdout)
     _ = write_stderr(report_result.stderr)
     status: mutable i64 = dependency_status
     status <- source_status if status == 0 and source_status != 0
     status <- hygiene_status if status == 0 and hygiene_status != 0
     status <- headless_status if status == 0 and headless_status > 0
+    status <- application_status if status == 0 and application_status > 0
     status <- native_status if status == 0 and native_status > 0
     return report_result.exit_status if report_result.exit_status != 0
     status

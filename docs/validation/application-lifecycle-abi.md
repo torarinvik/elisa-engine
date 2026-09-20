@@ -25,7 +25,11 @@ exactly one frame, verifies the configured 320 by 200 dimensions and frame
 count, requests exit, observes the exit status, and shuts down.
 `scripts/application_native_smoke.py` creates a temporary project manifest and
 invokes the same generic runner against the pinned native libraries. The smoke
-is also part of `elisascript scripts/wicked_probe.elisascript build`.
+is part of both `elisascript scripts/wicked_probe.elisascript build` and the
+native gate's separately reported application stage. It runs the PhysicsRuntime
+and Audio fallback checks plus a failure-cleanup client that returns immediately
+after an injected assertion; the outer entry shuts down SDL3/Wicked and verifies
+that the backend profile is no longer available.
 `scripts/test_elisa_build_run.py` uses fake tools under temporary paths with
 spaces to check CLI help, manifest defaults and overrides, runtime setting
 delivery, input validation, argv preservation, project working directory, and
@@ -81,6 +85,8 @@ Validation: `scripts/application_native_smoke.py` verifies Elisa-authored code
 can initialize SDL's gamepad subsystem, pump one frame, drain the application
 event queue through `ActionInputRuntime`, read timing/window metrics, observe
 and consume a close-request edge, and shut down without game-owned C exports.
+Its native failure-cleanup client also proves that a returned assertion failure
+does not leave the application host active.
 `test/action_input.elisa` checks public codes and event-to-action behavior, while
 `test/application_gamepad_codes.cpp` checks SDL to
 portable key/button mappings, signed axis normalization, and digital/analog

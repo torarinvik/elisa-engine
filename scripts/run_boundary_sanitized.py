@@ -58,6 +58,7 @@ def main() -> int:
         "-I", str(brew_include / "freetype2"),
         "-I", str(brew_include / "harfbuzz"),
         str(ENGINE_ROOT / "native/boundary_harness.cpp"),
+        str(ENGINE_ROOT / "native/miniaudio_implementation.cpp"),
         *(str(lib) for lib in ozz_libs),
         *(str(lib) for lib in recast_libs),
         "-L", str(brew_library), "-lfreetype", "-lharfbuzz", "-lzstd",
