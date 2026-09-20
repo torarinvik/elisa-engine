@@ -18,7 +18,7 @@
       "kind": "git",
       "path_environment": "WICKED_ROOT",
       "path_default": "../WickedEngine",
-      "revision": "07aac680b0c68eab1ca4c04447ec97a618d5db5a",
+      "revision": "c1c93008e5273c6c59e6af6114f8bfaee308b0be",
       "artifacts": [
         "build-elisa-sdl3/WickedEngine/libWickedEngine.a",
         "build-elisa-sdl3/WickedEngine/libJolt.a"

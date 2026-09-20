@@ -13,6 +13,12 @@ extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
 
+@callconv(c)
+extern elisa_render_scene_v1_last_frame_center_patch_hash() -> u64
+
+@callconv(c)
+extern elisa_render_scene_v1_test_arc_capacity() -> i32
+
 def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> i32:
     catch RenderSnapshotScene::sync(presenter, snapshot):
         ok: 0
@@ -35,7 +41,21 @@ def hide_render_instance(handle: RenderScene::InstanceHandle) -> i32:
         ok: 0
         error failure: 1
 
-def main() -> i32:
+def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
+    batch: mutable RenderScene::ElectricArcBatch = RenderScene::ElectricArcBatch()
+    for index in 0..<RenderScene::MAX_ELECTRIC_ARCS:
+        _ = catch RenderScene::electric_arc_batch_append(&batch, handle):
+            ok: 0
+            error failure: return 1
+    return 1 if RenderScene::electric_arc_batch_count(batch) != RenderScene::MAX_ELECTRIC_ARCS
+    overflow: i32 = catch RenderScene::electric_arc_batch_append(&batch, handle):
+        ok: 0
+        RenderScene::RenderSceneError.Capacity: 1
+        error failure: 2
+    return 0 if overflow == 1 and RenderScene::electric_arc_batch_count(batch) == RenderScene::MAX_ELECTRIC_ARCS
+    2
+
+def exercise_render_scene() -> i32:
     config: Application::Config = Application::Config{
         title: "Elisa Render Scene Smoke",
         width: 320,
@@ -88,6 +108,40 @@ def main() -> i32:
         ok: 0
         error failure: 1
     return 33 if valid_camera != 0
+
+    invalid_arc_width: i32 = catch RenderScene::create_electric_arc(0.0, 0.1, 7):
+        value: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 87 if invalid_arc_width != 1
+    invalid_arc_amplitude: i32 = catch RenderScene::create_electric_arc(0.02, 1.0, 7):
+        value: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 88 if invalid_arc_amplitude != 1
+    electric_arc: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.06, 0.15, 7):
+        value: value
+        error failure: return 89
+    degenerate_arc: i32 = catch RenderScene::update_electric_arc(electric_arc,
+        Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 0.1, 1.0):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 90 if degenerate_arc != 1
+    arc_update: i32 = catch RenderScene::update_electric_arc(electric_arc,
+        Geometry::Vec3{x: -2.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}, 0.1, 1.0):
+        ok: 0
+        error failure: 1
+    return 91 if arc_update != 0
+    return 92 if check_arc_batch_capacity(electric_arc) != 0
+    arc_hidden: i32 = catch RenderScene::set_electric_arc_visible(electric_arc, false):
+        ok: 0
+        error failure: 1
+    return 93 if arc_hidden != 0
+    arc_shown: i32 = catch RenderScene::set_electric_arc_visible(electric_arc, true):
+        ok: 0
+        error failure: 1
+    return 94 if arc_shown != 0
 
     hud_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
         "LIVES  3", 16.0, 14.0, 24,
@@ -381,6 +435,31 @@ def main() -> i32:
         error failure: 2
     return 69 if stale_cooked_mesh != 1
 
+    _ = catch RenderScene::set_electric_arc_visible(electric_arc, false):
+        ok: 0
+        error failure: return 95
+    for attempt in 0..<3:
+        return 96 if Application::pump() != Application::PumpStatus.Running
+    hidden_arc_pixels: u64 = elisa_render_scene_v1_last_frame_center_patch_hash()
+    _ = catch RenderScene::set_electric_arc_visible(electric_arc, true):
+        ok: 0
+        error failure: return 97
+    for attempt in 0..<3:
+        return 98 if Application::pump() != Application::PumpStatus.Running
+    visible_arc_pixels: u64 = elisa_render_scene_v1_last_frame_center_patch_hash()
+    return 99 if hidden_arc_pixels == 0 or visible_arc_pixels == hidden_arc_pixels
+    destroyed_electric_arc: i32 = catch RenderScene::destroy_electric_arc(electric_arc):
+        ok: 0
+        error failure: 1
+    return 100 if destroyed_electric_arc != 0
+    stale_electric_arc: i32 = catch RenderScene::update_electric_arc(electric_arc,
+        Geometry::Vec3{x: -2.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}, 0.2, 1.0):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 101 if stale_electric_arc != 1
+    return 102 if elisa_render_scene_v1_test_arc_capacity() != 1
+
     destroyed_hud_text: i32 = catch RenderScene::destroy_overlay_text(hud_text):
         ok: 0
         error failure: 1
@@ -443,3 +522,9 @@ def main() -> i32:
         error failure: 2
     return 31 if post_shutdown != 1
     0
+
+def main() -> i32:
+    result: i32 = exercise_render_scene()
+    shutdown_ok: bool = Application::shutdown()
+    return 103 if not shutdown_ok
+    result

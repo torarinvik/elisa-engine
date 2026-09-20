@@ -113,28 +113,16 @@ public:
         : arcs_(arcs) {}
 
     void Render() const override {
-        const bool debug_was_enabled = wi::renderer::IsDebugDrawEnabled();
-        bool has_live_arc = false;
         if (arcs_ != nullptr) {
             for (const ElectricArcSlot& arc : *arcs_) {
                 if (arc.live && arc.visible) {
-                    has_live_arc = true;
-                    break;
-                }
-            }
-        }
-        if (has_live_arc && !debug_was_enabled) wi::renderer::SetDebugDrawEnabled(true);
-        if (has_live_arc && arcs_ != nullptr) {
-            for (const ElectricArcSlot& arc : *arcs_) {
-                if (arc.live && arc.visible) {
-                    wi::renderer::DrawTrail(&arc.halo);
-                    wi::renderer::DrawTrail(&arc.core);
-                    if (arc.branch.points.size() >= 2) wi::renderer::DrawTrail(&arc.branch);
+                    wi::renderer::DrawTrailRuntime(&arc.halo);
+                    wi::renderer::DrawTrailRuntime(&arc.core);
+                    if (arc.branch.points.size() >= 2) wi::renderer::DrawTrailRuntime(&arc.branch);
                 }
             }
         }
         wi::RenderPath3D::Render();
-        if (has_live_arc && !debug_was_enabled) wi::renderer::SetDebugDrawEnabled(false);
     }
 
 private:
