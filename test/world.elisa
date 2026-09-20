@@ -38,6 +38,8 @@ module World::Tests:
             actor_count: 0,
             enemies: zeroed,
             enemy_count: 0,
+            static_objects: zeroed,
+            static_object_count: 0,
         }
 
     def invalid_reference() -> EntityRef:
@@ -177,6 +179,43 @@ module World::Tests:
         return 36 if not world_is_valid(&world)
         0
 
+    def static_object_test() -> i32:
+        world: mutable World = catch World():
+            value: value
+            error failure: invalid_world()
+        structure: EntityRef = catch world_spawn(&world, StaticObject.Structure):
+            value: value
+            error failure: invalid_reference()
+        record: StaticObjectRecord = catch world_static_object_record(&world, structure):
+            value: value
+            error failure: StaticObjectRecord{id: -1, live: false}
+        return 70 if not record.live or record.id != structure.id
+        return 71 if world_static_object_count(&world) != 1 or world_live_count(&world) != 1
+        return 72 if entity_is_actor(StaticObject.Structure) or entity_is_enemy(StaticObject.Structure)
+        lookup: EntityLookup = catch world_lookup(&world, structure):
+            value: value
+            error failure: invalid_lookup(structure)
+        return 73 if not (lookup.kind is StaticObject.Structure)
+        initial_transform: mutable Geometry::Transform = Geometry::transform_identity()
+        return 74 if not world_try_transform(&world, structure, &initial_transform)
+        moved_transform: Geometry::Transform = Geometry::transform_translate(initial_transform,
+            Geometry::Vec3{x: 4.0, y: 0.0, z: -2.0})
+        set_transform: i32 = catch world_set_transform(&world, structure, moved_transform):
+            ok: 0
+            error failure: 1
+        return 75 if set_transform != 0 or not world_is_valid(&world)
+        removed: i32 = catch world_despawn(&world, structure):
+            ok: 0
+            error failure: 1
+        return 76 if removed != 0 or world_live_count(&world) != 0 or world_is_live(&world, structure)
+        world_compact(&world)
+        return 77 if world_static_object_count(&world) != 0 or not world_is_valid(&world)
+        replacement: EntityRef = catch world_spawn(&world, StaticObject.Structure):
+            value: value
+            error failure: invalid_reference()
+        return 78 if replacement.id <= structure.id or not world_is_valid(&world)
+        0
+
     def rollback_test() -> i32:
         world: mutable World = catch World():
             value: value
@@ -187,11 +226,17 @@ module World::Tests:
         enemy: EntityRef = catch world_spawn(&world, Enemy.Guard):
             value: value
             error failure: invalid_reference()
+        structure: EntityRef = catch world_spawn(&world, StaticObject.Structure):
+            value: value
+            error failure: invalid_reference()
         snapshot: World::Rollback::Snapshot = catch World::Rollback::capture(&world):
             value: value
-            error failure: World::Rollback::Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
+            error failure: World::Rollback::Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0}
         allocator_before: i64 = world_last_issued(&world)
         _ = catch world_despawn(&world, actor):
+            ok: true
+            error failure: false
+        _ = catch world_despawn(&world, structure):
             ok: true
             error failure: false
         restored: i32 = catch World::Rollback::restore(&world, &snapshot):
@@ -202,7 +247,10 @@ module World::Tests:
         actor_after: ActorRecord = catch world_actor_record(&world, actor):
             value: value
             error failure: ActorRecord{id: -1, live: false, health: -1}
-        return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live
+        structure_after: StaticObjectRecord = catch world_static_object_record(&world, structure):
+            value: value
+            error failure: StaticObjectRecord{id: -1, live: false}
+        return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live or not structure_after.live
         return 2 if world_last_issued(&world) != allocator_before
         third: EntityRef = catch world_spawn(&world, Actor.Player):
             value: value
@@ -217,7 +265,7 @@ module World::Tests:
             RollbackError.WrongWorld: 2
             error failure: 3
         return 4 if wrong_world != 2
-        invalid_snapshot: World::Rollback::Snapshot = World::Rollback::Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0}
+        invalid_snapshot: World::Rollback::Snapshot = World::Rollback::Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0}
         rejected_snapshot: i32 = catch World::Rollback::restore(&world, &invalid_snapshot):
             ok: 0
             RollbackError.InvalidSnapshot: 1
@@ -399,6 +447,8 @@ module World::Tests:
         return interleaving if interleaving != 0
         capacity: i32 = capacity_test()
         return capacity if capacity != 0
+        static_objects: i32 = static_object_test()
+        return static_objects if static_objects != 0
         rollback: i32 = rollback_test()
         return 50 + rollback if rollback != 0
         block_tuple: i32 = block_tuple_test()
