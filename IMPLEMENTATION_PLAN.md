@@ -1,7 +1,7 @@
 # Elisa Engine — native implementation backlog
 
-**Updated:** 2026-09-19. **Focus:** Wicked + SDL3 + specialist libraries.
-**Baseline:** engine `4ab8496`; inspect the current tree before starting work.
+**Updated:** 2026-09-20. **Focus:** reusable Wicked + SDL3 backend services and their library integrations.
+**Baseline:** engine `867ccd5`; inspect the current tree before starting work.
 This is the active execution plan. [Architecture](Elisa_Engine_Architecture_and_Plan.md)
 defines the ownership model; [capabilities](docs/capabilities.md) records evidence.
 Unfinished tasks below are proposals, not claims of existing engine support.
@@ -16,6 +16,10 @@ and packaged games using the same Elisa-owned world and public API.
 - **P1:** deliver the common features needed to build and ship a substantial 3D game.
 - **P2:** add depth, scale, multiplayer, production tooling, and broader platforms.
 - **P3:** specialist capabilities, with a real example and a measured need.
+- Near-term work prioritizes making the existing Wicked, SDL3, Jolt, miniaudio,
+  cgltf, BasisU, meshoptimizer, ozz, Recast/Detour, and GameNetworkingSockets
+  integrations into usable engine services. Prefer finishing these vertical slices
+  over adding another dependency or a probe-only wrapper.
 - Godot receives compatibility maintenance for changed shared contracts. New features
   may initially be native-only; report unsupported capabilities explicitly. Godot
   installation or renderer feature parity must not block the native development gate.
@@ -75,13 +79,15 @@ The existing source inventory is the starting point, not a reason to rewrite wor
 | Milestone | Exit evidence | Main task groups |
 |---|---|---|
 | M0 — reusable host | Visible interactive maze, proper close, resize, restart, reproducible native-only command; existing probes still pass | F01–F10, R01, I01 |
-| M1 — reusable game runtime | Authored scene with multiple assets, streamed resources, PBR, collisions, save/load; no maze-specific host logic | W01–W06, A01–A06, R02–R05, P01–P04, S01–S02 |
+| M1 — reusable game runtime | Authored scene with multiple assets, streamed resources, PBR, collisions, save/load; no maze-specific host logic | W01–W06, A01–A06, R02–R05, R13, R15, P01–P04, S01–S02 |
 | M2 — character playground | Animated controllable character, terrain/slopes, moving platforms, nav agents, spatial sound, debug overlays | C01–C08, N01–N04, P05–P08, S03–S04, R06–R09 |
 | M3 — author and package | Editor creates/edits/saves a second game; standalone Release package runs outside the source tree | E01–E09, I02–I07, Q01–Q04, Q07 |
 | M4 — scale and network | Measured crowd/streaming scene and two-process multiplayer game; soak tests and native CI evidence | W07–W10, N05–N06, T01–T08, Q05–Q09 |
 | M5 — breadth | Tested opt-in advanced systems, each exercised by a shipped example | Remaining P2/P3 tasks |
 
-**First task: F01**, then F02 to make the existing maze a persistent reusable host.
+**Next foundation work: F05, F08, and F10**, then complete R01 so an Elisa world
+drives the persistent Wicked scene instead of the diagnostic manifest. Continue with
+the P1 rendering, physics, asset, audio, and input services in dependency order.
 Do not restart completed identity or field-privacy work. Milestones are outcome gates;
 individual feature tasks may advance as soon as their explicit dependencies are ready.
 
@@ -104,7 +110,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 - [x] **F07 · P0 · Coordinate and numeric conventions** — After: F04.
   Centralize units, handedness, matrix order, quaternion layout, depth, winding, tangent parity, and camera conversion instead of probe-local sign flips. Done: round trips and an asymmetric scene validate render, physics, skinning, ray picking, and negative/nonuniform scale conventions. `native/coordinate_abi.h` v2 validates/converts column-major affine matrices, normalized XYZW quaternions, and signed tangent-frame parity; `native/coordinate_transform_bridge.h` submits TRS/matrix payloads to Wicked with explicit units and row-vector conversion, rejecting shear. Elisa and native tests apply the same basis-reflection and negative-scale rule. Wicked commit `a149914` stores world-transform orientation in existing `ShaderMeshInstance` padding and applies it to raster and ray-tracing tangent frames; the normal-mapped asymmetric signed-scale render compares exact rerun pixels against [`backends/coordinate_reference.png`](backends/coordinate_reference.png). Picking verifies a center hit and a miss beyond a negatively/nonuniformly scaled cube. A dynamic signed-scale box is stepped and queried against Jolt; Wicked commit `bf8945b` uses scale magnitudes for primitive collision dimensions. The skin fixture uploads Elisa-deformed vertices, applies a signed nonuniform transform, uses shared winding parity, and checks all four resulting Wicked world positions. Evidence: [`docs/validation/coordinate-conventions.md`](docs/validation/coordinate-conventions.md); `scripts/check.elisascript` and the two-pass `scripts/wicked_probe.elisascript` passed.
 - [ ] **F08 · P0 · Runtime capability negotiation** — After: F04.
-  Replace coarse profile assumptions with queried service/format/limit/feature support and explicit fallback policy. Done: unavailable renderer features and missing optional libraries yield actionable errors or tested fallbacks; a dependency's advertised feature cannot automatically mark the engine capability supported. Progress: Elisa resolves bounded feature and limit requirements into `Ready`, `Fallback`, `Unavailable`, or `Invalid`; `negotiate_limit` includes remaining memory, and typed texture negotiation matches the native BC1/normal-map/alpha fallback rules. `negotiate_requirements` now needs an explicit per-feature fallback capability map and returns `Unavailable` when a missing service has no declared handler, even if callers globally allow fallback. ABI v2 in `native/capability_abi.h` carries optional graphics bits, queried RGBA8/BC1/R16F support, memory budget/usage, and actual Wicked high-priority/streaming worker counts. Typed C queries validate individual features, formats, and viewport/worker/memory limits; unknown bits and inconsistent profiles are rejected. Evidence: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md), the full Elisa suite, and the two-pass native gate. Mapping a live host profile into runtime services and broader service-specific fallback matrices remain.
+  Replace coarse profile assumptions with queried service/format/limit/feature support and explicit fallback policy. Done: unavailable renderer features and missing optional libraries yield actionable errors or tested fallbacks; a dependency's advertised feature cannot automatically mark the engine capability supported. Progress: Elisa resolves bounded feature and limit requirements into `Ready`, `Fallback`, `Unavailable`, or `Invalid`; `negotiate_limit` includes remaining memory, and typed texture negotiation matches the native BC1/normal-map/alpha fallback rules. `negotiate_requirements` now needs an explicit per-feature fallback capability map and returns `Unavailable` when a missing service has no declared handler, even if callers globally allow fallback. `test/capabilities.elisa` now exercises declared, missing, and disallowed fallback behavior independently for all eight service features. ABI v2 in `native/capability_abi.h` carries optional graphics bits, queried RGBA8/BC1/R16F support, memory budget/usage, and actual Wicked high-priority/streaming worker counts. Typed C queries validate individual features, formats, and viewport/worker/memory limits; unknown bits and inconsistent profiles are rejected. Evidence: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md), the full Elisa suite, and the two-pass native gate. Mapping a live host profile into runtime services remains.
 - [x] **F09 · P0 · SDL3 lifecycle and frame pacing** — After: F02, F07.
   Handle focus, high-DPI resize, minimize, fullscreen, display changes, close, and suspended simulation; separate fixed ticks from presentation. Done: zero-sized windows and variable render cadence do not corrupt simulation, busy-spin, stretch viewports, or lose input transitions. `NativeApplication::WindowState` suspends on focus loss, minimize, or zero pixel extent; `run_frame()` skips presentation while suspended, and `advance_fixed()` clears backlog. Backing size and DPI come from Wicked's native window properties to preserve Cocoa Retina drawable dimensions; window metric changes recreate the existing Metal swapchain and refresh the canvas before presentation. `native/input_tick_queue.h` keeps movement and restart events in bounded FIFO order until fixed ticks consume them; overflow is explicit. Evidence: [`docs/validation/sdl3-lifecycle.md`](docs/validation/sdl3-lifecycle.md); the two-pass native gate passed synthetic display-change, actual SDL resize/fullscreen/backbuffer checks, and fixed-tick input tests; the persistent-host self-test passed pause/resume, restart, movement, and close.
 - [ ] **F10 · P0 · Native-first validation command** — After: F03, F05, F08, F09.
@@ -215,6 +221,18 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Package versioned shaders, permutations, compilation diagnostics, and pipeline-cache keys; support offline preparation where the backend permits it. Done: clean-machine startup uses packaged inputs, cache invalidation is correct, and cold/warm frame hitches are measured separately.
 - [ ] **R14 · P2 · Device failure and rendering recovery** — After: F05, F06, R13.
   Define device/swapchain failure reporting and recover or exit cleanly using authoritative asset/world state. Done: injected upload/resize/device failures release resources safely; recovery, where supported, reconstructs the scene without duplicating gameplay entities.
+- [ ] **R15 · P1 · Render graph and transient targets** — After: F06, R03, R13.
+  Let Elisa define ordered render passes, resource reads/writes, transient targets, and explicit dependencies over Wicked's supported paths. Done: a multi-pass authored scene rejects cycles and read/write hazards, reuses transient memory safely, and survives resize, suspension, and pass failure with reference captures.
+- [ ] **R16 · P2 · GPU compute and indirect workloads** — After: F08, R13, R15.
+  Expose only compute and indirect-draw operations supported by the pinned Wicked backend, with bounded dispatch descriptors, resource ownership, and completion tracking. Done: one real workload (such as culling or particle simulation) has a CPU fallback, capability negotiation, output validation, and measured cost on supported hardware.
+- [ ] **R17 · P1 · Asynchronous GPU readback and capture** — After: F06, F10, R03, R15.
+  Add a bounded staging/readback queue for screenshots, editor thumbnails, validation images, and GPU query results without blocking ordinary frames. Done: fence completion, cancellation, resize, queue saturation, and device failure are tested; captures identify their frame and dimensions and match a stable reference.
+- [ ] **R18 · P2 · Multiple native windows and render surfaces** — After: F09, R03, R14.
+  Own SDL3 windows and Wicked swapchains as independent generation-checked surfaces, each with its own resize, DPI, suspension, and close lifecycle. Done: an editor and a detached game view render simultaneously, and destroying either surface leaves the other and the game world usable.
+- [ ] **R19 · P2 · Texture residency and mip streaming** — After: A04, A06, F08, R15.
+  Connect cooked mip chains and queried format support to bounded asynchronous Wicked uploads, residency budgets, and eviction policy. Done: camera demand streams detail in and out without invalidating materials, exceeding configured memory, or stalling the render thread; unsupported formats use explicit tested fallbacks.
+- [ ] **R20 · P1 · Render diagnostics and GPU budgets** — After: R02, R15.
+  Report per-pass CPU/GPU timing, draw and upload counts, resource bytes, and frame markers through the engine's Tracy integration. Done: a representative scene produces reproducible warm/cold frame reports and regression thresholds, with unavailable GPU timings labeled rather than fabricated.
 
 ## P — physics and collision
 

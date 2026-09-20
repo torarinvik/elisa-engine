@@ -1,7 +1,55 @@
 include "../src/backend/capabilities.elisa"
 using Capabilities
 
+def one_feature(feature: BackendFeature) -> BackendFeature[8]:
+    [feature, feature, feature, feature, feature, feature, feature, feature]
+
+def fallback_for(feature: BackendFeature) -> BackendCapabilities:
+    match feature:
+        BackendFeature.Input:
+            BackendCapabilities{input: true, rendering: false, physics: false, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+        BackendFeature.Rendering:
+            BackendCapabilities{input: false, rendering: true, physics: false, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+        BackendFeature.Physics:
+            BackendCapabilities{input: false, rendering: false, physics: true, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+        BackendFeature.Audio:
+            BackendCapabilities{input: false, rendering: false, physics: false, audio: true, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+        BackendFeature.NativeWindow:
+            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: true, async_upload: false, callbacks: false, asset_loading: false}
+        BackendFeature.AsyncUpload:
+            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: false, async_upload: true, callbacks: false, asset_loading: false}
+        BackendFeature.Callbacks:
+            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: false, async_upload: false, callbacks: true, asset_loading: false}
+        BackendFeature.AssetLoading:
+            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: true}
+
+def fallback_matrix_valid() -> bool:
+    no_services: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: false, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    profile: BackendProfile = BackendProfile{
+        kind: BackendKind.Native,
+        capabilities: no_services,
+        limits: BackendLimits{
+            max_entities: 1, max_texture_dimension: 1, max_upload_bytes: 1,
+            workers: 1, memory_budget_bytes: 1, memory_usage_bytes: 0,
+        },
+        texture_formats: BackendTextureFormats{rgba8: false, bc1: false, r16_float: false},
+        service_version: 1,
+    }
+    features: BackendFeature[8] = [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Physics, BackendFeature.Audio, BackendFeature.NativeWindow, BackendFeature.AsyncUpload, BackendFeature.Callbacks, BackendFeature.AssetLoading]
+    for index in 0..<8 |valid: bool = true| -> valid:
+        feature: BackendFeature = features[index]
+        required: BackendFeature[8] = one_feature(feature)
+        fallback: BackendCapabilities = fallback_for(feature)
+        break false if negotiate_requirements(profile, required, 1, fallback, true) != RequirementState.Fallback
+        break false if fallback_requirement_count(profile, required, 1, fallback) != 1
+        break false if negotiate_requirements(profile, required, 1, fallback, false) != RequirementState.Unavailable
+        break false if negotiate_requirements(profile, required, 1, no_services, true) != RequirementState.Unavailable
+
 def main() -> i32:
+    return 41 if not fallback_matrix_valid()
     headless: BackendProfile = headless_profile()
     return 1 if headless.kind != BackendKind.Headless or not backend_profile_valid(headless)
     return 2 if not backend_supports(headless, BackendFeature.Input)
