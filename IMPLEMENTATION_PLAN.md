@@ -100,8 +100,9 @@ the public API connected to a real Elisa client.
 1. **F08 — finish service fallback integration.** Keep the live native profile honest,
    return a typed provider with each fallback route, reject mismatched provider/service
    pairs, and apply a route only after its adapter initializes successfully. Then test
-   rollback for each startup failure. Physics and Audio adapter smokes pass; full provider
-   initialization and rollback coverage remain.
+   rollback for each startup failure. Physics and Audio adapter smokes pass, including one
+   failed Audio activation and shutdown/retry; remaining provider-specific rollback paths
+   need coverage.
 2. **R01 — finish game-owned rendering.** Replace maze/manifest render submission with
    one bounded transactional batch derived from the Elisa `World`; carry entity and
    asset identity through create/update/despawn and test rollback on partial failure.
