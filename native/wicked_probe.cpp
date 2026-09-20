@@ -50,6 +50,7 @@
 #include "physics_query_bridge.h"
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
+#include "debug_draw_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -439,13 +440,11 @@ int main(int argc, char** argv) {
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
     render_path.camera = camera_component;
-    // No occlusion queries in a one-shot probe: unprimed query heaps can
-    // hold skips across frames with nothing ever proving visibility.
+    // Disable occlusion queries because this one-shot probe has no primed history.
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);
-    // Native UI: build and verify Wicked GUI buttons from the menu state, then
-    // remove them so the captured frame is unchanged.
+    // Build and remove native UI buttons so the captured frame is unchanged.
     if (!probe_wicked_gui(render_path.GetGUI(), manifest)) {
         return 1;
     }
@@ -468,10 +467,7 @@ int main(int argc, char** argv) {
         }
         wi::helper::Sleep(16);
     }
-    // NOTE (depth experiment 2026-09-18): forcing the depth clear to 1.0
-    // changed nothing versus the 0.0 default, so depth convention is not
-    // the sole gate. The forcing lines were removed again to leave
-    // engine state at defaults.
+    // Depth-clear experiment was inconclusive; leave engine defaults intact.
     // Settle loop: pipeline states compile in the background on first use
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
@@ -570,6 +566,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!run_library_probes(application, scene, manifest)) {
+        return 1;
+    }
+    if (!probe_debug_draw_bridge()) {
         return 1;
     }
     scene.Entity_Remove(object);
