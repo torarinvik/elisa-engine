@@ -10,7 +10,9 @@ error thresholds, changed material subsets, and capacity overflow. Selection
 returns the most detailed level that fits the requested screen-error budget.
 The native cook stage can populate this contract with optimized, simplified,
 compressed meshes and optional meshlets once the active Wicked path consumes
-those artifacts.
+those artifacts. The native gate now simplifies the authored primitive to a
+bounded lower-index LOD, reports the resulting geometric error, and keeps the
+original material subset attached to the uploaded render mesh.
 
 `test/asset_lod.elisa` covers deterministic fine/coarse selection, material
 subset preservation, and rejection of invalid ordering and subset changes.

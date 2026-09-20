@@ -29,4 +29,30 @@ inline bool optimize_vertex_cache(std::vector<uint32_t>& indices, size_t vertex_
     return check(after.acmr <= before.acmr + 0.0001, "meshoptimizer does not worsen the vertex cache");
 }
 
+inline bool simplify_lod(const std::vector<float>& positions,
+    const std::vector<uint32_t>& source_indices, size_t target_index_count,
+    float target_error, std::vector<uint32_t>& output, float& result_error) {
+    if (positions.empty() || positions.size() % 3 != 0 || source_indices.size() < 3 ||
+        source_indices.size() % 3 != 0 || target_index_count < 3 ||
+        target_index_count >= source_indices.size() || target_error < 0.0f) return false;
+    for (uint32_t index : source_indices) {
+        if (index >= positions.size() / 3) return false;
+    }
+    output.resize(source_indices.size());
+    result_error = 0.0f;
+    const size_t simplified = meshopt_simplify(
+        output.data(), source_indices.data(), source_indices.size(), positions.data(),
+        positions.size() / 3, sizeof(float) * 3, target_index_count, target_error,
+        meshopt_SimplifyPermissive,
+        &result_error);
+    if (simplified < 3 || simplified > target_index_count || simplified % 3 != 0) {
+        output.clear();
+        return false;
+    }
+    output.resize(simplified);
+    std::fprintf(stdout, "meshoptimizer LOD: source_indices=%u lod_indices=%u error=%.6f\n",
+        (unsigned)source_indices.size(), (unsigned)output.size(), result_error);
+    return true;
+}
+
 } // namespace probe

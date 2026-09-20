@@ -217,6 +217,12 @@ int main(int argc, char** argv) {
             if (!check(gltf_primitive.ok && !gltf_primitive.positions.empty() &&
                 gltf_primitive.indices.size() == static_cast<size_t>(expected_triangles) * 3,
                 "glTF primitive decoded for native upload")) return 1;
+            std::vector<uint32_t> lod_indices;
+            float lod_error = 0.0f;
+            if (!check(simplify_lod(gltf_primitive.positions, gltf_primitive.indices,
+                gltf_primitive.indices.size() * 2 / 3, 1.0f, lod_indices, lod_error) &&
+                lod_indices.size() < gltf_primitive.indices.size(),
+                "meshoptimizer LOD cook")) return 1;
             gltf_package.format = "elisa-gltf-native";
             gltf_package.triangles = expected_triangles;
             gltf_package.positions = static_cast<long long>(gltf_primitive.positions.size() / 3);
@@ -359,7 +365,6 @@ int main(int argc, char** argv) {
         }
     }
     std::fprintf(stdout, "markers created=%u\n", (unsigned)marker_entities.size());
-
     wi::physics::SetSimulationEnabled(true);
     const auto physics_box = scene.Entity_CreateCube("elisa_physics_box");
     if (!check(physics_box != wi::ecs::INVALID_ENTITY, "physics cube entity")) {
@@ -380,7 +385,6 @@ int main(int argc, char** argv) {
     physics_transform->UpdateTransform();
     const float physics_start_y = physics_transform->GetPosition().y;
     if (!probe_physics_pause(application, *physics_transform)) return 1;
-
     std::vector<std::pair<int, int>> hunter_route;
     {
         const auto route_it = manifest.find("hunter_route");
@@ -388,7 +392,6 @@ int main(int argc, char** argv) {
             hunter_route = parse_walls(route_it->second);
         }
     }
-
     auto* object_transform = scene.transforms.GetComponent(object);
     auto* mesh = scene.meshes.GetComponent(object);
     auto* camera_transform = scene.transforms.GetComponent(camera);
@@ -412,7 +415,6 @@ int main(int argc, char** argv) {
     cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
     lamp_transform->translation_local = to_wicked_space(2.0f, 3.0f, -2.0f);
     lamp_transform->UpdateTransform();
-
     object_transform->translation_local = to_wicked_space(object_x, object_y, object_z);
     // One maze cell wide, so the player occupies exactly its own cell on the
     // marker plane instead of hiding neighbouring game objects.
@@ -478,7 +480,6 @@ int main(int argc, char** argv) {
     if (!probe_audio(manifest)) {
         return 1;
     }
-
     // Frame timing: the plan asks for measured frame time with median and
     // tail, not a "zero overhead" claim. These are hidden, trivial frames,
     // so the numbers are a floor for this scene, not a performance promise;
@@ -545,7 +546,6 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::fprintf(stdout, "scene create/update/render passed\n");
-
     const char* screenshot_path = argc >= 4 ? argv[3] : "wicked-frame.png";
     print_scene_diagnostics(scene, render_path, mesh, camera_component, object);
     const wi::graphics::Texture presented = wi::graphics::GetDevice()->GetBackBuffer(&application.swapChain);
