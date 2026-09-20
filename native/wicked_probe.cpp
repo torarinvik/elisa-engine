@@ -46,6 +46,7 @@
 #include "package_bounds_probe.h"
 #include "render_snapshot_bridge.h"
 #include "physics_body_bridge.h"
+#include "physics_interpolation_probe.h"
 #include "physics_query_bridge.h"
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
@@ -99,6 +100,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_fixed_step_pacing()) return 1;
+    if (!probe_physics_interpolation()) return 1;
     if (!persistent_host && !probe_window_lifecycle(application_host)) return 1;
     wi::scene::Scene scene;
     if (!probe_render_snapshot_bridge(scene)) return 1;
@@ -432,10 +434,8 @@ int main(int argc, char** argv) {
     camera_transform->translation_local = to_wicked_space(camera_x, camera_y, camera_z);
     camera_transform->UpdateTransform();
     camera_component->TransformCamera(*camera_transform);
-    // TransformCamera only refreshes view matrices; the frustum used for
-    // culling is rebuilt here, otherwise everything stays culled forever.
+    // Refresh the frustum after TransformCamera or the scene stays culled.
     camera_component->UpdateCamera();
-
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
     render_path.camera = camera_component;
