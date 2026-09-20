@@ -152,6 +152,19 @@ not batch arbitrary renderer calls; snapshot reconciliation has its own
 transactional native submission. The renderer does not yet expose shared mesh
 residency, FBX material mapping, parenting, general lighting, or editor tooling.
 
+Maze-world native integration follow-up, 2026-09-21: the native scene smoke now
+includes `test/maze_rendering_native.elisa`. It constructs the maze presentation
+from public topology and game state, submits the 40-row initial snapshot through
+the transactional `SnapshotPresenter`, plays the winning trace, checks key
+removal and the opened-door material, verifies restart restores 40 native
+instances, and clears the presenter back to zero instances. Validation passed:
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
+python3 scripts/render_scene_native_smoke.py` on the SDL3/Metal Wicked backend.
+The demo's interactive native host still builds its maze from the diagnostic
+manifest, and these stable asset IDs still render placeholder boxes until cooked
+asset and material resolution are connected.
+
 Electric arc follow-up, 2026-09-20: Wicked commit `c1c9300` adds a runtime trail
 queue that is independent of debug drawing. Engine commit `bef49cc` integrates
 bounded Elisa arc handles and records invalid-input, 1,024-slot capacity,

@@ -6,6 +6,10 @@ include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
+include "./maze_rendering_native.elisa"
+using Maze
+using MazeGame
+using MazeTrace
 
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
@@ -572,6 +576,8 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 39 if stale_after_scene_replacement != 1
+    maze_snapshot: i32 = MazeRenderingNativeTests::exercise()
+    return 120 + maze_snapshot if maze_snapshot != 0
     final_handle: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Plane,
         Geometry::transform_identity(), RenderScene::Color{red: 0.9, green: 0.75, blue: 0.1, alpha: 1.0}):
         value: value
