@@ -11,11 +11,15 @@
 
 namespace probe {
 
+enum class NativeAlphaMode : uint8_t { Opaque, Mask, Blend };
+
 struct NativePbrDesc {
     XMFLOAT4 base_color = XMFLOAT4(1, 1, 1, 1);
     XMFLOAT4 emissive = XMFLOAT4(0, 0, 0, 0);
     float metallic = 0.0f;
     float roughness = 0.5f;
+    float alpha_cutoff = 0.5f;
+    NativeAlphaMode alpha_mode = NativeAlphaMode::Opaque;
     bool double_sided = false;
     bool cast_shadow = true;
 };
@@ -99,7 +103,9 @@ private:
             desc.emissive.x >= 0.0f && desc.emissive.y >= 0.0f && desc.emissive.z >= 0.0f &&
             desc.emissive.w >= 0.0f && std::isfinite(desc.metallic) && desc.metallic >= 0.0f &&
             desc.metallic <= 1.0f && std::isfinite(desc.roughness) && desc.roughness >= 0.04f &&
-            desc.roughness <= 1.0f;
+            desc.roughness <= 1.0f && std::isfinite(desc.alpha_cutoff) &&
+            desc.alpha_cutoff >= 0.0f && desc.alpha_cutoff <= 1.0f &&
+            desc.alpha_mode <= NativeAlphaMode::Blend;
     }
 
     void apply(wi::ecs::Entity entity, const NativePbrDesc& desc) {
@@ -109,6 +115,9 @@ private:
         material->SetEmissiveColor(desc.emissive);
         material->SetMetalness(desc.metallic);
         material->SetRoughness(desc.roughness);
+        material->SetAlphaRef(desc.alpha_mode == NativeAlphaMode::Mask ? desc.alpha_cutoff : 1.0f);
+        material->userBlendMode = desc.alpha_mode == NativeAlphaMode::Blend
+            ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
         material->SetCastShadow(desc.cast_shadow);
         if (desc.double_sided) material->_flags |= wi::scene::MaterialComponent::DOUBLE_SIDED;
         else material->_flags &= ~wi::scene::MaterialComponent::DOUBLE_SIDED;
@@ -130,6 +139,8 @@ inline bool probe_pbr_material_bridge(wi::scene::Scene& scene) {
     desc.emissive = XMFLOAT4(0.01f, 0.02f, 0.04f, 2.0f);
     desc.metallic = 0.8f;
     desc.roughness = 0.25f;
+    desc.alpha_mode = NativeAlphaMode::Mask;
+    desc.alpha_cutoff = 0.42f;
     desc.double_sided = true;
     const auto handle = bridge.create(desc);
     wi::graphics::TextureDesc texture_desc;
@@ -143,15 +154,24 @@ inline bool probe_pbr_material_bridge(wi::scene::Scene& scene) {
     const bool texture_created = wi::graphics::GetDevice()->CreateTexture(&texture_desc, &texture_data, &texture);
     wi::Resource texture_resource;
     if (texture_created) texture_resource.SetTexture(texture);
+    auto* material = scene.materials.GetComponent(scene.Entity_FindByName("elisa_material_0"));
     if (!check(bridge.live(handle), "pbr material creates a handle") ||
+        !check(material != nullptr && material->IsAlphaTestEnabled() && material->alphaRef == 0.42f,
+            "pbr material applies alpha mask") ||
         !check(bridge.update(handle, desc) && !bridge.update(
             NativeMaterialHandle{handle.slot, handle.generation, 0}, desc),
             "pbr material updates and rejects foreign handle") ||
         !check(texture_created && bridge.set_texture(handle, wi::scene::MaterialComponent::BASECOLORMAP,
             texture_resource) && !bridge.set_texture(handle, wi::scene::MaterialComponent::TEXTURESLOT_COUNT,
             texture_resource), "pbr material binds a texture slot") ||
-        !check(!bridge.create(NativePbrDesc{desc.base_color, desc.emissive, 0.8f, 0.0f, true, true}).owner,
+        !check(!([&]() { NativePbrDesc invalid = desc; invalid.roughness = 0.0f; return bridge.create(invalid).owner; })(),
             "pbr material rejects invalid roughness")) return false;
+    desc.alpha_mode = NativeAlphaMode::Blend;
+    if (!check(bridge.update(handle, desc) && material->GetBlendMode() == wi::enums::BLENDMODE_ALPHA,
+        "pbr material applies alpha blend")) return false;
+    desc.alpha_mode = NativeAlphaMode::Opaque;
+    if (!check(bridge.update(handle, desc) && material->GetBlendMode() == wi::enums::BLENDMODE_OPAQUE &&
+            material->alphaRef == 1.0f, "pbr material applies opaque alpha")) return false;
     if (!check(bridge.destroy(handle) && !bridge.live(handle) && scene.objects.GetCount() == before,
         "pbr material unloads without object growth")) return false;
     return true;
