@@ -7,11 +7,11 @@ versioned C symbols live in `native/application_abi.h` and
 instance and do not expose vendor types to Elisa callers.
 
 The application author provides the ordinary Elisa `main()`. The engine-owned
-`scripts/elisa_build_run.py build|run` command accepts a project directory.
-Main and output paths, and default title/window options, come from
-`elisa.project.json`; command-line main/output arguments override the manifest.
-The runner includes `src/runtime/public.elisa`, which
-provides `Application`, `ActionInput`, `RenderScene`, and `Geometry` to the
+`scripts/elisa_build_run.py build|run` command accepts a project directory and
+reads the entry point, output path, and optional application defaults from
+`elisa.project.json`; `--main` and `--output` can override its paths. It
+includes `src/runtime/public.elisa`, which provides `Application`,
+`ActionInput`, `RenderScene`, `WorldRendering`, and `Geometry` to the
 project without requiring engine-relative include paths,
 compiles the Elisa entry point to an archive, rejects game-owned C exports from
 the compiler's ABI manifest, and links that archive with the shared native
@@ -19,14 +19,18 @@ facade. All child tools receive argument arrays; project, source, dependency,
 and output paths may contain spaces. `run` starts the executable with the
 project directory as its working directory.
 
-The native gate's `test/application_native_main.elisa` initializes a hidden
-window, pumps exactly one frame, verifies the frame count, requests exit,
-observes the exit status, and shuts down. `scripts/application_native_smoke.py`
+The native gate's `test/application_native_main.elisa` obtains its configuration
+through `Application::default_config()`, initializes a hidden window, pumps
+exactly one frame, verifies the configured 320 by 200 dimensions and frame
+count, requests exit, observes the exit status, and shuts down.
+`scripts/application_native_smoke.py` creates a temporary project manifest and
 invokes the same generic runner against the pinned native libraries. The smoke
 is also part of `elisascript scripts/wicked_probe.elisascript build`.
 `scripts/test_elisa_build_run.py` uses fake tools under temporary paths with
-spaces to check CLI help, argv preservation, project working directory, and
-that a failed compile never runs an old output executable.
+spaces to check CLI help, manifest defaults and overrides, runtime setting
+delivery, input validation, argv preservation, project working directory, and
+that a failed compile never runs an old output executable. The native build
+stage runs these runner tests before its lifecycle and render-scene smokes.
 
 The native link recipe currently supports macOS with SDL3/Metal. Configure
 `WICKED_ROOT` and `WICKED_BUILD` for the engine backend; configure `SDL3_ROOT`

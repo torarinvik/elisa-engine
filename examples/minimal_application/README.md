@@ -13,9 +13,9 @@ python3 "/path/to/elisa-engine/scripts/elisa_build_run.py" run \
   --project "/path/to/elisa-engine/examples/minimal_application"
 ```
 
-The sample manifest sets the entry point, output path and window options. The
-app opens a window, runs one frame, and exits so it is safe to use as a first
-build check. A project can import `ActionInput` for game actions and
+The project manifest sets the entry point, output path, and window defaults.
+The app opens a window, runs one frame, and exits so it is safe to use as a
+first build check. A project can import `ActionInput` for game actions and
 `RenderScene` to create and transform primitive instances through Elisa.
 
 The runner uses `WICKED_ROOT` (defaulting to a sibling `WickedEngine` checkout)

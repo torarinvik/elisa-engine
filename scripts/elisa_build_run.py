@@ -174,7 +174,7 @@ def load_project_config(project: Path) -> dict[str, object]:
         return {}
     try:
         value = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise BuildConfigurationError(f"Could not read {manifest}: {error}") from error
     if not isinstance(value, dict):
         raise BuildConfigurationError(f"{manifest} must contain a JSON object")
@@ -189,7 +189,11 @@ def application_settings(config: dict[str, object]) -> dict[str, object]:
     width = application.get("width", 1280)
     height = application.get("height", 720)
     hidden = application.get("hidden", False)
-    if not isinstance(title, str) or not title or len(title.encode("utf-8")) >= 256:
+    try:
+        title_size = len(title.encode("utf-8")) if isinstance(title, str) else 0
+    except UnicodeEncodeError as error:
+        raise BuildConfigurationError("application title must be valid UTF-8") from error
+    if not isinstance(title, str) or "\0" in title or title_size < 1 or title_size >= 256:
         raise BuildConfigurationError("application title must contain 1 to 255 UTF-8 bytes")
     if isinstance(width, bool) or not isinstance(width, int) or width <= 0 or width > 16384:
         raise BuildConfigurationError("application width must be an integer from 1 to 16384")
@@ -204,25 +208,31 @@ def resolve_project_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     project = Path(args.project).expanduser().resolve()
     if not project.is_dir():
         raise BuildConfigurationError(f"Project directory does not exist: {project}")
-    settings = load_project_config(project)
-    application_settings(settings)
-    main_value = args.main or settings.get("main")
+    config = load_project_config(project)
+    application_settings(config)
+    main_value = args.main or config.get("main")
     if not isinstance(main_value, str) or not main_value:
         raise BuildConfigurationError(f"provide --main or set 'main' in {PROJECT_MANIFEST}")
+    if chr(0) in main_value:
+        raise BuildConfigurationError("Elisa main source path must not contain a NUL character")
     main_source = Path(main_value).expanduser()
     if not main_source.is_absolute():
         main_source = project / main_source
     main_source = main_source.resolve()
     if not main_source.is_file() or main_source.suffix != ".elisa":
         raise BuildConfigurationError(f"Elisa main source does not exist: {main_source}")
-    output_value = args.output or settings.get("output")
+    output_value = args.output or config.get("output")
     if output_value is None:
-        name = settings.get("name", project.name)
+        name = config.get("name", project.name)
         if not isinstance(name, str) or not name:
             raise BuildConfigurationError("project 'name' must be a non-empty string")
+        if chr(0) in name:
+            raise BuildConfigurationError("project 'name' must not contain a NUL character")
         output_value = f"build/{name}"
     if not isinstance(output_value, str) or not output_value:
         raise BuildConfigurationError(f"provide --output or set 'output' in {PROJECT_MANIFEST}")
+    if chr(0) in output_value:
+        raise BuildConfigurationError("output path must not contain a NUL character")
     output = Path(output_value).expanduser()
     if not output.is_absolute():
         output = project / output
@@ -341,8 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_env = dict(os.environ)
         runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(shader_path)
         project = Path(args.project).expanduser().resolve()
-        config = load_project_config(project)
-        app = application_settings(config)
+        app = application_settings(load_project_config(project))
         runtime_env["ELISA_PROJECT_TITLE"] = str(app["title"])
         runtime_env["ELISA_PROJECT_WIDTH"] = str(app["width"])
         runtime_env["ELISA_PROJECT_HEIGHT"] = str(app["height"])

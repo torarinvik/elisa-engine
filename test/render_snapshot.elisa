@@ -1,5 +1,6 @@
 include "../src/backend/render_snapshot.elisa"
 include "../src/world/world.elisa"
+include "./world_rendering.elisa"
 
 def main() -> i32:
     world: mutable World::World = catch World::World():
@@ -19,4 +20,4 @@ def main() -> i32:
     return 8 if RenderSnapshot::snapshot_count(&snapshot) != 1
     invalid: World::EntityRef = World::EntityRef{world_epoch: -1, id: 4}
     return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, transform)
-    0
+    WorldRenderingValidation::run()
