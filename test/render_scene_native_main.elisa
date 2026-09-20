@@ -316,7 +316,7 @@ def main() -> i32:
         error failure: 1
     return 72 if loaded_texture != 0
     loaded_normal: i32 = catch RenderScene::set_texture(
-        cooked_mesh, RenderScene::TextureSlot.Normal, "backends/coordinate_reference.png"):
+        cooked_mesh, RenderScene::TextureSlot.Normal, "build/cooked/render-scene-normal.png"):
         ok: 0
         error failure: 1
     return 73 if loaded_normal != 0
