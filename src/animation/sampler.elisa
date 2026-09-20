@@ -12,12 +12,13 @@
 # advice to begin with compact typed stores.
 include "../math/geometry.elisa"
 include "./pose.elisa"
+include "./limits.elisa"
 
 module Sampler:
     private:
         const module Tune:
-            MAX_JOINTS: usize = 16
-            MAX_KEYS: usize = 8
+            MAX_JOINTS: usize = AnimationLimits::MAX_JOINTS
+            MAX_KEYS: usize = AnimationLimits::MAX_KEYS_PER_TRACK
             MAX_TOTAL_KEYS: usize = MAX_JOINTS * MAX_KEYS
             STRIDE: usize = MAX_KEYS
 
@@ -47,14 +48,15 @@ module Sampler:
 
         def clip_valid(clip: ClipData&) -> bool:
             return false if clip.length < 0
-            for joint in 0..<Tune::MAX_JOINTS |ordered: bool = true| -> ordered:
+            ordered: bool = for joint in 0..<Tune::MAX_JOINTS |ordered: bool = true| -> ordered:
                 count: usize = clip.key_counts[joint]
                 ordered <- false if count > Tune::MAX_KEYS
-                for slot in 0..<count |inner: bool = true| -> inner:
+                track_ordered: bool = for slot in 0..<count |inner: bool = true| -> inner:
                     tick: i64 = clip.ticks[joint * Tune::STRIDE + slot]
                     inner <- false if tick < 0 or tick > clip.length
                     inner <- false if slot > 0 and tick < clip.ticks[joint * Tune::STRIDE + slot - 1]
-            true
+                ordered <- false if not track_ordered
+            ordered
 
         # Keys are appended in non-decreasing tick order; a caller that adds an
         # out-of-order key gets false rather than a silently unsorted track.

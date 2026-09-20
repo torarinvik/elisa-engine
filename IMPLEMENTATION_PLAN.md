@@ -279,6 +279,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
 
 - [ ] **C01 · P1 · Skeleton and animation asset contract** — After: A05, F07.
   Define joint identity/order, rest and inverse-bind poses, clip tracks, events, units, and rig compatibility in cooked assets. Done: invalid parents, duplicate joints, missing tracks, and incompatible clips fail before runtime sampling.
+  Progress: `src/animation/assets.elisa` validates joint IDs and parent order, metre-space rest transforms, inverse-bind matrices against the evaluated rest pose, complete clip tracks, event ordering, time bounds, and rig compatibility; the shared animation gate covers valid sampling and malformed contracts. `src/animation/limits.elisa` sets the current 64-joint bound for the pose, sampler, FBX cooker, and Wicked bridge. This is an in-memory contract prototype, not a cooked animation format: the sampler still caps each joint at eight keys, and serialization/import plus production-sized tracks remain open.
 - [ ] **C02 · P1 · ozz runtime animation service** — After: C01, F06.
   Promote `native/ozz_probe.h` into reusable clip/sampling-context/pose services with explicit scratch and output storage. Done: many characters sample independent clips/times without allocation per tick; the public Elisa API drives real rendered motion.
 - [ ] **C03 · P1 · Animation graph** — After: C02, W08.
