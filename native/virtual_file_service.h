@@ -9,6 +9,8 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <future>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -25,9 +27,11 @@ struct VirtualReadHandle {
 class VirtualFileService {
 public:
     static constexpr uint32_t MAX_REQUESTS = 32;
+    static constexpr uint32_t MAX_DEPENDENCIES = 16;
 
     bool mount(std::filesystem::path base_root, std::vector<std::filesystem::path> overrides,
         uint64_t generation) {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (generation == 0 || overrides.size() > 16) return false;
         base_root_ = std::move(base_root);
         overrides_ = std::move(overrides);
@@ -38,6 +42,66 @@ public:
 
     VirtualReadHandle request(const std::string& logical_name, const std::string& section,
         uint64_t dependency_generation = 0) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return request_locked(logical_name, section, dependency_generation);
+    }
+
+    VirtualReadHandle request_with_dependencies(const std::string& logical_name,
+        const std::string& section, const std::vector<std::string>& dependencies,
+        uint64_t dependency_generation = 0) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!dependencies_valid_locked(logical_name, dependencies)) return {};
+        return request_locked(logical_name, section, dependency_generation);
+    }
+
+    std::future<uint32_t> pump_async(uint32_t budget = 1) {
+        return std::async(std::launch::async, [this, budget]() { return pump(budget); });
+    }
+
+    bool cancel(VirtualReadHandle handle) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        Request* item = find(handle);
+        if (item == nullptr || item->state != VirtualReadState::Queued) return false;
+        item->state = VirtualReadState::Cancelled;
+        return true;
+    }
+
+    uint32_t pump(uint32_t budget = 1) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return pump_locked(budget);
+    }
+
+    VirtualReadState state(VirtualReadHandle handle) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const Request* item = find(handle);
+        return item == nullptr ? VirtualReadState::Empty : item->state;
+    }
+
+    bool take(VirtualReadHandle handle, std::vector<uint8_t>& output, uint64_t& generation,
+        std::string& error) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        Request* item = find(handle);
+        if (item == nullptr) { error = "invalid read handle"; return false; }
+        if (item->state != VirtualReadState::Ready) {
+            error = item->error.empty() ? "read is not ready" : item->error;
+            return false;
+        }
+        output = std::move(item->bytes);
+        generation = item->mount_generation;
+        item->state = VirtualReadState::Empty;
+        return true;
+    }
+
+    const std::string& error(VirtualReadHandle handle) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        static const std::string empty;
+        const Request* item = find(handle);
+        return item == nullptr ? empty : item->error;
+    }
+
+private:
+    VirtualReadHandle request_locked(const std::string& logical_name, const std::string& section,
+        uint64_t dependency_generation) {
         if (!mounted_ || !safe_package_path(logical_name) || section.empty()) return {};
         for (uint32_t slot = 0; slot < MAX_REQUESTS; ++slot) {
             Request& item = requests_[slot];
@@ -64,14 +128,20 @@ public:
         return {};
     }
 
-    bool cancel(VirtualReadHandle handle) {
-        Request* item = find(handle);
-        if (item == nullptr || item->state != VirtualReadState::Queued) return false;
-        item->state = VirtualReadState::Cancelled;
+    bool dependencies_valid_locked(const std::string& logical_name,
+        const std::vector<std::string>& dependencies) const {
+        if (dependencies.size() > MAX_DEPENDENCIES) return false;
+        std::string previous;
+        for (const std::string& dependency : dependencies) {
+            if (!safe_package_path(dependency) || dependency == logical_name ||
+                (!previous.empty() && dependency <= previous) ||
+                !resolve_package_path(base_root_, overrides_, dependency, generation_).found) return false;
+            previous = dependency;
+        }
         return true;
     }
 
-    uint32_t pump(uint32_t budget = 1) {
+    uint32_t pump_locked(uint32_t budget) {
         uint32_t completed = 0;
         for (Request& item : requests_) {
             if (completed >= budget) break;
@@ -108,33 +178,6 @@ public:
         }
         return completed;
     }
-
-    VirtualReadState state(VirtualReadHandle handle) const {
-        const Request* item = find(handle);
-        return item == nullptr ? VirtualReadState::Empty : item->state;
-    }
-
-    bool take(VirtualReadHandle handle, std::vector<uint8_t>& output, uint64_t& generation,
-        std::string& error) {
-        Request* item = find(handle);
-        if (item == nullptr) { error = "invalid read handle"; return false; }
-        if (item->state != VirtualReadState::Ready) {
-            error = item->error.empty() ? "read is not ready" : item->error;
-            return false;
-        }
-        output = std::move(item->bytes);
-        generation = item->mount_generation;
-        item->state = VirtualReadState::Empty;
-        return true;
-    }
-
-    const std::string& error(VirtualReadHandle handle) const {
-        static const std::string empty;
-        const Request* item = find(handle);
-        return item == nullptr ? empty : item->error;
-    }
-
-private:
     struct Request {
         std::string logical_name;
         std::string section;
@@ -160,6 +203,7 @@ private:
     std::vector<std::filesystem::path> overrides_;
     uint64_t generation_ = 0;
     bool mounted_ = false;
+    mutable std::mutex mutex_;
     std::array<Request, MAX_REQUESTS> requests_{};
 };
 

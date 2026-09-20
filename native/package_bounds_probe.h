@@ -86,6 +86,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
     write_binary_package_fixture(zstd, false, false, true);
     write_binary_package_fixture(base_root / "maze.elpk", false);
     write_binary_package_fixture(override_root / "maze.elpk", false, false, true);
+    write_binary_package_fixture(base_root / "dep.elpk", false);
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
     std::vector<uint8_t> section;
     std::string section_error;
@@ -100,6 +101,17 @@ inline bool probe_package_bounds(const std::string& valid_package,
         vfs.pump(1) == 1 && vfs.state(first_read) == VirtualReadState::Ready &&
         vfs.take(first_read, virtual_bytes, virtual_generation, virtual_error) &&
         virtual_generation == 7 && std::string(virtual_bytes.begin(), virtual_bytes.end()) == "elisa-bundle-section";
+    VirtualFileService worker_vfs;
+    const bool worker_mounted = worker_vfs.mount(base_root, {override_root}, 10);
+    const VirtualReadHandle worker_read = worker_vfs.request_with_dependencies(
+        "maze.elpk", "mesh", {"dep.elpk"}, 10);
+    auto worker = worker_vfs.pump_async(1);
+    const bool worker_read_ok = worker_mounted && worker_read.generation != 0 && worker.get() == 1 &&
+        worker_vfs.state(worker_read) == VirtualReadState::Ready;
+    const bool dependency_rejections = worker_vfs.request_with_dependencies(
+        "maze.elpk", "mesh", {"missing.elpk"}, 10).generation == 0 &&
+        worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"dep.elpk", "dep.elpk"}, 10).generation == 0 &&
+        worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0;
     const VirtualReadHandle cancelled = vfs.request("maze.elpk", "missing");
     const bool cancelled_read = vfs.cancel(cancelled) && vfs.state(cancelled) == VirtualReadState::Cancelled;
     const VirtualReadHandle stale = vfs.request("maze.elpk", "mesh");
@@ -133,6 +145,8 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(resolve_package_path(base_root, {override_root}, "maze.elpk", 7).found &&
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).override_used &&
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
+        check(worker_read_ok, "virtual file worker scheduling") &&
+        check(dependency_rejections, "virtual file dependency ordering and existence") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&
