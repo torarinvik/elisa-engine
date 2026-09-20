@@ -52,6 +52,7 @@
 #include "camera_bridge.h"
 #include "debug_draw_bridge.h"
 #include "postprocess_bridge.h"
+#include "animation_submission_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -466,11 +467,6 @@ int main(int argc, char** argv) {
         }
         wi::helper::Sleep(16);
     }
-    // Settle loop: pipeline states compile in the background on first use
-    // and draws using them are skipped until ready, so give the queue wall
-    // time between frames instead of only counting frames.
-    // Audio: decode a generated clip and play one instance per cue the Elisa
-    // game emitted. The check itself lives in native/audio_probe.h.
     if (!probe_audio(manifest)) {
         return 1;
     }
@@ -570,6 +566,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_postprocess_bridge(render_path)) {
+        return 1;
+    }
+    if (!probe_animation_submission(scene)) {
         return 1;
     }
     scene.Entity_Remove(object);
