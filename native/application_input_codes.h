@@ -8,20 +8,43 @@
 
 namespace probe {
 
+enum ElisaInputDeviceCode : int32_t {
+    INPUT_DEVICE_GLOBAL = -1,
+    INPUT_DEVICE_KEYBOARD = 0,
+    INPUT_DEVICE_MOUSE = 1,
+    INPUT_DEVICE_GAMEPAD = 2,
+};
+
+constexpr uint32_t INPUT_TOKEN_KIND_BITS = 4;
+constexpr uint32_t INPUT_TOKEN_DEVICE_BITS = 2;
+constexpr uint32_t INPUT_TOKEN_AXIS_CODE_BITS = 12;
+constexpr uint32_t INPUT_TOKEN_AXIS_VALUE_BITS = 20;
+constexpr uint32_t INPUT_TOKEN_DEVICE_SHIFT = INPUT_TOKEN_KIND_BITS;
+constexpr uint32_t INPUT_TOKEN_PAYLOAD_SHIFT = INPUT_TOKEN_KIND_BITS + INPUT_TOKEN_DEVICE_BITS;
+constexpr uint32_t INPUT_TOKEN_AXIS_CODE_SHIFT = INPUT_TOKEN_PAYLOAD_SHIFT + INPUT_TOKEN_AXIS_VALUE_BITS;
+constexpr uint32_t INPUT_TOKEN_PRESSED_SHIFT = INPUT_TOKEN_AXIS_CODE_SHIFT + INPUT_TOKEN_AXIS_CODE_BITS;
+constexpr uint32_t INPUT_TOKEN_RELEASED_SHIFT = INPUT_TOKEN_PRESSED_SHIFT + 1;
+constexpr uint32_t INPUT_TOKEN_KIND_MASK = (1u << INPUT_TOKEN_KIND_BITS) - 1u;
+constexpr uint32_t INPUT_TOKEN_DEVICE_MASK = (1u << INPUT_TOKEN_DEVICE_BITS) - 1u;
+constexpr uint32_t INPUT_TOKEN_AXIS_CODE_MASK = (1u << INPUT_TOKEN_AXIS_CODE_BITS) - 1u;
+constexpr uint32_t INPUT_TOKEN_AXIS_VALUE_MASK = (1u << INPUT_TOKEN_AXIS_VALUE_BITS) - 1u;
+constexpr uint64_t INPUT_TOKEN_DIGITAL_CODE_MASK = (uint64_t(1) << 32) - 1;
+
 inline int64_t pack_input_event_token(int32_t kind, int32_t device, int64_t code,
     float value, bool pressed, bool released) {
     uint32_t payload = uint32_t(code);
     if (kind == ELISA_APPLICATION_INPUT_GAMEPAD_AXIS) {
-        const uint32_t portable_code = uint32_t(code) & 0xFFFu;
+        const uint32_t portable_code = uint32_t(code) & INPUT_TOKEN_AXIS_CODE_MASK;
         const float bounded_value = value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
-        const uint32_t quantized_value = uint32_t(bounded_value * 1048575.0f + 0.5f);
-        payload = (portable_code << 20) | quantized_value;
+        const uint32_t quantized_value = uint32_t(
+            bounded_value * float(INPUT_TOKEN_AXIS_VALUE_MASK) + 0.5f);
+        payload = (portable_code << INPUT_TOKEN_AXIS_VALUE_BITS) | quantized_value;
     }
-    const uint64_t packed = uint64_t(kind & 0xF) |
-        (uint64_t(device & 0x3) << 4) |
-        (uint64_t(payload) << 6) |
-        (pressed ? uint64_t(1) << 38 : 0) |
-        (released ? uint64_t(1) << 39 : 0);
+    const uint64_t packed = uint64_t(kind & INPUT_TOKEN_KIND_MASK) |
+        (uint64_t(device & INPUT_TOKEN_DEVICE_MASK) << INPUT_TOKEN_DEVICE_SHIFT) |
+        (uint64_t(payload) << INPUT_TOKEN_PAYLOAD_SHIFT) |
+        (pressed ? uint64_t(1) << INPUT_TOKEN_PRESSED_SHIFT : 0) |
+        (released ? uint64_t(1) << INPUT_TOKEN_RELEASED_SHIFT : 0);
     return int64_t(packed);
 }
 

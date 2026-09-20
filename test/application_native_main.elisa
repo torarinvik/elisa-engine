@@ -1,6 +1,7 @@
 # End-to-end application lifecycle smoke: the generated executable entry is
 # Elisa main; it imports only the public engine module and owns the loop calls.
 include "../src/backend/requirements.elisa"
+include "../src/runtime/action_input_runtime.elisa"
 using Capabilities
 
 def check_native_profile() -> i32:
@@ -131,6 +132,19 @@ def main() -> i32:
     first_frame: Application::PumpStatus = Application::pump()
     return 2 if first_frame != Application::PumpStatus.Running
     return 3 if Application::frame_count() != 1
+    actions: mutable ActionInput::Input = ActionInput::Input()
+    escape: ActionInput::Binding = ActionInput::Binding{
+        action: 1,
+        device: ActionInput::Device.Keyboard,
+        code: Application::keyboard_key_code(Application::KeyboardKeyCode.Escape),
+        chord_code: 0,
+        deadzone: 0.0,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 44 if ActionInput::bind_checked(&actions, escape) != ActionInput::BindResult.Bound
+    _ = ActionInputRuntime::begin_frame(&actions)
+    return 45 if ActionInput::action_down(&actions, 1)
     info: mutable Application::FrameInfo = zeroed
     return 9 if not Application::frame_info(&info)
     return 11 if info.frame_count != 1 or info.elapsed_nanos == 0 or Application::elapsed_seconds(info) <= 0.0

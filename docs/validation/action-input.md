@@ -1,7 +1,8 @@
 # Action input validation
 
-`src/runtime/action_input.elisa` owns the portable action layer between SDL3
-events and gameplay or UI code. Device codes stay at the boundary; consumers
+`src/runtime/action_input.elisa` owns the portable action layer, and
+`src/runtime/action_input_runtime.elisa` connects it to events from the
+SDL3-backed `Application` queue. Device codes stay at the boundary; consumers
 read stable action IDs through `action_down`, `action_pressed`,
 `action_released`, and `action_value`.
 
@@ -24,10 +25,13 @@ the last held binding is released or disconnected. The reported value is the
 strongest remaining binding value, and frame boundaries clear edges while
 preserving held values. The fixture `test/action_input.elisa` covers this in
 both release orders and across device disconnects, alongside analog dead-zone
-filtering, single-binding pressed/held/released transitions, context isolation,
-chord activation, disconnect cleanup, and an analog value that falls below a
-binding's dead zone without reaching zero. The same fixture checks public
-engine key/button/axis codes, while
+filtering, single-binding pressed/held/released transitions, and context
+isolation. Chords track their source codes independently, work whether the
+primary or chord key arrives first, and release only when no matching binding
+remains active. The fixture checks focus-loss and overflow clearing, gamepad
+connect/disconnect, keyboard, mouse-button, and analog-trigger translation, and
+an axis value falling below its dead zone without reaching zero. It also checks
+public engine key/button/axis codes, while
 `test/application_gamepad_codes.cpp` checks SDL code mapping and normalized
 axis/token conversion. The shared gate compiles and runs the Elisa fixtures
 with the stage1 compiler.
@@ -45,3 +49,12 @@ events become portable action edges, analog values honor dead zones, and focus
 loss clears transient state without marking connected devices unplugged. Its
 probe covers alternate bindings, per-device disconnect, and held values across
 frames. The native adapter never exposes SDL codes to gameplay.
+
+After adding `ActionInputRuntime`, the focused stage1 action-input executable
+and `test/application_gamepad_codes.cpp` both passed. The SDL3/Metal
+`scripts/application_native_smoke.py` also passed with an Elisa client draining
+the Application queue through the runtime adapter, and
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript
+scripts/check.elisascript` passed the full suite, including Godot and both proof
+suites. A physical controller was not attached, so device delivery remains
+verified through SDL mapping tests rather than hardware input.

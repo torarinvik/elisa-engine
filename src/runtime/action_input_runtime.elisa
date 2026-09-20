@@ -1,0 +1,58 @@
+# Connect SDL3-backed application events to the portable Elisa action layer.
+include "action_input.elisa"
+include "application.elisa"
+
+module ActionInputRuntime:
+    private:
+        def apply_device_event(input: mutable ActionInput::Input&, device: ActionInput::Device,
+            event: Application::InputEvent) -> void:
+            ActionInput::apply(input, ActionInput::Event{
+                device: device,
+                code: event.code,
+                value: event.value,
+                pressed: event.pressed,
+                released: event.released,
+                chord_down: event.chord_down,
+            })
+
+        def clear_transient_state(input: mutable ActionInput::Input&) -> void:
+            ActionInput::clear_device_state(input, ActionInput::Device.Keyboard)
+            ActionInput::clear_device_state(input, ActionInput::Device.Mouse)
+            ActionInput::clear_device_state(input, ActionInput::Device.Gamepad)
+
+    public:
+        # Poll once per application frame. Clearing edges before draining keeps
+        # every queued transition visible to simulation code for that frame.
+        def begin_frame(input: mutable ActionInput::Input&) -> usize:
+            ActionInput::begin_frame(input)
+            drain_application_events(input)
+
+        def drain_application_events(input: mutable ActionInput::Input&) -> usize:
+            count: mutable usize = 0
+            event: mutable Application::InputEvent = zeroed
+            while Application::next_input_event(&event) |count, event, input|:
+                apply_application_event(input, event)
+                count <- count + 1
+            count
+
+        # This translator is public so portable games and tests can share the
+        # exact device, focus, overflow, and hotplug behavior.
+        def apply_application_event(input: mutable ActionInput::Input&,
+            event: Application::InputEvent) -> void:
+            match event.kind:
+                Application::InputEventKind.Key:
+                    apply_device_event(input, ActionInput::Device.Keyboard, event)
+                Application::InputEventKind.MouseButton:
+                    apply_device_event(input, ActionInput::Device.Mouse, event)
+                Application::InputEventKind.GamepadButton:
+                    apply_device_event(input, ActionInput::Device.Gamepad, event)
+                Application::InputEventKind.GamepadAxis:
+                    apply_device_event(input, ActionInput::Device.Gamepad, event)
+                Application::InputEventKind.GamepadConnected:
+                    ActionInput::set_connected(input, ActionInput::Device.Gamepad, true)
+                Application::InputEventKind.GamepadDisconnected:
+                    ActionInput::set_connected(input, ActionInput::Device.Gamepad, event.connected)
+                Application::InputEventKind.FocusLost:
+                    clear_transient_state(input)
+                Application::InputEventKind.Overflow:
+                    clear_transient_state(input)

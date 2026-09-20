@@ -65,8 +65,12 @@ and closes them before SDL shutdown. Focus loss and minimization add a clear-sta
 overflow produces a reset event so missed releases cannot leave actions stuck.
 `ActionInput` remains an Elisa-owned action state API and aggregates multiple
 bindings while preserving directional intent for the game's opposing-action
-calculation. Full key coverage, mouse movement/scroll, physical controller
-verification, chord-source delivery, and saved rebinding remain.
+calculation. `ActionInputRuntime::begin_frame` clears edge state, drains these
+events, and translates them into portable action bindings; chord state is
+tracked in Elisa for either key arrival order. Gamepad controls currently share
+one logical action device, so per-controller bindings are not yet available.
+Full key coverage, mouse movement/scroll, physical controller verification,
+and saved rebinding remain.
 `ActionInput::clear_device_state` can clear keyboard, mouse, and gamepad state
 without marking devices disconnected. `RenderScene` provides
 the first Wicked-backed generic primitive, instance-transform, visibility,
@@ -74,15 +78,16 @@ and orthographic-camera service. Mesh/texture import, lighting, input-device
 polling, and higher-level rendering features remain future engine work.
 
 Validation: `scripts/application_native_smoke.py` verifies Elisa-authored code
-can initialize SDL's gamepad subsystem, pump one frame, read timing/window
-metrics, observe and consume a close-request edge, and shut down without
-game-owned C exports. `test/action_input.elisa` checks the public codes used from Elisa, while
+can initialize SDL's gamepad subsystem, pump one frame, drain the application
+event queue through `ActionInputRuntime`, read timing/window metrics, observe
+and consume a close-request edge, and shut down without game-owned C exports.
+`test/action_input.elisa` checks public codes and event-to-action behavior, while
 `test/application_gamepad_codes.cpp` checks SDL to
 portable key/button mappings, signed axis normalization, and digital/analog
 token encoding. `test/action_input.elisa` covers focus-style held-state
-clearing, per-binding state, and an axis falling below its dead zone while the
-raw device value remains nonzero. No physical controller was connected during
-this validation.
+clearing, per-binding chord state, and an axis falling below its dead zone
+while the raw device value remains nonzero. No physical controller was
+connected during this validation.
 
 Window flag constants use the `WINDOW_` prefix to distinguish persistent
 window state from same-named event bits such as `MINIMIZED` and
