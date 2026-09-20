@@ -85,7 +85,7 @@ The existing source inventory is the starting point, not a reason to rewrite wor
 | M4 — scale and network | Measured crowd/streaming scene and two-process multiplayer game; soak tests and native CI evidence | W07–W10, N05–N06, T01–T08, Q05–Q09 |
 | M5 — breadth | Tested opt-in advanced systems, each exercised by a shipped example | Remaining P2/P3 tasks |
 
-**Next foundation work: F08 and F10**, then complete R01 so an Elisa world drives the
+**Next foundation work: finish F08**, then complete R01 so an Elisa world drives the
 persistent Wicked scene instead of the diagnostic manifest. Continue with P01/P02,
 A03/A04, and R13 in dependency order. Do not restart completed identity or field-privacy
 work. Milestones are outcome gates; individual feature tasks may advance as soon as
@@ -101,32 +101,29 @@ the public API connected to a real Elisa client.
    apply fallbacks only after explicit negotiation, and test rollback for every startup
    failure. The combined Physics/Audio application smoke now passes after the compiler's
    nested-module constant fix; broader per-service fallback coverage remains.
-2. **F10 — make native validation trustworthy.** Add the PhysicsRuntime application
-   smoke to the native gate, ensure a failed assertion still tears down the host, and
-   retain machine/toolchain provenance with pass, fail, and skip states.
-3. **R01 — finish game-owned rendering.** Replace maze/manifest render submission with
+2. **R01 — finish game-owned rendering.** Replace maze/manifest render submission with
    one bounded transactional batch derived from the Elisa `World`; carry entity and
    asset identity through create/update/despawn and test rollback on partial failure.
-4. **P01/P02 — connect the Jolt service to gameplay.** Make Elisa own world identity,
+3. **P01/P02 — connect the Jolt service to gameplay.** Make Elisa own world identity,
    body/shape handles, and fixed-step policy; schedule one step per committed tick and
    verify render pumping never advances simulation. Reuse `PhysicsRuntime` instead of
    creating a second public physics path.
-5. **A03/A04 — make cooked content runnable.** Add the runtime package/VFS contract,
+4. **A03/A04 — make cooked content runnable.** Add the runtime package/VFS contract,
    then a bounded asynchronous loader for the existing glTF, BasisU, and meshoptimizer
    outputs with cancellation, capacity, stale-handle, and unload tests.
-6. **R13 — remove cold shader work from game startup.** Build versioned offline shader
+5. **R13 — remove cold shader work from game startup.** Build versioned offline shader
    packages/permutation manifests, actionable compiler diagnostics, and cache
    invalidation; measure cold and warm startup on the pinned Metal path.
-7. **P03/P05 — deliver a character-ready physics slice.** Add filtered queries and
+6. **P03/P05 — deliver a character-ready physics slice.** Add filtered queries and
    deterministic contact delivery, then a Jolt character controller exercised in an
    authored obstacle course using SDL3 action input.
-8. **C01/C02 and N01/N02 — turn existing libraries into runtime services.** Cook
+7. **C01/C02 and N01/N02 — turn existing libraries into runtime services.** Cook
    skeleton clips for ozz and navigation tiles for Recast/Detour; expose bounded Elisa
    handles and prove animation/query results in a playable sample.
-9. **S02/S03 — make audio useful to games.** Add streaming, buses, voice budgets, and
+8. **S02/S03 — make audio useful to games.** Add streaming, buses, voice budgets, and
    world-attached spatial playback through miniaudio, with explicit device-loss and
    fallback behavior.
-10. **I02/I04 and E01 — build the authoring surface.** Render Elisa UI and text through
+9. **I02/I04 and E01 — build the authoring surface.** Render Elisa UI and text through
     Wicked, then use it in a native editor shell to inspect and edit a second authored
     game. Keep editing models and undo history in Elisa.
 
@@ -167,8 +164,8 @@ demonstrates the need and the lower-priority prerequisites are met.
   Progress: the SDL3/Metal application smoke also requests BC1 for a normal map and verifies `FallbackRequired`, an RGBA8 texture decision, and that the host remains initialized until the caller applies the fallback and shuts down. Native smoke and full report: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md).
 - [x] **F09 · P0 · SDL3 lifecycle and frame pacing** — After: F02, F07.
   Handle focus, high-DPI resize, minimize, fullscreen, display changes, close, and suspended simulation; separate fixed ticks from presentation. Done: zero-sized windows and variable render cadence do not corrupt simulation, busy-spin, stretch viewports, or lose input transitions. `NativeApplication::WindowState` suspends on focus loss, minimize, or zero pixel extent; `run_frame()` skips presentation while suspended, and `advance_fixed()` clears backlog. Backing size and DPI come from Wicked's native window properties to preserve Cocoa Retina drawable dimensions; window metric changes recreate the existing Metal swapchain and refresh the canvas before presentation. `native/input_tick_queue.h` keeps movement and restart events in bounded FIFO order until fixed ticks consume them; overflow is explicit. Evidence: [`docs/validation/sdl3-lifecycle.md`](docs/validation/sdl3-lifecycle.md); the two-pass native gate passed synthetic display-change, actual SDL resize/fullscreen/backbuffer checks, and fixed-tick input tests; the persistent-host self-test passed pause/resume, restart, movement, and close.
-- [ ] **F10 · P0 · Native-first validation command** — After: F03, F05, F08, F09.
-  Add composable ElisaScript quick/headless/native-GPU checks over existing gates, with structured evidence and provenance. Done: the native gate runs without Godot installed, invalidates stale success, distinguishes skip from pass, and retains shared-contract and optional Godot regression commands. Progress: `scripts/native_gate.elisascript` provides quick/headless/native modes, clears stale reports, uses explicit pass/fail/skip stage semantics, and keeps Godot out of the native prerequisites. All repository checks resolve from the gate's script path, independent of the caller's working directory. Native mode builds the Wicked host, captures each rendered frame, and verifies artifacts through bounded nested processes to stay within ElisaScript's process-capture time limit. `scripts/write_native_gate_report.py` writes schema-2 provenance (checkout revision, host, Python/SDK, timestamp) and distinguishes hardware-verified native runs from policy-only or headless runs. The build phase now also compiles and runs ordinary Elisa `main()` clients through the generic build/run command, including application lifecycle and real render-scene smokes; the path-with-spaces CLI tests pass. Full `native` gate passed on 2026-09-20 under macOS 27.0/Apple M5, including two rendered probe runs, deterministic frame/artifact checks, and native lifecycle/resource probes; report: `build/native-gate.json`. See [`docs/validation/application-lifecycle-abi.md`](docs/validation/application-lifecycle-abi.md) and [`docs/validation/elisa-render-scene.md`](docs/validation/elisa-render-scene.md). The ordinary application smoke now also covers Physics fallback and repeated-startup Audio fallback; remaining work is to compose it into the native gate with failure-teardown assertions and add cross-machine dependency/toolchain bootstrap in CI.
+- [x] **F10 · P0 · Native-first validation command** — After: F03, F05, F08, F09.
+  Add composable ElisaScript quick/headless/native-GPU checks over existing gates, with structured evidence and provenance. Done: the native gate runs without Godot installed, invalidates stale success, distinguishes skip from pass, and retains shared-contract and optional Godot regression commands. `scripts/native_gate.elisascript` provides quick/headless/native modes, clears stale reports, uses explicit pass/fail/skip stage semantics, and keeps Godot out of the native prerequisites. All repository checks resolve from the gate's script path, independent of the caller's working directory. Native stages stream output and preserve their exit status; the schema-2 report records dependency, source, module, headless, application, and Wicked states plus checkout/toolchain provenance. The native gate compiles and runs Elisa `main()` clients through the generic build/run command, including application lifecycle, PhysicsRuntime, Audio fallback, and real render-scene smokes. A deliberate early assertion return verifies that the outer entry shuts down SDL3/Wicked and invalidates the backend profile. The sanitizer boundary harness links `native/miniaudio_implementation.cpp`. Validation: `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/native_gate.elisascript native` passed on macOS 27.0/Apple M5; all report stages passed and `hardware_verification=verified`. Report: [`build/native-gate.json`](build/native-gate.json); implementation commit: `3a2f4dd`; details: [`docs/validation/native-gate.md`](docs/validation/native-gate.md). Cross-machine dependency/toolchain bootstrap remains Q03.
 
 ## W — world, scenes, persistence, and execution
 
