@@ -92,6 +92,29 @@ int cooked_skin_test(const std::filesystem::path& path) {
     }
     bool ok = check(geometry.skin_bone_names.size() == 34,
         "cooked walking package retains its ordered 34-bone rig");
+    ok &= check(geometry.skin_joints.size() >= geometry.skin_bone_names.size() &&
+        geometry.skin_joints.size() <= 64 && geometry.skin_cluster_joints.size() == 34,
+        "cooked walking package retains the bounded parent hierarchy and cluster map");
+    ok &= check(geometry.animation_clips.size() == 1 &&
+        geometry.animation_clips[0].name.find("Walking") != std::string::npos &&
+        geometry.animation_clips[0].frame_count >= 20 && geometry.animation_clips[0].sample_rate == 30 &&
+        geometry.animation_clips[0].local_transforms.size() ==
+            geometry.skin_joints.size() * geometry.animation_clips[0].frame_count * 10,
+        "cooked walking package retains normalized looping clip samples");
+    bool has_motion = false;
+    if (!geometry.animation_clips.empty() && !geometry.skin_joints.empty()) {
+        const auto& clip = geometry.animation_clips[0];
+        const size_t middle_frame = clip.frame_count / 2;
+        for (size_t joint = 0; joint < geometry.skin_joints.size() && !has_motion; ++joint) {
+            const size_t first = joint * 10;
+            const size_t middle = (middle_frame * geometry.skin_joints.size() + joint) * 10;
+            for (size_t component = 0; component < 10; ++component) {
+                if (std::abs(clip.local_transforms[first + component] -
+                    clip.local_transforms[middle + component]) > 1.0e-4f) has_motion = true;
+            }
+        }
+    }
+    ok &= check(has_motion, "walking clip samples contain changing joint poses");
     ok &= check(geometry.skin_indices.size() == geometry.positions.size() / 3 * 4 &&
         geometry.skin_weights.size() == geometry.skin_indices.size(),
         "cooked walking package has one four-influence row per vertex");
@@ -105,8 +128,9 @@ int cooked_skin_test(const std::filesystem::path& path) {
         }
         ok &= check(std::abs(total - 1.0f) < 0.005f, "cooked vertex weights are normalized");
     }
-    std::printf("cooked skin package: bones=%zu vertices=%zu\n",
-        geometry.skin_bone_names.size(), geometry.positions.size() / 3);
+    std::printf("cooked skin package: clusters=%zu joints=%zu clips=%zu vertices=%zu\n",
+        geometry.skin_bone_names.size(), geometry.skin_joints.size(), geometry.animation_clips.size(),
+        geometry.positions.size() / 3);
     return ok ? 0 : 1;
 }
 #endif
@@ -153,9 +177,32 @@ int supplied_assets_test(const std::filesystem::path& root) {
         walk_mesh.primary_mesh.skin_indices.size() == walk_mesh.primary_mesh.positions.size() / 3 * 4 &&
         walk_mesh.primary_mesh.skin_weights.size() == walk_mesh.primary_mesh.skin_indices.size(),
         "walking mesh preserves its ordered 34-bone skin payload");
+    bool hierarchy_ordered = !walk_mesh.primary_mesh.skin_joints.empty() &&
+        walk_mesh.primary_mesh.skin_joints.size() <= 64 &&
+        walk_mesh.primary_mesh.skin_cluster_joints.size() == 34;
+    for (size_t joint = 0; joint < walk_mesh.primary_mesh.skin_joints.size(); ++joint) {
+        const auto& value = walk_mesh.primary_mesh.skin_joints[joint];
+        hierarchy_ordered = hierarchy_ordered && value.parent_index < int32_t(joint) && value.parent_index >= -1;
+    }
+    for (size_t cluster = 0; cluster < walk_mesh.primary_mesh.skin_cluster_joints.size(); ++cluster) {
+        const uint32_t joint = walk_mesh.primary_mesh.skin_cluster_joints[cluster];
+        hierarchy_ordered = hierarchy_ordered && joint < walk_mesh.primary_mesh.skin_joints.size() &&
+            walk_mesh.primary_mesh.skin_joints[joint].name == walk_mesh.primary_mesh.skin_bone_names[cluster];
+    }
+    ok &= check(hierarchy_ordered, "walking mesh preserves a parent-ordered rig and stable skin palette");
+    ok &= check(walk_mesh.primary_mesh.animation_clips.size() == 1 &&
+        walk_mesh.primary_mesh.animation_clips[0].name.find("Walking") != std::string::npos &&
+        walk_mesh.primary_mesh.animation_clips[0].frame_count >= 20 &&
+        walk_mesh.primary_mesh.animation_clips[0].local_transforms.size() ==
+            walk_mesh.primary_mesh.skin_joints.size() * walk_mesh.primary_mesh.animation_clips[0].frame_count * 10,
+        "walking FBX samples its valid clip and omits the zero-duration duplicate");
     ok &= check(run_mesh.ok && run_mesh.primary_mesh_extracted &&
-        run_mesh.primary_mesh.skin_bone_names == walk_mesh.primary_mesh.skin_bone_names,
-        "walking and running mesh skin clusters share the same bone order");
+        run_mesh.primary_mesh.skin_bone_names == walk_mesh.primary_mesh.skin_bone_names &&
+        run_mesh.primary_mesh.skin_cluster_joints == walk_mesh.primary_mesh.skin_cluster_joints &&
+        run_mesh.primary_mesh.skin_joints.size() == walk_mesh.primary_mesh.skin_joints.size() &&
+        run_mesh.primary_mesh.animation_clips.size() == 1 &&
+        run_mesh.primary_mesh.animation_clips[0].name.find("Running") != std::string::npos,
+        "walking and running assets share the rig and expose their valid clips");
     bool valid_skin = walk_mesh.primary_mesh.skin_bone_names.size() == 34;
     for (size_t vertex = 0; vertex < walk_mesh.primary_mesh.skin_weights.size() / 4; ++vertex) {
         float sum = 0.0f;

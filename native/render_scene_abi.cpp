@@ -14,17 +14,20 @@
 
 #include <DirectXMath.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -42,6 +45,19 @@ constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
+    std::vector<wi::ecs::Entity> joint_entities;
+    std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
+    std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
+    int32_t animation_clip = -1;
+    int32_t previous_animation_clip = -1;
+    float animation_time = 0.0f;
+    float previous_animation_time = 0.0f;
+    float animation_speed = 1.0f;
+    float previous_animation_speed = 1.0f;
+    float blend_elapsed = 0.0f;
+    float blend_duration = 0.0f;
+    bool animation_loop = true;
+    bool previous_animation_loop = true;
     bool live = false;
 };
 
@@ -184,6 +200,8 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
         state.instances[slot].generation == generation;
 }
 
+#include "render_scene_animation_internal.inc"
+
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
         if (!state.instances[index].live) return index;
@@ -207,6 +225,10 @@ void reset_unlocked(RenderSceneService& state) {
     }
     for (InstanceSlot& instance : state.instances) {
         instance.entity = wi::ecs::INVALID_ENTITY;
+        instance.joint_entities.clear();
+        instance.skin_joints.clear();
+        instance.animation_clips.clear();
+        clear_animation_state(instance);
         instance.live = false;
     }
     state.camera_entity = wi::ecs::INVALID_ENTITY;
@@ -373,6 +395,10 @@ extern "C" int64_t elisa_render_scene_v1_create(
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
     if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    instance.joint_entities.clear();
+    instance.skin_joints.clear();
+    instance.animation_clips.clear();
+    clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -407,63 +433,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     return int64_t(encode_handle(slot, generation));
 }
 
-extern "C" int64_t elisa_render_scene_v1_create_mesh(
-    const char* package_path,
-    float px, float py, float pz,
-    float qx, float qy, float qz, float qw,
-    float sx, float sy, float sz,
-    float red, float green, float blue, float alpha) {
-    if (!valid_transform(px, py, pz, qx, qy, qz, qw, sx, sy, sz) ||
-        !valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    const size_t slot = find_free_slot(state);
-    if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
-    InstanceSlot& instance = state.instances[slot];
-    if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
-    std::filesystem::path resolved_path;
-    elisa::assets::CookedGeometry geometry;
-    std::string load_error;
-    try {
-        if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
-            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-        }
-        if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
-            std::fprintf(stderr, "Elisa cooked mesh load failed: %s\n", load_error.c_str());
-            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-        }
-    } catch (const std::exception& error) {
-        std::fprintf(stderr, "Elisa cooked mesh load exception: %s\n", error.what());
-        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    } catch (...) {
-        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    }
-    const uint64_t generation = instance.generation + 1;
-    const std::string name = "elisa_cooked_mesh_" + std::to_string(slot) + "_" + std::to_string(generation);
-
-    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
-    try {
-        // The cube helper creates the complete Wicked object/mesh/material
-        // relationship; replace its small starter geometry with cooked data.
-        entity = state.scene->Entity_CreateCube(name);
-        if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-        if (!elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
-            px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha)) {
-            state.scene->Entity_Remove(entity);
-            return ELISA_RENDER_SCENE_BACKEND_FAILED;
-        }
-    } catch (...) {
-        if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
-        return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    }
-
-    instance.entity = entity;
-    instance.generation = generation;
-    instance.live = true;
-    return int64_t(encode_handle(slot, generation));
-}
+#include "render_scene_mesh_abi.inc"
 
 extern "C" int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,
@@ -478,6 +448,8 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     return update_transform_unlocked(state, slot, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
+
+#include "render_scene_animation_abi.inc"
 
 #include "render_scene_material_abi.inc"
 extern "C" int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold) {
@@ -513,6 +485,10 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     state.scene->Entity_Remove(state.instances[slot].entity);
     state.instances[slot].entity = wi::ecs::INVALID_ENTITY;
+    state.instances[slot].joint_entities.clear();
+    state.instances[slot].skin_joints.clear();
+    state.instances[slot].animation_clips.clear();
+    clear_animation_state(state.instances[slot]);
     state.instances[slot].live = false;
     return ELISA_RENDER_SCENE_OK;
 }

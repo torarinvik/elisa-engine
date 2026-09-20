@@ -1,4 +1,5 @@
 include "../src/runtime/action_input.elisa"
+include "../src/runtime/application.elisa"
 
 def test_binding(action: i64, code: i64, deadzone: f32) -> ActionInput::Binding:
     ActionInput::Binding{action: action, device: ActionInput::Device.Keyboard, code: code, chord_code: 0, deadzone: deadzone, context: ActionInput::Context.Gameplay, live: true}
@@ -68,6 +69,12 @@ def checked_binding_tests() -> i32:
 def main() -> i32:
     checked: i32 = checked_binding_tests()
     return checked if checked != 0
+    return 59 if Application::keyboard_key_code(Application::KeyboardKeyCode.A) != 2001
+    return 60 if Application::keyboard_key_code(Application::KeyboardKeyCode.ArrowDown) != 2016
+    return 61 if Application::gamepad_button_code(Application::GamepadButtonCode.South) != 1001
+    return 62 if Application::gamepad_button_code(Application::GamepadButtonCode.DpadLeft) != 1014
+    return 63 if Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXNegative) != 1101
+    return 64 if Application::gamepad_axis_code(Application::GamepadAxisCode.RightTrigger) != 1110
     input: mutable ActionInput::Input = ActionInput::Input()
     _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 1, device: ActionInput::Device.Gamepad, code: 10, chord_code: 0, deadzone: 0.2, context: ActionInput::Context.Gameplay, live: true}):
         ok: 0
@@ -80,6 +87,15 @@ def main() -> i32:
     ActionInput::begin_frame(&input)
     ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 10, value: 0.0, pressed: false, released: true, chord_down: false})
     return 4 if not ActionInput::action_released(&input, 1) or ActionInput::action_down(&input, 1)
+    axis_input: mutable ActionInput::Input = ActionInput::Input()
+    _ = catch ActionInput::bind(&axis_input, ActionInput::Binding{action: 1, device: ActionInput::Device.Gamepad, code: 11, chord_code: 0, deadzone: 0.2, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 31
+    ActionInput::apply(&axis_input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 11, value: 0.7, pressed: true, released: false, chord_down: false})
+    return 32 if not ActionInput::action_down(&axis_input, 1)
+    ActionInput::begin_frame(&axis_input)
+    ActionInput::apply(&axis_input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 11, value: 0.1, pressed: true, released: false, chord_down: false})
+    return 33 if ActionInput::action_down(&axis_input, 1) or not ActionInput::action_released(&axis_input, 1) or ActionInput::action_value(&axis_input, 1) != 0.0
     _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 3, device: ActionInput::Device.Gamepad, code: 30, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
         ok: 0
         error failure: return 9

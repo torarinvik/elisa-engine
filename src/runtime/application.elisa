@@ -77,6 +77,59 @@ module Application:
             MouseButton
             FocusLost
             Overflow
+            GamepadButton
+            GamepadAxis
+            GamepadConnected
+            GamepadDisconnected
+
+        enum KeyboardKeyCode:
+            A
+            D
+            E
+            Q
+            R
+            S
+            W
+            P
+            Space
+            Escape
+            LeftShift
+            RightShift
+            ArrowLeft
+            ArrowRight
+            ArrowUp
+            ArrowDown
+
+        # Stable action codes for the SDL gamepad controls supported by the
+        # engine. Event codes are not SDL enum values.
+        enum GamepadButtonCode:
+            South
+            East
+            West
+            North
+            Back
+            Guide
+            Start
+            LeftStick
+            RightStick
+            LeftShoulder
+            RightShoulder
+            DpadUp
+            DpadDown
+            DpadLeft
+            DpadRight
+
+        enum GamepadAxisCode:
+            LeftXNegative
+            LeftXPositive
+            LeftYNegative
+            LeftYPositive
+            RightXNegative
+            RightXPositive
+            RightYNegative
+            RightYPositive
+            LeftTrigger
+            RightTrigger
 
         struct InputEvent:
             kind: mutable InputEventKind
@@ -86,6 +139,7 @@ module Application:
             pressed: mutable bool
             released: mutable bool
             chord_down: mutable bool
+            connected: mutable bool
 
         struct Config:
             title: cstr
@@ -138,6 +192,56 @@ module Application:
                 height: elisa_application_v1_project_height(),
                 hidden: elisa_application_v1_project_hidden() != 0,
             }
+
+        def gamepad_button_code(button: GamepadButtonCode) -> i64:
+            match button:
+                GamepadButtonCode.South: 1001
+                GamepadButtonCode.East: 1002
+                GamepadButtonCode.West: 1003
+                GamepadButtonCode.North: 1004
+                GamepadButtonCode.Back: 1005
+                GamepadButtonCode.Guide: 1006
+                GamepadButtonCode.Start: 1007
+                GamepadButtonCode.LeftStick: 1008
+                GamepadButtonCode.RightStick: 1009
+                GamepadButtonCode.LeftShoulder: 1010
+                GamepadButtonCode.RightShoulder: 1011
+                GamepadButtonCode.DpadUp: 1012
+                GamepadButtonCode.DpadDown: 1013
+                GamepadButtonCode.DpadLeft: 1014
+                GamepadButtonCode.DpadRight: 1015
+
+        def keyboard_key_code(key: KeyboardKeyCode) -> i64:
+            match key:
+                KeyboardKeyCode.A: 2001
+                KeyboardKeyCode.D: 2002
+                KeyboardKeyCode.E: 2003
+                KeyboardKeyCode.Q: 2004
+                KeyboardKeyCode.R: 2005
+                KeyboardKeyCode.S: 2006
+                KeyboardKeyCode.W: 2007
+                KeyboardKeyCode.P: 2008
+                KeyboardKeyCode.Space: 2009
+                KeyboardKeyCode.Escape: 2010
+                KeyboardKeyCode.LeftShift: 2011
+                KeyboardKeyCode.RightShift: 2012
+                KeyboardKeyCode.ArrowLeft: 2013
+                KeyboardKeyCode.ArrowRight: 2014
+                KeyboardKeyCode.ArrowUp: 2015
+                KeyboardKeyCode.ArrowDown: 2016
+
+        def gamepad_axis_code(axis: GamepadAxisCode) -> i64:
+            match axis:
+                GamepadAxisCode.LeftXNegative: 1101
+                GamepadAxisCode.LeftXPositive: 1102
+                GamepadAxisCode.LeftYNegative: 1103
+                GamepadAxisCode.LeftYPositive: 1104
+                GamepadAxisCode.RightXNegative: 1105
+                GamepadAxisCode.RightXPositive: 1106
+                GamepadAxisCode.RightYNegative: 1107
+                GamepadAxisCode.RightYPositive: 1108
+                GamepadAxisCode.LeftTrigger: 1109
+                GamepadAxisCode.RightTrigger: 1110
 
         def initialize(config: Config) -> InitializeStatus:
             return InitializeStatus.UnsupportedAbi if elisa_application_abi_version() != 1
@@ -245,22 +349,31 @@ module Application:
         def frame_info(info: mutable FrameInfo&) -> bool:
             elisa_application_v1_frame_info(&info.frame_count, &info.elapsed_nanos, &info.resize_serial, &info.logical_width, &info.logical_height, &info.pixel_width, &info.pixel_height, &info.display_scale, &info.event_flags, &info.window_flags) == NativeStatus::OK
 
-        # Raw portable input edges are delivered in SDL order. Device 0 is
-        # keyboard and device 1 is mouse; focus loss and overflow are explicit
-        # event kinds so Elisa can release all held actions safely.
+        # Portable input events are delivered in SDL order. Device 0 is
+        # keyboard, 1 mouse, and 2 gamepad. Axis value is normalized to [0, 1];
+        # `connected` is meaningful for gamepad connection events.
         def next_input_event(event: mutable InputEvent&) -> bool:
             encoded: i64 = elisa_application_v1_next_input_event_token()
             return false if encoded <= 0
-            kind: i32 = (encoded & 7).i32()
+            kind: i32 = (encoded & 15).i32()
             event.kind <- InputEventKind.Key if kind == 1
             event.kind <- InputEventKind.MouseButton if kind == 2
             event.kind <- InputEventKind.FocusLost if kind == 3
             event.kind <- InputEventKind.Overflow if kind == 4
-            event.device <- ((encoded >> 3) & 3).i32()
-            event.code <- (encoded >> 5) & 4294967295
-            event.pressed <- ((encoded >> 37) & 1) != 0
-            event.released <- ((encoded >> 38) & 1) != 0
-            event.value <- 1.0 if event.pressed else 0.0
+            event.kind <- InputEventKind.GamepadButton if kind == 5
+            event.kind <- InputEventKind.GamepadAxis if kind == 6
+            event.kind <- InputEventKind.GamepadConnected if kind == 7
+            event.kind <- InputEventKind.GamepadDisconnected if kind == 8
+            event.device <- ((encoded >> 4) & 3).i32()
+            event.pressed <- ((encoded >> 38) & 1) != 0
+            event.released <- ((encoded >> 39) & 1) != 0
+            event.connected <- true if kind == 7 else (event.pressed if kind == 8 else false)
+            if kind == 6:
+                event.code <- (encoded >> 26) & 4095
+                event.value <- ((encoded >> 6) & 1048575).f32() / 1048575.0
+            else:
+                event.code <- (encoded >> 6) & 4294967295
+                event.value <- 1.0 if event.pressed else 0.0
             event.chord_down <- false
             true
 

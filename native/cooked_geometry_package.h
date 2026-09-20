@@ -4,6 +4,8 @@
 // cooked offline; the runtime accepts only this versioned, validated format.
 #include "virtual_package.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -24,6 +26,22 @@ struct CookedGeometry {
     std::vector<std::string> skin_bone_names;
     std::vector<uint32_t> skin_indices;
     std::vector<float> skin_weights;
+    struct SkinJoint {
+        std::string name;
+        int32_t parent_index = -1;
+        std::array<float, 10> rest_local{};
+        int32_t cluster_index = -1;
+    };
+    struct AnimationClip {
+        std::string name;
+        float duration_seconds = 0.0f;
+        uint32_t sample_rate = 0;
+        uint32_t frame_count = 0;
+        std::vector<float> local_transforms;
+    };
+    std::vector<SkinJoint> skin_joints;
+    std::vector<uint32_t> skin_cluster_joints;
+    std::vector<AnimationClip> animation_clips;
 };
 
 inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::path& resolved) {
@@ -141,6 +159,47 @@ inline bool decode_u32(const probe::PackageIndex& package, const char* key,
     return true;
 }
 
+inline bool decode_i32(const probe::PackageIndex& package, const char* key,
+    size_t count, std::vector<int32_t>& output) {
+    std::vector<uint32_t> raw;
+    if (!decode_u32(package, key, count, raw)) return false;
+    output.resize(count);
+    for (size_t index = 0; index < count; ++index) {
+        std::memcpy(&output[index], &raw[index], sizeof(int32_t));
+    }
+    return true;
+}
+
+inline bool decode_names(const std::vector<uint8_t>& bytes, size_t count,
+    std::vector<std::string>& names) {
+    size_t offset = 0;
+    names.clear();
+    names.reserve(count);
+    for (size_t index = 0; index < count; ++index) {
+        if (bytes.size() - offset < 4) return false;
+        const uint32_t length = uint32_t(bytes[offset]) |
+            (uint32_t(bytes[offset + 1]) << 8) |
+            (uint32_t(bytes[offset + 2]) << 16) |
+            (uint32_t(bytes[offset + 3]) << 24);
+        offset += 4;
+        if (length > bytes.size() - offset) return false;
+        names.emplace_back(reinterpret_cast<const char*>(bytes.data() + offset), length);
+        offset += length;
+    }
+    return offset == bytes.size();
+}
+
+inline bool parse_finite_float(const probe::PackageIndex& package, const std::string& key,
+    float& value) {
+    const auto found = package.sections.find(key);
+    if (found == package.sections.end() || found->second.empty()) return false;
+    char* end = nullptr;
+    const float parsed = std::strtof(found->second.c_str(), &end);
+    if (end != found->second.c_str() + found->second.size() || !std::isfinite(parsed)) return false;
+    value = parsed;
+    return true;
+}
+
 } // namespace detail
 
 inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geometry,
@@ -151,10 +210,12 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
         return false;
     }
     const auto format = package.sections.find("format");
-    if (format == package.sections.end() || format->second != "elisa-cooked-v2") {
+    if (format == package.sections.end() ||
+        (format->second != "elisa-cooked-v2" && format->second != "elisa-cooked-v3")) {
         error = "unsupported cooked geometry format";
         return false;
     }
+    const bool has_rig_format = format->second == "elisa-cooked-v3";
     const auto stride = [&package](const char* key, const char* expected) {
         const auto found = package.sections.find(key);
         return found != package.sections.end() && found->second == expected;
@@ -256,32 +317,9 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
             return false;
         }
         std::vector<uint8_t> name_bytes;
-        if (!detail::decode_base64(skin_names->second, name_bytes)) {
+        if (!detail::decode_base64(skin_names->second, name_bytes) ||
+            !detail::decode_names(name_bytes, size_t(bone_count), geometry.skin_bone_names)) {
             error = "invalid cooked geometry bone-name stream";
-            return false;
-        }
-        size_t name_offset = 0;
-        geometry.skin_bone_names.reserve(size_t(bone_count));
-        for (size_t bone = 0; bone < size_t(bone_count); ++bone) {
-            if (name_bytes.size() - name_offset < 4) {
-                error = "truncated cooked geometry bone name";
-                return false;
-            }
-            const uint32_t length = uint32_t(name_bytes[name_offset]) |
-                (uint32_t(name_bytes[name_offset + 1]) << 8) |
-                (uint32_t(name_bytes[name_offset + 2]) << 16) |
-                (uint32_t(name_bytes[name_offset + 3]) << 24);
-            name_offset += 4;
-            if (length > name_bytes.size() - name_offset) {
-                error = "cooked geometry bone name exceeds its stream";
-                return false;
-            }
-            geometry.skin_bone_names.emplace_back(
-                reinterpret_cast<const char*>(name_bytes.data() + name_offset), length);
-            name_offset += length;
-        }
-        if (name_offset != name_bytes.size()) {
-            error = "cooked geometry bone-name stream has trailing bytes";
             return false;
         }
         for (size_t vertex = 0; vertex < size_t(vertices); ++vertex) {
@@ -299,6 +337,139 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
                 error = "cooked geometry bone weights are not normalized";
                 return false;
             }
+        }
+    }
+
+    const auto joint_count_section = package.sections.find("skin_joints");
+    const auto parents_stride = package.sections.find("skin_joint_parent_stride");
+    const auto parents_data = package.sections.find("skin_joint_parents_b64");
+    const auto rest_stride = package.sections.find("skin_joint_rest_stride");
+    const auto rest_data = package.sections.find("skin_joint_rest_b64");
+    const auto joint_names_data = package.sections.find("skin_joint_names_b64");
+    const auto cluster_map_stride = package.sections.find("skin_cluster_joints_stride");
+    const auto cluster_map_data = package.sections.find("skin_cluster_joints_b64");
+    const bool has_rig = joint_count_section != package.sections.end();
+    if (has_rig_format != has_rig ||
+        (parents_stride != package.sections.end()) != has_rig ||
+        (parents_data != package.sections.end()) != has_rig ||
+        (rest_stride != package.sections.end()) != has_rig ||
+        (rest_data != package.sections.end()) != has_rig ||
+        (joint_names_data != package.sections.end()) != has_rig ||
+        (cluster_map_stride != package.sections.end()) != has_rig ||
+        (cluster_map_data != package.sections.end()) != has_rig ||
+        (has_rig && !has_skin)) {
+        error = "incomplete cooked geometry rig hierarchy";
+        return false;
+    }
+    if (has_rig) {
+        uint64_t joint_count = 0;
+        std::vector<int32_t> parents;
+        std::vector<float> rest_values;
+        if (!detail::parse_count(package, "skin_joints", joint_count) || joint_count == 0 || joint_count > 64 ||
+            parents_stride->second != "4" || rest_stride->second != "40" || cluster_map_stride->second != "4" ||
+            !detail::decode_i32(package, "skin_joint_parents_b64", size_t(joint_count), parents) ||
+            !detail::decode_floats(package, "skin_joint_rest_b64", size_t(joint_count) * 10, rest_values) ||
+            !detail::decode_u32(package, "skin_cluster_joints_b64", geometry.skin_bone_names.size(), geometry.skin_cluster_joints)) {
+            error = "invalid cooked geometry rig counts or streams";
+            return false;
+        }
+        std::vector<uint8_t> encoded_names;
+        std::vector<std::string> joint_names;
+        if (!detail::decode_base64(joint_names_data->second, encoded_names) ||
+            !detail::decode_names(encoded_names, size_t(joint_count), joint_names)) {
+            error = "invalid cooked geometry joint-name stream";
+            return false;
+        }
+        std::vector<bool> cluster_seen(size_t(joint_count), false);
+        geometry.skin_joints.reserve(size_t(joint_count));
+        for (size_t joint_index = 0; joint_index < size_t(joint_count); ++joint_index) {
+            const int32_t parent = parents[joint_index];
+            if (parent < -1 || parent >= int32_t(joint_index)) {
+                error = "cooked geometry rig is not parent ordered";
+                return false;
+            }
+            CookedGeometry::SkinJoint joint;
+            joint.name = std::move(joint_names[joint_index]);
+            joint.parent_index = parent;
+            std::copy_n(rest_values.data() + joint_index * 10, 10, joint.rest_local.begin());
+            const float rotation_length = std::sqrt(joint.rest_local[3] * joint.rest_local[3] +
+                joint.rest_local[4] * joint.rest_local[4] + joint.rest_local[5] * joint.rest_local[5] +
+                joint.rest_local[6] * joint.rest_local[6]);
+            if (!(rotation_length > 0.99f && rotation_length < 1.01f) ||
+                joint.rest_local[7] == 0.0f || joint.rest_local[8] == 0.0f || joint.rest_local[9] == 0.0f) {
+                error = "cooked geometry has an invalid joint rest transform";
+                return false;
+            }
+            geometry.skin_joints.push_back(std::move(joint));
+        }
+        for (size_t cluster = 0; cluster < geometry.skin_cluster_joints.size(); ++cluster) {
+            const uint32_t joint = geometry.skin_cluster_joints[cluster];
+            if (joint >= joint_count || cluster_seen[joint] ||
+                geometry.skin_joints[joint].name != geometry.skin_bone_names[cluster]) {
+                error = "cooked geometry cluster map does not match its joint hierarchy";
+                return false;
+            }
+            cluster_seen[joint] = true;
+            geometry.skin_joints[joint].cluster_index = int32_t(cluster);
+        }
+
+        uint64_t clip_count = 0;
+        if (!detail::parse_count(package, "animation_clips", clip_count) || clip_count > 8) {
+            error = "invalid cooked geometry animation clip count";
+            return false;
+        }
+        size_t total_sample_floats = 0;
+        for (size_t clip_index = 0; clip_index < size_t(clip_count); ++clip_index) {
+            const std::string prefix = "animation_" + std::to_string(clip_index) + "_";
+            const auto encoded_name = package.sections.find(prefix + "name_b64");
+            const auto sample_rate = package.sections.find(prefix + "sample_rate");
+            const auto frame_count_section = package.sections.find(prefix + "frames");
+            const auto transform_stride = package.sections.find(prefix + "transform_stride");
+            const auto samples = package.sections.find(prefix + "samples_b64");
+            float duration = 0.0f;
+            uint64_t rate = 0;
+            uint64_t frames = 0;
+            if (encoded_name == package.sections.end() || sample_rate == package.sections.end() ||
+                frame_count_section == package.sections.end() || transform_stride == package.sections.end() ||
+                samples == package.sections.end() || transform_stride->second != "40" ||
+                !detail::parse_finite_float(package, prefix + "duration_seconds", duration) || duration <= 0.0f ||
+                !detail::parse_count(package, (prefix + "sample_rate").c_str(), rate) || rate == 0 || rate > 120 ||
+                !detail::parse_count(package, (prefix + "frames").c_str(), frames) || frames < 2 || frames > 3601 ||
+                size_t(joint_count) > (2'000'000 - total_sample_floats) / 10 / size_t(frames)) {
+                error = "invalid cooked geometry animation metadata";
+                return false;
+            }
+            const size_t sample_floats = size_t(joint_count) * size_t(frames) * 10;
+            CookedGeometry::AnimationClip clip;
+            std::vector<uint8_t> clip_name_bytes;
+            std::vector<std::string> names;
+            if (!detail::decode_base64(encoded_name->second, clip_name_bytes) ||
+                !detail::decode_names(clip_name_bytes, 1, names) ||
+                !detail::decode_floats(package, (prefix + "samples_b64").c_str(), sample_floats,
+                    clip.local_transforms)) {
+                error = "invalid cooked geometry animation samples or name";
+                return false;
+            }
+            clip.name = std::move(names[0]);
+            if (clip.name.empty()) {
+                error = "cooked geometry animation name is empty";
+                return false;
+            }
+            clip.duration_seconds = duration;
+            clip.sample_rate = uint32_t(rate);
+            clip.frame_count = uint32_t(frames);
+            for (size_t offset = 0; offset < clip.local_transforms.size(); offset += 10) {
+                const float* transform = clip.local_transforms.data() + offset;
+                const float rotation_length = std::sqrt(transform[3] * transform[3] + transform[4] * transform[4] +
+                    transform[5] * transform[5] + transform[6] * transform[6]);
+                if (!(rotation_length > 0.99f && rotation_length < 1.01f) ||
+                    transform[7] == 0.0f || transform[8] == 0.0f || transform[9] == 0.0f) {
+                    error = "cooked geometry animation has an invalid transform sample";
+                    return false;
+                }
+            }
+            total_sample_floats += sample_floats;
+            geometry.animation_clips.push_back(std::move(clip));
         }
     }
     return true;

@@ -51,13 +51,22 @@ window flags describe current focus, minimize, fullscreen, suspension, and
 close-request state. A resize signal includes display changes that may affect
 pixel size or scale, and does not imply only a user drag-resize.
 
-The lifecycle layer also queues ordered SDL keyboard and mouse-button edges for
-Elisa through `Application::next_input_event`. Focus loss and minimization add
-a clear-state event; queue overflow produces a reset event so missed releases
-cannot leave actions stuck. The scalar token currently carries digital code and
-edge state. `ActionInput` remains an Elisa-owned action state API; game source
-maps portable device IDs and codes to its action bindings. Analog values,
-chords, and gamepad delivery still need a compiler-compatible public path.
+The lifecycle layer queues ordered keyboard, mouse-button, gamepad-button,
+gamepad-axis, and gamepad connect/disconnect events for Elisa through
+`Application::next_input_event`. Supported keyboard and gamepad controls use
+stable engine codes; game bindings do not need SDL key or gamepad constants.
+Stick directions and triggers carry normalized values in `[0, 1]`; the scalar
+token preserves those values at 20-bit precision alongside digital codes and
+edges. Axis events also release the direction that is no longer active, so
+`ActionInput` can apply each binding's own dead zone without leaving a direction
+stuck. `InputEvent.connected` reports whether any recognized gamepad remains
+after a disconnect. The native host opens up to four recognized SDL gamepads
+and closes them before SDL shutdown. Focus loss and minimization add a clear-state event; queue
+overflow produces a reset event so missed releases cannot leave actions stuck.
+`ActionInput` remains an Elisa-owned action state API and aggregates multiple
+bindings while preserving directional intent for the game's opposing-action
+calculation. Full key coverage, mouse movement/scroll, physical controller
+verification, chord-source delivery, and saved rebinding remain.
 `ActionInput::clear_device_state` can clear keyboard, mouse, and gamepad state
 without marking devices disconnected. `RenderScene` provides
 the first Wicked-backed generic primitive, instance-transform, visibility,
@@ -65,10 +74,15 @@ and orthographic-camera service. Mesh/texture import, lighting, input-device
 polling, and higher-level rendering features remain future engine work.
 
 Validation: `scripts/application_native_smoke.py` verifies Elisa-authored code
-can initialize, pump one frame, read timing/window metrics, observe and consume
-a close-request edge, and shut down without game-owned C exports. The ordinary
-`test/action_input.elisa` suite covers focus-style held-state clearing while
-keeping a device connected.
+can initialize SDL's gamepad subsystem, pump one frame, read timing/window
+metrics, observe and consume a close-request edge, and shut down without
+game-owned C exports. `test/action_input.elisa` checks the public codes used from Elisa, while
+`test/application_gamepad_codes.cpp` checks SDL to
+portable key/button mappings, signed axis normalization, and digital/analog
+token encoding. `test/action_input.elisa` covers focus-style held-state
+clearing, per-binding state, and an axis falling below its dead zone while the
+raw device value remains nonzero. No physical controller was connected during
+this validation.
 
 Window flag constants use the `WINDOW_` prefix to distinguish persistent
 window state from same-named event bits such as `MINIMIZED` and
