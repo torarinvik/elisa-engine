@@ -76,7 +76,7 @@ public:
         bool fullscreen = false;
 
         bool suspended() const {
-            return minimized || pixel_width == 0 || pixel_height == 0;
+            return !focused || minimized || pixel_width == 0 || pixel_height == 0;
         }
     };
 
@@ -196,12 +196,18 @@ public:
         return poll_events([](const SDL_Event&) {});
     }
 
-    void run_frame() {
+    bool run_frame() {
+        if (application_ == nullptr || simulation_suspended()) return false;
         application_->Run();
+        return true;
     }
 
     template <typename Step>
     int advance_fixed(int64_t elapsed_nanos, Step&& step) {
+        if (simulation_suspended()) {
+            reset_fixed_clock();
+            return 0;
+        }
         return pacer_.advance(elapsed_nanos, std::forward<Step>(step));
     }
 
@@ -319,6 +325,7 @@ private:
     };
 
     friend bool probe_partial_startup_failure();
+    friend bool probe_window_lifecycle(NativeApplication&);
 
     bool consume_startup_fault(StartupFault point) {
         if (startup_fault_ != point) return false;

@@ -26,15 +26,21 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
     SDL_Event event{};
     event.type = SDL_EVENT_WINDOW_FOCUS_LOST;
     SDL_PushEvent(&event);
+    host.poll_events();
+    if (!check(!host.window_state().focused && host.simulation_suspended(),
+            "SDL focus loss suspends simulation")) return false;
     event.type = SDL_EVENT_WINDOW_MINIMIZED;
     SDL_PushEvent(&event);
     host.poll_events();
-    if (!check(!host.window_state().focused && host.simulation_suspended(),
-               "SDL focus and minimize suspend")) {
+    if (!check(host.window_state().minimized && host.simulation_suspended(),
+               "SDL minimize remains suspended")) {
         return false;
     }
     event.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
     SDL_PushEvent(&event);
+    host.poll_events();
+    if (!check(host.window_state().focused && host.simulation_suspended(),
+            "focus gain does not resume minimized window")) return false;
     event.type = SDL_EVENT_WINDOW_RESTORED;
     SDL_PushEvent(&event);
     event.type = SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED;
@@ -46,6 +52,20 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
               "SDL resize serial remains monotonic")) {
         return false;
     }
+    const int pixel_width = host.window_state_.pixel_width;
+    const int pixel_height = host.window_state_.pixel_height;
+    host.window_state_.pixel_width = 0;
+    int resumed_ticks = 0;
+    if (!check(host.simulation_suspended() && !host.run_frame() &&
+            host.advance_fixed(FixedStepPacer::STEP_NANOS * 4, [&] { ++resumed_ticks; }) == 0 &&
+            resumed_ticks == 0, "zero pixel extent suspends native rendering and ticks")) return false;
+    host.window_state_.pixel_width = pixel_width;
+    host.window_state_.pixel_height = pixel_height;
+    if (!check(host.advance_fixed(FixedStepPacer::STEP_NANOS - 1,
+                [&] { ++resumed_ticks; }) == 0 &&
+            host.advance_fixed(1, [&] { ++resumed_ticks; }) == 1 && resumed_ticks == 1,
+            "resume resets fixed-step backlog")) return false;
+    host.reset_fixed_clock();
     if (!check(host.set_fullscreen(true), "SDL enters fullscreen") ||
         !check(host.window_state().fullscreen, "SDL fullscreen state") ||
         !check(host.set_fullscreen(false), "SDL leaves fullscreen") ||
