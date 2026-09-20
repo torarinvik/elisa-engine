@@ -3,6 +3,7 @@
 // Native camera adapter for the backend-neutral camera contract. Viewport and
 // projection policy stay explicit; Wicked camera components remain private.
 #include "probe_core.h"
+#include "wiRenderPath3D.h"
 #include "wiScene.h"
 
 #include <cstdint>
@@ -43,11 +44,19 @@ public:
         return true;
     }
 
+    bool activate(wi::RenderPath3D& path, wi::ecs::Entity entity) {
+        auto* camera = scene_.cameras.GetComponent(entity);
+        if (camera == nullptr) return false;
+        path.scene = &scene_;
+        path.camera = camera;
+        return true;
+    }
+
 private:
     wi::scene::Scene& scene_;
 };
 
-inline bool probe_camera_bridge(wi::scene::Scene& scene) {
+inline bool probe_camera_bridge(wi::scene::Scene& scene, wi::RenderPath3D& path, wi::ecs::Entity original_entity) {
     CameraBridge bridge(scene);
     const auto perspective = bridge.create_perspective(320.0f, 200.0f, 2.0f);
     const auto ortho = bridge.create_orthographic(320.0f, 200.0f, 2.0f, 8.0f);
@@ -60,7 +69,14 @@ inline bool probe_camera_bridge(wi::scene::Scene& scene) {
         !check((ortho_component->_flags & wi::scene::CameraComponent::ORTHO) != 0,
             "camera bridge selects orthographic projection") ||
         !check(bridge.resize(perspective, 640.0f, 400.0f, 1.0f),
-            "camera bridge resizes perspective view")) return false;
+            "camera bridge resizes perspective view") ||
+        !check(bridge.activate(path, ortho) && path.camera == ortho_component && path.scene == &scene,
+            "camera bridge switches to orthographic view") ||
+        !check(bridge.activate(path, perspective) && path.camera == perspective_component,
+            "camera bridge switches back to perspective view") ||
+        !check(!bridge.activate(path, wi::ecs::INVALID_ENTITY) && path.camera == perspective_component,
+            "camera bridge rejects missing view without changing active camera")) return false;
+    path.camera = scene.cameras.GetComponent(original_entity);
     scene.Entity_Remove(perspective);
     scene.Entity_Remove(ortho);
     return check(scene.cameras.GetComponent(perspective) == nullptr && scene.cameras.GetComponent(ortho) == nullptr,

@@ -17,6 +17,8 @@ module Camera:
             Orthographic
 
         struct Viewport:
+            x: i32
+            y: i32
             width: i32
             height: i32
             display_scale: f32
@@ -34,7 +36,7 @@ module Camera:
         def State(width: i32, height: i32) -> State:
             State{
                 projection: Projection.Perspective,
-                viewport: Viewport{width: width, height: height, display_scale: 1.0},
+                viewport: Viewport{x: 0, y: 0, width: width, height: height, display_scale: 1.0},
                 transform: Geometry::transform_identity(),
                 fov_radians: 1.04719755,
                 ortho_height: 10.0,
@@ -43,13 +45,22 @@ module Camera:
             }
 
         def viewport_valid(viewport: Viewport) -> bool:
-            viewport.width > 0 and viewport.height > 0 and viewport.width <= Limits::MAX_VIEWPORT and viewport.height <= Limits::MAX_VIEWPORT and viewport.display_scale > 0.0
+            viewport.x >= 0 and viewport.y >= 0 and viewport.width > 0 and viewport.height > 0 and viewport.width <= Limits::MAX_VIEWPORT and viewport.height <= Limits::MAX_VIEWPORT and viewport.display_scale > 0.0
 
         def state_valid(state: State&) -> bool:
             viewport_valid(state.viewport) and state.near_clip >= Limits::MIN_CLIP and state.far_clip > state.near_clip and state.fov_radians >= Limits::MIN_FOV and state.fov_radians <= Limits::MAX_FOV and state.ortho_height > 0.0
 
         def resize(state: mutable State&, width: i32, height: i32, display_scale: f32) -> bool:
-            next: Viewport = Viewport{width: width, height: height, display_scale: display_scale}
+            next: Viewport = Viewport{x: 0, y: 0, width: width, height: height, display_scale: display_scale}
+            return false if not viewport_valid(next)
+            state.viewport <- next
+            true
+
+        def set_viewport_region(state: mutable State&, x: i32, y: i32, width: i32, height: i32, framebuffer_width: i32, framebuffer_height: i32, display_scale: f32) -> bool:
+            return false if x < 0 or y < 0 or width <= 0 or height <= 0 or framebuffer_width <= 0 or framebuffer_height <= 0
+            return false if framebuffer_width > Limits::MAX_VIEWPORT or framebuffer_height > Limits::MAX_VIEWPORT
+            return false if width > framebuffer_width or height > framebuffer_height or x > framebuffer_width - width or y > framebuffer_height - height
+            next: Viewport = Viewport{x: x, y: y, width: width, height: height, display_scale: display_scale}
             return false if not viewport_valid(next)
             state.viewport <- next
             true
@@ -60,7 +71,7 @@ module Camera:
         def resize_or_suspend(state: mutable State&, width: i32, height: i32, display_scale: f32) -> bool:
             return false if width < 0 or height < 0 or display_scale <= 0.0
             if width == 0 or height == 0:
-                state.viewport <- Viewport{width: 0, height: 0, display_scale: display_scale}
+                state.viewport <- Viewport{x: 0, y: 0, width: 0, height: 0, display_scale: display_scale}
                 return true
             resize(state, width, height, display_scale)
 
@@ -90,8 +101,10 @@ module Camera:
 
         def ray(state: State&, pixel_x: f32, pixel_y: f32) -> Geometry::Ray3:
             return Geometry::Ray3{origin: state.transform.position, direction: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}} if not viewport_valid(state.viewport)
-            ndc_x: f32 = pixel_x / state.viewport.width.f32() * 2.0 - 1.0
-            ndc_y: f32 = 1.0 - pixel_y / state.viewport.height.f32() * 2.0
+            local_x: f32 = pixel_x - state.viewport.x.f32()
+            local_y: f32 = pixel_y - state.viewport.y.f32()
+            ndc_x: f32 = local_x / state.viewport.width.f32() * 2.0 - 1.0
+            ndc_y: f32 = 1.0 - local_y / state.viewport.height.f32() * 2.0
             aspect: f32 = state.viewport.width.f32() / state.viewport.height.f32()
             local_origin: mutable Geometry::Vec3 = Geometry::vec3_zero()
             local_direction: mutable Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}

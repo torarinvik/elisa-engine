@@ -14,6 +14,12 @@ def main() -> i32:
     return 8 if Camera::state_valid(&camera)
     return 9 if not Camera::resize_or_suspend(&camera, 640, 480, 2.0) or Camera::viewport_suspended(&camera)
     return 10 if not Camera::state_valid(&camera)
+    return 14 if not Camera::set_viewport_region(&camera, 320, 0, 320, 480, 640, 480, 2.0)
+    split_view_ray: Geometry::Ray3 = Camera::ray(&camera, 480.0, 240.0)
+    return 15 if split_view_ray.direction.z >= -0.99
+    return 16 if Camera::viewport(&camera).x != 320 or Camera::viewport(&camera).width != 320
+    return 17 if Camera::set_viewport_region(&camera, 400, 0, 320, 480, 640, 480, 2.0)
+    return 18 if not Camera::resize(&camera, 640, 480, 2.0)
     return 11 if not Camera::set_orthographic(&camera, 10.0, 0.1, 100.0)
     orthographic: Geometry::Ray3 = Camera::ray(&camera, 320.0, 240.0)
     return 12 if orthographic.origin.x != 2.0 or orthographic.origin.y != 3.0 or orthographic.origin.z != 4.0

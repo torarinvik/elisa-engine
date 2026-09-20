@@ -114,7 +114,6 @@ int main(int argc, char** argv) {
     if (!probe_physics_body_bridge(scene)) return 1;
     if (!probe_physics_queries(scene)) return 1;
     if (!probe_action_input_bridge()) return 1;
-    if (!probe_camera_bridge(scene)) return 1;
     if (!probe_parallel_executor()) return 1;
     if (!probe_world_event_bridge()) return 1;
     if (!probe_lighting_bridge(scene)) return 1;
@@ -443,6 +442,7 @@ int main(int argc, char** argv) {
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
     render_path.camera = camera_component;
+    if (!probe_camera_bridge(scene, render_path, camera)) return 1;
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);

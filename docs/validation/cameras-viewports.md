@@ -11,11 +11,14 @@ The viewport rejects zero or oversized dimensions and records display scale.
 suspended state and restores a valid viewport on the next non-zero resize, so
 projection math never divides by zero. `test/camera.elisa` covers centered
 perspective rays, camera movement, resize scale, suspension/resume,
-orthographic origins, and forward direction. Render-to-texture and multi-camera
-scheduling remain native R03 work.
+orthographic origins, forward direction, and a right-half split viewport whose
+global pixel coordinates map to the viewport center. Invalid rectangles that
+extend beyond the framebuffer are rejected. Render-to-texture and multi-camera
+render scheduling remain native R03 work.
 
 The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
 orthographic camera components, applies a 2x viewport scale, resizes a
-perspective view, and removes both temporary views without retaining native
-camera entities. Render targets, camera switching, and frustum scheduling are
-still higher-level work.
+perspective view, switches an actual `RenderPath3D` between the two cameras,
+rejects a missing camera without disturbing the active view, and removes both
+temporary views without retaining native camera entities. Render targets and
+frustum scheduling remain higher-level work.
