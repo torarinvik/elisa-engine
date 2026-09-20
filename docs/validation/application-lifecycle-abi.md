@@ -11,7 +11,7 @@ The application author provides the ordinary Elisa `main()`. The engine-owned
 reads the entry point, output path, and optional application defaults from
 `elisa.project.json`; `--main` and `--output` can override its paths. It
 includes `src/runtime/public.elisa`, which provides `Application`,
-`ActionInput`, `RenderScene`, and `Geometry` to the
+`ActionInput`, `RenderScene`, `WorldRendering`, and `Geometry` to the
 project without requiring engine-relative include paths,
 compiles the Elisa entry point to an archive, rejects game-owned C exports from
 the compiler's ABI manifest, and links that archive with the shared native
@@ -51,11 +51,15 @@ window flags describe current focus, minimize, fullscreen, suspension, and
 close-request state. A resize signal includes display changes that may affect
 pixel size or scale, and does not imply only a user drag-resize.
 
-The lifecycle layer consumes SDL window/quit events and exposes only these
-portable signals. It does not forward raw events, key/button codes, or action
-states. `ActionInput` remains an Elisa-owned action state API; on focus loss,
-callers can use `ActionInput::clear_device_state` for keyboard, mouse, and
-gamepad state without marking devices disconnected. `RenderScene` provides
+The lifecycle layer also queues ordered SDL keyboard and mouse-button edges for
+Elisa through `Application::next_input_event`. Focus loss and minimization add
+a clear-state event; queue overflow produces a reset event so missed releases
+cannot leave actions stuck. The scalar token currently carries digital code and
+edge state. `ActionInput` remains an Elisa-owned action state API; game source
+maps portable device IDs and codes to its action bindings. Analog values,
+chords, and gamepad delivery still need a compiler-compatible public path.
+`ActionInput::clear_device_state` can clear keyboard, mouse, and gamepad state
+without marking devices disconnected. `RenderScene` provides
 the first Wicked-backed generic primitive, instance-transform, visibility,
 and orthographic-camera service. Mesh/texture import, lighting, input-device
 polling, and higher-level rendering features remain future engine work.
@@ -65,3 +69,8 @@ can initialize, pump one frame, read timing/window metrics, observe and consume
 a close-request edge, and shut down without game-owned C exports. The ordinary
 `test/action_input.elisa` suite covers focus-style held-state clearing while
 keeping a device connected.
+
+Window flag constants use the `WINDOW_` prefix to distinguish persistent
+window state from same-named event bits such as `MINIMIZED` and
+`CLOSE_REQUESTED`. This keeps Elisa accessors aligned with the native flag
+values.

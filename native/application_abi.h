@@ -68,6 +68,9 @@ int32_t elisa_application_v1_frame_info(
 int32_t elisa_application_v1_next_input_event(
     int32_t* kind, int32_t* device, int64_t* code, float* value,
     int32_t* pressed, int32_t* released, int32_t* chord_down);
+// Compact digital-key/button path for Elisa stage1, which currently cannot
+// lower this event's multi-output pointer ABI safely.
+int64_t elisa_application_v1_next_input_event_token(void);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);

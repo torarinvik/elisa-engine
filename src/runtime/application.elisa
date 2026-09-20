@@ -20,11 +20,11 @@ module Application:
             RESTORED: u32 = 32
 
         const module NativeWindowFlags:
-            FOCUSED: u32 = 1
-            MINIMIZED: u32 = 2
-            FULLSCREEN: u32 = 4
-            SUSPENDED: u32 = 8
-            CLOSE_REQUESTED: u32 = 16
+            WINDOW_FOCUSED: u32 = 1
+            WINDOW_MINIMIZED: u32 = 2
+            WINDOW_FULLSCREEN: u32 = 4
+            WINDOW_SUSPENDED: u32 = 8
+            WINDOW_CLOSE_REQUESTED: u32 = 16
 
         @callconv(c)
         extern elisa_application_abi_version() -> u32
@@ -51,7 +51,7 @@ module Application:
         extern elisa_application_v1_frame_info(frame_count: mutable u64&, elapsed_nanos: mutable u64&, resize_serial: mutable u64&, logical_width: mutable i32&, logical_height: mutable i32&, pixel_width: mutable i32&, pixel_height: mutable i32&, display_scale: mutable f32&, event_flags: mutable u32&, window_flags: mutable u32&) -> i32
 
         @callconv(c)
-        extern elisa_application_v1_next_input_event(kind: mutable i32&, device: mutable i32&, code: mutable i64&, value: mutable f32&, pressed: mutable i32&, released: mutable i32&, chord_down: mutable i32&) -> i32
+        extern elisa_application_v1_next_input_event_token() -> i64
 
         @callconv(c)
         extern elisa_application_v1_request_exit() -> i32
@@ -146,25 +146,19 @@ module Application:
         # keyboard and device 1 is mouse; focus loss and overflow are explicit
         # event kinds so Elisa can release all held actions safely.
         def next_input_event(event: mutable InputEvent&) -> bool:
-            kind: mutable i32 = 0
-            device: mutable i32 = 0
-            code: mutable i64 = 0
-            value: mutable f32 = 0.0
-            pressed: mutable i32 = 0
-            released: mutable i32 = 0
-            chord_down: mutable i32 = 0
-            result: i32 = elisa_application_v1_next_input_event(&kind, &device, &code, &value, &pressed, &released, &chord_down)
-            return false if result != 1
+            encoded: i64 = elisa_application_v1_next_input_event_token()
+            return false if encoded <= 0
+            kind: i32 = (encoded & 7).i32()
             event.kind <- InputEventKind.Key if kind == 1
             event.kind <- InputEventKind.MouseButton if kind == 2
             event.kind <- InputEventKind.FocusLost if kind == 3
             event.kind <- InputEventKind.Overflow if kind == 4
-            event.device <- device
-            event.code <- code
-            event.value <- value
-            event.pressed <- pressed != 0
-            event.released <- released != 0
-            event.chord_down <- chord_down != 0
+            event.device <- ((encoded >> 3) & 3).i32()
+            event.code <- (encoded >> 5) & 4294967295
+            event.pressed <- ((encoded >> 37) & 1) != 0
+            event.released <- ((encoded >> 38) & 1) != 0
+            event.value <- 1.0 if event.pressed else 0.0
+            event.chord_down <- false
             true
 
         def elapsed_seconds(info: FrameInfo&) -> f32:
@@ -189,19 +183,19 @@ module Application:
             (info.event_flags & NativeEvents::RESTORED) != 0
 
         def is_focused(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::FOCUSED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_FOCUSED) != 0
 
         def is_minimized(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::MINIMIZED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_MINIMIZED) != 0
 
         def is_fullscreen(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::FULLSCREEN) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_FULLSCREEN) != 0
 
         def is_suspended(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::SUSPENDED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_SUSPENDED) != 0
 
         def is_close_requested(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::CLOSE_REQUESTED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_CLOSE_REQUESTED) != 0
 
         def request_exit() -> bool:
             elisa_application_v1_request_exit() == NativeStatus::OK

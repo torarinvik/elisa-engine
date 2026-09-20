@@ -188,6 +188,7 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             break;
         case SDL_EVENT_WINDOW_MINIMIZED:
             service.pending_events |= ELISA_APPLICATION_EVENT_MINIMIZED;
+            queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, -1, 0, 0.0f, false, true);
             break;
         case SDL_EVENT_WINDOW_RESTORED:
             service.pending_events |= ELISA_APPLICATION_EVENT_RESTORED;
@@ -244,6 +245,41 @@ extern "C" int32_t elisa_application_v1_next_input_event(
     service.input_overflow = false;
     service.input_overflow_reported = false;
     return 0;
+}
+
+extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    int32_t kind = 0;
+    int32_t device = 0;
+    int64_t code = 0;
+    bool pressed = false;
+    bool released = false;
+    if (service.input_event_read < service.input_event_count) {
+        const QueuedInputEvent& event = service.input_events[service.input_event_read++];
+        kind = event.kind;
+        device = event.device;
+        code = event.code;
+        pressed = event.pressed != 0;
+        released = event.released != 0;
+    } else if (service.input_overflow && !service.input_overflow_reported) {
+        service.input_overflow_reported = true;
+        kind = ELISA_APPLICATION_INPUT_OVERFLOW;
+    } else {
+        service.input_event_count = 0;
+        service.input_event_read = 0;
+        service.input_overflow = false;
+        service.input_overflow_reported = false;
+        return 0;
+    }
+    const uint64_t packed = uint64_t(kind & 0x7) |
+        (uint64_t(device & 0x3) << 3) |
+        (uint64_t(uint32_t(code)) << 5) |
+        (pressed ? uint64_t(1) << 37 : 0) |
+        (released ? uint64_t(1) << 38 : 0);
+    return int64_t(packed);
 }
 
 extern "C" int32_t elisa_application_v1_frame_info(

@@ -75,6 +75,11 @@ def main(arguments: darray[sview]) -> i64:
     compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
     embed_archive: sview = str(root.joinpath("build/libmaze.a"))
     if phase == "all" or phase == "build":
+        fbx_import_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/test_fbx_import.py"))])
+        if fbx_import_status != 0:
+            return fbx_import_status
         archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
         if archive_status != 0:
             return archive_status

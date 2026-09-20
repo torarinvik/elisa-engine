@@ -81,6 +81,14 @@ module RenderScene:
             private:
                 native_value: i64
 
+        # A compact owner-side collection avoids exposing the representation of
+        # opaque handles to projects. It is useful for batches such as maze
+        # tiles that are created once and shown or hidden as topology changes.
+        struct InstanceBatch:
+            private:
+                handles: mutable InstanceHandle[256]
+                count: mutable usize
+
         error RenderSceneError:
             InvalidValue
             NotInitialized
@@ -94,6 +102,21 @@ module RenderScene:
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1
             try check_status(elisa_render_scene_v1_initialize(width, height, orthographic_height))
+
+        def InstanceBatch() -> InstanceBatch:
+            InstanceBatch{handles: zeroed, count: 0}
+
+        def batch_append(batch: mutable InstanceBatch&, handle: InstanceHandle) -> void error[RenderSceneError]:
+            raise RenderSceneError.Capacity if batch.count >= 256
+            batch.handles[batch.count] <- handle
+            batch.count <- batch.count + 1
+
+        def batch_get(batch: InstanceBatch&, index: usize) -> InstanceHandle error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if index >= batch.count
+            batch.handles[index]
+
+        def batch_count(batch: InstanceBatch&) -> usize:
+            batch.count
 
         def resize(width: i32, height: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_resize(width, height))

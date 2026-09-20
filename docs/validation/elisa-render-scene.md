@@ -77,6 +77,7 @@ application lifecycle smoke and this rendered-scene smoke.
 This is an initial generic primitive renderer. It owns one active scene and
 orthographic camera, uses unlit colors, and maps snapshot rows to default boxes.
 Transforms are currently stored in the separate render binding table rather
-than extracted from a general world transform component. It does not yet expose
-authored mesh or texture loading, parenting, a single transactional native batch
-submission, lighting, or editor tooling.
+than extracted from a general world transform component. `InstanceBatch` is an
+Elisa-side collection of checked handles and does not batch renderer calls. The
+renderer does not yet expose authored mesh or texture loading, parenting, a
+single transactional native batch submission, lighting, or editor tooling.
