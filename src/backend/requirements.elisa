@@ -93,12 +93,7 @@ module BackendRequirements:
             }
             BackendRequirementsReport{
                 state: invalid,
-                services: Capabilities::BackendRequirementReport{
-                    state: invalid,
-                    first_missing: Capabilities::BackendFeature.Input,
-                    missing_count: 0,
-                    fallback_count: 0,
-                },
+                services: Capabilities::backend_requirement_invalid_report(),
                 optional_features: BackendOptionalRequirementReport{
                     state: invalid,
                     first_missing: Capabilities::BackendOptionalFeature.RayTracing,

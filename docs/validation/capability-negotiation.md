@@ -8,8 +8,10 @@ Callers must provide a per-feature `BackendCapabilities` fallback map in
 addition to allowing fallback globally. A missing service without a matching
 fallback remains `Unavailable`; the helper count includes only concrete
 fallbacks available for currently missing features. The resolver is bounded
-by the existing eight-feature contract; another helper reports the first
-missing feature.
+by the existing eight-feature contract. Its ordered `BackendFeatureDecision`
+entries identify each request as `Native`, `DeclaredFallback`, or
+`Unavailable`, including repeated requests; unused entries stay `Invalid`.
+The report also retains the first missing feature and aggregate counts.
 
 `BackendProfile` carries typed RGBA8/BC1/R16F support, optional ray-tracing,
 sparse-texture and mesh-shader support, queried viewport/worker limits, and
@@ -57,12 +59,14 @@ shutdown.
 required services immediately after host initialization and before the caller
 enters gameplay. `Ready` means every requested service is native. If every
 missing service has a caller-declared fallback and fallback use is allowed, it
-returns `FallbackRequired` with the host still initialized; the caller must
-apply that fallback before gameplay. Invalid or unavailable requirements close
-the host and return the first missing feature and counts in the report. A failed
-rollback is surfaced as `ShutdownFailed`. The native lifecycle smoke checks
-the ready path, unsupported Physics rejection and rollback, declared Audio
-fallback reporting, and invalid-count rejection and rollback.
+returns `FallbackRequired` with the host still initialized; ordered route
+decisions tell the caller exactly which requested services need a fallback.
+The caller must initialize each selected fallback before gameplay. Invalid or
+unavailable requirements close the host and return the first missing feature,
+counts, and per-request decisions in the report. A failed rollback is surfaced
+as `ShutdownFailed`. The native lifecycle smoke checks the ready path,
+unsupported Physics rejection and rollback, declared Physics and Audio fallback
+decisions, and invalid-count rejection and rollback.
 
 `src/backend/requirements.elisa` adds a fixed-capacity aggregate startup
 contract for required services, optional graphics features, device limits, and
@@ -144,3 +148,16 @@ Physics and Audio fallback validation on 2026-09-20:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed on macOS 27.0 / Apple M5. The hidden SDL3/Metal application creates static, dynamic, and kinematic Jolt bodies, rejects a destroyed handle as `PhysicsError.InvalidHandle`, advances eight fixed ticks and observes falling motion, then verifies host shutdown invalidates the Physics world. It also runs the negotiated silent Audio fallback after repeated application startup/shutdown.
 - `test/parity/nested_const_module_collision_smoke.sh` passed stage0 and stage1. It guards the compiler fix for short nested-module references resolving sibling modules with the same child name, which had mapped the Physics ABI's invalid-handle code to the wrong Elisa error.
 - Physics remains an explicit adapter-owned scene and is not yet advanced by the gameplay `World` scheduler; the native host therefore does not advertise it as a core service.
+
+Per-service route follow-up, 2026-09-20: `BackendRequirementReport` now returns
+one bounded decision per requested service. The portable matrix verifies all
+eight features for declared-fallback and unavailable outcomes, a mixed request
+with both a usable fallback and an unavailable service, and native routing in
+the aggregate report. The real SDL3/Metal application smoke verifies native
+Input routing, unavailable Physics rejection, and declared Physics and Audio
+fallback routing before their adapters run. `elisascript scripts/check.elisascript`
+and `DEVELOPER_DIR=/Library/Developer/CommandLineTools
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
+python3 scripts/application_native_smoke.py` passed. F08 remains partial: the
+report makes decisions explicit but does not initialize fallback providers;
+Physics and Audio are the only current service adapters.
