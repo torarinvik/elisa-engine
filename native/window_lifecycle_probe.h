@@ -199,9 +199,13 @@ inline bool probe_repeated_host_lifecycle() {
     for (size_t cycle = 0; cycle <= lifecycle_cycles; ++cycle) {
         if (cycle != 0) {
             // The previous cycle's host and test bookkeeping have left scope.
-            heap_samples[cycle - 1] = lifecycle_heap_bytes_in_use();
             if (!check(lifecycle_lua_application_globals_cleared(),
                     "shutdown clears Lua Application handles")) return false;
+            // The first full collection in ShutdownApplication runs userdata
+            // finalizers; a second cycle reclaims those finalized wrappers.
+            // Run the assertion first because it interns the global field names.
+            lua_gc(wi::lua::GetLuaState(), LUA_GCCOLLECT, 0);
+            heap_samples[cycle - 1] = lifecycle_heap_bytes_in_use();
             if (cycle == inspect_after_cycle) {
                 const char* hold_text = std::getenv("ELISA_LIFECYCLE_MID_HOLD_SECONDS");
                 const int seconds = hold_text == nullptr ? 0 : std::atoi(hold_text);

@@ -386,3 +386,35 @@ The SDL3/Metal application and cooked-mesh smoke tests also passed. The host
 heap measurements still vary and need stack-level attribution; F05 remains
 partial. The settled churn samples no longer show the earlier suballocator
 growth, and the scene restart checks reported no GPU increase.
+
+## Settled host lifecycle allocation diff (macOS 27.0, 2026-09-20)
+
+The repeated-host probe now checks that the `main` and `application` globals
+are cleared, then runs a second full Lua collection before recording heap
+samples. `ShutdownApplication()` runs the first collection to finalize the
+retiring app's Lua wrappers; the second reclaims those finalized userdata. The
+global check runs before the first sample so its interned field names do not
+appear as lifecycle growth.
+
+An uninstrumented eight-cycle lifecycle-only run measured:
+
+```text
+host lifecycle heap: steady_bytes=92379840 final_bytes=92369744 delta_bytes=-10096
+host lifecycle heap samples: 92379840 92364896 92366720 92368880 92369264 92369312 92369696 92369744
+```
+
+For attribution, one `MallocStackLoggingNoCompact=1` process was paused and
+captured after cycles 1 and 8. The cycle-8 heap diff contained 112 new live
+nodes totaling about 31 KB. Almost all were AppKit, CoreFoundation, QuartzCore,
+and related Apple framework allocations; `leaks --diffFrom` reported zero new
+leaks. The only engine-side entries were two 64-byte Lua allocator blocks.
+Wicked's `killProcesses()` replaces the process-wide `WAITING_ON_SIGNAL` and
+`WAITING_ON_TIME` tables during shutdown, leaving those two rooted tables at a
+fixed count. The diff contained no `Application_BindLua` userdata after the
+second collection.
+
+The instrumented 31 KB is a live-allocation diff, not a leak measurement. This
+run attributes the earlier small positive host deltas to framework state and
+fixed Lua globals rather than accumulating application wrappers. F05 remains
+partial until another 512-cycle soak confirms the small scene-heap increase is
+bounded across repeated runs.
