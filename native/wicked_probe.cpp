@@ -41,6 +41,7 @@
 #include "capability_probe.h"
 #include "frame_pacing_probe.h"
 #include "window_lifecycle_probe.h"
+#include "scene_restart_probe.h"
 #include "physics_policy_probe.h"
 #include "coordinate_fixture.h"
 #include "package_bounds_probe.h"
@@ -571,25 +572,12 @@ int main(int argc, char** argv) {
     if (!probe_visibility_lod(scene, render_path)) {
         return 1;
     }
-    scene.Entity_Remove(object);
-    scene.Entity_Remove(camera);
-    scene.Entity_Remove(lamp);
-    for (const auto& wall : wall_entities) {
-        scene.Entity_Remove(wall);
-    }
-    for (const auto& marker : marker_entities) {
-        scene.Entity_Remove(marker);
-    }
-    scene.Entity_Remove(physics_box);
-    if (!check(scene.objects.GetComponent(object) == nullptr, "cube despawn") ||
-        !check(scene.meshes.GetComponent(object) == nullptr, "mesh despawn") ||
-        !check(scene.cameras.GetComponent(camera) == nullptr, "camera despawn") ||
-        !check(scene.lights.GetComponent(lamp) == nullptr, "lamp despawn") ||
-        (!wall_entities.empty() &&
-            !check(scene.objects.GetComponent(wall_entities.front()) == nullptr, "wall despawn"))) {
+    if (!probe_scene_despawn(scene, object, camera, lamp, physics_box, wall_entities, marker_entities)) {
         return 1;
     }
-    std::fprintf(stdout, "scene despawn passed\n");
+    if (!probe_in_process_scene_restarts(application_host)) {
+        return 1;
+    }
     application_host.shutdown();
     if (!probe_repeated_host_lifecycle()) {
         return 1;

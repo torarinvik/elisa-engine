@@ -41,12 +41,22 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 ELISA_ALLOW_STALE_STAGE1=1 ~/.local/bin/elisascript scripts/wicked_probe.elisascript
 ```
 
-Result: exit status 0; both native frame passes verified topology and exact
-determinism, the shutdown-hook job drain and 64-entry lifecycle pressure probe
-passed, and frame time stayed within budget. The eight repeated device cycles
-grew `malloc_zone_statistics` usage by 1,935,000–1,956,000 bytes, about
-270–290 KiB per cycle. The previous 2 MiB limit allowed this linear growth and
-is not evidence of a steady state.
+Result: `scripts/native_gate.elisascript native` exited 0 when launched from
+`/tmp` with the pinned ElisaScript/compiler and Command Line Tools SDK. The
+schema-2 report at `build/native-gate.json` records `outcome=pass` and
+`hardware_verification=verified`. Both native frame passes verified topology
+and exact determinism, the shutdown-hook job drain and 64-entry lifecycle
+pressure probe passed, and frame time stayed within budget. After the diagnostic scene is
+removed, the same live host now creates and renders four fresh Wicked scenes.
+Each restart waits for GPU work, stops the render path before scene teardown,
+clears scene-owned components, and verifies the application holds no active path
+to destroyed scene data. The two deterministic native passes reported scene
+cycle GPU usage deltas of 1,032,192 bytes and 0 bytes, and process-heap deltas of
+19,360 bytes and 10,176 bytes after the first cycle. These inconsistent memory
+samples do not establish a per-scene leak trend. The two matching eight-cycle
+host/device checks grew `malloc_zone_statistics` usage by 1,887,168 and
+1,892,816 bytes, about 270 KiB per cycle. The previous 2 MiB limit allowed this
+linear growth and is not evidence of a steady state.
 
 With `MallocStackLogging=1`, `leaks` on a paused lifecycle-only process now
 reports 417 live allocations totalling 26,496 bytes, all in three
@@ -59,7 +69,9 @@ report operating-system framework cycles. `AddressSanitizer` leak detection is
 unavailable in this macOS runtime (`detect_leaks is not supported on this
 platform`).
 
-F05 remains partial. Repeated native host/device restart is not equivalent to
-the required in-process scene restart, and the process heap high-water trend
-still needs longer-run attribution. Keep both facts visible until the
-repeated-scene test and device-lifetime ownership are accounted for.
+F05 remains partial. The in-process scene-restart probe verifies rendering,
+component cleanup, path detachment, and GPU completion, but its memory samples
+vary between identical native passes. The process heap high-water also grows
+across repeated host/device cycles. Continue with a longer soak and allocation
+attribution before claiming scene and device lifetimes return to a stable
+resource baseline.
