@@ -21,10 +21,14 @@ struct FbxVertex {
     float position[3]{};
     float normal[3]{};
     float uv[2]{};
+};
+static_assert(sizeof(FbxVertex) == sizeof(float) * 8);
+
+struct FbxSkinInfluence {
     uint32_t bone_indices[4]{};
     float bone_weights[4]{};
 };
-static_assert(sizeof(FbxVertex) == sizeof(float) * 12 + sizeof(uint32_t) * 4);
+static_assert(sizeof(FbxSkinInfluence) == sizeof(float) * 4 + sizeof(uint32_t) * 4);
 
 struct FbxMeshData {
     std::string node_name;
@@ -146,8 +150,7 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
         return false;
     }
     const size_t corner_count = mesh.num_triangles * 3;
-    if (corner_count > MAX_EXTRACTED_BYTES / sizeof(FbxVertex) ||
-        corner_count > std::numeric_limits<uint32_t>::max()) {
+    if (corner_count > std::numeric_limits<uint32_t>::max()) {
         fail(result, "FBX mesh exceeds the bounded extracted-geometry budget");
         return false;
     }
@@ -157,6 +160,7 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
         source_node->name.length);
     output.mesh_name.assign(mesh.name.data ? mesh.name.data : "", mesh.name.length);
     std::vector<FbxVertex> corners;
+    std::vector<FbxSkinInfluence> skin_corners;
     std::vector<uint32_t> indices(corner_count);
     corners.reserve(corner_count);
     std::vector<uint32_t> triangle_indices(mesh.max_face_triangles * 3);
@@ -188,7 +192,18 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
                 ? cluster->bone_node->name.data : "", cluster->bone_node->name.length);
         }
     }
+    const size_t bytes_per_corner = sizeof(FbxVertex) +
+        (skin != nullptr ? sizeof(FbxSkinInfluence) : 0);
+    if (corner_count > MAX_EXTRACTED_BYTES / bytes_per_corner) {
+        fail(result, "FBX mesh exceeds the bounded extracted-geometry budget");
+        return false;
+    }
+    if (skin != nullptr) skin_corners.reserve(corner_count);
 
+    // Keep static geometry compact: unskinned meshes such as the Arc Gate do
+    // not pay for four zeroed bone indices and weights per triangle corner.
+    // For skinned data, ufbx indexes the base attributes and influences as
+    // separate streams so vertices with different weights remain distinct.
     for (size_t face_index = 0; face_index < mesh.faces.count; ++face_index) {
         const ufbx_face face = mesh.faces.data[face_index];
         if (face.num_indices < 3) continue;
@@ -215,6 +230,7 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
                 return false;
             }
             FbxVertex vertex;
+            FbxSkinInfluence influence;
             vertex.position[0] = float(position.x);
             vertex.position[1] = float(position.y);
             vertex.position[2] = float(position.z);
@@ -286,27 +302,28 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
                     if (weight == 0.0f) continue;
                     size_t insert_at = 4;
                     for (size_t slot = 0; slot < 4; ++slot) {
-                        if (weight > vertex.bone_weights[slot]) {
+                        if (weight > influence.bone_weights[slot]) {
                             insert_at = slot;
                             break;
                         }
                     }
                     if (insert_at < 4) {
                         for (size_t slot = 3; slot > insert_at; --slot) {
-                            vertex.bone_indices[slot] = vertex.bone_indices[slot - 1];
-                            vertex.bone_weights[slot] = vertex.bone_weights[slot - 1];
+                            influence.bone_indices[slot] = influence.bone_indices[slot - 1];
+                            influence.bone_weights[slot] = influence.bone_weights[slot - 1];
                         }
-                        vertex.bone_indices[insert_at] = source_weight.cluster_index;
-                        vertex.bone_weights[insert_at] = weight;
+                        influence.bone_indices[insert_at] = source_weight.cluster_index;
+                        influence.bone_weights[insert_at] = weight;
                     }
                 }
-                for (float weight : vertex.bone_weights) total_weight += weight;
+                for (float weight : influence.bone_weights) total_weight += weight;
                 if (total_weight > 1.0e-20 && std::isfinite(total_weight)) {
-                    for (float& weight : vertex.bone_weights) weight = float(double(weight) / total_weight);
+                    for (float& weight : influence.bone_weights) weight = float(double(weight) / total_weight);
                 } else {
                     fail(result, "FBX skin vertex has no positive bone influence");
                     return false;
                 }
+                skin_corners.push_back(influence);
             }
             corners.push_back(vertex);
         }
@@ -317,18 +334,23 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
     }
 
     for (size_t index = 0; index < corner_count; ++index) indices[index] = uint32_t(index);
-    ufbx_vertex_stream stream{corners.data(), corners.size(), sizeof(FbxVertex)};
+    ufbx_vertex_stream streams[2] = {
+        {corners.data(), corners.size(), sizeof(FbxVertex)},
+        {skin_corners.data(), skin_corners.size(), sizeof(FbxSkinInfluence)},
+    };
     ufbx_allocator_opts index_allocator{};
     index_allocator.memory_limit = MAX_INDEX_MEMORY_BYTES;
     ufbx_error index_error{};
-    const size_t unique_count = ufbx_generate_indices(&stream, 1, indices.data(),
-        corner_count, &index_allocator, &index_error);
+    const size_t unique_count = ufbx_generate_indices(streams, skin != nullptr ? 2 : 1,
+        indices.data(), corner_count, &index_allocator, &index_error);
     if (unique_count == 0 || unique_count > corners.size() || index_error.type != UFBX_ERROR_NONE) {
         fail(result, index_error.type == UFBX_ERROR_NONE
-            ? "FBX vertex indexing produced no vertices" : ufbx_error_text(index_error));
+            ? "FBX vertex indexing produced no vertices"
+            : "FBX vertex indexing failed (ufbx error " + std::to_string(int(index_error.type)) + "): " + ufbx_error_text(index_error));
         return false;
     }
     corners.resize(unique_count);
+    if (skin != nullptr) skin_corners.resize(unique_count);
     indices.resize(corner_count);
     output.positions.reserve(unique_count * 3);
     output.normals.reserve(unique_count * 3);
@@ -337,7 +359,8 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
         output.skin_indices.reserve(unique_count * 4);
         output.skin_weights.reserve(unique_count * 4);
     }
-    for (const FbxVertex& vertex : corners) {
+    for (size_t index = 0; index < corners.size(); ++index) {
+        const FbxVertex& vertex = corners[index];
         for (size_t axis = 0; axis < 3; ++axis) {
             const float value = vertex.position[axis];
             output.positions.push_back(value);
@@ -348,9 +371,10 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
         output.uvs.push_back(vertex.uv[0]);
         output.uvs.push_back(vertex.uv[1]);
         if (skin != nullptr) {
-            for (size_t influence = 0; influence < 4; ++influence) {
-                output.skin_indices.push_back(vertex.bone_indices[influence]);
-                output.skin_weights.push_back(vertex.bone_weights[influence]);
+            const FbxSkinInfluence& skin_influence = skin_corners[index];
+            for (size_t slot = 0; slot < 4; ++slot) {
+                output.skin_indices.push_back(skin_influence.bone_indices[slot]);
+                output.skin_weights.push_back(skin_influence.bone_weights[slot]);
             }
         }
     }
@@ -393,7 +417,8 @@ inline FbxImportResult import_fbx(const std::filesystem::path& path,
     const std::string filename = path.string();
     ufbx_scene* loaded = ufbx_load_file(filename.c_str(), &options, &error);
     if (loaded == nullptr) {
-        detail::fail(result, detail::ufbx_error_text(error));
+        detail::fail(result, "FBX scene loading failed (ufbx error " +
+            std::to_string(int(error.type)) + "): " + detail::ufbx_error_text(error));
         return result;
     }
     std::unique_ptr<ufbx_scene, decltype(&ufbx_free_scene)> scene(loaded, &ufbx_free_scene);
