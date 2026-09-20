@@ -11,13 +11,26 @@ def main() -> i32:
         error failure: return 2
     snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
     transform: Geometry::Transform = Geometry::transform_identity()
-    return 3 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, transform)
-    return 4 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 102, transform)
+    visual: Assets::VisualAsset = Assets::VisualAsset{
+        mesh: Assets::AssetId{high: 3, low: 4},
+        material: Assets::AssetId{high: 3, low: 5},
+        local_bounds: Geometry::Bounds3{
+            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+        },
+    }
+    return 3 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, visual, transform)
+    return 4 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 102, visual, transform)
     return 5 if RenderSnapshot::snapshot_count(&snapshot) != 2 or not RenderSnapshot::snapshot_valid(&snapshot)
     moved: Geometry::Transform = Geometry::transform_translate(transform, Geometry::Vec3{x: 2.0, y: 0.0, z: 1.0})
-    return 6 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, moved)
+    updated_visual: Assets::VisualAsset = Assets::VisualAsset{
+        mesh: Assets::AssetId{high: 3, low: 6},
+        material: visual.material,
+        local_bounds: visual.local_bounds,
+    }
+    return 6 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, updated_visual, moved)
     return 7 if not RenderSnapshot::snapshot_remove(&snapshot, gameplay, 101)
     return 8 if RenderSnapshot::snapshot_count(&snapshot) != 1
     invalid: World::EntityRef = World::EntityRef{world_epoch: -1, id: 4}
-    return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, transform)
+    return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, visual, transform)
     WorldRenderingValidation::run()

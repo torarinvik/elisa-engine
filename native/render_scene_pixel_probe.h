@@ -17,6 +17,38 @@ constexpr uint64_t FNV_PRIME = 1099511628211ull;
 
 } // namespace
 
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_fail_after_creates(int32_t created_count) {
+    if (created_count < 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    state.snapshot_test_fail_after_creates = created_count;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_identity_matches(
+    int64_t gameplay_epoch, int64_t gameplay_id, int64_t render_id,
+    uint64_t mesh_high, uint64_t mesh_low, uint64_t material_high, uint64_t material_low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (instance.live && instance.render_id == render_id &&
+            instance.gameplay_epoch == gameplay_epoch && instance.gameplay_id == gameplay_id &&
+            instance.mesh_high == mesh_high && instance.mesh_low == mesh_low &&
+            instance.material_high == material_high && instance.material_low == material_low) return 1;
+    }
+    return 0;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    return state.scene->objects.GetCount();
+}
+
 // Test-only GPU readback. render_scene_native_smoke.py enables this symbol;
 // ordinary game binaries do not include a blocking probe in the render ABI.
 extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(void) {

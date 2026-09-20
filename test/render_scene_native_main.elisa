@@ -19,16 +19,37 @@ extern elisa_render_scene_v1_last_frame_center_patch_hash() -> u64
 @callconv(c)
 extern elisa_render_scene_v1_test_arc_capacity() -> i32
 
+@callconv(c)
+extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
+
+@callconv(c)
+extern elisa_render_scene_v1_test_snapshot_identity_matches(gameplay_epoch: i64, gameplay_id: i64,
+    render_id: i64, mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64) -> i32
+
+@callconv(c)
+extern elisa_render_scene_v1_test_object_count() -> u64
+
 def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> i32:
     catch RenderSnapshotScene::sync(presenter, snapshot):
         ok: 0
         error failure: 1
 
 def bind_world_render(bindings: mutable WorldRendering::Bindings&, world: World::World&,
-    gameplay: World::EntityRef, render_id: i64, transform: Geometry::Transform) -> i32:
-    catch WorldRendering::bind(bindings, world, gameplay, render_id, transform):
+    gameplay: World::EntityRef, render_id: i64, visual: Assets::VisualAsset,
+    transform: Geometry::Transform) -> i32:
+    catch WorldRendering::bind(bindings, world, gameplay, render_id, visual, transform):
         ok: 0
         error failure: 1
+
+def render_visual(asset_key: u64) -> Assets::VisualAsset:
+    Assets::VisualAsset{
+        mesh: Assets::AssetId{high: 700, low: asset_key},
+        material: Assets::AssetId{high: 800, low: 1},
+        local_bounds: Geometry::Bounds3{
+            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+        },
+    }
 
 def extract_world_render(world: World::World&, bindings: mutable WorldRendering::Bindings&,
     snapshot: mutable RenderSnapshot::Snapshot&) -> i32:
@@ -318,9 +339,9 @@ def exercise_render_scene() -> i32:
     snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
     presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
     render_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
-    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 701, box_transform) != 0
-    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 703, sphere_transform) != 0
-    return 41 if bind_world_render(&render_bindings, world, gameplay_b, 702, sphere_transform) != 0
+    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(701), box_transform) != 0
+    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 703, render_visual(703), sphere_transform) != 0
+    return 41 if bind_world_render(&render_bindings, world, gameplay_b, 702, render_visual(702), sphere_transform) != 0
     return 42 if extract_world_render(world, &render_bindings, &snapshot) != 0
     return 43 if RenderSnapshot::snapshot_count(snapshot) != 3
     return 44 if sync_snapshot(&presenter, snapshot) != 0
@@ -331,21 +352,42 @@ def exercise_render_scene() -> i32:
 
     moved_transform: Geometry::Transform = Geometry::transform_translate(box_transform,
         Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
-    return 49 if bind_world_render(&render_bindings, world, gameplay_a, 701, moved_transform) != 0
-    return 50 if extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
+    return 100 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701), moved_transform) != 0
+    return 101 if bind_world_render(&render_bindings, world, gameplay_a, 704, render_visual(704), sphere_transform) != 0
+    return 102 if bind_world_render(&render_bindings, world, gameplay_a, 705, render_visual(705), sphere_transform) != 0
+    return 103 if extract_world_render(world, &render_bindings, &snapshot) != 0 or RenderSnapshot::snapshot_count(snapshot) != 5
+    return 104 if elisa_render_scene_v1_test_snapshot_fail_after_creates(1) != 0
+    objects_before_failed_batch: u64 = elisa_render_scene_v1_test_object_count()
+    failed_batch: i32 = sync_snapshot(&presenter, snapshot)
+    return 105 if failed_batch != 1 or RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6 or elisa_render_scene_v1_test_object_count() != objects_before_failed_batch
+    return 112 if elisa_render_scene_v1_test_snapshot_identity_matches(
+        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 701, 800, 1) == 0
+    return 113 if elisa_render_scene_v1_test_snapshot_identity_matches(
+        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
+    return 106 if sync_snapshot(&presenter, snapshot) != 0
+    return 107 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
+    return 114 if elisa_render_scene_v1_test_object_count() != objects_before_failed_batch + 2
+    return 110 if elisa_render_scene_v1_test_snapshot_identity_matches(
+        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) == 0
+    stable_update: i32 = bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701),
+        Geometry::transform_translate(moved_transform, Geometry::Vec3{x: 0.25, y: 0.0, z: 0.0}))
+    return 108 if stable_update != 0 or extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
+    return 109 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
     despawn_b: i32 = catch World::world_despawn(&world, gameplay_b):
         ok: 0
         error failure: 1
     return 51 if despawn_b != 0
     return 52 if extract_world_render(world, &render_bindings, &snapshot) != 0
     return 53 if sync_snapshot(&presenter, snapshot) != 0
-    return 54 if RenderSnapshot::snapshot_count(snapshot) != 2 or RenderSnapshotScene::binding_count(presenter) != 2 or RenderScene::instance_count() != 5
+    return 54 if RenderSnapshot::snapshot_count(snapshot) != 4 or RenderSnapshotScene::binding_count(presenter) != 4 or RenderScene::instance_count() != 7
     despawn_a: i32 = catch World::world_despawn(&world, gameplay_a):
         ok: 0
         error failure: 1
     return 55 if despawn_a != 0
     return 56 if extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
     return 57 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
+    return 111 if elisa_render_scene_v1_test_snapshot_identity_matches(
+        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
 
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},

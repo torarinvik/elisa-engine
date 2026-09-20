@@ -15,6 +15,13 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
     if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    instance.gameplay_epoch = 0;
+    instance.gameplay_id = 0;
+    instance.render_id = 0;
+    instance.mesh_high = 0;
+    instance.mesh_low = 0;
+    instance.material_high = 0;
+    instance.material_low = 0;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
