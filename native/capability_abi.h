@@ -34,6 +34,20 @@ typedef enum ElisaCapabilityStatus {
     ELISA_CAPABILITY_UNSUPPORTED_VERSION = 2,
 } ElisaCapabilityStatus;
 
+// Stable values returned by maze_backend_missing_feature(). Zero means the
+// configured host satisfies the game's required services.
+typedef enum ElisaBackendFeatureCode {
+    ELISA_BACKEND_FEATURE_NONE = 0,
+    ELISA_BACKEND_FEATURE_INPUT = 1,
+    ELISA_BACKEND_FEATURE_RENDERING = 2,
+    ELISA_BACKEND_FEATURE_PHYSICS = 3,
+    ELISA_BACKEND_FEATURE_AUDIO = 4,
+    ELISA_BACKEND_FEATURE_NATIVE_WINDOW = 5,
+    ELISA_BACKEND_FEATURE_ASYNC_UPLOAD = 6,
+    ELISA_BACKEND_FEATURE_CALLBACKS = 7,
+    ELISA_BACKEND_FEATURE_ASSET_LOADING = 8
+} ElisaBackendFeatureCode;
+
 typedef enum ElisaBackendLimit {
     ELISA_LIMIT_VIEWPORTS = 0,
     ELISA_LIMIT_WORKERS = 1,

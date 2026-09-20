@@ -45,10 +45,14 @@ def fallback_matrix_valid() -> bool:
         feature: BackendFeature = features[index]
         required: BackendFeature[8] = one_feature(feature)
         fallback: BackendCapabilities = fallback_for(feature)
-        break false if negotiate_requirements(profile, required, 1, fallback, true) != RequirementState.Fallback
+        report: mutable BackendRequirementReport = backend_requirement_report(profile, required, 1, fallback, true)
+        break false if backend_feature_code(feature) != index.i32() + 1
+        break false if report.state != RequirementState.Fallback or report.missing_count != 0 or report.fallback_count != 1
         break false if fallback_requirement_count(profile, required, 1, fallback) != 1
         break false if negotiate_requirements(profile, required, 1, fallback, false) != RequirementState.Unavailable
         break false if negotiate_requirements(profile, required, 1, no_services, true) != RequirementState.Unavailable
+        report <- backend_requirement_report(profile, required, 1, no_services, true)
+        break false if report.state != RequirementState.Unavailable or report.first_missing != feature or report.missing_count != 1 or report.fallback_count != 0
 
 def main() -> i32:
     return 41 if not fallback_matrix_valid()
@@ -155,6 +159,12 @@ def main() -> i32:
     return 17 if fallback_requirement_count(native, required, 8, silent_audio_fallback) != 1
     return 39 if fallback_requirement_count(native, required, 8, no_fallbacks) != 0
     return 40 if negotiate_requirements(native, required, 9, silent_audio_fallback, true) != RequirementState.Invalid
+    requirement_report: mutable BackendRequirementReport = backend_requirement_report(native, required, 8, silent_audio_fallback, true)
+    return 51 if requirement_report.state != RequirementState.Fallback or requirement_report.missing_count != 0 or requirement_report.fallback_count != 1
+    requirement_report <- backend_requirement_report(native, required, 8, no_fallbacks, true)
+    return 52 if requirement_report.state != RequirementState.Unavailable or requirement_report.first_missing != BackendFeature.Audio or requirement_report.missing_count != 1 or requirement_report.fallback_count != 0
+    requirement_report <- backend_requirement_report(native, required, 3, no_fallbacks, true)
+    return 53 if requirement_report.state != RequirementState.Ready or requirement_report.missing_count != 0 or requirement_report.fallback_count != 0
     return 22 if negotiate_limit(native, BackendLimit.UploadBytes, 16777216, false) != RequirementState.Ready
     return 23 if negotiate_limit(native, BackendLimit.UploadBytes, 16777217, false) != RequirementState.Unavailable
     return 24 if negotiate_limit(native, BackendLimit.UploadBytes, 16777217, true) != RequirementState.Fallback

@@ -13,8 +13,10 @@ import sys
 SOURCE_ROOT = Path("src")
 EXAMPLE_ROOT = Path("examples")
 ELISA_SUFFIX = ".elisa"
+PUBLIC_INCLUDE_BUNDLES = {Path("src/runtime/public.elisa")}
 TOP_LEVEL_MODULE = re.compile(r"^module\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*:")
 USING_DIRECTIVE = re.compile(r"^\s*using\s+[A-Za-z_][A-Za-z0-9_]*\s*$")
+INCLUDE_DIRECTIVE = re.compile(r'^\s*include\s+"([^"\r\n]+)"\s*$')
 LEGACY_CONSTRUCTOR = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_new\s*\(")
 
 
@@ -30,20 +32,41 @@ def policy(root: Path) -> dict[str, object]:
         relative = path.relative_to(root)
         is_production = relative.parts[0] == SOURCE_ROOT.name
         if is_production:
-            module = next(
-                (match for line in lines if (match := TOP_LEVEL_MODULE.match(line))),
-                None,
-            )
-            if module is None:
-                violations.append(f"{relative}: missing top-level module declaration")
+            if relative in PUBLIC_INCLUDE_BUNDLES:
+                includes = 0
+                for line_number, line in enumerate(lines, start=1):
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    include = INCLUDE_DIRECTIVE.match(line)
+                    if include is None:
+                        violations.append(
+                            f"{relative}:{line_number}: public include bundles may contain only include directives"
+                        )
+                        continue
+                    includes += 1
+                    target = (path.parent / include.group(1)).resolve()
+                    if not target.is_relative_to(source_root.resolve()) or not target.is_file():
+                        violations.append(
+                            f"{relative}:{line_number}: include must resolve to a source file under src/"
+                        )
+                if includes == 0:
+                    violations.append(f"{relative}: public include bundle must include at least one module")
             else:
-                name = module.group(1)
-                previous = module_names.get(name)
-                if previous is not None:
-                    violations.append(
-                        f"{relative}: module {name} duplicates {previous.relative_to(root)}"
-                    )
-                module_names[name] = path
+                module = next(
+                    (match for line in lines if (match := TOP_LEVEL_MODULE.match(line))),
+                    None,
+                )
+                if module is None:
+                    violations.append(f"{relative}: missing top-level module declaration")
+                else:
+                    name = module.group(1)
+                    previous = module_names.get(name)
+                    if previous is not None:
+                        violations.append(
+                            f"{relative}: module {name} duplicates {previous.relative_to(root)}"
+                        )
+                    module_names[name] = path
 
         for line_number, line in enumerate(lines, start=1):
             if is_production and USING_DIRECTIVE.match(line):

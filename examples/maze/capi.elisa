@@ -62,6 +62,21 @@ def capi_backend_status() -> i32:
     state: RequirementState = negotiate_requirements(embedded_backend_profile, required, 2, no_fallbacks, false)
     CapiPolicy::PROFILE_READY if state == RequirementState.Ready else CapiPolicy::PROFILE_UNAVAILABLE
 
+# Returns 0 when ready, a stable BackendFeature code (1..8) for the first
+# missing required service, or the existing negative profile status otherwise.
+def capi_backend_missing_feature() -> i32:
+    return CapiPolicy::PROFILE_UNCONFIGURED if not embedded_backend_profile_configured
+    return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(embedded_backend_profile)
+    required: BackendFeature[8] = [BackendFeature.Rendering, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input]
+    no_fallbacks: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: false, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    report: BackendRequirementReport = backend_requirement_report(embedded_backend_profile, required, 2, no_fallbacks, false)
+    return backend_feature_code(report.first_missing) if report.state == RequirementState.Unavailable
+    return 0 if report.state == RequirementState.Ready
+    CapiPolicy::PROFILE_INVALID
+
 # Direction codes mirror the portable move order the host maps to:
 # 0 north, 1 south, 2 west, 3 east.
 def capi_move_of(direction: i32) -> Maze::MazeMove:
@@ -160,3 +175,4 @@ export fn maze_session_query(handle: i64, query: i32) -> i64 = capi_session_quer
 export fn maze_session_destroy(handle: i64) -> i32 = capi_session_destroy
 export fn maze_backend_configure(capability_bits: i64, optional_bits: i64, max_viewports: i64, max_workers: i64, memory_budget_bytes: i64, memory_usage_bytes: i64, resource_format_bits: i64, graphics_workers: i64, streaming_workers: i64, service_version: i64) -> i32 = capi_backend_configure
 export fn maze_backend_status() -> i32 = capi_backend_status
+export fn maze_backend_missing_feature() -> i32 = capi_backend_missing_feature

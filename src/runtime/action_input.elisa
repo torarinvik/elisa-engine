@@ -18,6 +18,23 @@ module ActionInput:
             for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS| -> slot:
                 break index if input.states[index].live and input.states[index].action == action
 
+        def refresh_action(input: mutable Input&, slot: usize) -> void:
+            return if slot >= Limits::MAX_ACTIONS or not input.states[slot].live
+            action: i64 = input.states[slot].action
+            down: mutable bool = false
+            value: mutable f32 = 0.0
+            for index in 0..<input.binding_count |input, action|:
+                binding: Binding = input.bindings[index]
+                if binding.live and binding.action == action and binding.context == input.context:
+                    down <- true if input.binding_down[index]
+                    magnitude: f32 = ElisaMath::fabsf(input.binding_values[index])
+                    value <- input.binding_values[index] if magnitude > ElisaMath::fabsf(value)
+            was_down: bool = input.states[slot].down
+            input.states[slot].down <- down
+            input.states[slot].pressed <- true if down and not was_down
+            input.states[slot].released <- true if was_down and not down
+            input.states[slot].value <- value
+
         def binding_matches(binding: Binding, event: Event, context: Context) -> bool:
             binding.live and binding.context == context and binding.device == event.device and binding.code == event.code and (binding.chord_code == 0 or event.chord_down)
 
@@ -66,13 +83,15 @@ module ActionInput:
         affine struct Input:
             private:
                 bindings: mutable Binding[Limits::MAX_BINDINGS]
+                binding_down: mutable bool[Limits::MAX_BINDINGS]
+                binding_values: mutable f32[Limits::MAX_BINDINGS]
                 states: mutable ActionState[Limits::MAX_ACTIONS]
                 binding_count: mutable usize
                 context: mutable Context
                 connected: mutable bool[Limits::DEVICE_COUNT]
 
         def Input() -> Input:
-            Input{bindings: zeroed, states: zeroed, binding_count: 0, context: Context.Gameplay, connected: [true, true, true]}
+            Input{bindings: zeroed, binding_down: zeroed, binding_values: zeroed, states: zeroed, binding_count: 0, context: Context.Gameplay, connected: [true, true, true]}
 
         def bind(input: mutable Input&, binding: Binding) -> void error[InputError]:
             raise InputError.InvalidAction if binding.action <= 0
@@ -93,6 +112,9 @@ module ActionInput:
 
         def set_context(input: mutable Input&, context: Context) -> void:
             input.context <- context
+            for index in 0..<input.binding_count |input|:
+                input.binding_down[index] <- false
+                input.binding_values[index] <- 0.0
             for index in 0..<Limits::MAX_ACTIONS |input|:
                 input.states[index].down <- false if input.states[index].live
                 input.states[index].value <- 0.0 if input.states[index].live
@@ -100,16 +122,28 @@ module ActionInput:
         def set_connected(input: mutable Input&, device: Device, connected: bool) -> void:
             input.connected[device_index(device)] <- connected
             if not connected:
+                for index in 0..<input.binding_count |input, device|:
+                    if input.bindings[index].device == device:
+                        input.binding_down[index] <- false
+                        input.binding_values[index] <- 0.0
                 for index in 0..<Limits::MAX_ACTIONS |input|:
-                    input.states[index].down <- false if input.states[index].live
-                    input.states[index].released <- true if input.states[index].live
+                    refresh_action(input, index)
+
+        # Clears held state while keeping the device available. Application
+        # focus-loss signals can use this without pretending a device detached.
+        def clear_device_state(input: mutable Input&, device: Device) -> void:
+            for index in 0..<input.binding_count |input, device|:
+                if input.bindings[index].device == device:
+                    input.binding_down[index] <- false
+                    input.binding_values[index] <- 0.0
+            for index in 0..<Limits::MAX_ACTIONS |input|:
+                refresh_action(input, index)
 
         def begin_frame(input: mutable Input&) -> void:
             for index in 0..<Limits::MAX_ACTIONS |input|:
                 if input.states[index].live:
                     input.states[index].pressed <- false
                     input.states[index].released <- false
-                    input.states[index].value <- 0.0
 
         def apply(input: mutable Input&, event: Event) -> void:
             return if not input.connected[device_index(event.device)]
@@ -120,12 +154,11 @@ module ActionInput:
                     if slot < Limits::MAX_ACTIONS:
                         magnitude: f32 = event.value if ElisaMath::fabsf(event.value) >= binding.deadzone else 0.0
                         if ElisaMath::fabsf(magnitude) > 0.0 or event.released:
-                            input.states[slot].value <- magnitude if ElisaMath::fabsf(magnitude) > ElisaMath::fabsf(input.states[slot].value)
-                            if event.pressed and not input.states[slot].down:
-                                input.states[slot].pressed <- true
-                            input.states[slot].down <- event.pressed or (input.states[slot].down and not event.released)
-                            input.states[slot].released <- true if event.released
-                            input.states[slot].down <- false if event.released
+                            input.binding_values[index] <- 0.0 if event.released
+                            input.binding_values[index] <- magnitude if not event.released
+                            input.binding_down[index] <- false if event.released
+                            input.binding_down[index] <- true if event.pressed and not event.released
+                            refresh_action(input, slot)
 
         def action_down(input: Input&, action: i64) -> bool:
             slot: usize = state_slot(input, action)

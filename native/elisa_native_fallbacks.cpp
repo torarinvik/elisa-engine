@@ -3,6 +3,15 @@
 #include <cstddef>
 #include <cstdint>
 
+// <filesystem> can pull in the variadic macros before this compatibility ABI
+// defines the weak runtime symbols with those names.
+#ifdef va_copy
+#undef va_copy
+#endif
+#ifdef va_end
+#undef va_end
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define ELISA_WEAK __attribute__((weak))
 #else

@@ -1,0 +1,196 @@
+# Generic, process-level application lifecycle. Platform and renderer types stay
+# behind the engine-owned native ABI; game code sees only configuration/status.
+module Application:
+    private:
+        const module NativeStatus:
+            OK: i32 = 0
+            RUNNING: i32 = 1
+            SUSPENDED: i32 = 2
+            EXIT_REQUESTED: i32 = 3
+            INVALID_ARGUMENT: i32 = -1
+            INVALID_STATE: i32 = -2
+            WRONG_THREAD: i32 = -4
+
+        const module NativeEvents:
+            CLOSE_REQUESTED: u32 = 1
+            RESIZED: u32 = 2
+            FOCUS_GAINED: u32 = 4
+            FOCUS_LOST: u32 = 8
+            MINIMIZED: u32 = 16
+            RESTORED: u32 = 32
+
+        const module NativeWindowFlags:
+            FOCUSED: u32 = 1
+            MINIMIZED: u32 = 2
+            FULLSCREEN: u32 = 4
+            SUSPENDED: u32 = 8
+            CLOSE_REQUESTED: u32 = 16
+
+        @callconv(c)
+        extern elisa_application_abi_version() -> u32
+
+        @callconv(c)
+        extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_pump() -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_frame_info(frame_count: mutable u64&, elapsed_nanos: mutable u64&, resize_serial: mutable u64&, logical_width: mutable i32&, logical_height: mutable i32&, pixel_width: mutable i32&, pixel_height: mutable i32&, display_scale: mutable f32&, event_flags: mutable u32&, window_flags: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_next_input_event(kind: mutable i32&, device: mutable i32&, code: mutable i64&, value: mutable f32&, pressed: mutable i32&, released: mutable i32&, chord_down: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_request_exit() -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_shutdown() -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_frame_count() -> u64
+
+    public:
+        enum InputEventKind:
+            Key
+            MouseButton
+            FocusLost
+            Overflow
+
+        struct InputEvent:
+            kind: mutable InputEventKind
+            device: mutable i32
+            code: mutable i64
+            value: mutable f32
+            pressed: mutable bool
+            released: mutable bool
+            chord_down: mutable bool
+
+        struct Config:
+            title: cstr
+            width: i32
+            height: i32
+            hidden: bool
+
+        # Fixed-width snapshot of one native pump and the current window state.
+        struct FrameInfo:
+            frame_count: u64
+            elapsed_nanos: u64
+            resize_serial: u64
+            logical_width: i32
+            logical_height: i32
+            pixel_width: i32
+            pixel_height: i32
+            display_scale: f32
+            event_flags: u32
+            window_flags: u32
+
+        enum InitializeStatus:
+            Ready
+            InvalidArgument
+            AlreadyRunning
+            UnsupportedAbi
+            BackendUnavailable
+
+        enum PumpStatus:
+            Running
+            Suspended
+            ExitRequested
+            NotRunning
+            WrongThread
+            Failed
+
+        def default_config() -> Config:
+            Config{title: "Elisa Engine", width: 1280, height: 720, hidden: false}
+
+        def initialize(config: Config) -> InitializeStatus:
+            return InitializeStatus.UnsupportedAbi if elisa_application_abi_version() != 1
+            hidden: i32 = 1 if config.hidden else 0
+            result: i32 = elisa_application_v1_initialize(config.title, config.width, config.height, hidden)
+            return InitializeStatus.Ready if result == NativeStatus::OK
+            return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
+            return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
+            InitializeStatus.BackendUnavailable
+
+        def pump() -> PumpStatus:
+            result: i32 = elisa_application_v1_pump()
+            return PumpStatus.Running if result == NativeStatus::RUNNING
+            return PumpStatus.Suspended if result == NativeStatus::SUSPENDED
+            return PumpStatus.ExitRequested if result == NativeStatus::EXIT_REQUESTED
+            return PumpStatus.NotRunning if result == NativeStatus::INVALID_STATE
+            return PumpStatus.WrongThread if result == NativeStatus::WRONG_THREAD
+            PumpStatus.Failed
+
+        # Pending event bits are coalesced until this snapshot is read.
+        def frame_info(info: mutable FrameInfo&) -> bool:
+            elisa_application_v1_frame_info(&info.frame_count, &info.elapsed_nanos, &info.resize_serial, &info.logical_width, &info.logical_height, &info.pixel_width, &info.pixel_height, &info.display_scale, &info.event_flags, &info.window_flags) == NativeStatus::OK
+
+        # Raw portable input edges are delivered in SDL order. Device 0 is
+        # keyboard and device 1 is mouse; focus loss and overflow are explicit
+        # event kinds so Elisa can release all held actions safely.
+        def next_input_event(event: mutable InputEvent&) -> bool:
+            kind: mutable i32 = 0
+            device: mutable i32 = 0
+            code: mutable i64 = 0
+            value: mutable f32 = 0.0
+            pressed: mutable i32 = 0
+            released: mutable i32 = 0
+            chord_down: mutable i32 = 0
+            result: i32 = elisa_application_v1_next_input_event(&kind, &device, &code, &value, &pressed, &released, &chord_down)
+            return false if result != 1
+            event.kind <- InputEventKind.Key if kind == 1
+            event.kind <- InputEventKind.MouseButton if kind == 2
+            event.kind <- InputEventKind.FocusLost if kind == 3
+            event.kind <- InputEventKind.Overflow if kind == 4
+            event.device <- device
+            event.code <- code
+            event.value <- value
+            event.pressed <- pressed != 0
+            event.released <- released != 0
+            event.chord_down <- chord_down != 0
+            true
+
+        def elapsed_seconds(info: FrameInfo&) -> f32:
+            info.elapsed_nanos.f32() / 1000000000.0
+
+        def saw_close_request(info: FrameInfo&) -> bool:
+            (info.event_flags & NativeEvents::CLOSE_REQUESTED) != 0
+
+        def saw_resize(info: FrameInfo&) -> bool:
+            (info.event_flags & NativeEvents::RESIZED) != 0
+
+        def saw_focus_gain(info: FrameInfo&) -> bool:
+            (info.event_flags & NativeEvents::FOCUS_GAINED) != 0
+
+        def saw_focus_loss(info: FrameInfo&) -> bool:
+            (info.event_flags & NativeEvents::FOCUS_LOST) != 0
+
+        def saw_minimize(info: FrameInfo&) -> bool:
+            (info.event_flags & NativeEvents::MINIMIZED) != 0
+
+        def saw_restore(info: FrameInfo&) -> bool:
+            (info.event_flags & NativeEvents::RESTORED) != 0
+
+        def is_focused(info: FrameInfo&) -> bool:
+            (info.window_flags & NativeWindowFlags::FOCUSED) != 0
+
+        def is_minimized(info: FrameInfo&) -> bool:
+            (info.window_flags & NativeWindowFlags::MINIMIZED) != 0
+
+        def is_fullscreen(info: FrameInfo&) -> bool:
+            (info.window_flags & NativeWindowFlags::FULLSCREEN) != 0
+
+        def is_suspended(info: FrameInfo&) -> bool:
+            (info.window_flags & NativeWindowFlags::SUSPENDED) != 0
+
+        def is_close_requested(info: FrameInfo&) -> bool:
+            (info.window_flags & NativeWindowFlags::CLOSE_REQUESTED) != 0
+
+        def request_exit() -> bool:
+            elisa_application_v1_request_exit() == NativeStatus::OK
+
+        def shutdown() -> bool:
+            elisa_application_v1_shutdown() == NativeStatus::OK
+
+        def frame_count() -> u64:
+            elisa_application_v1_frame_count()

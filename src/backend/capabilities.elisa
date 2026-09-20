@@ -101,6 +101,15 @@ module Capabilities:
             state: RequirementState
             format: BackendTextureFormat
 
+        # `first_missing` is meaningful only when state is Unavailable and
+        # `missing_count` is nonzero. Counts are over the supplied requirement
+        # list, so repeated requirements remain visible to the caller.
+        struct BackendRequirementReport:
+            state: RequirementState
+            first_missing: BackendFeature
+            missing_count: usize
+            fallback_count: usize
+
         struct BackendProfile:
             kind: BackendKind
             capabilities: BackendCapabilities
@@ -155,6 +164,27 @@ module Capabilities:
                     fallbacks.callbacks
                 BackendFeature.AssetLoading:
                     fallbacks.asset_loading
+
+        # Stable diagnostic codes for the flat C embedding surface. Keep these
+        # independent of the compiler's internal enum representation.
+        def backend_feature_code(feature: BackendFeature) -> i32:
+            match feature:
+                BackendFeature.Input:
+                    1
+                BackendFeature.Rendering:
+                    2
+                BackendFeature.Physics:
+                    3
+                BackendFeature.Audio:
+                    4
+                BackendFeature.NativeWindow:
+                    5
+                BackendFeature.AsyncUpload:
+                    6
+                BackendFeature.Callbacks:
+                    7
+                BackendFeature.AssetLoading:
+                    8
 
         def backend_limit(profile: BackendProfile, limit: BackendLimit) -> i64:
             match limit:
@@ -289,32 +319,55 @@ module Capabilities:
             for index in 0..<count |met: bool = true| -> met:
                 break false if not backend_supports(profile, required[index])
 
+        def backend_requirement_report(profile: BackendProfile,
+            required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
+            fallbacks: BackendCapabilities, allow_fallback: bool) -> BackendRequirementReport:
+            invalid: BackendRequirementReport = BackendRequirementReport{
+                state: RequirementState.Invalid,
+                first_missing: BackendFeature.Input,
+                missing_count: 0,
+                fallback_count: 0,
+            }
+            return invalid if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
+            missing_count: mutable usize = 0
+            fallback_count: mutable usize = 0
+            first_missing: mutable BackendFeature = BackendFeature.Input
+            for index in 0..<count |missing_count, fallback_count, first_missing|:
+                feature: BackendFeature = required[index]
+                if not backend_supports(profile, feature):
+                    if allow_fallback and fallback_supports(fallbacks, feature):
+                        fallback_count <- fallback_count + 1
+                    else:
+                        first_missing <- feature if missing_count == 0
+                        missing_count <- missing_count + 1
+            state: mutable RequirementState = RequirementState.Ready
+            if missing_count > 0:
+                state <- RequirementState.Unavailable
+            else:
+                state <- RequirementState.Fallback if fallback_count > 0
+            BackendRequirementReport{
+                state: state,
+                first_missing: first_missing,
+                missing_count: missing_count,
+                fallback_count: fallback_count,
+            }
+
         def negotiate_requirements(profile: BackendProfile,
             required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
             fallbacks: BackendCapabilities, allow_fallback: bool) -> RequirementState:
-            return RequirementState.Invalid if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
-            missing: mutable bool = false
-            fallback: mutable bool = false
-            for index in 0..<count |missing, fallback|:
-                if not backend_supports(profile, required[index]):
-                    if allow_fallback and fallback_supports(fallbacks, required[index]):
-                        fallback <- true
-                    else:
-                        missing <- true
-            return RequirementState.Unavailable if missing
-            RequirementState.Fallback if fallback else RequirementState.Ready
+            backend_requirement_report(profile, required, count, fallbacks, allow_fallback).state
 
         def first_missing_requirement(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> BackendFeature:
-            return BackendFeature.Input if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
-            for index in 0..<count |missing: BackendFeature = BackendFeature.Input| -> missing:
-                break required[index] if not backend_supports(profile, required[index])
+            no_fallbacks: BackendCapabilities = BackendCapabilities{
+                input: false, rendering: false, physics: false, audio: false,
+                native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+            }
+            backend_requirement_report(profile, required, count, no_fallbacks, false).first_missing
 
         def fallback_requirement_count(profile: BackendProfile,
             required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
             fallbacks: BackendCapabilities) -> usize:
-            return 0 if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
-            for index in 0..<count |fallback: usize = 0| -> fallback:
-                fallback <- fallback + 1 if not backend_supports(profile, required[index]) and fallback_supports(fallbacks, required[index])
+            backend_requirement_report(profile, required, count, fallbacks, true).fallback_count
 
         def headless_profile() -> BackendProfile:
             BackendProfile{

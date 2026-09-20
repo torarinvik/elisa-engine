@@ -14,6 +14,21 @@
 
 namespace probe {
 
+inline const char* capability_feature_name(int32_t feature) {
+    switch (feature) {
+    case ELISA_BACKEND_FEATURE_NONE: return "none";
+    case ELISA_BACKEND_FEATURE_INPUT: return "input";
+    case ELISA_BACKEND_FEATURE_RENDERING: return "rendering";
+    case ELISA_BACKEND_FEATURE_PHYSICS: return "physics";
+    case ELISA_BACKEND_FEATURE_AUDIO: return "audio";
+    case ELISA_BACKEND_FEATURE_NATIVE_WINDOW: return "native-window";
+    case ELISA_BACKEND_FEATURE_ASYNC_UPLOAD: return "async-upload";
+    case ELISA_BACKEND_FEATURE_CALLBACKS: return "callbacks";
+    case ELISA_BACKEND_FEATURE_ASSET_LOADING: return "asset-loading";
+    default: return "invalid-profile";
+    }
+}
+
 inline int32_t configure_elisa_backend(const ElisaBackendProfile& profile) {
     if (profile.memory_budget_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
         profile.memory_usage_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
@@ -84,8 +99,8 @@ inline bool probe_graphics_capabilities() {
     const int32_t configured_status = maze_backend_status();
     if (configured_profile != 0 || configured_status != 0) {
         std::fprintf(stderr,
-            "runtime capability profile: configure=%d status=%d capabilities=0x%llx optional=0x%llx formats=0x%llx version=%u\n",
-            configured_profile, configured_status,
+            "runtime capability profile: configure=%d status=%d missing=%s capabilities=0x%llx optional=0x%llx formats=0x%llx version=%u\n",
+            configured_profile, configured_status, capability_feature_name(maze_backend_missing_feature()),
             static_cast<unsigned long long>(profile.capability_bits),
             static_cast<unsigned long long>(profile.optional_bits),
             static_cast<unsigned long long>(profile.resource_format_bits), profile.abi_version);
@@ -95,13 +110,25 @@ inline bool probe_graphics_capabilities() {
     ElisaBackendProfile no_input_profile = profile;
     no_input_profile.capability_bits &= ~ELISA_CAPABILITY_INPUT;
     if (!check(configure_elisa_backend(no_input_profile) == 0 && maze_backend_status() == -2 &&
+            maze_backend_missing_feature() == ELISA_BACKEND_FEATURE_INPUT &&
             maze_start() == -2 && maze_session_create() == 0,
             "Elisa runtime rejects startup and sessions without required input") ||
         !check(configure_elisa_backend(profile) == 0 && maze_backend_status() == 0,
             "Elisa runtime accepts restored host profile")) return false;
+    ElisaBackendProfile no_rendering_profile = profile;
+    no_rendering_profile.capability_bits &= ~ELISA_CAPABILITY_RENDERING;
+    no_rendering_profile.optional_bits = 0;
+    no_rendering_profile.resource_format_bits = 0;
+    if (!check(configure_elisa_backend(no_rendering_profile) == 0 && maze_backend_status() == -2 &&
+            maze_backend_missing_feature() == ELISA_BACKEND_FEATURE_RENDERING,
+            "Elisa reports missing rendering requirement") ||
+        !check(configure_elisa_backend(profile) == 0 && maze_backend_status() == 0 &&
+            maze_backend_missing_feature() == ELISA_BACKEND_FEATURE_NONE,
+            "Elisa clears missing-feature report after profile restore")) return false;
     ElisaBackendProfile malformed_runtime_profile = profile;
     malformed_runtime_profile.optional_bits |= 1ull << 40;
-    if (!check(configure_elisa_backend(malformed_runtime_profile) == -3 && maze_backend_status() == 0,
+    if (!check(configure_elisa_backend(malformed_runtime_profile) == -3 && maze_backend_status() == 0 &&
+            maze_backend_missing_feature() == ELISA_BACKEND_FEATURE_NONE,
             "invalid runtime profile is rejected without replacing the active profile")) return false;
     uint64_t reported_limit = 0;
     if (!check(elisa_backend_profile_supports_capability(&profile, ELISA_CAPABILITY_RENDERING) &&

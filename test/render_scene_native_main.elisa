@@ -1,0 +1,217 @@
+# Native integration smoke: ordinary Elisa main builds and drives a Wicked
+# scene through the public engine module. The one evidence import is test-only.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/math/geometry.elisa"
+
+@callconv(c)
+extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
+
+def main() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa Render Scene Smoke",
+        width: 320,
+        height: 200,
+        hidden: true,
+    }
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+
+    bad_init: i32 = catch RenderScene::initialize(0, 200, 10.0):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 2 if bad_init != 1
+    retry_init: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        RenderScene::RenderSceneError.AlreadyInitialized: 1
+        error failure: 2
+    return 3 if retry_init != 0
+    second_init: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        RenderScene::RenderSceneError.AlreadyInitialized: 1
+        error failure: 2
+    return 4 if second_init != 1
+    bad_camera_range: i32 = catch RenderScene::initialize(320, 200, 1.0e30):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 34 if bad_camera_range != 1
+
+    degenerate_camera: i32 = catch RenderScene::set_camera_look_at(
+        Geometry::Vec3{x: 0.0, y: 10.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 32 if degenerate_camera != 1
+    bad_camera_magnitude: i32 = catch RenderScene::set_camera_look_at(
+        Geometry::Vec3{x: 1.0e30, y: 10.0, z: 8.0},
+        Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 37 if bad_camera_magnitude != 1
+    valid_camera: i32 = catch RenderScene::set_camera_look_at(
+        Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
+        Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 33 if valid_camera != 0
+
+    invalid_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0},
+    }
+    invalid_create: i32 = catch RenderScene::create(RenderScene::Primitive.Box, invalid_transform,
+        RenderScene::Color{red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 5 if invalid_create != 1 or RenderScene::instance_count() != 0
+
+    huge_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 1.0e30, y: 0.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+    }
+    huge_transform_create: i32 = catch RenderScene::create(RenderScene::Primitive.Box, huge_transform,
+        RenderScene::Color{red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 35 if huge_transform_create != 1
+
+    box_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: -1.1, y: 0.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 1.1, y: 0.8, z: 1.1},
+    }
+    box: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box, box_transform,
+        RenderScene::Color{red: 0.1, green: 0.45, blue: 1.0, alpha: 1.0}):
+        value: value
+        error failure: return 6
+
+    sphere_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 1.1, y: 0.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 0.85, y: 0.85, z: 0.85},
+    }
+    sphere: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Sphere, sphere_transform,
+        RenderScene::Color{red: 0.1, green: 1.0, blue: 0.35, alpha: 1.0}):
+        value: value
+        error failure: return 7
+
+    # A wide colored floor guarantees a known center pixel comes from scene
+    # geometry, so the smoke checks rendered output rather than a registry.
+    floor_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 6.0, y: 1.0, z: 6.0},
+    }
+    floor: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Plane, floor_transform,
+        RenderScene::Color{red: 0.9, green: 0.05, blue: 0.3, alpha: 1.0}):
+        value: value
+        error failure: return 36
+    return 8 if RenderScene::instance_count() != 3
+
+    rotated: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: -0.8, y: 0.0, z: 0.2},
+        rotation: Geometry::Quat{x: 0.0, y: 0.38268343, z: 0.0, w: 0.9238795},
+        scale: Geometry::Vec3{x: 0.9, y: 0.9, z: 0.9},
+    }
+    rotated_status: i32 = catch RenderScene::update_transform(box, rotated):
+        ok: 0
+        error failure: 1
+    return 9 if rotated_status != 0
+    color_status: i32 = catch RenderScene::set_color(box,
+        RenderScene::Color{red: 0.8, green: 0.2, blue: 0.5, alpha: 1.0}):
+        ok: 0
+        error failure: 1
+    return 38 if color_status != 0
+    bad_update: i32 = catch RenderScene::update_transform(box, invalid_transform):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 10 if bad_update != 1
+
+    hidden: bool = catch RenderScene::set_visible(sphere, false):
+        ok: true
+        error failure: return 11
+    return 12 if not hidden
+    shown: bool = catch RenderScene::set_visible(sphere, true):
+        ok: true
+        error failure: return 13
+    return 14 if not shown
+    bad_color: i32 = catch RenderScene::set_color(box,
+        RenderScene::Color{red: 1.0, green: 0.0, blue: 0.0, alpha: 2.0}):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 15 if bad_color != 1
+
+    resized: i32 = catch RenderScene::resize(640, 400):
+        ok: 0
+        error failure: 1
+    return 16 if resized != 0
+    bad_resize: i32 = catch RenderScene::resize(0, 400):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 17 if bad_resize != 1
+
+    return 18 if Application::pump() != Application::PumpStatus.Running
+    return 19 if Application::pump() != Application::PumpStatus.Running
+    rendered_geometry: i32 = elisa_render_scene_v1_last_frame_center_differs_from_corner()
+    return 20 if rendered_geometry == 0
+
+    destroyed: i32 = catch RenderScene::destroy(sphere):
+        ok: 0
+        error failure: 1
+    return 21 if destroyed != 0
+    stale: i32 = catch RenderScene::destroy(sphere):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 22 if stale != 1
+    stale_update: i32 = catch RenderScene::update_transform(sphere, sphere_transform):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 23 if stale_update != 1
+
+    # Explicit release clears the scene and invalidates every instance.
+    shutdown_result: i32 = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 1
+    return 24 if shutdown_result != 0
+    return 25 if RenderScene::is_initialized() or RenderScene::instance_count() != 0
+
+    # Reopen the scene, then let Application shutdown invoke the registered
+    # cleanup hook. This catches leaked scenes or active paths on app teardown.
+    replacement_init: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 1
+    return 26 if replacement_init != 0
+    stale_after_scene_replacement: i32 = catch RenderScene::set_visible(sphere, true):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 39 if stale_after_scene_replacement != 1
+    final_handle: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Plane,
+        Geometry::transform_identity(), RenderScene::Color{red: 0.9, green: 0.75, blue: 0.1, alpha: 1.0}):
+        value: value
+        error failure: return 27
+    return 28 if RenderScene::instance_count() != 1
+    application_shutdown: bool = Application::shutdown()
+    return 29 if not application_shutdown
+    return 30 if RenderScene::is_initialized() or RenderScene::instance_count() != 0
+    post_shutdown: i32 = catch RenderScene::set_visible(final_handle, false):
+        ok: 0
+        RenderScene::RenderSceneError.NotInitialized: 1
+        error failure: 2
+    return 31 if post_shutdown != 1
+    0

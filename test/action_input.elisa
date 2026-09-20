@@ -13,6 +13,73 @@ def main() -> i32:
     ActionInput::begin_frame(&input)
     ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 10, value: 0.0, pressed: false, released: true, chord_down: false})
     return 4 if not ActionInput::action_released(&input, 1) or ActionInput::action_down(&input, 1)
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 3, device: ActionInput::Device.Gamepad, code: 30, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 9
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 3, device: ActionInput::Device.Gamepad, code: 31, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 10
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 30, value: 0.5, pressed: true, released: false, chord_down: false})
+    return 11 if not ActionInput::action_down(&input, 3) or not ActionInput::action_pressed(&input, 3)
+    ActionInput::begin_frame(&input)
+    return 12 if ActionInput::action_value(&input, 3) < 0.49
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 31, value: 0.9, pressed: true, released: false, chord_down: false})
+    return 13 if not ActionInput::action_down(&input, 3) or ActionInput::action_pressed(&input, 3) or ActionInput::action_value(&input, 3) < 0.89
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 30, value: 0.0, pressed: false, released: true, chord_down: false})
+    return 14 if not ActionInput::action_down(&input, 3) or ActionInput::action_released(&input, 3) or ActionInput::action_value(&input, 3) < 0.89
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 31, value: 0.0, pressed: false, released: true, chord_down: false})
+    return 15 if ActionInput::action_down(&input, 3) or not ActionInput::action_released(&input, 3) or ActionInput::action_value(&input, 3) != 0.0
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 4, device: ActionInput::Device.Gamepad, code: 40, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 16
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 4, device: ActionInput::Device.Gamepad, code: 41, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 17
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 41, value: 0.7, pressed: true, released: false, chord_down: false})
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 40, value: 0.4, pressed: true, released: false, chord_down: false})
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 41, value: 0.0, pressed: false, released: true, chord_down: false})
+    return 18 if not ActionInput::action_down(&input, 4) or ActionInput::action_released(&input, 4) or ActionInput::action_value(&input, 4) < 0.39
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 40, value: 0.0, pressed: false, released: true, chord_down: false})
+    return 19 if ActionInput::action_down(&input, 4) or not ActionInput::action_released(&input, 4) or ActionInput::action_value(&input, 4) != 0.0
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 5, device: ActionInput::Device.Gamepad, code: 50, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 20
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 5, device: ActionInput::Device.Keyboard, code: 51, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 21
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 50, value: 0.6, pressed: true, released: false, chord_down: false})
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 51, value: 1.0, pressed: true, released: false, chord_down: false})
+    ActionInput::set_connected(&input, ActionInput::Device.Gamepad, false)
+    return 22 if not ActionInput::action_down(&input, 5) or ActionInput::action_released(&input, 5) or ActionInput::action_value(&input, 5) < 0.99
+    ActionInput::set_connected(&input, ActionInput::Device.Keyboard, false)
+    return 23 if ActionInput::action_down(&input, 5) or not ActionInput::action_released(&input, 5)
+    ActionInput::set_connected(&input, ActionInput::Device.Keyboard, true)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 51, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 24 if not ActionInput::action_down(&input, 5)
+    ActionInput::clear_device_state(&input, ActionInput::Device.Keyboard)
+    return 25 if ActionInput::action_down(&input, 5) or not ActionInput::action_released(&input, 5)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 51, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 26 if not ActionInput::action_down(&input, 5)
+    # Register and exercise eight distinct actions on one input. This is the
+    # binding/state-slot capacity required by common gameplay key maps.
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 6, device: ActionInput::Device.Keyboard, code: 60, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 27
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 7, device: ActionInput::Device.Keyboard, code: 70, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 28
+    _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 8, device: ActionInput::Device.Keyboard, code: 80, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true}):
+        ok: 0
+        error failure: return 29
+    ActionInput::set_context(&input, ActionInput::Context.Gameplay)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 60, value: 1.0, pressed: true, released: false, chord_down: false})
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 70, value: 1.0, pressed: true, released: false, chord_down: false})
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 80, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 30 if not ActionInput::action_down(&input, 6) or not ActionInput::action_down(&input, 7) or not ActionInput::action_down(&input, 8)
     _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 2, device: ActionInput::Device.Keyboard, code: 20, chord_code: 21, deadzone: 0.0, context: ActionInput::Context.UI, live: true}):
         ok: 0
         error failure: return 5

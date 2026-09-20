@@ -1,0 +1,15 @@
+def main() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Application", width: 960, height: 540, hidden: false}
+    initialized: Application::InitializeStatus = Application::initialize(config)
+    return 1 if initialized != Application::InitializeStatus.Ready
+
+    first_frame: Application::PumpStatus = Application::pump()
+    return 2 if first_frame != Application::PumpStatus.Running
+    info: mutable Application::FrameInfo = zeroed
+    return 3 if not Application::frame_info(&info) or info.frame_count != 1
+
+    return 4 if not Application::request_exit()
+    exit_state: Application::PumpStatus = Application::pump()
+    return 5 if exit_state != Application::PumpStatus.ExitRequested
+    return 6 if not Application::shutdown()
+    0

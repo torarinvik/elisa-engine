@@ -193,6 +193,16 @@ def main(arguments: darray[sview]) -> i64:
         _ = write_stderr(compile_result.stderr)
         if compile_result.exit_status != 0:
             return compile_result.exit_status
+        application_smoke_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/application_native_smoke.py"))])
+        if application_smoke_status != 0:
+            return application_smoke_status
+        render_scene_smoke_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/render_scene_native_smoke.py"))])
+        if render_scene_smoke_status != 0:
+            return render_scene_smoke_status
     return 0 if phase == "build"
 
     screenshot: sview = str(root.joinpath("build/wicked-frame.png"))
