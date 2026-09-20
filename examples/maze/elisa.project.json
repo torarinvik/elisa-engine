@@ -1,0 +1,11 @@
+{
+  "name": "elisa-maze",
+  "main": "native_main.elisa",
+  "output": "build/elisa-maze",
+  "application": {
+    "title": "Elisa Maze",
+    "width": 960,
+    "height": 720,
+    "hidden": false
+  }
+}

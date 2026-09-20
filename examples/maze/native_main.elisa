@@ -1,0 +1,6 @@
+# Ordinary game entry point. The generic application runner supplies the
+# public engine modules and owns build configuration; this client owns the loop.
+include "./native_client.elisa"
+
+def main() -> i32:
+    MazeNativeClient::run(false)
