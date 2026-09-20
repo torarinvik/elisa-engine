@@ -1,0 +1,245 @@
+# Elisa owns the maze's renderable entity set. This adapter turns game state
+# and topology into checked world entities and a bounded render snapshot.
+include "./game.elisa"
+include "./layout.elisa"
+include "../../src/runtime/world_rendering.elisa"
+
+module MazePresentation:
+    public:
+        error MazePresentationError:
+            InvalidGame
+            WorldRejected
+            BindingRejected
+
+    private:
+        const module Tune:
+            GRID_ORIGIN: f32 = -2.1
+            CELL_PITCH: f32 = 0.6
+            MARKER_HEIGHT: f32 = 0.3
+            WALL_RENDER_BASE: i64 = 1000
+            PLAYER_RENDER_ID: i64 = 2000
+            KEY_RENDER_ID: i64 = 2001
+            DOOR_RENDER_ID: i64 = 2002
+            GOAL_RENDER_ID: i64 = 2003
+            HAZARD_A_RENDER_ID: i64 = 2004
+            HAZARD_B_RENDER_ID: i64 = 2005
+            ASSET_NAMESPACE: u64 = 23
+            TILE_MESH_ID: u64 = 1
+            WALL_MATERIAL_ID: u64 = 2
+            PLAYER_MATERIAL_ID: u64 = 3
+            KEY_MATERIAL_ID: u64 = 4
+            DOOR_CLOSED_MATERIAL_ID: u64 = 5
+            DOOR_OPEN_MATERIAL_ID: u64 = 6
+            GOAL_MATERIAL_ID: u64 = 7
+            HAZARD_MATERIAL_ID: u64 = 8
+
+        def cell_transform(x: i64, y: i64, height: f32) -> Geometry::Transform:
+            identity: Geometry::Transform = Geometry::transform_identity()
+            position: Geometry::Vec3 = Geometry::Vec3{
+                x: Tune::GRID_ORIGIN + x.f32() * Tune::CELL_PITCH,
+                y: height,
+                z: Tune::GRID_ORIGIN + y.f32() * Tune::CELL_PITCH,
+            }
+            Geometry::transform_translate(identity, position)
+
+        def tile_visual(material_low: u64) -> Assets::VisualAsset:
+            Assets::VisualAsset{
+                mesh: Assets::AssetId{high: Tune::ASSET_NAMESPACE, low: Tune::TILE_MESH_ID},
+                material: Assets::AssetId{high: Tune::ASSET_NAMESPACE, low: material_low},
+                local_bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -0.3, y: -0.3, z: -0.3},
+                    maximum: Geometry::Vec3{x: 0.3, y: 0.3, z: 0.3},
+                },
+            }
+
+        def set_player_cell(scene: mutable MazeScene&, game: MazeGame::MazeGame&) -> void error[MazePresentationError]:
+            transform_status: bool = catch World::world_set_transform(&scene.world, scene.player,
+                cell_transform(game.grid.player_x, game.grid.player_y, Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not transform_status
+
+    public:
+        affine struct MazeScene:
+            private:
+                world: mutable World::World
+                bindings: mutable WorldRendering::Bindings
+                player: World::EntityRef
+                key: mutable World::EntityRef
+                door: World::EntityRef
+                key_live: mutable bool
+                door_open: mutable bool
+
+        def MazeScene(game: MazeGame::MazeGame&) -> MazeScene error[MazePresentationError, World::WorldError]:
+            raise MazePresentationError.InvalidGame if not MazeGame::game_valid(game)
+            raise MazePresentationError.InvalidGame if not MazeLayout::maze_layout_matches_topology()
+            world: mutable World::World = try World::World()
+            bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+
+            walls: MazeLayout::WallList = MazeLayout::maze_layout_cells()
+            for index in 0..<walls.count |world, bindings, walls|:
+                wall: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+                    value: value
+                    error failure: World::EntityRef{world_epoch: 0, id: 0}
+                raise MazePresentationError.WorldRejected if wall.id <= 0
+                positioned: bool = catch World::world_set_transform(&world, wall,
+                    cell_transform(walls.xs[index], walls.ys[index], 0.0)):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.WorldRejected if not positioned
+                bound: bool = catch WorldRendering::bind(&bindings, &world, wall,
+                    Tune::WALL_RENDER_BASE + walls.ys[index] * Maze::maze_width().i64() + walls.xs[index],
+                    tile_visual(Tune::WALL_MATERIAL_ID), Geometry::transform_identity()):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.BindingRejected if not bound
+
+            player: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise MazePresentationError.WorldRejected if player.id <= 0
+            player_positioned: bool = catch World::world_set_transform(&world, player,
+                cell_transform(game.grid.player_x, game.grid.player_y, Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not player_positioned
+            player_bound: bool = catch WorldRendering::bind(&bindings, &world, player,
+                Tune::PLAYER_RENDER_ID, tile_visual(Tune::PLAYER_MATERIAL_ID), Geometry::transform_identity()):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not player_bound
+            key: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise MazePresentationError.WorldRejected if key.id <= 0
+            key_positioned: bool = catch World::world_set_transform(&world, key,
+                cell_transform(MazeGame::maze_key_x(), MazeGame::maze_key_y(), Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not key_positioned
+            key_bound: bool = catch WorldRendering::bind(&bindings, &world, key,
+                Tune::KEY_RENDER_ID, tile_visual(Tune::KEY_MATERIAL_ID), Geometry::transform_identity()):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not key_bound
+            door: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise MazePresentationError.WorldRejected if door.id <= 0
+            door_positioned: bool = catch World::world_set_transform(&world, door,
+                cell_transform(MazeGame::maze_door_x(), MazeGame::maze_door_y(), Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not door_positioned
+            door_bound: bool = catch WorldRendering::bind(&bindings, &world, door,
+                Tune::DOOR_RENDER_ID, tile_visual(Tune::DOOR_CLOSED_MATERIAL_ID), Geometry::transform_identity()):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not door_bound
+            goal: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise MazePresentationError.WorldRejected if goal.id <= 0
+            goal_positioned: bool = catch World::world_set_transform(&world, goal,
+                cell_transform(Maze::maze_goal_x(), Maze::maze_goal_y(), Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not goal_positioned
+            goal_bound: bool = catch WorldRendering::bind(&bindings, &world, goal,
+                Tune::GOAL_RENDER_ID, tile_visual(Tune::GOAL_MATERIAL_ID), Geometry::transform_identity()):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not goal_bound
+            hazard_a: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise MazePresentationError.WorldRejected if hazard_a.id <= 0
+            hazard_a_positioned: bool = catch World::world_set_transform(&world, hazard_a,
+                cell_transform(MazeGame::maze_hazard_a_x(), MazeGame::maze_hazard_a_y(), Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not hazard_a_positioned
+            hazard_a_bound: bool = catch WorldRendering::bind(&bindings, &world, hazard_a,
+                Tune::HAZARD_A_RENDER_ID, tile_visual(Tune::HAZARD_MATERIAL_ID), Geometry::transform_identity()):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not hazard_a_bound
+            hazard_b: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise MazePresentationError.WorldRejected if hazard_b.id <= 0
+            hazard_b_positioned: bool = catch World::world_set_transform(&world, hazard_b,
+                cell_transform(MazeGame::maze_hazard_b_x(), MazeGame::maze_hazard_b_y(), Tune::MARKER_HEIGHT)):
+                ok: true
+                error failure: false
+            raise MazePresentationError.WorldRejected if not hazard_b_positioned
+            hazard_b_bound: bool = catch WorldRendering::bind(&bindings, &world, hazard_b,
+                Tune::HAZARD_B_RENDER_ID, tile_visual(Tune::HAZARD_MATERIAL_ID), Geometry::transform_identity()):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not hazard_b_bound
+            MazeScene{
+                world: move world,
+                bindings: move bindings,
+                player: player,
+                key: key,
+                door: door,
+                key_live: true,
+                door_open: false,
+            }
+
+        def scene_world_count(scene: MazeScene&) -> usize:
+            World::world_live_count(&scene.world)
+
+        def scene_binding_count(scene: MazeScene&) -> usize:
+            WorldRendering::binding_count(scene.bindings)
+
+        def scene_update(scene: mutable MazeScene&,
+            game: MazeGame::MazeGame&) -> void error[MazePresentationError]:
+            raise MazePresentationError.InvalidGame if not MazeGame::game_valid(game)
+            try set_player_cell(scene, game)
+
+            if game.has_key and scene.key_live:
+                _ = WorldRendering::unbind(&scene.bindings, scene.key, Tune::KEY_RENDER_ID)
+                removed: bool = catch World::world_despawn(&scene.world, scene.key):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.WorldRejected if not removed
+                scene.key_live <- false
+                World::world_compact(&scene.world)
+            elif not game.has_key and not scene.key_live:
+                replacement_key: World::EntityRef = catch World::world_spawn(&scene.world,
+                    World::StaticObject.Structure):
+                    value: value
+                    error failure: World::EntityRef{world_epoch: 0, id: 0}
+                raise MazePresentationError.WorldRejected if replacement_key.id <= 0
+                key_positioned: bool = catch World::world_set_transform(&scene.world, replacement_key,
+                    cell_transform(MazeGame::maze_key_x(), MazeGame::maze_key_y(), Tune::MARKER_HEIGHT)):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.WorldRejected if not key_positioned
+                key_bound: bool = catch WorldRendering::bind(&scene.bindings, &scene.world, replacement_key,
+                    Tune::KEY_RENDER_ID, tile_visual(Tune::KEY_MATERIAL_ID), Geometry::transform_identity()):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.BindingRejected if not key_bound
+                scene.key <- replacement_key
+                scene.key_live <- true
+
+            if scene.door_open != game.has_key:
+                material: mutable u64 = Tune::DOOR_CLOSED_MATERIAL_ID
+                if game.has_key:
+                    material <- Tune::DOOR_OPEN_MATERIAL_ID
+                updated_binding: bool = catch WorldRendering::bind(&scene.bindings, &scene.world, scene.door,
+                    Tune::DOOR_RENDER_ID, tile_visual(material), Geometry::transform_identity()):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.BindingRejected if not updated_binding
+                scene.door_open <- game.has_key
+
+        def scene_extract(scene: mutable MazeScene&,
+            snapshot: mutable RenderSnapshot::Snapshot&) -> void error[MazePresentationError]:
+            extracted: bool = catch WorldRendering::extract(&scene.world, &scene.bindings, snapshot):
+                ok: true
+                error failure: false
+            raise MazePresentationError.BindingRejected if not extracted

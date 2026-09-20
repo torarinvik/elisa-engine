@@ -6,11 +6,64 @@
 # identify the failing step and scripts/maze_game.elisascript runs it.
 include "./game.elisa"
 include "./trace.elisa"
+include "./presentation.elisa"
 using Maze
 using MazeGame
 using MazeTrace
 
+module MazeApplication:
+    public:
+        def presentation_smoke() -> i32:
+            game: mutable MazeGame = MazeGame()
+            scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
+                value: value
+                error failure: return 25
+            return 21 if MazePresentation::scene_world_count(scene) != 40 or MazePresentation::scene_binding_count(scene) != 40
+            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            extracted: mutable i32 = catch MazePresentation::scene_extract(&scene, &snapshot):
+                ok: 0
+                error failure: 1
+            return 23 if extracted != 0 or RenderSnapshot::snapshot_count(snapshot) != 40
+            initial_player: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 34)
+            return 24 if initial_player.render_id != 2000
+            return 34 if initial_player.transform.position.x < -1.5001 or initial_player.transform.position.x > -1.4999
+            return 35 if initial_player.transform.position.z < -1.5001 or initial_player.transform.position.z > -1.4999
+
+            game_start(&game)
+            script: mutable MazeMove[10] = MazeTrace::maze_win_script()
+            for index in 0..<10 |game, script, scene|:
+                moved: bool = game_step(&game, script[index])
+                return 25 if not moved
+                updated: i32 = catch MazePresentation::scene_update(&scene, game):
+                    ok: 0
+                    error failure: 1
+                return 26 if updated != 0 or MazePresentation::scene_world_count(scene) < 39
+
+            return 27 if not game_won(&game) or not game.has_key
+            return 28 if MazePresentation::scene_world_count(scene) != 39 or MazePresentation::scene_binding_count(scene) != 39
+            extracted <- catch MazePresentation::scene_extract(&scene, &snapshot):
+                ok: 0
+                error failure: 1
+            return 29 if extracted != 0 or RenderSnapshot::snapshot_count(snapshot) != 39
+            final_player: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 34)
+            opened_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 35)
+            return 30 if final_player.render_id != 2000 or final_player.transform.position.x < 1.4999 or final_player.transform.position.x > 1.5001 or final_player.transform.position.z < 1.4999 or final_player.transform.position.z > 1.5001
+            return 31 if opened_door.render_id != 2002 or opened_door.visual.material.low != 6
+
+            game_restart(&game)
+            restarted: i32 = catch MazePresentation::scene_update(&scene, game):
+                ok: 0
+                error failure: 1
+            return 32 if restarted != 0 or MazePresentation::scene_world_count(scene) != 40 or MazePresentation::scene_binding_count(scene) != 40
+            extracted <- catch MazePresentation::scene_extract(&scene, &snapshot):
+                ok: 0
+                error failure: 1
+            return 33 if extracted != 0 or RenderSnapshot::snapshot_count(snapshot) != 40
+            0
+
 def main() -> i32:
+    presentation: i32 = MazeApplication::presentation_smoke()
+    return presentation if presentation != 0
     game: mutable MazeGame = MazeGame()
     return 1 if game.status != GameStatus.Menu or game.lives != 3
     # A menu is not a game: input must be refused until start.

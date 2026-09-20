@@ -1,0 +1,65 @@
+# Native R01 integration: the real maze rules produce a checked World snapshot,
+# which the persistent Wicked scene presenter reconciles transactionally.
+include "../examples/maze/presentation.elisa"
+include "../examples/maze/trace.elisa"
+
+module MazeRenderingNativeTests:
+    private:
+        def extract(scene: mutable MazePresentation::MazeScene&,
+            snapshot: mutable RenderSnapshot::Snapshot&) -> i32:
+            catch MazePresentation::scene_extract(scene, snapshot):
+                ok: 0
+                error failure: 1
+
+        def sync(presenter: mutable RenderScene::SnapshotPresenter&,
+            snapshot: RenderSnapshot::Snapshot&) -> i32:
+            catch RenderSnapshotScene::sync(presenter, snapshot):
+                ok: 0
+                error failure: 1
+
+        def update(scene: mutable MazePresentation::MazeScene&,
+            game: MazeGame::MazeGame&) -> i32:
+            catch MazePresentation::scene_update(scene, game):
+                ok: 0
+                error failure: 1
+
+    public:
+        def exercise() -> i32:
+            game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+            scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
+                value: value
+                error failure: return 1
+            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+
+            return 2 if extract(&scene, &snapshot) != 0
+            return 3 if RenderSnapshot::snapshot_count(snapshot) != 40
+            return 4 if sync(&presenter, &snapshot) != 0
+            return 5 if RenderSnapshotScene::binding_count(presenter) != 40 or RenderScene::instance_count() != 40
+            initial_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 36)
+            return 6 if initial_door.render_id != 2002 or initial_door.visual.material.low != 5
+
+            MazeGame::game_start(&game)
+            script: mutable MazeMove[10] = MazeTrace::maze_win_script()
+            for index in 0..<10 |game, scene, snapshot, presenter, script|:
+                return 7 if not MazeGame::game_step(&game, script[index])
+                return 8 if update(&scene, game) != 0
+                return 9 if extract(&scene, &snapshot) != 0 or sync(&presenter, &snapshot) != 0
+
+            return 10 if not MazeGame::game_won(&game) or not game.has_key
+            return 11 if RenderSnapshot::snapshot_count(snapshot) != 39
+            return 12 if RenderSnapshotScene::binding_count(presenter) != 39 or RenderScene::instance_count() != 39
+            opened_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 35)
+            return 13 if opened_door.render_id != 2002 or opened_door.visual.material.low != 6
+
+            MazeGame::game_restart(&game)
+            return 14 if update(&scene, game) != 0
+            return 15 if extract(&scene, &snapshot) != 0 or sync(&presenter, &snapshot) != 0
+            return 16 if RenderSnapshot::snapshot_count(snapshot) != 40
+            return 17 if RenderSnapshotScene::binding_count(presenter) != 40 or RenderScene::instance_count() != 40
+
+            cleared: i32 = catch RenderSnapshotScene::clear(&presenter):
+                ok: 0
+                error failure: 1
+            return 18 if cleared != 0 or RenderScene::instance_count() != 0
+            0
