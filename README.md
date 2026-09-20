@@ -133,8 +133,9 @@ goal-colour check and the cross-host comparison both still pass. It then
 cooks the source into a versioned, hash-carrying package (normalized float32 positions/normals and uint32
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the
-pinned dependencies with `python3 scripts/fetch_dependencies.py` (cgltf and the
-meshoptimizer vertex-cache files, revision- and hash-locked) and
+pinned dependencies with `python3 scripts/fetch_dependencies.py` (cgltf,
+ufbx FBX import, and the meshoptimizer vertex-cache files, revision- and
+hash-locked) and
 `python3 scripts/fetch_ozz.py` (ozz-animation, pinned by commit and built into
 `dependencies/ozz`) and `python3 scripts/fetch_recast.py` (Recast/Detour,
 pinned by commit and built into `dependencies/recast`; miniaudio is a pinned
@@ -155,6 +156,12 @@ reloads the package from disk and rebuilds a mesh from it to show the reload
 lifecycle releases and rebuilds without accumulating scene objects, and it
 links the Tracy client and marks frames, so profiling is compiled in. Fetch the
 Tracy source with `python3 scripts/fetch_tracy.py`. The game's own navigation decisions stay in Elisa.
+
+The bounded FBX import stage can be checked independently with
+`python3 scripts/test_fbx_import.py`; pass `--assets-root /path/to/assets` to
+also inspect the supplied WallGame walking, running, and fence FBX sources.
+This verifies parsing and first-mesh normalization only. It does not produce a
+cooked package or prove materials, skinning, animation, or runtime rendering.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by
