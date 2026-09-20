@@ -1,6 +1,73 @@
 include "../src/runtime/action_input.elisa"
 
+def test_binding(action: i64, code: i64, deadzone: f32) -> ActionInput::Binding:
+    ActionInput::Binding{action: action, device: ActionInput::Device.Keyboard, code: code, chord_code: 0, deadzone: deadzone, context: ActionInput::Context.Gameplay, live: true}
+
+def checked_binding_tests() -> i32:
+    invalid_input: mutable ActionInput::Input = ActionInput::Input()
+    return 40 if ActionInput::bind_checked(&invalid_input, test_binding(0, 1, 0.0)) != ActionInput::BindResult.InvalidAction
+    return 41 if ActionInput::bind_checked(&invalid_input, test_binding(1, 0, 0.0)) != ActionInput::BindResult.InvalidCode
+    return 42 if ActionInput::bind_checked(&invalid_input, test_binding(1, 1, 1.0)) != ActionInput::BindResult.InvalidDeadzone
+
+    checked_input: mutable ActionInput::Input = ActionInput::Input()
+    first: ActionInput::Binding = test_binding(1, 10, 0.0)
+    return 43 if ActionInput::bind_checked(&checked_input, first) != ActionInput::BindResult.Bound
+    ActionInput::apply(&checked_input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 10, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 44 if not ActionInput::action_down(&checked_input, 1) or not ActionInput::action_pressed(&checked_input, 1)
+    return 45 if ActionInput::bind_checked(&checked_input, test_binding(1, 11, 0.0)) != ActionInput::BindResult.Bound
+    return 46 if not ActionInput::action_down(&checked_input, 1) or not ActionInput::action_pressed(&checked_input, 1)
+    return 47 if ActionInput::bind_checked(&checked_input, first) != ActionInput::BindResult.DuplicateBinding
+
+    typed_input: mutable ActionInput::Input = ActionInput::Input()
+    typed_action: i32 = catch ActionInput::bind(&typed_input, test_binding(0, 1, 0.0)):
+        ok: 1
+        ActionInput::InputError.InvalidAction: 0
+        error failure: 2
+    return 48 if typed_action != 0
+    typed_code: i32 = catch ActionInput::bind(&typed_input, test_binding(1, 0, 0.0)):
+        ok: 1
+        ActionInput::InputError.InvalidCode: 0
+        error failure: 2
+    return 49 if typed_code != 0
+    typed_deadzone: i32 = catch ActionInput::bind(&typed_input, test_binding(1, 1, 1.0)):
+        ok: 1
+        ActionInput::InputError.InvalidDeadzone: 0
+        error failure: 2
+    return 50 if typed_deadzone != 0
+    _ = ActionInput::bind_checked(&typed_input, first)
+    typed_duplicate: i32 = catch ActionInput::bind(&typed_input, first):
+        ok: 1
+        ActionInput::InputError.DuplicateBinding: 0
+        error failure: 2
+    return 51 if typed_duplicate != 0
+
+    full_bindings: mutable ActionInput::Input = ActionInput::Input()
+    for code in 0..<32 |full_bindings|:
+        result: ActionInput::BindResult = ActionInput::bind_checked(&full_bindings, test_binding(1, 100 + code.i64(), 0.0))
+        return 52 if result != ActionInput::BindResult.Bound
+    return 53 if ActionInput::bind_checked(&full_bindings, test_binding(1, 132, 0.0)) != ActionInput::BindResult.Capacity
+    typed_capacity: i32 = catch ActionInput::bind(&full_bindings, test_binding(1, 132, 0.0)):
+        ok: 1
+        ActionInput::InputError.Capacity: 0
+        error failure: 2
+    return 54 if typed_capacity != 0
+
+    full_actions: mutable ActionInput::Input = ActionInput::Input()
+    for action in 0..<16 |full_actions|:
+        result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(1 + action.i64(), 1 + action.i64(), 0.0))
+        return 55 if result != ActionInput::BindResult.Bound
+    for attempt in 0..<16 |full_actions|:
+        result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(17 + attempt.i64(), 100 + attempt.i64(), 0.0))
+        return 56 if result != ActionInput::BindResult.Capacity
+    for code in 16..<32 |full_actions|:
+        result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(1, 100 + code.i64(), 0.0))
+        return 57 if result != ActionInput::BindResult.Bound
+    return 58 if ActionInput::bind_checked(&full_actions, test_binding(1, 200, 0.0)) != ActionInput::BindResult.Capacity
+    0
+
 def main() -> i32:
+    checked: i32 = checked_binding_tests()
+    return checked if checked != 0
     input: mutable ActionInput::Input = ActionInput::Input()
     _ = catch ActionInput::bind(&input, ActionInput::Binding{action: 1, device: ActionInput::Device.Gamepad, code: 10, chord_code: 0, deadzone: 0.2, context: ActionInput::Context.Gameplay, live: true}):
         ok: 0

@@ -11,11 +11,12 @@ chord code. `begin_frame` clears edge state, `set_context` isolates gameplay
 and UI actions, and disconnecting a device releases all held actions from that
 device's state without leaving stale input live.
 
-`bind_checked` exposes the same validation as a non-throwing `BindResult`, so
-projects can assemble bindings in ordinary Elisa loops without carrying
-fallible-call state through helper functions. A rejected binding leaves both
-the binding count and action-state slots unchanged. `bind` remains available
-when callers prefer typed `InputError` propagation.
+`bind_checked` reports those validation failures as `BindResult` without an
+error union. It checks both bounded tables before writing either, so a full
+action table cannot consume a binding slot. `bind` remains available and maps
+the same results to typed `InputError` values. The fixture checks every result,
+the typed error mapping, full binding/action tables, repeated action-capacity
+failures, and preservation of a held action when another binding is added.
 
 Multiple bindings for one action are aggregated: releasing one binding keeps
 the action down while another remains held, and the action releases only when
@@ -26,6 +27,14 @@ both release orders and across device disconnects, alongside analog dead-zone
 filtering, single-binding pressed/held/released transitions, context isolation,
 chord activation, and disconnect cleanup. The shared gate compiles and runs
 this fixture with the stage1 compiler.
+
+For the checked-binding change, `elisac-stage1 -emit exe -o
+build/action-input-test test/action_input.elisa && build/action-input-test`
+passed. `DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript
+scripts/check.elisascript` passed the full portable suite, SDL3 probe, Godot
+4.7.2 probe, and both Elisa Proof suites. `scripts/check_source_length.py`,
+`scripts/check_module_hygiene.py`, and `elisascript --check
+scripts/check.elisascript` also passed.
 
 The native Wicked gate also runs `native/action_input_bridge.h`: SDL3 keyboard
 events become portable action edges, analog values honor dead zones, and focus

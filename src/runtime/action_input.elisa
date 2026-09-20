@@ -80,8 +80,8 @@ module ActionInput:
             Capacity
             DuplicateBinding
 
-        # Non-throwing result for callers that want to bind actions without
-        # carrying Elisa's fallible-call state through their own helpers.
+        # Non-throwing result for callers that want to build bindings in
+        # ordinary loops without threading a fallible call through helpers.
         enum BindResult:
             Bound
             InvalidAction
@@ -111,6 +111,8 @@ module ActionInput:
                 existing: Binding = input.bindings[index]
                 return BindResult.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.context == binding.context
             return BindResult.Capacity if input.binding_count >= Limits::MAX_BINDINGS
+            # Find all required storage before mutating either table. A full
+            # action table must not consume a binding slot on failure.
             slot: mutable usize = state_slot(input, binding.action)
             if slot == Limits::MAX_ACTIONS:
                 slot <- for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS, input| -> slot:
