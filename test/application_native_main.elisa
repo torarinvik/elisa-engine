@@ -5,6 +5,17 @@
 include "./physics_app_probe.elisa"
 using Capabilities
 
+module NativeApplicationTestProbe:
+    public:
+        @callconv(c)
+        extern elisa_physics_v1_test_fail_next_initialize_after_scene() -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_test_is_clean() -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_test_fail_next_initialize_after_open() -> i32
+
 def check_native_profile() -> i32:
     profile: BackendProfile = catch Application::backend_profile():
         value: value
@@ -202,6 +213,25 @@ def check_startup_requirements(config: Application::Config) -> i32:
         config, missing_physics, 1, physics_fallback, true, &report)
     return 97 if physics_fallback_status != Application::InitializeStatus.FallbackRequired
     return 105 if report.decisions[0].feature != BackendFeature.Physics or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+
+    return 145 if NativeApplicationTestProbe::elisa_physics_v1_test_fail_next_initialize_after_scene() != 0
+    failed_physics_init: i32 = catch PhysicsRuntime::World():
+        value: 0
+        PhysicsRuntime::PhysicsError.BackendFailure: 1
+        error failure: 2
+    return 146 if failed_physics_init != 1
+    return 147 if NativeApplicationTestProbe::elisa_physics_v1_test_is_clean() != 1
+    return 148 if check_native_profile() != 0
+    return 149 if not Application::shutdown()
+    closed_after_physics_failure: i32 = catch Application::backend_profile():
+        value: 1
+        Application::BackendProfileError.NotInitialized: 0
+        error failure: 2
+    return 150 if closed_after_physics_failure != 0
+    physics_retry_status: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, missing_physics, 1, physics_fallback, true, &report)
+    return 151 if physics_retry_status != Application::InitializeStatus.FallbackRequired
+    return 152 if report.decision_count != 1 or report.decisions[0].fallback_provider != BackendFallbackProvider.JoltPhysics
     physics_world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
         value: value
         error failure: return 98
@@ -262,6 +292,19 @@ def check_startup_requirements(config: Application::Config) -> i32:
         AudioRuntime::AudioError.InvalidArgument: 1
         error failure: 2
     return 140 if failed_audio_init != 1
+    return 153 if NativeApplicationTestProbe::elisa_audio_v1_test_fail_next_initialize_after_open() != 0
+    partial_audio_init: i32 = catch AudioRuntime::initialize_silent(
+        AudioRuntime::MIN_SAMPLE_RATE_HZ, AudioRuntime::MIN_CHANNEL_COUNT):
+        value: 0
+        AudioRuntime::AudioError.DeviceUnavailable: 1
+        error failure: 2
+    return 154 if partial_audio_init != 1
+    rolled_back_audio_status: i32 = catch AudioRuntime::active_voice_count():
+        value: 1
+        AudioRuntime::AudioError.ApplicationUnavailable: 0
+        error failure: 2
+    return 155 if rolled_back_audio_status != 0
+    return 156 if check_native_profile() != 0
     return 141 if not Application::shutdown()
     failed_fallback_profile: i32 = catch Application::backend_profile():
         value: 1

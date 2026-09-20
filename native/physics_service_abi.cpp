@@ -32,6 +32,9 @@ struct PhysicsService {
     bool initialized = false;
     bool simulation_before = true;
     bool interpolation_before = true;
+#if defined(ELISA_PHYSICS_TEST_PROBE)
+    bool fail_next_initialize_after_scene = false;
+#endif
 };
 
 PhysicsService& physics_service() {
@@ -89,6 +92,13 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
     } catch (...) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
+#if defined(ELISA_PHYSICS_TEST_PROBE)
+    if (state.fail_next_initialize_after_scene) {
+        state.fail_next_initialize_after_scene = false;
+        state.scene.reset();
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+#endif
     ++state.world_generation;
     state.tick = 0;
     state.simulation_before = wi::physics::IsSimulationEnabled();
@@ -99,6 +109,27 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
     *world_generation = state.world_generation;
     return ELISA_PHYSICS_OK;
 }
+
+#if defined(ELISA_PHYSICS_TEST_PROBE)
+extern "C" int32_t elisa_physics_v1_test_fail_next_initialize_after_scene(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_PHYSICS_OK) return owner_status;
+    PhysicsService& state = physics_service();
+    if (state.initialized || state.scene != nullptr || state.fail_next_initialize_after_scene) {
+        return ELISA_PHYSICS_INVALID_STATE;
+    }
+    state.fail_next_initialize_after_scene = true;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_PHYSICS_OK) return owner_status;
+    const PhysicsService& state = physics_service();
+    return !state.initialized && state.scene == nullptr && !state.fail_next_initialize_after_scene
+        ? 1 : 0;
+}
+#endif
 
 extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z,

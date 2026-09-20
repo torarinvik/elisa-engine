@@ -25,9 +25,12 @@ run the miniaudio decoder, null-device, and mixer checks through the shared
 implementation translation unit.
 
 The startup smoke also negotiates `MiniaudioSilent`, rejects a sample rate
-below the public minimum, shuts down the application after that adapter error,
-checks that the host profile is closed, then renegotiates and successfully
-initializes the silent device.
+below the public minimum, and injects a test-only failure after the null device
+starts. The adapter shuts the device down before returning `DeviceUnavailable`;
+the public API then reports `ApplicationUnavailable` for service access. The
+caller closes the host, verifies the profile is closed, re-negotiates the same
+provider, and successfully initializes the silent device on retry. Native fault
+injection is enabled only for the application smoke build.
 
 Validation on 2026-09-20: the full `DEVELOPER_DIR=/Library/Developer/CommandLineTools
 ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript
