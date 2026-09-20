@@ -258,3 +258,64 @@ Both passes reported the Apple M5's native profile (`profile=0xb3`,
 startup path, cooked geometry loading, actual Metal scene rendering, and
 repeat-frame comparison. GPU usage stayed flat after warm-up. The host and
 post-churn heap deltas remain unattributed, so F05 is still partial.
+
+## Lua application handles across host restarts (macOS 27.0, 2026-09-20)
+
+The repeated-host allocation diff showed that Wicked's process-wide Lua state
+kept the two `Application_BindLua` userdata published as `main` and
+`application` after each host was destroyed. Wicked commit `07aac680` adds
+`wi::lua::ShutdownApplication()`: it cancels running Lua processes, clears each
+global only if it still refers to the retiring `Application`, and collects
+unreachable Lua wrappers before audio and graphics teardown. The lifecycle
+probe verifies both globals are nil after every host shutdown.
+
+The SDL3/Wicked library rebuilt successfully with the change, and the focused
+eight-cycle host lifecycle passed:
+
+```text
+DEVELOPER_DIR="$(xcode-select -p)" ELISA_LIFECYCLE_ONLY=1 \
+  build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  backends/scene_manifest.txt
+
+repeated host lifecycle: cycles=8 hooks=64 capacity_rejections=1 callbacks=drained
+host lifecycle heap: delta_bytes=4656
+```
+
+For allocation attribution, one process was paused after cycle 1 and after
+cycle 8 with `MallocStackLoggingNoCompact=1`; `leaks` memory graphs were
+compared with `heap --diffFrom`. Before the fix, the cycle-1-to-8 diff included
+14 live `l_alloc` blocks (896 bytes) from `Application_BindLua` userdata. After
+the fix, no `Application_BindLua` blocks remained in the diff; two Lua allocator
+blocks totaling 112 bytes were added by script cancellation. The full
+instrumented diff was 104 allocations / about 23 KiB, mostly AppKit and
+CoreFoundation classes. These tools perturb allocation behavior, so that total
+is used only to identify stacks. F05 remains partial: the uninstrumented host
+delta and separate post-churn heap increase still need attribution, followed by
+another long soak.
+
+## Full native gate after Lua application-handle cleanup (macOS 27.0, 2026-09-20)
+
+The composed native gate passed after pinning Wicked commit `07aac680` and
+checking the Lua globals at each host shutdown:
+
+```text
+DEVELOPER_DIR="$(xcode-select -p)" \
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" \
+ELISA_ALLOW_STALE_STAGE1=1 \
+  elisascript scripts/native_gate.elisascript native
+
+frame and rerun host heap deltas: 4656 and 13184 bytes
+64-cycle scene restart heap deltas: -1696 and 3072 bytes
+64-cycle scene restart GPU deltas: 0 and 0 bytes
+post-churn steady-state heap deltas: 282304 and 284896 bytes
+deterministic frame comparison: peak=0.0000 mean=0.0000
+Native live-input frame rendered from the embedded game.
+orderly native shutdown passed
+native gate report: build/native-gate.json
+```
+
+The complete Elisa check suite also passed, including SDL3, Godot, animation,
+and both proof-certificate replay checks. Source-length, module-hygiene,
+dependency-manifest, and whitespace checks passed. Lua application-wrapper
+accumulation is resolved; the remaining host and post-churn heap changes still
+need attribution, so F05 remains partial.

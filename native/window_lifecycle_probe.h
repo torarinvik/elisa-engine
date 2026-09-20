@@ -22,6 +22,18 @@ inline size_t lifecycle_heap_bytes_in_use() {
     return stats.size_in_use;
 }
 
+inline bool lifecycle_lua_application_globals_cleared() {
+    lua_State* state = wi::lua::GetLuaState();
+    if (state == nullptr) return false;
+    bool cleared = true;
+    for (const char* name : { "main", "application" }) {
+        lua_getglobal(state, name);
+        cleared = lua_isnil(state, -1) != 0 && cleared;
+        lua_pop(state, 1);
+    }
+    return cleared;
+}
+
 inline bool probe_window_lifecycle(NativeApplication& host) {
     const auto swapchain_matches_window = [&host](const char* label) {
         if (!host.run_frame()) return check(false, label);
@@ -175,11 +187,31 @@ inline bool probe_partial_startup_failure() {
 inline bool probe_repeated_host_lifecycle() {
     if (!probe_partial_startup_failure()) return false;
     constexpr size_t lifecycle_cycles = 8;
+    size_t inspect_after_cycle = 0;
+    const char* inspect_cycle_text = std::getenv("ELISA_LIFECYCLE_HOLD_AFTER_CYCLE");
+    if (inspect_cycle_text != nullptr) {
+        const unsigned long long requested = std::strtoull(inspect_cycle_text, nullptr, 10);
+        if (requested > 0 && requested < lifecycle_cycles) {
+            inspect_after_cycle = static_cast<size_t>(requested);
+        }
+    }
     std::array<size_t, lifecycle_cycles> heap_samples{};
     for (size_t cycle = 0; cycle <= lifecycle_cycles; ++cycle) {
         if (cycle != 0) {
             // The previous cycle's host and test bookkeeping have left scope.
             heap_samples[cycle - 1] = lifecycle_heap_bytes_in_use();
+            if (!check(lifecycle_lua_application_globals_cleared(),
+                    "shutdown clears Lua Application handles")) return false;
+            if (cycle == inspect_after_cycle) {
+                const char* hold_text = std::getenv("ELISA_LIFECYCLE_MID_HOLD_SECONDS");
+                const int seconds = hold_text == nullptr ? 0 : std::atoi(hold_text);
+                if (seconds > 0) {
+                    std::fprintf(stdout, "lifecycle heap snapshot after cycle %zu: bytes=%zu hold_seconds=%d\n",
+                        cycle, heap_samples[cycle - 1], seconds);
+                    std::fflush(stdout);
+                    std::this_thread::sleep_for(std::chrono::seconds(seconds));
+                }
+            }
             if (cycle == lifecycle_cycles) break;
         }
         NativeApplication host;
