@@ -1,7 +1,10 @@
 #include "fbx_asset_import.h"
+#include "meshoptimizer.h"
 
 #include <array>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +21,7 @@ namespace {
 
 constexpr size_t MAX_PACKAGE_BYTES = size_t(64) * 1024 * 1024;
 constexpr size_t MAX_LINE_BYTES = size_t(16) * 1024 * 1024;
+constexpr float MAX_SIMPLIFICATION_ERROR = 0.03f;
 
 bool safe_asset_key(const std::string& value) {
     if (value.empty() || value.size() > 4096 || value.front() == '/' ||
@@ -32,6 +36,58 @@ bool safe_asset_key(const std::string& value) {
         if (end == std::string::npos) break;
         start = end + 1;
     }
+    return true;
+}
+
+bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_triangles) {
+    if (max_triangles == 0 || mesh.indices.size() / 3 <= max_triangles) return true;
+    const size_t original_triangles = mesh.indices.size() / 3;
+    const size_t target_indices = max_triangles * 3;
+    std::vector<uint32_t> simplified(mesh.indices.size());
+    float result_error = 0.0f;
+    const size_t simplified_count = meshopt_simplify(simplified.data(), mesh.indices.data(),
+        mesh.indices.size(), mesh.positions.data(), mesh.positions.size() / 3,
+        sizeof(float) * 3, target_indices, MAX_SIMPLIFICATION_ERROR,
+        meshopt_SimplifyLockBorder, &result_error);
+    if (simplified_count == 0 || simplified_count % 3 != 0 || simplified_count > target_indices ||
+        !std::isfinite(result_error) || result_error > MAX_SIMPLIFICATION_ERROR) {
+        std::fprintf(stderr, "mesh simplification did not meet the requested triangle budget\n");
+        return false;
+    }
+
+    const uint32_t unused = std::numeric_limits<uint32_t>::max();
+    std::vector<uint32_t> remap(mesh.positions.size() / 3, unused);
+    std::vector<float> positions;
+    std::vector<float> normals;
+    std::vector<float> uvs;
+    std::vector<uint32_t> indices;
+    positions.reserve(simplified_count * 3);
+    normals.reserve(simplified_count * 3);
+    uvs.reserve(simplified_count * 2);
+    indices.reserve(simplified_count);
+    for (size_t index = 0; index < simplified_count; ++index) {
+        const uint32_t source_index = simplified[index];
+        if (source_index >= remap.size()) {
+            std::fprintf(stderr, "mesh simplifier returned an out-of-range index\n");
+            return false;
+        }
+        if (remap[source_index] == unused) {
+            remap[source_index] = uint32_t(positions.size() / 3);
+            for (size_t axis = 0; axis < 3; ++axis) {
+                positions.push_back(mesh.positions[source_index * 3 + axis]);
+                normals.push_back(mesh.normals[source_index * 3 + axis]);
+            }
+            uvs.push_back(mesh.uvs[source_index * 2]);
+            uvs.push_back(mesh.uvs[source_index * 2 + 1]);
+        }
+        indices.push_back(remap[source_index]);
+    }
+    mesh.positions.swap(positions);
+    mesh.normals.swap(normals);
+    mesh.uvs.swap(uvs);
+    mesh.indices.swap(indices);
+    std::printf("simplified %zu -> %zu triangles (relative error %.5f, %zu vertices)\n",
+        original_triangles, mesh.indices.size() / 3, result_error, mesh.positions.size() / 3);
     return true;
 }
 
@@ -86,7 +142,7 @@ std::string base64(const std::vector<uint8_t>& bytes) {
 }
 
 bool cook(const std::filesystem::path& source, const std::string& asset_key,
-    const std::filesystem::path& output, const std::string& source_sha256) {
+    const std::filesystem::path& output, const std::string& source_sha256, size_t max_triangles) {
     if (!safe_asset_key(asset_key)) {
         std::fprintf(stderr, "unsafe asset key; use a project-relative path without `..`\n");
         return false;
@@ -95,18 +151,19 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "source SHA-256 must be 64 lowercase hexadecimal characters\n");
         return false;
     }
-    const elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(source, true);
+    elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(source, true);
     if (!asset.ok) {
         std::fprintf(stderr, "FBX cook failed: %s\n", asset.error.c_str());
         return false;
     }
-    const auto& mesh = asset.primary_mesh;
+    auto& mesh = asset.primary_mesh;
     if (mesh.positions.empty() || mesh.positions.size() % 3 != 0 ||
         mesh.normals.size() != mesh.positions.size() || mesh.uvs.size() != mesh.positions.size() / 3 * 2 ||
         mesh.indices.empty() || mesh.indices.size() % 3 != 0) {
         std::fprintf(stderr, "FBX importer returned incomplete triangle geometry\n");
         return false;
     }
+    if (!simplify_geometry(mesh, max_triangles)) return false;
     for (uint32_t index : mesh.indices) {
         if (index >= mesh.positions.size() / 3) {
             std::fprintf(stderr, "FBX importer returned an out-of-range mesh index\n");
@@ -195,11 +252,22 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 9 || std::string(argv[1]) != "--source" ||
+    if ((argc != 9 && argc != 11) || std::string(argv[1]) != "--source" ||
         std::string(argv[3]) != "--asset-path" || std::string(argv[5]) != "--output" ||
         std::string(argv[7]) != "--sha256") {
-        std::fprintf(stderr, "usage: fbx_asset_cooker --source FILE --asset-path PROJECT_RELATIVE_PATH --output FILE --sha256 HEX\n");
+        std::fprintf(stderr, "usage: fbx_asset_cooker --source FILE --asset-path PROJECT_RELATIVE_PATH --output FILE --sha256 HEX [--max-triangles COUNT]\n");
         return 2;
     }
-    return cook(argv[2], argv[4], argv[6], argv[8]) ? 0 : 1;
+    size_t max_triangles = 0;
+    if (argc == 11) {
+        char* end = nullptr;
+        const unsigned long long value = std::strtoull(argv[10], &end, 10);
+        if (std::string(argv[9]) != "--max-triangles" || end == argv[10] || *end != '\0' ||
+            value == 0 || value > 1000000) {
+            std::fprintf(stderr, "max triangles must be an integer in [1, 1000000]\n");
+            return 2;
+        }
+        max_triangles = size_t(value);
+    }
+    return cook(argv[2], argv[4], argv[6], argv[8], max_triangles) ? 0 : 1;
 }

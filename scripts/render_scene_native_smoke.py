@@ -125,7 +125,7 @@ def main() -> int:
         finally:
             escape_link.unlink(missing_ok=True)
     if status == 0:
-        print("Elisa scene rendered by Wicked; handle validation and cleanup passed.")
+        print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
     return status
 
 

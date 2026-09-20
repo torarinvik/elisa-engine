@@ -50,9 +50,8 @@ PINNED = {
         "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410",
         "miniaudio/miniaudio.h",
     ),
-    # meshoptimizer is multi-file; only the vertex-cache optimizer and its
-    # analyzer are pinned, because that is what the runtime host uses. The
-    # revision and content hashes lock the four files the build compiles.
+    # meshoptimizer is multi-file; each source used by a build or asset cook
+    # is pinned independently to keep the offline geometry cooker reproducible.
     "meshoptimizer_header": (
         "v1.2",
         "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/meshoptimizer.h",
@@ -76,6 +75,12 @@ PINNED = {
         "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/indexanalyzer.cpp",
         "bff37aecb10cefa33f3f6a217413c6ac98899c23e6de5282420c60e6baf786ec",
         "meshoptimizer/indexanalyzer.cpp",
+    ),
+    "meshoptimizer_simplifier": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/simplifier.cpp",
+        "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc",
+        "meshoptimizer/simplifier.cpp",
     ),
 }
 

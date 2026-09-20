@@ -157,6 +157,26 @@ def main() -> i32:
         ok: 0
         error failure: 1
     return 38 if color_status != 0
+    emissive_status: i32 = catch RenderScene::set_emissive(sphere, RenderScene::Emission{
+        color: Geometry::Vec3{x: 0.1, y: 0.9, z: 0.35}, strength: 4.0}):
+        ok: 0
+        error failure: 1
+    return 58 if emissive_status != 0
+    invalid_emission: i32 = catch RenderScene::set_emissive(sphere, RenderScene::Emission{
+        color: Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, strength: 65.0}):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 59 if invalid_emission != 1
+    bloom_status: i32 = catch RenderScene::set_bloom(true, 0.8):
+        ok: 0
+        error failure: 1
+    return 60 if bloom_status != 0
+    invalid_bloom: i32 = catch RenderScene::set_bloom(true, 65.0):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 61 if invalid_bloom != 1
     bad_update: i32 = catch RenderScene::update_transform(box, invalid_transform):
         ok: 0
         RenderScene::RenderSceneError.InvalidValue: 1

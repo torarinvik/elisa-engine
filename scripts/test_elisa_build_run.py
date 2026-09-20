@@ -193,6 +193,7 @@ class BuildRunCliTests(unittest.TestCase):
                 "source": "assets/walk.fbx",
                 "asset_path": "assets/walk.fbx",
                 "output": "build/cooked/walk.pkg",
+                "max_triangles": 120000,
             }]}
             runner = __import__("elisa_build_run")
             with mock.patch.object(runner, "run_command", return_value=0) as run:
@@ -202,8 +203,13 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertEqual(command[1], str(SCRIPT.parent / "cook_fbx_asset.py"))
             self.assertEqual(command[2], str(source.resolve()))
             self.assertEqual(command[command.index("--output") + 1], str((project / "build/cooked/walk.pkg").resolve()))
+            self.assertEqual(command[command.index("--max-triangles") + 1], "120000")
             self.assertEqual(run.call_args.kwargs["cwd"], project.resolve())
             config["asset_cooks"][0]["output"] = "../outside.pkg"
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), config)
+            config["asset_cooks"][0]["output"] = "build/cooked/walk.pkg"
+            config["asset_cooks"][0]["max_triangles"] = True
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), config)
 

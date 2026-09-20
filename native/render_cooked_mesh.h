@@ -36,6 +36,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr ||
         geometry.positions.size() % 3 != 0 || geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 || geometry.indices.empty() ||
+        geometry.indices.size() % 3 != 0 ||
         geometry.indices.size() > std::numeric_limits<uint32_t>::max()) return false;
 
     mesh->vertex_positions.resize(geometry.positions.size() / 3);

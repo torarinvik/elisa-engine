@@ -15,13 +15,15 @@ largest triangle mesh and returns indexed positions, normals, UVs, and bounds.
 This keeps helper meshes such as the cyborg's small `Icosphere` out of the
 current character geometry check.
 
-Input is bounded to 512 MiB per file, 512 MiB temporary parsing memory, 1.5
-GiB parsed scene memory, 4,096 nodes and bones, 1,024 meshes and materials,
-256 animation stacks, 5,000,000 scene triangles, 512 MiB extracted corner data,
-and 256 MiB for vertex indexing. Parsing is strict; external files are not read.
-Malformed input and limit failures return an error without exposing a partial
-mesh. This checkout's validation used the synthetic fixture only; the optional
-game-asset checks below were not run because those FBX files were unavailable.
+Input is bounded to 512 MiB per file, 1.5 GiB temporary parsing memory, 3 GiB
+parsed scene memory, 4,096 nodes and bones, 1,024 meshes and materials, 256
+animation stacks, 5,000,000 scene triangles, 1 GiB extracted corner data, and
+768 MiB for vertex indexing. These are lazy hard ceilings for offline asset
+cooking, raised after the supplied dense gate exceeded the original decode
+budget. Parsing is strict; external files are not read. Malformed input and
+limit failures return an error without exposing a partial mesh. The shared
+workspace currently contains only the synthetic FBX fixture; the external game
+asset checks below cannot be rerun without the WallGame asset tree.
 
 Run the synthetic cm-unit triangle fixture with:
 
@@ -29,6 +31,7 @@ Run the synthetic cm-unit triangle fixture with:
 python3 scripts/fetch_dependencies.py --only ufbx_source
 python3 scripts/fetch_dependencies.py --only ufbx_header
 python3 scripts/fetch_dependencies.py --only ufbx_license
+python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier
 python3 scripts/test_fbx_import.py
 ```
 
@@ -47,28 +50,33 @@ conversion, node translation, finite generated normals, and valid indices.
 
 The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
 existing `elisa-cooked-v2` geometry package with source identity and hash,
-float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It
-validates all decoded lengths, finite values, indices, and the runtime reader's
-64 MiB package/16 MiB section limits before reporting success. Run
-`python3 scripts/cook_fbx_asset.py --self-test` for the synthetic package test.
-This revision's self-test cooked one normalized triangle. For a real source,
-supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output DESTINATION.pkg`;
-the asset key is stored in the package and must be a safe relative path. Real
-asset cooking was not exercised in this checkout.
+float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It can
+simplify through pinned meshoptimizer with `--max-triangles COUNT`, compact
+unreferenced vertices, and validates finite streams, indices, and the runtime
+reader's 64 MiB package/16 MiB section limits. The amazing-labyrinth checkout
+records a 3,077,694-triangle Arc Gate reduced to 12,000 triangles, 10,009
+vertices, 619,538 bytes and 0.00124 relative error; that source is absent from
+this shared workspace, so the dense cook was not rerun here.
+`python3 scripts/cook_fbx_asset.py --self-test` passed on this checkout: a
+generated 512-triangle planar grid simplified to 128 triangles and 97 vertices
+at 0.00003 relative error, and two cooks produced byte-identical packages. The
+unbounded triangle fixture still verifies the normalized package path and exact
+one-triangle counts.
+For a real source, supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
+DESTINATION.pkg`; the asset key must be safe and project-relative.
 
-`native/package_load.h` now reads the optional UV channel and copies it into
-Wicked's first UV set. A synthetic native-reader package fixture checks UV
-preservation; `native/cooked_geometry_package.h` separately validates and
-decodes cooked geometry for the public `RenderScene::create_mesh` API. The
-runner accepts project `asset_cooks` declarations and invokes the cooker before
-building. Its automated test validates project-contained paths and cooker
-invocation, while the native probe tests geometry decoding with the synthetic
-triangle package. The SDL3/Metal native smoke cooks that triangle and verifies
-it renders through `RenderScene::create_mesh`, rejects traversal, absolute, and
-symlink-escape paths, and checks handle cleanup. Real game FBX assets were not
-cooked or rendered because they are absent from this checkout.
+`native/package_load.h` reads the optional UV channel and copies it into Wicked's
+first UV set. `native/cooked_geometry_package.h` decodes bounded runtime packages
+for the public `RenderScene::create_mesh` API. The project runner accepts
+`asset_cooks` declarations and forwards optional triangle limits. Runner tests
+cover project-contained paths and cooker invocation; the native package probe
+checks geometry decoding. The SDL3/Metal smoke cooks and renders the synthetic
+triangle through `RenderScene::create_mesh`, rejects traversal, absolute and
+symlink-escape paths, and checks handle cleanup. The public scene API also has
+emission and bloom controls, with its own validation note.
 
 Import and cooking still select one mesh. They do not preserve the full node
 hierarchy, material subsets or texture paths, skin weights or bind poses, or
-animation curves. Runtime loading/rendering now works for normalized cooked
-packages; the real game-asset path and A05/C01 integration remain unverified.
+animation curves. The current workspace has not cooked or rendered the real
+walking/running/fence FBX assets. Shared mesh residency, source texture mapping,
+and asynchronous asset residency remain.

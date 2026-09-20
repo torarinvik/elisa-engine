@@ -68,16 +68,18 @@ struct FbxImportResult {
 namespace detail {
 
 constexpr uint64_t MAX_FILE_BYTES = 512ull * 1024ull * 1024ull;
-constexpr size_t MAX_TEMP_MEMORY_BYTES = size_t(512) * 1024 * 1024;
-constexpr size_t MAX_SCENE_MEMORY_BYTES = size_t(1536) * 1024 * 1024;
-constexpr size_t MAX_INDEX_MEMORY_BYTES = size_t(256) * 1024 * 1024;
+// FBX triangle-corner expansion can exceed the compact source size by many
+// times; these are hard ceilings for the offline cooker, not eager allocations.
+constexpr size_t MAX_TEMP_MEMORY_BYTES = size_t(1536) * 1024 * 1024;
+constexpr size_t MAX_SCENE_MEMORY_BYTES = size_t(3072) * 1024 * 1024;
+constexpr size_t MAX_INDEX_MEMORY_BYTES = size_t(768) * 1024 * 1024;
 constexpr size_t MAX_SCENE_NODES = 4096;
 constexpr size_t MAX_SCENE_MESHES = 1024;
 constexpr size_t MAX_SCENE_BONES = 4096;
 constexpr size_t MAX_SCENE_MATERIALS = 1024;
 constexpr size_t MAX_ANIMATION_STACKS = 256;
 constexpr size_t MAX_MESH_TRIANGLES = 5'000'000;
-constexpr size_t MAX_EXTRACTED_BYTES = size_t(512) * 1024 * 1024;
+constexpr size_t MAX_EXTRACTED_BYTES = size_t(1024) * 1024 * 1024;
 
 inline void fail(FbxImportResult& result, const std::string& message) {
     result.error = message;
