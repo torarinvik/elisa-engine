@@ -11,9 +11,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <malloc/malloc.h>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace probe {
@@ -37,8 +39,16 @@ inline bool run_churn_probe(wi::scene::Scene& scene, const std::map<std::string,
     size_t steady_heap = 0;
     const int rounds = 8;
     const int per_round = 64;
+    const char* hold_after_round_text = std::getenv("ELISA_CHURN_HOLD_AFTER_ROUND");
+    const int hold_after_round = hold_after_round_text == nullptr ? 0 : std::atoi(hold_after_round_text);
+    const char* mid_hold_text = std::getenv("ELISA_CHURN_MID_HOLD_SECONDS");
+    const int mid_hold_seconds = mid_hold_text == nullptr ? 0 : std::atoi(mid_hold_text);
+    const char* final_hold_text = std::getenv("ELISA_CHURN_FINAL_HOLD_SECONDS");
+    const int final_hold_seconds = final_hold_text == nullptr ? 0 : std::atoi(final_hold_text);
     std::vector<int64_t> samples;
+    std::vector<size_t> heap_samples;
     samples.reserve(rounds);
+    heap_samples.reserve(rounds);
     for (int round = 0; round < rounds; ++round) {
         const auto start = std::chrono::steady_clock::now();
         std::vector<wi::ecs::Entity> batch;
@@ -51,15 +61,29 @@ inline bool run_churn_probe(wi::scene::Scene& scene, const std::map<std::string,
         }
         const auto stop = std::chrono::steady_clock::now();
         samples.push_back(std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count());
+        const size_t round_heap = heap_bytes_in_use();
+        heap_samples.push_back(round_heap);
         // The first full round warms Wicked's pools; later rounds must not keep
         // growing the heap by a batch each time.
         if (round == 1) {
-            steady_heap = heap_bytes_in_use();
+            steady_heap = round_heap;
         }
         if (!check(scene.objects.GetCount() == objects_before, "churn objects return to baseline") ||
             !check(scene.meshes.GetCount() == meshes_before, "churn meshes return to baseline") ||
             !check(scene.transforms.GetCount() == transforms_before, "churn transforms return to baseline")) {
             return false;
+        }
+        if (round + 1 == hold_after_round && mid_hold_seconds > 0) {
+            std::fprintf(stdout, "churn heap snapshot after round %d: bytes=%zu hold_seconds=%d\n",
+                round + 1, round_heap, mid_hold_seconds);
+            std::fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::seconds(mid_hold_seconds));
+        }
+        if (round + 1 == rounds && final_hold_seconds > 0) {
+            std::fprintf(stdout, "churn final heap snapshot: bytes=%zu hold_seconds=%d\n",
+                round_heap, final_hold_seconds);
+            std::fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::seconds(final_hold_seconds));
         }
     }
     std::sort(samples.begin(), samples.end());
@@ -72,6 +96,11 @@ inline bool run_churn_probe(wi::scene::Scene& scene, const std::map<std::string,
         (long long)samples.back());
     std::fprintf(stdout, "churn memory: before_bytes=%zu steady_bytes=%zu after_bytes=%zu steady_delta_bytes=%lld\n",
         heap_before, steady_heap, heap_after, steady_delta);
+    std::fprintf(stdout, "churn round heap bytes:");
+    for (const size_t heap_sample : heap_samples) {
+        std::fprintf(stdout, " %zu", heap_sample);
+    }
+    std::fprintf(stdout, "\n");
     // ASan's quarantine and libc++ allocation metadata are charged to the
     // process heap statistics, so its baseline noise is larger even when the
     // scene returns to the same object counts. The sanitizer still reports
