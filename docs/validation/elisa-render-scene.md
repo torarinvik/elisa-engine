@@ -29,6 +29,17 @@ inside the `RenderScene` module so native handles stay opaque. Clear the
 presenter before an explicit scene shutdown; application shutdown releases all
 native scene resources automatically.
 
+`RenderScene::set_texture` attaches a project-relative base-color, normal,
+packed surface, or emissive image to one live instance. The engine canonicalizes
+the path beneath `ELISA_PROJECT_ROOT`, loads it through Wicked's resource
+manager with block compression, and requests Wicked's normal-map import format
+for the normal slot. Wicked's surface channels are occlusion, roughness,
+metalness, and reflectance in RGBA order. The API does not change the material shading model or
+discover companion maps from FBX metadata; an Elisa project currently selects
+each map explicitly. The cooked mesh format retains UVs but has no tangent
+stream yet, so a loaded normal map is not ready for reliable shading until the
+engine cooks or generates tangents.
+
 `src/runtime/world_rendering.elisa` adds an Elisa-owned `WorldRendering`
 binding table and extractor. Callers bind one or more stable render IDs and
 transforms to a checked `World::EntityRef`; extraction verifies world liveness,
@@ -85,11 +96,13 @@ and `python3 scripts/cook_assets.py "$PWD" && elisascript scripts/check.elisascr
 passed.
 
 This is an initial renderer. It owns one active scene and orthographic camera,
-uses unlit colors, maps snapshot rows to default boxes, and loads static cooked
-geometry packages.
+uses unlit colors unless emission selects PBR shading, maps snapshot rows to
+default boxes, and loads static cooked geometry packages. Texture assignment
+is per instance; shared mesh/material ownership and complete imported material
+descriptors remain future work.
 Transforms are currently stored in the separate render binding table rather
 than extracted from a general world transform component. `InstanceBatch` is an
 Elisa-side collection of checked handles and does not batch renderer calls. The
-renderer does not yet expose shared mesh residency, cooked materials and
-textures, parenting, a single transactional native batch submission, lighting,
+renderer does not yet expose shared mesh residency, FBX material mapping,
+parenting, a single transactional native batch submission, general lighting,
 or editor tooling.

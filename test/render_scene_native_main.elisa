@@ -291,6 +291,41 @@ def main() -> i32:
         value: value
         error failure: return 61
     return 62 if RenderScene::instance_count() != 4
+    rejected_texture_traversal: i32 = catch RenderScene::set_texture(
+        cooked_mesh, RenderScene::TextureSlot.BaseColor, "../backends/coordinate_reference.png"):
+        ok: 0
+        RenderScene::RenderSceneError.AssetLoadFailure: 1
+        error failure: 2
+    return 70 if rejected_texture_traversal != 1
+    rejected_absolute_texture: i32 = catch RenderScene::set_texture(
+        cooked_mesh, RenderScene::TextureSlot.BaseColor, "/etc/passwd"):
+        ok: 0
+        RenderScene::RenderSceneError.AssetLoadFailure: 1
+        error failure: 2
+    return 71 if rejected_absolute_texture != 1
+    rejected_escape_texture: i32 = catch RenderScene::set_texture(
+        cooked_mesh, RenderScene::TextureSlot.BaseColor,
+        "build/cooked/render-scene-outside-link.pkg"):
+        ok: 0
+        RenderScene::RenderSceneError.AssetLoadFailure: 1
+        error failure: 2
+    return 74 if rejected_escape_texture != 1
+    loaded_texture: i32 = catch RenderScene::set_texture(
+        cooked_mesh, RenderScene::TextureSlot.BaseColor, "backends/coordinate_reference.png"):
+        ok: 0
+        error failure: 1
+    return 72 if loaded_texture != 0
+    loaded_normal: i32 = catch RenderScene::set_texture(
+        cooked_mesh, RenderScene::TextureSlot.Normal, "backends/coordinate_reference.png"):
+        ok: 0
+        error failure: 1
+    return 73 if loaded_normal != 0
+    cooked_emissive: i32 = catch RenderScene::set_emissive(cooked_mesh,
+        RenderScene::Emission{
+            color: Geometry::Vec3{x: 1.0, y: 0.75, z: 0.1}, strength: 2.0}):
+        ok: 0
+        error failure: 1
+    return 75 if cooked_emissive != 0
     hidden_box: i32 = hide_render_instance(box)
     hidden_sphere: i32 = hide_render_instance(sphere)
     hidden_floor: i32 = hide_render_instance(floor)

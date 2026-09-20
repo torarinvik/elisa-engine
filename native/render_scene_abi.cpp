@@ -10,6 +10,7 @@
 #include "wiScene.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
+#include "render_scene_textures.h"
 
 #include <DirectXMath.h>
 
@@ -426,7 +427,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     elisa::assets::CookedGeometry geometry;
     std::string load_error;
     try {
-        if (!elisa::assets::resolve_project_package(package_path, resolved_path)) {
+        if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
             return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         }
         if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
@@ -478,36 +479,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
     return update_transform_unlocked(state, slot, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
 
-extern "C" int32_t elisa_render_scene_v1_set_color(
-    int64_t handle, float red, float green, float blue, float alpha) {
-    if (!valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    size_t slot = MAX_INSTANCES;
-    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(state.instances[slot].entity);
-    if (material == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
-    material->userBlendMode = alpha < 0.999f ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
-    return ELISA_RENDER_SCENE_OK;
-}
-
-extern "C" int32_t elisa_render_scene_v1_set_emissive(
-    int64_t handle, float red, float green, float blue, float strength) {
-    if (!elisa::render_scene_effects::valid_emission(red, green, blue, strength)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    size_t slot = MAX_INSTANCES;
-    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(state.instances[slot].entity);
-    if (material == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    elisa::render_scene_effects::apply_emission(*material, red, green, blue, strength);
-    return ELISA_RENDER_SCENE_OK;
-}
+#include "render_scene_material_abi.inc"
 extern "C" int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold) {
     if ((enabled != 0 && enabled != 1) || !finite(threshold) || threshold < 0.0f ||
         threshold > elisa::render_scene_effects::MAX_BLOOM_THRESHOLD) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;

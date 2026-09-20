@@ -22,12 +22,12 @@ struct CookedGeometry {
     std::vector<uint32_t> indices;
 };
 
-inline bool resolve_project_package(const char* package_path, std::filesystem::path& resolved) {
-    if (package_path == nullptr) return false;
+inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::path& resolved) {
+    if (asset_path == nullptr) return false;
     size_t length = 0;
-    while (length <= 4096 && package_path[length] != '\0') ++length;
+    while (length <= 4096 && asset_path[length] != '\0') ++length;
     if (length == 0 || length > 4096) return false;
-    const std::string value(package_path, length);
+    const std::string value(asset_path, length);
     if (value.front() == '/' || value.find('\\') != std::string::npos ||
         value.find_first_of("\r\n") != std::string::npos) return false;
     size_t start = 0;

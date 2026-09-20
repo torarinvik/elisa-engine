@@ -10,8 +10,10 @@ The native Elisa render smoke sets emission on a rendered instance, enables
 bloom with a non-default threshold, and verifies that out-of-range emission and
 bloom values return `RenderSceneError.InvalidValue`. It also cooks and renders a
 static FBX triangle through `RenderScene::create_mesh`, rejects project-root
-path escapes, and verifies handle cleanup. Run it on macOS with the configured
-SDL3/Metal Wicked build:
+path escapes, loads base-color and normal images with `RenderScene::set_texture`,
+and verifies handle cleanup. Texture assignment has separate path and scope
+details in [`render-scene-textures.md`](render-scene-textures.md). Run it on macOS
+with the configured SDL3/Metal Wicked build:
 
 ```sh
 python3 scripts/render_scene_native_smoke.py
