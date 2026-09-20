@@ -134,6 +134,21 @@ module Geometry:
             unrotated: Vec3 = quat_rotate(quat_conjugate(value.rotation), offset)
             Vec3{x: unrotated.x / value.scale.x, y: unrotated.y / value.scale.y, z: unrotated.z / value.scale.z}
 
+        # Full TRS inverse used when an authoritative physics pose must be
+        # represented in a parent's local space. Degenerate parent scales are
+        # rejected by returning the identity local transform.
+        def transform_apply_inverse(value: Transform, world: Transform) -> Transform:
+            return transform_identity() if value.scale.x == Scalar::ZERO or value.scale.y == Scalar::ZERO or value.scale.z == Scalar::ZERO
+            Transform{
+                position: transform_apply_inverse_point(value, world.position),
+                rotation: quat_normalize(quat_mul(quat_conjugate(value.rotation), world.rotation)),
+                scale: Vec3{
+                    x: world.scale.x / value.scale.x,
+                    y: world.scale.y / value.scale.y,
+                    z: world.scale.z / value.scale.z,
+                },
+            }
+
         # Column-major 4x4, the layout a renderer's instance buffer consumes.
         # The engine owns this layout; a backend adapts it, not the reverse.
         def transform_to_matrix(value: Transform) -> f32[MATRIX_ELEMENTS]:

@@ -1,4 +1,5 @@
 include "../math/geometry.elisa"
+include "../physics/interpolation.elisa"
 
 # Bounded transform hierarchy. Gameplay owns IDs and local transforms; this
 # module owns parent links and derived world transforms for render/physics reads.
@@ -12,15 +13,19 @@ module WorldHierarchy:
             parent: i64
             local: Geometry::Transform
             world: Geometry::Transform
+            previous_world: Geometry::Transform
             dirty: bool
+            teleport_pending: bool
+            teleport_published: bool
 
         affine struct Hierarchy:
             private:
                 nodes: mutable Node[WorldHierarchy::MAX_NODES]
                 count: mutable usize
+                tick: mutable i64
 
         def Hierarchy() -> Hierarchy:
-            Hierarchy{nodes: zeroed, count: 0}
+            Hierarchy{nodes: zeroed, count: 0, tick: 0}
 
         def hierarchy_count(hierarchy: Hierarchy&) -> usize:
             hierarchy.count
@@ -31,8 +36,28 @@ module WorldHierarchy:
 
         def hierarchy_spawn(hierarchy: mutable Hierarchy&, id: i64, local: Geometry::Transform) -> bool:
             return false if id <= 0 or slot_of(hierarchy, id) != WorldHierarchy::MAX_NODES or hierarchy.count >= WorldHierarchy::MAX_NODES
-            hierarchy.nodes[hierarchy.count] <- Node{id: id, parent: WorldHierarchy::ROOT, local: local, world: local, dirty: true}
+            hierarchy.nodes[hierarchy.count] <- Node{
+                id: id,
+                parent: WorldHierarchy::ROOT,
+                local: local,
+                world: local,
+                previous_world: local,
+                dirty: true,
+                teleport_pending: false,
+                teleport_published: false,
+            }
             hierarchy.count <- hierarchy.count + 1
+            true
+
+        # Local transforms are the gameplay-owned input. A teleport bypasses
+        # interpolation for the next published world pose.
+        def hierarchy_set_local(hierarchy: mutable Hierarchy&, id: i64,
+            local: Geometry::Transform, teleport: bool) -> bool:
+            slot: usize = slot_of(hierarchy, id)
+            return false if slot == WorldHierarchy::MAX_NODES
+            hierarchy.nodes[slot].local <- local
+            hierarchy.nodes[slot].teleport_pending <- teleport
+            hierarchy.nodes[slot].dirty <- true
             true
 
         def would_cycle(hierarchy: Hierarchy&, child: i64, parent: i64) -> bool:
@@ -57,29 +82,62 @@ module WorldHierarchy:
                     hierarchy.nodes[child_slot].local <- old_world
                 else:
                     parent_slot: usize = slot_of(hierarchy, parent)
-                    hierarchy.nodes[child_slot].local <- Geometry::Transform{
-                        position: Geometry::transform_apply_inverse_point(hierarchy.nodes[parent_slot].world, old_world.position),
-                        rotation: old_world.rotation,
-                        scale: old_world.scale,
-                    }
+                    hierarchy.nodes[child_slot].local <- Geometry::transform_apply_inverse(hierarchy.nodes[parent_slot].world, old_world)
             hierarchy.nodes[child_slot].dirty <- true
             true
 
+        # Physics is the sole writer of an authoritative simulated pose. The
+        # pose is converted to local space for the next hierarchy pass while
+        # the published world snapshot stays exactly at the solver result.
+        def hierarchy_apply_physics(hierarchy: mutable Hierarchy&, id: i64,
+            world: Geometry::Transform, teleport: bool) -> bool:
+            slot: usize = slot_of(hierarchy, id)
+            return false if slot == WorldHierarchy::MAX_NODES
+            parent: i64 = hierarchy.nodes[slot].parent
+            if parent == WorldHierarchy::ROOT:
+                hierarchy.nodes[slot].local <- world
+            else:
+                parent_slot: usize = slot_of(hierarchy, parent)
+                return false if parent_slot == WorldHierarchy::MAX_NODES
+                hierarchy.nodes[slot].local <- Geometry::transform_apply_inverse(hierarchy.nodes[parent_slot].world, world)
+            old_world: Geometry::Transform = hierarchy.nodes[slot].world
+            hierarchy.nodes[slot].previous_world <- world if teleport else old_world
+            hierarchy.nodes[slot].world <- world
+            hierarchy.nodes[slot].teleport_published <- teleport
+            hierarchy.nodes[slot].teleport_pending <- false
+            hierarchy.nodes[slot].dirty <- false
+            for child in 0..<hierarchy.count:
+                hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == id
+            true
+
         def hierarchy_update(hierarchy: mutable Hierarchy&) -> void:
+            hierarchy.tick <- hierarchy.tick + 1
             for _ in 0..<WorldHierarchy::MAX_NODES:
                 changed: mutable bool = false
                 for index in 0..<hierarchy.count:
                     if hierarchy.nodes[index].dirty:
                         parent: i64 = hierarchy.nodes[index].parent
                         if parent == WorldHierarchy::ROOT:
+                            old_world: Geometry::Transform = hierarchy.nodes[index].world
                             hierarchy.nodes[index].world <- hierarchy.nodes[index].local
+                            hierarchy.nodes[index].previous_world <- hierarchy.nodes[index].world if hierarchy.nodes[index].teleport_pending else old_world
+                            hierarchy.nodes[index].teleport_published <- hierarchy.nodes[index].teleport_pending
+                            hierarchy.nodes[index].teleport_pending <- false
                             hierarchy.nodes[index].dirty <- false
+                            for child in 0..<hierarchy.count:
+                                hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == hierarchy.nodes[index].id
                             changed <- true
                         else:
                             parent_slot: usize = slot_of(hierarchy, parent)
                             if parent_slot != WorldHierarchy::MAX_NODES and not hierarchy.nodes[parent_slot].dirty:
+                                old_world: Geometry::Transform = hierarchy.nodes[index].world
                                 hierarchy.nodes[index].world <- Geometry::transform_compose(hierarchy.nodes[parent_slot].world, hierarchy.nodes[index].local)
+                                hierarchy.nodes[index].previous_world <- hierarchy.nodes[index].world if hierarchy.nodes[index].teleport_pending else old_world
+                                hierarchy.nodes[index].teleport_published <- hierarchy.nodes[index].teleport_pending
+                                hierarchy.nodes[index].teleport_pending <- false
                                 hierarchy.nodes[index].dirty <- false
+                                for child in 0..<hierarchy.count:
+                                    hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == hierarchy.nodes[index].id
                                 changed <- true
                 break if not changed
 
@@ -87,6 +145,15 @@ module WorldHierarchy:
             slot: usize = slot_of(hierarchy, id)
             return Geometry::transform_identity() if slot == WorldHierarchy::MAX_NODES
             hierarchy.nodes[slot].world
+
+        def hierarchy_sample(hierarchy: Hierarchy&, id: i64, alpha: f32) -> Geometry::Transform:
+            slot: usize = slot_of(hierarchy, id)
+            return Geometry::transform_identity() if slot == WorldHierarchy::MAX_NODES
+            PhysicsInterpolation::sample_pair(
+                hierarchy.nodes[slot].previous_world,
+                hierarchy.nodes[slot].world,
+                hierarchy.nodes[slot].teleport_published,
+                alpha)
 
         def hierarchy_remove(hierarchy: mutable Hierarchy&, id: i64) -> bool:
             slot: usize = slot_of(hierarchy, id)

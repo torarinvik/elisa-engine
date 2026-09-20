@@ -57,6 +57,15 @@ module PhysicsInterpolation:
             return buffer.current if alpha >= Limits::MAX_ALPHA
             transform_blend(buffer.previous, buffer.current, alpha)
 
+        # Stateless form for owners that keep their snapshots in a larger
+        # value. Keeping the buffer fields private prevents backend code from
+        # depending on the interpolation representation.
+        def sample_pair(previous: Geometry::Transform, current: Geometry::Transform,
+            teleported: bool, alpha: f32) -> Geometry::Transform:
+            return current if teleported or alpha <= Limits::MIN_ALPHA
+            return current if alpha >= Limits::MAX_ALPHA
+            transform_blend(previous, current, alpha)
+
         def last_tick(buffer: Buffer&) -> i64:
             buffer.tick
 
