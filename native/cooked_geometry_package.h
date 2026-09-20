@@ -21,6 +21,9 @@ struct CookedGeometry {
     std::vector<float> uvs;
     std::vector<float> tangents;
     std::vector<uint32_t> indices;
+    std::vector<std::string> skin_bone_names;
+    std::vector<uint32_t> skin_indices;
+    std::vector<float> skin_weights;
 };
 
 inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::path& resolved) {
@@ -123,6 +126,21 @@ inline bool decode_floats(const probe::PackageIndex& package, const char* key,
     return true;
 }
 
+inline bool decode_u32(const probe::PackageIndex& package, const char* key,
+    size_t count, std::vector<uint32_t>& output) {
+    const auto found = package.sections.find(key);
+    if (found == package.sections.end() || count > 16u * 1024u * 1024u / sizeof(uint32_t)) return false;
+    std::vector<uint8_t> bytes;
+    if (!decode_base64(found->second, bytes) || bytes.size() != count * sizeof(uint32_t)) return false;
+    output.resize(count);
+    for (size_t index = 0; index < count; ++index) {
+        const size_t offset = index * 4;
+        output[index] = uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
+            (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
+    }
+    return true;
+}
+
 } // namespace detail
 
 inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geometry,
@@ -210,6 +228,78 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
             return false;
         }
         geometry.indices[index] = value;
+    }
+
+    const auto skin_bones = package.sections.find("skin_bones");
+    const auto skin_index_stride = package.sections.find("skin_indices_stride");
+    const auto skin_weight_stride = package.sections.find("skin_weights_stride");
+    const auto skin_indices = package.sections.find("skin_indices_b64");
+    const auto skin_weights = package.sections.find("skin_weights_b64");
+    const auto skin_names = package.sections.find("skin_names_b64");
+    const bool has_skin = skin_bones != package.sections.end();
+    if ((skin_index_stride != package.sections.end()) != has_skin ||
+        (skin_weight_stride != package.sections.end()) != has_skin ||
+        (skin_indices != package.sections.end()) != has_skin ||
+        (skin_weights != package.sections.end()) != has_skin ||
+        (skin_names != package.sections.end()) != has_skin) {
+        error = "incomplete cooked geometry skin stream";
+        return false;
+    }
+    if (has_skin) {
+        uint64_t bone_count = 0;
+        if (!detail::parse_count(package, "skin_bones", bone_count) || bone_count == 0 || bone_count > 64 ||
+            skin_index_stride->second != "16" || skin_weight_stride->second != "16" ||
+            vertices > std::numeric_limits<size_t>::max() / 4 ||
+            !detail::decode_u32(package, "skin_indices_b64", size_t(vertices) * 4, geometry.skin_indices) ||
+            !detail::decode_floats(package, "skin_weights_b64", size_t(vertices) * 4, geometry.skin_weights)) {
+            error = "invalid cooked geometry skin counts or influence streams";
+            return false;
+        }
+        std::vector<uint8_t> name_bytes;
+        if (!detail::decode_base64(skin_names->second, name_bytes)) {
+            error = "invalid cooked geometry bone-name stream";
+            return false;
+        }
+        size_t name_offset = 0;
+        geometry.skin_bone_names.reserve(size_t(bone_count));
+        for (size_t bone = 0; bone < size_t(bone_count); ++bone) {
+            if (name_bytes.size() - name_offset < 4) {
+                error = "truncated cooked geometry bone name";
+                return false;
+            }
+            const uint32_t length = uint32_t(name_bytes[name_offset]) |
+                (uint32_t(name_bytes[name_offset + 1]) << 8) |
+                (uint32_t(name_bytes[name_offset + 2]) << 16) |
+                (uint32_t(name_bytes[name_offset + 3]) << 24);
+            name_offset += 4;
+            if (length > name_bytes.size() - name_offset) {
+                error = "cooked geometry bone name exceeds its stream";
+                return false;
+            }
+            geometry.skin_bone_names.emplace_back(
+                reinterpret_cast<const char*>(name_bytes.data() + name_offset), length);
+            name_offset += length;
+        }
+        if (name_offset != name_bytes.size()) {
+            error = "cooked geometry bone-name stream has trailing bytes";
+            return false;
+        }
+        for (size_t vertex = 0; vertex < size_t(vertices); ++vertex) {
+            float total_weight = 0.0f;
+            for (size_t influence = 0; influence < 4; ++influence) {
+                const size_t offset = vertex * 4 + influence;
+                const float weight = geometry.skin_weights[offset];
+                if (weight < 0.0f || (weight > 0.0f && geometry.skin_indices[offset] >= bone_count)) {
+                    error = "cooked geometry contains an invalid bone influence";
+                    return false;
+                }
+                total_weight += weight;
+            }
+            if (!std::isfinite(total_weight) || std::abs(total_weight - 1.0f) > 0.005f) {
+                error = "cooked geometry bone weights are not normalized";
+                return false;
+            }
+        }
     }
     return true;
 }

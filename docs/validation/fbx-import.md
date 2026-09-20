@@ -12,8 +12,12 @@ and does not load external files. It reports scene counts, source units, rig
 bone-name identity, material texture-reference counts, and the first animation
 stack's name and duration. When geometry decode is requested, it selects the
 largest triangle mesh and returns indexed positions, normals, UVs, and bounds.
-This keeps helper meshes such as the cyborg's small `Icosphere` out of the
-current character geometry check.
+For a single skin deformer it also returns cluster bone names in index order
+and four normalized influences per cooked vertex. Multiple skin deformers and
+rigs over 64 clusters fail with a clear import error. Vertex deduplication
+includes influences, and the cooker rejects simplification of skinned geometry
+until it can remap weights safely. This keeps helper meshes such as the
+cyborg's small `Icosphere` out of the current character geometry check.
 
 Input is bounded to 512 MiB per file, 1.5 GiB temporary parsing memory, 3 GiB
 parsed scene memory, 4,096 nodes and bones, 1,024 meshes and materials, 256
@@ -65,7 +69,8 @@ DESTINATION.pkg`; the asset key must be safe and project-relative.
 
 `native/package_load.h` reads the optional UV channel and copies it into Wicked's
 first UV set. `native/cooked_geometry_package.h` decodes bounded runtime packages
-for the public `RenderScene::create_mesh` API. The project runner accepts
+for the public `RenderScene::create_mesh` API, including optional skin names and
+four influence streams with bone-index and normalization checks. The project runner accepts
 `asset_cooks` declarations and forwards optional triangle limits. Runner tests
 cover project-contained paths and cooker invocation; the native package probe
 checks geometry decoding. The SDL3/Metal smoke cooks and renders the synthetic
@@ -75,8 +80,9 @@ emission, bloom, and texture assignment controls; see the separate
 [`render-scene texture evidence`](render-scene-textures.md) note.
 
 Import and cooking still select one mesh. They do not preserve the full node
-hierarchy, material subsets or texture paths, skin weights or bind poses, or
-animation curves. Elisa assigns the Arc Gate base-color and normal maps
+hierarchy, material subsets or texture paths, bind poses, or animation curves;
+the current render uploader still consumes the cyborg package as static
+geometry. Elisa assigns the Arc Gate base-color and normal maps
 explicitly through `RenderScene::set_texture`; the cooker generates and validates
 tangent frames after simplification. It still does not discover FBX material
 maps. Shared mesh residency, junction variants, and electric particles remain.
