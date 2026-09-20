@@ -19,6 +19,13 @@ tests also use the same parity helper to derive winding reversal. This rule is
 centralized and tested, but the current Wicked material shader path does not
 consume it yet.
 
+The signed-scale physics fixture gives a dynamic box scale `(-0.5, 0.25, 1.5)`,
+steps it through Jolt, and checks a real Jolt ray hits its center but misses
+above its reduced Y extent. This initially exposed negative box half-extents
+being passed to Jolt. Wicked commit `bf8945b` now applies absolute scale to
+primitive collision dimensions (box, sphere, capsule, and cylinder); the
+full SDL3/Wicked gate passes with the fix.
+
 The native gate exercises `native/coordinate_probe.h` after the real scene,
 physics, skin payload, and camera path have run. The fixture uses an asymmetric
 point, camera ray, translation, and negative nonuniform scale. A second render
@@ -55,8 +62,8 @@ ELISA_ALLOW_STALE_STAGE1=1 ~/.local/bin/elisascript scripts/wicked_probe.elisasc
 Result: exit status 0; both native frame runs passed the coordinate probe,
 scene topology and determinism checks, the asymmetric signed-scale reference
 comparison, tangent-parity checks, signed-scale ray-picking hit/miss checks,
-and the frame-time budget. The Elisa check suite passed
+signed-scale Jolt hit/miss checks, and the frame-time budget. The Elisa check suite passed
 `test/geometry.elisa` with the matching parity cases. The rendered-reference,
-centralized parity-math, and picking portions of F07 are covered. Tangent
-parity still lacks a production mesh/material consumer; physics and skinning
-still need end-to-end signed-scale fixtures.
+centralized parity-math, signed-scale picking, and signed-scale physics portions
+of F07 are covered. Tangent parity still lacks a production mesh/material
+consumer; skinning still needs an end-to-end signed-scale fixture.

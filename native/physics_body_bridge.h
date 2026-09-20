@@ -5,6 +5,7 @@
 #include "probe_core.h"
 #include "wiScene.h"
 #include "wiPhysics.h"
+#include "coordinate_transform_bridge.h"
 
 #include <array>
 #include <cmath>
@@ -125,14 +126,24 @@ inline bool probe_physics_body_bridge(wi::scene::Scene& scene) {
     const PhysicsBodyHandle stepped = bridge.create(PhysicsBodyKind::Dynamic, 1.0f, 4);
     auto* stepped_transform = scene.transforms.GetComponent(bridge.resolve(stepped));
     if (!check(stepped_transform != nullptr, "physics bridge step transform")) return false;
-    stepped_transform->translation_local.y = 4.0f;
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    const ElisaTransformPayload authored{{0.0f, 4.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f},
+        {-0.5f, 0.25f, 1.5f}};
+    if (!check(submit_elisa_transform(&profile, &authored, stepped_transform),
+        "physics body submits signed nonuniform Elisa transform")) return false;
     stepped_transform->UpdateTransform();
     constexpr float FIXED_DT = 1.0f / 120.0f;
     const float start_y = stepped_transform->GetPosition().y;
     if (!check(bridge.step_fixed(FIXED_DT), "physics bridge fixed step one") ||
         !check(bridge.step_fixed(FIXED_DT), "physics bridge fixed step two")) return false;
     const float after_two_steps = stepped_transform->GetPosition().y;
-    if (!check(after_two_steps < start_y, "physics bridge advances fixed body once per tick")) return false;
+    const wi::physics::RayIntersectionResult hit = wi::physics::Intersects(scene,
+        wi::primitive::Ray(XMFLOAT3(0.0f, start_y, -4.0f), XMFLOAT3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f));
+    const wi::physics::RayIntersectionResult miss = wi::physics::Intersects(scene,
+        wi::primitive::Ray(XMFLOAT3(0.0f, start_y + 0.3f, -4.0f), XMFLOAT3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f));
+    if (!check(after_two_steps < start_y, "physics bridge advances fixed body once per tick") ||
+        !check(hit.entity == bridge.resolve(stepped), "Jolt ray hits signed-scale physics shape") ||
+        !check(miss.entity != bridge.resolve(stepped), "Jolt ray respects nonuniform physics extent")) return false;
     if (!check(bridge.destroy(stepped), "physics bridge fixed-step unload")) return false;
     return true;
 }
