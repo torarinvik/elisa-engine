@@ -8,8 +8,9 @@ changing the build orchestrator:
 
 `-fno-sanitize-recover=all` makes an undefined-behaviour report abort the
 process, so a sanitizer finding turns into a nonzero exit status the runner
-already relays. The probe exits with `std::_Exit`, so leak detection does not
-run; this catches memory and undefined-behaviour errors during the run.
+already relays. The native probe returns normally. On the current macOS SDK,
+AddressSanitizer reports that leak detection is unsupported; use `leaks
+-atExit` for macOS exit-time allocation reports.
 
 `ELISA_SANITIZER=undefined` selects a UBSan-only build. The full graphics probe
 runs successfully under both UBSan and ASan+UBSan with the SDL3-native Wicked

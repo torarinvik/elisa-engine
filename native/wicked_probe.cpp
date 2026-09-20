@@ -102,6 +102,7 @@ int main(int argc, char** argv) {
     if (!check(application_host.initialize(application_config), "native application initialization")) {
         return 1;
     }
+    if (std::getenv("ELISA_LIFECYCLE_ONLY") != nullptr) return run_lifecycle_only(application_host);
     wi::Application& application = application_host.wicked();
     if (!probe_graphics_capabilities()) {
         return 1;
@@ -563,9 +564,7 @@ int main(int argc, char** argv) {
     if (!probe_effect_bridge(scene)) {
         return 1;
     }
-    if (!probe_picking_bridge(scene)) {
-        return 1;
-    }
+    if (!probe_picking_bridge(scene)) return 1;
     if (!probe_selection_outline(scene, render_path)) {
         return 1;
     }

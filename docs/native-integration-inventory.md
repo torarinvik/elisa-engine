@@ -27,13 +27,13 @@ stricter than “the header links”:
 
 ## Native libraries and exact identities
 
-The exact identities below are the ones recorded by the current validation
-metadata or fetch scripts. A future dependency manifest must make these inputs
-machine-readable and fail on stale or missing artifacts (F03).
+The exact identities below are recorded by the dependency manifest or fetch
+scripts. `scripts/check_dependency_manifest.py` verifies pinned revisions and
+required artifacts before the native driver starts.
 
 | Library | Identity in this checkout | Build/use entry point | Label | Owner and missing work |
 |---|---|---|---|---|
-| WickedEngine | sibling checkout `5e07e3bfd7f89633a468009e0620b14e508dd8b7` in the validation record; local checkout is inspected separately | `scripts/wicked_probe.elisascript`, `native/wicked_probe.cpp` | Probe | Native backend owner; F02/F05 extract a persistent client and orderly teardown. |
+| WickedEngine | sibling checkout `e45123bb90e63be503385b84ad94d074299a67a7`; includes command-list destruction and global job-drain fixes | `scripts/wicked_probe.elisascript`, `native/wicked_probe.cpp` | Probe | Native backend owner; F05 still has unaccounted per-device heap growth and process-exit allocations. |
 | SDL3 | Homebrew/system install selected by `WICKED_SDL3_INCLUDE_DIR` and `WICKED_SDL3_LIB_DIR`; presence is machine-specific | `src/backend/sdl3.elisa`, Wicked driver | Adapter | Platform owner; F03 records a reproducible toolchain and F09 completes lifecycle behavior. |
 | Jolt | Linked transitively from Wicked `libJolt.a` | `native/wicked_probe.cpp` physics path | Probe | Physics owner; P01 makes one explicit Elisa-owned step/query service. |
 | cgltf | `snapshot-2026-09-18`, SHA-256 `efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9` | `native/asset_import.h`, `scripts/cook_assets.py` | Adapter | Asset owner; A05 completes normalized scene, skin, morph, and animation import. |

@@ -8,6 +8,7 @@
 #include "wiAudio.h"
 #include "wiGraphics.h"
 #include "wiInitializer.h"
+#include "wiJobSystem.h"
 #include "frame_pacer.h"
 
 #include <SDL3/SDL.h>
@@ -254,6 +255,9 @@ public:
             ++telemetry_.shutdown_functions_invoked;
         }
         shutdown_function_count_ = 0;
+        if (wicked_initialize_started_) {
+            wi::jobsystem::WaitForAllJobs();
+        }
         if (startup_in_progress_) {
             ++telemetry_.partial_startup_rollbacks;
             startup_in_progress_ = false;

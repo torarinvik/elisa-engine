@@ -2,16 +2,25 @@
 
 #include "native_application.h"
 #include "probe_support.h"
+#include "wiJobSystem.h"
 
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
+#include <malloc/malloc.h>
 #include <mutex>
 #include <thread>
 #include <vector>
 
 namespace probe {
+
+inline size_t lifecycle_heap_bytes_in_use() {
+    malloc_statistics_t stats{};
+    malloc_zone_statistics(malloc_default_zone(), &stats);
+    return stats.size_in_use;
+}
 
 inline bool probe_window_lifecycle(NativeApplication& host) {
     const NativeApplication::WindowState initial = host.window_state();
@@ -117,7 +126,14 @@ inline bool probe_partial_startup_failure() {
 
 inline bool probe_repeated_host_lifecycle() {
     if (!probe_partial_startup_failure()) return false;
-    for (int cycle = 0; cycle < 2; ++cycle) {
+    constexpr size_t lifecycle_cycles = 8;
+    std::array<size_t, lifecycle_cycles> heap_samples{};
+    for (size_t cycle = 0; cycle <= lifecycle_cycles; ++cycle) {
+        if (cycle != 0) {
+            // The previous cycle's host and test bookkeeping have left scope.
+            heap_samples[cycle - 1] = lifecycle_heap_bytes_in_use();
+            if (cycle == lifecycle_cycles) break;
+        }
         NativeApplication host;
         NativeApplication::Config config;
         config.title = "elisa-lifecycle-check";
@@ -154,11 +170,23 @@ inline bool probe_repeated_host_lifecycle() {
         std::atomic<bool> callback_finished = false;
         std::atomic<bool> hook_observed_drain = false;
         std::atomic<bool> callback_admission_closed = false;
-        struct DrainObservation { std::atomic<bool>* finished; std::atomic<bool>* observed; };
-        DrainObservation observation{&callback_finished, &hook_observed_drain};
+        std::atomic<bool> shutdown_job_finished = false;
+        wi::jobsystem::context shutdown_job_context;
+        struct DrainObservation {
+            std::atomic<bool>* finished;
+            std::atomic<bool>* observed;
+            std::atomic<bool>* job_finished;
+            wi::jobsystem::context* job_context;
+        };
+        DrainObservation observation{
+            &callback_finished, &hook_observed_drain, &shutdown_job_finished, &shutdown_job_context};
         const NativeApplication::ShutdownFunction observe_drain = [](void* context) {
             auto* state = static_cast<DrainObservation*>(context);
             state->observed->store(state->finished->load());
+            wi::jobsystem::Execute(*state->job_context, [job_finished = state->job_finished](
+                    const wi::jobsystem::JobArgs&) {
+                job_finished->store(true);
+            });
         };
         if (!check(host.add_shutdown_hook(&observation, observe_drain),
                 "callback-drain service registers") ||
@@ -220,6 +248,8 @@ inline bool probe_repeated_host_lifecycle() {
                 "repeated host shutdown and reverse service order") ||
             !check(callback_admission_closed.load() && callback_finished.load() &&
                 hook_observed_drain.load(), "shutdown closes admission and drains callbacks") ||
+            !check(shutdown_job_finished.load() && !wi::jobsystem::IsBusy(shutdown_job_context),
+                "shutdown drains jobs submitted by shutdown hooks") ||
             !check(telemetry.peak_shutdown_functions == NativeApplication::MAX_SHUTDOWN_HOOKS &&
                 telemetry.shutdown_functions_invoked == NativeApplication::MAX_SHUTDOWN_HOOKS &&
                 telemetry.rejected_shutdown_registrations == 1 && telemetry.drained_callback_batches == 1 &&
@@ -228,9 +258,43 @@ inline bool probe_repeated_host_lifecycle() {
             return false;
         }
     }
-    std::fprintf(stdout, "repeated host lifecycle: cycles=2 hooks=%zu capacity_rejections=1 callbacks=drained\n",
+    const long long steady_delta = static_cast<long long>(heap_samples.back()) -
+        static_cast<long long>(heap_samples.front());
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    constexpr long long heap_delta_cap_bytes = 16LL * 1024 * 1024;
+#else
+    constexpr long long heap_delta_cap_bytes = 2LL * 1024 * 1024;
+#endif
+#else
+    constexpr long long heap_delta_cap_bytes = 2LL * 1024 * 1024;
+#endif
+    std::fprintf(stdout, "repeated host lifecycle: cycles=%zu hooks=%zu capacity_rejections=1 callbacks=drained\n",
+        lifecycle_cycles,
         NativeApplication::MAX_SHUTDOWN_HOOKS);
-    return true;
+    std::fprintf(stdout, "host lifecycle heap: steady_bytes=%zu final_bytes=%zu delta_bytes=%lld\n",
+        heap_samples.front(), heap_samples.back(), steady_delta);
+    std::fprintf(stdout, "host lifecycle heap samples:");
+    for (const size_t sample : heap_samples) {
+        std::fprintf(stdout, " %zu", sample);
+    }
+    std::fprintf(stdout, "\n");
+    return check(steady_delta < heap_delta_cap_bytes, "repeated host lifecycle stays below temporary heap cap");
+}
+
+inline int run_lifecycle_only(NativeApplication& host) {
+    host.shutdown();
+    const bool lifecycle_ok = probe_repeated_host_lifecycle();
+    const char* hold_seconds = std::getenv("ELISA_LIFECYCLE_HOLD_SECONDS");
+    if (hold_seconds != nullptr) {
+        const int seconds = std::atoi(hold_seconds);
+        if (seconds > 0) {
+            std::fprintf(stdout, "lifecycle memory inspection hold: %d seconds\n", seconds);
+            std::fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::seconds(seconds));
+        }
+    }
+    return lifecycle_ok ? 0 : 1;
 }
 
 } // namespace probe
