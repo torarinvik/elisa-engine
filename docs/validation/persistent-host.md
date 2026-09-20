@@ -24,8 +24,8 @@ build/wicked-native-probe \
 ```
 
 Result on the pinned SDL3/Metal build: the host printed `paused`, `resumed`,
-`restarted on fixed tick`, `fixed_ticks=4`, `close requested`, and exited zero
-through the ordered shutdown boundary. The host lifecycle probe also registers
+`restarted on fixed tick`, a positive fixed-tick count, `close requested`, and
+exited zero through the ordered shutdown boundary. The host lifecycle probe also registers
 reverse-order shutdown hooks and an RAII callback scope before each repeated
 hidden host shutdown. Hooks run before GPU/audio/window teardown, and callback
 admission is closed before that boundary. The PNG is a runtime artifact; the

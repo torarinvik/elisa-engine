@@ -23,6 +23,16 @@ inline size_t lifecycle_heap_bytes_in_use() {
 }
 
 inline bool probe_window_lifecycle(NativeApplication& host) {
+    const auto swapchain_matches_window = [&host](const char* label) {
+        if (!host.run_frame()) return check(false, label);
+        const wi::graphics::Texture backbuffer =
+            wi::graphics::GetDevice()->GetBackBuffer(&host.wicked().swapChain);
+        if (!backbuffer.IsValid()) return check(false, label);
+        const auto desc = backbuffer.GetDesc();
+        const auto& state = host.window_state();
+        return check(desc.width == static_cast<uint32_t>(state.pixel_width) &&
+            desc.height == static_cast<uint32_t>(state.pixel_height), label);
+    };
     const NativeApplication::WindowState initial = host.window_state();
     if (!check(initial.logical_width > 0 && initial.logical_height > 0,
                "SDL logical window size") ||
@@ -61,6 +71,17 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
               "SDL resize serial remains monotonic")) {
         return false;
     }
+    const uint64_t before_display_refresh = host.window_state().resize_serial;
+    host.window_state_.display_scale = 0.0f;
+    event = SDL_Event{};
+    event.type = SDL_EVENT_WINDOW_DISPLAY_CHANGED;
+    event.window.windowID = SDL_GetWindowID(host.window());
+    SDL_PushEvent(&event);
+    host.poll_events();
+    if (!check(host.window_state().display_scale > 0.0f &&
+            host.window_state().display_index == SDL_GetDisplayForWindow(host.window()) &&
+            host.window_state().resize_serial > before_display_refresh,
+            "display change refreshes native scale and display metrics")) return false;
     const int pixel_width = host.window_state_.pixel_width;
     const int pixel_height = host.window_state_.pixel_height;
     host.window_state_.pixel_width = 0;
@@ -77,11 +98,38 @@ inline bool probe_window_lifecycle(NativeApplication& host) {
     host.reset_fixed_clock();
     if (!check(host.set_fullscreen(true), "SDL enters fullscreen") ||
         !check(host.window_state().fullscreen, "SDL fullscreen state") ||
+        !swapchain_matches_window("fullscreen drawable tracks SDL pixel extent") ||
         !check(host.set_fullscreen(false), "SDL leaves fullscreen") ||
-        !check(!host.window_state().fullscreen, "SDL windowed state")) {
+        !check(!host.window_state().fullscreen, "SDL windowed state") ||
+        !swapchain_matches_window("windowed drawable tracks SDL pixel extent")) {
         return false;
     }
-    return check(host.window_state().display_scale > 0.0f, "SDL restored display scale");
+    const int original_width = host.window_state().logical_width;
+    const int original_height = host.window_state().logical_height;
+    SDL_SetWindowSize(host.window(), original_width + 40, original_height + 20);
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        host.poll_events();
+        if (host.window_state().logical_width == original_width + 40 &&
+            host.window_state().logical_height == original_height + 20) break;
+        SDL_Delay(2);
+    }
+    const bool resized = check(host.window_state().logical_width == original_width + 40 &&
+        host.window_state().logical_height == original_height + 20, "SDL window reports resized logical extent");
+    const bool resized_surface = resized && swapchain_matches_window("resized drawable tracks SDL pixel extent");
+    SDL_SetWindowSize(host.window(), original_width, original_height);
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        host.poll_events();
+        if (host.window_state().logical_width == original_width &&
+            host.window_state().logical_height == original_height) break;
+        SDL_Delay(2);
+    }
+    const bool restored = check(host.window_state().logical_width == original_width &&
+        host.window_state().logical_height == original_height, "SDL window reports restored logical extent");
+    const bool restored_surface = restored && swapchain_matches_window("restored drawable tracks SDL pixel extent");
+    return check(resized_surface && restored_surface && host.window_state().display_scale > 0.0f &&
+        host.telemetry().swapchain_recreation_successes >= 2 &&
+        host.telemetry().swapchain_recreation_failures == 0,
+        "Wicked swapchain recreates across fullscreen and SDL resize transitions");
 }
 
 inline bool probe_partial_startup_failure() {

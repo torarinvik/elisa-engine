@@ -46,7 +46,8 @@ simulation ticks at an integer nanosecond step and caps catch-up at four ticks.
 tick consumes them, with explicit overflow handling. The finite native gate
 injects focus/minimize/restore and pixel-size events, toggles fullscreen, and
 checks state transitions, tick-queued movement, and the monotonic resize
-serial.
+serial, and the actual Metal backbuffer extent after fullscreen and SDL resize
+changes.
 
 `NativeApplication::shutdown()` waits for GPU work, destroys the Wicked
 application before SDL, calls the pinned SDL3-safe `wi::audio::Shutdown()` hook,

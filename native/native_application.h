@@ -37,6 +37,9 @@ public:
         uint64_t drained_callback_batches = 0;
         uint64_t shutdown_functions_invoked = 0;
         uint64_t rejected_shutdown_registrations = 0;
+        uint64_t swapchain_recreation_attempts = 0;
+        uint64_t swapchain_recreation_successes = 0;
+        uint64_t swapchain_recreation_failures = 0;
         size_t peak_active_callbacks = 0;
         size_t peak_shutdown_functions = 0;
     };
@@ -199,6 +202,7 @@ public:
 
     bool run_frame() {
         if (application_ == nullptr || simulation_suspended()) return false;
+        if (!synchronize_window_surface()) return false;
         application_->Run();
         return true;
     }
@@ -361,22 +365,64 @@ private:
         int logical_height = 0;
         int pixel_width = 0;
         int pixel_height = 0;
+        const int previous_display_index = window_state_.display_index;
+        const float previous_display_scale = window_state_.display_scale;
         SDL_GetWindowSize(window_, &logical_width, &logical_height);
         SDL_GetWindowSizeInPixels(window_, &pixel_width, &pixel_height);
+        const int display_index = SDL_GetDisplayForWindow(window_);
+        const float queried_scale = SDL_GetWindowDisplayScale(window_);
+        float display_scale = queried_scale > 0.0f ? queried_scale : 1.0f;
+        if (application_ != nullptr && application_->window != nullptr) {
+            wi::platform::WindowProperties native_metrics;
+            wi::platform::GetWindowProperties(application_->window, &native_metrics);
+            if (native_metrics.width > 0) pixel_width = native_metrics.width;
+            if (native_metrics.height > 0) pixel_height = native_metrics.height;
+            if (native_metrics.dpi > 0.0f) display_scale = native_metrics.dpi / 96.0f;
+        }
         if (logical_width != window_state_.logical_width ||
             logical_height != window_state_.logical_height ||
             pixel_width != window_state_.pixel_width ||
-            pixel_height != window_state_.pixel_height) {
+            pixel_height != window_state_.pixel_height ||
+            display_index != previous_display_index ||
+            display_scale != previous_display_scale) {
             ++window_state_.resize_serial;
         }
         window_state_.logical_width = logical_width;
         window_state_.logical_height = logical_height;
         window_state_.pixel_width = pixel_width;
         window_state_.pixel_height = pixel_height;
-        window_state_.display_index = SDL_GetDisplayForWindow(window_);
-        const float scale = SDL_GetWindowDisplayScale(window_);
-        window_state_.display_scale = scale > 0.0f ? scale : 1.0f;
+        window_state_.display_index = display_index;
+        window_state_.display_scale = display_scale;
         window_state_.fullscreen = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+    }
+
+    bool synchronize_window_surface() {
+        if (application_ == nullptr || window_ == nullptr ||
+            window_state_.pixel_width <= 0 || window_state_.pixel_height <= 0) return false;
+        wi::graphics::SwapChain& swapchain = application_->swapChain;
+        const bool size_changed = swapchain.desc.width != static_cast<uint32_t>(window_state_.pixel_width) ||
+            swapchain.desc.height != static_cast<uint32_t>(window_state_.pixel_height);
+        const bool metrics_changed = synchronized_resize_serial_ != window_state_.resize_serial;
+        if (!size_changed && !metrics_changed) return true;
+        if (size_changed) {
+            wi::graphics::SwapChainDesc desc = swapchain.desc;
+            desc.width = static_cast<uint32_t>(window_state_.pixel_width);
+            desc.height = static_cast<uint32_t>(window_state_.pixel_height);
+            ++telemetry_.swapchain_recreation_attempts;
+            if (wi::graphics::GetDevice() == nullptr ||
+                !wi::graphics::GetDevice()->CreateSwapChain(&desc, nullptr, &swapchain)) {
+                ++telemetry_.swapchain_recreation_failures;
+                std::fprintf(stderr, "native application: Wicked swapchain resize to %ux%u failed\n",
+                    desc.width, desc.height);
+                return false;
+            }
+            ++telemetry_.swapchain_recreation_successes;
+        }
+        const float dpi = window_state_.display_scale * 96.0f;
+        application_->canvas.init(static_cast<uint32_t>(window_state_.pixel_width),
+            static_cast<uint32_t>(window_state_.pixel_height), dpi);
+        synchronized_resize_serial_ = window_state_.resize_serial;
+        return true;
     }
 
     void update_window_state(const SDL_Event& event) {
@@ -420,6 +466,7 @@ private:
     std::condition_variable callback_drained_;
     std::array<ShutdownEntry, MAX_SHUTDOWN_HOOKS> shutdown_functions_{};
     size_t shutdown_function_count_ = 0;
+    uint64_t synchronized_resize_serial_ = 0;
     LifecycleTelemetry telemetry_;
     StartupFault startup_fault_ = StartupFault::None;
 };
