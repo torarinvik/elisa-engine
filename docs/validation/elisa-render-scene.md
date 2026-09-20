@@ -36,9 +36,9 @@ manager with block compression, and requests Wicked's normal-map import format
 for the normal slot. Wicked's surface channels are occlusion, roughness,
 metalness, and reflectance in RGBA order. The API does not change the material
 shading model or discover companion maps from FBX metadata; an Elisa project
-currently selects each map explicitly. The cooked mesh format retains UVs but
-has no tangent stream yet, so a loaded normal map is not ready for reliable
-shading until the engine cooks or generates tangents.
+currently selects each map explicitly. The cooked mesh format retains UVs and
+validated tangent frames generated after simplification, so a loaded normal map
+can shade through Wicked's PBR material path.
 
 `src/runtime/world_rendering.elisa` adds an Elisa-owned `WorldRendering`
 binding table and extractor. Callers bind one or more stable render IDs and

@@ -58,7 +58,7 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
     required = {
         "format", "source", "source_sha256", "triangles", "positions", "indices",
         "position_stride", "normal_stride", "uv_stride", "index_stride",
-        "positions_b64", "normals_b64", "uvs_b64", "indices_b64",
+        "tangent_stride", "positions_b64", "normals_b64", "uvs_b64", "tangents_b64", "indices_b64",
     }
     if not required.issubset(fields):
         raise ValueError("cooked package is missing normalized geometry sections")
@@ -66,8 +66,8 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
         raise ValueError("cooked package format or source identity does not match")
     if fields["source_sha256"] != expected_hash:
         raise ValueError("cooked package source hash does not match the input FBX")
-    if (fields["position_stride"], fields["normal_stride"], fields["uv_stride"], fields["index_stride"]) != (
-            "12", "12", "8", "4"):
+    if (fields["position_stride"], fields["normal_stride"], fields["uv_stride"],
+            fields["tangent_stride"], fields["index_stride"]) != ("12", "12", "8", "16", "4"):
         raise ValueError("cooked package has unsupported geometry strides")
 
     def decode(name: str) -> bytes:
@@ -79,6 +79,7 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
     positions = decode("positions_b64")
     normals = decode("normals_b64")
     uvs = decode("uvs_b64")
+    tangents = decode("tangents_b64")
     indices = decode("indices_b64")
     try:
         triangles = int(fields["triangles"])
@@ -88,10 +89,18 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
         raise ValueError("cooked package has invalid geometry counts") from failure
     if (triangles <= 0 or vertex_count <= 0 or index_count != triangles * 3 or
             len(positions) != vertex_count * 12 or len(normals) != vertex_count * 12 or
-            len(uvs) != vertex_count * 8 or len(indices) != index_count * 4):
+            len(uvs) != vertex_count * 8 or len(tangents) != vertex_count * 16 or
+            len(indices) != index_count * 4):
         raise ValueError("cooked package geometry counts and byte lengths disagree")
-    if not all(math.isfinite(value) for (value,) in struct.iter_unpack("<f", positions + normals + uvs)):
+    if not all(math.isfinite(value) for (value,) in struct.iter_unpack("<f", positions + normals + uvs + tangents)):
         raise ValueError("cooked package contains non-finite geometry")
+    for vertex in range(vertex_count):
+        tangent = struct.unpack_from("<4f", tangents, vertex * 16)
+        normal = struct.unpack_from("<3f", normals, vertex * 12)
+        tangent_length = math.sqrt(sum(component * component for component in tangent[:3]))
+        alignment = sum(tangent[index] * normal[index] for index in range(3))
+        if abs(tangent_length - 1.0) > 0.02 or abs(alignment) > 0.02 or abs(abs(tangent[3]) - 1.0) > 1e-4:
+            raise ValueError("cooked package contains an invalid tangent frame")
     if any(value >= vertex_count for (value,) in struct.iter_unpack("<I", indices)):
         raise ValueError("cooked package contains an out-of-range index")
     return fields
@@ -121,9 +130,11 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
     """Write a small planar FBX grid that exercises the real simplification path."""
     vertex_count = (cells_per_side + 1) ** 2
     positions = []
+    uvs = []
     for y in range(cells_per_side + 1):
         for x in range(cells_per_side + 1):
             positions.extend((str(x), str(y), "0"))
+            uvs.extend((str(x / cells_per_side), str(y / cells_per_side)))
     polygon_indices = []
     for y in range(cells_per_side):
         for x in range(cells_per_side):
@@ -154,7 +165,11 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
         f'GeometryVersion: 124 Vertices: *{vertex_count * 3} {{ a: '
         f'{",".join(positions)} }} '
         f'PolygonVertexIndex: *{len(polygon_indices)} {{ a: '
-        f'{",".join(polygon_indices)} }} }} '
+        f'{",".join(polygon_indices)} }} '
+        f'LayerElementUV: 0 {{ Version: 101 Name: "UVMap" '
+        f'MappingInformationType: "ByVertice" ReferenceInformationType: "Direct" '
+        f'UV: *{len(uvs)} {{ a: {",".join(uvs)} }} }} '
+        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 } } } '
         'Model: 1002, "Model::Grid", "Mesh" { Version: 232 } }\n'
         'Connections: { C: "OO",1001,1002 C: "OO",1002,0 }\n'
         'Takes: { Current: "" }\n',
@@ -222,6 +237,11 @@ def main(arguments: list[str]) -> int:
                     raise ValueError("grid fixture was not reduced to the requested triangle budget")
                 if int(grid_fields["positions"]) >= (cells_per_side + 1) ** 2:
                     raise ValueError("simplified grid package retained unreferenced vertices")
+                tangent_bytes = base64.b64decode(grid_fields["tangents_b64"], validate=True)
+                for tangent in struct.iter_unpack("<4f", tangent_bytes):
+                    if abs(tangent[0] - 1.0) > 0.02 or abs(tangent[1]) > 0.02 or \
+                            abs(tangent[2]) > 0.02 or abs(tangent[3] - 1.0) > 0.02:
+                        raise ValueError("planar UV fixture did not produce the expected +X tangent frame")
                 if grid_fields != repeat_fields or grid_output.read_bytes() != repeat_output.read_bytes():
                     raise ValueError("simplified grid package output is not deterministic")
                 print(f"FBX cooker self-test passed: triangle package plus {original_triangles} -> "

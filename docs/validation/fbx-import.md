@@ -49,14 +49,17 @@ unit conversion, node translation, finite generated normals, and valid indices.
 
 The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
 existing `elisa-cooked-v2` geometry package with source identity and hash,
-float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It
+float32 positions/normals/UVs/tangents, uint32 indices, bounds, and fixed strides. It
 can simplify through pinned meshoptimizer with `--max-triangles COUNT`, compacts
 unreferenced vertices, and validates lengths, finite values, indices, and the
 runtime reader's 64 MiB package/16 MiB section limits. The supplied Arc Gate
 cooks from 3,077,694 to 12,000 triangles, 10,009 vertices and 619,538 bytes at
 0.00124 relative error. `python3 scripts/cook_fbx_asset.py --self-test` also
 passed with a generated 512-triangle grid reduced to 128 triangles and 97
-vertices at 0.00003 relative error; repeated output was byte-identical. For a
+vertices at 0.00003 relative error; generated tangent frames passed unit-length
+and orthogonality checks, and repeated output was byte-identical. The real Arc
+Gate cooks to 12,000 triangles, 10,009 vertices and 833,098 bytes with tangents.
+For a
 real source, supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
 DESTINATION.pkg`; the asset key must be safe and project-relative.
 
@@ -73,7 +76,7 @@ emission, bloom, and texture assignment controls; see the separate
 
 Import and cooking still select one mesh. They do not preserve the full node
 hierarchy, material subsets or texture paths, skin weights or bind poses, or
-animation curves. Elisa now assigns the Arc Gate base-color map explicitly
-through `RenderScene::set_texture`, but the cooker still does not discover FBX
-material maps or carry tangent frames for normal mapping. Shared mesh residency,
-junction variants, and electric particles remain.
+animation curves. Elisa assigns the Arc Gate base-color and normal maps
+explicitly through `RenderScene::set_texture`; the cooker generates and validates
+tangent frames after simplification. It still does not discover FBX material
+maps. Shared mesh residency, junction variants, and electric particles remain.

@@ -30,6 +30,7 @@ struct FbxMeshData {
     std::vector<float> positions;
     std::vector<float> normals;
     std::vector<float> uvs;
+    std::vector<float> tangents;
     std::vector<uint32_t> indices;
     float bounds_min[3] = {
         std::numeric_limits<float>::infinity(),
