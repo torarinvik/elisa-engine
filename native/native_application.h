@@ -12,20 +12,34 @@
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <cstdio>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <utility>
-#include <vector>
 
 namespace probe {
 
 class NativeApplication {
 public:
+    static constexpr size_t MAX_SHUTDOWN_HOOKS = 64;
+    using ShutdownFunction = void (*)(void* context);
+
+    struct LifecycleTelemetry {
+        uint64_t initialization_attempts = 0;
+        uint64_t successful_initializations = 0;
+        uint64_t partial_startup_rollbacks = 0;
+        uint64_t shutdowns = 0;
+        uint64_t drained_callback_batches = 0;
+        uint64_t shutdown_functions_invoked = 0;
+        uint64_t rejected_shutdown_registrations = 0;
+        size_t peak_active_callbacks = 0;
+        size_t peak_shutdown_functions = 0;
+    };
+
     class CallbackLease {
     public:
         CallbackLease(const CallbackLease&) = delete;
@@ -81,11 +95,14 @@ public:
     bool initialize(const Config& config) {
         if (initialized_ || sdl_initialized_ || window_ != nullptr || application_ != nullptr ||
             config.title == nullptr || config.width <= 0 || config.height <= 0) return false;
+        ++telemetry_.initialization_attempts;
+        startup_in_progress_ = true;
         close_requested_ = false;
         window_state_ = WindowState{};
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
             std::fprintf(stderr, "native application: SDL3 initialization failed: %s\n", SDL_GetError());
             SDL_Quit();
+            shutdown();
             return false;
         }
         sdl_initialized_ = true;
@@ -136,6 +153,8 @@ public:
             return false;
         }
         initialized_ = true;
+        startup_in_progress_ = false;
+        ++telemetry_.successful_initializations;
         accepting_callbacks_ = true;
         refresh_window_state();
         return true;
@@ -143,9 +162,17 @@ public:
 
     CallbackLease callback_scope() { return CallbackLease(*this); }
 
-    bool add_shutdown_hook(std::function<void()> hook) {
-        if (!hook || shutting_down_) return false;
-        shutdown_hooks_.push_back(std::move(hook));
+    // Fixed-capacity registration performs no allocation. The context remains
+    // service-owned and must outlive shutdown; callbacks run in reverse order.
+    bool add_shutdown_hook(void* context, ShutdownFunction function) {
+        if (function == nullptr || shutting_down_ || shutdown_function_count_ == MAX_SHUTDOWN_HOOKS) {
+            ++telemetry_.rejected_shutdown_registrations;
+            return false;
+        }
+        shutdown_functions_[shutdown_function_count_++] = ShutdownEntry{context, function};
+        if (shutdown_function_count_ > telemetry_.peak_shutdown_functions) {
+            telemetry_.peak_shutdown_functions = shutdown_function_count_;
+        }
         return true;
     }
 
@@ -201,16 +228,32 @@ public:
         if (shutting_down_) {
             return;
         }
+        const bool had_state = sdl_initialized_ || wicked_initialize_started_ || window_ != nullptr ||
+            application_ != nullptr || initialized_ || startup_in_progress_ || shutdown_function_count_ != 0;
         shutting_down_ = true;
         {
             std::unique_lock<std::mutex> guard(callback_lock_);
             accepting_callbacks_ = false;
+            if (active_callbacks_ != 0) ++telemetry_.drained_callback_batches;
             callback_drained_.wait(guard, [this] { return active_callbacks_ == 0; });
         }
-        for (auto hook = shutdown_hooks_.rbegin(); hook != shutdown_hooks_.rend(); ++hook) {
-            try { (*hook)(); } catch (...) { std::fprintf(stderr, "native application: shutdown hook failed\n"); }
+        for (size_t index = shutdown_function_count_; index > 0; --index) {
+            ShutdownEntry& entry = shutdown_functions_[index - 1];
+            try {
+                entry.function(entry.context);
+            } catch (...) {
+                std::fprintf(stderr, "native application: shutdown function failed\n");
+            }
+            entry = {};
+            ++telemetry_.shutdown_functions_invoked;
         }
-        shutdown_hooks_.clear();
+        shutdown_function_count_ = 0;
+        if (startup_in_progress_) {
+            ++telemetry_.partial_startup_rollbacks;
+            startup_in_progress_ = false;
+        } else if (had_state) {
+            ++telemetry_.shutdowns;
+        }
         if (!sdl_initialized_ && !wicked_initialize_started_ && window_ == nullptr &&
             application_ == nullptr) {
             close_requested_ = true;
@@ -258,6 +301,8 @@ public:
         return window_state_.suspended();
     }
 
+    const LifecycleTelemetry& telemetry() const { return telemetry_; }
+
     wi::Application& wicked() {
         return *application_;
     }
@@ -268,6 +313,11 @@ public:
 
 private:
     enum class StartupFault : uint8_t { None, AfterSDL, AfterWindow, AfterWicked };
+    struct ShutdownEntry {
+        void* context = nullptr;
+        ShutdownFunction function = nullptr;
+    };
+
     friend bool probe_partial_startup_failure();
 
     bool consume_startup_fault(StartupFault point) {
@@ -280,6 +330,9 @@ private:
         std::lock_guard<std::mutex> guard(callback_lock_);
         if (!accepting_callbacks_) return false;
         ++active_callbacks_;
+        if (active_callbacks_ > telemetry_.peak_active_callbacks) {
+            telemetry_.peak_active_callbacks = active_callbacks_;
+        }
         return true;
     }
 
@@ -347,13 +400,16 @@ private:
     bool initialized_ = false;
     bool sdl_initialized_ = false;
     bool wicked_initialize_started_ = false;
+    bool startup_in_progress_ = false;
     bool close_requested_ = false;
     bool shutting_down_ = false;
     bool accepting_callbacks_ = false;
     size_t active_callbacks_ = 0;
     std::mutex callback_lock_;
     std::condition_variable callback_drained_;
-    std::vector<std::function<void()>> shutdown_hooks_;
+    std::array<ShutdownEntry, MAX_SHUTDOWN_HOOKS> shutdown_functions_{};
+    size_t shutdown_function_count_ = 0;
+    LifecycleTelemetry telemetry_;
     StartupFault startup_fault_ = StartupFault::None;
 };
 

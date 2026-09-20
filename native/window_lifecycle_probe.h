@@ -3,11 +3,13 @@
 #include "native_application.h"
 #include "probe_support.h"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace probe {
 
@@ -65,20 +67,30 @@ inline bool probe_partial_startup_failure() {
         NativeApplication::StartupFault::AfterWindow,
         NativeApplication::StartupFault::AfterWicked,
     };
+    size_t failure_count = 0;
     for (const NativeApplication::StartupFault point : points) {
         host.startup_fault_ = point;
         if (!check(!host.initialize(config), "injected partial startup failure") ||
             !check(host.window() == nullptr && SDL_WasInit(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0,
                 "partial startup releases SDL window and subsystems") ||
-            !check(wi::graphics::GetDevice() == nullptr, "partial startup clears Wicked device")) {
+            !check(wi::graphics::GetDevice() == nullptr, "partial startup clears Wicked device") ||
+            !check(host.telemetry().partial_startup_rollbacks == ++failure_count,
+                "partial startup rollback accounting")) {
             return false;
         }
         host.shutdown();
         if (!check(host.initialize(config), "host retries after partial startup failure")) return false;
         host.shutdown();
-        if (!check(host.window() == nullptr && SDL_WasInit(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0,
+        if (!check(host.window() == nullptr && SDL_WasInit(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0 &&
+                host.telemetry().successful_initializations == failure_count &&
+                host.telemetry().shutdowns == failure_count,
                 "retry shutdown returns to process baseline")) return false;
     }
+    if (!check(host.telemetry().initialization_attempts == failure_count * 2 &&
+            host.telemetry().successful_initializations == failure_count &&
+            host.telemetry().partial_startup_rollbacks == failure_count &&
+            host.telemetry().shutdowns == failure_count,
+            "partial startup lifecycle totals")) return false;
     std::fprintf(stdout, "partial native startup: SDL/window/Wicked failures rolled back and retried\n");
     return true;
 }
@@ -99,10 +111,22 @@ inline bool probe_repeated_host_lifecycle() {
             host.shutdown();
             return false;
         }
+        struct HookRecord { std::vector<int>* order; int id; };
+        std::array<HookRecord, NativeApplication::MAX_SHUTDOWN_HOOKS - 1> hook_records{};
         std::vector<int> hook_order;
-        if (!check(host.add_shutdown_hook([&hook_order] { hook_order.push_back(1); }) &&
-            host.add_shutdown_hook([&hook_order] { hook_order.push_back(2); }),
-            "shutdown hooks register")) return false;
+        hook_order.reserve(hook_records.size());
+        const NativeApplication::ShutdownFunction record_hook = [](void* context) {
+            auto* record = static_cast<HookRecord*>(context);
+            record->order->push_back(record->id);
+        };
+        for (size_t index = 0; index < hook_records.size(); ++index) {
+            hook_records[index] = HookRecord{&hook_order, static_cast<int>(index)};
+            if (!check(host.add_shutdown_hook(&hook_records[index], record_hook),
+                    "bounded shutdown service registers")) {
+                host.shutdown();
+                return false;
+            }
+        }
         std::mutex callback_gate;
         std::condition_variable callback_changed;
         bool callback_entered = false;
@@ -110,9 +134,19 @@ inline bool probe_repeated_host_lifecycle() {
         std::atomic<bool> callback_finished = false;
         std::atomic<bool> hook_observed_drain = false;
         std::atomic<bool> callback_admission_closed = false;
-        if (!check(host.add_shutdown_hook([&] {
-                hook_observed_drain.store(callback_finished.load());
-            }), "callback-drain hook registers")) return false;
+        struct DrainObservation { std::atomic<bool>* finished; std::atomic<bool>* observed; };
+        DrainObservation observation{&callback_finished, &hook_observed_drain};
+        const NativeApplication::ShutdownFunction observe_drain = [](void* context) {
+            auto* state = static_cast<DrainObservation*>(context);
+            state->observed->store(state->finished->load());
+        };
+        if (!check(host.add_shutdown_hook(&observation, observe_drain),
+                "callback-drain service registers") ||
+            !check(!host.add_shutdown_hook(nullptr, observe_drain),
+                "shutdown registry rejects capacity overflow")) {
+            host.shutdown();
+            return false;
+        }
         std::thread callback_thread([&] {
             auto lease = host.callback_scope();
             {
@@ -133,6 +167,7 @@ inline bool probe_repeated_host_lifecycle() {
                 guard.unlock();
                 callback_changed.notify_all();
                 callback_thread.join();
+                host.shutdown();
                 return check(false, "shutdown callback admitted before drain");
             }
         }
@@ -155,14 +190,26 @@ inline bool probe_repeated_host_lifecycle() {
         host.shutdown();
         admission_watcher.join();
         callback_thread.join();
-        if (!check(host.window() == nullptr && host.close_requested() && hook_order.size() == 2 &&
-            hook_order[0] == 2 && hook_order[1] == 1, "repeated host shutdown") ||
+        bool reverse_order = hook_order.size() == hook_records.size();
+        for (size_t index = 0; index < hook_order.size(); ++index) {
+            reverse_order = reverse_order && hook_order[index] ==
+                static_cast<int>(hook_records.size() - index - 1);
+        }
+        const auto telemetry = host.telemetry();
+        if (!check(host.window() == nullptr && host.close_requested() && reverse_order,
+                "repeated host shutdown and reverse service order") ||
             !check(callback_admission_closed.load() && callback_finished.load() &&
-                hook_observed_drain.load(), "shutdown closes admission and drains callbacks")) {
+                hook_observed_drain.load(), "shutdown closes admission and drains callbacks") ||
+            !check(telemetry.peak_shutdown_functions == NativeApplication::MAX_SHUTDOWN_HOOKS &&
+                telemetry.shutdown_functions_invoked == NativeApplication::MAX_SHUTDOWN_HOOKS &&
+                telemetry.rejected_shutdown_registrations == 1 && telemetry.drained_callback_batches == 1 &&
+                telemetry.peak_active_callbacks == 1,
+                "shutdown service and callback pressure telemetry")) {
             return false;
         }
     }
-    std::fprintf(stdout, "repeated host lifecycle: cycles=2 passed\n");
+    std::fprintf(stdout, "repeated host lifecycle: cycles=2 hooks=%zu capacity_rejections=1 callbacks=drained\n",
+        NativeApplication::MAX_SHUTDOWN_HOOKS);
     return true;
 }
 
