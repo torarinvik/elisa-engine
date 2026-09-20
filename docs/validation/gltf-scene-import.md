@@ -11,6 +11,9 @@ channel references fail before the summary is accepted.
 
 The Wicked gate imports the authored maze tile and a pinned Basis glTF material
 fixture, proving node and primitive hierarchy, positions, indices, PBR factors,
-alpha metadata, texture references, and normalized rejection counts before the
-cooked package is consumed. GPU mesh/material creation and richer authored
-scenes with cameras/lights/skins/animations remain follow-up A05 work.
+alpha metadata, texture references, and normalized rejection counts. The first
+authored triangle primitive is decoded into bounded engine arrays, uploaded
+through Wicked's mesh component, and used by the rendered goal marker; its
+normal stream and scalar material factors are retained when present. Richer
+authored scenes with multiple primitives, cameras/lights/skins/animations, and
+runtime material texture binding remain follow-up A05 work.

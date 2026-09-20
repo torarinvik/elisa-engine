@@ -98,7 +98,9 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
 inline bool probe_native_voice_handles() {
     audio::Service service;
     if (!check(service.initialize_null(), "voice service initialization")) return false;
-    const std::vector<uint8_t> wav = make_test_wav(64, 8000);
+    // Keep the voice alive through the handle/fence assertions; the null
+    // backend callback advances in real time while the native probe starts.
+    const std::vector<uint8_t> wav = make_test_wav(64000, 8000);
     const audio::ClipHandle clip = service.decode_clip(wav.data(), wav.size(), 8000, 1);
     if (!check(clip.slot < audio::MAX_CLIPS, "voice clip creation")) return false;
     NativeVoiceRegistry registry(service);

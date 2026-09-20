@@ -10,7 +10,9 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #ifndef CGLTF_IMPLEMENTATION
 #define CGLTF_IMPLEMENTATION
@@ -40,6 +42,103 @@ struct AssetSummary {
     bool first_double_sided = false;
     bool ok = false;
 };
+
+struct ImportedPrimitive {
+    std::vector<float> positions;
+    std::vector<float> normals;
+    std::vector<uint32_t> indices;
+    float base_color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float metallic = 0.0f;
+    float roughness = 1.0f;
+    bool ok = false;
+};
+
+// Decode one bounded triangle primitive into engine-owned arrays. The caller
+// owns the resulting vectors; no cgltf pointer escapes this function.
+inline ImportedPrimitive import_gltf_first_primitive(const std::string& path) {
+    ImportedPrimitive result;
+    cgltf_options options = {};
+    cgltf_data* data = nullptr;
+    if (cgltf_parse_file(&options, path.c_str(), &data) != cgltf_result_success) return result;
+    const bool loaded = cgltf_load_buffers(&options, data, path.c_str()) == cgltf_result_success;
+    if (!loaded || cgltf_validate(data) != cgltf_result_success) {
+        cgltf_free(data);
+        return result;
+    }
+    constexpr cgltf_size MAX_VERTICES = 1u << 20;
+    constexpr cgltf_size MAX_INDICES = 3u << 21;
+    for (cgltf_size mesh_index = 0; mesh_index < data->meshes_count && !result.ok; ++mesh_index) {
+        const cgltf_mesh& mesh = data->meshes[mesh_index];
+        for (cgltf_size primitive_index = 0; primitive_index < mesh.primitives_count; ++primitive_index) {
+            const cgltf_primitive& primitive = mesh.primitives[primitive_index];
+            if (primitive.type != cgltf_primitive_type_triangles || primitive.attributes_count == 0 ||
+                primitive.has_draco_mesh_compression) continue;
+            const cgltf_accessor* position = nullptr;
+            const cgltf_accessor* normal = nullptr;
+            for (cgltf_size attribute_index = 0; attribute_index < primitive.attributes_count; ++attribute_index) {
+                const cgltf_attribute& attribute = primitive.attributes[attribute_index];
+                if (attribute.data == nullptr) continue;
+                if (attribute.type == cgltf_attribute_type_position) position = attribute.data;
+                if (attribute.type == cgltf_attribute_type_normal) normal = attribute.data;
+            }
+            if (position == nullptr || position->count == 0 || position->count > MAX_VERTICES ||
+                position->type != cgltf_type_vec3) continue;
+            result.positions.resize(static_cast<size_t>(position->count) * 3);
+            bool valid = true;
+            for (cgltf_size vertex = 0; vertex < position->count; ++vertex) {
+                cgltf_float value[3] = {};
+                if (!cgltf_accessor_read_float(position, vertex, value, 3)) { valid = false; break; }
+                for (int component = 0; component < 3; ++component) {
+                    if (!std::isfinite(value[component])) { valid = false; break; }
+                    result.positions[static_cast<size_t>(vertex) * 3 + component] = value[component];
+                }
+                if (!valid) break;
+            }
+            if (!valid) break;
+            if (normal != nullptr && normal->count == position->count && normal->type == cgltf_type_vec3) {
+                result.normals.resize(result.positions.size());
+                for (cgltf_size vertex = 0; vertex < normal->count; ++vertex) {
+                    cgltf_float value[3] = {};
+                    if (!cgltf_accessor_read_float(normal, vertex, value, 3)) { valid = false; break; }
+                    for (int component = 0; component < 3; ++component) {
+                        if (!std::isfinite(value[component])) { valid = false; break; }
+                        result.normals[static_cast<size_t>(vertex) * 3 + component] = value[component];
+                    }
+                    if (!valid) break;
+                }
+            }
+            if (!valid) break;
+            if (primitive.indices != nullptr) {
+                if (primitive.indices->count == 0 || primitive.indices->count > MAX_INDICES) { valid = false; break; }
+                result.indices.resize(static_cast<size_t>(primitive.indices->count));
+                for (cgltf_size index = 0; index < primitive.indices->count; ++index) {
+                    const cgltf_size value = cgltf_accessor_read_index(primitive.indices, index);
+                    if (value >= position->count || value > UINT32_MAX) { valid = false; break; }
+                    result.indices[static_cast<size_t>(index)] = static_cast<uint32_t>(value);
+                }
+            } else {
+                if ((position->count % 3) != 0 || position->count > MAX_INDICES) { valid = false; break; }
+                result.indices.resize(static_cast<size_t>(position->count));
+                for (cgltf_size index = 0; index < position->count; ++index) {
+                    result.indices[static_cast<size_t>(index)] = static_cast<uint32_t>(index);
+                }
+            }
+            if (!valid || result.indices.size() < 3 || (result.indices.size() % 3) != 0) break;
+            if (primitive.material != nullptr && primitive.material->has_pbr_metallic_roughness) {
+                const auto& pbr = primitive.material->pbr_metallic_roughness;
+                result.metallic = pbr.metallic_factor;
+                result.roughness = pbr.roughness_factor;
+                for (int component = 0; component < 4; ++component) {
+                    result.base_color[component] = pbr.base_color_factor[component];
+                }
+            }
+            result.ok = true;
+            break;
+        }
+    }
+    cgltf_free(data);
+    return result;
+}
 
 inline AssetSummary import_gltf_triangles(const std::string& path) {
     AssetSummary summary;

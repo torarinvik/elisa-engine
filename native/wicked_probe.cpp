@@ -194,6 +194,8 @@ int main(int argc, char** argv) {
         {"hunter", "elisa_hunter", 1.0f, 0.55f, 0.1f},
     };
     CookedPackage cooked_package;
+    CookedPackage gltf_package;
+    ImportedPrimitive gltf_primitive;
     wi::Resource goal_texture;
     {
         const auto asset_it = manifest.find("mesh_asset");
@@ -211,6 +213,21 @@ int main(int argc, char** argv) {
                 summary.primitives > 0 && summary.unsupported_extensions == 0, "normalized glTF scene traversal")) {
                 return 1;
             }
+            gltf_primitive = import_gltf_first_primitive(asset_path.string());
+            if (!check(gltf_primitive.ok && !gltf_primitive.positions.empty() &&
+                gltf_primitive.indices.size() == static_cast<size_t>(expected_triangles) * 3,
+                "glTF primitive decoded for native upload")) return 1;
+            gltf_package.format = "elisa-gltf-native";
+            gltf_package.triangles = expected_triangles;
+            gltf_package.positions = static_cast<long long>(gltf_primitive.positions.size() / 3);
+            gltf_package.indices = static_cast<long long>(gltf_primitive.indices.size());
+            gltf_package.position_data = gltf_primitive.positions;
+            gltf_package.normal_data = gltf_primitive.normals;
+            gltf_package.index_data = gltf_primitive.indices;
+            gltf_package.loaded = true;
+            std::fprintf(stdout, "native glTF upload: vertices=%lld indices=%lld normals=%d metallic=%.2f roughness=%.2f\n",
+                gltf_package.positions, gltf_package.indices, gltf_primitive.normals.empty() ? 0 : 1,
+                gltf_primitive.metallic, gltf_primitive.roughness);
             const auto basis_material_path = manifest_dir.parent_path() /
                 "dependencies/basisu/webgl/gltf/assets/AgiHqSmall.gltf";
             const AssetSummary basis_material = import_gltf_triangles(basis_material_path.string());
@@ -286,9 +303,10 @@ int main(int argc, char** argv) {
         for (const auto& cell : marker_cells(spec.field)) {
             const std::string marker_name =
                 std::string(spec.name) + "_" + std::to_string(cell.first) + "_" + std::to_string(cell.second);
-            const bool use_cooked = std::string(spec.field) == "goal" && cooked_package.loaded;
+            const CookedPackage& goal_package = gltf_package.loaded ? gltf_package : cooked_package;
+            const bool use_cooked = std::string(spec.field) == "goal" && goal_package.loaded;
             const auto marker = use_cooked
-                ? create_cooked_mesh(scene, marker_name, cooked_package,
+                ? create_cooked_mesh(scene, marker_name, goal_package,
                     coordinates::cell_to_wicked(cell.first, cell.second),
                     0.13f, XMFLOAT4(spec.r, spec.g, spec.b, 1.0f))
                 : create_cell_marker(scene, marker_name, cell.first, cell.second, spec.r, spec.g, spec.b);
@@ -303,7 +321,9 @@ int main(int argc, char** argv) {
                 if (goal_texture.IsValid()) {
                     auto* goal_material = scene.materials.GetComponent(marker);
                     if (goal_material != nullptr) {
-                        goal_material->baseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+                        goal_material->baseColor = XMFLOAT4(
+                            gltf_primitive.base_color[0], gltf_primitive.base_color[1],
+                            gltf_primitive.base_color[2], gltf_primitive.base_color[3]);
                         goal_material->textures[wi::scene::MaterialComponent::BASECOLORMAP].resource = goal_texture;
                     }
                 }
@@ -311,7 +331,7 @@ int main(int argc, char** argv) {
             marker_entities.push_back(marker);
         }
     }
-    if (!check(!cooked_package.loaded || goal_used_cooked, "goal marker uses the cooked package mesh")) {
+    if (!check(!gltf_package.loaded || goal_used_cooked, "goal marker uses the uploaded glTF mesh")) {
         return 1;
     }
     {
@@ -506,8 +526,6 @@ int main(int argc, char** argv) {
     const int64_t worst_micros = frame_micros.back();
     std::fprintf(stdout, "frame stats: samples=%u median_us=%lld p95_us=%lld worst_us=%lld\n",
         (unsigned)frame_micros.size(), (long long)median_micros, (long long)p95_micros, (long long)worst_micros);
-    // Physics needs wall time, not just frames: Wicked advances Jolt from the
-    // frame delta, so a settle loop with real sleeps lets gravity act.
     for (int settle = 0; settle < 60; ++settle) {
         application_host.run_frame();
         wi::helper::Sleep(10);
@@ -522,27 +540,14 @@ int main(int argc, char** argv) {
     if (!check(physics_start_y - physics_end_y >= 0.2f, "physics box fell under gravity")) {
         return 1;
     }
-
-    // Metal work is asynchronous: without draining the queue the backbuffer
-    // still holds cleared memory when it is read below, no matter how many
-    // frames were submitted.
     wi::graphics::GetDevice()->WaitForGPU();
     if (!check(render_path.GetRenderResult3D().IsValid(), "render target")) {
         return 1;
     }
     std::fprintf(stdout, "scene create/update/render passed\n");
 
-    // Capture the rendered frame to PNG while the scene is still live. The
-    // pixels are evidence, not authority: identity and lifecycle were
-    // already established by Elisa-side checks above. A failed capture
-    // fails the probe loudly instead of passing silently without pixels.
     const char* screenshot_path = argc >= 4 ? argv[3] : "wicked-frame.png";
-    // Ground-truth diagnostics live in native/probe_diagnostics.h so this
-    // file stays under the line limit.
     print_scene_diagnostics(scene, render_path, mesh, camera_component, object);
-    // Capture the composited swapchain image, not an intermediate target:
-    // the postprocess result is only written when post effects run, so it
-    // can sit stale while the presented frame is correct.
     const wi::graphics::Texture presented = wi::graphics::GetDevice()->GetBackBuffer(&application.swapChain);
     if (!check(presented.IsValid(), "presented frame")) {
         return 1;
@@ -561,16 +566,12 @@ int main(int argc, char** argv) {
                       << "worst_us=" << worst_micros << "\n";
         }
     }
-    // Live input drives rendered state and saves a second frame.
     if (!probe_live_game_rendering(application, scene, object, screenshot_path)) {
         return 1;
     }
-    // The specialist-library checks (scaling, churn, ozz, Recast/Detour,
-    // miniaudio, text) live in native/library_probes.h.
     if (!run_library_probes(application, scene, manifest)) {
         return 1;
     }
-
     scene.Entity_Remove(object);
     scene.Entity_Remove(camera);
     scene.Entity_Remove(lamp);
@@ -590,7 +591,6 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::fprintf(stdout, "scene despawn passed\n");
-
     application_host.shutdown();
     if (!probe_repeated_host_lifecycle()) {
         return 1;
