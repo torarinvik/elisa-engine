@@ -94,13 +94,15 @@ module PhysicsRuntime:
 
         def World() -> World error[PhysicsError]:
             generation: mutable u64 = 0
-            try check_status(elisa_physics_v1_initialize(&generation))
+            status: i32 = elisa_physics_v1_initialize(&generation)
+            try check_status(status)
             World{generation: generation, tick: 0, live: true}
 
         def fixed_step(world: mutable World&, delta_seconds: f32) -> u64 error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             tick: mutable u64 = 0
-            try check_status(elisa_physics_v1_fixed_step(world.generation, delta_seconds, &tick))
+            status: i32 = elisa_physics_v1_fixed_step(world.generation, delta_seconds, &tick)
+            try check_status(status)
             world.tick <- tick
             tick
 
@@ -111,10 +113,11 @@ module PhysicsRuntime:
             raise PhysicsError.ApplicationUnavailable if not world.live
             slot: mutable u32 = 0
             generation: mutable u64 = 0
-            try check_status(elisa_physics_v1_create_box(world.generation,
+            status: i32 = elisa_physics_v1_create_box(world.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
                 description.position.z, description.half_extents.x, description.half_extents.y,
-                description.half_extents.z, description.mass, &slot, &generation))
+                description.half_extents.z, description.mass, &slot, &generation)
+            try check_status(status)
             BodyHandle{world_generation: world.generation, slot: slot, generation: generation}
 
         def body_position(world: World&, body: BodyHandle) -> Geometry::Vec3 error[PhysicsError]:
@@ -123,17 +126,20 @@ module PhysicsRuntime:
             x: mutable f32 = 0.0
             y: mutable f32 = 0.0
             z: mutable f32 = 0.0
-            try check_status(elisa_physics_v1_body_position(world.generation,
-                body.slot, body.generation, &x, &y, &z))
+            status: i32 = elisa_physics_v1_body_position(world.generation,
+                body.slot, body.generation, &x, &y, &z)
+            try check_status(status)
             Geometry::Vec3{x: x, y: y, z: z}
 
         def body_destroy(world: World&, body: BodyHandle) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             raise PhysicsError.StaleWorld if body.world_generation != world.generation
-            try check_status(elisa_physics_v1_destroy_body(world.generation,
-                body.slot, body.generation))
+            status: i32 = elisa_physics_v1_destroy_body(world.generation,
+                body.slot, body.generation)
+            try check_status(status)
 
         def shutdown(world: mutable World&) -> void error[PhysicsError]:
             return if not world.live
-            try check_status(elisa_physics_v1_shutdown(world.generation))
+            status: i32 = elisa_physics_v1_shutdown(world.generation)
+            try check_status(status)
             world.live <- false

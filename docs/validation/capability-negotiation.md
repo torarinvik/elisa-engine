@@ -135,5 +135,12 @@ Aggregate negotiation validation on 2026-09-20:
 - `DEVELOPER_DIR="$(xcode-select -p)" ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed the complete portable suite, both Elisa Proof proofs, and 23 certificate replays.
 
 The fallback report does not instantiate fallback services. Gameplay code still
-has to apply each declared service fallback, and physics/audio remain
-unavailable until Elisa-owned adapters exist.
+has to apply each declared service fallback. The opt-in PhysicsRuntime and
+AudioRuntime adapters provide concrete Physics and Audio fallback paths, while
+the live native profile continues to report those services as unavailable.
+
+Physics and Audio fallback validation on 2026-09-20:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed on macOS 27.0 / Apple M5. The hidden SDL3/Metal application creates static, dynamic, and kinematic Jolt bodies, rejects a destroyed handle as `PhysicsError.InvalidHandle`, advances eight fixed ticks and observes falling motion, then verifies host shutdown invalidates the Physics world. It also runs the negotiated silent Audio fallback after repeated application startup/shutdown.
+- `test/parity/nested_const_module_collision_smoke.sh` passed stage0 and stage1. It guards the compiler fix for short nested-module references resolving sibling modules with the same child name, which had mapped the Physics ABI's invalid-handle code to the wrong Elisa error.
+- Physics remains an explicit adapter-owned scene and is not yet advanced by the gameplay `World` scheduler; the native host therefore does not advertise it as a core service.
