@@ -146,7 +146,7 @@ module RenderScene:
 
         struct ElectricArcBatch:
             private:
-                handles: mutable ElectricArcHandle[256]
+                handles: mutable ElectricArcHandle[1024]
                 count: mutable usize
 
         # A compact owner-side collection avoids exposing the representation of
@@ -189,7 +189,7 @@ module RenderScene:
 
         def electric_arc_batch_append(batch: mutable ElectricArcBatch&,
             handle: ElectricArcHandle) -> void error[RenderSceneError]:
-            raise RenderSceneError.Capacity if batch.count >= 256
+            raise RenderSceneError.Capacity if batch.count >= 1024
             batch.handles[batch.count] <- handle
             batch.count <- batch.count + 1
 
