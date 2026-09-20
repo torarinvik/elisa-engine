@@ -10,4 +10,13 @@ def main() -> i32:
     return 6 if WorldCommands::batch_valid(&buffer)
     return 8 if WorldCommands::commit(&buffer)
     return 7 if WorldCommands::command_count(&buffer) != 2
+    return 9 if WorldCommands::spawn_count(&buffer) != 1
+    return 10 if WorldCommands::commit_with_capacity(&buffer, 0)
+    return 11 if WorldCommands::command_count(&buffer) != 2
+    retry: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+    return 12 if not WorldCommands::spawn(&retry, 4)
+    return 13 if WorldCommands::commit_with_capacity(&retry, 0)
+    return 14 if WorldCommands::command_count(&retry) != 1
+    return 15 if not WorldCommands::commit_with_capacity(&retry, 1)
+    return 16 if WorldCommands::command_count(&retry) != 0
     0

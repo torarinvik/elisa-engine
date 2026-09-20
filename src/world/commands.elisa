@@ -52,7 +52,17 @@ module WorldCommands:
                         inner <- false if left.id == right.id
                 valid <- valid and duplicate_free
 
-        def commit(buffer: mutable Buffer&) -> bool:
-            return false if not batch_valid(buffer)
+        def spawn_count(buffer: Buffer&) -> usize:
+            for index in 0..<buffer.count |spawns: usize = 0| -> spawns:
+                spawns <- spawns + 1 if buffer.commands[index].kind == Kind.Spawn
+
+        # Check the executor's free-slot budget before clearing the batch. An
+        # allocation failure is therefore an atomic rejection and the caller
+        # can retry or report every command without reconstructing the phase.
+        def commit_with_capacity(buffer: mutable Buffer&, free_slots: usize) -> bool:
+            return false if not batch_valid(buffer) or spawn_count(buffer) > free_slots
             buffer.count <- 0
             true
+
+        def commit(buffer: mutable Buffer&) -> bool:
+            commit_with_capacity(buffer, WorldCommands::MAX_COMMANDS)
