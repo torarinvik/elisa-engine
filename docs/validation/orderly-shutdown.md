@@ -67,8 +67,8 @@ teardown, clears scene-owned components, and verifies the application holds no
 active path to destroyed scene data. The first six cycles absorb one-time scene
 and Metal resource warm-up; the final six are reported separately. In the two
 native passes the measured GPU deltas were 0 bytes, with process-heap deltas of
-864 and 800 bytes. Eight host/device cycles grew `malloc_zone_statistics` usage
-by 3,344 and 12,960 bytes across the two passes, rather than the previously
+864 and 832 bytes. Eight host/device cycles grew `malloc_zone_statistics` usage
+by 7,104 and 2,672 bytes across the two passes, rather than the previously
 observed roughly 1.9 MiB. These short-run values are near a plateau but do not
 replace a longer soak.
 
