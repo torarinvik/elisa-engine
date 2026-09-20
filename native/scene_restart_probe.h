@@ -5,9 +5,14 @@
 #include "wiGraphicsDevice.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
+#include "Foundation/Foundation.hpp"
 
+#include <array>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <malloc/malloc.h>
+#include <thread>
 #include <vector>
 
 namespace probe {
@@ -26,7 +31,11 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     application.ActivatePath(nullptr);
     device->WaitForGPU();
 
-    constexpr size_t RESTART_CYCLES = 4;
+    constexpr size_t RESTART_CYCLES = 12;
+    constexpr size_t WARMUP_CYCLES = 6;
+    static_assert(RESTART_CYCLES > WARMUP_CYCLES);
+    std::array<uint64_t, RESTART_CYCLES> gpu_samples{};
+    std::array<size_t, RESTART_CYCLES> heap_samples{};
     uint64_t warm_gpu_bytes = 0;
     uint64_t final_gpu_bytes = 0;
     size_t warm_heap_bytes = 0;
@@ -34,53 +43,57 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     for (size_t cycle = 0; cycle < RESTART_CYCLES; ++cycle) {
         bool cycle_ok = false;
         {
-            wi::scene::Scene scene;
-            const auto cube = scene.Entity_CreateCube("scene_restart_cube");
-            const auto camera = scene.Entity_CreateCamera("scene_restart_camera", 320, 200);
-            const auto lamp = scene.Entity_CreateLight("scene_restart_light");
-            auto* cube_transform = scene.transforms.GetComponent(cube);
-            auto* cube_material = scene.materials.GetComponent(cube);
-            auto* camera_transform = scene.transforms.GetComponent(camera);
-            auto* camera_component = scene.cameras.GetComponent(camera);
-            bool entities_ready = cube != wi::ecs::INVALID_ENTITY &&
-                camera != wi::ecs::INVALID_ENTITY && lamp != wi::ecs::INVALID_ENTITY &&
-                cube_transform != nullptr && cube_material != nullptr &&
-                camera_transform != nullptr && camera_component != nullptr;
-            if (entities_ready) {
-                cube_transform->translation_local = XMFLOAT3(0, 0, 1);
-                cube_transform->scale_local = XMFLOAT3(0.5f, 0.5f, 0.5f);
-                cube_transform->UpdateTransform();
-                cube_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
-                cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
-                camera_transform->translation_local = XMFLOAT3(0, 0, -5);
-                camera_transform->UpdateTransform();
-                camera_component->TransformCamera(*camera_transform);
-                camera_component->UpdateCamera();
+            NS::SharedPtr<NS::AutoreleasePool> autorelease_pool =
+                NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+            {
+                wi::scene::Scene scene;
+                const auto cube = scene.Entity_CreateCube("scene_restart_cube");
+                const auto camera = scene.Entity_CreateCamera("scene_restart_camera", 320, 200);
+                const auto lamp = scene.Entity_CreateLight("scene_restart_light");
+                auto* cube_transform = scene.transforms.GetComponent(cube);
+                auto* cube_material = scene.materials.GetComponent(cube);
+                auto* camera_transform = scene.transforms.GetComponent(camera);
+                auto* camera_component = scene.cameras.GetComponent(camera);
+                bool entities_ready = cube != wi::ecs::INVALID_ENTITY &&
+                    camera != wi::ecs::INVALID_ENTITY && lamp != wi::ecs::INVALID_ENTITY &&
+                    cube_transform != nullptr && cube_material != nullptr &&
+                    camera_transform != nullptr && camera_component != nullptr;
+                if (entities_ready) {
+                    cube_transform->translation_local = XMFLOAT3(0, 0, 1);
+                    cube_transform->scale_local = XMFLOAT3(0.5f, 0.5f, 0.5f);
+                    cube_transform->UpdateTransform();
+                    cube_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+                    cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
+                    camera_transform->translation_local = XMFLOAT3(0, 0, -5);
+                    camera_transform->UpdateTransform();
+                    camera_component->TransformCamera(*camera_transform);
+                    camera_component->UpdateCamera();
 
-                wi::RenderPath3D render_path;
-                render_path.scene = &scene;
-                render_path.camera = camera_component;
-                render_path.setOcclusionCullingEnabled(false);
-                application.ActivatePath(&render_path);
-                bool frames_rendered = true;
-                for (int frame = 0; frame < 2; ++frame) {
-                    if (!host.run_frame()) {
-                        frames_rendered = false;
-                        break;
+                    wi::RenderPath3D render_path;
+                    render_path.scene = &scene;
+                    render_path.camera = camera_component;
+                    render_path.setOcclusionCullingEnabled(false);
+                    application.ActivatePath(&render_path);
+                    bool frames_rendered = true;
+                    for (int frame = 0; frame < 2; ++frame) {
+                        if (!host.run_frame()) {
+                            frames_rendered = false;
+                            break;
+                        }
                     }
+                    device->WaitForGPU();
+                    cycle_ok = check(frames_rendered && render_path.GetRenderResult3D().IsValid(),
+                        "restarted scene renders before teardown");
+                    application.ActivatePath(nullptr);
+                    device->WaitForGPU();
                 }
-                device->WaitForGPU();
-                cycle_ok = check(frames_rendered && render_path.GetRenderResult3D().IsValid(),
-                    "restarted scene renders before teardown");
-                application.ActivatePath(nullptr);
-                device->WaitForGPU();
-            }
 
-            scene.Clear();
-            cycle_ok = check(entities_ready && scene.objects.GetCount() == 0 &&
-                scene.meshes.GetCount() == 0 && scene.transforms.GetCount() == 0 &&
-                scene.materials.GetCount() == 0 && scene.cameras.GetCount() == 0 &&
-                scene.lights.GetCount() == 0, "restarted scene clears owned components") && cycle_ok;
+                scene.Clear();
+                cycle_ok = check(entities_ready && scene.objects.GetCount() == 0 &&
+                    scene.meshes.GetCount() == 0 && scene.transforms.GetCount() == 0 &&
+                    scene.materials.GetCount() == 0 && scene.cameras.GetCount() == 0 &&
+                    scene.lights.GetCount() == 0, "restarted scene clears owned components") && cycle_ok;
+            }
         }
         if (!cycle_ok) {
             application.ActivatePath(nullptr);
@@ -89,7 +102,9 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
         }
         const uint64_t gpu_bytes = device->GetMemoryUsage().usage;
         const size_t heap_bytes = scene_restart_heap_bytes_in_use();
-        if (cycle == 0) {
+        gpu_samples[cycle] = gpu_bytes;
+        heap_samples[cycle] = heap_bytes;
+        if (cycle + 1 == WARMUP_CYCLES) {
             warm_gpu_bytes = gpu_bytes;
             warm_heap_bytes = heap_bytes;
         }
@@ -102,8 +117,13 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     const long long gpu_delta = static_cast<long long>(final_gpu_bytes) -
         static_cast<long long>(warm_gpu_bytes);
     std::fprintf(stdout,
-        "in-process scene restart: cycles=%zu rendered=1 components_cleared=1 gpu_delta_bytes=%lld heap_delta_bytes=%lld\n",
-        RESTART_CYCLES, gpu_delta, heap_delta);
+        "in-process scene restart: cycles=%zu warmup_cycles=%zu measured_cycles=%zu rendered=1 components_cleared=1 gpu_delta_bytes=%lld heap_delta_bytes=%lld\n",
+        RESTART_CYCLES, WARMUP_CYCLES, RESTART_CYCLES - WARMUP_CYCLES, gpu_delta, heap_delta);
+    std::fprintf(stdout, "scene restart GPU usage samples:");
+    for (const uint64_t sample : gpu_samples) std::fprintf(stdout, " %llu", (unsigned long long)sample);
+    std::fprintf(stdout, "\nscene restart heap usage samples:");
+    for (const size_t sample : heap_samples) std::fprintf(stdout, " %zu", sample);
+    std::fprintf(stdout, "\n");
     return check(application.GetActivePath() == nullptr,
         "scene restart leaves no active path referencing destroyed scene");
 }
@@ -128,6 +148,21 @@ inline bool probe_scene_despawn(wi::scene::Scene& scene, wi::ecs::Entity object,
     }
     std::fprintf(stdout, "scene despawn passed\n");
     return true;
+}
+
+inline int run_scene_restart_diagnostic(NativeApplication& host) {
+    const bool restart_ok = probe_in_process_scene_restarts(host);
+    const char* hold_seconds = std::getenv("ELISA_SCENE_RESTART_HOLD_SECONDS");
+    if (hold_seconds != nullptr) {
+        const int seconds = std::atoi(hold_seconds);
+        if (seconds > 0) {
+            std::fprintf(stdout, "scene restart inspection hold: %d seconds\n", seconds);
+            std::fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::seconds(seconds));
+        }
+    }
+    host.shutdown();
+    return restart_ok ? 0 : 1;
 }
 
 } // namespace probe

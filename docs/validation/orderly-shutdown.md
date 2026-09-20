@@ -34,6 +34,20 @@ callback drains, hook invocations, and peak hook/callback pressure. Three
 partial failures each retry successfully; eight hidden host/device cycles run
 the full-capacity registry and record process heap usage after each teardown.
 
+On Apple, `NativeApplication` now creates scoped Metal-C++ autorelease pools at
+startup, event, frame, fixed-step, fullscreen, and shutdown boundaries. Wicked
+job workers also drain a pool after each batch of jobs. Its Apple resource-path
+helper has a local Objective-C pool because Wicked initializes shader paths
+before `main`, before a host-level pool can exist. This removed the engine-owned
+missing-pool traffic found during the first probe; with
+`OBJC_DEBUG_MISSING_POOLS=YES`, the remaining warning stack was inside Apple's
+AppIntents/LinkServices work queue.
+
+Wicked commit `3a450df` adds the per-job-batch worker pools and scopes its
+pre-main Apple resource-path lookups. It also includes the Apple Objective-C++
+helpers in the CMake library and propagates the frameworks required by both
+that library and its offline shader compiler.
+
 Validation on the pinned SDL3/Wicked Metal build:
 
 ```text
@@ -46,32 +60,31 @@ Result: `scripts/native_gate.elisascript native` exited 0 when launched from
 schema-2 report at `build/native-gate.json` records `outcome=pass` and
 `hardware_verification=verified`. Both native frame passes verified topology
 and exact determinism, the shutdown-hook job drain and 64-entry lifecycle
-pressure probe passed, and frame time stayed within budget. After the diagnostic scene is
-removed, the same live host now creates and renders four fresh Wicked scenes.
-Each restart waits for GPU work, stops the render path before scene teardown,
-clears scene-owned components, and verifies the application holds no active path
-to destroyed scene data. The two deterministic native passes reported scene
-cycle GPU usage deltas of 1,032,192 bytes and 0 bytes, and process-heap deltas of
-19,360 bytes and 10,176 bytes after the first cycle. These inconsistent memory
-samples do not establish a per-scene leak trend. The two matching eight-cycle
-host/device checks grew `malloc_zone_statistics` usage by 1,887,168 and
-1,892,816 bytes, about 270 KiB per cycle. The previous 2 MiB limit allowed this
-linear growth and is not evidence of a steady state.
+pressure probe passed, and frame time stayed within budget. After the diagnostic
+scene is removed, the same live host creates and renders twelve fresh Wicked
+scenes. Each restart waits for GPU work, stops the render path before scene
+teardown, clears scene-owned components, and verifies the application holds no
+active path to destroyed scene data. The first six cycles absorb one-time scene
+and Metal resource warm-up; the final six are reported separately. In the two
+native passes the measured GPU deltas were 0 bytes, with process-heap deltas of
+864 and 800 bytes. Eight host/device cycles grew `malloc_zone_statistics` usage
+by 3,344 and 12,960 bytes across the two passes, rather than the previously
+observed roughly 1.9 MiB. These short-run values are near a plateau but do not
+replace a longer soak.
 
-With `MallocStackLogging=1`, `leaks` on a paused lifecycle-only process now
-reports 417 live allocations totalling 26,496 bytes, all in three
-`NSXPCConnection` cycles rooted in Apple AppIntents/LinkServices frameworks.
-The earlier FAudio and Metal shader `dispatch_data` allocation roots are gone.
-The separate, non-instrumented process heap high-water still rises about 1.90
-MiB over eight host/device cycles (about 270 KiB per cycle); this measurement
-does not by itself show that those bytes remain live. `leaks -atExit` can still
-report operating-system framework cycles. `AddressSanitizer` leak detection is
-unavailable in this macOS runtime (`detect_leaks is not supported on this
-platform`).
+With `MallocStackLogging=1`, `leaks` on a paused lifecycle-only process reported
+417 live allocations totalling 26,496 bytes, all in three `NSXPCConnection`
+cycles rooted in Apple AppIntents/LinkServices frameworks. The earlier FAudio
+and Metal shader `dispatch_data` allocation roots are gone. An LLDB stop on
+`objc_autoreleaseNoPool` likewise attributed the remaining debug-only warnings
+to an Apple `LinkServices` XPC callback on `com.apple.root.utility-qos`, with no
+Wicked or Elisa frames. `leaks -atExit` can still report operating-system
+framework cycles. `AddressSanitizer` leak detection is unavailable in this
+macOS runtime (`detect_leaks is not supported on this platform`).
 
 F05 remains partial. The in-process scene-restart probe verifies rendering,
-component cleanup, path detachment, and GPU completion, but its memory samples
-vary between identical native passes. The process heap high-water also grows
-across repeated host/device cycles. Continue with a longer soak and allocation
-attribution before claiming scene and device lifetimes return to a stable
+component cleanup, path detachment, GPU completion, and a short steady-state
+memory interval. The remaining Apple framework allocation cycles are outside
+the engine, while longer-run allocation attribution and a longer soak are still
+needed before claiming all scene and device lifetimes return to a stable
 resource baseline.

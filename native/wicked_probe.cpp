@@ -105,6 +105,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (std::getenv("ELISA_LIFECYCLE_ONLY") != nullptr) return run_lifecycle_only(application_host);
+    if (std::getenv("ELISA_SCENE_RESTART_ONLY") != nullptr) {
+        return run_scene_restart_diagnostic(application_host);
+    }
     wi::Application& application = application_host.wicked();
     if (!probe_graphics_capabilities()) {
         return 1;

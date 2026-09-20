@@ -10,6 +10,9 @@
 #include "wiInitializer.h"
 #include "wiJobSystem.h"
 #include "frame_pacer.h"
+#ifdef __APPLE__
+#include "Foundation/Foundation.hpp"
+#endif
 
 #include <SDL3/SDL.h>
 
@@ -23,6 +26,19 @@
 #include <utility>
 
 namespace probe {
+
+class NativeAutoreleaseScope {
+public:
+    NativeAutoreleaseScope() = default;
+    NativeAutoreleaseScope(const NativeAutoreleaseScope&) = delete;
+    NativeAutoreleaseScope& operator=(const NativeAutoreleaseScope&) = delete;
+
+private:
+#ifdef __APPLE__
+    NS::SharedPtr<NS::AutoreleasePool> pool_ =
+        NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+#endif
+};
 
 class NativeApplication {
 public:
@@ -99,6 +115,7 @@ public:
     bool initialize(const Config& config) {
         if (initialized_ || sdl_initialized_ || window_ != nullptr || application_ != nullptr ||
             config.title == nullptr || config.width <= 0 || config.height <= 0) return false;
+        NativeAutoreleaseScope autorelease_scope;
         ++telemetry_.initialization_attempts;
         startup_in_progress_ = true;
         close_requested_ = false;
@@ -185,6 +202,7 @@ public:
     // SDL queue policy.
     template <typename EventHandler>
     bool poll_events(EventHandler&& handler) {
+        NativeAutoreleaseScope autorelease_scope;
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             update_window_state(event);
@@ -202,6 +220,7 @@ public:
 
     bool run_frame() {
         if (application_ == nullptr || simulation_suspended()) return false;
+        NativeAutoreleaseScope autorelease_scope;
         if (!synchronize_window_surface()) return false;
         application_->Run();
         return true;
@@ -213,6 +232,7 @@ public:
             reset_fixed_clock();
             return 0;
         }
+        NativeAutoreleaseScope autorelease_scope;
         return pacer_.advance(elapsed_nanos, std::forward<Step>(step));
     }
 
@@ -225,6 +245,7 @@ public:
     }
 
     bool set_fullscreen(bool enabled) {
+        NativeAutoreleaseScope autorelease_scope;
         if (window_ == nullptr || !SDL_SetWindowFullscreen(window_, enabled)) {
             return false;
         }
@@ -236,6 +257,7 @@ public:
     // Rolls back partial startup and then releases host-owned work before SDL
     // disappears. The pinned Wicked audio hook runs while SDL is alive.
     void shutdown() {
+        NativeAutoreleaseScope autorelease_scope;
         if (shutting_down_) {
             return;
         }
