@@ -8,6 +8,7 @@
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
+#include "wiTrailRenderer.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
 #include "render_scene_textures.h"
@@ -32,6 +33,7 @@
 namespace {
 
 constexpr size_t MAX_INSTANCES = 256;
+constexpr size_t MAX_ELECTRIC_ARCS = 256;
 constexpr unsigned HANDLE_SLOT_BITS = 9;
 constexpr uint64_t HANDLE_SLOT_MASK = (uint64_t(1) << HANDLE_SLOT_BITS) - 1;
 constexpr uint64_t MAX_GENERATION = uint64_t(std::numeric_limits<int64_t>::max()) >> HANDLE_SLOT_BITS;
@@ -61,11 +63,24 @@ struct InstanceSlot {
     bool live = false;
 };
 
+struct ElectricArcSlot {
+    wi::TrailRenderer halo;
+    wi::TrailRenderer core;
+    wi::TrailRenderer branch;
+    uint64_t generation = 0;
+    uint32_t seed = 0;
+    float width = 0.0f;
+    float amplitude = 0.0f;
+    bool visible = false;
+    bool live = false;
+};
+
 struct RenderSceneService {
     std::mutex mutex;
     std::unique_ptr<wi::scene::Scene> scene;
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
+    std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
     std::thread::id owner_thread{};
@@ -77,6 +92,40 @@ struct RenderSceneService {
     float up[3] = {0.0f, 0.0f, -1.0f};
     bool initialized = false;
     bool shutdown_hook_registered = false;
+};
+
+class ElisaRenderPath3D final : public wi::RenderPath3D {
+public:
+    explicit ElisaRenderPath3D(const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs)
+        : arcs_(arcs) {}
+
+    void Render() const override {
+        const bool debug_was_enabled = wi::renderer::IsDebugDrawEnabled();
+        bool has_live_arc = false;
+        if (arcs_ != nullptr) {
+            for (const ElectricArcSlot& arc : *arcs_) {
+                if (arc.live && arc.visible) {
+                    has_live_arc = true;
+                    break;
+                }
+            }
+        }
+        if (has_live_arc && !debug_was_enabled) wi::renderer::SetDebugDrawEnabled(true);
+        if (has_live_arc && arcs_ != nullptr) {
+            for (const ElectricArcSlot& arc : *arcs_) {
+                if (arc.live && arc.visible) {
+                    wi::renderer::DrawTrail(&arc.halo);
+                    wi::renderer::DrawTrail(&arc.core);
+                    if (arc.branch.points.size() >= 2) wi::renderer::DrawTrail(&arc.branch);
+                }
+            }
+        }
+        wi::RenderPath3D::Render();
+        if (has_live_arc && !debug_was_enabled) wi::renderer::SetDebugDrawEnabled(false);
+    }
+
+private:
+    const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs_;
 };
 
 RenderSceneService& service() {
@@ -200,6 +249,17 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
         state.instances[slot].generation == generation;
 }
 
+size_t decode_arc_handle(const RenderSceneService& state, int64_t handle) {
+    if (handle <= 0) return MAX_ELECTRIC_ARCS;
+    const uint64_t value = uint64_t(handle);
+    const uint64_t encoded_slot = value & HANDLE_SLOT_MASK;
+    if (encoded_slot == 0 || encoded_slot > MAX_ELECTRIC_ARCS) return MAX_ELECTRIC_ARCS;
+    const size_t slot = size_t(encoded_slot - 1);
+    const uint64_t generation = value >> HANDLE_SLOT_BITS;
+    const ElectricArcSlot& arc = state.electric_arcs[slot];
+    return generation != 0 && arc.live && arc.generation == generation ? slot : MAX_ELECTRIC_ARCS;
+}
+
 #include "render_scene_animation_internal.inc"
 
 size_t find_free_slot(const RenderSceneService& state) {
@@ -207,6 +267,13 @@ size_t find_free_slot(const RenderSceneService& state) {
         if (!state.instances[index].live) return index;
     }
     return MAX_INSTANCES;
+}
+
+size_t find_free_arc_slot(const RenderSceneService& state) {
+    for (size_t index = 0; index < MAX_ELECTRIC_ARCS; ++index) {
+        if (!state.electric_arcs[index].live) return index;
+    }
+    return MAX_ELECTRIC_ARCS;
 }
 
 void reset_unlocked(RenderSceneService& state) {
@@ -230,6 +297,13 @@ void reset_unlocked(RenderSceneService& state) {
         instance.animation_clips.clear();
         clear_animation_state(instance);
         instance.live = false;
+    }
+    for (ElectricArcSlot& arc : state.electric_arcs) {
+        arc.halo.Clear();
+        arc.core.Clear();
+        arc.branch.Clear();
+        arc.visible = false;
+        arc.live = false;
     }
     state.camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;
@@ -304,7 +378,7 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
 
     try {
         state.scene = std::make_unique<wi::scene::Scene>();
-        state.path = std::make_unique<wi::RenderPath3D>();
+        state.path = std::make_unique<ElisaRenderPath3D>(&state.electric_arcs);
     } catch (...) {
         reset_unlocked(state);
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
@@ -434,6 +508,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
 }
 
 #include "render_scene_mesh_abi.inc"
+#include "render_scene_arcs_abi.inc"
 
 extern "C" int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,
