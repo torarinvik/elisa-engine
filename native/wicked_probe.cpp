@@ -56,6 +56,7 @@
 #include "effect_bridge.h"
 #include "picking_bridge.h"
 #include "selection_outline_bridge.h"
+#include "visibility_lod_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -424,8 +425,6 @@ int main(int argc, char** argv) {
     lamp_transform->translation_local = to_wicked_space(2.0f, 3.0f, -2.0f);
     lamp_transform->UpdateTransform();
     object_transform->translation_local = to_wicked_space(object_x, object_y, object_z);
-    // One maze cell wide, so the player occupies exactly its own cell on the
-    // marker plane instead of hiding neighbouring game objects.
     object_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
     object_transform->UpdateTransform();
     const auto object_position = object_transform->GetPosition();
@@ -471,8 +470,6 @@ int main(int argc, char** argv) {
     if (!probe_audio(manifest)) {
         return 1;
     }
-    // The Tracy client is exercised here; the frame loop below also marks each
-    // frame. See native/tracy_probe.h.
     if (!probe_tracy()) {
         return 1;
     }
@@ -570,6 +567,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_selection_outline(scene, render_path)) {
+        return 1;
+    }
+    if (!probe_visibility_lod(scene, render_path)) {
         return 1;
     }
     scene.Entity_Remove(object);

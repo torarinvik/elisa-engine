@@ -207,6 +207,7 @@ individual feature tasks may advance as soon as their explicit dependencies are 
   Progress: `native/effect_bridge.h` now provides bounded generation-checked emitter/decal handles, validates count/lifetime/color/range policy, updates real Wicked particle and decal components, ticks emitter simulation, and restores component counts on destruction. Elisa event spawning, owner attachment, time scaling, and a rendered combat scene remain.
 - [ ] **R10 · P2 · Visibility, batching, and LOD** — After: R02, A07.
   Connect spatial bounds, culling, instance batches, distance/screen-error LOD, and supported occlusion paths. Done: a measured large scene improves frame cost without missing newly visible objects, breaking animated bounds, or relying on warmed probe-only query state.
+  Progress: `native/visibility_lod_bridge.h` now applies bounded draw-distance, LOD-bias, layer, renderable, and occlusion-culling policy to generation-checked Wicked objects; the native gate verifies update, foreign/stale rejection, and cleanup. Elisa screen-error selection and measured large-scene batching remain.
 - [ ] **R11 · P2 · Terrain and vegetation rendering** — After: W05, A07, R10.
   Add chunked heightfield terrain, material layers, collision/nav alignment, and instanced vegetation with quality limits. Done: a traversable streamed landscape has stable seams, bounded residency, consistent picking, and measured overdraw.
 - [ ] **R12 · P2 · Advanced lighting paths** — After: R05, R07, F08.
