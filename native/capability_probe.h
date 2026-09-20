@@ -60,6 +60,21 @@ inline bool probe_graphics_capabilities() {
             "versioned capability profile")) {
         return false;
     }
+    uint64_t reported_limit = 0;
+    if (!check(elisa_backend_profile_supports_capability(&profile, ELISA_CAPABILITY_RENDERING) &&
+            !elisa_backend_profile_supports_capability(&profile, ELISA_CAPABILITY_AUDIO) &&
+            !elisa_backend_profile_supports_capability(&profile,
+                ELISA_CAPABILITY_RENDERING | ELISA_CAPABILITY_NATIVE_WINDOW),
+            "typed capability queries") ||
+        !check(elisa_backend_profile_supports_format(&profile, ELISA_FORMAT_RGBA8) ==
+            ((resource_formats & ELISA_FORMAT_RGBA8) != 0) &&
+            !elisa_backend_profile_supports_format(&profile, ELISA_FORMAT_RGBA8 | ELISA_FORMAT_BC1),
+            "typed texture format queries") ||
+        !check(elisa_backend_profile_limit(&profile, ELISA_LIMIT_MEMORY_AVAILABLE_BYTES, &reported_limit) &&
+            reported_limit == profile.memory_budget_bytes - profile.memory_usage_bytes &&
+            elisa_backend_profile_limit(&profile, ELISA_LIMIT_STREAMING_WORKERS, &reported_limit) &&
+            reported_limit == profile.streaming_workers,
+            "typed limit queries")) return false;
     std::fprintf(stdout,
         "graphics capabilities: adapter=%s shader_format=%d mesh=%d raytracing=%d sparse=%d viewports=%u memory=%llu/%llu profile=0x%llx optional=0x%llx formats=0x%llx workers=%u/%u\n",
         device->GetAdapterName().c_str(), (int)device->GetShaderFormat(),
@@ -70,19 +85,29 @@ inline bool probe_graphics_capabilities() {
     if (!check(viewport_count > 0, "graphics viewport capability")) {
         return false;
     }
-    if (!check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, false) ==
+    const uint64_t all_formats = ELISA_FORMAT_RGBA8 | ELISA_FORMAT_BC1 | ELISA_FORMAT_R16_FLOAT;
+    if (!check(choose_texture_encoding(all_formats, TextureEncoding::Bc1, false) ==
             TextureEncoding::Bc1, "BC1 format selection") ||
-        !check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, true) ==
+        !check(choose_texture_encoding(all_formats, TextureEncoding::Bc1, true) ==
             TextureEncoding::Rgba8, "normal map BC1 fallback") ||
-        !check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, false, true) ==
+        !check(choose_texture_encoding(all_formats, TextureEncoding::Bc1, false, true) ==
             TextureEncoding::Rgba8, "alpha texture BC1 fallback") ||
-        !check(choose_texture_encoding(resource_formats, TextureEncoding::R16Float, true) ==
+        !check(choose_texture_encoding(all_formats, TextureEncoding::R16Float, true) ==
             TextureEncoding::Rgba8, "normal map scalar fallback") ||
-        !check(choose_texture_encoding(resource_formats & ~ELISA_FORMAT_BC1,
+        !check(choose_texture_encoding(ELISA_FORMAT_RGBA8 | ELISA_FORMAT_R16_FLOAT,
             TextureEncoding::Bc1, false) == TextureEncoding::Rgba8,
             "BC1 unavailable fallback") ||
+        !check(choose_texture_encoding(ELISA_FORMAT_BC1, TextureEncoding::Bc1, false, true) ==
+            TextureEncoding::Unsupported, "unsafe BC1 without RGBA8 rejection") ||
+        !check(choose_texture_encoding(ELISA_FORMAT_BC1, TextureEncoding::Bc1, true) ==
+            TextureEncoding::Unsupported, "normal map rejects without RGBA8 fallback") ||
         !check(choose_texture_encoding(ELISA_FORMAT_R16_FLOAT, TextureEncoding::Bc1, false) ==
-            TextureEncoding::Unsupported, "missing RGBA8 rejection")) {
+            TextureEncoding::Unsupported, "missing RGBA8 rejection") ||
+        !check(choose_texture_encoding(all_formats, TextureEncoding::Unsupported, false) ==
+            TextureEncoding::Unsupported, "invalid requested texture format rejection") ||
+        !check(((resource_formats & ELISA_FORMAT_RGBA8) != 0) ==
+            (choose_texture_encoding(resource_formats, TextureEncoding::Rgba8, false) == TextureEncoding::Rgba8),
+            "queried RGBA8 capability matches policy")) {
         return false;
     }
     // Unsupported optional features remain an explicit fallback decision. A
@@ -93,6 +118,27 @@ inline bool probe_graphics_capabilities() {
     if (!check(!force_fallback || (!raytracing && !sparse), "optional fallback policy")) {
         return false;
     }
+    ElisaBackendProfile future_profile = profile;
+    future_profile.struct_size += sizeof(uint64_t);
+    if (!check(elisa_validate_backend_profile(&future_profile) == ELISA_CAPABILITY_OK,
+            "forward-sized capability profile")) return false;
+    ElisaBackendProfile unknown_capability = profile;
+    unknown_capability.capability_bits |= 1ull << 40;
+    if (!check(elisa_validate_backend_profile(&unknown_capability) == ELISA_CAPABILITY_INVALID_ARGUMENT,
+            "unknown capability bit rejection")) return false;
+    ElisaBackendProfile unknown_format = profile;
+    unknown_format.resource_format_bits |= 1ull << 40;
+    if (!check(elisa_validate_backend_profile(&unknown_format) == ELISA_CAPABILITY_INVALID_ARGUMENT,
+            "unknown format bit rejection")) return false;
+    if (!check(!elisa_backend_profile_supports_capability(&unknown_capability, ELISA_CAPABILITY_RENDERING) &&
+            !elisa_backend_profile_supports_format(&unknown_format, ELISA_FORMAT_RGBA8) &&
+            !elisa_backend_profile_limit(&profile, static_cast<ElisaBackendLimit>(255), &reported_limit),
+            "typed query rejects invalid profile or limit")) return false;
+    ElisaBackendProfile optional_without_renderer = profile;
+    optional_without_renderer.capability_bits &= ~ELISA_CAPABILITY_RENDERING;
+    optional_without_renderer.optional_bits = ELISA_OPTIONAL_MESH_SHADERS;
+    if (!check(elisa_validate_backend_profile(&optional_without_renderer) == ELISA_CAPABILITY_INVALID_ARGUMENT,
+            "renderer feature dependency rejection")) return false;
     ElisaBackendProfile bad_version = profile;
     bad_version.abi_version += 1;
     return check(elisa_validate_backend_profile(&bad_version) == ELISA_CAPABILITY_UNSUPPORTED_VERSION,

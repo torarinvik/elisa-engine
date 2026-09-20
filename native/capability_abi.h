@@ -34,6 +34,16 @@ typedef enum ElisaCapabilityStatus {
     ELISA_CAPABILITY_UNSUPPORTED_VERSION = 2,
 } ElisaCapabilityStatus;
 
+typedef enum ElisaBackendLimit {
+    ELISA_LIMIT_VIEWPORTS = 0,
+    ELISA_LIMIT_WORKERS = 1,
+    ELISA_LIMIT_GRAPHICS_WORKERS = 2,
+    ELISA_LIMIT_STREAMING_WORKERS = 3,
+    ELISA_LIMIT_MEMORY_BUDGET_BYTES = 4,
+    ELISA_LIMIT_MEMORY_USAGE_BYTES = 5,
+    ELISA_LIMIT_MEMORY_AVAILABLE_BYTES = 6,
+} ElisaBackendLimit;
+
 typedef struct ElisaBackendProfile {
     uint32_t struct_size;
     uint32_t abi_version;
@@ -59,7 +69,51 @@ static inline ElisaCapabilityStatus elisa_validate_backend_profile(
     if (profile->abi_version != ELISA_CAPABILITY_ABI_VERSION) {
         return ELISA_CAPABILITY_UNSUPPORTED_VERSION;
     }
+    const uint64_t known_capabilities = ELISA_CAPABILITY_INPUT | ELISA_CAPABILITY_RENDERING |
+        ELISA_CAPABILITY_PHYSICS | ELISA_CAPABILITY_AUDIO | ELISA_CAPABILITY_NATIVE_WINDOW |
+        ELISA_CAPABILITY_ASYNC_UPLOAD | ELISA_CAPABILITY_CALLBACKS | ELISA_CAPABILITY_ASSET_LOADING;
+    const uint64_t known_optional = ELISA_OPTIONAL_RAYTRACING | ELISA_OPTIONAL_SPARSE_TEXTURES |
+        ELISA_OPTIONAL_MESH_SHADERS;
+    const uint64_t known_formats = ELISA_FORMAT_RGBA8 | ELISA_FORMAT_BC1 | ELISA_FORMAT_R16_FLOAT;
+    if ((profile->capability_bits & ~known_capabilities) != 0 ||
+        (profile->optional_bits & ~known_optional) != 0 ||
+        (profile->resource_format_bits & ~known_formats) != 0 ||
+        (profile->optional_bits != 0 && (profile->capability_bits & ELISA_CAPABILITY_RENDERING) == 0) ||
+        (profile->resource_format_bits != 0 && (profile->capability_bits & ELISA_CAPABILITY_RENDERING) == 0)) {
+        return ELISA_CAPABILITY_INVALID_ARGUMENT;
+    }
     return ELISA_CAPABILITY_OK;
+}
+
+static inline int elisa_backend_profile_supports_capability(
+    const ElisaBackendProfile* profile, uint64_t capability) {
+    if (elisa_validate_backend_profile(profile) != ELISA_CAPABILITY_OK || capability == 0 ||
+        (capability & (capability - 1)) != 0) return 0;
+    return (profile->capability_bits & capability) != 0;
+}
+
+static inline int elisa_backend_profile_supports_format(
+    const ElisaBackendProfile* profile, uint64_t format) {
+    if (elisa_validate_backend_profile(profile) != ELISA_CAPABILITY_OK || format == 0 ||
+        (format & (format - 1)) != 0) return 0;
+    return (profile->resource_format_bits & format) != 0;
+}
+
+static inline int elisa_backend_profile_limit(const ElisaBackendProfile* profile,
+    ElisaBackendLimit limit, uint64_t* value) {
+    if (elisa_validate_backend_profile(profile) != ELISA_CAPABILITY_OK || value == NULL) return 0;
+    switch (limit) {
+        case ELISA_LIMIT_VIEWPORTS: *value = profile->max_viewports; return 1;
+        case ELISA_LIMIT_WORKERS: *value = profile->max_workers; return 1;
+        case ELISA_LIMIT_GRAPHICS_WORKERS: *value = profile->graphics_workers; return 1;
+        case ELISA_LIMIT_STREAMING_WORKERS: *value = profile->streaming_workers; return 1;
+        case ELISA_LIMIT_MEMORY_BUDGET_BYTES: *value = profile->memory_budget_bytes; return 1;
+        case ELISA_LIMIT_MEMORY_USAGE_BYTES: *value = profile->memory_usage_bytes; return 1;
+        case ELISA_LIMIT_MEMORY_AVAILABLE_BYTES:
+            *value = profile->memory_budget_bytes - profile->memory_usage_bytes;
+            return 1;
+        default: return 0;
+    }
 }
 
 #ifdef __cplusplus

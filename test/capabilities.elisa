@@ -12,6 +12,24 @@ def main() -> i32:
     return 19 if negotiate_limit(headless, BackendLimit.TextureDimension, 2, false) != RequirementState.Unavailable
     return 20 if negotiate_limit(headless, BackendLimit.TextureDimension, 2, true) != RequirementState.Fallback
     return 21 if negotiate_limit(headless, BackendLimit.TextureDimension, 0, true) != RequirementState.Invalid
+    return 25 if negotiate_limit(headless, BackendLimit.MemoryBytes, 58720256, false) != RequirementState.Ready
+    return 26 if negotiate_limit(headless, BackendLimit.MemoryBytes, 58720257, true) != RequirementState.Fallback
+    invalid_memory: BackendProfile = BackendProfile{
+        kind: headless.kind,
+        capabilities: headless.capabilities,
+        limits: BackendLimits{
+            max_entities: headless.limits.max_entities,
+            max_texture_dimension: headless.limits.max_texture_dimension,
+            max_upload_bytes: headless.limits.max_upload_bytes,
+            workers: headless.limits.workers,
+            memory_budget_bytes: headless.limits.memory_budget_bytes,
+            memory_usage_bytes: headless.limits.memory_budget_bytes + 1,
+        },
+        texture_formats: headless.texture_formats,
+        service_version: headless.service_version,
+    }
+    return 27 if backend_profile_valid(invalid_memory)
+    return 28 if negotiate_limit(invalid_memory, BackendLimit.MemoryBytes, 1, true) != RequirementState.Invalid
 
     required: BackendFeature[8] = [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Physics, BackendFeature.Audio, BackendFeature.NativeWindow, BackendFeature.AsyncUpload, BackendFeature.Callbacks, BackendFeature.AssetLoading]
     return 6 if not backend_requirements_met(headless, required, 1)
@@ -30,7 +48,15 @@ def main() -> i32:
             callbacks: true,
             asset_loading: true,
         },
-        limits: BackendLimits{max_entities: 4096, max_texture_dimension: 8192, max_upload_bytes: 16777216, workers: 4},
+        limits: BackendLimits{
+            max_entities: 4096,
+            max_texture_dimension: 8192,
+            max_upload_bytes: 16777216,
+            workers: 4,
+            memory_budget_bytes: 268435456,
+            memory_usage_bytes: 67108864,
+        },
+        texture_formats: BackendTextureFormats{rgba8: true, bc1: true, r16_float: true},
         service_version: 1,
     }
     return 9 if not backend_requirements_met(native, required, 3)
@@ -45,4 +71,37 @@ def main() -> i32:
     return 22 if negotiate_limit(native, BackendLimit.UploadBytes, 16777216, false) != RequirementState.Ready
     return 23 if negotiate_limit(native, BackendLimit.UploadBytes, 16777217, false) != RequirementState.Unavailable
     return 24 if negotiate_limit(native, BackendLimit.UploadBytes, 16777217, true) != RequirementState.Fallback
+    decision: mutable TextureFormatDecision = negotiate_texture_format(native, BackendTextureFormat.Bc1, false, false, false)
+    return 29 if decision.state != RequirementState.Ready or decision.format != BackendTextureFormat.Bc1
+    decision <- negotiate_texture_format(native, BackendTextureFormat.Bc1, false, true, true)
+    return 30 if decision.state != RequirementState.Fallback or decision.format != BackendTextureFormat.Rgba8
+    decision <- negotiate_texture_format(native, BackendTextureFormat.Bc1, false, true, false)
+    return 31 if decision.state != RequirementState.Unavailable or decision.format != BackendTextureFormat.Unsupported
+    decision <- negotiate_texture_format(native, BackendTextureFormat.Bc1, true, false, true)
+    return 32 if decision.state != RequirementState.Fallback or decision.format != BackendTextureFormat.Rgba8
+    decision <- negotiate_texture_format(native, BackendTextureFormat.R16Float, true, false, true)
+    return 33 if decision.state != RequirementState.Fallback or decision.format != BackendTextureFormat.Rgba8
+    decision <- negotiate_texture_format(native, BackendTextureFormat.R16Float, false, false, false)
+    return 34 if decision.state != RequirementState.Ready or decision.format != BackendTextureFormat.R16Float
+    no_rgba: BackendProfile = BackendProfile{
+        kind: native.kind,
+        capabilities: native.capabilities,
+        limits: native.limits,
+        texture_formats: BackendTextureFormats{rgba8: false, bc1: true, r16_float: true},
+        service_version: native.service_version,
+    }
+    decision <- negotiate_texture_format(no_rgba, BackendTextureFormat.Bc1, true, false, true)
+    return 35 if decision.state != RequirementState.Unavailable or decision.format != BackendTextureFormat.Unsupported
+    decision <- negotiate_texture_format(native, BackendTextureFormat.Unsupported, false, false, true)
+    return 36 if decision.state != RequirementState.Invalid
+    decision <- negotiate_texture_format(native, BackendTextureFormat.Rgba8, false, false, false)
+    return 37 if decision.state != RequirementState.Ready or decision.format != BackendTextureFormat.Rgba8
+    invalid_formats: BackendProfile = BackendProfile{
+        kind: headless.kind,
+        capabilities: headless.capabilities,
+        limits: headless.limits,
+        texture_formats: BackendTextureFormats{rgba8: true, bc1: false, r16_float: false},
+        service_version: headless.service_version,
+    }
+    return 38 if backend_profile_valid(invalid_formats)
     0

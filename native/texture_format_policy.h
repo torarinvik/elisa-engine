@@ -10,6 +10,7 @@ enum class TextureEncoding : uint8_t { Rgba8, Bc1, R16Float, Unsupported };
 
 inline TextureEncoding choose_texture_encoding(uint64_t supported, TextureEncoding requested,
     bool normal_map, bool has_alpha = false) {
+    if (requested == TextureEncoding::Unsupported) return TextureEncoding::Unsupported;
     if (normal_map) {
         return (supported & ELISA_FORMAT_RGBA8) != 0 ? TextureEncoding::Rgba8 : TextureEncoding::Unsupported;
     }

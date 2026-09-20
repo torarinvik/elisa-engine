@@ -27,6 +27,13 @@ module Capabilities:
             TextureDimension
             UploadBytes
             Workers
+            MemoryBytes
+
+        enum BackendTextureFormat:
+            Rgba8
+            Bc1
+            R16Float
+            Unsupported
 
         enum RequirementState:
             Ready
@@ -49,11 +56,23 @@ module Capabilities:
             max_texture_dimension: i64
             max_upload_bytes: i64
             workers: i64
+            memory_budget_bytes: i64
+            memory_usage_bytes: i64
+
+        struct BackendTextureFormats:
+            rgba8: bool
+            bc1: bool
+            r16_float: bool
+
+        struct TextureFormatDecision:
+            state: RequirementState
+            format: BackendTextureFormat
 
         struct BackendProfile:
             kind: BackendKind
             capabilities: BackendCapabilities
             limits: BackendLimits
+            texture_formats: BackendTextureFormats
             service_version: i64
 
         def backend_supports(profile: BackendProfile, feature: BackendFeature) -> bool:
@@ -85,6 +104,8 @@ module Capabilities:
                     profile.limits.max_upload_bytes
                 BackendLimit.Workers:
                     profile.limits.workers
+                BackendLimit.MemoryBytes:
+                    profile.limits.memory_budget_bytes - profile.limits.memory_usage_bytes
 
         def backend_limit_supports(profile: BackendProfile, limit: BackendLimit, requested: i64) -> bool:
             requested > 0 and backend_limit(profile, limit) >= requested
@@ -95,7 +116,45 @@ module Capabilities:
             texture_ok: bool = profile.limits.max_texture_dimension > 0
             upload_ok: bool = profile.limits.max_upload_bytes > 0
             workers_ok: bool = profile.limits.workers > 0
-            version_ok and entities_ok and texture_ok and upload_ok and workers_ok
+            memory_ok: bool = profile.limits.memory_budget_bytes > 0 and profile.limits.memory_usage_bytes >= 0 and profile.limits.memory_usage_bytes <= profile.limits.memory_budget_bytes
+            formats_ok: bool = profile.capabilities.rendering or (not profile.texture_formats.rgba8 and not profile.texture_formats.bc1 and not profile.texture_formats.r16_float)
+            version_ok and entities_ok and texture_ok and upload_ok and workers_ok and memory_ok and formats_ok
+
+        def backend_format_supported(profile: BackendProfile, format: BackendTextureFormat) -> bool:
+            match format:
+                BackendTextureFormat.Rgba8:
+                    profile.texture_formats.rgba8
+                BackendTextureFormat.Bc1:
+                    profile.texture_formats.bc1
+                BackendTextureFormat.R16Float:
+                    profile.texture_formats.r16_float
+                BackendTextureFormat.Unsupported:
+                    false
+
+        def negotiate_texture_format(profile: BackendProfile, requested: BackendTextureFormat,
+            normal_map: bool, has_alpha: bool, allow_fallback: bool) -> TextureFormatDecision:
+            invalid: TextureFormatDecision = TextureFormatDecision{
+                state: RequirementState.Invalid,
+                format: BackendTextureFormat.Unsupported,
+            }
+            unavailable: TextureFormatDecision = TextureFormatDecision{
+                state: RequirementState.Unavailable,
+                format: BackendTextureFormat.Unsupported,
+            }
+            return invalid if not backend_profile_valid(profile) or requested == BackendTextureFormat.Unsupported
+            rgba8: bool = backend_format_supported(profile, BackendTextureFormat.Rgba8)
+            safe_fallback: TextureFormatDecision = TextureFormatDecision{
+                state: RequirementState.Fallback,
+                format: BackendTextureFormat.Rgba8,
+            }
+            if normal_map:
+                return TextureFormatDecision{state: RequirementState.Ready, format: BackendTextureFormat.Rgba8} if requested == BackendTextureFormat.Rgba8 and rgba8
+                return safe_fallback if allow_fallback and rgba8
+                return unavailable
+            requested_safe: bool = backend_format_supported(profile, requested) and not (requested == BackendTextureFormat.Bc1 and has_alpha)
+            return TextureFormatDecision{state: RequirementState.Ready, format: requested} if requested_safe
+            return safe_fallback if allow_fallback and rgba8
+            unavailable
 
         # Limits use the same explicit policy as feature bits: callers can
         # choose a bounded fallback instead of silently accepting a smaller
@@ -145,6 +204,14 @@ module Capabilities:
                     callbacks: false,
                     asset_loading: false,
                 },
-                limits: BackendLimits{max_entities: 256, max_texture_dimension: 1, max_upload_bytes: 1048576, workers: 1},
+                limits: BackendLimits{
+                    max_entities: 256,
+                    max_texture_dimension: 1,
+                    max_upload_bytes: 1048576,
+                    workers: 1,
+                    memory_budget_bytes: 67108864,
+                    memory_usage_bytes: 8388608,
+                },
+                texture_formats: BackendTextureFormats{rgba8: false, bc1: false, r16_float: false},
                 service_version: Bounds::MIN_SERVICE_VERSION,
             }
