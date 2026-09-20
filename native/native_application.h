@@ -121,7 +121,7 @@ public:
         startup_in_progress_ = true;
         close_requested_ = false;
         window_state_ = WindowState{};
-        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD)) {
             std::fprintf(stderr, "native application: SDL3 initialization failed: %s\n", SDL_GetError());
             SDL_Quit();
             shutdown();

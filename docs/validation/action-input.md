@@ -25,8 +25,12 @@ strongest remaining binding value, and frame boundaries clear edges while
 preserving held values. The fixture `test/action_input.elisa` covers this in
 both release orders and across device disconnects, alongside analog dead-zone
 filtering, single-binding pressed/held/released transitions, context isolation,
-chord activation, and disconnect cleanup. The shared gate compiles and runs
-this fixture with the stage1 compiler.
+chord activation, disconnect cleanup, and an analog value that falls below a
+binding's dead zone without reaching zero. The same fixture checks public
+engine key/button/axis codes, while
+`test/application_gamepad_codes.cpp` checks SDL code mapping and normalized
+axis/token conversion. The shared gate compiles and runs the Elisa fixtures
+with the stage1 compiler.
 
 For the checked-binding change, `elisac-stage1 -emit exe -o
 build/action-input-test test/action_input.elisa && build/action-input-test`

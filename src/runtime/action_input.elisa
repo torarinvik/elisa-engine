@@ -177,12 +177,9 @@ module ActionInput:
                     slot: usize = state_slot(input, binding.action)
                     if slot < Limits::MAX_ACTIONS:
                         magnitude: f32 = event.value if ElisaMath::fabsf(event.value) >= binding.deadzone else 0.0
-                        if ElisaMath::fabsf(magnitude) > 0.0 or event.released:
-                            input.binding_values[index] <- 0.0 if event.released
-                            input.binding_values[index] <- magnitude if not event.released
-                            input.binding_down[index] <- false if event.released
-                            input.binding_down[index] <- true if event.pressed and not event.released
-                            refresh_action(input, slot)
+                        input.binding_values[index] <- magnitude if not event.released else 0.0
+                        input.binding_down[index] <- event.pressed and not event.released and ElisaMath::fabsf(magnitude) > 0.0
+                        refresh_action(input, slot)
 
         def action_down(input: Input&, action: i64) -> bool:
             slot: usize = state_slot(input, action)

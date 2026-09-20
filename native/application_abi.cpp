@@ -1,8 +1,11 @@
 #include "application_abi.h"
+#include "application_input_codes.h"
 #include "backend_capability_query.h"
 #include "native_application.h"
 #include "wiHelper.h"
 #include "wiRenderer.h"
+
+#include <SDL3/SDL_gamepad.h>
 
 #include <cstddef>
 #include <chrono>
@@ -18,6 +21,7 @@
 namespace {
 
 constexpr size_t INPUT_EVENT_CAPACITY = 512;
+constexpr size_t GAMEPAD_CAPACITY = 4;
 
 struct QueuedInputEvent {
     int32_t kind = 0;
@@ -29,6 +33,11 @@ struct QueuedInputEvent {
     int32_t chord_down = 0;
 };
 
+struct OpenGamepad {
+    SDL_JoystickID id = 0;
+    SDL_Gamepad* handle = nullptr;
+};
+
 struct ApplicationService {
     std::mutex mutex;
     probe::NativeApplication host;
@@ -38,6 +47,7 @@ struct ApplicationService {
     uint64_t elapsed_nanos = 0;
     uint32_t pending_events = 0;
     std::array<QueuedInputEvent, INPUT_EVENT_CAPACITY> input_events{};
+    std::array<OpenGamepad, GAMEPAD_CAPACITY> gamepads{};
     size_t input_event_count = 0;
     size_t input_event_read = 0;
     bool input_overflow = false;
@@ -47,6 +57,21 @@ struct ApplicationService {
     bool initialized = false;
 };
 
+size_t open_gamepad_count(const ApplicationService& service) {
+    size_t count = 0;
+    for (const OpenGamepad& gamepad : service.gamepads) {
+        if (gamepad.handle != nullptr) ++count;
+    }
+    return count;
+}
+
+bool has_gamepad(const ApplicationService& service, SDL_JoystickID id) {
+    for (const OpenGamepad& gamepad : service.gamepads) {
+        if (gamepad.handle != nullptr && gamepad.id == id) return true;
+    }
+    return false;
+}
+
 void queue_input_event(ApplicationService& service, int32_t kind, int32_t device,
     int64_t code, float value, bool pressed, bool released) {
     if (service.input_event_count == INPUT_EVENT_CAPACITY) {
@@ -55,6 +80,34 @@ void queue_input_event(ApplicationService& service, int32_t kind, int32_t device
     }
     service.input_events[service.input_event_count++] = QueuedInputEvent{
         kind, device, code, value, pressed ? 1 : 0, released ? 1 : 0, 0};
+}
+
+void open_gamepad(ApplicationService& service, SDL_JoystickID id) {
+    if (has_gamepad(service, id)) return;
+    const size_t count_before = open_gamepad_count(service);
+    for (OpenGamepad& slot : service.gamepads) {
+        if (slot.handle != nullptr) continue;
+        SDL_Gamepad* handle = SDL_OpenGamepad(id);
+        if (handle == nullptr) return;
+        slot = OpenGamepad{id, handle};
+        if (count_before == 0) {
+            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, 2,
+                0, 1.0f, true, false);
+        }
+        return;
+    }
+}
+
+void close_gamepad(ApplicationService& service, SDL_JoystickID id) {
+    for (OpenGamepad& slot : service.gamepads) {
+        if (slot.handle == nullptr || slot.id != id) continue;
+        SDL_CloseGamepad(slot.handle);
+        slot = OpenGamepad{};
+        const size_t remaining = open_gamepad_count(service);
+        queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_DISCONNECTED, 2,
+            0, 0.0f, remaining != 0, true);
+        return;
+    }
 }
 
 ApplicationService& application_service() {
@@ -211,12 +264,16 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, -1, 0, 0.0f, false, true);
             break;
         case SDL_EVENT_KEY_DOWN:
-            queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, 0,
-                static_cast<int64_t>(event.key.key), 1.0f, true, false);
+            if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
+                queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, 0,
+                    code, 1.0f, true, false);
+            }
             break;
         case SDL_EVENT_KEY_UP:
-            queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, 0,
-                static_cast<int64_t>(event.key.key), 0.0f, false, true);
+            if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
+                queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, 0,
+                    code, 0.0f, false, true);
+            }
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, 1,
@@ -226,6 +283,39 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, 1,
                 static_cast<int64_t>(event.button.button), 0.0f, false, true);
             break;
+        case SDL_EVENT_GAMEPAD_ADDED:
+            open_gamepad(service, event.gdevice.which);
+            break;
+        case SDL_EVENT_GAMEPAD_REMOVED:
+            close_gamepad(service, event.gdevice.which);
+            break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        case SDL_EVENT_GAMEPAD_BUTTON_UP: {
+            if (!has_gamepad(service, event.gbutton.which)) break;
+            const int32_t code = probe::gamepad_button_code(
+                static_cast<SDL_GamepadButton>(event.gbutton.button));
+            if (code == 0) break;
+            const bool pressed = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_BUTTON, 2,
+                code, pressed ? 1.0f : 0.0f, pressed, !pressed);
+            break;
+        }
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+            if (!has_gamepad(service, event.gaxis.which)) break;
+            const probe::GamepadAxisInput axis = probe::gamepad_axis_input(
+                static_cast<SDL_GamepadAxis>(event.gaxis.axis), event.gaxis.value);
+            if (axis.negative_code != 0) {
+                queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, 2,
+                    axis.negative_code, axis.negative_value, axis.negative_value > 0.0f,
+                    axis.negative_value == 0.0f);
+            }
+            if (axis.positive_code != 0) {
+                queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, 2,
+                    axis.positive_code, axis.positive_value, axis.positive_value > 0.0f,
+                    axis.positive_value == 0.0f);
+            }
+            break;
+        }
         case SDL_EVENT_WINDOW_MINIMIZED:
             service.pending_events |= ELISA_APPLICATION_EVENT_MINIMIZED;
             queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, -1, 0, 0.0f, false, true);
@@ -295,6 +385,7 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
     int32_t kind = 0;
     int32_t device = 0;
     int64_t code = 0;
+    float value = 0.0f;
     bool pressed = false;
     bool released = false;
     if (service.input_event_read < service.input_event_count) {
@@ -302,6 +393,7 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
         kind = event.kind;
         device = event.device;
         code = event.code;
+        value = event.value;
         pressed = event.pressed != 0;
         released = event.released != 0;
     } else if (service.input_overflow && !service.input_overflow_reported) {
@@ -314,12 +406,7 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
         service.input_overflow_reported = false;
         return 0;
     }
-    const uint64_t packed = uint64_t(kind & 0x7) |
-        (uint64_t(device & 0x3) << 3) |
-        (uint64_t(uint32_t(code)) << 5) |
-        (pressed ? uint64_t(1) << 37 : 0) |
-        (released ? uint64_t(1) << 38 : 0);
-    return int64_t(packed);
+    return probe::pack_input_event_token(kind, device, code, value, pressed, released);
 }
 
 extern "C" int32_t elisa_application_v1_frame_info(
@@ -372,6 +459,10 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     std::lock_guard<std::mutex> guard(service.mutex);
     if (!service.initialized) return ELISA_APPLICATION_OK;
     if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    for (OpenGamepad& gamepad : service.gamepads) {
+        if (gamepad.handle != nullptr) SDL_CloseGamepad(gamepad.handle);
+        gamepad = OpenGamepad{};
+    }
     // A runtime service may own the active path. Detach it before ordered
     // shutdown hooks release its scene and path objects.
     service.host.wicked().ActivatePath(nullptr);
