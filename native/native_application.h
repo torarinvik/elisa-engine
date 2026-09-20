@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -78,11 +79,18 @@ public:
     NativeApplication& operator=(const NativeApplication&) = delete;
 
     bool initialize(const Config& config) {
-        if (initialized_) {
-            return false;
-        }
+        if (initialized_ || sdl_initialized_ || window_ != nullptr || application_ != nullptr ||
+            config.title == nullptr || config.width <= 0 || config.height <= 0) return false;
+        close_requested_ = false;
+        window_state_ = WindowState{};
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
             std::fprintf(stderr, "native application: SDL3 initialization failed: %s\n", SDL_GetError());
+            SDL_Quit();
+            return false;
+        }
+        sdl_initialized_ = true;
+        if (consume_startup_fault(StartupFault::AfterSDL)) {
+            shutdown();
             return false;
         }
         Uint64 flags = SDL_WINDOW_METAL;
@@ -92,7 +100,11 @@ public:
         window_ = SDL_CreateWindow(config.title, config.width, config.height, flags);
         if (window_ == nullptr) {
             std::fprintf(stderr, "native application: window creation failed: %s\n", SDL_GetError());
-            SDL_Quit();
+            shutdown();
+            return false;
+        }
+        if (consume_startup_fault(StartupFault::AfterWindow)) {
+            shutdown();
             return false;
         }
         const SDL_PropertiesID properties = SDL_GetWindowProperties(window_);
@@ -100,17 +112,30 @@ public:
             properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
         if (cocoa_window == nullptr) {
             std::fprintf(stderr, "native application: Cocoa window handle missing\n");
-            SDL_DestroyWindow(window_);
-            window_ = nullptr;
-            SDL_Quit();
+            shutdown();
             return false;
         }
-        application_ = std::make_unique<wi::Application>();
-        application_->SetWindow(reinterpret_cast<wi::platform::window_type>(cocoa_window));
-        application_->Initialize();
-        wi::initializer::WaitForInitializationsToFinish();
+        try {
+            application_ = std::make_unique<wi::Application>();
+            application_->SetWindow(reinterpret_cast<wi::platform::window_type>(cocoa_window));
+            wicked_initialize_started_ = true;
+            application_->Initialize();
+            wi::initializer::WaitForInitializationsToFinish();
+        } catch (...) {
+            std::fprintf(stderr, "native application: Wicked initialization threw\n");
+            shutdown();
+            return false;
+        }
+        if (wi::graphics::GetDevice() == nullptr) {
+            std::fprintf(stderr, "native application: Wicked graphics device was not created\n");
+            shutdown();
+            return false;
+        }
+        if (consume_startup_fault(StartupFault::AfterWicked)) {
+            shutdown();
+            return false;
+        }
         initialized_ = true;
-        close_requested_ = false;
         accepting_callbacks_ = true;
         refresh_window_state();
         return true;
@@ -170,9 +195,8 @@ public:
         return true;
     }
 
-    // Releases host-owned work before SDL disappears. The pinned Wicked
-    // audio hook is called while SDL is alive; process-wide worker accounting
-    // remains a separate engine-level contract.
+    // Rolls back partial startup and then releases host-owned work before SDL
+    // disappears. The pinned Wicked audio hook runs while SDL is alive.
     void shutdown() {
         if (shutting_down_) {
             return;
@@ -187,10 +211,15 @@ public:
             try { (*hook)(); } catch (...) { std::fprintf(stderr, "native application: shutdown hook failed\n"); }
         }
         shutdown_hooks_.clear();
-        if (!initialized_) {
+        if (!sdl_initialized_ && !wicked_initialize_started_ && window_ == nullptr &&
+            application_ == nullptr) {
             close_requested_ = true;
             shutting_down_ = false;
             return;
+        }
+        if (wicked_initialize_started_) {
+            wi::audio::Shutdown();
+            wicked_initialize_started_ = false;
         }
         if (wi::graphics::GetDevice() != nullptr) {
             wi::graphics::GetDevice()->WaitForGPU();
@@ -198,14 +227,16 @@ public:
         if (application_ != nullptr) {
             application_->window = nullptr;
             application_.reset();
-            wi::graphics::GetDevice() = nullptr;
         }
-        wi::audio::Shutdown();
+        wi::graphics::GetDevice() = nullptr;
         if (window_ != nullptr) {
             SDL_DestroyWindow(window_);
             window_ = nullptr;
         }
-        SDL_Quit();
+        if (sdl_initialized_) {
+            SDL_Quit();
+            sdl_initialized_ = false;
+        }
         initialized_ = false;
         close_requested_ = true;
         shutting_down_ = false;
@@ -236,6 +267,15 @@ public:
     }
 
 private:
+    enum class StartupFault : uint8_t { None, AfterSDL, AfterWindow, AfterWicked };
+    friend bool probe_partial_startup_failure();
+
+    bool consume_startup_fault(StartupFault point) {
+        if (startup_fault_ != point) return false;
+        startup_fault_ = StartupFault::None;
+        return true;
+    }
+
     bool begin_callback() {
         std::lock_guard<std::mutex> guard(callback_lock_);
         if (!accepting_callbacks_) return false;
@@ -305,6 +345,8 @@ private:
     FixedStepPacer pacer_;
     WindowState window_state_;
     bool initialized_ = false;
+    bool sdl_initialized_ = false;
+    bool wicked_initialize_started_ = false;
     bool close_requested_ = false;
     bool shutting_down_ = false;
     bool accepting_callbacks_ = false;
@@ -312,6 +354,7 @@ private:
     std::mutex callback_lock_;
     std::condition_variable callback_drained_;
     std::vector<std::function<void()>> shutdown_hooks_;
+    StartupFault startup_fault_ = StartupFault::None;
 };
 
 } // namespace probe
