@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -63,6 +64,8 @@ def main() -> int:
     ])
     if status != 0:
         return status
+    normal_map = build / "cooked/render-scene-normal.png"
+    shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")

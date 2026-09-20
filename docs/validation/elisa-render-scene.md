@@ -33,11 +33,12 @@ native scene resources automatically.
 packed surface, or emissive image to one live instance. The engine canonicalizes
 the path beneath `ELISA_PROJECT_ROOT`, loads it through Wicked's resource
 manager with block compression, and requests Wicked's normal-map import format
-for the normal slot. The API does not change the material shading model or
-discover companion maps from FBX metadata; an Elisa project currently selects
-each map explicitly. The cooked mesh format retains UVs but has no tangent
-stream yet, so a loaded normal map is not ready for reliable shading until the
-engine cooks or generates tangents.
+for the normal slot. Wicked's surface channels are occlusion, roughness,
+metalness, and reflectance in RGBA order. The API does not change the material
+shading model or discover companion maps from FBX metadata; an Elisa project
+currently selects each map explicitly. The cooked mesh format retains UVs but
+has no tangent stream yet, so a loaded normal map is not ready for reliable
+shading until the engine cooks or generates tangents.
 
 `src/runtime/world_rendering.elisa` adds an Elisa-owned `WorldRendering`
 binding table and extractor. Callers bind one or more stable render IDs and

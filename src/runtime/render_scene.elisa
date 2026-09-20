@@ -15,6 +15,12 @@ module RenderScene:
             GENERATION_EXHAUSTED: i32 = -7
             ASSET_LOAD_FAILED: i32 = -9
 
+        const module NativeTextureSlot:
+            BASE_COLOR: i32 = 0
+            NORMAL: i32 = 1
+            SURFACE: i32 = 2
+            EMISSIVE: i32 = 3
+
         @callconv(c)
         extern elisa_render_scene_abi_version() -> u32
 
@@ -189,12 +195,17 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
 
-        # Paths are project-relative. Surface expects packed roughness and
-        # metalness channels; Normal selects Wicked's normal-map import path.
+        # Paths are project-relative. Surface uses Wicked's RGBA packed surface
+        # channels; Normal selects Wicked's normal-map import path.
         # This assigns maps without changing the material's shading model.
         def set_texture(handle: InstanceHandle, slot: TextureSlot,
             asset_path: cstr) -> void error[RenderSceneError]:
-            slot_code: i32 = 0 if slot == TextureSlot.BaseColor else (1 if slot == TextureSlot.Normal else (2 if slot == TextureSlot.Surface else 3))
+            slot_code: i32 =
+                match slot:
+                    TextureSlot.BaseColor: NativeTextureSlot::BASE_COLOR
+                    TextureSlot.Normal: NativeTextureSlot::NORMAL
+                    TextureSlot.Surface: NativeTextureSlot::SURFACE
+                    TextureSlot.Emissive: NativeTextureSlot::EMISSIVE
             try check_status(elisa_render_scene_v1_set_texture(handle.native_value, slot_code, asset_path))
 
         # Emission intensity is HDR and can exceed one; the render path's bloom
