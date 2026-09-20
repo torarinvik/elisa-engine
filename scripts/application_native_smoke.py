@@ -46,7 +46,8 @@ def main() -> int:
                 "application": settings,
             }
             (project / "elisa.project.json").write_text(json.dumps(manifest), encoding="utf-8")
-            command = [sys.executable, str(runner), "run", "--project", str(project)]
+            command = [sys.executable, str(runner), "run", "--project", str(project),
+                "--native-test-probes"]
             status = subprocess.run(command, check=False).returncode
             if status != 0:
                 print(f"Native application smoke {name} failed with status {status}.", file=sys.stderr)

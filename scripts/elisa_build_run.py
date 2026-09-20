@@ -154,6 +154,8 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         command.add_argument("--brew-lib-dir", help="override dependency library directory")
         command.add_argument("--compiler", help="Elisa compiler (or ELISA_COMPILER_BIN)")
         command.add_argument("--cxx", help="native C++ compiler (or CXX)")
+        command.add_argument("--native-test-probes", action="store_true",
+            help="compile test-only native adapter fault-injection probes")
     return parser.parse_args(argv)
 
 
@@ -325,7 +327,7 @@ def audit_archive(archive: Path) -> None:
 
 
 def native_link_command(cxx: str, archive: Path, staged_output: Path,
-    build_dir: Path, paths: dict[str, Path]) -> list[str]:
+    build_dir: Path, paths: dict[str, Path], native_test_probes: bool = False) -> list[str]:
     wicked_source = paths["wicked_source"]
     libraries = paths["libraries"]
     utility = libraries / "Utility"
@@ -358,6 +360,8 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-lfreetype", "-lharfbuzz", "-lzstd", "-Wl,-rpath,@executable_path",
         "-Wl,-rpath," + str(wicked_source),
     ]
+    if native_test_probes:
+        command.extend(["-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1"])
     for framework in FRAMEWORKS:
         command.extend(["-framework", framework])
     command.extend(["-o", str(staged_output)])
@@ -388,7 +392,8 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
         if status != 0:
             return status, None, None
         audit_archive(archive)
-        command = native_link_command(cxx, archive, staged_output, build_dir, paths)
+        command = native_link_command(cxx, archive, staged_output, build_dir, paths,
+            args.native_test_probes)
         status = run_command(command, cwd=project)
         if status != 0:
             return status, None, None

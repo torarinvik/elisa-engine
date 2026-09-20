@@ -12,6 +12,9 @@ namespace {
 struct AudioService {
     probe::audio::Service service;
     bool initialized = false;
+#if defined(ELISA_AUDIO_TEST_PROBE)
+    bool fail_next_initialize_after_open = false;
+#endif
 };
 
 AudioService& audio_service() {
@@ -40,6 +43,13 @@ int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
         ? state.service.initialize_null(sample_rate, channels)
         : state.service.initialize_default(sample_rate, channels);
     if (!initialized) return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+#if defined(ELISA_AUDIO_TEST_PROBE)
+    if (state.fail_next_initialize_after_open) {
+        state.fail_next_initialize_after_open = false;
+        state.service.shutdown();
+        return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+    }
+#endif
     state.initialized = true;
     return ELISA_AUDIO_OK;
 }
@@ -65,6 +75,17 @@ extern "C" int32_t elisa_audio_v1_initialize_silent(uint32_t sample_rate, uint32
 extern "C" int32_t elisa_audio_v1_initialize_default(uint32_t sample_rate, uint32_t channels) {
     return initialize_audio(sample_rate, channels, false);
 }
+
+#if defined(ELISA_AUDIO_TEST_PROBE)
+extern "C" int32_t elisa_audio_v1_test_fail_next_initialize_after_open(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    AudioService& state = audio_service();
+    if (state.initialized || state.fail_next_initialize_after_open) return ELISA_AUDIO_INVALID_STATE;
+    state.fail_next_initialize_after_open = true;
+    return ELISA_AUDIO_OK;
+}
+#endif
 
 extern "C" int32_t elisa_audio_v1_decode_file(
     const char* path, uint32_t* slot, uint32_t* generation) {
