@@ -8,6 +8,8 @@
 // validated normalized counts. Creating renderer meshes from that data is a
 // later step, so nothing here touches the GPU.
 #include <cstdio>
+#include <cmath>
+#include <cstring>
 #include <string>
 
 #ifndef CGLTF_IMPLEMENTATION
@@ -31,6 +33,11 @@ struct AssetSummary {
     int animation_channels = 0;
     int morph_targets = 0;
     int unsupported_extensions = 0;
+    float first_metallic = 0.0f;
+    float first_roughness = 1.0f;
+    float first_alpha_cutoff = 0.5f;
+    int first_alpha_mode = -1;
+    bool first_double_sided = false;
     bool ok = false;
 };
 
@@ -49,11 +56,32 @@ inline AssetSummary import_gltf_triangles(const std::string& path) {
         summary.lights = static_cast<int>(data->lights_count);
         summary.skins = static_cast<int>(data->skins_count);
         summary.animations = static_cast<int>(data->animations_count);
-        summary.unsupported_extensions = static_cast<int>(data->extensions_required_count);
+        for (cgltf_size extension_index = 0; extension_index < data->extensions_required_count; ++extension_index) {
+            const char* extension = data->extensions_required[extension_index];
+            if (std::strcmp(extension, "KHR_texture_basisu") != 0 &&
+                std::strcmp(extension, "GOOGLE_texture_basis") != 0) {
+                ++summary.unsupported_extensions;
+            }
+        }
         for (cgltf_size material_index = 0; material_index < data->materials_count; ++material_index) {
             const cgltf_material& material = data->materials[material_index];
+            if (material_index == 0) {
+                summary.first_alpha_mode = static_cast<int>(material.alpha_mode);
+                summary.first_alpha_cutoff = material.alpha_cutoff;
+                summary.first_double_sided = material.double_sided != 0;
+            }
             if (material.has_pbr_metallic_roughness) {
                 const auto& pbr = material.pbr_metallic_roughness;
+                if (material_index == 0) {
+                    summary.first_metallic = pbr.metallic_factor;
+                    summary.first_roughness = pbr.roughness_factor;
+                    for (int channel = 0; channel < 4; ++channel) {
+                        if (!std::isfinite(pbr.base_color_factor[channel]) ||
+                            pbr.base_color_factor[channel] < 0.0f || pbr.base_color_factor[channel] > 1.0f) {
+                            ++summary.unsupported_extensions;
+                        }
+                    }
+                }
                 if (pbr.metallic_factor < 0.0f || pbr.metallic_factor > 1.0f ||
                     pbr.roughness_factor < 0.0f || pbr.roughness_factor > 1.0f) summary.unsupported_extensions += 1;
                 if (pbr.base_color_texture.texture != nullptr) ++summary.texture_references;
@@ -62,6 +90,9 @@ inline AssetSummary import_gltf_triangles(const std::string& path) {
             if (material.normal_texture.texture != nullptr) ++summary.texture_references;
             if (material.occlusion_texture.texture != nullptr) ++summary.texture_references;
             if (material.emissive_texture.texture != nullptr) ++summary.texture_references;
+            if (material.alpha_mode >= cgltf_alpha_mode_max_enum ||
+                !std::isfinite(material.alpha_cutoff) || material.alpha_cutoff < 0.0f ||
+                material.alpha_cutoff > 1.0f) summary.unsupported_extensions += 1;
         }
         if (data->nodes_count > 4096 || data->meshes_count > 4096 || data->animations_count > 256) {
             summary.unsupported_extensions += 1;

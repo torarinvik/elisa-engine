@@ -124,7 +124,6 @@ int main(int argc, char** argv) {
         !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
         return 1;
     }
-    // game-authored content; the entity cube stays in front at z=3.
     int fog_radius = 0;
     int fog_player_x = 0;
     int fog_player_y = 0;
@@ -180,7 +179,6 @@ int main(int argc, char** argv) {
     if (!wall_cells.empty() && wall_entities.size() + walls_hidden != wall_cells.size()) {
         return 1;
     }
-    // the right object at the right cell.
     std::vector<wi::ecs::Entity> marker_entities;
     const auto marker_cells = [&manifest](const char* key) {
         const auto it = manifest.find(key);
@@ -213,6 +211,13 @@ int main(int argc, char** argv) {
                 summary.primitives > 0 && summary.unsupported_extensions == 0, "normalized glTF scene traversal")) {
                 return 1;
             }
+            const auto basis_material_path = manifest_dir.parent_path() /
+                "dependencies/basisu/webgl/gltf/assets/AgiHqSmall.gltf";
+            const AssetSummary basis_material = import_gltf_triangles(basis_material_path.string());
+            if (!check(basis_material.ok && basis_material.materials == 1 && basis_material.texture_references == 2 &&
+                basis_material.first_alpha_mode == cgltf_alpha_mode_opaque && basis_material.first_metallic == 0.0f &&
+                basis_material.first_roughness == 1.0f && !basis_material.first_double_sided,
+                "glTF PBR material normalization")) return 1;
             const std::filesystem::path package_path =
                 manifest_dir / ".." / "build" / "cooked" / (asset_path.stem().string() + ".pkg");
             const CookedPackage package = load_cooked_package(package_path.lexically_normal().string());
@@ -309,8 +314,6 @@ int main(int argc, char** argv) {
     if (!check(!cooked_package.loaded || goal_used_cooked, "goal marker uses the cooked package mesh")) {
         return 1;
     }
-    // Status indicator: the host draws the game's state as a coloured cell,
-    // so a captured frame carries the status the Elisa game reported.
     {
         const auto status_it = manifest.find("game_status");
         const auto status_cell_it = manifest.find("status_cell");
@@ -337,7 +340,6 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "markers created=%u\n", (unsigned)marker_entities.size());
 
-    // Physics: Elisa owns this off-camera Jolt body's simulation policy.
     wi::physics::SetSimulationEnabled(true);
     const auto physics_box = scene.Entity_CreateCube("elisa_physics_box");
     if (!check(physics_box != wi::ecs::INVALID_ENTITY, "physics cube entity")) {
@@ -359,7 +361,6 @@ int main(int argc, char** argv) {
     const float physics_start_y = physics_transform->GetPosition().y;
     if (!probe_physics_pause(application, *physics_transform)) return 1;
 
-    // Walk the Elisa-published route so the host shows movement.
     std::vector<std::pair<int, int>> hunter_route;
     {
         const auto route_it = manifest.find("hunter_route");
@@ -407,7 +408,6 @@ int main(int argc, char** argv) {
         object_transform->world.m[3][0], object_transform->world.m[3][1],
         object_transform->world.m[3][2], object_transform->world.m[3][3]);
     camera_transform->translation_local = to_wicked_space(camera_x, camera_y, camera_z);
-    // Default orientation already faces +Z toward the cube; leave it alone.
     camera_transform->UpdateTransform();
     camera_component->TransformCamera(*camera_transform);
     // TransformCamera only refreshes view matrices; the frustum used for

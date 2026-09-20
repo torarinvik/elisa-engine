@@ -126,6 +126,10 @@ def main(arguments: darray[sview]) -> i64:
     if not is_file(path(str(basis.joinpath("transcoder/basisu_transcoder.h")))):
         eprint("Missing Basis transcoder; run python3 scripts/fetch_basisu.py first.")
         return 2
+    basis_material: Path = basis.joinpath("webgl/gltf/assets/AgiHqSmall.gltf")
+    if not is_file(path(str(basis_material))):
+        eprint("Missing Basis glTF material fixture; run python3 scripts/fetch_basisu.py first.")
+        return 2
     recast: Path = root.joinpath("dependencies/recast")
     recast_include: Path = recast.joinpath("Recast/Include")
     detour_include: Path = recast.joinpath("Detour/Include")
