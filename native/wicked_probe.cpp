@@ -53,6 +53,7 @@
 #include "debug_draw_bridge.h"
 #include "postprocess_bridge.h"
 #include "animation_submission_bridge.h"
+#include "effect_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -437,7 +438,6 @@ int main(int argc, char** argv) {
     camera_transform->translation_local = to_wicked_space(camera_x, camera_y, camera_z);
     camera_transform->UpdateTransform();
     camera_component->TransformCamera(*camera_transform);
-    // Refresh the frustum after TransformCamera or the scene stays culled.
     camera_component->UpdateCamera();
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
@@ -460,7 +460,6 @@ int main(int argc, char** argv) {
     std::fprintf(stdout, "pre-frames aabb=%u matrices=%u objects=%u\n",
         (unsigned)scene.aabb_objects.size(), (unsigned)scene.matrix_objects.size(),
         (unsigned)scene.objects.GetCount());
-    // Pump platform events before the render settle loop.
     for (int pump = 0; pump < 60; ++pump) {
         if (!application_host.poll_events()) {
             return 0;
@@ -499,8 +498,6 @@ int main(int argc, char** argv) {
             if (walk_transform != nullptr) {
                 walk_transform->translation_local = coordinates::cell_to_wicked(
                     hunter_route[step].first, hunter_route[step].second);
-                // Writing translation_local does not mark the transform dirty,
-                // so UpdateTransform would keep the stale world matrix.
                 walk_transform->SetDirty();
                 walk_transform->UpdateTransform();
             }
@@ -569,6 +566,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_animation_submission(scene)) {
+        return 1;
+    }
+    if (!probe_effect_bridge(scene)) {
         return 1;
     }
     scene.Entity_Remove(object);
