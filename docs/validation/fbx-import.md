@@ -20,8 +20,8 @@ GiB parsed scene memory, 4,096 nodes and bones, 1,024 meshes and materials,
 256 animation stacks, 5,000,000 scene triangles, 512 MiB extracted corner data,
 and 256 MiB for vertex indexing. Parsing is strict; external files are not read.
 Malformed input and limit failures return an error without exposing a partial
-mesh. Current game assets remain under these limits, including the 3,077,694-
-triangle fence model.
+mesh. This checkout's validation used the synthetic fixture only; the optional
+game-asset checks below were not run because those FBX files were unavailable.
 
 Run the synthetic cm-unit triangle fixture with:
 
@@ -38,14 +38,30 @@ To include the supplied game assets, pass their root directory:
 python3 scripts/test_fbx_import.py --assets-root "/path/to/amazing labyrinth/assets"
 ```
 
-The test confirms that the walking and running files share the same 34-bone
-name order, that their expected clips and durations are visible, that the
-character mesh is selected instead of the auxiliary sphere, and that the large
-fence file parses under the configured limits. The synthetic triangle checks
-unit conversion, node translation, finite generated normals, and valid indices.
+When those assets are present, the optional test checks that the walking and
+running files share the same 34-bone name order, expected clips and durations
+are visible, the character mesh is selected instead of the auxiliary sphere,
+and the large fence file parses under the configured limits. That asset-tree
+path remains unverified in this checkout. The synthetic triangle checks unit
+conversion, node translation, finite generated normals, and valid indices.
 
-This stage only parses metadata and decodes one mesh. It does not yet preserve
-the full node hierarchy, material subsets or texture paths, skin weights or
-bind poses, or animation curves. It does not emit the engine's normalized
-package and is not connected to an Elisa asset-load or render call. A05/C01
-integration and real Wicked rendering remain the A09 completion criteria.
+The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
+existing `elisa-cooked-v2` geometry package with source identity and hash,
+float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It
+validates all decoded lengths, finite values, indices, and the runtime reader's
+64 MiB package/16 MiB section limits before reporting success. Run
+`python3 scripts/cook_fbx_asset.py --self-test` for the synthetic package test.
+This revision's self-test cooked one normalized triangle. For a real source,
+supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output DESTINATION.pkg`;
+the asset key is stored in the package and must be a safe relative path. Real
+asset cooking was not exercised in this checkout.
+
+`native/package_load.h` now reads the optional UV channel and copies it into
+Wicked's first UV set. A synthetic native-reader package fixture checks UV
+preservation; no real FBX package was loaded in this checkout.
+
+Import and cooking still select one mesh. They do not preserve the full node
+hierarchy, material subsets or texture paths, skin weights or bind poses, or
+animation curves. The cooker's mesh output is not connected to an Elisa
+asset-load or render call. A05/C01 integration and real Wicked rendering remain
+the A09 completion criteria.

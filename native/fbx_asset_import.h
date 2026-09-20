@@ -183,6 +183,11 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
             vertex.position[0] = float(position.x);
             vertex.position[1] = float(position.y);
             vertex.position[2] = float(position.z);
+            if (!std::isfinite(vertex.position[0]) || !std::isfinite(vertex.position[1]) ||
+                !std::isfinite(vertex.position[2])) {
+                fail(result, "FBX position exceeds normalized float range");
+                return false;
+            }
             if (mesh.vertex_normal.exists && index < mesh.vertex_normal.indices.count) {
                 const ufbx_vec3 source_normal = ufbx_get_vertex_vec3(&mesh.vertex_normal, index);
                 if (!finite(source_normal)) {
@@ -198,6 +203,11 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
                 vertex.normal[0] = float(normal.x);
                 vertex.normal[1] = float(normal.y);
                 vertex.normal[2] = float(normal.z);
+                if (!std::isfinite(vertex.normal[0]) || !std::isfinite(vertex.normal[1]) ||
+                    !std::isfinite(vertex.normal[2])) {
+                    fail(result, "FBX normal exceeds normalized float range");
+                    return false;
+                }
             }
             if (mesh.vertex_uv.exists && index < mesh.vertex_uv.indices.count) {
                 const ufbx_vec2 uv = ufbx_get_vertex_vec2(&mesh.vertex_uv, index);
@@ -207,6 +217,10 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
                 }
                 vertex.uv[0] = float(uv.x);
                 vertex.uv[1] = float(uv.y);
+                if (!std::isfinite(vertex.uv[0]) || !std::isfinite(vertex.uv[1])) {
+                    fail(result, "FBX UV exceeds normalized float range");
+                    return false;
+                }
             }
             corners.push_back(vertex);
         }

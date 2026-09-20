@@ -20,6 +20,7 @@ struct CookedPackage {
     long long indices = -1;
     std::vector<float> position_data;
     std::vector<float> normal_data;
+    std::vector<float> uv_data;
     std::vector<uint32_t> index_data;
     bool loaded = false;
 };
@@ -88,6 +89,8 @@ inline CookedPackage load_cooked_package(const std::string& path) {
             decode_floats(value, package.position_data);
         } else if (key == "normals_b64") {
             decode_floats(value, package.normal_data);
+        } else if (key == "uvs_b64") {
+            decode_floats(value, package.uv_data);
         } else if (key == "indices_b64") {
             decode_u32(value, package.index_data);
         }
@@ -98,7 +101,8 @@ inline CookedPackage load_cooked_package(const std::string& path) {
     package.loaded = package.format == "elisa-cooked-v2" &&
         package.position_data.size() == (size_t)package.positions * 3 &&
         package.index_data.size() >= (size_t)package.triangles * 3 &&
-        package.normal_data.size() == package.position_data.size();
+        package.normal_data.size() == package.position_data.size() &&
+        (package.uv_data.empty() || package.uv_data.size() == (size_t)package.positions * 2);
     return package;
 }
 
@@ -130,6 +134,12 @@ inline wi::ecs::Entity create_cooked_mesh(wi::scene::Scene& scene, const std::st
         for (size_t i = 0; i < mesh->vertex_normals.size(); ++i) {
             mesh->vertex_normals[i] = XMFLOAT3(package.normal_data[i * 3],
                 package.normal_data[i * 3 + 1], package.normal_data[i * 3 + 2]);
+        }
+    }
+    if (package.uv_data.size() == package.position_data.size() / 3 * 2) {
+        mesh->vertex_uvset_0.resize(package.position_data.size() / 3);
+        for (size_t i = 0; i < mesh->vertex_uvset_0.size(); ++i) {
+            mesh->vertex_uvset_0[i] = XMFLOAT2(package.uv_data[i * 2], package.uv_data[i * 2 + 1]);
         }
     }
     mesh->indices = package.index_data;

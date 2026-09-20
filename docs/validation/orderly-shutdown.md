@@ -107,11 +107,58 @@ Metal command/pipeline setup. The traced snapshot also gained 116 Lua table
 allocations (6,496 bytes) through `wi::lua::SetDeltaTime` and
 `wakeUpWaitingThreads()`, which creates a per-frame local table.
 
-These stack-logging numbers are deliberately excluded from the ordinary
-7–12 KB heap result: the instrumentation itself caused a ~45.8 MB heap jump at
-cycle 7 and changed GPU allocations. The pipeline cache appears to be expected
-first-use state; the Lua tables are temporary and may be waiting for Lua's
-collector. Neither observation proves a leak or a teardown defect. F05 remains
-open until a longer uninstrumented restart run shows whether the heap settles
-after renderer warm-up and Lua collection, and the one-time host/device heap
-step is independently explained.
+These stack-logging numbers are deliberately excluded from ordinary heap
+results: the instrumentation itself caused a ~45.8 MB heap jump at cycle 7 and
+changed GPU allocations. The pipeline cache appears to be expected first-use
+state. The Lua allocation was addressed and retested below; neither observation
+proves a leak or teardown defect.
+
+## Timer allocation fix and extended soak (2026-09-20)
+
+The allocation stack identified a temporary Lua table created by
+`wakeUpWaitingThreads()` every frame, including frames with no expired timer.
+Wicked commit `851c8f21cac9e537788590ee6682c88f2511bf56` now scans for an expired
+timer before allocating the wake queue. When a timer is due, it still collects the
+entire due set before resuming coroutines, preserving safe table iteration and
+reentrancy behavior. The native restart diagnostic runs a Lua regression probe:
+1,000 idle timer updates must grow the Lua heap by less than 1 KiB, and an expired
+timer must resume its coroutine. Both the 64-cycle and 512-cycle diagnostic runs
+exited successfully with this probe enabled.
+
+After the patch, the 64-cycle run (six warm-up cycles) measured a 0-byte GPU delta
+and an 8,736-byte process-heap increase across 58 restarts. The longer uninstrumented
+run used 16 warm-up cycles and 496 measured restarts:
+
+```text
+ELISA_SCENE_RESTART_ONLY=1 \
+ELISA_SCENE_RESTART_CYCLES=512 \
+ELISA_SCENE_RESTART_WARMUP_CYCLES=16 \
+build/wicked-native-probe ../WickedEngine/WickedEngine backends/scene_manifest.txt
+in-process scene restart: cycles=512 warmup_cycles=16 measured_cycles=496 rendered=1 components_cleared=1 gpu_delta_bytes=0 heap_delta_bytes=5904
+```
+
+The same 512-cycle run before the Lua change measured a 66,944-byte heap increase
+and a 0-byte GPU delta. After the change, GPU usage remained at 422,445,056 bytes
+for the measured samples; the 5,904-byte heap increase is much smaller but is not
+yet attributed. The probe verifies scene rendering, component cleanup, path
+detachment, GPU completion, and timer behavior; it does not establish a perfectly
+flat process heap or explain the separate one-time ~540 KB host/device step. F05
+therefore remains partial pending allocation attribution and a repeat long soak.
+
+The complete post-fix SDL3/Wicked gate also passed:
+
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_ALLOW_STALE_STAGE1=1 elisascript scripts/wicked_probe.elisascript
+Native frame verified: dimensions, determinism, Elisa topology.
+frame time: samples=30 median=1598us p95=2994us worst=3305us budget=16667us
+in-process scene restart: cycles=64 warmup_cycles=6 measured_cycles=58 rendered=1 components_cleared=1 gpu_delta_bytes=0 heap_delta_bytes=1824
+host lifecycle heap: steady_bytes=147047264 final_bytes=147069328 delta_bytes=22064
+churn memory: before_bytes=155733456 steady_bytes=155815952 after_bytes=156093136 steady_delta_bytes=277184
+Native live-input frame rendered from the embedded game.
+```
+
+The ~540 KB host/device step from the earlier run did not recur. The 22,064-byte
+host lifecycle heap increase and 277,184-byte post-churn delta still need
+attribution. These results support the targeted Lua fix without proving that all
+remaining memory changes are leaks or fully explained.

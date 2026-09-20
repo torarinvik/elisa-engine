@@ -3,14 +3,17 @@
 #include "native_application.h"
 #include "probe_support.h"
 #include "wiGraphicsDevice.h"
+#include "wiLua.h"
+#include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
 #include "Foundation/Foundation.hpp"
 
-#include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <malloc/malloc.h>
 #include <thread>
 #include <vector>
@@ -33,24 +36,101 @@ inline void hold_scene_restart_inspection(const char* environment_name, const ch
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
 }
 
+inline bool read_scene_restart_count(const char* environment_name, size_t fallback,
+        size_t maximum, size_t& output) {
+    const char* configured = std::getenv(environment_name);
+    if (configured == nullptr) {
+        output = fallback;
+        return true;
+    }
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long long value = std::strtoull(configured, &end, 10);
+    if (errno != 0 || end == configured || *end != '\0' || value == 0 || value > maximum ||
+        value > std::numeric_limits<size_t>::max()) {
+        std::fprintf(stderr, "%s must be an integer between 1 and %zu\n",
+            environment_name, maximum);
+        return false;
+    }
+    output = size_t(value);
+    return true;
+}
+
+inline bool wait_for_scene_restart_pipeline_idle() {
+    constexpr size_t PIPELINE_WAIT_ATTEMPTS = 1000;
+    constexpr size_t PIPELINE_IDLE_CONFIRMATIONS = 3;
+    constexpr auto PIPELINE_WAIT_INTERVAL = std::chrono::milliseconds(10);
+    size_t idle_confirmations = 0;
+    for (size_t attempt = 0; attempt < PIPELINE_WAIT_ATTEMPTS; ++attempt) {
+        if (wi::renderer::IsPipelineCreationActive() == 0) {
+            if (++idle_confirmations == PIPELINE_IDLE_CONFIRMATIONS) return true;
+        } else {
+            idle_confirmations = 0;
+        }
+        std::this_thread::sleep_for(PIPELINE_WAIT_INTERVAL);
+    }
+    return false;
+}
+
+inline bool probe_lua_timer_wakeup_allocations() {
+    static constexpr char SCRIPT[] = R"lua(
+local TIMER_WAIT_SECONDS = 1000000
+local TIMER_UPDATE_SECONDS = 0.001
+local IDLE_TIMER_UPDATES = 1000
+local MAX_IDLE_HEAP_GROWTH_KIB = 1.0
+local resumed = 0
+local timer_thread = coroutine.create(function()
+    waitSeconds(TIMER_WAIT_SECONDS)
+    resumed = resumed + 1
+end)
+assert(coroutine.resume(timer_thread))
+local gc_was_running = collectgarbage("isrunning")
+collectgarbage("stop")
+local heap_before = collectgarbage("count")
+for index = 1, IDLE_TIMER_UPDATES do
+    wakeUpWaitingThreads(TIMER_UPDATE_SECONDS)
+end
+local heap_after = collectgarbage("count")
+local no_frame_allocation = heap_after - heap_before < MAX_IDLE_HEAP_GROWTH_KIB
+if gc_was_running then collectgarbage("restart") end
+assert(no_frame_allocation, "idle timer updates allocated temporary tables")
+wakeUpWaitingThreads(TIMER_WAIT_SECONDS)
+assert(resumed == 1, "expired timer coroutine did not resume")
+)lua";
+    return check(wi::lua::RunText(SCRIPT),
+        "Lua timer waits resume and idle frame updates avoid temporary tables");
+}
+
 inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     auto* device = wi::graphics::GetDevice();
     if (!check(device != nullptr, "scene restart graphics device")) return false;
+    if (!probe_lua_timer_wakeup_allocations()) return false;
 
     wi::Application& application = host.wicked();
     application.ActivatePath(nullptr);
     device->WaitForGPU();
 
-    constexpr size_t RESTART_CYCLES = 64;
-    constexpr size_t WARMUP_CYCLES = 6;
-    static_assert(RESTART_CYCLES > WARMUP_CYCLES);
-    std::array<uint64_t, RESTART_CYCLES> gpu_samples{};
-    std::array<size_t, RESTART_CYCLES> heap_samples{};
+    constexpr size_t DEFAULT_RESTART_CYCLES = 64;
+    constexpr size_t DEFAULT_WARMUP_CYCLES = 6;
+    constexpr size_t MAX_RESTART_CYCLES = 4096;
+    constexpr size_t RESTART_RENDER_FRAMES = 2;
+    size_t restart_cycles = 0;
+    size_t warmup_cycles = 0;
+    if (!read_scene_restart_count("ELISA_SCENE_RESTART_CYCLES", DEFAULT_RESTART_CYCLES,
+            MAX_RESTART_CYCLES, restart_cycles) ||
+        !read_scene_restart_count("ELISA_SCENE_RESTART_WARMUP_CYCLES", DEFAULT_WARMUP_CYCLES,
+            MAX_RESTART_CYCLES, warmup_cycles) ||
+        warmup_cycles >= restart_cycles) {
+        std::fprintf(stderr, "scene restart warm-up must be less than the total cycle count\n");
+        return false;
+    }
+    std::vector<uint64_t> gpu_samples(restart_cycles);
+    std::vector<size_t> heap_samples(restart_cycles);
     uint64_t warm_gpu_bytes = 0;
     uint64_t final_gpu_bytes = 0;
     size_t warm_heap_bytes = 0;
     size_t final_heap_bytes = 0;
-    for (size_t cycle = 0; cycle < RESTART_CYCLES; ++cycle) {
+    for (size_t cycle = 0; cycle < restart_cycles; ++cycle) {
         bool cycle_ok = false;
         {
             NS::SharedPtr<NS::AutoreleasePool> autorelease_pool =
@@ -85,7 +165,7 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
                     render_path.setOcclusionCullingEnabled(false);
                     application.ActivatePath(&render_path);
                     bool frames_rendered = true;
-                    for (int frame = 0; frame < 2; ++frame) {
+                    for (size_t frame = 0; frame < RESTART_RENDER_FRAMES; ++frame) {
                         if (!host.run_frame()) {
                             frames_rendered = false;
                             break;
@@ -110,11 +190,16 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
             device->WaitForGPU();
             return false;
         }
+        device->WaitForGPU();
+        if (!check(wait_for_scene_restart_pipeline_idle(),
+                "Wicked pipeline creation drains between scene restarts")) {
+            return false;
+        }
         const uint64_t gpu_bytes = device->GetMemoryUsage().usage;
         const size_t heap_bytes = scene_restart_heap_bytes_in_use();
         gpu_samples[cycle] = gpu_bytes;
         heap_samples[cycle] = heap_bytes;
-        if (cycle + 1 == WARMUP_CYCLES) {
+        if (cycle + 1 == warmup_cycles) {
             warm_gpu_bytes = gpu_bytes;
             warm_heap_bytes = heap_bytes;
             hold_scene_restart_inspection(
@@ -130,7 +215,7 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
         static_cast<long long>(warm_gpu_bytes);
     std::fprintf(stdout,
         "in-process scene restart: cycles=%zu warmup_cycles=%zu measured_cycles=%zu rendered=1 components_cleared=1 gpu_delta_bytes=%lld heap_delta_bytes=%lld\n",
-        RESTART_CYCLES, WARMUP_CYCLES, RESTART_CYCLES - WARMUP_CYCLES, gpu_delta, heap_delta);
+        restart_cycles, warmup_cycles, restart_cycles - warmup_cycles, gpu_delta, heap_delta);
     std::fprintf(stdout, "scene restart GPU usage samples:");
     for (const uint64_t sample : gpu_samples) std::fprintf(stdout, " %llu", (unsigned long long)sample);
     std::fprintf(stdout, "\nscene restart heap usage samples:");
