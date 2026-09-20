@@ -13,6 +13,10 @@ the test verifies that the job and its context are complete before teardown.
 Pinned Wicked commit `e45123b` also frees placement-constructed command lists
 after GPU completion on Metal, Vulkan, and DX12. Their C++ destructors release
 the vectors and retained API objects before the allocator returns raw storage.
+Wicked commit `857d170` balances the caller-owned `dispatch_data_t` used to load
+Metal shader bytecode. FAudio shutdown now releases its engine and caller-owned
+reverb effect after destroying the effect-chain voice; the XAudio path keeps its
+existing `ComPtr` ownership.
 
 `native/window_lifecycle_probe.h` injects failures after SDL setup, after window
 creation, and after Wicked initialization. For each point the native gate checks
@@ -44,18 +48,18 @@ grew `malloc_zone_statistics` usage by 1,935,000–1,956,000 bytes, about
 270–290 KiB per cycle. The previous 2 MiB limit allowed this linear growth and
 is not evidence of a steady state.
 
-With `MallocStackLogging=1`, `leaks` on a paused lifecycle-only process reported
-454 live allocations totalling 1,378,384 bytes, including FAudio allocations
-from reverb initialization and Metal shader `dispatch_data` created by
-`GraphicsDevice_Metal::CreateShader`. `leaks -atExit` on the same lifecycle
-probe reported 1,228 allocations totalling 11,764,304 bytes. The report also
-contains macOS framework cycles. The Metal command-list roots found before the
-destructor patch (`TextureClearBatchItem`, `CommandList_Metal`, and
-`GPUBarrier`) no longer appear, but total live heap growth is still
-unattributed. `AddressSanitizer` leak detection is unavailable in this macOS
-runtime (`detect_leaks is not supported on this platform`).
+With `MallocStackLogging=1`, `leaks` on a paused lifecycle-only process now
+reports 417 live allocations totalling 26,496 bytes, all in three
+`NSXPCConnection` cycles rooted in Apple AppIntents/LinkServices frameworks.
+The earlier FAudio and Metal shader `dispatch_data` allocation roots are gone.
+The separate, non-instrumented process heap high-water still rises about 1.90
+MiB over eight host/device cycles (about 270 KiB per cycle); this measurement
+does not by itself show that those bytes remain live. `leaks -atExit` can still
+report operating-system framework cycles. `AddressSanitizer` leak detection is
+unavailable in this macOS runtime (`detect_leaks is not supported on this
+platform`).
 
 F05 remains partial. Repeated native host/device restart is not equivalent to
-the required in-process scene restart, and persistent process allocations need
-to be separated from scene-owned leaks. Keep the measured growth visible until
-the repeated-scene test and device-lifetime ownership are accounted for.
+the required in-process scene restart, and the process heap high-water trend
+still needs longer-run attribution. Keep both facts visible until the
+repeated-scene test and device-lifetime ownership are accounted for.
