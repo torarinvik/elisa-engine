@@ -112,6 +112,9 @@ module RenderScene:
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
 
     public:
+        # Bounded native slots and owner-side batch storage share this limit.
+        const MAX_ELECTRIC_ARCS: usize = 1024
+
         enum Primitive:
             Box
             Sphere
@@ -146,7 +149,7 @@ module RenderScene:
 
         struct ElectricArcBatch:
             private:
-                handles: mutable ElectricArcHandle[1024]
+                handles: mutable ElectricArcHandle[RenderScene::MAX_ELECTRIC_ARCS]
                 count: mutable usize
 
         # A compact owner-side collection avoids exposing the representation of
@@ -189,7 +192,7 @@ module RenderScene:
 
         def electric_arc_batch_append(batch: mutable ElectricArcBatch&,
             handle: ElectricArcHandle) -> void error[RenderSceneError]:
-            raise RenderSceneError.Capacity if batch.count >= 1024
+            raise RenderSceneError.Capacity if batch.count >= RenderScene::MAX_ELECTRIC_ARCS
             batch.handles[batch.count] <- handle
             batch.count <- batch.count + 1
 
@@ -197,6 +200,9 @@ module RenderScene:
             index: usize) -> ElectricArcHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if index >= batch.count
             batch.handles[index]
+
+        def electric_arc_batch_count(batch: ElectricArcBatch&) -> usize:
+            batch.count
 
         def batch_count(batch: InstanceBatch&) -> usize:
             batch.count

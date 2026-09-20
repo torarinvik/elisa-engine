@@ -50,6 +50,17 @@ cleanup. The native scene smoke now spawns real `World` entities, extracts
 their render rows, syncs twice to verify handle reuse, and despawns them to
 verify native retirement.
 
+`RenderScene` also exposes generation-checked `ElectricArcHandle`s and a bounded
+`ElectricArcBatch` of at most 1,024 arcs. Elisa supplies endpoints, phase, and
+visibility; Wicked owns the endpoint-pinned additive core and halo trails and
+may add a short branch. `DrawTrailRuntime` submits these game effects even when
+Wicked debug drawing is disabled. The native smoke checks invalid dimensions,
+degenerate endpoints, batch and native-slot overflow, hide/show rendering,
+destruction, and stale-handle rejection. A test-only GPU readback hashes the
+center 17-by-17 pixel patch to verify that showing the arc changes the rendered
+image; ordinary game builds do not expose this probe. Visual tuning and socket
+alignment in authored gameplay remain open.
+
 Calling `RenderScene::shutdown` releases the render path and all owned scene
 resources. The engine also registers a shutdown hook: application shutdown
 detaches the active path, then releases the scene before Wicked tears down its
