@@ -4,6 +4,7 @@
 // left-handed at this boundary, so the X axis is negated exactly once. Grid
 // placement belongs here instead of being retyped by each native subsystem.
 #include "wiScene.h"
+#include "coordinate_abi.h"
 
 #include <cmath>
 
@@ -59,8 +60,10 @@ inline bool finite(const XMFLOAT3& value) {
 // flips it again when its determinant is negative, so the backend can choose
 // culling from one shared rule instead of per-mesh sign hacks.
 inline bool winding_reversed(const XMFLOAT3& scale) {
-    const float determinant_sign = scale.x * scale.y * scale.z;
-    return determinant_sign >= 0.0f;
+    const float components[3] = {scale.x, scale.y, scale.z};
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    int32_t parity = 0;
+    return elisa_transform_tangent_parity(&profile, components, 1, &parity) && parity < 0;
 }
 
 inline XMFLOAT3 cell_to_wicked(int cell_x, int cell_y, float height = MARKER_HEIGHT) {

@@ -13,6 +13,7 @@ namespace probe {
 inline bool probe_coordinate_conventions(wi::scene::Scene& scene) {
     const ElisaCoordinateProfile profile = elisa_coordinate_profile();
     if (!check(elisa_coordinate_profile_valid(&profile), "coordinate ABI profile") ||
+        !check(profile.tangent_parity == -1, "coordinate ABI reflects tangent parity") ||
         !check(sizeof(ElisaCoordinateProfile) == 32 && sizeof(ElisaTransformPayload) == 40 &&
             sizeof(ElisaMatrixPayload) == 64,
             "coordinate ABI layout")) {
@@ -23,6 +24,11 @@ inline bool probe_coordinate_conventions(wi::scene::Scene& scene) {
     if (!check(!elisa_coordinate_profile_valid(&invalid_profile), "coordinate ABI rejects depth mismatch")) {
         return false;
     }
+    invalid_profile = profile;
+    invalid_profile.tangent_parity = 0;
+    if (!check(!elisa_coordinate_profile_valid(&invalid_profile), "coordinate ABI rejects ambiguous tangent parity")) {
+        return false;
+    }
     const XMFLOAT3 point(1.25f, -2.5f, 3.75f);
     const XMFLOAT3 wicked = coordinates::to_wicked(point);
     const XMFLOAT3 round_trip = coordinates::from_wicked(wicked);
@@ -30,6 +36,18 @@ inline bool probe_coordinate_conventions(wi::scene::Scene& scene) {
         !check(coordinates::near_equal(coordinates::to_wicked_direction(point), wicked),
             "coordinate direction reflection") || !check(coordinates::finite(wicked),
             "coordinate finite point")) {
+        return false;
+    }
+    const float tangent_scale_positive[3] = {2.0f, 3.0f, 4.0f};
+    const float tangent_scale_reflected[3] = {-2.0f, 3.0f, 4.0f};
+    const float tangent_scale_double_reflected[3] = {-2.0f, -3.0f, 4.0f};
+    int32_t tangent_parity = 0;
+    if (!check(elisa_transform_tangent_parity(&profile, tangent_scale_positive, 1, &tangent_parity) &&
+            tangent_parity == -1, "positive scale includes basis tangent reflection") ||
+        !check(elisa_transform_tangent_parity(&profile, tangent_scale_reflected, 1, &tangent_parity) &&
+            tangent_parity == 1, "negative scale restores tangent parity") ||
+        !check(elisa_transform_tangent_parity(&profile, tangent_scale_double_reflected, 1, &tangent_parity) &&
+            tangent_parity == -1, "two negative axes preserve one tangent reflection")) {
         return false;
     }
     const auto fixture = coordinates::asymmetric_fixture();

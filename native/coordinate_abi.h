@@ -8,7 +8,7 @@
 #include <cstdint>
 
 enum {
-    ELISA_COORDINATE_ABI_VERSION = 1u,
+    ELISA_COORDINATE_ABI_VERSION = 2u,
     ELISA_COORDINATE_COLUMN_MAJOR = 0u,
     ELISA_COORDINATE_RIGHT_HANDED = 0u,
     ELISA_COORDINATE_DEPTH_ZERO_TO_ONE = 1u,
@@ -21,7 +21,7 @@ typedef struct ElisaCoordinateProfile {
     uint32_t handedness;
     uint32_t depth_range;
     uint32_t quaternion_layout;
-    uint32_t tangent_parity;
+    int32_t tangent_parity;
     float metres_per_unit;
     uint32_t reserved;
 } ElisaCoordinateProfile;
@@ -43,7 +43,7 @@ static inline ElisaCoordinateProfile elisa_coordinate_profile() {
         ELISA_COORDINATE_RIGHT_HANDED,
         ELISA_COORDINATE_DEPTH_ZERO_TO_ONE,
         ELISA_COORDINATE_QUATERNION_XYZW,
-        1u,
+        -1,
         1.0f,
         0u,
     };
@@ -55,9 +55,24 @@ static inline bool elisa_coordinate_profile_valid(const ElisaCoordinateProfile* 
         profile->handedness == ELISA_COORDINATE_RIGHT_HANDED &&
         profile->depth_range == ELISA_COORDINATE_DEPTH_ZERO_TO_ONE &&
         profile->quaternion_layout == ELISA_COORDINATE_QUATERNION_XYZW &&
-        (profile->tangent_parity == 1u || profile->tangent_parity == 0u) &&
+        (profile->tangent_parity == -1 || profile->tangent_parity == 1) &&
         std::isfinite(profile->metres_per_unit) && profile->metres_per_unit > 0.0f &&
         profile->reserved == 0u;
+}
+
+// Tangent W stores the authored bitangent orientation. Reflecting the
+// coordinate basis and any negative scale axis each flip that orientation.
+static inline bool elisa_transform_tangent_parity(const ElisaCoordinateProfile* profile,
+    const float scale[3], int32_t authored_parity, int32_t* target_parity) {
+    if (!elisa_coordinate_profile_valid(profile) || scale == nullptr || target_parity == nullptr ||
+        (authored_parity != -1 && authored_parity != 1)) return false;
+    int32_t parity = authored_parity * profile->tangent_parity;
+    for (size_t axis = 0; axis < 3; ++axis) {
+        if (!std::isfinite(scale[axis]) || scale[axis] == 0.0f) return false;
+        if (scale[axis] < 0.0f) parity = -parity;
+    }
+    *target_parity = parity;
+    return true;
 }
 
 static inline bool elisa_transform_payload_valid(const ElisaTransformPayload* transform) {

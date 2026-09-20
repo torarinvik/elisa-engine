@@ -10,6 +10,15 @@ scale, while signed nonzero scale is preserved. General affine payloads can be
 converted for point operations; submission to Wicked's TRS-only component
 rejects shear and singular scale before mutating the destination.
 
+Coordinate ABI v2 stores tangent parity as a signed multiplier. Both the
+backend-neutral `Geometry::tangent_parity_for_transform` function and native
+ABI helper multiply the authored tangent W by the basis reflection and each
+negative scale axis. Invalid source signs and singular/non-finite scales are
+rejected (the Elisa math helper returns its documented zero sentinel). Native
+tests also use the same parity helper to derive winding reversal. This rule is
+centralized and tested, but the current Wicked material shader path does not
+consume it yet.
+
 The native gate exercises `native/coordinate_probe.h` after the real scene,
 physics, skin payload, and camera path have run. The fixture uses an asymmetric
 point, camera ray, translation, and negative nonuniform scale. A second render
@@ -45,6 +54,8 @@ ELISA_ALLOW_STALE_STAGE1=1 ~/.local/bin/elisascript scripts/wicked_probe.elisasc
 
 Result: exit status 0; both native frame runs passed the coordinate probe,
 scene topology and determinism checks, the asymmetric signed-scale reference
-comparison, and the frame-time budget. This closes the rendered-reference
-capture portion of F07. Tangent parity still lacks a production consumer, and
-physics, skinning, and picking still need end-to-end signed-scale fixtures.
+comparison, tangent-parity checks, and the frame-time budget. The Elisa check
+suite passed `test/geometry.elisa` with the matching parity cases. This closes
+the rendered-reference and centralized parity-math portions of F07. Tangent
+parity still lacks a production mesh/material consumer, and physics, skinning,
+and picking still need end-to-end signed-scale fixtures.

@@ -12,6 +12,8 @@ module Geometry:
             ZERO: f32 = 0.0
             ONE: f32 = 1.0
             TWO: f32 = 2.0
+            NEGATIVE_ONE: f32 = -1.0
+            TANGENT_REFLECTION_PARITY: f32 = -1.0
 
     public:
         struct Vec3:
@@ -123,6 +125,19 @@ module Geometry:
 
         def transform_apply_point(value: Transform, point: Vec3) -> Vec3:
             vec3_add(value.position, quat_rotate(value.rotation, vec3_mul(value.scale, point)))
+
+        # The engine's reflected coordinate basis flips tangent handedness.
+        # Negative scale axes flip it again. Zero means invalid source parity
+        # or a singular/non-finite scale, so adapters must reject that frame.
+        def tangent_parity_for_transform(scale: Vec3, source_parity: f32) -> f32:
+            valid_scale: mutable bool = scale.x != Scalar::ZERO and scale.y != Scalar::ZERO and scale.z != Scalar::ZERO
+            valid_scale <- false if scale.x - scale.x != Scalar::ZERO or scale.y - scale.y != Scalar::ZERO or scale.z - scale.z != Scalar::ZERO
+            return Scalar::ZERO if not valid_scale or (source_parity != Scalar::ONE and source_parity != Scalar::NEGATIVE_ONE)
+            scale_parity: mutable f32 = Scalar::ONE
+            scale_parity <- Scalar::NEGATIVE_ONE if scale.x < Scalar::ZERO
+            scale_parity <- Scalar::NEGATIVE_ONE * scale_parity if scale.y < Scalar::ZERO
+            scale_parity <- Scalar::NEGATIVE_ONE * scale_parity if scale.z < Scalar::ZERO
+            source_parity * Scalar::TANGENT_REFLECTION_PARITY * scale_parity
 
         # Inverse of transform_apply_point for a TRS transform: undo the
         # translation, then the rotation, then the scale. A degenerate scale is
