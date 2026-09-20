@@ -386,3 +386,63 @@ The SDL3/Metal application and cooked-mesh smoke tests also passed. The host
 heap measurements still vary and need stack-level attribution; F05 remains
 partial. The settled churn samples no longer show the earlier suballocator
 growth, and the scene restart checks reported no GPU increase.
+
+## Settled host lifecycle allocation diff (macOS 27.0, 2026-09-20)
+
+The repeated-host probe now checks that the `main` and `application` globals
+are cleared, then runs a second full Lua collection before recording heap
+samples. `ShutdownApplication()` runs the first collection to finalize the
+retiring app's Lua wrappers; the second reclaims those finalized userdata. The
+global check runs before the first sample so its interned field names do not
+appear as lifecycle growth.
+
+An uninstrumented eight-cycle lifecycle-only run measured:
+
+```text
+host lifecycle heap: steady_bytes=92379840 final_bytes=92369744 delta_bytes=-10096
+host lifecycle heap samples: 92379840 92364896 92366720 92368880 92369264 92369312 92369696 92369744
+```
+
+For attribution, one `MallocStackLoggingNoCompact=1` process was paused and
+captured after cycles 1 and 8. The cycle-8 heap diff contained 112 new live
+nodes totaling about 31 KB. Almost all were AppKit, CoreFoundation, QuartzCore,
+and related Apple framework allocations; `leaks --diffFrom` reported zero new
+leaks. The only engine-side entries were two 64-byte Lua allocator blocks.
+Wicked's `killProcesses()` replaces the process-wide `WAITING_ON_SIGNAL` and
+`WAITING_ON_TIME` tables during shutdown, leaving those two rooted tables at a
+fixed count. The diff contained no `Application_BindLua` userdata after the
+second collection.
+
+The instrumented 31 KB is a live-allocation diff, not a leak measurement. This
+run attributes the earlier small positive host deltas to framework state and
+fixed Lua globals rather than accumulating application wrappers. F05 remains
+partial until another 512-cycle soak confirms the small scene-heap increase is
+bounded across repeated runs.
+
+## F05 completion rerun (macOS 27.0, 2026-09-20)
+
+The corrected probe passed a fresh two-pass native gate. Both passes verified
+the rendered frame exactly, rendered live input, exercised partial-startup
+rollback, drained callbacks and jobs, and completed orderly shutdown. Their
+eight-cycle host heap deltas were 176 and 3,808 bytes. The schema-2 native-gate
+report records `outcome=pass` and `hardware_verification=verified`.
+
+A fresh long scene soak also passed:
+
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_SCENE_RESTART_ONLY=1 \
+ELISA_SCENE_RESTART_CYCLES=512 \
+ELISA_SCENE_RESTART_WARMUP_CYCLES=16 \
+  build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  "$PWD/backends/scene_manifest.txt"
+
+in-process scene restart: cycles=512 warmup_cycles=16 measured_cycles=496
+  gpu_delta_bytes=0 heap_delta_bytes=4976
+```
+
+This agrees with the prior 512-cycle run (0 GPU bytes, 6,512 heap bytes).
+Together with the zero-leak cycle-1/cycle-8 diff, cleared application handles,
+and fixed Lua global-table count, the two long soaks support bounded allocator
+and framework variation rather than accumulating scene, application, or GPU
+resources. F05 is complete.
