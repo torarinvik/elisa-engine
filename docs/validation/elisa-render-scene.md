@@ -161,9 +161,15 @@ instances, and clears the presenter back to zero instances. Validation passed:
 `DEVELOPER_DIR=/Library/Developer/CommandLineTools
 ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
 python3 scripts/render_scene_native_smoke.py` on the SDL3/Metal Wicked backend.
-The demo's interactive native host still builds its maze from the diagnostic
-manifest, and these stable asset IDs still render placeholder boxes until cooked
-asset and material resolution are connected.
+The interactive client has since moved to `examples/maze/native_main.elisa`:
+gameplay entities are built in Elisa `World`, snapshots update the persistent
+native scene, and keyboard input drives the maze rules. It does not read the
+diagnostic manifest. The finite `native_smoke_main.elisa` entry now runs as part
+of `scripts/render_scene_native_smoke.py`, checking the SDL3/Metal win, restart,
+entity counts, transactional clear, and orderly shutdown. Both ordinary project
+build and hidden native smoke passed after the macOS 27.0 update. Authored cooked
+mesh/material resolution and a manual visible controls check remain open; until
+then the game entities render as placeholder boxes.
 
 Electric arc follow-up, 2026-09-20: Wicked commit `c1c9300` adds a runtime trail
 queue that is independent of debug drawing. Engine commit `bef49cc` integrates

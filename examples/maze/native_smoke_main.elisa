@@ -1,0 +1,6 @@
+# Finite hidden entry point used by the native gate. Keeping this separate
+# from the ordinary app means gameplay has no test-only environment switches.
+include "./native_client.elisa"
+
+def main() -> i32:
+    MazeNativeClient::run(true)

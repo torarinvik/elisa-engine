@@ -27,40 +27,40 @@ module MazeTrace:
         # via the key cell and the locked door. The column-1 route is the
         # one that avoids the hazard at (2,5); test/maze_game.elisa uses the
         # same path, and this module keeps the two in step.
-        def maze_win_script() -> MazeMove[10]:
-            [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East, MazeMove.East]
+        def maze_win_script() -> Maze::MazeMove[10]:
+            [Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.East, Maze::MazeMove.East, Maze::MazeMove.East, Maze::MazeMove.East, Maze::MazeMove.East]
 
         # The first moves of that route: three South, leaving the player at
         # (1,4) with every marker still ahead.
-        def maze_fixture_script() -> MazeMove[10]:
-            [MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle, MazeMove.Idle]
+        def maze_fixture_script() -> Maze::MazeMove[10]:
+            [Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.Idle, Maze::MazeMove.Idle, Maze::MazeMove.Idle, Maze::MazeMove.Idle, Maze::MazeMove.Idle, Maze::MazeMove.Idle, Maze::MazeMove.Idle]
 
         # Three trips onto the hazard at (2,5): South four times down the open
         # first column, then East. Each hit costs a life and resets the player
         # to the start, so the same five moves repeat. The third hit drains the
         # last life and the game reports Lost.
-        def maze_lose_script() -> MazeMove[15]:
+        def maze_lose_script() -> Maze::MazeMove[15]:
             [
-                MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
-                MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
-                MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East,
+                Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.East,
+                Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.East,
+                Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.South, Maze::MazeMove.East,
             ]
 
-        def maze_play(script: MazeMove[10], steps: usize) -> TraceResult:
-            game: mutable MazeGame = MazeGame()
-            game_start(&game)
+        def maze_play(script: Maze::MazeMove[10], steps: usize) -> TraceResult:
+            game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+            MazeGame::game_start(&game)
             # Value blocks thread mutable bindings only, so the read-only
             # script parameter is copied into a mutable local first.
-            moves: mutable MazeMove[10] = script
+            moves: mutable Maze::MazeMove[10] = script
             taken: usize =
                 for index in 0..<steps |count: usize = 0, game, moves| -> count:
-                    moved: bool = game_step(&game, moves[index])
+                    moved: bool = MazeGame::game_step(&game, moves[index])
                     count <- count + 1 if moved
             TraceResult{
                 player_x: game.grid.player_x,
                 player_y: game.grid.player_y,
                 moves: game.grid.moves,
-                won: game_won(&game),
+                won: MazeGame::game_won(&game),
                 steps: taken,
             }
 
@@ -75,21 +75,21 @@ module MazeTrace:
         # Cue count of the mid-game snapshot: start click plus one step cue per
         # move, the audio the game emitted for the hosts to consume.
         def maze_fixture_cue_count() -> usize:
-            game: mutable MazeGame = MazeGame()
-            game_start(&game)
-            script: mutable MazeMove[10] = maze_fixture_script()
+            game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+            MazeGame::game_start(&game)
+            script: mutable Maze::MazeMove[10] = maze_fixture_script()
             processed: usize =
                 for index in 0..<Script::FIXTURE_STEPS |count: usize = 0, game, script| -> count:
-                    moved: bool = game_step(&game, script[index])
+                    moved: bool = MazeGame::game_step(&game, script[index])
                     count <- count + 1 if moved
             game.cue_count
 
         def maze_fixture_status() -> i64:
-            game: mutable MazeGame = MazeGame()
-            game_start(&game)
-            script: mutable MazeMove[10] = maze_fixture_script()
+            game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+            MazeGame::game_start(&game)
+            script: mutable Maze::MazeMove[10] = maze_fixture_script()
             processed: usize =
                 for index in 0..<Script::FIXTURE_STEPS |count: usize = 0, game, script| -> count:
-                    moved: bool = game_step(&game, script[index])
+                    moved: bool = MazeGame::game_step(&game, script[index])
                     count <- count + 1 if moved
-            game_status_code(game.status)
+            MazeGame::game_status_code(game.status)

@@ -1,0 +1,272 @@
+# Interactive SDL3/Metal client for the Elisa-owned maze world. This client
+# never reads the diagnostic scene manifest; it extracts World snapshots.
+include "./game.elisa"
+include "./presentation.elisa"
+include "./trace.elisa"
+
+module MazeNativeClient:
+    private:
+        const module Actions:
+            MOVE_NORTH: i64 = 1
+            MOVE_SOUTH: i64 = 2
+            MOVE_WEST: i64 = 3
+            MOVE_EAST: i64 = 4
+            START: i64 = 5
+            PAUSE: i64 = 6
+            RESTART: i64 = 7
+            QUIT: i64 = 8
+            SELF_TEST_FRAMES: usize = 10
+            CAMERA_VERTICAL_SIZE: f32 = 10.0
+            FONT_SIZE: i32 = 18
+
+        def bind_key(input: mutable ActionInput::Input&, action: i64,
+            key: Application::KeyboardKeyCode) -> bool:
+            ActionInput::bind_checked(input, ActionInput::Binding{
+                action: action,
+                device: ActionInput::Device.Keyboard,
+                code: Application::keyboard_key_code(key),
+                chord_code: 0,
+                deadzone: 0.0,
+                context: ActionInput::Context.Gameplay,
+                live: true,
+            }) == ActionInput::BindResult.Bound
+
+        def bind_controls(input: mutable ActionInput::Input&) -> bool:
+            return false if not bind_key(input, Actions::MOVE_NORTH, Application::KeyboardKeyCode.ArrowUp)
+            return false if not bind_key(input, Actions::MOVE_NORTH, Application::KeyboardKeyCode.W)
+            return false if not bind_key(input, Actions::MOVE_SOUTH, Application::KeyboardKeyCode.ArrowDown)
+            return false if not bind_key(input, Actions::MOVE_SOUTH, Application::KeyboardKeyCode.S)
+            return false if not bind_key(input, Actions::MOVE_WEST, Application::KeyboardKeyCode.ArrowLeft)
+            return false if not bind_key(input, Actions::MOVE_WEST, Application::KeyboardKeyCode.A)
+            return false if not bind_key(input, Actions::MOVE_EAST, Application::KeyboardKeyCode.ArrowRight)
+            return false if not bind_key(input, Actions::MOVE_EAST, Application::KeyboardKeyCode.D)
+            return false if not bind_key(input, Actions::START, Application::KeyboardKeyCode.Space)
+            return false if not bind_key(input, Actions::PAUSE, Application::KeyboardKeyCode.P)
+            return false if not bind_key(input, Actions::RESTART, Application::KeyboardKeyCode.R)
+            return false if not bind_key(input, Actions::QUIT, Application::KeyboardKeyCode.Escape)
+            true
+
+        def status_message(game: MazeGame::MazeGame&) -> cstr:
+            match game.status:
+                MazeGame::GameStatus.Menu:
+                    "SPACE start  |  arrows/WASD move  |  P pause  |  R restart  |  ESC quit"
+                MazeGame::GameStatus.Playing:
+                    "Arrows/WASD move  |  P pause  |  R restart  |  ESC quit"
+                MazeGame::GameStatus.Paused:
+                    "Paused  |  P resume  |  R restart  |  ESC quit"
+                MazeGame::GameStatus.Won:
+                    "Maze complete  |  R restart  |  ESC quit"
+                MazeGame::GameStatus.Lost:
+                    "Out of lives  |  R restart  |  ESC quit"
+                MazeGame::GameStatus.Exited:
+                    "Exiting maze"
+
+        def apply_actions(game: mutable MazeGame::MazeGame,
+            input: ActionInput::Input&) -> bool:
+            if ActionInput::action_pressed(input, Actions::START) and game.status == MazeGame::GameStatus.Menu:
+                MazeGame::game_start(game)
+                return true
+            if ActionInput::action_pressed(input, Actions::PAUSE):
+                if game.status == MazeGame::GameStatus.Playing:
+                    MazeGame::game_pause(game)
+                    return true
+                elif game.status == MazeGame::GameStatus.Paused:
+                    MazeGame::game_resume(game)
+                    return true
+            if ActionInput::action_pressed(input, Actions::RESTART):
+                MazeGame::game_restart(game)
+                return true
+            if ActionInput::action_pressed(input, Actions::MOVE_NORTH):
+                MazeGame::game_step(game, Maze::MazeMove.North)
+            elif ActionInput::action_pressed(input, Actions::MOVE_SOUTH):
+                MazeGame::game_step(game, Maze::MazeMove.South)
+            elif ActionInput::action_pressed(input, Actions::MOVE_WEST):
+                MazeGame::game_step(game, Maze::MazeMove.West)
+            elif ActionInput::action_pressed(input, Actions::MOVE_EAST):
+                MazeGame::game_step(game, Maze::MazeMove.East)
+            else:
+                false
+
+        def sync_game_scene(game: MazeGame::MazeGame&,
+            scene: mutable MazePresentation::MazeScene&,
+            snapshot: mutable RenderSnapshot::Snapshot&,
+            presenter: mutable RenderScene::SnapshotPresenter&) -> bool:
+            updated: bool = catch MazePresentation::scene_update(scene, game):
+                ok: true
+                error failure: false
+            return false if not updated
+            extracted: bool = catch MazePresentation::scene_extract(scene, snapshot):
+                ok: true
+                error failure: false
+            return false if not extracted
+            catch RenderSnapshotScene::sync(presenter, snapshot):
+                ok: true
+                error failure: false
+
+        def extract_and_present(scene: mutable MazePresentation::MazeScene&,
+            snapshot: mutable RenderSnapshot::Snapshot&,
+            presenter: mutable RenderScene::SnapshotPresenter&) -> bool:
+            extracted: bool = catch MazePresentation::scene_extract(scene, snapshot):
+                ok: true
+                error failure: false
+            return false if not extracted
+            catch RenderSnapshotScene::sync(presenter, snapshot):
+                ok: true
+                error failure: false
+
+        def scripted_native_smoke(game: mutable MazeGame::MazeGame&,
+            scene: mutable MazePresentation::MazeScene&,
+            snapshot: mutable RenderSnapshot::Snapshot&,
+            presenter: mutable RenderScene::SnapshotPresenter&) -> i32:
+            MazeGame::game_start(game)
+            script: Maze::MazeMove[Actions::SELF_TEST_FRAMES] = MazeTrace::maze_win_script()
+            for index in 0..<Actions::SELF_TEST_FRAMES |game, scene, snapshot, presenter, script|:
+                return 41 if not MazeGame::game_step(game, script[index])
+                return 42 if not sync_game_scene(game, scene, snapshot, presenter)
+            return 43 if not MazeGame::game_won(game)
+            return 44 if RenderSnapshot::snapshot_count(snapshot) != 39
+            return 45 if RenderScene::instance_count() != 39
+            MazeGame::game_restart(game)
+            return 46 if not sync_game_scene(game, scene, snapshot, presenter)
+            return 47 if RenderSnapshot::snapshot_count(snapshot) != 40
+            return 48 if RenderScene::instance_count() != 40
+            0
+
+        def interactive_loop(game: mutable MazeGame::MazeGame,
+            scene: mutable MazePresentation::MazeScene&,
+            snapshot: mutable RenderSnapshot::Snapshot&,
+            presenter: mutable RenderScene::SnapshotPresenter&,
+            status_text: RenderScene::OverlayTextHandle,
+            input: mutable ActionInput::Input&) -> i32:
+            running: mutable bool = true
+            resize_serial: mutable u64 = 0
+            failure: mutable i32 = 0
+            while running |game, scene, snapshot, presenter, status_text, input, resize_serial, failure|:
+                pump: Application::PumpStatus = Application::pump()
+                if pump == Application::PumpStatus.ExitRequested:
+                    running <- false
+                elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
+                    failure <- 61
+                    running <- false
+                if running and pump == Application::PumpStatus.Running:
+                    frame: mutable Application::FrameInfo = zeroed
+                    if not Application::frame_info(&frame):
+                        failure <- 62
+                        running <- false
+                    elif frame.resize_serial != resize_serial:
+                        resize_serial <- frame.resize_serial
+                        if frame.pixel_width > 0 and frame.pixel_height > 0:
+                            resized: bool = catch RenderScene::resize(frame.pixel_width, frame.pixel_height):
+                                ok: true
+                                error failure: false
+                            if not resized:
+                                failure <- 63
+                                running <- false
+                    if running:
+                        _ = ActionInputRuntime::begin_frame(&input)
+                        if ActionInput::action_pressed(input, Actions::QUIT):
+                            MazeGame::game_quit(game)
+                            _ = Application::request_exit()
+                            running <- false
+                        else:
+                            changed: bool = apply_actions(game, input)
+                            if changed:
+                                if not sync_game_scene(game, scene, snapshot, presenter):
+                                    failure <- 64
+                                    running <- false
+                                else:
+                                    text_updated: bool = catch RenderScene::set_overlay_text(
+                                        status_text, status_message(game)):
+                                        ok: true
+                                        error failure: false
+                                    if not text_updated:
+                                        failure <- 65
+                                        running <- false
+            failure
+
+    public:
+        def run(self_test: bool) -> i32:
+            config: mutable Application::Config = Application::default_config()
+            if self_test:
+                config.width <- 320
+                config.height <- 200
+                config.hidden <- true
+            required: Capabilities::BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
+                Capabilities::BackendFeature.Input,
+                Capabilities::BackendFeature.Rendering,
+                Capabilities::BackendFeature.NativeWindow,
+                Capabilities::BackendFeature.Input,
+                Capabilities::BackendFeature.Input,
+                Capabilities::BackendFeature.Input,
+                Capabilities::BackendFeature.Input,
+                Capabilities::BackendFeature.Input,
+            ]
+            no_fallbacks: Capabilities::BackendFallbackProviders = Capabilities::no_backend_fallback_providers()
+            report: mutable Capabilities::BackendRequirementReport = Capabilities::backend_requirement_invalid_report()
+            opened: Application::InitializeStatus = Application::initialize_with_requirements(
+                config, required, 3, no_fallbacks, false, &report)
+            if opened != Application::InitializeStatus.Ready:
+                _ = Application::shutdown()
+                return 1
+            if report.state != Capabilities::RequirementState.Ready:
+                _ = Application::shutdown()
+                return 2
+            run_status: i32 = run_after_host(config, self_test)
+            render_closed: bool = catch RenderScene::shutdown():
+                ok: true
+                error failure: false
+            app_closed: bool = Application::shutdown()
+            return 3 if not render_closed
+            return 4 if not app_closed
+            run_status
+
+    private:
+        def run_after_host(config: Application::Config, self_test: bool) -> i32:
+            viewport: mutable Application::FrameInfo = zeroed
+            return 5 if not Application::frame_info(&viewport)
+            viewport_width: i32 = config.width if viewport.pixel_width <= 0 else viewport.pixel_width
+            viewport_height: i32 = config.height if viewport.pixel_height <= 0 else viewport.pixel_height
+            initialized: bool = catch RenderScene::initialize(viewport_width, viewport_height,
+                Actions::CAMERA_VERTICAL_SIZE):
+                ok: true
+                error failure: false
+            return 6 if not initialized
+
+            game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+            scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
+                value: value
+                error failure: return 7
+            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+            input: mutable ActionInput::Input = ActionInput::Input()
+            return 8 if not bind_controls(&input)
+            presented: bool = extract_and_present(&scene, &snapshot, &presenter)
+            return 9 if not presented
+            status_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                status_message(game), 12.0, 12.0, Actions::FONT_SIZE,
+                RenderScene::Color{red: 1.0, green: 0.9, blue: 0.65, alpha: 1.0}):
+                value: value
+                error failure: return 10
+            first_frame: Application::PumpStatus = Application::pump()
+            return 0 if first_frame == Application::PumpStatus.ExitRequested
+            return 11 if first_frame != Application::PumpStatus.Running and first_frame != Application::PumpStatus.Suspended
+            _ = Application::frame_info(&viewport)
+            if viewport.pixel_width > 0 and viewport.pixel_height > 0 and (viewport.pixel_width != viewport_width or viewport.pixel_height != viewport_height):
+                resized: bool = catch RenderScene::resize(viewport.pixel_width, viewport.pixel_height):
+                    ok: true
+                    error failure: false
+                return 14 if not resized
+            result: mutable i32 = 0
+            if self_test:
+                result <- scripted_native_smoke(&game, &scene, &snapshot, &presenter)
+            else:
+                result <- interactive_loop(&game, &scene, &snapshot, &presenter,
+                    status_text, &input)
+            return result if result != 0
+            clear_status: bool = catch RenderSnapshotScene::clear(&presenter):
+                ok: true
+                error failure: false
+            return 12 if not clear_status
+            live_instances: usize = RenderScene::instance_count()
+            return 13 if live_instances != 0
+            0

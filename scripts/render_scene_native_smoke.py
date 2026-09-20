@@ -133,6 +133,16 @@ def main() -> int:
             escape_link.unlink(missing_ok=True)
     if status == 0:
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
+        maze_status = run([
+            sys.executable, str(ROOT / "scripts/elisa_build_run.py"), "run",
+            "--project", str(ROOT / "examples/maze"),
+            "--main", "native_smoke_main.elisa",
+            "--output", str(build / "maze-native-smoke"),
+        ], cwd=ROOT)
+        if maze_status != 0:
+            print("Elisa-owned native maze application smoke failed.", file=sys.stderr)
+            return maze_status
+        print("Elisa-owned maze world rendered through the native SDL3/Metal snapshot presenter.")
     return status
 
 

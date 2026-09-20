@@ -69,18 +69,18 @@ module Maze:
     private:
         module Steps:
             private:
-                def delta_x(direction: MazeMove) -> i64:
-                    -1 if direction == MazeMove.West else 1 if direction == MazeMove.East else 0
+                def delta_x(direction: Maze::MazeMove) -> i64:
+                    -1 if direction == Maze::MazeMove.West else 1 if direction == Maze::MazeMove.East else 0
 
-                def delta_y(direction: MazeMove) -> i64:
-                    -1 if direction == MazeMove.North else 1 if direction == MazeMove.South else 0
+                def delta_y(direction: Maze::MazeMove) -> i64:
+                    -1 if direction == Maze::MazeMove.North else 1 if direction == Maze::MazeMove.South else 0
 
             public:
-                def next_position(state: MazeState&, direction: MazeMove) -> MazeState:
+                def next_position(state: Maze::MazeState&, direction: Maze::MazeMove) -> Maze::MazeState:
                     nx: i64 = state.player_x + delta_x(direction)
                     ny: i64 = state.player_y + delta_y(direction)
-                    blocked: bool = direction == MazeMove.Idle or is_wall(nx, ny)
-                    MazeState{player_x: state.player_x, player_y: state.player_y, moves: state.moves} if blocked else MazeState{player_x: nx, player_y: ny, moves: state.moves + 1}
+                    blocked: bool = direction == Maze::MazeMove.Idle or Maze::is_wall(nx, ny)
+                    Maze::MazeState{player_x: state.player_x, player_y: state.player_y, moves: state.moves} if blocked else Maze::MazeState{player_x: nx, player_y: ny, moves: state.moves + 1}
 
     public:
         def maze_try_move(state: mutable MazeState&, direction: MazeMove) -> bool:
