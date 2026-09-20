@@ -98,6 +98,19 @@ public:
         return true;
     }
 
+    bool overlap_capsule(PhysicsQueryToken token, const XMFLOAT3& base,
+        const XMFLOAT3& tip, float radius, uint32_t layer_mask, PhysicsQueryHit& hit,
+        uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
+            wi::enums::FILTER_OBJECT_ALL) const {
+        if (!valid(token) || !finite_vector(base) || !finite_vector(tip) ||
+            !std::isfinite(radius) || radius <= 0.0f) return false;
+        const auto result = scene_.Intersects(
+            wi::primitive::Capsule(base, tip, radius), filter_mask, layer_mask);
+        if (result.entity == wi::ecs::INVALID_ENTITY) return false;
+        hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
+        return true;
+    }
+
 private:
     static bool finite_vector(const XMFLOAT3& value) {
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
@@ -137,7 +150,10 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
         !check(!bridge.raycast(token, XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 10.0f,
             1u << 1, hit), "query layer filter") ||
         !check(bridge.overlap_sphere(token, XMFLOAT3(0, 0, -1.5f), 1.0f, 1u << 3, hit) &&
-            hit.entity == target && hit.depth >= 0.0f, "query sphere overlap")) return false;
+            hit.entity == target && hit.depth >= 0.0f, "query sphere overlap") ||
+        !check(bridge.overlap_capsule(token, XMFLOAT3(0, 0, -2), XMFLOAT3(0, 0, 2),
+            1.0f, 1u << 3, hit) && hit.entity == target && hit.depth >= 0.0f,
+            "query capsule overlap")) return false;
 
     PhysicsQueryBridge::Hits hits;
     if (!check(bridge.raycast_all(token, XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1),

@@ -13,8 +13,9 @@ returns copied `PhysicsQueryHit` values to the host.
 - `raycast_all` copies at most `MAX_HITS` (16) results into fixed storage. The
   native scene may collect more internally, but the Elisa-facing result is
   bounded.
-- Sphere overlap returns the nearest Wicked result with copied position, normal,
-  and penetration depth. Invalid radii and non-finite centers are rejected.
+- Sphere and capsule overlaps return the nearest Wicked result with copied
+  position, normal, and penetration depth. Invalid radii and non-finite inputs
+  are rejected.
 - Destroying a scene participant and rebuilding the scene removes it from the
   next query. Invalidating the token rejects every later query, including
   foreign-owner tokens.
@@ -22,9 +23,9 @@ returns copied `PhysicsQueryHit` values to the host.
 ## Evidence
 
 The native Wicked gate creates a layered cube, updates its scene BVH, verifies a
-nearest ray hit, a layer miss, a sphere overlap, bounded all-hit storage,
-destroyed-participant rejection, stale-token rejection, and target unload back
-to the object baseline. Run:
+nearest ray hit, a layer miss, sphere and capsule overlaps, bounded all-hit
+storage, destroyed-participant rejection, stale-token rejection, and target
+unload back to the object baseline. Run:
 
 ```text
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
