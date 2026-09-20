@@ -12,7 +12,7 @@ handler is `Unavailable`. A named handler with global fallback disabled is
 reported as `FallbackDisallowed`. The resolver is bounded by the existing
 eight-feature contract. Its ordered `BackendFeatureDecision` entries identify
 each request as `Native`, `DeclaredFallback`, `FallbackDisallowed`,
-`Unavailable`, or `Invalid`. Native and missing-handler decisions carry
+`ProviderUnavailable`, `Unavailable`, or `Invalid`. Native and missing-handler decisions carry
 `BackendFallbackProvider.None`; a declared or disallowed route carries its
 provider identity. Repeated requests remain visible; unused entries stay
 `Invalid`.
@@ -74,6 +74,16 @@ counts, and per-request decisions in the report. A failed rollback is surfaced
 as `ShutdownFailed`. The native lifecycle smoke checks the ready path,
 unsupported Physics rejection and rollback, declared Physics and Audio fallback
 decisions, and invalid-count rejection and rollback.
+
+Before accepting a declared engine-owned fallback route, application startup
+probes the selected Jolt or miniaudio adapter with a temporary
+initialize/shutdown cycle. If a probe fails, the decision becomes
+`ProviderUnavailable`, ordered counts and the first missing feature are
+recomputed, and the host is rolled back. This proves that the adapter can start
+at negotiation time; the caller still initializes and owns the live fallback,
+which may fail later if the device or runtime changes. Caller-defined routes
+are not probed. Synchronous upload and asset-loading fallback routes remain
+unavailable until their adapters are implemented.
 
 `src/backend/requirements.elisa` adds a fixed-capacity aggregate startup
 contract for required services, optional graphics features, device limits, and
@@ -161,11 +171,12 @@ names a typed fallback provider. Wrong-service provider pairs are invalid, and
 the report distinguishes a missing handler from a declared-but-disallowed
 fallback. The portable matrix verifies all eight services, mixed outcomes,
 provider identity, and mismatch rejection. The real SDL3/Metal smoke continues
-to verify native Input routing, unavailable Physics rejection, and declared
-Physics and Audio fallback routing before their adapters run. F08 remains
-partial: a route declaration does not initialize or prove the selected
-provider is available; Physics and Audio are the only current service
-adapters.
+to verify native Input routing, unavailable Physics rejection, and Physics and
+Audio fallback routing before the caller's live adapter instances run. F08
+remains partial: startup preflight now checks that the selected Physics or
+Audio provider can initialize at that moment, but the caller still initializes,
+owns, and shuts down the live fallback. Physics and Audio are the only current
+service adapters.
 
 Typed provider-map validation on 2026-09-20:
 
@@ -176,6 +187,14 @@ Typed provider-map validation on 2026-09-20:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed on the merged tree. The portable suite, including Godot 4.7.2 compatibility, passed; Elisa Proof proved both files (17/17 and 6/6 obligations) and replayed all 23 certificates.
 
 F08 remains partial. Typed routes prevent selecting a provider for the wrong
-service, but callers still must initialize the selected adapter, handle its
+service, and startup probes the Jolt/miniaudio adapters before accepting those
+routes. Callers still must initialize the selected adapter, handle later
 failure, and verify its lifetime before entering gameplay. Physics and Audio
 are the only current adapters.
+
+Provider-availability follow-up, 2026-09-21: portable tests verify unavailable
+providers become `ProviderUnavailable`, mixed reports recalculate ordered
+counts, and available Jolt remains a declared fallback. SDL3/Metal smoke fault
+injection verifies failed Jolt-scene and miniaudio-device preflights roll back
+startup, then successfully renegotiates both routes. The full Elisa suite and
+native application smoke passed on macOS 27.0 / Apple M5.
