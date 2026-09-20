@@ -11,6 +11,12 @@ chord code. `begin_frame` clears edge state, `set_context` isolates gameplay
 and UI actions, and disconnecting a device releases all held actions from that
 device's state without leaving stale input live.
 
+`bind_checked` exposes the same validation as a non-throwing `BindResult`, so
+projects can assemble bindings in ordinary Elisa loops without carrying
+fallible-call state through helper functions. A rejected binding leaves both
+the binding count and action-state slots unchanged. `bind` remains available
+when callers prefer typed `InputError` propagation.
+
 Multiple bindings for one action are aggregated: releasing one binding keeps
 the action down while another remains held, and the action releases only when
 the last held binding is released or disconnected. The reported value is the

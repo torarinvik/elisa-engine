@@ -7,8 +7,10 @@ versioned C symbols live in `native/application_abi.h` and
 instance and do not expose vendor types to Elisa callers.
 
 The application author provides the ordinary Elisa `main()`. The engine-owned
-`scripts/elisa_build_run.py build|run` command accepts a project directory,
-Elisa main path, and output path. It includes `src/runtime/public.elisa`, which
+`scripts/elisa_build_run.py build|run` command accepts a project directory.
+Main and output paths, and default title/window options, come from
+`elisa.project.json`; command-line main/output arguments override the manifest.
+The runner includes `src/runtime/public.elisa`, which
 provides `Application`, `ActionInput`, `RenderScene`, and `Geometry` to the
 project without requiring engine-relative include paths,
 compiles the Elisa entry point to an archive, rejects game-owned C exports from
@@ -45,11 +47,15 @@ window flags describe current focus, minimize, fullscreen, suspension, and
 close-request state. A resize signal includes display changes that may affect
 pixel size or scale, and does not imply only a user drag-resize.
 
-The lifecycle layer consumes SDL window/quit events and exposes only these
-portable signals. It does not forward raw events, key/button codes, or action
-states. `ActionInput` remains an Elisa-owned action state API; on focus loss,
-callers can use `ActionInput::clear_device_state` for keyboard, mouse, and
-gamepad state without marking devices disconnected. `RenderScene` provides
+The lifecycle layer also queues ordered SDL keyboard and mouse-button edges for
+Elisa through `Application::next_input_event`. Focus loss and minimization add
+a clear-state event; queue overflow produces a reset event so missed releases
+cannot leave actions stuck. The scalar token currently carries digital code and
+edge state. `ActionInput` remains an Elisa-owned action state API; game source
+maps portable device IDs and codes to its action bindings. Analog values,
+chords, and gamepad delivery still need a compiler-compatible public path.
+`ActionInput::clear_device_state` can clear keyboard, mouse, and gamepad state
+without marking devices disconnected. `RenderScene` provides
 the first Wicked-backed generic primitive, instance-transform, visibility,
 and orthographic-camera service. Mesh/texture import, lighting, input-device
 polling, and higher-level rendering features remain future engine work.

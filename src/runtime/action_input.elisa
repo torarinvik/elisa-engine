@@ -80,6 +80,16 @@ module ActionInput:
             Capacity
             DuplicateBinding
 
+        # Non-throwing result for callers that want to bind actions without
+        # carrying Elisa's fallible-call state through their own helpers.
+        enum BindResult:
+            Bound
+            InvalidAction
+            InvalidCode
+            InvalidDeadzone
+            Capacity
+            DuplicateBinding
+
         affine struct Input:
             private:
                 bindings: mutable Binding[Limits::MAX_BINDINGS]
@@ -93,22 +103,34 @@ module ActionInput:
         def Input() -> Input:
             Input{bindings: zeroed, binding_down: zeroed, binding_values: zeroed, states: zeroed, binding_count: 0, context: Context.Gameplay, connected: [true, true, true]}
 
-        def bind(input: mutable Input&, binding: Binding) -> void error[InputError]:
-            raise InputError.InvalidAction if binding.action <= 0
-            raise InputError.InvalidCode if binding.code <= 0
-            raise InputError.InvalidDeadzone if binding.deadzone < 0.0 or binding.deadzone >= 1.0
+        def bind_checked(input: mutable Input&, binding: Binding) -> BindResult:
+            return BindResult.InvalidAction if binding.action <= 0
+            return BindResult.InvalidCode if binding.code <= 0
+            return BindResult.InvalidDeadzone if binding.deadzone < 0.0 or binding.deadzone >= 1.0
             for index in 0..<input.binding_count:
                 existing: Binding = input.bindings[index]
-                raise InputError.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.context == binding.context
-            raise InputError.Capacity if input.binding_count >= Limits::MAX_BINDINGS
-            input.bindings[input.binding_count] <- binding
-            input.binding_count <- input.binding_count + 1
+                return BindResult.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.context == binding.context
+            return BindResult.Capacity if input.binding_count >= Limits::MAX_BINDINGS
             slot: mutable usize = state_slot(input, binding.action)
             if slot == Limits::MAX_ACTIONS:
                 slot <- for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS, input| -> slot:
                     break index if not input.states[index].live
-                raise InputError.Capacity if slot == Limits::MAX_ACTIONS
+                return BindResult.Capacity if slot == Limits::MAX_ACTIONS
+            input.bindings[input.binding_count] <- binding
+            input.binding_count <- input.binding_count + 1
+            if input.states[slot].live and input.states[slot].action == binding.action:
+                return BindResult.Bound
+            else:
                 input.states[slot] <- ActionState{action: binding.action, down: false, pressed: false, released: false, value: 0.0, live: true}
+            BindResult.Bound
+
+        def bind(input: mutable Input&, binding: Binding) -> void error[InputError]:
+            result: BindResult = bind_checked(input, binding)
+            raise InputError.InvalidAction if result == BindResult.InvalidAction
+            raise InputError.InvalidCode if result == BindResult.InvalidCode
+            raise InputError.InvalidDeadzone if result == BindResult.InvalidDeadzone
+            raise InputError.Capacity if result == BindResult.Capacity
+            raise InputError.DuplicateBinding if result == BindResult.DuplicateBinding
 
         def set_context(input: mutable Input&, context: Context) -> void:
             input.context <- context

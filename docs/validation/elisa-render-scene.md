@@ -41,4 +41,6 @@ without those native dependencies.
 
 This is an initial generic primitive renderer. It owns one active scene and
 orthographic camera, uses unlit colors, and does not yet expose authored mesh or
-texture loading, parenting, batched changes, lighting, or editor tooling.
+texture loading, parenting, batched mutations, lighting, or editor tooling.
+`InstanceBatch` is only an Elisa-side collection of checked handles; it does not
+yet batch native renderer submissions.

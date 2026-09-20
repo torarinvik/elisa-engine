@@ -1,5 +1,5 @@
 def main() -> i32:
-    config: Application::Config = Application::Config{title: "Elisa Application", width: 960, height: 540, hidden: false}
+    config: Application::Config = Application::default_config()
     initialized: Application::InitializeStatus = Application::initialize(config)
     return 1 if initialized != Application::InitializeStatus.Ready
 
