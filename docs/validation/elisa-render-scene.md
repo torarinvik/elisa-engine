@@ -49,7 +49,10 @@ application shutdown.
 Validation: `scripts/render_scene_native_smoke.py` builds an ordinary Elisa
 `main()` with no game-authored exports or C++ source, launches a real hidden
 SDL3/Metal window from a working directory containing spaces, and calls the
-public application and render-scene modules. It checks invalid dimensions,
+public application and render-scene modules. It cooks a synthetic FBX triangle,
+loads it through `RenderScene::create_mesh`, and verifies that the cooked mesh
+alone changes the rendered image. Traversal, absolute paths, and a symlink
+escaping the project root are rejected. It also checks invalid dimensions,
 degenerate and out-of-range camera inputs, malformed transforms/colors, stale
 handles across scene replacement, camera resize, both explicit and
 application-triggered cleanup, real snapshot submission, stable-handle reuse,
@@ -74,10 +77,19 @@ target. `DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript
 scripts/wicked_probe.elisascript build` passed, including the generic
 application lifecycle smoke and this rendered-scene smoke.
 
-This is an initial generic primitive renderer. It owns one active scene and
-orthographic camera, uses unlit colors, and maps snapshot rows to default boxes.
+Mesh follow-up, 2026-09-20: `DEVELOPER_DIR=/Library/Developer/CommandLineTools
+python3 scripts/render_scene_native_smoke.py` passed with cooked triangle
+rendering and project-root path rejection. `python3 scripts/test_elisa_build_run.py`,
+`python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`,
+and `python3 scripts/cook_assets.py "$PWD" && elisascript scripts/check.elisascript`
+passed.
+
+This is an initial renderer. It owns one active scene and orthographic camera,
+uses unlit colors, maps snapshot rows to default boxes, and loads static cooked
+geometry packages.
 Transforms are currently stored in the separate render binding table rather
 than extracted from a general world transform component. `InstanceBatch` is an
 Elisa-side collection of checked handles and does not batch renderer calls. The
-renderer does not yet expose authored mesh or texture loading, parenting, a
-single transactional native batch submission, lighting, or editor tooling.
+renderer does not yet expose shared mesh residency, cooked materials and
+textures, parenting, a single transactional native batch submission, lighting,
+or editor tooling.

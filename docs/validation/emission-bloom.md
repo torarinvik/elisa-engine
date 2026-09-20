@@ -8,8 +8,9 @@ threshold; threshold accepts `[0, 64]`.
 
 The native Elisa render smoke sets emission on a rendered instance, enables
 bloom with a non-default threshold, and verifies that out-of-range emission and
-bloom values return `RenderSceneError.InvalidValue`. It also confirms the scene
-renders through Wicked and shuts down cleanly. Run it on macOS with the configured
+bloom values return `RenderSceneError.InvalidValue`. It also cooks and renders a
+static FBX triangle through `RenderScene::create_mesh`, rejects project-root
+path escapes, and verifies handle cleanup. Run it on macOS with the configured
 SDL3/Metal Wicked build:
 
 ```sh
