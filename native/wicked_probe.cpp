@@ -55,6 +55,7 @@
 #include "animation_submission_bridge.h"
 #include "effect_bridge.h"
 #include "picking_bridge.h"
+#include "selection_outline_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -566,6 +567,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_picking_bridge(scene)) {
+        return 1;
+    }
+    if (!probe_selection_outline(scene, render_path)) {
         return 1;
     }
     scene.Entity_Remove(object);
