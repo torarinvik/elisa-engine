@@ -119,3 +119,17 @@ Elisa-side collection of checked handles and does not batch renderer calls. The
 renderer does not yet expose shared mesh residency, FBX material mapping,
 parenting, a single transactional native batch submission, general lighting,
 or editor tooling.
+
+Electric arc follow-up, 2026-09-20: Wicked commit `c1c9300` adds a runtime trail
+queue that is independent of debug drawing. Engine commit `bef49cc` integrates
+bounded Elisa arc handles and records invalid-input, 1,024-slot capacity,
+visibility, rendered-patch change, destruction, and stale-handle checks.
+`elisascript scripts/check.elisascript` passed. The SDL3/Metal scene smoke
+passed with `DEVELOPER_DIR=/Library/Developer/CommandLineTools
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
+python3 scripts/render_scene_native_smoke.py`. The full native gate command
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=
+"../Elisa-compiler/scripts/elisac_stage1.sh" elisascript
+scripts/native_gate.elisascript native` passed every stage on macOS 27.0 / Apple
+M5 with `hardware_verification=verified`; [`build/native-gate.json`](../../build/native-gate.json)
+records the `bef49cc338a4bb483e910003f3a3b773b33bf445` source revision.
