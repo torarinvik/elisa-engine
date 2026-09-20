@@ -46,6 +46,9 @@ module RenderScene:
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_texture(handle: i64, slot: i32, asset_path: cstr) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32,
             blue: f32, strength: f32) -> i32
 
@@ -83,6 +86,12 @@ module RenderScene:
             Box
             Sphere
             Plane
+
+        enum TextureSlot:
+            BaseColor
+            Normal
+            Surface
+            Emissive
 
         struct Color:
             red: f32
@@ -179,6 +188,14 @@ module RenderScene:
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
+
+        # Paths are project-relative. Surface expects packed roughness and
+        # metalness channels; Normal selects Wicked's normal-map import path.
+        # This assigns maps without changing the material's shading model.
+        def set_texture(handle: InstanceHandle, slot: TextureSlot,
+            asset_path: cstr) -> void error[RenderSceneError]:
+            slot_code: i32 = 0 if slot == TextureSlot.BaseColor else (1 if slot == TextureSlot.Normal else (2 if slot == TextureSlot.Surface else 3))
+            try check_status(elisa_render_scene_v1_set_texture(handle.native_value, slot_code, asset_path))
 
         # Emission intensity is HDR and can exceed one; the render path's bloom
         # threshold determines how much emitted light spreads into nearby pixels.

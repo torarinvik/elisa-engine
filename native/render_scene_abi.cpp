@@ -426,7 +426,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     elisa::assets::CookedGeometry geometry;
     std::string load_error;
     try {
-        if (!elisa::assets::resolve_project_package(package_path, resolved_path)) {
+        if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
             return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         }
         if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
@@ -493,6 +493,8 @@ extern "C" int32_t elisa_render_scene_v1_set_color(
     material->userBlendMode = alpha < 0.999f ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
     return ELISA_RENDER_SCENE_OK;
 }
+
+#include "render_scene_texture_abi.h"
 
 extern "C" int32_t elisa_render_scene_v1_set_emissive(
     int64_t handle, float red, float green, float blue, float strength) {
@@ -573,28 +575,4 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
     return state.initialized ? 1 : 0;
 }
 
-extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(void) {
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
-    for (uint32_t attempt = 0; attempt < PIPELINE_WAIT_ATTEMPTS; ++attempt) {
-        if (wi::renderer::IsPipelineCreationActive() == 0) break;
-        wi::helper::Sleep(PIPELINE_WAIT_MILLISECONDS);
-    }
-    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
-    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
-    const wi::graphics::TextureDesc& desc = frame.GetDesc();
-    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
-    wi::vector<uint8_t> pixels;
-    if (!frame.IsValid() || desc.width == 0 || desc.height == 0 || pixel_size == 0 ||
-        !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
-        pixels.size() < size_t(desc.width) * desc.height * pixel_size) {
-        return 0;
-    }
-    const size_t center = (size_t(desc.height / 2) * desc.width + desc.width / 2) * pixel_size;
-    bool differs = false;
-    for (size_t index = 0; index < pixel_size; ++index) {
-        differs = differs || pixels[index] != pixels[center + index];
-    }
-    return differs ? 1 : 0;
-}
+#include "render_scene_pixel_probe.h"

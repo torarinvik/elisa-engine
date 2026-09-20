@@ -53,6 +53,9 @@ int32_t elisa_render_scene_v1_update_transform(
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
+// Texture slots: 0 base color, 1 normal, 2 packed surface, 3 emissive.
+// Paths are project-relative and resolved inside ELISA_PROJECT_ROOT.
+int32_t elisa_render_scene_v1_set_texture(int64_t handle, int32_t slot, const char* asset_path);
 int32_t elisa_render_scene_v1_set_emissive(
     int64_t handle, float red, float green, float blue, float strength);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
