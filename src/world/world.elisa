@@ -308,8 +308,11 @@ module World:
             registry_index: usize = free_registry_slot(world)
             raise WorldError.Capacity if registry_index == Sentinel::WORLD_INVALID_SLOT
             storage: StorageKind = entity_storage_kind(kind)
-            storage_index: usize =
-                free_actor_slot(world) if storage == StorageKind.Actor else (free_enemy_slot(world) if storage == StorageKind.Enemy else free_static_object_slot(world))
+            storage_index: mutable usize = free_static_object_slot(world)
+            if storage == StorageKind.Actor:
+                storage_index <- free_actor_slot(world)
+            elif storage == StorageKind.Enemy:
+                storage_index <- free_enemy_slot(world)
             raise WorldError.Capacity if storage_index == Sentinel::WORLD_INVALID_SLOT
             allocation_status: i32 =
                 catch EntityId::entity_id_allocate(&world.allocator):
@@ -365,9 +368,14 @@ module World:
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
-            removed: bool =
-                storage: StorageKind = world.registry[index].storage
-                mark_actor_dead(world, reference.id) if storage == StorageKind.Actor else (mark_enemy_dead(world, reference.id) if storage == StorageKind.Enemy else mark_static_object_dead(world, reference.id))
+            storage: StorageKind = world.registry[index].storage
+            removed: mutable bool = false
+            if storage == StorageKind.Actor:
+                removed <- mark_actor_dead(world, reference.id)
+            elif storage == StorageKind.Enemy:
+                removed <- mark_enemy_dead(world, reference.id)
+            else:
+                removed <- mark_static_object_dead(world, reference.id)
             raise WorldError.InvalidReference if not removed
             world.registry[index].live <- false
             world.registry[index].transform <- zeroed
