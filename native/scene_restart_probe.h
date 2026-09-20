@@ -31,7 +31,7 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     application.ActivatePath(nullptr);
     device->WaitForGPU();
 
-    constexpr size_t RESTART_CYCLES = 12;
+    constexpr size_t RESTART_CYCLES = 64;
     constexpr size_t WARMUP_CYCLES = 6;
     static_assert(RESTART_CYCLES > WARMUP_CYCLES);
     std::array<uint64_t, RESTART_CYCLES> gpu_samples{};

@@ -61,16 +61,17 @@ schema-2 report at `build/native-gate.json` records `outcome=pass` and
 `hardware_verification=verified`. Both native frame passes verified topology
 and exact determinism, the shutdown-hook job drain and 64-entry lifecycle
 pressure probe passed, and frame time stayed within budget. After the diagnostic
-scene is removed, the same live host creates and renders twelve fresh Wicked
+scene is removed, the same live host creates and renders 64 fresh Wicked
 scenes. Each restart waits for GPU work, stops the render path before scene
 teardown, clears scene-owned components, and verifies the application holds no
 active path to destroyed scene data. The first six cycles absorb one-time scene
-and Metal resource warm-up; the final six are reported separately. In the two
+and Metal resource warm-up; the final 58 are reported separately. In the two
 native passes the measured GPU deltas were 0 bytes, with process-heap deltas of
-864 and 832 bytes. Eight host/device cycles grew `malloc_zone_statistics` usage
-by 7,104 and 2,672 bytes across the two passes, rather than the previously
-observed roughly 1.9 MiB. These short-run values are near a plateau but do not
-replace a longer soak.
+7,520 and 11,520 bytes. Eight host/device cycles measured heap deltas of 555,840
+and 4,512 bytes. The larger first-pass delta came from a single ~540 KB step at
+cycle four; it did not recur in the repeat pass, so its ownership still needs
+attribution. The restart soak shows small CPU-heap growth rather than a perfectly
+flat line, and does not replace longer allocation tracking.
 
 With `MallocStackLogging=1`, `leaks` on a paused lifecycle-only process reported
 417 live allocations totalling 26,496 bytes, all in three `NSXPCConnection`
@@ -82,9 +83,10 @@ Wicked or Elisa frames. `leaks -atExit` can still report operating-system
 framework cycles. `AddressSanitizer` leak detection is unavailable in this
 macOS runtime (`detect_leaks is not supported on this platform`).
 
-F05 remains partial. The in-process scene-restart probe verifies rendering,
-component cleanup, path detachment, GPU completion, and a short steady-state
-memory interval. The remaining Apple framework allocation cycles are outside
-the engine, while longer-run allocation attribution and a longer soak are still
-needed before claiming all scene and device lifetimes return to a stable
-resource baseline.
+F05 remains partial. The 64-cycle in-process scene-restart probe verifies
+rendering, component cleanup, path detachment, GPU completion, and stable GPU
+usage through 58 measured restarts, but process-heap usage grows by 7–12 KB.
+One eight-cycle host/device pass also contains an unexplained one-time ~540 KB
+step. The known Apple framework allocation cycles are outside the engine; longer
+allocation tracking is still needed to attribute the remaining heap changes
+before claiming scene and device lifetimes return to a stable resource baseline.
