@@ -291,7 +291,7 @@ def main(arguments: darray[sview]) -> i64:
     return render_status if render_status != 0
     render_status <- run_visible(render_snapshot_binary, [])
     return render_status if render_status != 0
-    println("Persistent render snapshot tests passed.")
+    println("Persistent render snapshot and world-render extraction tests passed.")
     hierarchy_binary: sview = str(root.joinpath("build/hierarchy-test"))
     hierarchy_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", hierarchy_binary, str(root.joinpath("test/hierarchy.elisa"))])
     return hierarchy_status if hierarchy_status != 0
