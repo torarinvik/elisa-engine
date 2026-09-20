@@ -131,6 +131,24 @@ std::vector<uint8_t> skin_name_bytes(const std::vector<std::string>& names) {
     return bytes;
 }
 
+std::vector<uint8_t> skin_joint_name_bytes(const std::vector<elisa::assets::FbxSkinJoint>& joints) {
+    std::vector<uint8_t> bytes;
+    for (const auto& joint : joints) {
+        if (joint.name.size() > std::numeric_limits<uint32_t>::max()) return {};
+        append_u32_le(bytes, uint32_t(joint.name.size()));
+        bytes.insert(bytes.end(), joint.name.begin(), joint.name.end());
+    }
+    return bytes;
+}
+
+std::vector<uint8_t> animation_name_bytes(const std::string& name) {
+    if (name.size() > std::numeric_limits<uint32_t>::max()) return {};
+    std::vector<uint8_t> bytes;
+    append_u32_le(bytes, uint32_t(name.size()));
+    bytes.insert(bytes.end(), name.begin(), name.end());
+    return bytes;
+}
+
 size_t base64_size(size_t byte_count) {
     if (byte_count > std::numeric_limits<size_t>::max() - 2) return std::numeric_limits<size_t>::max();
     const size_t groups = (byte_count + 2) / 3;
@@ -198,6 +216,21 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const std::vector<uint8_t> skin_indices = index_bytes(mesh.skin_indices);
     const std::vector<uint8_t> skin_weights = float_bytes(mesh.skin_weights);
     const std::vector<uint8_t> skin_names = skin_name_bytes(mesh.skin_bone_names);
+    std::vector<int32_t> skin_joint_parents;
+    std::vector<float> skin_joint_rest;
+    std::vector<uint32_t> skin_cluster_joints = mesh.skin_cluster_joints;
+    std::vector<std::string> skin_joint_names;
+    for (const auto& joint : mesh.skin_joints) {
+        skin_joint_parents.push_back(joint.parent_index);
+        skin_joint_names.push_back(joint.name);
+        skin_joint_rest.insert(skin_joint_rest.end(), std::begin(joint.rest_local), std::end(joint.rest_local));
+    }
+    std::vector<uint32_t> skin_joint_parent_words;
+    for (int32_t parent : skin_joint_parents) skin_joint_parent_words.push_back(uint32_t(parent));
+    const std::vector<uint8_t> skin_joint_parent_bytes = index_bytes(skin_joint_parent_words);
+    const std::vector<uint8_t> skin_joint_rest_bytes = float_bytes(skin_joint_rest);
+    const std::vector<uint8_t> skin_joint_names_bytes = skin_name_bytes(skin_joint_names);
+    const std::vector<uint8_t> skin_cluster_joint_bytes = index_bytes(skin_cluster_joints);
     const size_t positions_encoded = base64_size(positions.size());
     const size_t normals_encoded = base64_size(normals.size());
     const size_t uvs_encoded = base64_size(uvs.size());
@@ -206,9 +239,18 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t skin_indices_encoded = base64_size(skin_indices.size());
     const size_t skin_weights_encoded = base64_size(skin_weights.size());
     const size_t skin_names_encoded = base64_size(skin_names.size());
+    const size_t skin_joint_parents_encoded = base64_size(skin_joint_parent_bytes.size());
+    const size_t skin_joint_rest_encoded = base64_size(skin_joint_rest_bytes.size());
+    const size_t skin_joint_names_encoded = base64_size(skin_joint_names_bytes.size());
+    const size_t skin_cluster_joints_encoded = base64_size(skin_cluster_joint_bytes.size());
     const bool has_skin = !mesh.skin_bone_names.empty();
     if (has_skin && (mesh.skin_indices.size() != mesh.positions.size() / 3 * 4 ||
-        mesh.skin_weights.size() != mesh.skin_indices.size() || skin_names.empty())) {
+        mesh.skin_weights.size() != mesh.skin_indices.size() || skin_names.empty() ||
+        mesh.skin_joints.empty() || mesh.skin_joints.size() > 64 ||
+        mesh.skin_cluster_joints.size() != mesh.skin_bone_names.size() ||
+        skin_joint_parents.size() != mesh.skin_joints.size() ||
+        skin_joint_rest.size() != mesh.skin_joints.size() * 10 || skin_joint_names_bytes.empty() ||
+        skin_cluster_joint_bytes.empty())) {
         std::fprintf(stderr, "FBX importer returned incomplete skin streams\n");
         return false;
     }
@@ -216,7 +258,9 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     if (positions_encoded > max_payload || normals_encoded > max_payload ||
         uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload ||
         (has_skin && (skin_indices_encoded > max_payload || skin_weights_encoded > max_payload ||
-            skin_names_encoded > max_payload))) {
+            skin_names_encoded > max_payload || skin_joint_parents_encoded > max_payload ||
+            skin_joint_rest_encoded > max_payload || skin_joint_names_encoded > max_payload ||
+            skin_cluster_joints_encoded > max_payload))) {
         std::fprintf(stderr, "FBX geometry exceeds the cooked package line limit; simplify or split the source asset\n");
         return false;
     }
@@ -233,7 +277,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     std::ostringstream package;
     package.imbue(std::locale::classic());
     package << std::setprecision(std::numeric_limits<float>::max_digits10);
-    package << "format=elisa-cooked-v2\n"
+    package << "format=" << (has_skin ? "elisa-cooked-v3\n" : "elisa-cooked-v2\n")
         << "source=" << asset_key << "\n"
         << "source_sha256=" << source_sha256 << "\n"
         << "triangles=" << mesh.indices.size() / 3 << "\n"
@@ -252,7 +296,24 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
             << "skin_indices_stride=16\nskin_weights_stride=16\n"
             << "skin_indices_b64=" << base64(skin_indices) << "\n"
             << "skin_weights_b64=" << base64(skin_weights) << "\n"
-            << "skin_names_b64=" << base64(skin_names) << "\n";
+            << "skin_names_b64=" << base64(skin_names) << "\n"
+            << "skin_joints=" << mesh.skin_joints.size() << "\n"
+            << "skin_joint_parent_stride=4\nskin_joint_rest_stride=40\nskin_cluster_joints_stride=4\n"
+            << "skin_joint_parents_b64=" << base64(skin_joint_parent_bytes) << "\n"
+            << "skin_joint_rest_b64=" << base64(skin_joint_rest_bytes) << "\n"
+            << "skin_joint_names_b64=" << base64(skin_joint_names_bytes) << "\n"
+            << "skin_cluster_joints_b64=" << base64(skin_cluster_joint_bytes) << "\n"
+            << "animation_clips=" << mesh.animation_clips.size() << "\n";
+        for (size_t clip_index = 0; clip_index < mesh.animation_clips.size(); ++clip_index) {
+            const auto& clip = mesh.animation_clips[clip_index];
+            const std::string prefix = "animation_" + std::to_string(clip_index) + "_";
+            package << prefix << "name_b64=" << base64(animation_name_bytes(clip.name)) << "\n"
+                << prefix << "duration_seconds=" << clip.duration_seconds << "\n"
+                << prefix << "sample_rate=" << clip.sample_rate << "\n"
+                << prefix << "frames=" << clip.frame_count << "\n"
+                << prefix << "transform_stride=40\n"
+                << prefix << "samples_b64=" << base64(float_bytes(clip.local_transforms)) << "\n";
+        }
     }
     const std::string bytes = package.str();
     if (bytes.size() > MAX_PACKAGE_BYTES) {

@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
+#include <vector>
 
 namespace elisa::rendering {
 
@@ -28,7 +30,8 @@ inline void set_transform(wi::scene::TransformComponent& transform,
 inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entity,
     const elisa::assets::CookedGeometry& geometry,
     float px, float py, float pz, float qx, float qy, float qz, float qw,
-    float sx, float sy, float sz, float red, float green, float blue, float alpha) {
+    float sx, float sy, float sz, float red, float green, float blue, float alpha,
+    std::vector<wi::ecs::Entity>* out_joint_entities = nullptr) {
     wi::scene::TransformComponent* transform = scene.transforms.GetComponent(entity);
     wi::scene::MaterialComponent* material = scene.materials.GetComponent(entity);
     wi::scene::ObjectComponent* object = scene.objects.GetComponent(entity);
@@ -39,6 +42,10 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
         geometry.indices.size() % 3 != 0 ||
         geometry.indices.size() > std::numeric_limits<uint32_t>::max()) return false;
+    const bool has_skin_rig = !geometry.skin_joints.empty() && !geometry.skin_cluster_joints.empty();
+    if (has_skin_rig && (geometry.skin_joints.size() > 64 || geometry.skin_cluster_joints.size() > 64 ||
+        geometry.skin_indices.size() != geometry.positions.size() / 3 * 4 ||
+        geometry.skin_weights.size() != geometry.skin_indices.size())) return false;
 
     mesh->vertex_positions.resize(geometry.positions.size() / 3);
     mesh->vertex_normals.resize(geometry.normals.size() / 3);
@@ -62,6 +69,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
             geometry.normals[index * 3 + 1], geometry.normals[index * 3 + 2]);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[index * 2], geometry.uvs[index * 2 + 1]);
     }
+    set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     if (!geometry.tangents.empty()) {
         mesh->vertex_tangents.resize(geometry.tangents.size() / 4);
         for (size_t index = 0; index < mesh->vertex_tangents.size(); ++index) {
@@ -76,12 +84,66 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     for (size_t triangle = 0; triangle < mesh->indices.size(); triangle += 3) {
         std::swap(mesh->indices[triangle + 1], mesh->indices[triangle + 2]);
     }
+    std::vector<wi::ecs::Entity> joint_entities;
+    if (has_skin_rig) {
+        mesh->vertex_boneindices.resize(mesh->vertex_positions.size());
+        mesh->vertex_boneweights.resize(mesh->vertex_positions.size());
+        for (size_t vertex = 0; vertex < mesh->vertex_positions.size(); ++vertex) {
+            const size_t offset = vertex * 4;
+            for (size_t influence = 0; influence < 4; ++influence) {
+                if (geometry.skin_weights[offset + influence] > 0.0f &&
+                    geometry.skin_indices[offset + influence] >= geometry.skin_cluster_joints.size()) return false;
+            }
+            mesh->vertex_boneindices[vertex] = XMUINT4(geometry.skin_indices[offset],
+                geometry.skin_indices[offset + 1], geometry.skin_indices[offset + 2], geometry.skin_indices[offset + 3]);
+            mesh->vertex_boneweights[vertex] = XMFLOAT4(geometry.skin_weights[offset],
+                geometry.skin_weights[offset + 1], geometry.skin_weights[offset + 2], geometry.skin_weights[offset + 3]);
+        }
+        wi::scene::ArmatureComponent& armature = scene.armatures.Create(entity);
+        armature.boneCollection.reserve(geometry.skin_cluster_joints.size());
+        armature.inverseBindMatrices.reserve(geometry.skin_cluster_joints.size());
+        joint_entities.reserve(geometry.skin_joints.size());
+        for (size_t joint_index = 0; joint_index < geometry.skin_joints.size(); ++joint_index) {
+            const auto& joint = geometry.skin_joints[joint_index];
+            if (joint.parent_index < -1 || joint.parent_index >= int32_t(joint_index) ||
+                (joint.parent_index >= 0 && size_t(joint.parent_index) >= joint_entities.size())) return false;
+            const std::string name = "elisa_skin_joint_" + std::to_string(uint32_t(entity)) + "_" +
+                std::to_string(joint_index);
+            const wi::ecs::Entity joint_entity = scene.Entity_CreateTransform(name);
+            if (joint_entity == wi::ecs::INVALID_ENTITY) return false;
+            wi::scene::TransformComponent* joint_transform = scene.transforms.GetComponent(joint_entity);
+            if (joint_transform == nullptr) return false;
+            const auto& local = joint.rest_local;
+            set_transform(*joint_transform, local[0], local[1], local[2], local[3], local[4],
+                local[5], local[6], local[7], local[8], local[9]);
+            const wi::ecs::Entity parent = joint.parent_index < 0 ? entity : joint_entities[size_t(joint.parent_index)];
+            scene.Component_Attach(joint_entity, parent, true);
+            joint_entities.push_back(joint_entity);
+        }
+        const XMMATRIX armature_inverse = XMMatrixInverse(nullptr, XMLoadFloat4x4(&transform->world));
+        for (uint32_t joint_index : geometry.skin_cluster_joints) {
+            if (joint_index >= joint_entities.size()) return false;
+            const wi::ecs::Entity bone_entity = joint_entities[joint_index];
+            const wi::scene::TransformComponent* bone_transform = scene.transforms.GetComponent(bone_entity);
+            if (bone_transform == nullptr) return false;
+            const XMMATRIX bone_local = XMMatrixMultiply(XMLoadFloat4x4(&bone_transform->world), armature_inverse);
+            XMFLOAT4X4 inverse_bind;
+            XMStoreFloat4x4(&inverse_bind, XMMatrixInverse(nullptr, bone_local));
+            const float* matrix_values = &inverse_bind.m[0][0];
+            for (size_t component = 0; component < 16; ++component) {
+                if (!std::isfinite(matrix_values[component])) return false;
+            }
+            armature.boneCollection.push_back(bone_entity);
+            armature.inverseBindMatrices.push_back(inverse_bind);
+        }
+        mesh->armatureID = entity;
+    }
     if (mesh->subsets.empty()) return false;
     mesh->subsets[0].indexOffset = 0;
     mesh->subsets[0].indexCount = uint32_t(mesh->indices.size());
     mesh->subsets[0].materialID = entity;
     mesh->CreateRenderData();
-    set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
+    if (out_joint_entities != nullptr) *out_joint_entities = std::move(joint_entities);
     material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
     material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
     material->SetCastShadow(false);

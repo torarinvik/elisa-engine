@@ -14,17 +14,20 @@
 
 #include <DirectXMath.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -42,6 +45,19 @@ constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
+    std::vector<wi::ecs::Entity> joint_entities;
+    std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
+    std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
+    int32_t animation_clip = -1;
+    int32_t previous_animation_clip = -1;
+    float animation_time = 0.0f;
+    float previous_animation_time = 0.0f;
+    float animation_speed = 1.0f;
+    float previous_animation_speed = 1.0f;
+    float blend_elapsed = 0.0f;
+    float blend_duration = 0.0f;
+    bool animation_loop = true;
+    bool previous_animation_loop = true;
     bool live = false;
 };
 
@@ -184,6 +200,134 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
         state.instances[slot].generation == generation;
 }
 
+void clear_animation_state(InstanceSlot& instance) {
+    instance.animation_clip = -1;
+    instance.previous_animation_clip = -1;
+    instance.animation_time = 0.0f;
+    instance.previous_animation_time = 0.0f;
+    instance.animation_speed = 1.0f;
+    instance.previous_animation_speed = 1.0f;
+    instance.blend_elapsed = 0.0f;
+    instance.blend_duration = 0.0f;
+    instance.animation_loop = true;
+    instance.previous_animation_loop = true;
+}
+
+int32_t find_animation_clip(const InstanceSlot& instance, const char* requested_name) {
+    if (requested_name == nullptr) return -1;
+    size_t length = 0;
+    while (length <= 1024 && requested_name[length] != '\0') ++length;
+    if (length == 0 || length > 1024) return -1;
+    const std::string requested(requested_name, length);
+    for (size_t index = 0; index < instance.animation_clips.size(); ++index) {
+        const std::string& candidate = instance.animation_clips[index].name;
+        if (candidate == requested) return int32_t(index);
+        const size_t separator = candidate.rfind('|');
+        if (separator != std::string::npos && candidate.compare(separator + 1, std::string::npos, requested) == 0) {
+            return int32_t(index);
+        }
+    }
+    return -1;
+}
+
+float animation_time(const elisa::assets::CookedGeometry::AnimationClip& clip,
+    float time, bool loop) {
+    if (clip.duration_seconds <= 0.0f) return 0.0f;
+    if (!loop) return std::clamp(time, 0.0f, clip.duration_seconds);
+    float wrapped = std::fmod(time, clip.duration_seconds);
+    if (wrapped < 0.0f) wrapped += clip.duration_seconds;
+    return wrapped;
+}
+
+void interpolate_transform(const float* first, const float* second, float weight, float* output) {
+    for (size_t component = 0; component < 3; ++component) {
+        output[component] = first[component] + (second[component] - first[component]) * weight;
+    }
+    float dot = 0.0f;
+    for (size_t component = 0; component < 4; ++component) dot += first[component + 3] * second[component + 3];
+    const float direction = dot < 0.0f ? -1.0f : 1.0f;
+    float length_squared = 0.0f;
+    for (size_t component = 0; component < 4; ++component) {
+        const float value = first[component + 3] +
+            (second[component + 3] * direction - first[component + 3]) * weight;
+        output[component + 3] = value;
+        length_squared += value * value;
+    }
+    if (length_squared > 1.0e-12f && std::isfinite(length_squared)) {
+        const float inverse_length = 1.0f / std::sqrt(length_squared);
+        for (size_t component = 0; component < 4; ++component) output[component + 3] *= inverse_length;
+    } else {
+        for (size_t component = 0; component < 4; ++component) output[component + 3] = first[component + 3];
+    }
+    for (size_t component = 7; component < 10; ++component) {
+        output[component] = first[component] + (second[component] - first[component]) * weight;
+    }
+}
+
+void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, float time,
+    bool loop, size_t joint_index, float* output) {
+    if (clip_index < 0) {
+        const auto& rest = instance.skin_joints[joint_index].rest_local;
+        std::copy(rest.begin(), rest.end(), output);
+        return;
+    }
+    const auto& clip = instance.animation_clips[size_t(clip_index)];
+    const float clamped_time = animation_time(clip, time, loop);
+    const float frame_position = std::min(clamped_time * float(clip.sample_rate), float(clip.frame_count - 1));
+    const uint32_t first_frame = uint32_t(std::floor(frame_position));
+    const uint32_t second_frame = std::min(first_frame + 1, clip.frame_count - 1);
+    const float weight = frame_position - float(first_frame);
+    const size_t joint_count = instance.skin_joints.size();
+    const float* first = clip.local_transforms.data() + (size_t(first_frame) * joint_count + joint_index) * 10;
+    const float* second = clip.local_transforms.data() + (size_t(second_frame) * joint_count + joint_index) * 10;
+    interpolate_transform(first, second, weight, output);
+}
+
+bool apply_animation_pose(RenderSceneService& state, size_t slot) {
+    InstanceSlot& instance = state.instances[slot];
+    if (instance.skin_joints.empty() || instance.joint_entities.size() != instance.skin_joints.size()) return false;
+    float blend = 1.0f;
+    if (instance.blend_duration > 0.0f) {
+        blend = std::clamp(instance.blend_elapsed / instance.blend_duration, 0.0f, 1.0f);
+    }
+    for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
+        float current[10]{};
+        float previous[10]{};
+        float pose[10]{};
+        sample_animation_pose(instance, instance.animation_clip, instance.animation_time,
+            instance.animation_loop, joint_index, current);
+        if (blend < 1.0f) {
+            sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
+                instance.previous_animation_loop, joint_index, previous);
+            interpolate_transform(previous, current, blend, pose);
+        } else {
+            std::copy(std::begin(current), std::end(current), pose);
+        }
+        wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
+        if (transform == nullptr) return false;
+        if (instance.skin_joints[joint_index].parent_index < 0) {
+            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.entity);
+            if (parent == nullptr) return false;
+            transform->translation_local = XMFLOAT3(pose[0], pose[1], pose[2]);
+            transform->rotation_local = XMFLOAT4(pose[3], pose[4], pose[5], pose[6]);
+            transform->scale_local = XMFLOAT3(pose[7], pose[8], pose[9]);
+            transform->SetDirty();
+            transform->UpdateTransform_Parented(*parent);
+        } else {
+            const uint32_t parent_index = uint32_t(instance.skin_joints[joint_index].parent_index);
+            if (parent_index >= joint_index) return false;
+            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.joint_entities[parent_index]);
+            if (parent == nullptr) return false;
+            transform->translation_local = XMFLOAT3(pose[0], pose[1], pose[2]);
+            transform->rotation_local = XMFLOAT4(pose[3], pose[4], pose[5], pose[6]);
+            transform->scale_local = XMFLOAT3(pose[7], pose[8], pose[9]);
+            transform->SetDirty();
+            transform->UpdateTransform_Parented(*parent);
+        }
+    }
+    return true;
+}
+
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
         if (!state.instances[index].live) return index;
@@ -207,6 +351,10 @@ void reset_unlocked(RenderSceneService& state) {
     }
     for (InstanceSlot& instance : state.instances) {
         instance.entity = wi::ecs::INVALID_ENTITY;
+        instance.joint_entities.clear();
+        instance.skin_joints.clear();
+        instance.animation_clips.clear();
+        clear_animation_state(instance);
         instance.live = false;
     }
     state.camera_entity = wi::ecs::INVALID_ENTITY;
@@ -373,6 +521,10 @@ extern "C" int64_t elisa_render_scene_v1_create(
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
     if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    instance.joint_entities.clear();
+    instance.skin_joints.clear();
+    instance.animation_clips.clear();
+    clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -423,6 +575,10 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
     if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    instance.joint_entities.clear();
+    instance.skin_joints.clear();
+    instance.animation_clips.clear();
+    clear_animation_state(instance);
     std::filesystem::path resolved_path;
     elisa::assets::CookedGeometry geometry;
     std::string load_error;
@@ -444,13 +600,15 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     const std::string name = "elisa_cooked_mesh_" + std::to_string(slot) + "_" + std::to_string(generation);
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
+    std::vector<wi::ecs::Entity> joint_entities;
     try {
         // The cube helper creates the complete Wicked object/mesh/material
         // relationship; replace its small starter geometry with cooked data.
         entity = state.scene->Entity_CreateCube(name);
         if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
         if (!elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
-            px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha)) {
+            px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha,
+            &joint_entities)) {
             state.scene->Entity_Remove(entity);
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
@@ -460,6 +618,9 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     }
 
     instance.entity = entity;
+    instance.joint_entities = std::move(joint_entities);
+    instance.skin_joints = std::move(geometry.skin_joints);
+    instance.animation_clips = std::move(geometry.animation_clips);
     instance.generation = generation;
     instance.live = true;
     return int64_t(encode_handle(slot, generation));
@@ -477,6 +638,118 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     return update_transform_unlocked(state, slot, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
+}
+
+extern "C" int32_t elisa_render_scene_v1_play_animation(
+    int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds) {
+    if ((loop != 0 && loop != 1) || !finite(speed) || speed < 0.0f || speed > 16.0f ||
+        !finite(blend_seconds) || blend_seconds < 0.0f || blend_seconds > 10.0f) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    InstanceSlot& instance = state.instances[slot];
+    const int32_t next_clip = find_animation_clip(instance, clip_name);
+    if (next_clip < 0 || instance.joint_entities.size() != instance.skin_joints.size()) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    if (instance.animation_clip >= 0 && instance.animation_clip < int32_t(instance.animation_clips.size())) {
+        instance.previous_animation_clip = instance.animation_clip;
+        instance.previous_animation_time = instance.animation_time;
+        instance.previous_animation_speed = instance.animation_speed;
+        instance.previous_animation_loop = instance.animation_loop;
+    } else {
+        instance.previous_animation_clip = -1;
+        instance.previous_animation_time = 0.0f;
+        instance.previous_animation_speed = 1.0f;
+        instance.previous_animation_loop = true;
+    }
+    instance.animation_clip = next_clip;
+    instance.animation_time = 0.0f;
+    instance.animation_speed = speed;
+    instance.animation_loop = loop != 0;
+    instance.blend_elapsed = 0.0f;
+    instance.blend_duration = blend_seconds;
+    if (blend_seconds == 0.0f) instance.previous_animation_clip = -1;
+    return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
+}
+
+extern "C" int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds) {
+    if (!finite(blend_seconds) || blend_seconds < 0.0f || blend_seconds > 10.0f) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    InstanceSlot& instance = state.instances[slot];
+    if (instance.skin_joints.empty() || instance.joint_entities.size() != instance.skin_joints.size()) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    if (instance.animation_clip >= 0 && instance.animation_clip < int32_t(instance.animation_clips.size())) {
+        instance.previous_animation_clip = instance.animation_clip;
+        instance.previous_animation_time = instance.animation_time;
+        instance.previous_animation_speed = instance.animation_speed;
+        instance.previous_animation_loop = instance.animation_loop;
+    } else if (instance.previous_animation_clip < 0) {
+        instance.previous_animation_clip = -1;
+        instance.previous_animation_time = 0.0f;
+        instance.previous_animation_speed = 1.0f;
+        instance.previous_animation_loop = true;
+    }
+    instance.animation_clip = -1;
+    instance.animation_time = 0.0f;
+    instance.blend_elapsed = 0.0f;
+    instance.blend_duration = blend_seconds;
+    if (blend_seconds == 0.0f) instance.previous_animation_clip = -1;
+    return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
+}
+
+extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds) {
+    if (!finite(delta_seconds) || delta_seconds < 0.0f || delta_seconds > 1.0f) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    InstanceSlot& instance = state.instances[slot];
+    if ((instance.animation_clip >= int32_t(instance.animation_clips.size())) ||
+        (instance.animation_clip < 0 && instance.previous_animation_clip < 0)) {
+        return instance.animation_clip < 0 ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    if (instance.animation_clip >= 0) {
+        instance.animation_time += delta_seconds * instance.animation_speed;
+        if (instance.animation_loop) {
+            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+            instance.animation_time = animation_time(clip, instance.animation_time, true);
+        } else {
+            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+            instance.animation_time = std::min(instance.animation_time, clip.duration_seconds);
+        }
+    }
+    if (instance.previous_animation_clip >= 0) {
+        if (instance.previous_animation_clip >= int32_t(instance.animation_clips.size())) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        instance.previous_animation_time += delta_seconds * instance.previous_animation_speed;
+        const auto& previous = instance.animation_clips[size_t(instance.previous_animation_clip)];
+        instance.previous_animation_time = animation_time(previous, instance.previous_animation_time,
+            instance.previous_animation_loop);
+    }
+    if (instance.blend_duration > 0.0f) {
+        instance.blend_elapsed = std::min(instance.blend_duration, instance.blend_elapsed + delta_seconds);
+        if (instance.blend_elapsed >= instance.blend_duration) instance.previous_animation_clip = -1;
+    }
+    return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
 
 #include "render_scene_material_abi.inc"
@@ -513,6 +786,10 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     state.scene->Entity_Remove(state.instances[slot].entity);
     state.instances[slot].entity = wi::ecs::INVALID_ENTITY;
+    state.instances[slot].joint_entities.clear();
+    state.instances[slot].skin_joints.clear();
+    state.instances[slot].animation_clips.clear();
+    clear_animation_state(state.instances[slot]);
     state.instances[slot].live = false;
     return ELISA_RENDER_SCENE_OK;
 }

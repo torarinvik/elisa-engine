@@ -62,8 +62,9 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
     }
     if not required.issubset(fields):
         raise ValueError("cooked package is missing normalized geometry sections")
-    if fields["format"] != "elisa-cooked-v2" or fields["source"] != expected_source:
+    if fields["format"] not in ("elisa-cooked-v2", "elisa-cooked-v3") or fields["source"] != expected_source:
         raise ValueError("cooked package format or source identity does not match")
+    has_rig_format = fields["format"] == "elisa-cooked-v3"
     if fields["source_sha256"] != expected_hash:
         raise ValueError("cooked package source hash does not match the input FBX")
     if (fields["position_stride"], fields["normal_stride"], fields["uv_stride"],
@@ -139,6 +140,102 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             offset += length
         if offset != len(skin_names):
             raise ValueError("cooked package bone-name stream has trailing bytes")
+
+    rig_fields = {"skin_joints", "skin_joint_parent_stride", "skin_joint_rest_stride",
+        "skin_joint_parents_b64", "skin_joint_rest_b64", "skin_joint_names_b64",
+        "skin_cluster_joints_stride", "skin_cluster_joints_b64"}
+    present_rig_fields = rig_fields.intersection(fields)
+    if has_rig_format != bool(present_rig_fields) or (present_rig_fields and present_rig_fields != rig_fields) or \
+            (present_rig_fields and not present_skin_fields):
+        raise ValueError("cooked package has an incomplete rig hierarchy")
+    if present_rig_fields:
+        try:
+            joint_count = int(fields["skin_joints"])
+            cluster_count = int(fields["skin_bones"])
+        except ValueError as failure:
+            raise ValueError("cooked package has invalid rig counts") from failure
+        if not 1 <= joint_count <= 64 or fields["skin_joint_parent_stride"] != "4" or \
+                fields["skin_joint_rest_stride"] != "40" or fields["skin_cluster_joints_stride"] != "4":
+            raise ValueError("cooked package has unsupported rig bounds or strides")
+        parents = decode("skin_joint_parents_b64")
+        rests = decode("skin_joint_rest_b64")
+        names = decode("skin_joint_names_b64")
+        cluster_joints = decode("skin_cluster_joints_b64")
+        if len(parents) != joint_count * 4 or len(rests) != joint_count * 40 or \
+                len(cluster_joints) != cluster_count * 4:
+            raise ValueError("cooked package rig stream lengths do not match the hierarchy")
+
+        def decode_names(data: bytes, count: int) -> list[bytes]:
+            result: list[bytes] = []
+            offset = 0
+            for _ in range(count):
+                if len(data) - offset < 4:
+                    raise ValueError("cooked package joint-name stream is truncated")
+                (length,) = struct.unpack_from("<I", data, offset)
+                offset += 4
+                if length > len(data) - offset:
+                    raise ValueError("cooked package joint name exceeds its stream")
+                result.append(data[offset:offset + length])
+                offset += length
+            if offset != len(data):
+                raise ValueError("cooked package joint-name stream has trailing bytes")
+            return result
+
+        joint_names = decode_names(names, joint_count)
+        skin_cluster_names = decode_names(skin_names, cluster_count)
+        parent_values = struct.unpack(f"<{joint_count}i", parents)
+        joint_palette = struct.unpack(f"<{cluster_count}I", cluster_joints)
+        seen_clusters: set[int] = set()
+        for joint_index, parent in enumerate(parent_values):
+            if parent < -1 or parent >= joint_index:
+                raise ValueError("cooked package rig is not parent ordered")
+            rest = struct.unpack_from("<10f", rests, joint_index * 40)
+            rotation_length = math.sqrt(sum(value * value for value in rest[3:7]))
+            if not all(math.isfinite(value) for value in rest) or not 0.99 < rotation_length < 1.01 or \
+                    any(value == 0.0 for value in rest[7:10]):
+                raise ValueError("cooked package contains an invalid joint rest transform")
+        for cluster_index, joint_index in enumerate(joint_palette):
+            if joint_index >= joint_count or joint_index in seen_clusters or \
+                    joint_names[joint_index] != skin_cluster_names[cluster_index]:
+                raise ValueError("cooked package cluster map does not match its rig hierarchy")
+            seen_clusters.add(joint_index)
+
+        try:
+            clip_count = int(fields["animation_clips"])
+        except (KeyError, ValueError) as failure:
+            raise ValueError("cooked package has an invalid animation clip count") from failure
+        if not 0 <= clip_count <= 8:
+            raise ValueError("cooked package exceeds the animation clip limit")
+        total_sample_floats = 0
+        for clip_index in range(clip_count):
+            prefix = f"animation_{clip_index}_"
+            try:
+                clip_name_data = decode(prefix + "name_b64")
+                (name_length,) = struct.unpack_from("<I", clip_name_data)
+                if name_length == 0 or name_length != len(clip_name_data) - 4:
+                    raise ValueError("cooked package has an invalid animation name")
+                duration = float(fields[prefix + "duration_seconds"])
+                sample_rate = int(fields[prefix + "sample_rate"])
+                frame_count = int(fields[prefix + "frames"])
+                transform_stride = fields[prefix + "transform_stride"]
+            except (KeyError, ValueError, struct.error) as failure:
+                raise ValueError("cooked package has invalid animation metadata") from failure
+            if not math.isfinite(duration) or duration <= 0.0 or not 1 <= sample_rate <= 120 or \
+                    not 2 <= frame_count <= 3601 or transform_stride != "40":
+                raise ValueError("cooked package has unsupported animation bounds or strides")
+            sample_floats = joint_count * frame_count * 10
+            if sample_floats > 2_000_000 - total_sample_floats:
+                raise ValueError("cooked package exceeds the bounded animation sample budget")
+            sample_data = decode(prefix + "samples_b64")
+            if len(sample_data) != sample_floats * 4:
+                raise ValueError("cooked package animation sample length is invalid")
+            for offset in range(0, sample_floats, 10):
+                sample = struct.unpack_from("<10f", sample_data, offset * 4)
+                rotation_length = math.sqrt(sum(value * value for value in sample[3:7]))
+                if not all(math.isfinite(value) for value in sample) or not 0.99 < rotation_length < 1.01 or \
+                        any(value == 0.0 for value in sample[7:10]):
+                    raise ValueError("cooked package contains an invalid animation sample")
+            total_sample_floats += sample_floats
     return fields
 
 

@@ -52,6 +52,10 @@ int32_t elisa_render_scene_v1_update_transform(
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
+int32_t elisa_render_scene_v1_play_animation(
+    int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
+int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
+int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
 // Texture slots: 0 base color, 1 normal, 2 packed surface, 3 emissive.
 // Surface RGBA channels are occlusion, roughness, metalness, reflectance.
