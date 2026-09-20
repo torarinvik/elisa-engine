@@ -54,6 +54,7 @@
 #include "postprocess_bridge.h"
 #include "animation_submission_bridge.h"
 #include "effect_bridge.h"
+#include "picking_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -469,13 +470,6 @@ int main(int argc, char** argv) {
     if (!probe_audio(manifest)) {
         return 1;
     }
-    // Frame timing: the plan asks for measured frame time with median and
-    // tail, not a "zero overhead" claim. These are hidden, trivial frames,
-    // so the numbers are a floor for this scene, not a performance promise;
-    // the runner still gates the median against the fixture's frame budget.
-    // Warm-up frames are excluded on purpose: shader permutation creation and
-    // history buffers make the first frames unrepresentative, and the plan
-    // asks for steady-state median and tail, not start-up cost.
     // The Tracy client is exercised here; the frame loop below also marks each
     // frame. See native/tracy_probe.h.
     if (!probe_tracy()) {
@@ -569,6 +563,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_effect_bridge(scene)) {
+        return 1;
+    }
+    if (!probe_picking_bridge(scene)) {
         return 1;
     }
     scene.Entity_Remove(object);
