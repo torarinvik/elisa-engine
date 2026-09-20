@@ -48,9 +48,21 @@ python3 scripts/test_fbx_import.py --assets-root "/path/to/amazing labyrinth/ass
 The asset-root test checks that the walking and running files share the same
 34-bone name order, expected clips and durations are visible, the character mesh
 is selected instead of the auxiliary sphere, and the large fence file parses
-under the configured limits. These supplied source assets passed in the sibling
-game checkout. The synthetic triangle checks unit conversion, node translation,
-finite generated normals, and valid indices.
+under the configured limits. It passed against the supplied assets on
+2026-09-20, together with the cooked skin package check:
+
+```sh
+DEVELOPER_DIR="$(xcode-select -p)" python3 scripts/test_fbx_import.py \
+  --assets-root "../amazing labyrinth/assets" \
+  --cooked-skin "../amazing labyrinth/build/cooked/cyborg-walking.pkg"
+
+walking/running: 83,522 triangles, 34 bones, 2 clips each
+fence: 3,077,694 triangles parsed within the configured limits
+cooked skin package: 34 bones, 97,679 vertices
+```
+
+The synthetic triangle checks unit conversion, node translation, finite
+generated normals, and valid indices.
 
 The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
 existing `elisa-cooked-v2` geometry package with source identity and hash,
@@ -71,19 +83,27 @@ bytes without tangents; 833,098 bytes with tangents) at 0.00124 relative error.
 A fresh full game build on 2026-09-20 first exposed an index-memory failure:
 static corners carried four unused bone indices and weights. `FbxVertex` now
 stores only position, normal and UV data; skinned meshes pass influences as a
-second `ufbx_generate_indices()` stream. The full Elisa project runner now cooks
-both the 83,442-triangle walking mesh and the 3,077,694-triangle Arc Gate,
-validates the resulting packages, and compiles and links the game successfully.
+second `ufbx_generate_indices()` stream. The engine checkout then built the
+supplied game project with:
+
+```sh
+DEVELOPER_DIR="$(xcode-select -p)" \
+  python3 ../amazing-labyrinth-engine/scripts/elisa_build_run.py build \
+  --project "../amazing labyrinth"
+```
+
+The runner cooked and validated the 83,442-triangle walking mesh and simplified
+the 3,077,694-triangle Arc Gate to 12,000 triangles, 10,009 vertices, and
+833,098 bytes at 0.00124 relative error, then compiled and linked the game.
 `python3 scripts/cook_fbx_asset.py --self-test` also passes with deterministic
 512-to-128-triangle simplification. For a real source, supply
 `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
 DESTINATION.pkg`; the asset key must be safe and project-relative.
 
-The sibling worktree also cooked its supplied walking FBX with a 34-bone rig
-and 97,679 deduplicated vertices into an 11,755,338-byte package. Its importer
-test checked finite, normalized four-bone influences, and `--cooked-skin`
-validates those streams through the bounded runtime package reader. The asset
-root remains available beside this engine checkout for reruns.
+The walking package contains a 34-bone rig and 97,679 deduplicated vertices;
+the importer test checked finite, normalized four-bone influences, and
+`--cooked-skin` validated those streams through the bounded runtime package
+reader.
 
 `native/package_load.h` reads the optional UV channel and copies it into Wicked's
 first UV set. `native/cooked_geometry_package.h` decodes bounded runtime packages
