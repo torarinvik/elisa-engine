@@ -30,6 +30,18 @@ module Application:
         extern elisa_application_abi_version() -> u32
 
         @callconv(c)
+        extern elisa_application_v1_project_title() -> cstr
+
+        @callconv(c)
+        extern elisa_application_v1_project_width() -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_project_height() -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_project_hidden() -> i32
+
+        @callconv(c)
         extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
 
         @callconv(c)
@@ -101,7 +113,12 @@ module Application:
             Failed
 
         def default_config() -> Config:
-            Config{title: "Elisa Engine", width: 1280, height: 720, hidden: false}
+            Config{
+                title: elisa_application_v1_project_title(),
+                width: elisa_application_v1_project_width(),
+                height: elisa_application_v1_project_height(),
+                hidden: elisa_application_v1_project_hidden() != 0,
+            }
 
         def initialize(config: Config) -> InitializeStatus:
             return InitializeStatus.UnsupportedAbi if elisa_application_abi_version() != 1

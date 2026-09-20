@@ -1,0 +1,11 @@
+{
+  "name": "minimal-application",
+  "main": "main.elisa",
+  "output": "build/minimal-application",
+  "application": {
+    "title": "Elisa Application",
+    "width": 960,
+    "height": 540,
+    "hidden": false
+  }
+}

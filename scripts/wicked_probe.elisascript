@@ -193,6 +193,11 @@ def main(arguments: darray[sview]) -> i64:
         _ = write_stderr(compile_result.stderr)
         if compile_result.exit_status != 0:
             return compile_result.exit_status
+        runner_test_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/test_elisa_build_run.py"))])
+        if runner_test_status != 0:
+            return runner_test_status
         application_smoke_status: i64 = run_visible(
             get_environment_or("PYTHON_BIN", "python3"),
             [str(root.joinpath("scripts/application_native_smoke.py"))])

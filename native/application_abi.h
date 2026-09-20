@@ -50,6 +50,10 @@ enum {
 };
 
 uint32_t elisa_application_abi_version(void);
+const char* elisa_application_v1_project_title(void);
+int32_t elisa_application_v1_project_width(void);
+int32_t elisa_application_v1_project_height(void);
+int32_t elisa_application_v1_project_hidden(void);
 int32_t elisa_application_v1_initialize(const char* title, int32_t width, int32_t height, int32_t hidden);
 int32_t elisa_application_v1_pump(void);
 // One typed scalar-output call avoids compiler-specific aggregate layout.

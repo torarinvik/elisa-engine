@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_MANIFEST = "elisa.project.json"
 FRAMEWORKS = [
     "Foundation", "CoreFoundation", "CoreGraphics", "CoreText", "ImageIO",
     "Metal", "QuartzCore", "AppKit", "IOKit", "GameController", "AudioToolbox",
@@ -138,8 +139,8 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     for action in ("build", "run"):
         command = subparsers.add_parser(action, help=f"{action} the Elisa project")
         command.add_argument("--project", required=True, help="project directory")
-        command.add_argument("--main", required=True, help="Elisa main source, relative to --project or absolute")
-        command.add_argument("--output", required=True, help="executable path, relative to --project or absolute")
+        command.add_argument("--main", help=f"Elisa main source; defaults to {PROJECT_MANIFEST}")
+        command.add_argument("--output", help=f"executable path; defaults to {PROJECT_MANIFEST}")
         command.add_argument("--wicked-root", help="WickedEngine checkout (or WICKED_ROOT)")
         command.add_argument("--wicked-build", help="WickedEngine build directory (or WICKED_BUILD)")
         command.add_argument("--sdl3-root", help="SDL3 prefix with include/ and lib/ (or WICKED_SDL3_ROOT/SDL3_ROOT)")
@@ -167,17 +168,72 @@ def run_command(command: list[str], *, cwd: Path | None = None,
         return 127
 
 
+def load_project_config(project: Path) -> dict[str, object]:
+    manifest = project / PROJECT_MANIFEST
+    if not manifest.exists():
+        return {}
+    try:
+        value = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise BuildConfigurationError(f"Could not read {manifest}: {error}") from error
+    if not isinstance(value, dict):
+        raise BuildConfigurationError(f"{manifest} must contain a JSON object")
+    return value
+
+
+def application_settings(config: dict[str, object]) -> dict[str, object]:
+    application = config.get("application", {})
+    if not isinstance(application, dict):
+        raise BuildConfigurationError("project 'application' settings must be an object")
+    title = application.get("title", "Elisa Engine")
+    width = application.get("width", 1280)
+    height = application.get("height", 720)
+    hidden = application.get("hidden", False)
+    try:
+        title_size = len(title.encode("utf-8")) if isinstance(title, str) else 0
+    except UnicodeEncodeError as error:
+        raise BuildConfigurationError("application title must be valid UTF-8") from error
+    if not isinstance(title, str) or "\0" in title or title_size < 1 or title_size >= 256:
+        raise BuildConfigurationError("application title must contain 1 to 255 UTF-8 bytes")
+    if isinstance(width, bool) or not isinstance(width, int) or width <= 0 or width > 16384:
+        raise BuildConfigurationError("application width must be an integer from 1 to 16384")
+    if isinstance(height, bool) or not isinstance(height, int) or height <= 0 or height > 16384:
+        raise BuildConfigurationError("application height must be an integer from 1 to 16384")
+    if not isinstance(hidden, bool):
+        raise BuildConfigurationError("application hidden setting must be a boolean")
+    return {"title": title, "width": width, "height": height, "hidden": hidden}
+
+
 def resolve_project_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     project = Path(args.project).expanduser().resolve()
     if not project.is_dir():
         raise BuildConfigurationError(f"Project directory does not exist: {project}")
-    main_source = Path(args.main).expanduser()
+    config = load_project_config(project)
+    application_settings(config)
+    main_value = args.main or config.get("main")
+    if not isinstance(main_value, str) or not main_value:
+        raise BuildConfigurationError(f"provide --main or set 'main' in {PROJECT_MANIFEST}")
+    if chr(0) in main_value:
+        raise BuildConfigurationError("Elisa main source path must not contain a NUL character")
+    main_source = Path(main_value).expanduser()
     if not main_source.is_absolute():
         main_source = project / main_source
     main_source = main_source.resolve()
     if not main_source.is_file() or main_source.suffix != ".elisa":
         raise BuildConfigurationError(f"Elisa main source does not exist: {main_source}")
-    output = Path(args.output).expanduser()
+    output_value = args.output or config.get("output")
+    if output_value is None:
+        name = config.get("name", project.name)
+        if not isinstance(name, str) or not name:
+            raise BuildConfigurationError("project 'name' must be a non-empty string")
+        if chr(0) in name:
+            raise BuildConfigurationError("project 'name' must not contain a NUL character")
+        output_value = f"build/{name}"
+    if not isinstance(output_value, str) or not output_value:
+        raise BuildConfigurationError(f"provide --output or set 'output' in {PROJECT_MANIFEST}")
+    if chr(0) in output_value:
+        raise BuildConfigurationError("output path must not contain a NUL character")
+    output = Path(output_value).expanduser()
     if not output.is_absolute():
         output = project / output
     output = output.resolve()
@@ -294,7 +350,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         runtime_env = dict(os.environ)
         runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(shader_path)
-        return run_command([str(output)], cwd=Path(args.project).expanduser().resolve(), env=runtime_env)
+        project = Path(args.project).expanduser().resolve()
+        app = application_settings(load_project_config(project))
+        runtime_env["ELISA_PROJECT_TITLE"] = str(app["title"])
+        runtime_env["ELISA_PROJECT_WIDTH"] = str(app["width"])
+        runtime_env["ELISA_PROJECT_HEIGHT"] = str(app["height"])
+        runtime_env["ELISA_PROJECT_HIDDEN"] = "1" if app["hidden"] else "0"
+        return run_command([str(output)], cwd=project, env=runtime_env)
     except BuildConfigurationError as error:
         print(f"elisa-build-run: {error}", file=sys.stderr)
         return 2

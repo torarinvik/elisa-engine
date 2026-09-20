@@ -1,7 +1,7 @@
 # End-to-end application lifecycle smoke: the generated executable entry is
 # Elisa main; it imports only the public engine module and owns the loop calls.
 def main() -> i32:
-    config: Application::Config = Application::Config{title: "Elisa Engine Smoke", width: 320, height: 200, hidden: true}
+    config: Application::Config = Application::default_config()
     opened: Application::InitializeStatus = Application::initialize(config)
     return 1 if opened != Application::InitializeStatus.Ready
 
@@ -11,7 +11,7 @@ def main() -> i32:
     info: mutable Application::FrameInfo = zeroed
     return 9 if not Application::frame_info(&info)
     return 11 if info.frame_count != 1 or info.elapsed_nanos == 0 or Application::elapsed_seconds(info) <= 0.0
-    return 12 if info.logical_width <= 0 or info.logical_height <= 0 or info.pixel_width <= 0 or info.pixel_height <= 0 or info.display_scale <= 0.0
+    return 12 if info.logical_width != 320 or info.logical_height != 200 or info.pixel_width <= 0 or info.pixel_height <= 0 or info.display_scale <= 0.0
     return 4 if not Application::request_exit()
     exit_state: Application::PumpStatus = Application::pump()
     return 5 if exit_state != Application::PumpStatus.ExitRequested

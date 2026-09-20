@@ -10,12 +10,11 @@ From any directory, run:
 
 ```sh
 python3 "/path/to/elisa-engine/scripts/elisa_build_run.py" run \
-  --project "/path/to/elisa-engine/examples/minimal_application" \
-  --main "main.elisa" \
-  --output "build/minimal application"
+  --project "/path/to/elisa-engine/examples/minimal_application"
 ```
 
-The sample opens a window, runs one frame, and exits so it is safe to use as a
+The project manifest sets the entry point, output path, and window defaults.
+The app opens a window, runs one frame, and exits so it is safe to use as a
 first build check. A project can import `ActionInput` for game actions and
 `RenderScene` to create and transform primitive instances through Elisa.
 

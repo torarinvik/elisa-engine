@@ -85,6 +85,33 @@ extern "C" uint32_t elisa_application_abi_version(void) {
     return ELISA_APPLICATION_ABI_VERSION;
 }
 
+extern "C" const char* elisa_application_v1_project_title(void) {
+    const char* title = std::getenv("ELISA_PROJECT_TITLE");
+    return valid_title(title) ? title : "Elisa Engine";
+}
+
+static int32_t project_dimension(const char* key, int32_t fallback) {
+    const char* value = std::getenv(key);
+    if (value == nullptr || value[0] == '\0') return fallback;
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed <= 0 || parsed > 16384) return fallback;
+    return static_cast<int32_t>(parsed);
+}
+
+extern "C" int32_t elisa_application_v1_project_width(void) {
+    return project_dimension("ELISA_PROJECT_WIDTH", 1280);
+}
+
+extern "C" int32_t elisa_application_v1_project_height(void) {
+    return project_dimension("ELISA_PROJECT_HEIGHT", 720);
+}
+
+extern "C" int32_t elisa_application_v1_project_hidden(void) {
+    const char* value = std::getenv("ELISA_PROJECT_HIDDEN");
+    return value != nullptr && std::strcmp(value, "1") == 0 ? 1 : 0;
+}
+
 extern "C" int32_t elisa_application_v1_initialize(
     const char* title, int32_t width, int32_t height, int32_t hidden) {
     if (!valid_title(title) || width <= 0 || height <= 0 || width > 16384 || height > 16384 ||
