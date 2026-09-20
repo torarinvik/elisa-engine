@@ -63,6 +63,26 @@ rollback is surfaced as `ShutdownFailed`. The native lifecycle smoke checks
 the ready path, unsupported Physics rejection and rollback, declared Audio
 fallback reporting, and invalid-count rejection and rollback.
 
+`src/backend/requirements.elisa` adds a fixed-capacity aggregate startup
+contract for required services, optional graphics features, device limits, and
+texture encodings. Limit requests specify preferred and minimum acceptable
+values; a supported value between them is reported as a fallback and returned
+in the report. Texture requests return the selected format for every slot, so
+the caller can apply an allowed RGBA8 downgrade. Service and optional-feature
+fallbacks require declared fallback maps. The combined report gives Invalid
+priority over Unavailable, then Fallback, then Ready, while retaining each
+category's details and counts.
+
+`Application::initialize_with_profile_requirements()` runs this combined
+negotiation before gameplay. It returns `FallbackRequired` with the selected
+limits and texture decisions for the caller to apply, or shuts the host down
+after Invalid/Unavailable results. Its report starts Invalid, including when
+host startup itself fails. `test/capabilities.elisa` covers mixed ready and
+fallback requests, a declared optional-feature fallback, an unavailable
+unknown capacity, invalid preferred/minimum ranges, and capacity overflow.
+The ordinary SDL3/Metal application smoke checks a successful combined startup
+with native services, a viewport minimum, and RGBA8.
+
 ABI version 2 carries
 RGBA8, BC1, and R16F resource-format support, memory budget/usage, and the
 actual high-priority and streaming worker counts. Typed C queries expose
@@ -97,3 +117,14 @@ public bounded capacity returned `InvalidRequirements` with the host shut
 down. The full `DEVELOPER_DIR="$(xcode-select -p)" elisascript
 scripts/check.elisascript` suite passed, including its proof obligations and
 certificate replay.
+
+Aggregate negotiation validation on 2026-09-20:
+
+- `DEVELOPER_DIR="$(xcode-select -p)" ../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/capabilities-test test/capabilities.elisa && build/capabilities-test` passed.
+- `DEVELOPER_DIR="$(xcode-select -p)" ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed; the real SDL3/Metal application returned `Ready` with its combined startup requirements.
+- `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `python3 scripts/check_dependency_manifest.py` passed.
+- `DEVELOPER_DIR="$(xcode-select -p)" ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed the complete portable suite, both Elisa Proof proofs, and 23 certificate replays.
+
+The fallback report does not instantiate fallback services. Gameplay code still
+has to apply each declared service fallback, and physics/audio remain
+unavailable until Elisa-owned adapters exist.

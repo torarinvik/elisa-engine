@@ -1,5 +1,6 @@
-include "../src/backend/capabilities.elisa"
+include "../src/backend/requirements.elisa"
 using Capabilities
+using BackendRequirements
 
 def one_feature(feature: BackendFeature) -> BackendFeature[8]:
     [feature, feature, feature, feature, feature, feature, feature, feature]
@@ -54,12 +55,94 @@ def fallback_matrix_valid() -> bool:
         report <- backend_requirement_report(profile, required, 1, no_services, true)
         break false if report.state != RequirementState.Unavailable or report.first_missing != feature or report.missing_count != 1 or report.fallback_count != 0
 
+def aggregate_requirements_valid(profile: BackendProfile) -> bool:
+    service_fallbacks: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: false, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    optional_fallbacks: BackendOptionalCapabilities = BackendOptionalCapabilities{
+        ray_tracing: false, sparse_textures: true, mesh_shaders: false,
+    }
+    requirements: mutable BackendStartupRequirements = BackendStartupRequirements{
+        services: [BackendFeature.Input, BackendFeature.Rendering, BackendFeature.Input,
+            BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
+            BackendFeature.Input, BackendFeature.Input],
+        service_count: 2,
+        service_fallbacks: service_fallbacks,
+        allow_service_fallbacks: false,
+        optional_features: [BackendOptionalFeature.RayTracing, BackendOptionalFeature.SparseTextures,
+            BackendOptionalFeature.RayTracing],
+        optional_feature_count: 1,
+        optional_fallbacks: optional_fallbacks,
+        allow_optional_fallbacks: false,
+        limits: [
+            BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 16, minimum: 8},
+            BackendLimitRequirement{limit: BackendLimit.Workers, preferred: 16, minimum: 4},
+            BackendLimitRequirement{limit: BackendLimit.MemoryBytes, preferred: 536870912, minimum: 134217728},
+            BackendLimitRequirement{limit: BackendLimit.Entities, preferred: 1, minimum: 1},
+            BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+        ],
+        limit_count: 3,
+        textures: [
+            BackendTextureRequirement{requested: BackendTextureFormat.Bc1, normal_map: false, has_alpha: true, allow_fallback: true},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+        ],
+        texture_count: 1,
+    }
+    report: mutable BackendRequirementsReport = backend_requirements_report(profile, requirements)
+    return false if report.state != RequirementState.Fallback
+    return false if report.services.state != RequirementState.Ready
+    return false if report.optional_features.state != RequirementState.Ready
+    return false if report.limits.state != RequirementState.Fallback or report.limits.fallback_count != 1
+    return false if report.limits.granted[0] != 16 or report.limits.granted[1] != 12
+    return false if report.textures.state != RequirementState.Fallback or report.textures.fallback_count != 1
+    return false if report.textures.decisions[0].format != BackendTextureFormat.Rgba8
+
+    requirements.optional_features[0] <- BackendOptionalFeature.SparseTextures
+    requirements.allow_optional_fallbacks <- true
+    report <- backend_requirements_report(profile, requirements)
+    return false if report.state != RequirementState.Fallback
+    return false if report.optional_features.state != RequirementState.Fallback or report.optional_features.fallback_count != 1
+    return false if report.limits.state != RequirementState.Fallback
+    requirements.optional_fallbacks <- BackendOptionalCapabilities{
+        ray_tracing: false, sparse_textures: false, mesh_shaders: false,
+    }
+    report <- backend_requirements_report(profile, requirements)
+    return false if report.state != RequirementState.Unavailable
+    return false if report.optional_features.first_missing != BackendOptionalFeature.SparseTextures
+
+    requirements.limits[3] <- BackendLimitRequirement{limit: BackendLimit.Entities, preferred: 1, minimum: 1}
+    requirements.limit_count <- 4
+    report <- backend_requirements_report(profile, requirements)
+    return false if report.state != RequirementState.Unavailable
+    return false if report.limits.first_missing != BackendLimit.Entities or report.limits.missing_count != 1
+
+    requirements.limit_count <- MAX_BACKEND_LIMIT_REQUIREMENTS + 1
+    report <- backend_requirements_report(profile, requirements)
+    return false if report.state != RequirementState.Invalid or report.limits.state != RequirementState.Invalid
+
+    requirements.limit_count <- 1
+    requirements.limits[0] <- BackendLimitRequirement{limit: BackendLimit.Workers, preferred: 2, minimum: 3}
+    report <- backend_requirements_report(profile, requirements)
+    return false if report.state != RequirementState.Invalid
+    true
+
 def main() -> i32:
     return 41 if not fallback_matrix_valid()
     return 42 if not backend_native_bits_valid(255, 7, 7)
     return 43 if backend_native_bits_valid(256, 0, 0) or backend_native_bits_valid(0, 8, 0) or backend_native_bits_valid(0, 0, 8)
     live_native: BackendProfile = backend_profile_from_native(19, 5, 16, 12, 1073741824, 268435456, 3, 8, 4, 2)
     return 44 if not backend_profile_valid(live_native)
+    return 54 if not aggregate_requirements_valid(live_native)
     return 45 if not backend_supports(live_native, BackendFeature.Input) or not backend_supports(live_native, BackendFeature.Rendering)
     return 46 if not backend_supports_optional(live_native, BackendOptionalFeature.RayTracing) or backend_supports_optional(live_native, BackendOptionalFeature.SparseTextures) or not backend_supports_optional(live_native, BackendOptionalFeature.MeshShaders)
     return 47 if not backend_limit_supports(live_native, BackendLimit.Viewports, 16) or not backend_limit_supports(live_native, BackendLimit.GraphicsWorkers, 8) or not backend_limit_supports(live_native, BackendLimit.StreamingWorkers, 4)

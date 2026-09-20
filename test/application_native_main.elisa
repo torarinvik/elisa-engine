@@ -1,6 +1,6 @@
 # End-to-end application lifecycle smoke: the generated executable entry is
 # Elisa main; it imports only the public engine module and owns the loop calls.
-include "../src/backend/capabilities.elisa"
+include "../src/backend/requirements.elisa"
 using Capabilities
 
 def check_native_profile() -> i32:
@@ -32,6 +32,47 @@ def check_startup_requirements(config: Application::Config) -> i32:
         missing_count: 0,
         fallback_count: 0,
     }
+    profile_requirements: BackendRequirements::BackendStartupRequirements = BackendRequirements::BackendStartupRequirements{
+        services: required,
+        service_count: 3,
+        service_fallbacks: no_fallbacks,
+        allow_service_fallbacks: false,
+        optional_features: [BackendOptionalFeature.RayTracing, BackendOptionalFeature.RayTracing, BackendOptionalFeature.RayTracing],
+        optional_feature_count: 0,
+        optional_fallbacks: BackendOptionalCapabilities{ray_tracing: false, sparse_textures: false, mesh_shaders: false},
+        allow_optional_fallbacks: false,
+        limits: [
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+            BackendRequirements::BackendLimitRequirement{limit: BackendLimit.Viewports, preferred: 1, minimum: 1},
+        ],
+        limit_count: 1,
+        textures: [
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+            BackendRequirements::BackendTextureRequirement{requested: BackendTextureFormat.Rgba8, normal_map: false, has_alpha: false, allow_fallback: false},
+        ],
+        texture_count: 1,
+    }
+    profile_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+    profile_opened: Application::InitializeStatus = Application::initialize_with_profile_requirements(
+        config, profile_requirements, &profile_report)
+    return 39 if profile_opened != Application::InitializeStatus.Ready
+    return 40 if profile_report.state != RequirementState.Ready
+    return 41 if profile_report.limits.granted[0] <= 0
+    return 42 if profile_report.textures.decisions[0].format != BackendTextureFormat.Rgba8
+    return 43 if not Application::shutdown()
+
     opened: Application::InitializeStatus = Application::initialize_with_requirements(
         config, required, 3, no_fallbacks, false, &report)
     return 27 if opened != Application::InitializeStatus.Ready
