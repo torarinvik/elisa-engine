@@ -418,3 +418,31 @@ run attributes the earlier small positive host deltas to framework state and
 fixed Lua globals rather than accumulating application wrappers. F05 remains
 partial until another 512-cycle soak confirms the small scene-heap increase is
 bounded across repeated runs.
+
+## F05 completion rerun (macOS 27.0, 2026-09-20)
+
+The corrected probe passed a fresh two-pass native gate. Both passes verified
+the rendered frame exactly, rendered live input, exercised partial-startup
+rollback, drained callbacks and jobs, and completed orderly shutdown. Their
+eight-cycle host heap deltas were 176 and 3,808 bytes. The schema-2 native-gate
+report records `outcome=pass` and `hardware_verification=verified`.
+
+A fresh long scene soak also passed:
+
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_SCENE_RESTART_ONLY=1 \
+ELISA_SCENE_RESTART_CYCLES=512 \
+ELISA_SCENE_RESTART_WARMUP_CYCLES=16 \
+  build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  "$PWD/backends/scene_manifest.txt"
+
+in-process scene restart: cycles=512 warmup_cycles=16 measured_cycles=496
+  gpu_delta_bytes=0 heap_delta_bytes=4976
+```
+
+This agrees with the prior 512-cycle run (0 GPU bytes, 6,512 heap bytes).
+Together with the zero-leak cycle-1/cycle-8 diff, cleared application handles,
+and fixed Lua global-table count, the two long soaks support bounded allocator
+and framework variation rather than accumulating scene, application, or GPU
+resources. F05 is complete.
