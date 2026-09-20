@@ -2,6 +2,7 @@
 # Elisa main; it imports only the public engine module and owns the loop calls.
 include "../src/backend/requirements.elisa"
 include "../src/audio/runtime.elisa"
+include "../src/physics/runtime.elisa"
 include "../src/runtime/action_input_runtime.elisa"
 using Capabilities
 
@@ -27,6 +28,50 @@ def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
     count: usize = try AudioRuntime::active_voice_count()
     raise AudioRuntime::AudioError.UnknownStatus if count != 1
     try AudioRuntime::stop(voice)
+    0
+
+def exercise_jolt_physics(world: mutable PhysicsRuntime::World&) -> i32 error[PhysicsRuntime::PhysicsError]:
+    ground: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+        PhysicsRuntime::BodyDesc{
+            kind: PhysicsRuntime::BodyKind.Static,
+            position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
+            half_extents: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
+            mass: 0.0,
+        })
+    falling: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+        PhysicsRuntime::BodyDesc{
+            kind: PhysicsRuntime::BodyKind.Dynamic,
+            position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+            half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+            mass: 1.0,
+        })
+    disposable: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+        PhysicsRuntime::BodyDesc{
+            kind: PhysicsRuntime::BodyKind.Kinematic,
+            position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
+            half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+            mass: 0.0,
+        })
+    try PhysicsRuntime::body_destroy(world, disposable)
+    stale_body_status: i32 = catch PhysicsRuntime::body_position(world, disposable):
+        value: 1
+        PhysicsRuntime::PhysicsError.InvalidHandle: 0
+        error failure: 2
+    raise PhysicsRuntime::PhysicsError.BackendFailure if stale_body_status != 0
+    initial_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
+    tick: mutable u64 = 0
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    final_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if tick != 8 or final_position.y >= initial_position.y - 0.05
+    raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != 8
+    _ = ground
     0
 
 def check_startup_requirements(config: Application::Config) -> i32:
@@ -126,6 +171,27 @@ def check_startup_requirements(config: Application::Config) -> i32:
         Application::BackendProfileError.NotInitialized: 0
         error failure: 2
     return 32 if closed_profile != 0
+
+    physics_fallback: BackendCapabilities = BackendCapabilities{
+        input: false, rendering: false, physics: true, audio: false,
+        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    }
+    physics_fallback_status: Application::InitializeStatus = Application::initialize_with_requirements(
+        config, missing_physics, 1, physics_fallback, true, &report)
+    return 97 if physics_fallback_status != Application::InitializeStatus.FallbackRequired
+    physics_world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+        value: value
+        error failure: return 98
+    physics_result: i32 = catch exercise_jolt_physics(&physics_world):
+        value: value
+        error failure: return 99
+    return 100 if physics_result != 0
+    return 101 if not Application::shutdown()
+    closed_physics_status: i32 = catch PhysicsRuntime::fixed_step(&physics_world, 1.0 / 60.0):
+        value: 1
+        PhysicsRuntime::PhysicsError.ApplicationUnavailable: 0
+        error failure: 2
+    return 102 if closed_physics_status != 0
 
     audio_required: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
         BackendFeature.Audio, BackendFeature.Input, BackendFeature.Input,

@@ -3,6 +3,7 @@
 #include "application_input_codes.h"
 #include "backend_capability_query.h"
 #include "native_application.h"
+#include "physics_service_abi.h"
 #include "wiHelper.h"
 #include "wiRenderer.h"
 
@@ -467,6 +468,7 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     // A runtime service may own the active path. Detach it before ordered
     // shutdown hooks release its scene and path objects.
     service.host.wicked().ActivatePath(nullptr);
+    elisa_physics_v1_shutdown_from_application();
     elisa_audio_v1_shutdown_from_application();
     service.host.shutdown();
     service.initialized = false;

@@ -1,4 +1,4 @@
-include "../src/runtime/action_input_runtime.elisa"
+include "../src/runtime/public.elisa"
 
 const TEST_MOUSE_LEFT: i64 = 1
 

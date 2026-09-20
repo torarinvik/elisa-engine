@@ -1,0 +1,6 @@
+include "../src/physics/runtime.elisa"
+
+def probe(world: mutable PhysicsRuntime::World&) -> u64 error[PhysicsRuntime::PhysicsError]:
+    try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    PhysicsRuntime::committed_tick(world)

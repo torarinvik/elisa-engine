@@ -36,11 +36,6 @@ public engine key/button/axis codes, while
 axis/token conversion. The shared gate compiles and runs the Elisa fixtures
 with the stage1 compiler.
 
-Gamepads share one logical action device. On every disconnect,
-`ActionInputRuntime` clears its held state before applying whether another
-controller remains connected, so keys held on the removed controller cannot
-remain active.
-
 For the checked-binding change, `elisac-stage1 -emit exe -o
 build/action-input-test test/action_input.elisa && build/action-input-test`
 passed. `DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript
@@ -54,6 +49,16 @@ events become portable action edges, analog values honor dead zones, and focus
 loss clears transient state without marking connected devices unplugged. Its
 probe covers alternate bindings, per-device disconnect, and held values across
 frames. The native adapter never exposes SDL codes to gameplay.
+
+On every gamepad disconnect, the runtime clears held state before applying
+whether another controller remains connected. This prevents a button held on
+the removed controller from sticking in the shared logical gamepad state. The
+portable regression test disconnects one of two logical controllers, checks
+the release edge, then verifies input from the still-connected controller
+works on the next frame.
+
+The action-input fixture imports `src/runtime/public.elisa`, verifying that
+ordinary games receive the event router from the default module set.
 
 After adding `ActionInputRuntime`, the focused stage1 action-input executable
 and `test/application_gamepad_codes.cpp` both passed. The SDL3/Metal
