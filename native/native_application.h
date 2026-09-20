@@ -9,6 +9,7 @@
 #include "wiGraphics.h"
 #include "wiInitializer.h"
 #include "wiJobSystem.h"
+#include "wiLua.h"
 #include "frame_pacer.h"
 #ifdef __APPLE__
 #include "Foundation/Foundation.hpp"
@@ -297,6 +298,7 @@ public:
             return;
         }
         if (wicked_initialize_started_) {
+            wi::lua::ShutdownApplication(application_.get());
             wi::audio::Shutdown();
             wicked_initialize_started_ = false;
         }
