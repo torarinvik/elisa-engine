@@ -111,7 +111,10 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     device->WaitForGPU();
 
     constexpr size_t DEFAULT_RESTART_CYCLES = 64;
-    constexpr size_t DEFAULT_WARMUP_CYCLES = 6;
+    // Metal's asynchronous object PSO cache can first allocate during cycle 7
+    // in a standalone restart run, so the memory baseline starts after sixteen
+    // cycles rather than counting that one-time cache as restart growth.
+    constexpr size_t DEFAULT_WARMUP_CYCLES = 16;
     constexpr size_t MAX_RESTART_CYCLES = 4096;
     constexpr size_t RESTART_RENDER_FRAMES = 2;
     size_t restart_cycles = 0;
