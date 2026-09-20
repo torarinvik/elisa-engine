@@ -1,0 +1,84 @@
+include "../src/animation/assets.elisa"
+using Geometry
+
+def asset_near(value: f32, expected: f32) -> bool:
+    delta: f32 = value - expected
+    absolute: f32 = 0.0 - delta if delta < 0.0 else delta
+    absolute < 0.002
+
+def translated(x: f32) -> Transform:
+    Transform{position: Vec3{x: x, y: 0.0, z: 0.0}, rotation: quat_identity(), scale: vec3_one()}
+
+def valid_skeleton() -> AnimationAssets::SkeletonAsset:
+    skeleton: mutable AnimationAssets::SkeletonAsset = AnimationAssets::SkeletonAsset(AnimationAssets::RigId{value: 7})
+    root: Transform = transform_identity()
+    child: Transform = translated(1.0)
+    root_inverse: f32[MATRIX_ELEMENTS] = transform_to_matrix(root)
+    child_inverse: f32[MATRIX_ELEMENTS] = transform_to_matrix(translated(0.0 - 1.0))
+    _ = AnimationAssets::skeleton_add_joint(&skeleton, AnimationAssets::JointId{value: 1}, -1, root, root_inverse)
+    _ = AnimationAssets::skeleton_add_joint(&skeleton, AnimationAssets::JointId{value: 2}, 0, child, child_inverse)
+    skeleton
+
+def run_animation_asset_tests() -> i32:
+    skeleton: mutable AnimationAssets::SkeletonAsset = valid_skeleton()
+    return 1 if skeleton.joint_count != 2 or not AnimationAssets::skeleton_asset_valid(&skeleton)
+
+    invalid_parent: mutable AnimationAssets::SkeletonAsset = AnimationAssets::SkeletonAsset(AnimationAssets::RigId{value: 8})
+    root_matrix: f32[MATRIX_ELEMENTS] = transform_to_matrix(transform_identity())
+    return 2 if AnimationAssets::skeleton_add_joint(&invalid_parent, AnimationAssets::JointId{value: 1}, 0,
+        transform_identity(), root_matrix)
+    return 3 if AnimationAssets::skeleton_add_joint(&invalid_parent, AnimationAssets::JointId{value: 0}, -1,
+        transform_identity(), root_matrix)
+
+    duplicate_id: mutable AnimationAssets::SkeletonAsset = valid_skeleton()
+    duplicate_id.joints[1] <- AnimationAssets::JointAsset{
+        id: AnimationAssets::JointId{value: 1}, parent_index: 0, rest_local: translated(1.0),
+        inverse_bind: transform_to_matrix(translated(0.0 - 1.0)),
+    }
+    return 4 if AnimationAssets::skeleton_asset_valid(&duplicate_id)
+
+    invalid_parent <- valid_skeleton()
+    invalid_parent.joints[1] <- AnimationAssets::JointAsset{
+        id: AnimationAssets::JointId{value: 2}, parent_index: 1, rest_local: translated(1.0),
+        inverse_bind: transform_to_matrix(translated(0.0 - 1.0)),
+    }
+    return 5 if AnimationAssets::skeleton_asset_valid(&invalid_parent)
+
+    bad_bind: mutable AnimationAssets::SkeletonAsset = valid_skeleton()
+    bad_bind.joints[1] <- AnimationAssets::JointAsset{
+        id: AnimationAssets::JointId{value: 2}, parent_index: 0, rest_local: translated(1.0),
+        inverse_bind: root_matrix,
+    }
+    return 6 if AnimationAssets::skeleton_asset_valid(&bad_bind)
+    bad_bind <- valid_skeleton()
+    bad_bind.meters_per_unit <- 0.01
+    return 7 if AnimationAssets::skeleton_asset_valid(&bad_bind)
+
+    clip: mutable AnimationAssets::AnimationClip = AnimationAssets::AnimationClip(AnimationAssets::ClipId{value: 15}, skeleton.rig_id, 10, 30)
+    return 8 if not AnimationAssets::clip_add_key(&clip, &skeleton, 0, 0, translated(0.0))
+    return 9 if not AnimationAssets::clip_add_key(&clip, &skeleton, 0, 10, translated(2.0))
+    return 10 if not AnimationAssets::clip_add_key(&clip, &skeleton, 1, 0, translated(1.0))
+    return 11 if not AnimationAssets::clip_add_key(&clip, &skeleton, 1, 10, translated(1.0))
+    return 12 if not AnimationAssets::clip_add_event(&clip, AnimationAssets::EventId{value: 100}, 5)
+    return 13 if AnimationAssets::clip_add_event(&clip, AnimationAssets::EventId{value: 101}, 4)
+    return 14 if not AnimationAssets::clip_asset_valid(&skeleton, &clip) or not AnimationAssets::clip_compatible(&skeleton, &clip)
+
+    sampled: Pose::Pose = catch AnimationAssets::sample_clip_pose(&skeleton, &clip, 5):
+        value: value
+        error failure: return 15
+    return 16 if sampled.count != skeleton.joint_count
+    return 17 if not asset_near(sampled.models[0].position.x, 1.0)
+    return 18 if not asset_near(sampled.models[1].position.x, 2.0)
+    out_of_range: i32 = catch AnimationAssets::sample_clip_pose(&skeleton, &clip, 11):
+        value: 0
+        AnimationAssets::AnimationAssetError.TimeOutOfBounds: 1
+        error failure: 2
+    return 19 if out_of_range != 1
+
+    missing_track: mutable AnimationAssets::AnimationClip = AnimationAssets::AnimationClip(AnimationAssets::ClipId{value: 16}, skeleton.rig_id, 10, 30)
+    _ = AnimationAssets::clip_add_key(&missing_track, &skeleton, 0, 0, translated(0.0))
+    _ = AnimationAssets::clip_add_key(&missing_track, &skeleton, 0, 10, translated(1.0))
+    return 20 if AnimationAssets::clip_asset_valid(&skeleton, &missing_track)
+    incompatible: mutable AnimationAssets::AnimationClip = AnimationAssets::AnimationClip(AnimationAssets::ClipId{value: 17}, AnimationAssets::RigId{value: 99}, 10, 30)
+    return 21 if AnimationAssets::clip_compatible(&skeleton, &incompatible) or AnimationAssets::clip_add_key(&incompatible, &skeleton, 0, 0, translated(0.0))
+    0

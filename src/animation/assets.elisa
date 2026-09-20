@@ -1,0 +1,198 @@
+# Normalized rig and clip contracts. Joint identity, bind data, tick units, and
+# clip compatibility are checked in Elisa before a sampler or renderer sees it.
+include "../math/geometry.elisa"
+include "./pose.elisa"
+include "./sampler.elisa"
+include "./limits.elisa"
+
+module AnimationAssets:
+    private:
+        const module Tune:
+            EPSILON: f32 = 0.002
+
+        def near(value: f32, expected: f32) -> bool:
+            delta: f32 = value - expected
+            absolute: f32 = 0.0 - delta if delta < 0.0 else delta
+            absolute <= Tune::EPSILON
+
+        def local_transform_valid(value: Geometry::Transform) -> bool:
+            return false if not Geometry::vec3_is_finite(value.position) or not Geometry::vec3_is_finite(value.scale) or not Geometry::quat_is_finite(value.rotation)
+            return false if value.scale.x == 0.0 or value.scale.y == 0.0 or value.scale.z == 0.0
+            near(Geometry::quat_length(value.rotation), 1.0)
+
+        def affine_matrix_valid(matrix: f32[Geometry::MATRIX_ELEMENTS]) -> bool:
+            finite: bool = for index in 0..<Geometry::MATRIX_ELEMENTS |valid: bool = true| -> valid:
+                valid <- false if matrix[index] - matrix[index] != 0.0
+            return false if not finite
+            near(matrix[3], 0.0) and near(matrix[7], 0.0) and near(matrix[11], 0.0) and near(matrix[15], 1.0)
+
+        def matrices_are_inverse(model: f32[Geometry::MATRIX_ELEMENTS], inverse_bind: f32[Geometry::MATRIX_ELEMENTS]) -> bool:
+            for row in 0..<4 |valid: bool = true| -> valid:
+                row_valid: bool = for column in 0..<4 |row_valid: bool = true| -> row_valid:
+                    product: f32 =
+                        for inner in 0..<4 |sum: f32 = 0.0| -> sum:
+                            sum <- sum + model[inner * 4 + row] * inverse_bind[column * 4 + inner]
+                    expected: f32 = 1.0 if row == column else 0.0
+                    row_valid <- false if not near(product, expected)
+                valid <- false if not row_valid
+
+        def clip_header_valid(clip: AnimationClip&) -> bool:
+            return false if clip.clip_id.value <= 0 or clip.rig_id.value <= 0 or clip.duration_ticks <= 0 or clip.ticks_per_second <= 0
+            return false if clip.tracks.length != clip.duration_ticks or not Sampler::clip_valid(&clip.tracks)
+            return false if clip.event_count > AnimationLimits::MAX_EVENTS_PER_CLIP
+            ordered: bool = for index in 0..<clip.event_count |ordered: bool = true| -> ordered:
+                event: ClipEvent = clip.events[index]
+                ordered <- false if event.event_id.value <= 0 or event.tick < 0 or event.tick > clip.duration_ticks
+                ordered <- false if index > 0 and event.tick < clip.events[index - 1].tick
+            ordered
+
+    public:
+        struct RigId:
+            value: i64
+
+        struct JointId:
+            value: i64
+
+        struct ClipId:
+            value: i64
+
+        struct EventId:
+            value: i64
+
+        struct JointAsset:
+            id: JointId
+            parent_index: i64
+            rest_local: Geometry::Transform
+            inverse_bind: f32[Geometry::MATRIX_ELEMENTS]
+
+        struct SkeletonAsset:
+            rig_id: mutable RigId
+            meters_per_unit: mutable f32
+            joints: mutable JointAsset[AnimationLimits::MAX_JOINTS]
+            joint_count: mutable usize
+
+        struct ClipEvent:
+            event_id: EventId
+            tick: i64
+
+        struct AnimationClip:
+            clip_id: mutable ClipId
+            rig_id: mutable RigId
+            duration_ticks: mutable i64
+            ticks_per_second: mutable i64
+            tracks: mutable Sampler::ClipData
+            events: mutable ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]
+            event_count: mutable usize
+
+        error AnimationAssetError:
+            InvalidSkeleton
+            InvalidClip
+            IncompatibleClip
+            TimeOutOfBounds
+
+        def SkeletonAsset(rig_id: RigId) -> SkeletonAsset:
+            SkeletonAsset{rig_id: rig_id, meters_per_unit: AnimationLimits::ENGINE_METERS_PER_UNIT, joints: zeroed, joint_count: 0}
+
+        def AnimationClip(clip_id: ClipId, rig_id: RigId,
+            duration_ticks: i64, ticks_per_second: i64) -> AnimationClip:
+            AnimationClip{
+                clip_id: clip_id,
+                rig_id: rig_id,
+                duration_ticks: duration_ticks,
+                ticks_per_second: ticks_per_second,
+                tracks: Sampler::ClipData(duration_ticks),
+                events: zeroed,
+                event_count: 0,
+            }
+
+        def skeleton_add_joint(skeleton: mutable SkeletonAsset&, id: JointId,
+            parent_index: i64, rest_local: Geometry::Transform,
+            inverse_bind: f32[Geometry::MATRIX_ELEMENTS]) -> bool:
+            return false if skeleton.joint_count >= AnimationLimits::MAX_JOINTS or id.value <= 0
+            return false if parent_index < -1 or parent_index >= skeleton.joint_count.i64()
+            return false if not local_transform_valid(rest_local) or not affine_matrix_valid(inverse_bind)
+            unique: bool = for index in 0..<skeleton.joint_count |found: bool = true| -> found:
+                found <- false if skeleton.joints[index].id.value == id.value
+            return false if not unique
+            skeleton.joints[skeleton.joint_count] <- JointAsset{
+                id: id,
+                parent_index: parent_index,
+                rest_local: rest_local,
+                inverse_bind: inverse_bind,
+            }
+            skeleton.joint_count <- skeleton.joint_count + 1
+            true
+
+        def skeleton_asset_valid(skeleton: SkeletonAsset&) -> bool:
+            return false if skeleton.rig_id.value <= 0 or skeleton.meters_per_unit != AnimationLimits::ENGINE_METERS_PER_UNIT
+            return false if skeleton.joint_count == 0 or skeleton.joint_count > AnimationLimits::MAX_JOINTS
+            pose_skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+            for index in 0..<skeleton.joint_count |pose_skeleton|:
+                joint: JointAsset = skeleton.joints[index]
+                return false if joint.id.value <= 0 or joint.parent_index < -1 or joint.parent_index >= index.i64()
+                return false if not local_transform_valid(joint.rest_local) or not affine_matrix_valid(joint.inverse_bind)
+                unique: bool = for prior in 0..<index |found: bool = true| -> found:
+                    found <- false if skeleton.joints[prior].id.value == joint.id.value
+                return false if not unique
+                return false if not Pose::skeleton_add(&pose_skeleton, joint.parent_index, joint.rest_local)
+            bind_pose: Pose::Pose = catch Pose::pose_evaluate(&pose_skeleton):
+                value: value
+                error failure: return false
+            matches: bool = for index in 0..<skeleton.joint_count |matches: bool = true| -> matches:
+                model_matrix: f32[Geometry::MATRIX_ELEMENTS] = Geometry::transform_to_matrix(bind_pose.models[index])
+                matches <- false if not matrices_are_inverse(model_matrix, skeleton.joints[index].inverse_bind)
+            matches
+
+        def clip_add_key(clip: mutable AnimationClip&, skeleton: SkeletonAsset&,
+            joint_index: usize, tick: i64, local: Geometry::Transform) -> bool:
+            return false if not skeleton_asset_valid(skeleton) or not clip_header_valid(clip)
+            return false if clip.rig_id.value != skeleton.rig_id.value
+            return false if joint_index >= skeleton.joint_count or not local_transform_valid(local)
+            Sampler::clip_add_key(&clip.tracks, joint_index, tick, local)
+
+        def clip_add_event(clip: mutable AnimationClip&, event_id: EventId, tick: i64) -> bool:
+            return false if not clip_header_valid(clip) or event_id.value <= 0 or tick < 0 or tick > clip.duration_ticks
+            return false if clip.event_count >= AnimationLimits::MAX_EVENTS_PER_CLIP
+            return false if clip.event_count > 0 and tick < clip.events[clip.event_count - 1].tick
+            clip.events[clip.event_count] <- ClipEvent{event_id: event_id, tick: tick}
+            clip.event_count <- clip.event_count + 1
+            true
+
+        def clip_asset_valid(skeleton: SkeletonAsset&, clip: AnimationClip&) -> bool:
+            return false if not skeleton_asset_valid(skeleton) or not clip_header_valid(clip)
+            return false if clip.rig_id.value != skeleton.rig_id.value
+            complete: bool = for joint in 0..<skeleton.joint_count |complete: bool = true| -> complete:
+                return false if Sampler::clip_key_count(&clip.tracks, joint) == 0
+                count: usize = Sampler::clip_key_count(&clip.tracks, joint)
+                valid: bool = for slot in 0..<count |valid: bool = true| -> valid:
+                    key: usize = joint * AnimationLimits::MAX_KEYS_PER_TRACK + slot
+                    local: Geometry::Transform = Geometry::Transform{
+                        position: clip.tracks.positions[key],
+                        rotation: clip.tracks.rotations[key],
+                        scale: clip.tracks.scales[key],
+                    }
+                    valid <- false if not local_transform_valid(local)
+                complete <- false if not valid
+            return false if not complete
+            unused: bool = for joint in skeleton.joint_count..<AnimationLimits::MAX_JOINTS |unused: bool = true| -> unused:
+                unused <- false if Sampler::clip_key_count(&clip.tracks, joint) != 0
+            unused
+
+        def clip_compatible(skeleton: SkeletonAsset&, clip: AnimationClip&) -> bool:
+            clip_asset_valid(skeleton, clip)
+
+        def sample_clip_pose(skeleton: SkeletonAsset&, clip: AnimationClip&,
+            tick: i64) -> Pose::Pose error[AnimationAssetError]:
+            raise AnimationAssetError.InvalidSkeleton if not skeleton_asset_valid(skeleton)
+            raise AnimationAssetError.IncompatibleClip if clip.rig_id.value != skeleton.rig_id.value
+            raise AnimationAssetError.InvalidClip if not clip_asset_valid(skeleton, clip)
+            raise AnimationAssetError.TimeOutOfBounds if tick < 0 or tick > clip.duration_ticks
+            runtime_skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+            for index in 0..<skeleton.joint_count |runtime_skeleton|:
+                joint: JointAsset = skeleton.joints[index]
+                _ = Pose::skeleton_add(&runtime_skeleton, joint.parent_index, joint.rest_local)
+            catch Sampler::clip_sample_pose(&clip.tracks, tick, &runtime_skeleton):
+                value:
+                    raise AnimationAssetError.InvalidClip if not Pose::pose_valid(&value)
+                    value
+                error failure: raise AnimationAssetError.InvalidClip
