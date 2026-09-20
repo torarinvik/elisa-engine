@@ -26,20 +26,52 @@ inline bool probe_coordinate_reference(wi::Application& application, wi::scene::
         XMFLOAT4(1.0f, 0.78f, 0.12f, 1.0f), XMFLOAT4(0.95f, 0.18f, 0.12f, 1.0f),
         XMFLOAT4(0.12f, 0.85f, 0.28f, 1.0f), XMFLOAT4(0.15f, 0.45f, 1.0f, 1.0f),
     };
+    wi::graphics::TextureDesc normal_desc;
+    normal_desc.width = normal_desc.height = normal_desc.depth = normal_desc.array_size = 1;
+    normal_desc.mip_levels = normal_desc.sample_count = 1;
+    normal_desc.format = wi::graphics::Format::R8G8B8A8_UNORM;
+    normal_desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
+    const uint32_t normal_pixel = 0xFF80E6E6u;
+    const wi::graphics::SubresourceData normal_data{&normal_pixel, 4, 4};
+    wi::graphics::Texture normal_texture;
+    if (!check(wi::graphics::GetDevice()->CreateTexture(&normal_desc, &normal_data, &normal_texture),
+        "coordinate reference normal texture")) return false;
+    wi::Resource normal_resource;
+    normal_resource.SetTexture(normal_texture);
     wi::ecs::Entity entities[4]{};
     for (size_t index = 0; index < 4; ++index) {
         entities[index] = scene.Entity_CreateCube("elisa_coordinate_reference_" + std::to_string(index));
         auto* transform = scene.transforms.GetComponent(entities[index]);
         auto* material = scene.materials.GetComponent(entities[index]);
+        auto* mesh = scene.meshes.GetComponent(entities[index]);
         if (!check(entities[index] != wi::ecs::INVALID_ENTITY && transform != nullptr && material != nullptr,
                 "coordinate reference entity components") ||
+            !check(mesh != nullptr, "coordinate reference mesh component") ||
             !check(submit_elisa_transform(&profile, &transforms[index], transform),
                 "coordinate reference transform submission")) {
             return false;
         }
         transform->UpdateTransform();
-        material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
         material->baseColor = colors[index];
+        if (index == 0) {
+            const XMFLOAT4 face_tangents[] = {
+                XMFLOAT4(1, 0, 0, -1), XMFLOAT4(1, 0, 0, 1),
+                XMFLOAT4(0, 0, -1, 1), XMFLOAT4(0, 0, -1, -1),
+                XMFLOAT4(1, 0, 0, 1), XMFLOAT4(1, 0, 0, -1),
+            };
+            if (!check(mesh->vertex_positions.size() == 24, "coordinate reference cube vertex layout")) return false;
+            mesh->vertex_tangents.clear();
+            for (const XMFLOAT4& tangent : face_tangents) {
+                for (int vertex = 0; vertex < 4; ++vertex) mesh->vertex_tangents.push_back(tangent);
+            }
+            mesh->CreateRenderData();
+            material->textures[wi::scene::MaterialComponent::NORMALMAP].resource = normal_resource;
+            material->SetNormalMapStrength(1.0f);
+            material->emissiveColor = XMFLOAT4(0.08f, 0.045f, 0.005f, 1.0f);
+            material->SetDirty();
+        } else {
+            material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+        }
     }
     for (int frame = 0; frame < 4; ++frame) {
         application.Run();

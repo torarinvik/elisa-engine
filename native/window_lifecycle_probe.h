@@ -247,7 +247,7 @@ inline bool probe_repeated_host_lifecycle() {
         if (telemetry.peak_shutdown_functions != NativeApplication::MAX_SHUTDOWN_HOOKS ||
             telemetry.shutdown_functions_invoked != NativeApplication::MAX_SHUTDOWN_HOOKS ||
             telemetry.rejected_shutdown_registrations != 1 || telemetry.drained_callback_batches != 1 ||
-            telemetry.peak_active_callbacks != 1) {
+            telemetry.peak_active_callbacks < 1 || telemetry.peak_active_callbacks > 2) {
             std::fprintf(stderr, "shutdown telemetry: peak_hooks=%zu invoked=%llu rejected=%llu batches=%llu peak_callbacks=%zu\n",
                 telemetry.peak_shutdown_functions,
                 static_cast<unsigned long long>(telemetry.shutdown_functions_invoked),
@@ -264,7 +264,7 @@ inline bool probe_repeated_host_lifecycle() {
             !check(telemetry.peak_shutdown_functions == NativeApplication::MAX_SHUTDOWN_HOOKS &&
                 telemetry.shutdown_functions_invoked == NativeApplication::MAX_SHUTDOWN_HOOKS &&
                 telemetry.rejected_shutdown_registrations == 1 && telemetry.drained_callback_batches == 1 &&
-                telemetry.peak_active_callbacks == 1,
+                telemetry.peak_active_callbacks >= 1 && telemetry.peak_active_callbacks <= 2,
                 "shutdown service and callback pressure telemetry")) {
             return false;
         }

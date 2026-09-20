@@ -61,6 +61,7 @@
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
 #include "pbr_material_bridge.h"
+#include "coordinate_reference_probe.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -546,10 +547,9 @@ int main(int argc, char** argv) {
                       << "worst_us=" << worst_micros << "\n";
         }
     }
-    if (!probe_live_game_rendering(application, scene, object, screenshot_path)) {
-        return 1;
-    }
-    if (!run_library_probes(application, scene, manifest, screenshot_path)) {
+    if (!probe_coordinate_reference(application, scene, screenshot_path) ||
+        !probe_live_game_rendering(application, scene, object, screenshot_path)) return 1;
+    if (!run_library_probes(application, scene, manifest)) {
         return 1;
     }
     if (!probe_debug_draw_bridge()) {

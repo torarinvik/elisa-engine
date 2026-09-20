@@ -18,7 +18,6 @@
 #include "skin_probe.h"
 #include "layout_probe.h"
 #include "coordinate_probe.h"
-#include "coordinate_reference_probe.h"
 
 #include <map>
 #include <string>
@@ -26,7 +25,7 @@
 namespace probe {
 
 inline bool run_library_probes(wi::Application& application, wi::scene::Scene& scene,
-    const std::map<std::string, std::string>& manifest, const char* screenshot_path) {
+    const std::map<std::string, std::string>& manifest) {
     if (!run_perf_sweep(application, scene, manifest)) {
         return false;
     }
@@ -63,8 +62,7 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
     if (!run_layout_probe(scene)) {
         return false;
     }
-    if (!probe_coordinate_conventions(scene) ||
-        !probe_coordinate_reference(application, scene, screenshot_path)) {
+    if (!probe_coordinate_conventions(scene)) {
         return false;
     }
     return true;

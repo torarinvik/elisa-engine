@@ -147,6 +147,19 @@ def main() -> i32:
     return 73 if not near(quad.x2, 1.497) or not near(quad.y2, 0.25)
     return 74 if not near(quad.x3, 1.297) or not near(quad.y3, 0.25)
     return 75 if near(quad.x0, 0.9) or near(quad.y0, 0.0 - 0.1)
+    signed_mesh_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 0.25, y: -0.5, z: 0.75},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: -2.0, y: 0.5, z: 1.5},
+    }
+    world0: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x0, y: quad.y0, z: 0.0})
+    world1: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x1, y: quad.y1, z: 0.0})
+    world2: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x2, y: quad.y2, z: 0.0})
+    world3: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x3, y: quad.y3, z: 0.0})
+    return 76 if not near(world0.x, -2.344) or not near(world0.y, -0.475) or world0.z != 0.75
+    return 77 if not near(world1.x, -2.744) or not near(world1.y, -0.475) or world1.z != 0.75
+    return 78 if not near(world2.x, -2.744) or not near(world2.y, -0.375) or world2.z != 0.75
+    return 79 if not near(world3.x, -2.344) or not near(world3.y, -0.375) or world3.z != 0.75
 
     blocked: bool = maze_try_move(&state, MazeMove.West)
     return 7 if blocked or state.player_x != 1 or state.moves != 0
