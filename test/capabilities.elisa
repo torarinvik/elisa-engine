@@ -5,24 +5,24 @@ using BackendRequirements
 def one_feature(feature: BackendFeature) -> BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS]:
     [feature, feature, feature, feature, feature, feature, feature, feature]
 
-def fallback_for(feature: BackendFeature) -> BackendCapabilities:
+def fallback_for(feature: BackendFeature) -> BackendFallbackProviders:
     match feature:
         BackendFeature.Input:
-            BackendCapabilities{input: true, rendering: false, physics: false, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.CallerDefined, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
         BackendFeature.Rendering:
-            BackendCapabilities{input: false, rendering: true, physics: false, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.CallerDefined, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
         BackendFeature.Physics:
-            BackendCapabilities{input: false, rendering: false, physics: true, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.JoltPhysics, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
         BackendFeature.Audio:
-            BackendCapabilities{input: false, rendering: false, physics: false, audio: true, native_window: false, async_upload: false, callbacks: false, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.MiniaudioSilent, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
         BackendFeature.NativeWindow:
-            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: true, async_upload: false, callbacks: false, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.CallerDefined, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
         BackendFeature.AsyncUpload:
-            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: false, async_upload: true, callbacks: false, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.SynchronousUpload, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
         BackendFeature.Callbacks:
-            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: false, async_upload: false, callbacks: true, asset_loading: false}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.CallerDefined, asset_loading: BackendFallbackProvider.None}
         BackendFeature.AssetLoading:
-            BackendCapabilities{input: false, rendering: false, physics: false, audio: false, native_window: false, async_upload: false, callbacks: false, asset_loading: true}
+            BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.None, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.SynchronousAssetLoading}
 
 def fallback_matrix_valid() -> bool:
     no_services: BackendCapabilities = BackendCapabilities{
@@ -45,24 +45,33 @@ def fallback_matrix_valid() -> bool:
     feature_matrix: bool = for index in 0..<MAX_BACKEND_FEATURE_REQUIREMENTS |valid: bool = true| -> valid:
         feature: BackendFeature = features[index]
         required: BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS] = one_feature(feature)
-        fallback: BackendCapabilities = fallback_for(feature)
+        fallback: BackendFallbackProviders = fallback_for(feature)
         report: mutable BackendRequirementReport = backend_requirement_report(profile, required, 1, fallback, true)
         break false if backend_feature_code(feature) != index.i32() + 1
         break false if report.state != RequirementState.Fallback or report.missing_count != 0 or report.fallback_count != 1
         break false if report.decision_count != 1 or report.decisions[0].feature != feature or report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+        break false if report.decisions[0].fallback_provider != fallback_provider_for(fallback, feature)
         break false if fallback_requirement_count(profile, required, 1, fallback) != 1
         break false if negotiate_requirements(profile, required, 1, fallback, false) != RequirementState.Unavailable
         report <- backend_requirement_report(profile, required, 1, fallback, false)
-        break false if report.state != RequirementState.Unavailable or report.decisions[0].resolution != BackendFeatureResolution.Unavailable
-        break false if negotiate_requirements(profile, required, 1, no_services, true) != RequirementState.Unavailable
-        report <- backend_requirement_report(profile, required, 1, no_services, true)
+        break false if report.state != RequirementState.Unavailable or report.decisions[0].resolution != BackendFeatureResolution.FallbackDisallowed
+        break false if report.decisions[0].fallback_provider != fallback_provider_for(fallback, feature)
+        no_fallbacks: BackendFallbackProviders = no_backend_fallback_providers()
+        break false if negotiate_requirements(profile, required, 1, no_fallbacks, true) != RequirementState.Unavailable
+        report <- backend_requirement_report(profile, required, 1, no_fallbacks, true)
         break false if report.state != RequirementState.Unavailable or report.first_missing != feature or report.missing_count != 1 or report.fallback_count != 0
         break false if report.decisions[0].resolution != BackendFeatureResolution.Unavailable
     return false if not feature_matrix
 
-    partial_fallbacks: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: true, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    partial_fallbacks: BackendFallbackProviders = BackendFallbackProviders{
+        input: BackendFallbackProvider.None,
+        rendering: BackendFallbackProvider.None,
+        physics: BackendFallbackProvider.JoltPhysics,
+        audio: BackendFallbackProvider.None,
+        native_window: BackendFallbackProvider.None,
+        async_upload: BackendFallbackProvider.None,
+        callbacks: BackendFallbackProvider.None,
+        asset_loading: BackendFallbackProvider.None,
     }
     mixed_required: BackendFeature[MAX_BACKEND_FEATURE_REQUIREMENTS] = [
         BackendFeature.Physics, BackendFeature.Audio, BackendFeature.Input,
@@ -74,18 +83,30 @@ def fallback_matrix_valid() -> bool:
     return false if mixed_report.state != RequirementState.Unavailable
     return false if mixed_report.decision_count != 2 or mixed_report.fallback_count != 1 or mixed_report.missing_count != 1
     return false if mixed_report.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+    return false if mixed_report.decisions[0].fallback_provider != BackendFallbackProvider.JoltPhysics
     return false if mixed_report.decisions[1].feature != BackendFeature.Audio or mixed_report.decisions[1].resolution != BackendFeatureResolution.Unavailable
+    wrong_provider: BackendFallbackProviders = BackendFallbackProviders{
+        input: BackendFallbackProvider.None,
+        rendering: BackendFallbackProvider.None,
+        physics: BackendFallbackProvider.None,
+        audio: BackendFallbackProvider.JoltPhysics,
+        native_window: BackendFallbackProvider.None,
+        async_upload: BackendFallbackProvider.None,
+        callbacks: BackendFallbackProvider.None,
+        asset_loading: BackendFallbackProvider.None,
+    }
+    wrong_provider_report: BackendRequirementReport = backend_requirement_report(
+        profile, one_feature(BackendFeature.Audio), 1, wrong_provider, true)
+    return false if wrong_provider_report.state != RequirementState.Invalid
     invalid_report: BackendRequirementReport = backend_requirement_report(
-        profile, features, MAX_BACKEND_FEATURE_REQUIREMENTS + 1, no_services, true)
+        profile, features, MAX_BACKEND_FEATURE_REQUIREMENTS + 1,
+        no_backend_fallback_providers(), true)
     return false if invalid_report.state != RequirementState.Invalid or invalid_report.decision_count != 0
     return false if invalid_report.decisions[0].resolution != BackendFeatureResolution.Invalid
     true
 
 def aggregate_requirements_valid(profile: BackendProfile) -> bool:
-    service_fallbacks: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
-    }
+    service_fallbacks: BackendFallbackProviders = no_backend_fallback_providers()
     optional_fallbacks: BackendOptionalCapabilities = BackendOptionalCapabilities{
         ray_tracing: false, sparse_textures: true, mesh_shaders: false,
     }
@@ -128,6 +149,7 @@ def aggregate_requirements_valid(profile: BackendProfile) -> bool:
     return false if report.state != RequirementState.Fallback
     return false if report.services.state != RequirementState.Ready
     return false if report.services.decision_count != 2 or report.services.decisions[0].resolution != BackendFeatureResolution.Native or report.services.decisions[1].resolution != BackendFeatureResolution.Native
+    return false if report.services.decisions[0].fallback_provider != BackendFallbackProvider.None or report.services.decisions[1].fallback_provider != BackendFallbackProvider.None
     return false if report.optional_features.state != RequirementState.Ready
     return false if report.limits.state != RequirementState.Fallback or report.limits.fallback_count != 1
     return false if report.limits.granted[0] != 16 or report.limits.granted[1] != 12
@@ -254,13 +276,16 @@ def main() -> i32:
     return 10 if backend_requirements_met(native, required, 8)
     return 11 if not backend_limit_supports(native, BackendLimit.TextureDimension, 4096)
     return 12 if backend_limit_supports(native, BackendLimit.UploadBytes, 16777217)
-    no_fallbacks: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
-    }
-    silent_audio_fallback: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: true,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    no_fallbacks: BackendFallbackProviders = no_backend_fallback_providers()
+    silent_audio_fallback: BackendFallbackProviders = BackendFallbackProviders{
+        input: BackendFallbackProvider.None,
+        rendering: BackendFallbackProvider.None,
+        physics: BackendFallbackProvider.None,
+        audio: BackendFallbackProvider.MiniaudioSilent,
+        native_window: BackendFallbackProvider.None,
+        async_upload: BackendFallbackProvider.None,
+        callbacks: BackendFallbackProvider.None,
+        asset_loading: BackendFallbackProvider.None,
     }
     return 13 if negotiate_requirements(native, required, 8, no_fallbacks, false) != RequirementState.Unavailable
     return 14 if first_missing_requirement(native, required, 8) != BackendFeature.Audio

@@ -67,7 +67,7 @@ module BackendRequirements:
         struct BackendStartupRequirements:
             services: mutable Capabilities::BackendFeature[Bounds::MAX_FEATURE_REQUIREMENTS]
             service_count: mutable usize
-            service_fallbacks: mutable Capabilities::BackendCapabilities
+            service_fallbacks: mutable Capabilities::BackendFallbackProviders
             allow_service_fallbacks: mutable bool
             optional_features: mutable Capabilities::BackendOptionalFeature[Bounds::MAX_OPTIONAL_REQUIREMENTS]
             optional_feature_count: mutable usize

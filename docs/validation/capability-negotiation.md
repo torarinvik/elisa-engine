@@ -4,13 +4,18 @@ The portable backend profile in `src/backend/capabilities.elisa` now has an
 explicit `RequirementState` resolver. `negotiate_requirements` distinguishes a
 ready profile, a profile that needs an allowed fallback, an unavailable
 required feature, and an invalid profile or oversized requirement list.
-Callers must provide a per-feature `BackendCapabilities` fallback map in
-addition to allowing fallback globally. A missing service without a matching
-fallback remains `Unavailable`; the helper count includes only concrete
-fallbacks available for currently missing features. The resolver is bounded
-by the existing eight-feature contract. Its ordered `BackendFeatureDecision`
-entries identify each request as `Native`, `DeclaredFallback`, or
-`Unavailable`, including repeated requests; unused entries stay `Invalid`.
+Callers provide a typed `BackendFallbackProviders` map in addition to allowing
+fallback globally. Each map entry names the intended handler, such as
+`JoltPhysics`, `MiniaudioSilent`, or `SynchronousUpload`; incompatible service
+and provider pairs make the report `Invalid`. A missing service with no named
+handler is `Unavailable`. A named handler with global fallback disabled is
+reported as `FallbackDisallowed`. The resolver is bounded by the existing
+eight-feature contract. Its ordered `BackendFeatureDecision` entries identify
+each request as `Native`, `DeclaredFallback`, `FallbackDisallowed`,
+`Unavailable`, or `Invalid`. Native and missing-handler decisions carry
+`BackendFallbackProvider.None`; a declared or disallowed route carries its
+provider identity. Repeated requests remain visible; unused entries stay
+`Invalid`.
 The report also retains the first missing feature and aggregate counts.
 
 `BackendProfile` carries typed RGBA8/BC1/R16F support, optional ray-tracing,
@@ -26,12 +31,14 @@ rejected for authored alpha and normal maps, RGBA8 is the safe fallback, and
 missing formats stay unavailable rather than being advertised optimistically.
 
 `test/capabilities.elisa` tests a native profile where audio is missing. It
-stays `Unavailable` both when no fallback is declared and when fallback is
-globally disallowed. It becomes `Fallback` only when the caller declares a
-silent-audio handler; a nine-feature request remains `Invalid`. It also tests
-each of the eight service fallback fields independently, decodes optional
-native features and queried worker/viewport limits, and rejects a renderer
-without viewports or optional features claimed without rendering.
+stays `Unavailable` when no fallback is declared, reports
+`FallbackDisallowed` when a handler is declared but fallback is disabled, and
+becomes `Fallback` with the handler identity when allowed. It checks all eight
+service routes, mixed native/fallback/unavailable outcomes, rejects a Jolt
+provider assigned to Audio, and confirms a nine-feature request is `Invalid`.
+It also decodes optional native features and queried worker/viewport limits,
+and rejects a renderer without viewports or optional features claimed without
+rendering.
 
 The native `native/capability_probe.h` fills the vendor-free
 `ElisaBackendProfile` from queried Wicked device limits, then passes that report
@@ -149,16 +156,25 @@ Physics and Audio fallback validation on 2026-09-20:
 - `test/parity/nested_const_module_collision_smoke.sh` passed stage0 and stage1. It guards the compiler fix for short nested-module references resolving sibling modules with the same child name, which had mapped the Physics ABI's invalid-handle code to the wrong Elisa error.
 - Physics remains an explicit adapter-owned scene and is not yet advanced by the gameplay `World` scheduler; the native host therefore does not advertise it as a core service.
 
-Per-service route follow-up, 2026-09-20: `BackendRequirementReport` now returns
-one bounded decision per requested service. The portable matrix verifies all
-eight features for declared-fallback and unavailable outcomes, a mixed request
-with both a usable fallback and an unavailable service, and native routing in
-the aggregate report. The real SDL3/Metal application smoke verifies native
-Input routing, unavailable Physics rejection, and declared Physics and Audio
-fallback routing before their adapters run. Engine commit `cbb5f39` passed the
-post-commit native smoke. `elisascript scripts/check.elisascript` and
-`DEVELOPER_DIR=/Library/Developer/CommandLineTools
-ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
-python3 scripts/application_native_smoke.py` passed. F08 remains partial: the
-report makes decisions explicit but does not initialize fallback providers;
-Physics and Audio are the only current service adapters.
+Per-service route follow-up, 2026-09-20: each bounded service decision also
+names a typed fallback provider. Wrong-service provider pairs are invalid, and
+the report distinguishes a missing handler from a declared-but-disallowed
+fallback. The portable matrix verifies all eight services, mixed outcomes,
+provider identity, and mismatch rejection. The real SDL3/Metal smoke continues
+to verify native Input routing, unavailable Physics rejection, and declared
+Physics and Audio fallback routing before their adapters run. F08 remains
+partial: a route declaration does not initialize or prove the selected
+provider is available; Physics and Audio are the only current service
+adapters.
+
+Typed provider-map validation on 2026-09-20:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/capabilities-test test/capabilities.elisa && build/capabilities-test` passed, covering provider identity, native routes, disallowed fallback state, and wrong-service rejection.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both the SDL3/Metal application smoke and startup-failure cleanup smoke.
+- Source-length, module-hygiene, dependency-manifest, and `git diff --check` policies passed.
+- The complete `scripts/check.elisascript` command reached Elisa Proof and exited 1 because the current sibling `elisa-proof` build reports the entity-ID proof file as `unsupported` (6 of 14 obligations proven, 8 unresolved; six certificates replayed). Portable engine tests, including capability negotiation and Godot 4.7.2 compatibility, passed before that step. The proof checkout has uncommitted kernel changes; no proof files were changed for this provider-map work.
+
+F08 remains partial. Typed routes prevent selecting a provider for the wrong
+service, but callers still must initialize the selected adapter, handle its
+failure, and verify its lifetime before entering gameplay. Physics and Audio
+are the only current adapters.

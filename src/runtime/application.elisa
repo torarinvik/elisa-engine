@@ -329,7 +329,7 @@ module Application:
         # FallbackRequired, RequirementsUnavailable, and InvalidRequirements.
         def initialize_with_requirements(config: Config,
             required: Capabilities::BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS],
-            count: usize, fallbacks: Capabilities::BackendCapabilities, allow_fallback: bool,
+            count: usize, fallbacks: Capabilities::BackendFallbackProviders, allow_fallback: bool,
             report: mutable Capabilities::BackendRequirementReport&) -> InitializeStatus:
             report <- Capabilities::backend_requirement_invalid_report()
             opened: InitializeStatus = initialize(config)

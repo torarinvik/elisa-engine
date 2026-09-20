@@ -102,10 +102,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
         BackendFeature.Input, BackendFeature.Input,
     ]
-    no_fallbacks: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
-    }
+    no_fallbacks: BackendFallbackProviders = Capabilities::no_backend_fallback_providers()
     report: mutable BackendRequirementReport = Capabilities::backend_requirement_invalid_report()
     profile_requirements: BackendRequirements::BackendStartupRequirements = BackendRequirements::BackendStartupRequirements{
         services: required,
@@ -191,9 +188,15 @@ def check_startup_requirements(config: Application::Config) -> i32:
         error failure: 2
     return 32 if closed_profile != 0
 
-    physics_fallback: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: true, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    physics_fallback: BackendFallbackProviders = BackendFallbackProviders{
+        input: BackendFallbackProvider.None,
+        rendering: BackendFallbackProvider.None,
+        physics: BackendFallbackProvider.JoltPhysics,
+        audio: BackendFallbackProvider.None,
+        native_window: BackendFallbackProvider.None,
+        async_upload: BackendFallbackProvider.None,
+        callbacks: BackendFallbackProvider.None,
+        asset_loading: BackendFallbackProvider.None,
     }
     physics_fallback_status: Application::InitializeStatus = Application::initialize_with_requirements(
         config, missing_physics, 1, physics_fallback, true, &report)
@@ -227,9 +230,15 @@ def check_startup_requirements(config: Application::Config) -> i32:
         BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
         BackendFeature.Input, BackendFeature.Input,
     ]
-    silent_audio_fallback: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: true,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
+    silent_audio_fallback: BackendFallbackProviders = BackendFallbackProviders{
+        input: BackendFallbackProvider.None,
+        rendering: BackendFallbackProvider.None,
+        physics: BackendFallbackProvider.None,
+        audio: BackendFallbackProvider.MiniaudioSilent,
+        native_window: BackendFallbackProvider.None,
+        async_upload: BackendFallbackProvider.None,
+        callbacks: BackendFallbackProvider.None,
+        asset_loading: BackendFallbackProvider.None,
     }
     fallback_status: Application::InitializeStatus = Application::initialize_with_requirements(
         config, audio_required, 1, silent_audio_fallback, true, &report)

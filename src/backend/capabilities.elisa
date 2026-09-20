@@ -68,17 +68,39 @@ module Capabilities:
             Unavailable
             Invalid
 
+        enum BackendFallbackProvider:
+            None
+            CallerDefined
+            JoltPhysics
+            MiniaudioSilent
+            MiniaudioDefault
+            SynchronousUpload
+            SynchronousAssetLoading
+
+        struct BackendFallbackProviders:
+            input: BackendFallbackProvider
+            rendering: BackendFallbackProvider
+            physics: BackendFallbackProvider
+            audio: BackendFallbackProvider
+            native_window: BackendFallbackProvider
+            async_upload: BackendFallbackProvider
+            callbacks: BackendFallbackProvider
+            asset_loading: BackendFallbackProvider
+
         # A declared fallback must still be initialized by its owner before
         # gameplay. This route tells the caller exactly which service needs it.
         enum BackendFeatureResolution:
             Native
             DeclaredFallback
+            FallbackDisallowed
             Unavailable
             Invalid
 
         struct BackendFeatureDecision:
             feature: BackendFeature
             resolution: BackendFeatureResolution
+            # None for a native route or when no fallback was declared.
+            fallback_provider: BackendFallbackProvider
 
         struct BackendCapabilities:
             input: bool
@@ -126,10 +148,23 @@ module Capabilities:
             decision_count: usize
             decisions: BackendFeatureDecision[Bounds::MAX_FEATURES]
 
+        def no_backend_fallback_providers() -> BackendFallbackProviders:
+            BackendFallbackProviders{
+                input: BackendFallbackProvider.None,
+                rendering: BackendFallbackProvider.None,
+                physics: BackendFallbackProvider.None,
+                audio: BackendFallbackProvider.None,
+                native_window: BackendFallbackProvider.None,
+                async_upload: BackendFallbackProvider.None,
+                callbacks: BackendFallbackProvider.None,
+                asset_loading: BackendFallbackProvider.None,
+            }
+
         def backend_requirement_invalid_report() -> BackendRequirementReport:
             invalid_decision: BackendFeatureDecision = BackendFeatureDecision{
                 feature: BackendFeature.Input,
                 resolution: BackendFeatureResolution.Invalid,
+                fallback_provider: BackendFallbackProvider.None,
             }
             BackendRequirementReport{
                 state: RequirementState.Invalid,
@@ -177,7 +212,8 @@ module Capabilities:
                 BackendOptionalFeature.MeshShaders:
                     profile.optional_capabilities.mesh_shaders
 
-        def fallback_supports(fallbacks: BackendCapabilities, feature: BackendFeature) -> bool:
+        def fallback_provider_for(fallbacks: BackendFallbackProviders,
+            feature: BackendFeature) -> BackendFallbackProvider:
             match feature:
                 BackendFeature.Input:
                     fallbacks.input
@@ -195,6 +231,27 @@ module Capabilities:
                     fallbacks.callbacks
                 BackendFeature.AssetLoading:
                     fallbacks.asset_loading
+
+        def fallback_provider_matches(feature: BackendFeature,
+            provider: BackendFallbackProvider) -> bool:
+            return true if provider == BackendFallbackProvider.None
+            match feature:
+                BackendFeature.Input:
+                    provider == BackendFallbackProvider.CallerDefined
+                BackendFeature.Rendering:
+                    provider == BackendFallbackProvider.CallerDefined
+                BackendFeature.Physics:
+                    provider == BackendFallbackProvider.CallerDefined or provider == BackendFallbackProvider.JoltPhysics
+                BackendFeature.Audio:
+                    provider == BackendFallbackProvider.CallerDefined or provider == BackendFallbackProvider.MiniaudioSilent or provider == BackendFallbackProvider.MiniaudioDefault
+                BackendFeature.NativeWindow:
+                    provider == BackendFallbackProvider.CallerDefined
+                BackendFeature.AsyncUpload:
+                    provider == BackendFallbackProvider.CallerDefined or provider == BackendFallbackProvider.SynchronousUpload
+                BackendFeature.Callbacks:
+                    provider == BackendFallbackProvider.CallerDefined
+                BackendFeature.AssetLoading:
+                    provider == BackendFallbackProvider.CallerDefined or provider == BackendFallbackProvider.SynchronousAssetLoading
 
         # Stable diagnostic codes for the flat C embedding surface. Keep these
         # independent of the compiler's internal enum representation.
@@ -352,7 +409,7 @@ module Capabilities:
 
         def backend_requirement_report(profile: BackendProfile,
             required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
-            fallbacks: BackendCapabilities, allow_fallback: bool) -> BackendRequirementReport:
+            fallbacks: BackendFallbackProviders, allow_fallback: bool) -> BackendRequirementReport:
             invalid: BackendRequirementReport = backend_requirement_invalid_report()
             return invalid if count > Bounds::MAX_FEATURES or not backend_profile_valid(profile)
             missing_count: mutable usize = 0
@@ -361,17 +418,29 @@ module Capabilities:
             decisions: mutable BackendFeatureDecision[Bounds::MAX_FEATURES] = invalid.decisions
             for index in 0..<count |missing_count, fallback_count, first_missing, decisions|:
                 feature: BackendFeature = required[index]
+                provider: BackendFallbackProvider = fallback_provider_for(fallbacks, feature)
+                if not fallback_provider_matches(feature, provider):
+                    return invalid
                 resolution: mutable BackendFeatureResolution = BackendFeatureResolution.Unavailable
+                selected_provider: mutable BackendFallbackProvider = BackendFallbackProvider.None
                 if backend_supports(profile, feature):
                     resolution <- BackendFeatureResolution.Native
                 else:
-                    if allow_fallback and fallback_supports(fallbacks, feature):
-                        resolution <- BackendFeatureResolution.DeclaredFallback
-                        fallback_count <- fallback_count + 1
-                    else:
+                    if provider != BackendFallbackProvider.None:
+                        selected_provider <- provider
+                        if allow_fallback:
+                            resolution <- BackendFeatureResolution.DeclaredFallback
+                            fallback_count <- fallback_count + 1
+                        else:
+                            resolution <- BackendFeatureResolution.FallbackDisallowed
+                    if resolution != BackendFeatureResolution.DeclaredFallback:
                         first_missing <- feature if missing_count == 0
                         missing_count <- missing_count + 1
-                decisions[index] <- BackendFeatureDecision{feature: feature, resolution: resolution}
+                decisions[index] <- BackendFeatureDecision{
+                    feature: feature,
+                    resolution: resolution,
+                    fallback_provider: selected_provider,
+                }
             state: mutable RequirementState = RequirementState.Ready
             if missing_count > 0:
                 state <- RequirementState.Unavailable
@@ -388,19 +457,16 @@ module Capabilities:
 
         def negotiate_requirements(profile: BackendProfile,
             required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
-            fallbacks: BackendCapabilities, allow_fallback: bool) -> RequirementState:
+            fallbacks: BackendFallbackProviders, allow_fallback: bool) -> RequirementState:
             backend_requirement_report(profile, required, count, fallbacks, allow_fallback).state
 
         def first_missing_requirement(profile: BackendProfile, required: BackendFeature[Bounds::MAX_FEATURES], count: usize) -> BackendFeature:
-            no_fallbacks: BackendCapabilities = BackendCapabilities{
-                input: false, rendering: false, physics: false, audio: false,
-                native_window: false, async_upload: false, callbacks: false, asset_loading: false,
-            }
+            no_fallbacks: BackendFallbackProviders = no_backend_fallback_providers()
             backend_requirement_report(profile, required, count, no_fallbacks, false).first_missing
 
         def fallback_requirement_count(profile: BackendProfile,
             required: BackendFeature[Bounds::MAX_FEATURES], count: usize,
-            fallbacks: BackendCapabilities) -> usize:
+            fallbacks: BackendFallbackProviders) -> usize:
             backend_requirement_report(profile, required, count, fallbacks, true).fallback_count
 
         def headless_profile() -> BackendProfile:
