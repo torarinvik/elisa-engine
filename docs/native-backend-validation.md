@@ -32,19 +32,21 @@ versioned vendor-free `ElisaBackendProfile` and are not inferred from a linked
 library or from the machine-independent Elisa profile.
 Setting `ELISA_FORCE_OPTIONAL_FALLBACK=1` exercises the same fallback policy on
 hardware that exposes those features, proving that a linked capability does not
-silently become a gameplay requirement. The ABI now exposes the queried format
-bits and high-priority/streaming worker counts; typed Elisa bindings and a
-complete format fallback matrix remain open F08 work.
+silently become a gameplay requirement. The ABI exposes queried format bits
+and high-priority/streaming worker counts. Elisa fallback negotiation now
+requires an explicit per-feature fallback map; mapping the live host profile
+into each runtime service remains open F08 work.
 
 The SDL3 host records logical and physical window sizes, display scale, display
 changes, fullscreen state, focus, minimize, restore, and close transitions. A
 minimized or zero-pixel window suspends simulation while the event queue remains
 live, so input edges are not lost during a resize. `native/frame_pacer.h` keeps
-simulation ticks at an integer nanosecond step, caps catch-up at four ticks, and
-exposes the presentation interpolation fraction without adding work to the
-Elisa world. The finite native gate injects focus/minimize/restore and
-pixel-size events, toggles fullscreen, and checks state transitions and the
-monotonic resize serial.
+simulation ticks at an integer nanosecond step and caps catch-up at four ticks.
+`native/input_tick_queue.h` preserves discrete gameplay actions until a fixed
+tick consumes them, with explicit overflow handling. The finite native gate
+injects focus/minimize/restore and pixel-size events, toggles fullscreen, and
+checks state transitions, tick-queued movement, and the monotonic resize
+serial.
 
 `NativeApplication::shutdown()` waits for GPU work, destroys the Wicked
 application before SDL, calls the pinned SDL3-safe `wi::audio::Shutdown()` hook,

@@ -548,7 +548,7 @@ int main(int argc, char** argv) {
         }
     }
     if (!probe_coordinate_reference(application, scene, screenshot_path) ||
-        !probe_live_game_rendering(application, scene, object, screenshot_path)) return 1;
+        !probe_live_game_rendering(application_host, scene, object, screenshot_path)) return 1;
     if (!run_library_probes(application, scene, manifest)) {
         return 1;
     }

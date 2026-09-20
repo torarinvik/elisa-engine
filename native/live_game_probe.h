@@ -9,6 +9,7 @@
 #include "probe_core.h"
 #include "probe_support.h"
 #include "native_application.h"
+#include "input_tick_queue.h"
 #include "libmaze.h"
 #include "png_capture.h"
 
@@ -57,8 +58,9 @@ inline void enqueue_persistent_self_test() {
     SDL_PushEvent(&event);
 }
 
-inline bool probe_live_game_rendering(wi::Application& application, wi::scene::Scene& scene,
+inline bool probe_live_game_rendering(NativeApplication& host, wi::scene::Scene& scene,
                                       wi::ecs::Entity object, const char* screenshot_path) {
+    wi::Application& application = host.wicked();
     if (!check(maze_start() == 1, "embedded game starts")) {
         return false;
     }
@@ -74,15 +76,29 @@ inline bool probe_live_game_rendering(wi::Application& application, wi::scene::S
     }
     int move = -1;
     SDL_Event polled;
+    InputTickQueue pending_actions;
     while (SDL_PollEvent(&polled)) {
-        if (polled.type == SDL_EVENT_KEY_DOWN) {
+        if (polled.type == SDL_EVENT_KEY_DOWN && !polled.key.repeat) {
             move = move_code_for_key(polled.key.key);
+            if (move >= 0 && !pending_actions.enqueue(move)) return check(false, "live tick input queue accepts action");
         }
     }
     if (!check(move == 3, "live key maps to the east move")) {
         return false;
     }
-    if (!check(maze_step(move) == 1, "live move advances the game")) {
+    int fixed_ticks = 0;
+    int consumed_moves = 0;
+    if (!check(pending_actions.size() == 1, "live input waits for simulation tick")) return false;
+    host.reset_fixed_clock();
+    const int scheduled_steps = host.advance_fixed(FixedStepPacer::STEP_NANOS, [&] {
+        ++fixed_ticks;
+        int32_t tick_action = -1;
+        if (pending_actions.dequeue(tick_action) && maze_step(static_cast<int>(tick_action)) == 1) {
+            ++consumed_moves;
+        }
+    });
+    if (!check(scheduled_steps == 1 && fixed_ticks == 1 && consumed_moves == 1 && pending_actions.empty(),
+            "fixed tick consumes queued gameplay input")) {
         return false;
     }
     const int player_x = (int)maze_player_x();
@@ -98,7 +114,7 @@ inline bool probe_live_game_rendering(wi::Application& application, wi::scene::S
     transform->SetDirty();
     transform->UpdateTransform();
     for (int frame = 0; frame < 5; ++frame) {
-        application.Run();
+        host.run_frame();
         wi::helper::Sleep(50);
     }
     wi::graphics::GetDevice()->WaitForGPU();
@@ -125,6 +141,9 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
     int pause_toggles = 0;
     int restarts = 0;
     int moves = 0;
+    constexpr int32_t RESTART_ACTION = 4;
+    InputTickQueue pending_actions;
+    bool input_overflow = false;
     auto place_player = [&scene, object]() {
         auto* transform = scene.transforms.GetComponent(object);
         if (transform == nullptr) {
@@ -141,42 +160,59 @@ inline int run_persistent_game(NativeApplication& host, wi::scene::Scene& scene,
     const bool self_test = std::getenv("ELISA_PERSISTENT_SELF_TEST") != nullptr;
     if (self_test) enqueue_persistent_self_test();
     host.reset_fixed_clock();
+    const int initial_ticks = self_test ? 2 : 1;
     auto previous = std::chrono::steady_clock::now() -
-        std::chrono::nanoseconds(FixedStepPacer::STEP_NANOS);
+        std::chrono::nanoseconds(FixedStepPacer::STEP_NANOS * initial_ticks);
     int fixed_ticks = 0;
     std::fprintf(stdout, "persistent host: W/A/S/D move, P pause/resume, R restart, close window to exit\n");
     bool running = true;
     while (running) {
         running = host.poll_events([&](const SDL_Event& event) {
-        if (event.type != SDL_EVENT_KEY_DOWN || !event.key.down) {
+        if (event.type != SDL_EVENT_KEY_DOWN || !event.key.down || event.key.repeat) {
             return;
         }
         if (event.key.key == SDLK_P) {
             paused = !paused;
+            if (paused) pending_actions.clear();
             ++pause_toggles;
             std::fprintf(stdout, "persistent host: %s\n", paused ? "paused" : "resumed");
             return;
         }
         if (event.key.key == SDLK_R) {
-            maze_start();
-            place_player();
-            ++restarts;
-            std::fprintf(stdout, "persistent host: restarted\n");
+            if (!paused && !host.simulation_suspended() &&
+                !pending_actions.enqueue(RESTART_ACTION)) input_overflow = true;
             return;
         }
         if (!paused && !host.simulation_suspended()) {
             const int move = move_code_for_key(event.key.key);
-            if (move >= 0 && maze_step(move) == 1) {
-                place_player();
-                ++moves;
-            }
+            if (move >= 0 && !pending_actions.enqueue(move)) input_overflow = true;
         }
         });
+        if (input_overflow) {
+            std::fprintf(stderr, "persistent host: fixed-tick input queue is full\n");
+            return 1;
+        }
         const auto now = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - previous).count();
         previous = now;
         host.run_frame();
-        host.advance_fixed(elapsed, [&] { ++fixed_ticks; });
+        host.advance_fixed(elapsed, [&] {
+            ++fixed_ticks;
+            if (!paused) {
+                int32_t action = -1;
+                if (pending_actions.dequeue(action)) {
+                    if (action == RESTART_ACTION) {
+                        maze_start();
+                        place_player();
+                        ++restarts;
+                        std::fprintf(stdout, "persistent host: restarted on fixed tick\n");
+                    } else if (maze_step(action) == 1) {
+                        place_player();
+                        ++moves;
+                    }
+                }
+            }
+        });
         wi::helper::Sleep(16);
     }
     if (self_test && (!check(pause_toggles == 2, "persistent pause/resume") ||
