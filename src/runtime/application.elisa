@@ -95,6 +95,7 @@ module Application:
             KEY_ARROW_RIGHT: i64 = 2014
             KEY_ARROW_UP: i64 = 2015
             KEY_ARROW_DOWN: i64 = 2016
+            KEY_V: i64 = 2017
 
         @callconv(c)
         extern elisa_application_abi_version() -> u32
@@ -158,6 +159,7 @@ module Application:
             S
             W
             P
+            V
             Space
             Escape
             LeftShift
@@ -288,6 +290,7 @@ module Application:
                 KeyboardKeyCode.S: PortableInputCodes::KEY_S
                 KeyboardKeyCode.W: PortableInputCodes::KEY_W
                 KeyboardKeyCode.P: PortableInputCodes::KEY_P
+                KeyboardKeyCode.V: PortableInputCodes::KEY_V
                 KeyboardKeyCode.Space: PortableInputCodes::KEY_SPACE
                 KeyboardKeyCode.Escape: PortableInputCodes::KEY_ESCAPE
                 KeyboardKeyCode.LeftShift: PortableInputCodes::KEY_LEFT_SHIFT
