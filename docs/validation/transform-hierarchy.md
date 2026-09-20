@@ -15,4 +15,5 @@ operation keeps interpolation state private to its owner module.
 
 `test/hierarchy.elisa` is part of the shared ElisaScript gate and covers parent
 composition, cycle rejection, keep-world reparenting, parent removal,
-interpolation, teleports, and physics-owned world publication.
+interpolation, teleports, physics-owned world publication, and a 31-node deep
+chain dirty-propagation stress case.
