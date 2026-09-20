@@ -13,3 +13,9 @@ families and voices, stale/cross-scene rejection, serial 2 versus serial 3
 collection, generation reuse, failed generation-exhaustion creation, and
 shutdown invalidation. Test-only generation injection keeps exhaustion
 deterministic without widening the public ABI.
+
+The registry also reports bounded allocator-pressure telemetry: successful and
+failed creation, logical destruction, retirement enqueue/collection, and peak
+pending retirements. The native pressure run creates 69 resources, rejects a
+generation-exhausted creation, and returns four 16-resource batches to the
+scene baseline with one serial-gated retirement collected.

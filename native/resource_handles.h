@@ -28,6 +28,15 @@ class NativeResourceRegistry {
 public:
     static constexpr uint32_t MAX_RESOURCES = 64;
 
+    struct Telemetry {
+        uint64_t creations = 0;
+        uint64_t failed_creations = 0;
+        uint64_t logical_destructions = 0;
+        uint64_t retirements_enqueued = 0;
+        uint64_t retirements_collected = 0;
+        uint64_t peak_pending_retirements = 0;
+    };
+
     explicit NativeResourceRegistry(wi::scene::Scene& scene)
         : scene_(scene), owner_(reinterpret_cast<uintptr_t>(&scene)) {}
 
@@ -61,7 +70,10 @@ public:
 
     NativeResourceHandle create_texture() {
         const uint32_t slot = free_slot(NativeResourceKind::Texture);
-        if (slot == MAX_RESOURCES || wi::graphics::GetDevice() == nullptr) return {};
+        if (slot == MAX_RESOURCES || wi::graphics::GetDevice() == nullptr) {
+            ++telemetry_.failed_creations;
+            return {};
+        }
         Slot& state = slots_[kind_index(NativeResourceKind::Texture)][slot];
         wi::graphics::TextureDesc desc;
         desc.width = 1;
@@ -80,9 +92,11 @@ public:
         if (!wi::graphics::GetDevice()->CreateTexture(&desc, &data, &state.texture) ||
             !state.texture.IsValid() || !next_generation(state)) {
             state.texture = {};
+            ++telemetry_.failed_creations;
             return {};
         }
         state.live = true;
+        ++telemetry_.creations;
         return make_handle(NativeResourceKind::Texture, slot, state);
     }
 
@@ -130,6 +144,7 @@ public:
         Slot* state = state_for(handle);
         if (state == nullptr || !is_live(handle)) return false;
         release_now(handle.kind, *state);
+        ++telemetry_.logical_destructions;
         return true;
     }
 
@@ -139,10 +154,16 @@ public:
         retired_.push_back({handle.kind, state->entity, state->texture, handle.slot, submission_serial});
         state->live = false;
         state->retired = true;
+        ++telemetry_.logical_destructions;
+        ++telemetry_.retirements_enqueued;
+        if (retired_.size() > telemetry_.peak_pending_retirements) {
+            telemetry_.peak_pending_retirements = retired_.size();
+        }
         return true;
     }
 
     size_t pending_retirements() const { return retired_.size(); }
+    const Telemetry& telemetry() const { return telemetry_; }
 
     void collect_retired(uint64_t completed_serial = UINT64_MAX) {
         size_t write = 0;
@@ -158,6 +179,7 @@ public:
             state.entity = wi::ecs::INVALID_ENTITY;
             state.texture = {};
             state.retired = false;
+            ++telemetry_.retirements_collected;
         }
         retired_.resize(write);
     }
@@ -230,15 +252,20 @@ private:
     template <typename Factory>
     NativeResourceHandle create_entity(NativeResourceKind kind, Factory&& factory) {
         const uint32_t slot = free_slot(kind);
-        if (slot == MAX_RESOURCES) return {};
+        if (slot == MAX_RESOURCES) {
+            ++telemetry_.failed_creations;
+            return {};
+        }
         Slot& state = slots_[kind_index(kind)][slot];
         const wi::ecs::Entity entity = factory();
         if (entity == wi::ecs::INVALID_ENTITY || !next_generation(state)) {
             if (entity != wi::ecs::INVALID_ENTITY) scene_.Entity_Remove(entity);
+            ++telemetry_.failed_creations;
             return {};
         }
         state.entity = entity;
         state.live = true;
+        ++telemetry_.creations;
         return make_handle(kind, slot, state);
     }
 
@@ -255,6 +282,7 @@ private:
     uintptr_t owner_;
     std::array<std::array<Slot, MAX_RESOURCES>, static_cast<size_t>(NativeResourceKind::Count)> slots_{};
     std::vector<Retired> retired_;
+    Telemetry telemetry_;
 };
 
 } // namespace probe

@@ -81,8 +81,15 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
             return false;
         }
     }
-    std::fprintf(stdout, "resource handle pressure: rounds=4 batch=16 baseline=%u\n",
-        (unsigned)objects_before_pressure);
+    const auto telemetry = registry.telemetry();
+    if (!check(telemetry.creations >= 68 && telemetry.failed_creations >= 1 &&
+        telemetry.logical_destructions >= 68 && telemetry.retirements_enqueued == 1 &&
+        telemetry.retirements_collected == 1 && telemetry.peak_pending_retirements == 1,
+        "resource allocator telemetry")) return false;
+    std::fprintf(stdout, "resource handle pressure: rounds=4 batch=16 baseline=%u created=%llu failed=%llu retired=%llu/%llu peak=%llu\n",
+        (unsigned)objects_before_pressure, (unsigned long long)telemetry.creations,
+        (unsigned long long)telemetry.failed_creations, (unsigned long long)telemetry.retirements_collected,
+        (unsigned long long)telemetry.retirements_enqueued, (unsigned long long)telemetry.peak_pending_retirements);
     wi::scene::Scene other_scene;
     NativeResourceRegistry other_registry(other_scene);
     return check(!other_registry.is_live(material), "cross-scene resource rejection");
