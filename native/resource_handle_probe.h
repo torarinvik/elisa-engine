@@ -28,6 +28,18 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
     if (!check(registry.set_material_color(material, XMFLOAT4(0.2f, 0.8f, 0.4f, 1.0f)) &&
         registry.set_visible(mesh, false) && registry.set_layer(mesh, 0x4u) &&
         registry.set_visible(mesh, true), "render resource instance updates")) return false;
+    const NativeInstanceUpdate batched[] = {
+        NativeInstanceUpdate{mesh, XMFLOAT3(2.0f, 0.0f, 1.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), 0x2u, true},
+        NativeInstanceUpdate{body, XMFLOAT3(-2.0f, 0.0f, 1.0f), XMFLOAT3(0.5f, 0.5f, 0.5f), 0x4u, false},
+    };
+    if (!check(registry.apply_instance_batch(batched, 2), "render resource batch updates") ||
+        !check(registry.apply_instance_batch(nullptr, 0), "empty render resource batch") ) return false;
+    const NativeInstanceUpdate duplicate[] = {
+        NativeInstanceUpdate{mesh, XMFLOAT3(3.0f, 0.0f, 1.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), 0x2u, true},
+        NativeInstanceUpdate{mesh, XMFLOAT3(4.0f, 0.0f, 1.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), 0x2u, true},
+    };
+    if (!check(!registry.apply_instance_batch(duplicate, 2),
+            "render resource batch rejects duplicate handles")) return false;
     const wi::ecs::Entity mesh_entity = registry.resolve(mesh);
     if (!check(mesh_entity != wi::ecs::INVALID_ENTITY, "mesh handle resolution") ||
         !check(registry.destroy(mesh), "mesh handle destruction") ||
@@ -84,7 +96,9 @@ inline bool probe_native_resource_handles(wi::scene::Scene& scene) {
     const auto telemetry = registry.telemetry();
     if (!check(telemetry.creations >= 68 && telemetry.failed_creations >= 1 &&
         telemetry.logical_destructions >= 68 && telemetry.retirements_enqueued == 1 &&
-        telemetry.retirements_collected == 1 && telemetry.peak_pending_retirements == 1,
+        telemetry.retirements_collected == 1 && telemetry.peak_pending_retirements == 1 &&
+        telemetry.batched_update_calls >= 3 && telemetry.batched_update_rows >= 4 &&
+        telemetry.rejected_update_batches >= 1,
         "resource allocator telemetry")) return false;
     std::fprintf(stdout, "resource handle pressure: rounds=4 batch=16 baseline=%u created=%llu failed=%llu retired=%llu/%llu peak=%llu\n",
         (unsigned)objects_before_pressure, (unsigned long long)telemetry.creations,

@@ -15,4 +15,8 @@ work.
 The native Wicked gate also applies material color, visibility, and layer-mask
 updates through `NativeResourceRegistry` handles before destroying the
 resources, proving the instance update path stays behind the owner-checked
-native boundary.
+native boundary. Elisa and native adapters now accept bounded transactional
+instance-update batches: every handle and component is checked before any row
+is changed, duplicate handles are rejected, and telemetry records batch calls,
+rows, and rejected submissions as an ABI traffic measure. The shared and
+native gates cover two independent rows plus duplicate-batch rejection.

@@ -8,6 +8,7 @@
 #include "wiScene.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -24,6 +25,14 @@ struct NativeResourceHandle {
     NativeResourceKind kind = NativeResourceKind::Invalid;
 };
 
+struct NativeInstanceUpdate {
+    NativeResourceHandle handle;
+    XMFLOAT3 translation = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    XMFLOAT3 scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    uint32_t layer_mask = 0xFFFFFFFFu;
+    bool visible = true;
+};
+
 class NativeResourceRegistry {
 public:
     static constexpr uint32_t MAX_RESOURCES = 64;
@@ -35,6 +44,9 @@ public:
         uint64_t retirements_enqueued = 0;
         uint64_t retirements_collected = 0;
         uint64_t peak_pending_retirements = 0;
+        uint64_t batched_update_calls = 0;
+        uint64_t batched_update_rows = 0;
+        uint64_t rejected_update_batches = 0;
     };
 
     explicit NativeResourceRegistry(wi::scene::Scene& scene)
@@ -137,6 +149,51 @@ public:
         auto* object = scene_.objects.GetComponent(resolve(handle));
         if (object == nullptr) return false;
         object->filterMask = layer_mask;
+        return true;
+    }
+
+    // Validate the complete instance update span before touching Wicked
+    // components. This keeps the engine ABI coarse-grained without allowing
+    // one malformed row to partially update a frame.
+    bool apply_instance_batch(const NativeInstanceUpdate* updates, size_t count) {
+        ++telemetry_.batched_update_calls;
+        telemetry_.batched_update_rows += count;
+        if (count > MAX_RESOURCES || (count != 0 && updates == nullptr)) {
+            ++telemetry_.rejected_update_batches;
+            return false;
+        }
+        for (size_t index = 0; index < count; ++index) {
+            const NativeInstanceUpdate& update = updates[index];
+            if (!is_entity_kind(update.handle.kind) || !is_live(update.handle) ||
+                !finite_positive(update.scale)) {
+                ++telemetry_.rejected_update_batches;
+                return false;
+            }
+            for (size_t prior = 0; prior < index; ++prior) {
+                if (same_handle(updates[prior].handle, update.handle)) {
+                    ++telemetry_.rejected_update_batches;
+                    return false;
+                }
+            }
+            const wi::ecs::Entity entity = resolve(update.handle);
+            if (scene_.transforms.GetComponent(entity) == nullptr ||
+                scene_.objects.GetComponent(entity) == nullptr) {
+                ++telemetry_.rejected_update_batches;
+                return false;
+            }
+        }
+        for (size_t index = 0; index < count; ++index) {
+            const NativeInstanceUpdate& update = updates[index];
+            const wi::ecs::Entity entity = resolve(update.handle);
+            auto* transform = scene_.transforms.GetComponent(entity);
+            transform->translation_local = update.translation;
+            transform->scale_local = update.scale;
+            transform->SetDirty();
+            transform->UpdateTransform();
+            auto* object = scene_.objects.GetComponent(entity);
+            object->SetRenderable(update.visible);
+            object->filterMask = update.layer_mask;
+        }
         return true;
     }
 
@@ -247,6 +304,16 @@ private:
 
     NativeResourceHandle make_handle(NativeResourceKind kind, uint32_t slot, const Slot& state) const {
         return NativeResourceHandle{slot, state.generation, owner_, kind};
+    }
+
+    static bool same_handle(NativeResourceHandle first, NativeResourceHandle second) {
+        return first.slot == second.slot && first.generation == second.generation &&
+            first.owner == second.owner && first.kind == second.kind;
+    }
+
+    static bool finite_positive(const XMFLOAT3& scale) {
+        return std::isfinite(scale.x) && std::isfinite(scale.y) && std::isfinite(scale.z) &&
+            scale.x > 0.0f && scale.y > 0.0f && scale.z > 0.0f;
     }
 
     template <typename Factory>

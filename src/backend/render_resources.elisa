@@ -16,6 +16,8 @@ module RenderResources:
             Limits::FIRST_GENERATION if current == 0 else current + 1
 
     public:
+        const MAX_INSTANCE_UPDATES: usize = Limits::MAX_INSTANCES
+
         struct InstanceHandle:
             slot: usize
             generation: i64
@@ -27,10 +29,17 @@ module RenderResources:
             layer: i64
             visible: bool
 
+        struct InstanceUpdate:
+            handle: InstanceHandle
+            transform: Geometry::Transform
+            layer: i64
+            visible: bool
+
         enum RenderError:
             InvalidAsset
             Capacity
             UnknownInstance
+            DuplicateUpdate
             GenerationExhausted
 
         private:
@@ -85,6 +94,22 @@ module RenderResources:
             def set_layer(registry: mutable Registry&, handle: InstanceHandle, layer: i64) -> void error[RenderError]:
                 raise RenderError.UnknownInstance if not handle_valid(registry, handle)
                 registry.entries[handle.slot].state.layer <- layer
+
+            def update_batch(registry: mutable Registry&, updates: InstanceUpdate[Limits::MAX_INSTANCES]&, count: usize) -> void error[RenderError]:
+                raise RenderError.Capacity if count > Limits::MAX_INSTANCES
+                for index in 0..<count:
+                    raise RenderError.UnknownInstance if not handle_valid(registry, updates[index].handle)
+                    for prior in 0..<index:
+                        raise RenderError.DuplicateUpdate if updates[prior].handle.slot == updates[index].handle.slot and updates[prior].handle.generation == updates[index].handle.generation
+                for index in 0..<count:
+                    handle: InstanceHandle = updates[index].handle
+                    registry.entries[handle.slot].state <- InstanceState{
+                        mesh: registry.entries[handle.slot].state.mesh,
+                        material: registry.entries[handle.slot].state.material,
+                        transform: updates[index].transform,
+                        layer: updates[index].layer,
+                        visible: updates[index].visible,
+                    }
 
             def destroy(registry: mutable Registry&, handle: InstanceHandle) -> void error[RenderError]:
                 raise RenderError.UnknownInstance if not handle_valid(registry, handle)

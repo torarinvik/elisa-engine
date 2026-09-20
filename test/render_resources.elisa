@@ -23,13 +23,39 @@ def main() -> i32:
         value: value
         error failure: return 6
     return 7 if one.transform.position.x != 4.0 or two.transform.position.x != 0.0
-    _ = catch RenderResources::destroy(&registry, first):
+    updates: RenderResources::InstanceUpdate[RenderResources::MAX_INSTANCE_UPDATES] = zeroed
+    updates[0] <- RenderResources::InstanceUpdate{
+        handle: second,
+        transform: Geometry::transform_translate(transform, Geometry::Vec3{x: -3.0, y: 0.0, z: 0.0}),
+        layer: 4,
+        visible: false,
+    }
+    updates[1] <- RenderResources::InstanceUpdate{
+        handle: first,
+        transform: moved,
+        layer: 2,
+        visible: true,
+    }
+    _ = catch RenderResources::update_batch(&registry, &updates, 2):
         ok: 0
         error failure: return 8
-    return 9 if RenderResources::shared_mesh_count(&registry, mesh) != 1 or not RenderResources::registry_valid(&registry)
+    updated_second: RenderResources::InstanceState = catch RenderResources::read(&registry, second):
+        value: value
+        error failure: return 9
+    return 10 if updated_second.transform.position.x != -3.0 or updated_second.layer != 4 or updated_second.visible
+    updates[1].handle <- second
+    duplicate: i32 = catch RenderResources::update_batch(&registry, &updates, 2):
+        ok: 0
+        RenderResources::RenderError.DuplicateUpdate: 1
+        error failure: 2
+    return 11 if duplicate != 1
+    _ = catch RenderResources::destroy(&registry, first):
+        ok: 0
+        error failure: return 12
+    return 13 if RenderResources::shared_mesh_count(&registry, mesh) != 1 or not RenderResources::registry_valid(&registry)
     stale: i32 = catch RenderResources::set_visible(&registry, first, false):
         ok: 0
         RenderResources::RenderError.UnknownInstance: 1
         error failure: 2
-    return 10 if stale != 1
+    return 14 if stale != 1
     0
