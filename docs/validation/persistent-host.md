@@ -23,5 +23,9 @@ build/wicked-native-probe \
 
 Result on the pinned SDL3/Metal build: the host printed `paused`, `resumed`,
 `restarted`, `fixed_ticks=2`, `close requested`, and exited zero through the
-ordered shutdown boundary. The PNG is a runtime artifact; the self-test also
-requires a graphics session because it exercises the visible host path.
+ordered shutdown boundary. The host lifecycle probe also registers
+reverse-order shutdown hooks and an RAII callback scope before each repeated
+hidden host shutdown. Hooks run before GPU/audio/window teardown, and callback
+admission is closed before that boundary. The PNG is a runtime artifact; the
+self-test also requires a graphics session because it exercises the visible
+host path.

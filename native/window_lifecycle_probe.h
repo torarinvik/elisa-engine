@@ -62,8 +62,16 @@ inline bool probe_repeated_host_lifecycle() {
             host.shutdown();
             return false;
         }
+        std::vector<int> hook_order;
+        if (!check(host.add_shutdown_hook([&hook_order] { hook_order.push_back(1); }) &&
+            host.add_shutdown_hook([&hook_order] { hook_order.push_back(2); }),
+            "shutdown hooks register")) return false;
+        auto callback = host.callback_scope();
+        if (!check(callback.admitted(), "shutdown callback admission")) return false;
+        callback.release();
         host.shutdown();
-        if (!check(host.window() == nullptr && host.close_requested(), "repeated host shutdown")) {
+        if (!check(host.window() == nullptr && host.close_requested() && hook_order.size() == 2 &&
+            hook_order[0] == 2 && hook_order[1] == 1, "repeated host shutdown")) {
             return false;
         }
     }

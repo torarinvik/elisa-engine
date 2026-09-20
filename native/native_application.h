@@ -14,13 +14,40 @@
 
 #include <cstdio>
 #include <chrono>
+#include <condition_variable>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <utility>
+#include <vector>
 
 namespace probe {
 
 class NativeApplication {
 public:
+    class CallbackLease {
+    public:
+        CallbackLease(const CallbackLease&) = delete;
+        CallbackLease& operator=(const CallbackLease&) = delete;
+        CallbackLease(CallbackLease&& other) noexcept
+            : owner_(other.owner_), admitted_(other.admitted_) { other.owner_ = nullptr; }
+        ~CallbackLease() { release(); }
+
+        bool admitted() const { return admitted_; }
+        void release() {
+            if (owner_ != nullptr && admitted_) owner_->end_callback();
+            owner_ = nullptr;
+            admitted_ = false;
+        }
+
+    private:
+        friend class NativeApplication;
+        explicit CallbackLease(NativeApplication& owner)
+            : owner_(&owner), admitted_(owner.begin_callback()) {}
+        NativeApplication* owner_ = nullptr;
+        bool admitted_ = false;
+    };
+
     struct WindowState {
         int logical_width = 0;
         int logical_height = 0;
@@ -84,7 +111,16 @@ public:
         wi::initializer::WaitForInitializationsToFinish();
         initialized_ = true;
         close_requested_ = false;
+        accepting_callbacks_ = true;
         refresh_window_state();
+        return true;
+    }
+
+    CallbackLease callback_scope() { return CallbackLease(*this); }
+
+    bool add_shutdown_hook(std::function<void()> hook) {
+        if (!hook || shutting_down_) return false;
+        shutdown_hooks_.push_back(std::move(hook));
         return true;
     }
 
@@ -138,7 +174,22 @@ public:
     // audio hook is called while SDL is alive; process-wide worker accounting
     // remains a separate engine-level contract.
     void shutdown() {
+        if (shutting_down_) {
+            return;
+        }
+        shutting_down_ = true;
+        {
+            std::unique_lock<std::mutex> guard(callback_lock_);
+            accepting_callbacks_ = false;
+            callback_drained_.wait(guard, [this] { return active_callbacks_ == 0; });
+        }
+        for (auto hook = shutdown_hooks_.rbegin(); hook != shutdown_hooks_.rend(); ++hook) {
+            try { (*hook)(); } catch (...) { std::fprintf(stderr, "native application: shutdown hook failed\n"); }
+        }
+        shutdown_hooks_.clear();
         if (!initialized_) {
+            close_requested_ = true;
+            shutting_down_ = false;
             return;
         }
         if (wi::graphics::GetDevice() != nullptr) {
@@ -157,6 +208,7 @@ public:
         SDL_Quit();
         initialized_ = false;
         close_requested_ = true;
+        shutting_down_ = false;
     }
 
     bool close_requested() const {
@@ -184,6 +236,19 @@ public:
     }
 
 private:
+    bool begin_callback() {
+        std::lock_guard<std::mutex> guard(callback_lock_);
+        if (!accepting_callbacks_) return false;
+        ++active_callbacks_;
+        return true;
+    }
+
+    void end_callback() {
+        std::lock_guard<std::mutex> guard(callback_lock_);
+        if (active_callbacks_ > 0) --active_callbacks_;
+        if (active_callbacks_ == 0) callback_drained_.notify_all();
+    }
+
     void refresh_window_state() {
         if (window_ == nullptr) {
             return;
@@ -241,6 +306,12 @@ private:
     WindowState window_state_;
     bool initialized_ = false;
     bool close_requested_ = false;
+    bool shutting_down_ = false;
+    bool accepting_callbacks_ = false;
+    size_t active_callbacks_ = 0;
+    std::mutex callback_lock_;
+    std::condition_variable callback_drained_;
+    std::vector<std::function<void()>> shutdown_hooks_;
 };
 
 } // namespace probe
