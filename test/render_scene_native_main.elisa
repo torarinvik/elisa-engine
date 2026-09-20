@@ -3,6 +3,8 @@
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
 include "../src/runtime/render_snapshot_scene.elisa"
+include "../src/runtime/world_rendering.elisa"
+include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
 
 @callconv(c)
@@ -10,6 +12,18 @@ extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
 
 def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> i32:
     catch RenderSnapshotScene::sync(presenter, snapshot):
+        ok: 0
+        error failure: 1
+
+def bind_world_render(bindings: mutable WorldRendering::Bindings&, world: World::World&,
+    gameplay: World::EntityRef, render_id: i64, transform: Geometry::Transform) -> i32:
+    catch WorldRendering::bind(bindings, world, gameplay, render_id, transform):
+        ok: 0
+        error failure: 1
+
+def extract_world_render(world: World::World&, bindings: mutable WorldRendering::Bindings&,
+    snapshot: mutable RenderSnapshot::Snapshot&) -> i32:
+    catch WorldRendering::extract(world, bindings, snapshot):
         ok: 0
         error failure: 1
 
@@ -179,27 +193,46 @@ def main() -> i32:
 
     # Elisa gameplay identities and stable render IDs reconcile into persistent
     # native handles; repeated submissions update in place and removals retire.
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 40
+    gameplay_a: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+        value: value
+        error failure: return 40
+    gameplay_b: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+        value: value
+        error failure: return 40
     snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
     presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
-    gameplay_a: World::EntityRef = World::EntityRef{world_epoch: 1, id: 701}
-    gameplay_b: World::EntityRef = World::EntityRef{world_epoch: 1, id: 702}
-    return 40 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay_a, 701, box_transform)
-    return 41 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay_b, 702, sphere_transform)
-    return 42 if sync_snapshot(&presenter, snapshot) != 0
-    return 43 if RenderSnapshotScene::binding_count(presenter) != 2 or RenderScene::instance_count() != 5
+    render_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 701, box_transform) != 0
+    return 41 if bind_world_render(&render_bindings, world, gameplay_a, 703, sphere_transform) != 0
+    return 41 if bind_world_render(&render_bindings, world, gameplay_b, 702, sphere_transform) != 0
+    return 42 if extract_world_render(world, &render_bindings, &snapshot) != 0
+    return 43 if RenderSnapshot::snapshot_count(snapshot) != 3
     return 44 if sync_snapshot(&presenter, snapshot) != 0
-    return 45 if RenderSnapshotScene::binding_count(presenter) != 2 or RenderScene::instance_count() != 5
+    return 45 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
+    return 46 if extract_world_render(world, &render_bindings, &snapshot) != 0
+    return 47 if sync_snapshot(&presenter, snapshot) != 0
+    return 48 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
 
     moved_transform: Geometry::Transform = Geometry::transform_translate(box_transform,
         Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
-    return 46 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay_a, 701, moved_transform)
-    return 47 if sync_snapshot(&presenter, snapshot) != 0
-    return 48 if not RenderSnapshot::snapshot_remove(&snapshot, gameplay_b, 702)
-    return 49 if sync_snapshot(&presenter, snapshot) != 0
-    return 50 if RenderSnapshotScene::binding_count(presenter) != 1 or RenderScene::instance_count() != 4
-    empty_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
-    return 51 if sync_snapshot(&presenter, empty_snapshot) != 0
-    return 52 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
+    return 49 if bind_world_render(&render_bindings, world, gameplay_a, 701, moved_transform) != 0
+    return 50 if extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
+    despawn_b: i32 = catch World::world_despawn(&world, gameplay_b):
+        ok: 0
+        error failure: 1
+    return 51 if despawn_b != 0
+    return 52 if extract_world_render(world, &render_bindings, &snapshot) != 0
+    return 53 if sync_snapshot(&presenter, snapshot) != 0
+    return 54 if RenderSnapshot::snapshot_count(snapshot) != 2 or RenderSnapshotScene::binding_count(presenter) != 2 or RenderScene::instance_count() != 5
+    despawn_a: i32 = catch World::world_despawn(&world, gameplay_a):
+        ok: 0
+        error failure: 1
+    return 55 if despawn_a != 0
+    return 56 if extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
+    return 57 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
 
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0

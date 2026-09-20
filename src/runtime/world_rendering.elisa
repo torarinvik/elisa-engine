@@ -1,0 +1,107 @@
+# Extract bounded render bindings from the checked Elisa world. The render
+# snapshot remains a value owned by Elisa; no vendor identity crosses this API.
+include "../backend/render_snapshot.elisa"
+include "../world/world.elisa"
+include "../math/geometry.elisa"
+
+module WorldRendering:
+    public:
+        const MAX_BINDINGS: usize = 256
+
+        error WorldRenderingError:
+            InvalidReference
+            InvalidRenderId
+            DuplicateRenderId
+            Capacity
+            InvalidBindings
+            SnapshotRejected
+
+    private:
+        struct BindingRow:
+            gameplay: World::EntityRef
+            render_id: i64
+            transform: Geometry::Transform
+
+        const module Sentinel:
+            INVALID_SLOT: usize = WorldRendering::MAX_BINDINGS
+
+        def same_entity(left: World::EntityRef, right: World::EntityRef) -> bool:
+            left.world_epoch == right.world_epoch and left.id == right.id
+
+        def binding_slot(bindings: Bindings&, gameplay: World::EntityRef, render_id: i64) -> usize:
+            for index in 0..<bindings.count |slot: usize = Sentinel::INVALID_SLOT| -> slot:
+                break index if same_entity(bindings.rows[index].gameplay, gameplay) and bindings.rows[index].render_id == render_id
+
+        def bindings_valid(bindings: Bindings&) -> bool:
+            return false if bindings.count > WorldRendering::MAX_BINDINGS
+            for index in 0..<bindings.count |valid: bool = true| -> valid:
+                row: BindingRow = bindings.rows[index]
+                valid <- false if row.gameplay.world_epoch <= 0 or row.gameplay.id <= 0 or row.render_id <= 0
+                for earlier in 0..<index:
+                    valid <- false if bindings.rows[earlier].render_id == row.render_id
+            true
+
+        def prune_dead_bindings(world: World::World&, bindings: mutable Bindings&) -> void:
+            write: mutable usize = 0
+            for read in 0..<bindings.count |world, bindings, write|:
+                row: BindingRow = bindings.rows[read]
+                if World::world_is_live(world, row.gameplay):
+                    bindings.rows[write] <- row
+                    write <- write + 1
+            for index in write..<bindings.count |bindings|:
+                bindings.rows[index] <- zeroed
+            bindings.count <- write
+
+    public:
+        affine struct Bindings:
+            private:
+                rows: mutable BindingRow[WorldRendering::MAX_BINDINGS]
+                count: mutable usize
+
+        def Bindings() -> Bindings:
+            Bindings{rows: zeroed, count: 0}
+
+        def binding_count(bindings: Bindings&) -> usize:
+            bindings.count
+
+        # One gameplay entity may bind several stable render IDs. Rebinding the
+        # same pair updates its transform without growing the bounded table.
+        def bind(bindings: mutable Bindings&, world: World::World&, gameplay: World::EntityRef,
+            render_id: i64, transform: Geometry::Transform) -> void error[WorldRenderingError]:
+            raise WorldRenderingError.InvalidReference if not World::world_is_live(world, gameplay)
+            raise WorldRenderingError.InvalidRenderId if render_id <= 0
+            slot: usize = binding_slot(bindings, gameplay, render_id)
+            if slot < WorldRendering::MAX_BINDINGS:
+                bindings.rows[slot].transform <- transform
+                return
+            for index in 0..<bindings.count:
+                raise WorldRenderingError.DuplicateRenderId if bindings.rows[index].render_id == render_id
+            raise WorldRenderingError.Capacity if bindings.count >= WorldRendering::MAX_BINDINGS
+            bindings.rows[bindings.count] <- BindingRow{gameplay: gameplay, render_id: render_id, transform: transform}
+            bindings.count <- bindings.count + 1
+
+        def unbind(bindings: mutable Bindings&, gameplay: World::EntityRef, render_id: i64) -> bool:
+            slot: usize = binding_slot(bindings, gameplay, render_id)
+            return false if slot >= bindings.count
+            for shift in slot..<bindings.count - 1 |bindings|:
+                bindings.rows[shift] <- bindings.rows[shift + 1]
+            bindings.count <- bindings.count - 1
+            bindings.rows[bindings.count] <- zeroed
+            true
+
+        # Rebuild into a fresh snapshot after validating the private binding
+        # table. Dead or old-world entities are omitted and pruned in place.
+        def extract(world: World::World&, bindings: mutable Bindings&,
+            snapshot: mutable RenderSnapshot::Snapshot&) -> void error[WorldRenderingError]:
+            raise WorldRenderingError.InvalidBindings if not bindings_valid(bindings)
+            live_count: mutable usize = 0
+            for index in 0..<bindings.count |live_count, world, bindings|:
+                live_count <- live_count + 1 if World::world_is_live(world, bindings.rows[index].gameplay)
+            raise WorldRenderingError.Capacity if live_count > RenderSnapshot::MAX_ENTRIES
+            RenderSnapshot::snapshot_clear(snapshot)
+            for index in 0..<bindings.count |world, bindings, snapshot|:
+                row: BindingRow = bindings.rows[index]
+                if World::world_is_live(world, row.gameplay):
+                    inserted: bool = RenderSnapshot::snapshot_bind(snapshot, row.gameplay, row.render_id, row.transform)
+                    raise WorldRenderingError.SnapshotRejected if not inserted
+            prune_dead_bindings(world, bindings)

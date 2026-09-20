@@ -23,6 +23,11 @@ module RenderSnapshot:
         def snapshot_count(snapshot: Snapshot&) -> usize:
             snapshot.count
 
+        def snapshot_clear(snapshot: mutable Snapshot&) -> void:
+            for index in 0..<snapshot.count |snapshot|:
+                snapshot.entries[index] <- zeroed
+            snapshot.count <- 0
+
         def snapshot_bind(snapshot: mutable Snapshot&, gameplay: World::EntityRef,
             render_id: i64, transform: Geometry::Transform) -> bool:
             return false if gameplay.world_epoch <= 0 or gameplay.id <= 0 or render_id <= 0

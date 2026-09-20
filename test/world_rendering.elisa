@@ -1,0 +1,98 @@
+include "../src/runtime/world_rendering.elisa"
+
+module WorldRenderingValidation:
+    public:
+        def run() -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 1
+            other_world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 2
+            player: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 3
+            guard: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: return 4
+            foreign: World::EntityRef = catch World::world_spawn(&other_world, World::Actor.Player):
+                value: value
+                error failure: return 5
+
+            bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+            identity: Geometry::Transform = Geometry::transform_identity()
+            first: i32 = catch WorldRendering::bind(&bindings, &world, player, 101, identity):
+                ok: 0
+                error failure: 1
+            second: i32 = catch WorldRendering::bind(&bindings, &world, player, 102, identity):
+                ok: 0
+                error failure: 1
+            third: i32 = catch WorldRendering::bind(&bindings, &world, guard, 103, identity):
+                ok: 0
+                error failure: 1
+            return 6 if first != 0 or second != 0 or third != 0 or WorldRendering::binding_count(bindings) != 3
+
+            updated: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 1.0})
+            update_status: i32 = catch WorldRendering::bind(&bindings, &world, player, 101, updated):
+                ok: 0
+                error failure: 1
+            duplicate: i32 = catch WorldRendering::bind(&bindings, &world, guard, 101, identity):
+                ok: 0
+                WorldRendering::WorldRenderingError.DuplicateRenderId: 1
+                error failure: 2
+            invalid_reference: i32 = catch WorldRendering::bind(&bindings, &world, foreign, 104, identity):
+                ok: 0
+                WorldRendering::WorldRenderingError.InvalidReference: 1
+                error failure: 2
+            invalid_id: i32 = catch WorldRendering::bind(&bindings, &world, player, 0, identity):
+                ok: 0
+                WorldRendering::WorldRenderingError.InvalidRenderId: 1
+                error failure: 2
+            return 7 if update_status != 0 or duplicate != 1 or invalid_reference != 1 or invalid_id != 1
+            return 8 if WorldRendering::binding_count(bindings) != 3
+
+            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            extract_status: i32 = catch WorldRendering::extract(&world, &bindings, &snapshot):
+                ok: 0
+                error failure: 1
+            return 9 if extract_status != 0 or RenderSnapshot::snapshot_count(snapshot) != 3 or not RenderSnapshot::snapshot_valid(snapshot)
+            moved_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 0)
+            return 10 if moved_entry.gameplay.id != player.id or moved_entry.transform.position.x != 2.0 or moved_entry.transform.position.z != 1.0
+
+            despawn_guard: i32 = catch World::world_despawn(&world, guard):
+                ok: 0
+                error failure: 1
+            return 11 if despawn_guard != 0
+            prune_status: i32 = catch WorldRendering::extract(&world, &bindings, &snapshot):
+                ok: 0
+                error failure: 1
+            return 12 if prune_status != 0
+            return 19 if WorldRendering::binding_count(bindings) != 2
+            return 20 if RenderSnapshot::snapshot_count(snapshot) != 2
+            return 13 if not WorldRendering::unbind(&bindings, player, 102) or WorldRendering::binding_count(bindings) != 1
+
+            replaced_world_status: i32 = catch WorldRendering::extract(&other_world, &bindings, &snapshot):
+                ok: 0
+                error failure: 1
+            return 14 if replaced_world_status != 0 or WorldRendering::binding_count(bindings) != 0 or RenderSnapshot::snapshot_count(snapshot) != 0
+
+            full_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+            for index in 0..<WorldRendering::MAX_BINDINGS |full_bindings, world, player, identity|:
+                render_id: i64 = 1000 + index.i64()
+                bind_status: i32 = catch WorldRendering::bind(&full_bindings, &world, player, render_id, identity):
+                    ok: 0
+                    error failure: 1
+                return 15 if bind_status != 0
+            return 16 if WorldRendering::binding_count(full_bindings) != WorldRendering::MAX_BINDINGS
+            full_rejected: i32 = catch WorldRendering::bind(&full_bindings, &world, player, 9999, identity):
+                ok: 0
+                WorldRendering::WorldRenderingError.Capacity: 1
+                error failure: 2
+            return 17 if full_rejected != 1 or WorldRendering::binding_count(full_bindings) != WorldRendering::MAX_BINDINGS
+
+            full_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            full_extract: i32 = catch WorldRendering::extract(&world, &full_bindings, &full_snapshot):
+                ok: 0
+                error failure: 1
+            return 18 if full_extract != 0 or RenderSnapshot::snapshot_count(full_snapshot) != WorldRendering::MAX_BINDINGS
+            0
