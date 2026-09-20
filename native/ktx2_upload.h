@@ -69,7 +69,9 @@ inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path) 
     desc.array_size = 1;
     desc.mip_levels = levels;
     desc.sample_count = 1;
-    desc.format = wi::graphics::Format::R8G8B8A8_UNORM;
+    desc.format = transcoder.is_srgb()
+        ? wi::graphics::Format::R8G8B8A8_UNORM_SRGB
+        : wi::graphics::Format::R8G8B8A8_UNORM;
     desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
     wi::graphics::Texture texture;
     if (!check(wi::graphics::GetDevice()->CreateTexture(&desc, init_data.data(), &texture),

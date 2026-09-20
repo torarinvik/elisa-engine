@@ -12,7 +12,8 @@ and KTX structural probes remain alongside this GPU upload check.
 
 The gate also loads the cooked KTX2 artifact through the pinned Basis
 transcoder in `native/ktx2_upload.h`, transcodes every bounded 2D mip level to
-RGBA8, and assigns that real Wicked GPU texture to the authored goal material.
-The container and decoded GPU payload are both bounded, and malformed input
-fails before allocation. Color-space/alpha policy and GPU-native format
+RGBA8, preserves the KTX2 transfer function in Wicked's UNORM/SRGB format,
+and assigns that real GPU texture to the authored goal material. The
+container and decoded GPU payload are both bounded, and malformed input fails
+before allocation. Normal-map/alpha policy and broader GPU-native format
 selection remain follow-up A06 work.
