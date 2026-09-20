@@ -5,11 +5,10 @@
 # (ozz or any other) would return the same local deltas; the state machine,
 # blending, root motion, and IK around it stay engine code.
 #
-# Keys are stored as flat parallel columns (ticks, positions, rotations,
-# scales) rather than as records in an array. That keeps hot sampling reads flat
-# and avoids a backend fragility: repeated nested struct-array reads can lower
-# incorrectly, while flat column reads are reliable. It also matches the plan's
-# advice to begin with compact typed stores.
+# Keys for each joint occupy one contiguous range in a bounded dynamic buffer.
+# The buffer grows only while an asset is loaded; sampling is indexed and never
+# allocates. This supports real clips without embedding a large maximum-sized
+# key table in every clip value.
 include "../math/geometry.elisa"
 include "./pose.elisa"
 include "./limits.elisa"
@@ -18,16 +17,7 @@ module Sampler:
     private:
         const module Tune:
             MAX_JOINTS: usize = AnimationLimits::MAX_JOINTS
-            MAX_KEYS: usize = AnimationLimits::MAX_KEYS_PER_TRACK
-            MAX_TOTAL_KEYS: usize = MAX_JOINTS * MAX_KEYS
-            STRIDE: usize = MAX_KEYS
-
-        def transform_of(clip: ClipData&, index: usize) -> Geometry::Transform:
-            Geometry::Transform{
-                position: clip.positions[index],
-                rotation: clip.rotations[index],
-                scale: clip.scales[index],
-            }
+            MAX_KEYS: usize = AnimationLimits::MAX_KEYS_PER_CLIP
 
     public:
         error ClipError:
@@ -35,47 +25,78 @@ module Sampler:
             InvalidTrack
             InvalidSkeleton
 
-        struct ClipData:
-            length: i64
-            key_counts: mutable usize[Tune::MAX_JOINTS]
-            ticks: mutable i64[Tune::MAX_TOTAL_KEYS]
-            positions: mutable Geometry::Vec3[Tune::MAX_TOTAL_KEYS]
-            rotations: mutable Geometry::Quat[Tune::MAX_TOTAL_KEYS]
-            scales: mutable Geometry::Vec3[Tune::MAX_TOTAL_KEYS]
+        struct ClipKey:
+            tick: i64
+            local: Geometry::Transform
+
+        affine struct ClipData:
+            private:
+                length: i64
+                key_counts: mutable usize[Tune::MAX_JOINTS]
+                track_starts: mutable usize[Tune::MAX_JOINTS]
+                keyframes: mutable darray[ClipKey]
+                last_joint: mutable i64
 
         def ClipData(length: i64) -> ClipData:
-            ClipData{length: length if length >= 0 else 0, key_counts: zeroed, ticks: zeroed, positions: zeroed, rotations: zeroed, scales: zeroed}
+            ClipData{
+                length: length if length >= 0 else 0,
+                key_counts: zeroed,
+                track_starts: zeroed,
+                keyframes: [],
+                last_joint: -1,
+            }
+
+        def clip_length(clip: ClipData&) -> i64:
+            clip.length
 
         def clip_valid(clip: ClipData&) -> bool:
-            return false if clip.length < 0
-            ordered: bool = for joint in 0..<Tune::MAX_JOINTS |ordered: bool = true| -> ordered:
+            return false if clip.length < 0 or clip.keyframes.count > Tune::MAX_KEYS
+            expected_start: mutable usize = 0
+            ordered: bool = for joint in 0..<Tune::MAX_JOINTS |ordered: bool = true, expected_start| -> ordered:
                 count: usize = clip.key_counts[joint]
-                ordered <- false if count > Tune::MAX_KEYS
-                track_ordered: bool = for slot in 0..<count |inner: bool = true| -> inner:
-                    tick: i64 = clip.ticks[joint * Tune::STRIDE + slot]
-                    inner <- false if tick < 0 or tick > clip.length
-                    inner <- false if slot > 0 and tick < clip.ticks[joint * Tune::STRIDE + slot - 1]
-                ordered <- false if not track_ordered
-            ordered
+                if count > 0:
+                    start: usize = clip.track_starts[joint]
+                    range_valid: mutable bool = start <= clip.keyframes.count
+                    range_valid <- count <= clip.keyframes.count - start if range_valid
+                    ordered <- false if start != expected_start or not range_valid
+                    if range_valid:
+                        track_ordered: bool = for slot in 0..<count |inner: bool = true| -> inner:
+                            key: ClipKey = clip.keyframes[start + slot]
+                            inner <- false if key.tick < 0 or key.tick > clip.length
+                            if slot > 0:
+                                previous: ClipKey = clip.keyframes[start + slot - 1]
+                                inner <- false if key.tick < previous.tick
+                        ordered <- false if not track_ordered
+                        expected_start <- expected_start + count
+            ordered and expected_start == clip.keyframes.count
 
         # Keys are appended in non-decreasing tick order; a caller that adds an
         # out-of-order key gets false rather than a silently unsorted track.
+        # Tracks must be appended in joint order, keeping every track contiguous.
         def clip_add_key(clip: mutable ClipData&, joint: usize, tick: i64, value: Geometry::Transform) -> bool:
             return false if joint >= Tune::MAX_JOINTS or tick < 0 or tick > clip.length
             count: usize = clip.key_counts[joint]
-            return false if count >= Tune::MAX_KEYS
-            return false if count > 0 and tick < clip.ticks[joint * Tune::STRIDE + count - 1]
-            index: usize = joint * Tune::STRIDE + count
-            clip.ticks[index] <- tick
-            clip.positions[index] <- value.position
-            clip.rotations[index] <- value.rotation
-            clip.scales[index] <- value.scale
+            return false if clip.keyframes.count >= Tune::MAX_KEYS
+            return false if count == 0 and clip.last_joint >= joint.i64()
+            return false if count > 0 and clip.last_joint != joint.i64()
+            start: usize = clip.keyframes.count if count == 0 else clip.track_starts[joint]
+            return false if count > 0 and start + count != clip.keyframes.count
+            if count > 0:
+                previous: ClipKey = clip.keyframes[start + count - 1]
+                return false if tick < previous.tick
+            clip.track_starts[joint] <- start
+            clip.last_joint <- joint.i64()
+            clip.keyframes.push(ClipKey{tick: tick, local: value})
             clip.key_counts[joint] <- count + 1
             true
 
         def clip_key_count(clip: ClipData&, joint: usize) -> usize:
             return 0 if joint >= Tune::MAX_JOINTS
             clip.key_counts[joint]
+
+        def clip_key_at(clip: ClipData&, joint: usize, slot: usize) -> ClipKey:
+            return ClipKey{tick: 0, local: Geometry::transform_identity()} if joint >= Tune::MAX_JOINTS or slot >= clip.key_counts[joint]
+            clip.keyframes[clip.track_starts[joint] + slot]
 
         # Non-erroring sampling used by pose construction: an out-of-range
         # joint or a joint with no keys yields the supplied fallback. Ticks
@@ -85,19 +106,24 @@ module Sampler:
             return fallback if joint >= Tune::MAX_JOINTS
             count: usize = clip.key_counts[joint]
             return fallback if count == 0
-            base: usize = joint * Tune::STRIDE
-            first_tick: i64 = clip.ticks[base]
-            last_tick: i64 = clip.ticks[base + count - 1]
-            return transform_of(clip, base) if tick <= first_tick
-            return transform_of(clip, base + count - 1) if tick >= last_tick
-            lower_slot: usize =
-                for slot in 0..<(count - 1) |found: usize = 0| -> found:
-                    found <- slot if tick >= clip.ticks[base + slot]
-            lower: usize = base + lower_slot
-            upper: usize = lower + 1
-            span: i64 = clip.ticks[upper] - clip.ticks[lower]
-            weight: f32 = 0.0 if span <= 0 else (tick - clip.ticks[lower]).f32() / span.f32()
-            Pose::transform_lerp(transform_of(clip, lower), transform_of(clip, upper), weight)
+            first: ClipKey = clip_key_at(clip, joint, 0)
+            last: ClipKey = clip_key_at(clip, joint, count - 1)
+            return first.local if tick <= first.tick
+            return last.local if tick >= last.tick
+            low: mutable usize = 0
+            high: mutable usize = count - 1
+            while low < high |low, high|:
+                middle: usize = (low + high + 1) / 2
+                middle_key: ClipKey = clip_key_at(clip, joint, middle)
+                if middle_key.tick <= tick:
+                    low <- middle
+                else:
+                    high <- middle - 1
+            lower: ClipKey = clip_key_at(clip, joint, low)
+            upper: ClipKey = clip_key_at(clip, joint, low + 1)
+            span: i64 = upper.tick - lower.tick
+            weight: f32 = 0.0 if span <= 0 else (tick - lower.tick).f32() / span.f32()
+            Pose::transform_lerp(lower.local, upper.local, weight)
 
         def clip_sample_local(clip: ClipData&, joint: usize, tick: i64, fallback: Geometry::Transform) -> Geometry::Transform error[ClipError]:
             raise ClipError.InvalidTrack if joint >= Tune::MAX_JOINTS

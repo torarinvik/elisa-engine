@@ -48,11 +48,14 @@ def clip_tests() -> i32:
         ClipError.InvalidTrack: 1
         error failure: 2
     return 58 if bad_joint != 1
-    corrupted_clip: mutable ClipData = ClipData(10)
-    _ = Sampler::clip_add_key(&corrupted_clip, 0, 0, keyed(0.0))
-    _ = Sampler::clip_add_key(&corrupted_clip, 0, 10, keyed(1.0))
-    corrupted_clip.ticks[1] <- 11
-    return 71 if Sampler::clip_valid(&corrupted_clip)
+    many_keys: mutable ClipData = ClipData(255)
+    inserted_all: bool = for tick in 0..<256 |inserted_all: bool = true, many_keys| -> inserted_all:
+        inserted_all <- false if not Sampler::clip_add_key(&many_keys, 0, tick, keyed(tick.f32()))
+    return 71 if not inserted_all or Sampler::clip_key_count(&many_keys, 0) != 256 or not Sampler::clip_valid(&many_keys)
+    late_key: Transform = catch Sampler::clip_sample_local(&many_keys, 0, 254, keyed(-1.0)):
+        value: value
+        error failure: return 73
+    return 74 if not near(late_key.position.x, 254.0)
     clip_skeleton: mutable Skeleton = Skeleton()
     _ = skeleton_add(&clip_skeleton, -1, keyed(0.0))
     _ = skeleton_add(&clip_skeleton, 0, keyed(0.0))
@@ -108,8 +111,8 @@ def main() -> i32:
     return asset_tests if asset_tests != 0
     first_clip: i32 = clip_tests()
     return first_clip if first_clip != 0
-    return 1 if clip_length(Clip.Idle) != 60 or clip_length(Clip.Walk) != 30
-    return 2 if clip_length(Clip.Win) != 45 or clip_length(Clip.Hurt) != 20
+    return 1 if Anim::clip_length(Clip.Idle) != 60 or Anim::clip_length(Clip.Walk) != 30
+    return 2 if Anim::clip_length(Clip.Win) != 45 or Anim::clip_length(Clip.Hurt) != 20
     state: mutable AnimState = AnimState()
     return 3 if state.clip != Clip.Idle or state.tick != 0 or state.blend != 1.0
     return 4 if not anim_valid(&state)
