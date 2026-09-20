@@ -151,30 +151,29 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "source SHA-256 must be 64 lowercase hexadecimal characters\n");
         return false;
     }
-    const elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(source, true);
+    elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(source, true);
     if (!asset.ok) {
         std::fprintf(stderr, "FBX cook failed: %s\n", asset.error.c_str());
         return false;
     }
-    const auto& mesh = asset.primary_mesh;
+    auto& mesh = asset.primary_mesh;
     if (mesh.positions.empty() || mesh.positions.size() % 3 != 0 ||
         mesh.normals.size() != mesh.positions.size() || mesh.uvs.size() != mesh.positions.size() / 3 * 2 ||
         mesh.indices.empty() || mesh.indices.size() % 3 != 0) {
         std::fprintf(stderr, "FBX importer returned incomplete triangle geometry\n");
         return false;
     }
-    elisa::assets::FbxMeshData cooked_mesh = mesh;
-    if (!simplify_geometry(cooked_mesh, max_triangles)) return false;
-    for (uint32_t index : cooked_mesh.indices) {
-        if (index >= cooked_mesh.positions.size() / 3) {
+    if (!simplify_geometry(mesh, max_triangles)) return false;
+    for (uint32_t index : mesh.indices) {
+        if (index >= mesh.positions.size() / 3) {
             std::fprintf(stderr, "FBX importer returned an out-of-range mesh index\n");
             return false;
         }
     }
-    const std::vector<uint8_t> positions = float_bytes(cooked_mesh.positions);
-    const std::vector<uint8_t> normals = float_bytes(cooked_mesh.normals);
-    const std::vector<uint8_t> uvs = float_bytes(cooked_mesh.uvs);
-    const std::vector<uint8_t> indices = index_bytes(cooked_mesh.indices);
+    const std::vector<uint8_t> positions = float_bytes(mesh.positions);
+    const std::vector<uint8_t> normals = float_bytes(mesh.normals);
+    const std::vector<uint8_t> uvs = float_bytes(mesh.uvs);
+    const std::vector<uint8_t> indices = index_bytes(mesh.indices);
     const size_t positions_encoded = base64_size(positions.size());
     const size_t normals_encoded = base64_size(normals.size());
     const size_t uvs_encoded = base64_size(uvs.size());
@@ -200,11 +199,11 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     package << "format=elisa-cooked-v2\n"
         << "source=" << asset_key << "\n"
         << "source_sha256=" << source_sha256 << "\n"
-        << "triangles=" << cooked_mesh.indices.size() / 3 << "\n"
-        << "positions=" << cooked_mesh.positions.size() / 3 << "\n"
-        << "indices=" << cooked_mesh.indices.size() << "\n"
-        << "bounds_min=" << cooked_mesh.bounds_min[0] << ',' << cooked_mesh.bounds_min[1] << ',' << cooked_mesh.bounds_min[2] << "\n"
-        << "bounds_max=" << cooked_mesh.bounds_max[0] << ',' << cooked_mesh.bounds_max[1] << ',' << cooked_mesh.bounds_max[2] << "\n"
+        << "triangles=" << mesh.indices.size() / 3 << "\n"
+        << "positions=" << mesh.positions.size() / 3 << "\n"
+        << "indices=" << mesh.indices.size() << "\n"
+        << "bounds_min=" << mesh.bounds_min[0] << ',' << mesh.bounds_min[1] << ',' << mesh.bounds_min[2] << "\n"
+        << "bounds_max=" << mesh.bounds_max[0] << ',' << mesh.bounds_max[1] << ',' << mesh.bounds_max[2] << "\n"
         << "position_stride=12\nnormal_stride=12\nuv_stride=8\nindex_stride=4\n"
         << "positions_b64=" << base64(positions) << "\n"
         << "normals_b64=" << base64(normals) << "\n"
@@ -245,8 +244,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         return false;
     }
     std::printf("cooked %s -> %s (%zu triangles, %zu vertices, %zu bytes)\n",
-        asset_key.c_str(), output.string().c_str(), cooked_mesh.indices.size() / 3,
-        cooked_mesh.positions.size() / 3, bytes.size());
+        asset_key.c_str(), output.string().c_str(), mesh.indices.size() / 3,
+        mesh.positions.size() / 3, bytes.size());
     return true;
 }
 

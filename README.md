@@ -163,10 +163,11 @@ also inspect the supplied WallGame walking, running, and fence FBX sources.
 `python3 scripts/cook_fbx_asset.py --self-test` verifies a normalized geometry
 package, and the tool accepts a source FBX, a project-relative asset key, and
 an output `.pkg` path for real assets. `--max-triangles` applies bounded
-meshoptimizer simplification for dense meshes; the supplied 3.08-million-
-triangle Arc Gate cooks to 12,000 triangles and a 620 kB package. Elisa's
-`RenderScene::create_mesh`, `set_emissive`, and `set_bloom` APIs load and render
-cooked geometry and drive generic glow effects. Full scene/material cooking,
+meshoptimizer simplification for dense meshes. The amazing-labyrinth checkout
+records a 3.08-million-triangle Arc Gate cooked to 12,000 triangles and a
+620 kB package; that source asset is absent here, so the result was not rerun.
+Elisa's `RenderScene::create_mesh`, `set_emissive`, and `set_bloom` APIs load
+and render cooked geometry and drive generic glow effects. Full scene/material cooking,
 skin weights and animation playback remain pending.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule

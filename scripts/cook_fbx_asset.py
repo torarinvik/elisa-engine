@@ -117,6 +117,50 @@ def build_cooker(build_dir: Path) -> Path:
     return executable
 
 
+def write_grid_fixture(path: Path, cells_per_side: int) -> None:
+    """Write a small planar FBX grid that exercises the real simplification path."""
+    vertex_count = (cells_per_side + 1) ** 2
+    positions = []
+    for y in range(cells_per_side + 1):
+        for x in range(cells_per_side + 1):
+            positions.extend((str(x), str(y), "0"))
+    polygon_indices = []
+    for y in range(cells_per_side):
+        for x in range(cells_per_side):
+            top_left = y * (cells_per_side + 1) + x
+            top_right = top_left + 1
+            bottom_left = top_left + cells_per_side + 1
+            bottom_right = bottom_left + 1
+            for triangle in ((top_left, top_right, bottom_right),
+                    (top_left, bottom_right, bottom_left)):
+                polygon_indices.extend(str(index) for index in triangle[:-1])
+                polygon_indices.append(str(-triangle[-1] - 1))
+
+    path.write_text(
+        '; FBX 7.4.0 project file\n'
+        'FBXHeaderExtension: { FBXHeaderVersion: 1003 FBXVersion: 7400 }\n'
+        'GlobalSettings: { Version: 1000 Properties70: { '
+        'P: "UpAxis", "int", "Integer", "", 1 '
+        'P: "UpAxisSign", "int", "Integer", "", 1 '
+        'P: "FrontAxis", "int", "Integer", "", 2 '
+        'P: "FrontAxisSign", "int", "Integer", "", 1 '
+        'P: "CoordAxis", "int", "Integer", "", 0 '
+        'P: "CoordAxisSign", "int", "Integer", "", 1 '
+        'P: "UnitScaleFactor", "double", "Number", "", 1 } }\n'
+        'Definitions: { Version: 100 Count: 2 '
+        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } }\n'
+        'Objects: { '
+        f'Geometry: 1001, "Geometry::Grid", "Mesh" {{ '
+        f'GeometryVersion: 124 Vertices: *{vertex_count * 3} {{ a: '
+        f'{",".join(positions)} }} '
+        f'PolygonVertexIndex: *{len(polygon_indices)} {{ a: '
+        f'{",".join(polygon_indices)} }} }} '
+        'Model: 1002, "Model::Grid", "Mesh" { Version: 232 } }\n'
+        'Connections: { C: "OO",1001,1002 C: "OO",1002,0 }\n'
+        'Takes: { Current: "" }\n',
+        encoding="ascii")
+
+
 def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
     max_triangles: int | None = None) -> dict[str, str]:
     source = source.expanduser().resolve(strict=True)
@@ -163,7 +207,25 @@ def main(arguments: list[str]) -> int:
                 fields = cook_one(cooker, source, "test/fixtures/fbx_triangle.fbx", output)
                 if int(fields["triangles"]) != 1 or int(fields["positions"]) != 3:
                     raise ValueError("triangle fixture package counts do not match")
-                print("FBX cooker self-test passed: one normalized triangle package")
+                grid_source = directory / "grid.fbx"
+                grid_output = directory / "grid.pkg"
+                repeat_output = directory / "grid-repeat.pkg"
+                cells_per_side = 16
+                triangle_budget = 128
+                write_grid_fixture(grid_source, cells_per_side)
+                grid_key = "self-test/grid.fbx"
+                grid_fields = cook_one(cooker, grid_source, grid_key, grid_output, triangle_budget)
+                repeat_fields = cook_one(cooker, grid_source, grid_key, repeat_output, triangle_budget)
+                original_triangles = cells_per_side * cells_per_side * 2
+                grid_triangles = int(grid_fields["triangles"])
+                if not 0 < grid_triangles <= triangle_budget or grid_triangles >= original_triangles:
+                    raise ValueError("grid fixture was not reduced to the requested triangle budget")
+                if int(grid_fields["positions"]) >= (cells_per_side + 1) ** 2:
+                    raise ValueError("simplified grid package retained unreferenced vertices")
+                if grid_fields != repeat_fields or grid_output.read_bytes() != repeat_output.read_bytes():
+                    raise ValueError("simplified grid package output is not deterministic")
+                print(f"FBX cooker self-test passed: triangle package plus {original_triangles} -> "
+                    f"{grid_triangles} deterministic simplified grid triangles")
             else:
                 fields = cook_one(cooker, options.source, options.asset_path, options.output, options.max_triangles)
                 print(f"FBX package validated: {fields['triangles']} triangles, {fields['positions']} vertices")

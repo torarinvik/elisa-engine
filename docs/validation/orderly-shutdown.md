@@ -162,3 +162,28 @@ The ~540 KB host/device step from the earlier run did not recur. The 22,064-byte
 host lifecycle heap increase and 277,184-byte post-churn delta still need
 attribution. These results support the targeted Lua fix without proving that all
 remaining memory changes are leaks or fully explained.
+
+## Standalone restart warm-up correction (macOS 27.0, 2026-09-20)
+
+A standalone restart-only run starts without the diagnostic scene that normally
+warms Wicked's render resources. With six warm-up cycles, the instrumented
+profile first observed a 1,032,192-byte GPU-memory increase on cycle 7; usage
+then stayed flat. `malloc_history` also showed Metal presentation allocations
+under `RenderPassBegin` and `CAMetalLayer::nextDrawable`. The tool attached
+stack logging during the warm-up hold, so the capture had no stack traces for
+earlier allocations and its heap/footprint values are not used as leak
+measurements.
+
+The standalone probe now defaults to 16 warm-up cycles. An uninstrumented
+macOS 27.0 rerun passed:
+
+```text
+ELISA_SCENE_RESTART_ONLY=1 \
+build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  "$PWD/backends/scene_manifest.txt"
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 rendered=1 components_cleared=1 gpu_delta_bytes=0 heap_delta_bytes=-3600
+```
+
+This makes the standalone GPU baseline stable through the observed first-use
+allocation. F05 remains partial because the separate 512-cycle, host/device, and
+post-churn heap changes have not all been attributed.
