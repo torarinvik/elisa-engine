@@ -42,6 +42,16 @@ fallbacks return the supplied fallback values; its profile leaves Callbacks
 unavailable, and weak definitions allow a real host callback registry to
 override them.
 
+Ordinary Elisa applications can also read the same validated profile through
+`Application::backend_profile()` after initialization. This startup-time
+snapshot is taken from the running SDL3/Wicked host and is returned as an error
+union when the application is stopped, called from the wrong thread, or the
+native profile cannot be represented safely. It reports only engine-owned
+services: Input, Rendering, NativeWindow, AsyncUpload, and AssetLoading are
+available; Physics and Audio remain unavailable until public engine services
+own those integrations. The lifecycle smoke checks those capabilities, queried
+viewport and memory limits, and rejection after shutdown.
+
 ABI version 2 carries
 RGBA8, BC1, and R16F resource-format support, memory budget/usage, and the
 actual high-priority and streaming worker counts. Typed C queries expose
@@ -57,3 +67,13 @@ The two-pass Wicked native gate also exited 0 after querying the Apple M5
 profile (`formats=0x7`, `workers=9/1`), checking unknown-bit and typed-query
 rejection, exercising a synthetic texture-format fallback matrix, and
 negotiating the live profile through Elisa before gameplay starts.
+
+The ordinary application path also passed
+`DEVELOPER_DIR="$(xcode-select -p)" python3 scripts/application_native_smoke.py`.
+The full post-change `DEVELOPER_DIR="$(xcode-select -p)" ELISA_ALLOW_STALE_STAGE1=1
+elisascript scripts/wicked_probe.elisascript` run passed two rendered native
+passes, the ordinary Elisa application profile query, and the existing native
+capability-policy checks. On the Apple M5 it reported profile bits `0xb3`,
+optional bits `0x7`, formats `0x7`, 16 viewports, and 9 graphics / 1 streaming
+workers. The application smoke verified Physics and Audio stay unavailable
+until Elisa-owned service adapters are integrated.

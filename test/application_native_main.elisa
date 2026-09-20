@@ -1,9 +1,27 @@
 # End-to-end application lifecycle smoke: the generated executable entry is
 # Elisa main; it imports only the public engine module and owns the loop calls.
+include "../src/backend/capabilities.elisa"
+using Capabilities
+
+def check_native_profile() -> i32:
+    profile: BackendProfile = catch Application::backend_profile():
+        value: value
+        error failure: return 17
+    return 18 if profile.kind != BackendKind.Native
+    return 19 if not backend_supports(profile, BackendFeature.Input)
+    return 20 if not backend_supports(profile, BackendFeature.Rendering)
+    return 21 if not backend_supports(profile, BackendFeature.NativeWindow)
+    return 22 if backend_supports(profile, BackendFeature.Physics) or backend_supports(profile, BackendFeature.Audio)
+    return 23 if not backend_limit_supports(profile, BackendLimit.Viewports, 1)
+    return 24 if profile.limits.memory_usage_bytes > profile.limits.memory_budget_bytes
+    0
+
 def main() -> i32:
     config: Application::Config = Application::default_config()
     opened: Application::InitializeStatus = Application::initialize(config)
     return 1 if opened != Application::InitializeStatus.Ready
+
+    return 26 if check_native_profile() != 0
 
     first_frame: Application::PumpStatus = Application::pump()
     return 2 if first_frame != Application::PumpStatus.Running
@@ -22,4 +40,9 @@ def main() -> i32:
     return 6 if not Application::shutdown()
     return 7 if Application::pump() != Application::PumpStatus.NotRunning
     return 8 if Application::frame_count() != 1
+    closed_profile: i32 = catch Application::backend_profile():
+        value: 1
+        Application::BackendProfileError.NotInitialized: 0
+        error failure: 2
+    return 25 if closed_profile != 0
     0

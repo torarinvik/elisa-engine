@@ -18,6 +18,7 @@ enum {
     ELISA_APPLICATION_INITIALIZATION_FAILED = -3,
     ELISA_APPLICATION_WRONG_THREAD = -4,
     ELISA_APPLICATION_FRAME_FAILED = -5,
+    ELISA_APPLICATION_PROFILE_UNAVAILABLE = -6,
 };
 
 // Engine-internal extension points for runtime services. The public Elisa
@@ -55,6 +56,12 @@ int32_t elisa_application_v1_project_width(void);
 int32_t elisa_application_v1_project_height(void);
 int32_t elisa_application_v1_project_hidden(void);
 int32_t elisa_application_v1_initialize(const char* title, int32_t width, int32_t height, int32_t hidden);
+// Returns the validated startup-time native service and resource profile.
+int32_t elisa_application_v1_backend_profile(
+    int64_t* capabilities, int64_t* optional, int64_t* max_viewports,
+    int64_t* max_workers, int64_t* memory_budget, int64_t* memory_usage,
+    int64_t* formats, int64_t* graphics_workers, int64_t* streaming_workers,
+    int64_t* service_version);
 int32_t elisa_application_v1_pump(void);
 // One typed scalar-output call avoids compiler-specific aggregate layout.
 // Event flags are coalesced edges since the previous successful read; window

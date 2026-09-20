@@ -1,6 +1,7 @@
 #pragma once
 
 #include "capability_abi.h"
+#include "backend_capability_query.h"
 #include "libmaze.h"
 #include "probe_core.h"
 #include "wiGraphicsDevice.h"
@@ -53,48 +54,16 @@ inline bool probe_graphics_capabilities() {
         return false;
     }
     const auto memory = device->GetMemoryUsage();
-    const bool mesh_shader = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::MESH_SHADER);
-    const bool raytracing_native = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::RAYTRACING);
-    const bool sparse_native = device->CheckCapability(wi::graphics::GraphicsDeviceCapability::SPARSE_TEXTURE2D);
+    ElisaBackendProfile profile{};
+    if (!check(probe::query_live_backend_profile(profile), "queried native backend profile")) return false;
     const bool force_fallback = std::getenv("ELISA_FORCE_OPTIONAL_FALLBACK") != nullptr;
-    const bool raytracing = raytracing_native && !force_fallback;
-    const bool sparse = sparse_native && !force_fallback;
-    const uint32_t viewport_count = device->GetMaxViewportCount();
-    const auto format_supported = [device](wi::graphics::Format format) {
-        wi::graphics::TextureDesc desc;
-        desc.width = 4;
-        desc.height = 4;
-        desc.depth = 1;
-        desc.array_size = 1;
-        desc.mip_levels = 1;
-        desc.sample_count = 1;
-        desc.format = format;
-        desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
-        wi::graphics::Texture texture;
-        const bool supported = device->CreateTexture(&desc, nullptr, &texture) && texture.IsValid();
-        texture = {};
-        return supported;
-    };
-    const uint64_t resource_formats =
-        (format_supported(wi::graphics::Format::R8G8B8A8_UNORM) ? ELISA_FORMAT_RGBA8 : 0ull) |
-        (format_supported(wi::graphics::Format::BC1_UNORM) ? ELISA_FORMAT_BC1 : 0ull) |
-        (format_supported(wi::graphics::Format::R16_FLOAT) ? ELISA_FORMAT_R16_FLOAT : 0ull);
+    const bool mesh_shader = (profile.optional_bits & ELISA_OPTIONAL_MESH_SHADERS) != 0;
+    const bool raytracing = (profile.optional_bits & ELISA_OPTIONAL_RAYTRACING) != 0;
+    const bool sparse = (profile.optional_bits & ELISA_OPTIONAL_SPARSE_TEXTURES) != 0;
+    const uint32_t viewport_count = profile.max_viewports;
+    const uint64_t resource_formats = profile.resource_format_bits;
     const uint32_t graphics_workers = wi::jobsystem::GetThreadCount(wi::jobsystem::Priority::High);
     const uint32_t streaming_workers = wi::jobsystem::GetThreadCount(wi::jobsystem::Priority::Streaming);
-    const ElisaBackendProfile profile = {
-        sizeof(ElisaBackendProfile), ELISA_CAPABILITY_ABI_VERSION,
-        ELISA_CAPABILITY_INPUT | ELISA_CAPABILITY_RENDERING | ELISA_CAPABILITY_NATIVE_WINDOW |
-            ELISA_CAPABILITY_ASYNC_UPLOAD | ELISA_CAPABILITY_ASSET_LOADING,
-        (raytracing ? ELISA_OPTIONAL_RAYTRACING : 0ull) |
-            (sparse ? ELISA_OPTIONAL_SPARSE_TEXTURES : 0ull) |
-            (mesh_shader ? ELISA_OPTIONAL_MESH_SHADERS : 0ull),
-        viewport_count, graphics_workers, static_cast<uint64_t>(memory.budget),
-        static_cast<uint64_t>(memory.usage), resource_formats, graphics_workers, streaming_workers,
-    };
-    if (!check(elisa_validate_backend_profile(&profile) == ELISA_CAPABILITY_OK,
-            "versioned capability profile")) {
-        return false;
-    }
     const int32_t configured_profile = configure_elisa_backend(profile);
     const int32_t configured_status = maze_backend_status();
     if (configured_profile != 0 || configured_status != 0) {

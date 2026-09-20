@@ -1,4 +1,5 @@
 #include "application_abi.h"
+#include "backend_capability_query.h"
 #include "native_application.h"
 #include "wiHelper.h"
 #include "wiRenderer.h"
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <limits>
 #include <string>
 #include <thread>
 
@@ -40,6 +42,8 @@ struct ApplicationService {
     size_t input_event_read = 0;
     bool input_overflow = false;
     bool input_overflow_reported = false;
+    ElisaBackendProfile backend_profile{};
+    bool backend_profile_valid = false;
     bool initialized = false;
 };
 
@@ -130,6 +134,8 @@ extern "C" int32_t elisa_application_v1_initialize(
     configure_shader_root();
     if (!service.host.initialize(config)) return ELISA_APPLICATION_INITIALIZATION_FAILED;
 
+    service.backend_profile_valid = probe::query_live_backend_profile(service.backend_profile);
+
     service.owner_thread = std::this_thread::get_id();
     service.previous_pump = std::chrono::steady_clock::now();
     service.frame_count = 0;
@@ -140,6 +146,40 @@ extern "C" int32_t elisa_application_v1_initialize(
     service.input_overflow = false;
     service.input_overflow_reported = false;
     service.initialized = true;
+    return ELISA_APPLICATION_OK;
+}
+
+extern "C" int32_t elisa_application_v1_backend_profile(
+    int64_t* capabilities, int64_t* optional, int64_t* max_viewports,
+    int64_t* max_workers, int64_t* memory_budget, int64_t* memory_usage,
+    int64_t* formats, int64_t* graphics_workers, int64_t* streaming_workers,
+    int64_t* service_version) {
+    if (capabilities == nullptr || optional == nullptr || max_viewports == nullptr ||
+        max_workers == nullptr || memory_budget == nullptr || memory_usage == nullptr ||
+        formats == nullptr || graphics_workers == nullptr || streaming_workers == nullptr ||
+        service_version == nullptr) {
+        return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    if (!service.backend_profile_valid ||
+        service.backend_profile.memory_budget_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
+        service.backend_profile.memory_usage_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return ELISA_APPLICATION_PROFILE_UNAVAILABLE;
+    }
+    const ElisaBackendProfile& profile = service.backend_profile;
+    *capabilities = static_cast<int64_t>(profile.capability_bits);
+    *optional = static_cast<int64_t>(profile.optional_bits);
+    *max_viewports = profile.max_viewports;
+    *max_workers = profile.max_workers;
+    *memory_budget = static_cast<int64_t>(profile.memory_budget_bytes);
+    *memory_usage = static_cast<int64_t>(profile.memory_usage_bytes);
+    *formats = static_cast<int64_t>(profile.resource_format_bits);
+    *graphics_workers = profile.graphics_workers;
+    *streaming_workers = profile.streaming_workers;
+    *service_version = profile.abi_version;
     return ELISA_APPLICATION_OK;
 }
 
@@ -337,6 +377,8 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     service.host.wicked().ActivatePath(nullptr);
     service.host.shutdown();
     service.initialized = false;
+    service.backend_profile = {};
+    service.backend_profile_valid = false;
     service.owner_thread = std::thread::id{};
     service.pending_events = 0;
     service.elapsed_nanos = 0;
