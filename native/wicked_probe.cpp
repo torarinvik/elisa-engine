@@ -413,12 +413,9 @@ int main(int argc, char** argv) {
         !check(cube_material != nullptr, "cube material")) {
         return 1;
     }
-    // Emissive sky-blue like the Godot probe albedo: if these pixels show,
-    // rasterization works and only light transport is in question.
+    // Bright blue probe color separates rasterization from light transport.
     cube_material->emissiveColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
-    // Unlit bypass in the same run: no lights, shadows, or exposure can
-    // hide an unlit base color, so any pixels at all isolate the failure
-    // to light transport versus fragment submission.
+    // Unlit bypass isolates fragment submission from light transport.
     cube_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
     cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
     lamp_transform->translation_local = to_wicked_space(2.0f, 3.0f, -2.0f);
@@ -443,6 +440,9 @@ int main(int argc, char** argv) {
     render_path.scene = &scene;
     render_path.camera = camera_component;
     if (!probe_camera_bridge(scene, render_path, camera)) return 1;
+    camera_component = scene.cameras.GetComponent(camera);
+    if (!check(camera_component != nullptr, "camera component remains valid after switching probe")) return 1;
+    render_path.camera = camera_component;
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);

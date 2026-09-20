@@ -1,14 +1,22 @@
 # Native lighting service
 
+`src/backend/lighting.elisa` owns backend-neutral directional, point, and spot
+light values plus sun, ambient, sky exposure, and fog settings. It rejects
+non-finite colors/directions, negative energy or fog parameters, zero directional
+vectors, and invalid range/cone combinations before native submission.
+
 `native/lighting_bridge.h` keeps Wicked light and environment-probe entities
-behind generation-checked handles. Elisa descriptors select directional, point,
-or spot lights, color, intensity, range, cone angles, and shadow casting.
+behind generation-checked handles and maps validated environment values into
+Wicked's weather state. Probe resolution and view distance are bounded before
+allocating a Wicked probe.
 
 Environment probes validate power-of-two resolution, view distance, and realtime
 mode before creating a Wicked probe. All resources are removed through the
 bridge, so a scene unload returns the light count to its baseline.
 
+`test/material.elisa` covers valid and invalid light and environment descriptors
+alongside the PBR contract.
 The native gate creates and updates point and spot lights, rejects a foreign
-handle and an invalid probe resolution, enables shadow casting and realtime
-probe state, and destroys every resource. Camera and renderer scheduling still
-own when the resulting light/probe data is consumed.
+handle and an invalid probe resolution, applies sky exposure and height fog,
+rejects a zero sun direction, and destroys every probe/light. Authored sky-map
+loading, shadow-bias policy, and camera/renderer scheduling remain open.

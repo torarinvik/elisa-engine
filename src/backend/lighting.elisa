@@ -1,0 +1,55 @@
+# Backend-neutral lighting and environment descriptors. Native adapters own
+# engine components while gameplay and tools exchange validated values.
+include "../math/geometry.elisa"
+
+module Lighting:
+    private:
+        const module Limits:
+            ZERO_VECTOR_SQUARED: f32 = 0.000001
+            MAX_FINITE_PARAMETER: f32 = 1000000000000000000000000000000.0
+
+        def finite(value: f32) -> bool:
+            value == value and value >= -Limits::MAX_FINITE_PARAMETER and value <= Limits::MAX_FINITE_PARAMETER
+
+    public:
+        enum LightKind:
+            Directional
+            Point
+            Spot
+
+        struct Light:
+            kind: LightKind
+            color: Geometry::Vec3
+            direction: Geometry::Vec3
+            intensity: f32
+            range: f32
+            inner_cone: f32
+            outer_cone: f32
+            casts_shadow: bool
+
+        struct Environment:
+            sun_color: Geometry::Vec3
+            sun_direction: Geometry::Vec3
+            ambient: Geometry::Vec3
+            sky_exposure: f32
+            fog_color: Geometry::Vec3
+            fog_start: f32
+            fog_density: f32
+            fog_enabled: bool
+
+        def light_valid(light: Light) -> bool:
+            return false if not Geometry::vec3_is_finite(light.color) or not Geometry::vec3_is_finite(light.direction)
+            return false if not finite(light.intensity) or not finite(light.range) or not finite(light.inner_cone) or not finite(light.outer_cone)
+            return false if light.color.x < 0.0 or light.color.y < 0.0 or light.color.z < 0.0 or light.intensity < 0.0 or light.range <= 0.0
+            return false if light.kind != LightKind.Point and Geometry::vec3_length_squared(light.direction) <= Limits::ZERO_VECTOR_SQUARED
+            return false if light.inner_cone < 0.0 or light.outer_cone <= 0.0 or light.inner_cone > light.outer_cone
+            true
+
+        def environment_valid(environment: Environment) -> bool:
+            return false if not Geometry::vec3_is_finite(environment.sun_color) or not Geometry::vec3_is_finite(environment.sun_direction)
+            return false if not Geometry::vec3_is_finite(environment.ambient) or not Geometry::vec3_is_finite(environment.fog_color)
+            return false if environment.sun_color.x < 0.0 or environment.sun_color.y < 0.0 or environment.sun_color.z < 0.0
+            return false if environment.ambient.x < 0.0 or environment.ambient.y < 0.0 or environment.ambient.z < 0.0
+            return false if not finite(environment.sky_exposure) or not finite(environment.fog_start) or not finite(environment.fog_density)
+            return false if environment.sky_exposure < 0.0 or environment.fog_start < 0.0 or environment.fog_density < 0.0
+            Geometry::vec3_length_squared(environment.sun_direction) > Limits::ZERO_VECTOR_SQUARED

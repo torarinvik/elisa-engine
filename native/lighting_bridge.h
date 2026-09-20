@@ -24,6 +24,17 @@ struct NativeLightDesc {
     bool cast_shadow = false;
 };
 
+struct NativeEnvironmentDesc {
+    XMFLOAT3 sun_color = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    XMFLOAT3 sun_direction = XMFLOAT3(0.0f, -1.0f, 0.0f);
+    XMFLOAT3 ambient = XMFLOAT3(0.2f, 0.2f, 0.2f);
+    XMFLOAT3 fog_color = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    float sky_exposure = 1.0f;
+    float fog_start = 100.0f;
+    float fog_density = 0.0f;
+    bool fog_enabled = false;
+};
+
 struct NativeLightHandle {
     uint32_t slot = UINT32_MAX;
     uint32_t generation = 0;
@@ -119,6 +130,21 @@ public:
             environments_[handle.slot].live && environments_[handle.slot].generation == handle.generation;
     }
 
+    bool apply_environment(const NativeEnvironmentDesc& desc) {
+        if (!valid_environment(desc)) return false;
+        auto& weather = scene_.weather;
+        weather.sunColor = desc.sun_color;
+        XMStoreFloat3(&weather.sunDirection, XMVector3Normalize(XMLoadFloat3(&desc.sun_direction)));
+        weather.ambient = desc.ambient;
+        weather.skyExposure = desc.sky_exposure;
+        weather.horizon = desc.fog_color;
+        weather.fogStart = desc.fog_start;
+        weather.fogDensity = desc.fog_enabled ? desc.fog_density : 0.0f;
+        weather.SetHeightFog(desc.fog_enabled);
+        weather.SetOverrideFogColor(desc.fog_enabled);
+        return true;
+    }
+
 private:
     struct LightState { wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY; uint32_t generation = 0; bool live = false; };
     struct EnvironmentState { wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY; uint32_t generation = 0; bool live = false; };
@@ -126,6 +152,18 @@ private:
     static bool finite_color(const XMFLOAT3& color) {
         return std::isfinite(color.x) && std::isfinite(color.y) && std::isfinite(color.z) &&
             color.x >= 0.0f && color.y >= 0.0f && color.z >= 0.0f;
+    }
+
+    static bool valid_environment(const NativeEnvironmentDesc& desc) {
+        const auto nonnegative = [](const XMFLOAT3& value) {
+            return finite_color(value) && value.x >= 0.0f && value.y >= 0.0f && value.z >= 0.0f;
+        };
+        return nonnegative(desc.sun_color) && nonnegative(desc.ambient) && finite_color(desc.fog_color) &&
+            std::isfinite(desc.sun_direction.x) && std::isfinite(desc.sun_direction.y) &&
+            std::isfinite(desc.sun_direction.z) && XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.sun_direction))) > 0.0001f &&
+            std::isfinite(desc.sky_exposure) && desc.sky_exposure >= 0.0f &&
+            std::isfinite(desc.fog_start) && desc.fog_start >= 0.0f &&
+            std::isfinite(desc.fog_density) && desc.fog_density >= 0.0f;
     }
 
     static bool valid_desc(const NativeLightDesc& desc) {
@@ -167,6 +205,15 @@ private:
 
 inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
     const size_t lights_before = scene.lights.GetCount();
+    const auto original_sun_color = scene.weather.sunColor;
+    const auto original_sun_direction = scene.weather.sunDirection;
+    const auto original_ambient = scene.weather.ambient;
+    const auto original_horizon = scene.weather.horizon;
+    const float original_sky_exposure = scene.weather.skyExposure;
+    const float original_fog_start = scene.weather.fogStart;
+    const float original_fog_density = scene.weather.fogDensity;
+    const bool original_height_fog = scene.weather.IsHeightFog();
+    const bool original_override_fog = scene.weather.IsOverrideFogColor();
     LightingBridge bridge(scene);
     NativeLightDesc point;
     point.color = XMFLOAT3(0.3f, 0.7f, 1.0f);
@@ -177,15 +224,38 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
     spot.outer_cone = 0.8f;
     const auto spot_handle = bridge.create_light(spot);
     const auto environment = bridge.create_environment(64, 50.0f, true);
+    NativeEnvironmentDesc weather;
+    weather.sun_color = XMFLOAT3(1.0f, 0.9f, 0.8f);
+    weather.sun_direction = XMFLOAT3(-0.2f, -1.0f, 0.1f);
+    weather.ambient = XMFLOAT3(0.15f, 0.2f, 0.25f);
+    weather.fog_color = XMFLOAT3(0.4f, 0.5f, 0.6f);
+    weather.sky_exposure = 1.25f;
+    weather.fog_start = 12.0f;
+    weather.fog_density = 0.02f;
+    weather.fog_enabled = true;
+    NativeEnvironmentDesc invalid_weather = weather;
+    invalid_weather.sun_direction = XMFLOAT3(0.0f, 0.0f, 0.0f);
     if (!check(bridge.live(point_handle) && bridge.live(spot_handle) && bridge.live(environment) &&
         scene.lights.GetCount() == lights_before + 2, "lighting creates typed resources") ||
         !check(bridge.update_light(point_handle, spot) && !bridge.update_light(
             NativeLightHandle{point_handle.slot, point_handle.generation, 0}, point),
             "lighting updates and rejects foreign handle") ||
+        !check(bridge.apply_environment(weather) && !bridge.apply_environment(invalid_weather) &&
+            scene.weather.skyExposure == 1.25f && scene.weather.fogDensity == 0.02f && scene.weather.IsHeightFog(),
+            "lighting applies validated sky and fog policy") ||
         !check(!bridge.create_environment(63, 1.0f, false).owner, "lighting rejects invalid environment")) return false;
     if (!check(bridge.destroy_light(spot_handle) && !bridge.live(spot_handle) &&
         bridge.destroy_light(point_handle) && bridge.destroy_environment(environment) &&
         scene.lights.GetCount() == lights_before, "lighting unloads resources")) return false;
+    scene.weather.sunColor = original_sun_color;
+    scene.weather.sunDirection = original_sun_direction;
+    scene.weather.ambient = original_ambient;
+    scene.weather.horizon = original_horizon;
+    scene.weather.skyExposure = original_sky_exposure;
+    scene.weather.fogStart = original_fog_start;
+    scene.weather.fogDensity = original_fog_density;
+    scene.weather.SetHeightFog(original_height_fog);
+    scene.weather.SetOverrideFogColor(original_override_fog);
     return true;
 }
 
