@@ -17,5 +17,7 @@ and assigns that real GPU texture to the authored goal material. The current
 cooked fixture is explicitly linear so Godot can retain its compressed KTX2
 path; an sRGB fixture remains a separate compatibility case. The
 container and decoded GPU payload are both bounded, and malformed input fails
-before allocation. Normal-map/alpha policy and broader GPU-native format
-selection remain follow-up A06 work.
+before allocation. The queried format policy now rejects BC1 for authored alpha
+and forces normal maps through RGBA8, even when a scalar format was requested;
+cubemap upload and broader GPU-native format selection remain follow-up A06
+work.

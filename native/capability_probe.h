@@ -74,6 +74,10 @@ inline bool probe_graphics_capabilities() {
             TextureEncoding::Bc1, "BC1 format selection") ||
         !check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, true) ==
             TextureEncoding::Rgba8, "normal map BC1 fallback") ||
+        !check(choose_texture_encoding(resource_formats, TextureEncoding::Bc1, false, true) ==
+            TextureEncoding::Rgba8, "alpha texture BC1 fallback") ||
+        !check(choose_texture_encoding(resource_formats, TextureEncoding::R16Float, true) ==
+            TextureEncoding::Rgba8, "normal map scalar fallback") ||
         !check(choose_texture_encoding(resource_formats & ~ELISA_FORMAT_BC1,
             TextureEncoding::Bc1, false) == TextureEncoding::Rgba8,
             "BC1 unavailable fallback") ||
