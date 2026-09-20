@@ -1,0 +1,21 @@
+# Exercise the application's cleanup path after a deliberately failed check.
+# `main` models the host-side guard which runs shutdown after user code returns.
+using Application
+
+def run_failed_assertion() -> i32:
+    config: Application::Config = Application::default_config()
+    opened: Application::InitializeStatus = Application::initialize(config)
+    return 1 if opened != Application::InitializeStatus.Ready
+    86
+
+def main() -> i32:
+    assertion_status: i32 = run_failed_assertion()
+    shutdown_ok: bool = Application::shutdown()
+    return 1 if assertion_status != 86
+    return 2 if not shutdown_ok
+    closed_profile: i32 = catch Application::backend_profile():
+        value: 0
+        Application::BackendProfileError.NotInitialized: 1
+        error failure: 2
+    return 3 if closed_profile != 1
+    0
