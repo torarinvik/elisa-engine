@@ -29,7 +29,7 @@ inline bool run_library_probes(wi::Application& application, wi::scene::Scene& s
     if (!run_perf_sweep(application, scene, manifest)) {
         return false;
     }
-    if (!run_churn_probe(scene, manifest)) {
+    if (!run_churn_probe(application, scene, manifest)) {
         return false;
     }
     if (!probe_ozz_sampling()) {

@@ -319,3 +319,44 @@ and both proof-certificate replay checks. Source-length, module-hygiene,
 dependency-manifest, and whitespace checks passed. Lua application-wrapper
 accumulation is resolved; the remaining host and post-churn heap changes still
 need attribution, so F05 remains partial.
+
+## Churn heap sampling after deferred GPU retirement (macOS 27.0, 2026-09-20)
+
+The earlier ~280 KB churn delta was sampled before Wicked's frame-aged GPU
+suballocator had reclaimed the mesh pages. `malloc_history` on the between-batch
+allocation graph found 640 live 448-byte `AGXG17GFamilyBuffer` wrappers; their
+stacks included `Scene::Entity_CreateCube()` → `MeshComponent::CreateRenderData()`
+inside `run_churn_probe()`. A `WaitForGPU()` alone did not change the rising
+per-round heap, because the suballocator also requires frame-count advancement.
+
+The probe now measures after the second and eighth batches, advancing
+`GraphicsDevice::GetBufferCount() + 1` normal frames and waiting for GPU
+completion at each checkpoint. It keeps those retirement frames outside the
+spawn/despawn timing sample. The two native frame passes reported:
+
+```text
+churn: rounds=8 per_round=64
+churn memory: steady_delta_bytes=-100896
+churn memory: steady_delta_bytes=-93024
+```
+
+The composed native gate passed exact frame comparison, the live-input render,
+startup rollback, and orderly shutdown. Its two 64-cycle scene restart probes
+had 0 GPU delta and heap deltas of 3,824 and 96 bytes; eight-cycle host lifecycle
+deltas were 6,704 and 11,136 bytes. A fresh uninstrumented long soak also passed:
+
+```text
+DEVELOPER_DIR="$(xcode-select -p)" \
+ELISA_SCENE_RESTART_ONLY=1 \
+ELISA_SCENE_RESTART_CYCLES=512 \
+ELISA_SCENE_RESTART_WARMUP_CYCLES=16 \
+  build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  backends/scene_manifest.txt
+
+in-process scene restart: cycles=512 warmup_cycles=16 measured_cycles=496
+  gpu_delta_bytes=0 heap_delta_bytes=6512
+```
+
+The churn increase was deferred GPU retirement rather than persistent scene
+growth. F05 remains partial because the small host-cycle heap changes still need
+stack-level attribution; scene restarts remain bounded and GPU usage stays flat.
