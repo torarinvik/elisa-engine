@@ -13,9 +13,11 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     result.exit_status
 
 def main(arguments: darray[sview]) -> i64:
-    if arguments.count != 0:
-        eprint("usage: elisascript scripts/wicked_probe.elisascript")
+    if arguments.count > 1:
+        eprint("usage: elisascript scripts/wicked_probe.elisascript [build|frame|rerun|verify]")
         return 2
+    phase: sview = "all" if arguments.count == 0 else arguments[0]
+    return 2 if phase != "all" and phase != "build" and phase != "frame" and phase != "rerun" and phase != "verify"
 
     root: Path = Script::source_path().parent().parent()
     dependency_status: i64 = run_visible(
@@ -72,9 +74,10 @@ def main(arguments: darray[sview]) -> i64:
     # needs it before the probe is compiled.
     compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
     embed_archive: sview = str(root.joinpath("build/libmaze.a"))
-    archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
-    if archive_status != 0:
-        return archive_status
+    if phase == "all" or phase == "build":
+        archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
+        if archive_status != 0:
+            return archive_status
     sdl_include: sview = get_environment_or("WICKED_SDL3_INCLUDE_DIR", "/opt/homebrew/include")
     sdl_library: sview = get_environment_or("WICKED_SDL3_LIB_DIR", "/opt/homebrew/lib")
     sdl_subinclude: sview = str(path(sdl_include).joinpath("SDL3"))
@@ -182,38 +185,41 @@ def main(arguments: darray[sview]) -> i64:
         "-framework", "CoreAudio", "-framework", "AVFoundation", "-framework", "VideoToolbox",
         "-framework", "Cocoa", "-o", str(output)
     ]
-    compile_result: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(cxx), compile_arguments, empty_input)
-    _ = write_stdout(compile_result.stdout)
-    _ = write_stderr(compile_result.stderr)
-    if compile_result.exit_status != 0:
-        return compile_result.exit_status
+    if phase == "all" or phase == "build":
+        compile_result: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(cxx), compile_arguments, empty_input)
+        _ = write_stdout(compile_result.stdout)
+        _ = write_stderr(compile_result.stderr)
+        if compile_result.exit_status != 0:
+            return compile_result.exit_status
+    return 0 if phase == "build"
 
     screenshot: sview = str(root.joinpath("build/wicked-frame.png"))
-    run_result: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(str(output)), [str(wicked_source), str(manifest), screenshot, "alwaysactive"], empty_input)
-    _ = write_stdout(run_result.stdout)
-    _ = write_stderr(run_result.stderr)
-    if run_result.exit_status != 0:
-        return run_result.exit_status
+    rerun_screenshot: sview = str(root.joinpath("build/wicked-frame-rerun.png"))
+    if phase == "all" or phase == "frame":
+        frame_result: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(str(output)), [str(wicked_source), str(manifest), screenshot, "alwaysactive"], empty_input)
+        _ = write_stdout(frame_result.stdout)
+        _ = write_stderr(frame_result.stderr)
+        return frame_result.exit_status if frame_result.exit_status != 0
+        return 0 if phase == "frame"
+
+    # Determinism: run the same static scene a second time in its own bounded
+    # child process so the native-first gate can compose under process limits.
+    if phase == "all" or phase == "rerun":
+        rerun_result: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(str(output)), [str(wicked_source), str(manifest), rerun_screenshot, "alwaysactive"], empty_input)
+        _ = write_stdout(rerun_result.stdout)
+        _ = write_stderr(rerun_result.stderr)
+        return rerun_result.exit_status if rerun_result.exit_status != 0
+        return 0 if phase == "rerun"
 
     python: sview = get_environment_or("PYTHON_BIN", "python3")
     compare: sview = str(root.joinpath("scripts/compare_renders.py"))
     manifest_spec: sview = str(manifest)
-
-    # Determinism: the same static scene must render identical pixels on a
-    # second run. Replay and rollback determinism build on this, so a
-    # nondeterministic renderer fails here first, loudly.
-    rerun_screenshot: sview = str(root.joinpath("build/wicked-frame-rerun.png"))
-    rerun_result: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(str(output)), [str(wicked_source), str(manifest), rerun_screenshot, "alwaysactive"], empty_input)
-    _ = write_stdout(rerun_result.stdout)
-    _ = write_stderr(rerun_result.stderr)
-    if rerun_result.exit_status != 0:
-        return rerun_result.exit_status
 
     # One verification pass over the frame and its rerun: dimensions,
     # non-blank, determinism, and that the frame encodes the Elisa wall list

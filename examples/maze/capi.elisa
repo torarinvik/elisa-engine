@@ -52,7 +52,9 @@ def capi_backend_configure(capability_bits: i64, optional_bits: i64,
 def capi_backend_status() -> i32:
     return CapiPolicy::PROFILE_UNCONFIGURED if not embedded_backend_profile_configured
     return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(embedded_backend_profile)
-    required: BackendFeature[2] = [BackendFeature.Rendering, BackendFeature.Input]
+    # Requirement negotiation uses the bounded eight-entry contract plus an
+    # active count, so retain its fixed buffer shape and consume two entries.
+    required: BackendFeature[8] = [BackendFeature.Rendering, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input]
     no_fallbacks: BackendCapabilities = BackendCapabilities{
         input: false, rendering: false, physics: false, audio: false,
         native_window: false, async_upload: false, callbacks: false, asset_loading: false,

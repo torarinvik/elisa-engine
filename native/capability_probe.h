@@ -80,7 +80,17 @@ inline bool probe_graphics_capabilities() {
             "versioned capability profile")) {
         return false;
     }
-    if (!check(configure_elisa_backend(profile) == 0 && maze_backend_status() == 0,
+    const int32_t configured_profile = configure_elisa_backend(profile);
+    const int32_t configured_status = maze_backend_status();
+    if (configured_profile != 0 || configured_status != 0) {
+        std::fprintf(stderr,
+            "runtime capability profile: configure=%d status=%d capabilities=0x%llx optional=0x%llx formats=0x%llx version=%u\n",
+            configured_profile, configured_status,
+            static_cast<unsigned long long>(profile.capability_bits),
+            static_cast<unsigned long long>(profile.optional_bits),
+            static_cast<unsigned long long>(profile.resource_format_bits), profile.abi_version);
+    }
+    if (!check(configured_profile == 0 && configured_status == 0,
             "native capability profile reaches Elisa runtime")) return false;
     ElisaBackendProfile no_input_profile = profile;
     no_input_profile.capability_bits &= ~ELISA_CAPABILITY_INPUT;

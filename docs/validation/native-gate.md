@@ -18,6 +18,11 @@ and `hardware_verification` (`verified` only for a passing native run). The
 quick mode is suitable for a clean checkout policy check; headless adds the
 AddressSanitizer/UBSan boundary harness; native adds the SDL3/Wicked graphics,
 package, navigation, coordinate, pacing, and deterministic-frame gate.
+The launcher resolves every repository check from its own source path, so it
+works when invoked from outside the checkout. Native mode runs the Wicked build
+and each frame/verification stage in bounded nested processes, so the
+ElisaScript process-capture limit cannot cut off a successful long-running
+native gate.
 
 On 2026-09-19 the quick and headless modes passed on the updated macOS toolchain.
 The native mode remains the workstation command documented in
