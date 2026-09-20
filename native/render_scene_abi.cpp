@@ -50,6 +50,13 @@ constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
+    int64_t gameplay_epoch = 0;
+    int64_t gameplay_id = 0;
+    int64_t render_id = 0;
+    uint64_t mesh_high = 0;
+    uint64_t mesh_low = 0;
+    uint64_t material_high = 0;
+    uint64_t material_low = 0;
     std::vector<wi::ecs::Entity> joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
@@ -64,6 +71,23 @@ struct InstanceSlot {
     bool animation_loop = true;
     bool previous_animation_loop = true;
     bool live = false;
+};
+
+struct SnapshotStageRow {
+    int64_t existing_handle = 0;
+    int64_t gameplay_epoch = 0;
+    int64_t gameplay_id = 0;
+    int64_t render_id = 0;
+    uint64_t mesh_high = 0;
+    uint64_t mesh_low = 0;
+    uint64_t material_high = 0;
+    uint64_t material_low = 0;
+    float position[3] = {};
+    float rotation[4] = {};
+    float scale[3] = {};
+    size_t reserved_slot = MAX_INSTANCES;
+    uint64_t reserved_generation = 0;
+    wi::ecs::Entity created_entity = wi::ecs::INVALID_ENTITY;
 };
 
 struct ElectricArcSlot {
@@ -85,6 +109,15 @@ struct RenderSceneService {
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
+    std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
+    std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
+    std::array<int64_t, MAX_INSTANCES> snapshot_results{};
+    size_t snapshot_row_count = 0;
+    size_t snapshot_retire_count = 0;
+    size_t snapshot_result_count = 0;
+    size_t snapshot_expected_previous_count = 0;
+    bool snapshot_transaction_active = false;
+    int32_t snapshot_test_fail_after_creates = -1;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
     std::thread::id owner_thread{};
@@ -276,12 +309,28 @@ void reset_unlocked(RenderSceneService& state) {
     }
     for (InstanceSlot& instance : state.instances) {
         instance.entity = wi::ecs::INVALID_ENTITY;
+        instance.gameplay_epoch = 0;
+        instance.gameplay_id = 0;
+        instance.render_id = 0;
+        instance.mesh_high = 0;
+        instance.mesh_low = 0;
+        instance.material_high = 0;
+        instance.material_low = 0;
         instance.joint_entities.clear();
         instance.skin_joints.clear();
         instance.animation_clips.clear();
         clear_animation_state(instance);
         instance.live = false;
     }
+    state.snapshot_row_count = 0;
+    state.snapshot_retire_count = 0;
+    state.snapshot_result_count = 0;
+    state.snapshot_expected_previous_count = 0;
+    state.snapshot_transaction_active = false;
+    state.snapshot_test_fail_after_creates = -1;
+    state.snapshot_rows = {};
+    state.snapshot_retire_handles = {};
+    state.snapshot_results = {};
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();
         arc.core.Clear();
@@ -344,74 +393,15 @@ int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     return ELISA_RENDER_SCENE_OK;
 }
 
+#include "render_scene_snapshot_internal.inc"
+
 } // namespace
 
 extern "C" uint32_t elisa_render_scene_abi_version(void) {
     return ELISA_RENDER_SCENE_ABI_VERSION;
 }
 
-extern "C" int32_t elisa_render_scene_v1_initialize(
-    int32_t width, int32_t height, float vertical_size) {
-    if (!valid_viewport(width, height) || !finite(vertical_size) ||
-        vertical_size < MIN_ORTHOGRAPHIC_HEIGHT || vertical_size > MAX_ORTHOGRAPHIC_HEIGHT) {
-        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    const int32_t application_status = elisa_application_v1_validate_owner_thread();
-    if (application_status == ELISA_APPLICATION_INVALID_STATE) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (application_status == ELISA_APPLICATION_WRONG_THREAD) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    if (application_status != ELISA_APPLICATION_OK) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (state.initialized) return ELISA_RENDER_SCENE_ALREADY_INITIALIZED;
-    if (wi::graphics::GetDevice() == nullptr) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-
-    try {
-        state.scene = std::make_unique<wi::scene::Scene>();
-        state.path = std::make_unique<ElisaRenderPath3D>(&state.electric_arcs);
-    } catch (...) {
-        reset_unlocked(state);
-        return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    }
-
-    state.owner_thread = std::this_thread::get_id();
-    state.vertical_size = vertical_size;
-    state.camera_entity = state.scene->Entity_CreateCamera("elisa_runtime_camera", float(width), float(height));
-    state.camera = state.scene->cameras.GetComponent(state.camera_entity);
-    wi::scene::TransformComponent* camera_transform = state.scene->transforms.GetComponent(state.camera_entity);
-    if (state.camera_entity == wi::ecs::INVALID_ENTITY || state.camera == nullptr || camera_transform == nullptr) {
-        reset_unlocked(state);
-        return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    }
-
-    state.camera->CreateOrtho(float(width), float(height), 0.01f, 1000.0f, vertical_size);
-    state.eye[0] = 0.0f;
-    state.eye[1] = vertical_size * 1.5f;
-    state.eye[2] = 0.0f;
-    state.target[0] = state.target[1] = state.target[2] = 0.0f;
-    state.up[0] = 0.0f;
-    state.up[1] = 0.0f;
-    state.up[2] = -1.0f;
-    apply_camera_look_at(state);
-    state.path->scene = state.scene.get();
-    state.path->camera = state.camera;
-    state.path->setOcclusionCullingEnabled(false);
-
-    if (!state.shutdown_hook_registered) {
-        if (elisa_application_v1_register_shutdown_hook(&state, on_application_shutdown) != ELISA_APPLICATION_OK) {
-            reset_unlocked(state);
-            return ELISA_RENDER_SCENE_BACKEND_FAILED;
-        }
-        state.shutdown_hook_registered = true;
-    }
-    state.initialized = true;
-    if (elisa_application_v1_activate_render_path(state.path.get()) != ELISA_APPLICATION_OK) {
-        reset_unlocked(state);
-        return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    }
-    state.width = width;
-    state.height = height;
-    return ELISA_RENDER_SCENE_OK;
-}
+#include "render_scene_initialize_abi.inc"
 
 extern "C" int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height) {
     RenderSceneService& state = service();
@@ -458,6 +448,13 @@ extern "C" int64_t elisa_render_scene_v1_create(
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
     if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    instance.gameplay_epoch = 0;
+    instance.gameplay_id = 0;
+    instance.render_id = 0;
+    instance.mesh_high = 0;
+    instance.mesh_low = 0;
+    instance.material_high = 0;
+    instance.material_low = 0;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
@@ -513,6 +510,8 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
     return update_transform_unlocked(state, slot, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
 
+#include "render_scene_snapshot_abi.inc"
+
 #include "render_scene_animation_abi.inc"
 
 #include "render_scene_material_abi.inc"
@@ -551,6 +550,13 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     state.scene->Entity_Remove(state.instances[slot].entity);
     state.instances[slot].entity = wi::ecs::INVALID_ENTITY;
+    state.instances[slot].gameplay_epoch = 0;
+    state.instances[slot].gameplay_id = 0;
+    state.instances[slot].render_id = 0;
+    state.instances[slot].mesh_high = 0;
+    state.instances[slot].mesh_low = 0;
+    state.instances[slot].material_high = 0;
+    state.instances[slot].material_low = 0;
     state.instances[slot].joint_entities.clear();
     state.instances[slot].skin_joints.clear();
     state.instances[slot].animation_clips.clear();

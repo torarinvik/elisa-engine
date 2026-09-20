@@ -20,6 +20,7 @@ enum {
     ELISA_RENDER_SCENE_GENERATION_EXHAUSTED = -7,
     ELISA_RENDER_SCENE_BACKEND_FAILED = -8,
     ELISA_RENDER_SCENE_ASSET_LOAD_FAILED = -9,
+    ELISA_RENDER_SCENE_BATCH_ACTIVE = -10,
 };
 
 enum {
@@ -52,6 +53,16 @@ int32_t elisa_render_scene_v1_update_transform(
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
+int32_t elisa_render_scene_v1_snapshot_begin(uint32_t previous_count);
+int32_t elisa_render_scene_v1_snapshot_stage(
+    int64_t existing_handle, int64_t gameplay_epoch, int64_t gameplay_id, int64_t render_id,
+    uint64_t mesh_high, uint64_t mesh_low, uint64_t material_high, uint64_t material_low,
+    float px, float py, float pz, float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz);
+int32_t elisa_render_scene_v1_snapshot_retire(int64_t handle);
+int32_t elisa_render_scene_v1_snapshot_commit(void);
+int32_t elisa_render_scene_v1_snapshot_abort(void);
+int64_t elisa_render_scene_v1_snapshot_result(uint32_t index);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);

@@ -22,12 +22,22 @@ centered over the origin with +Y up, and game code can set its pose with
 `RenderScene::set_camera_look_at`.
 
 `RenderScene::sync_snapshot` connects `RenderSnapshot::Snapshot` to this scene
-service. It reconciles at most 256 Elisa rows by stable render ID, updates
-existing handles in place, creates default boxes for new rows, and retires IDs
-absent from the next snapshot. Presenter storage is fixed-capacity and remains
-inside the `RenderScene` module so native handles stay opaque. Clear the
-presenter before an explicit scene shutdown; application shutdown releases all
-native scene resources automatically.
+service as one bounded native transaction of at most 256 rows. Each row carries
+the checked gameplay epoch and entity ID, stable render ID, mesh and material
+asset IDs, and transform. The native boundary validates the staged rows and
+handles, creates new or asset-replacement objects before touching the current
+frame, and removes those temporary objects if any creation fails. It then
+applies retained transforms and retires removed or replaced handles, returning
+new opaque handles only after commit. Presenter storage remains fixed-capacity
+inside `RenderScene`. Clear the presenter before an explicit scene shutdown;
+application shutdown releases all native scene resources automatically.
+
+The native scene records gameplay and asset identity with each snapshot-owned
+instance and reuses a handle only when its mesh and material IDs are unchanged.
+The snapshot adapter still renders default boxes; it does not resolve those IDs
+to cooked packages or material descriptors. That loader integration belongs to
+A03/A04. World transforms also remain in the separate binding table until the
+general transform-component work is complete.
 
 `RenderScene::set_texture` attaches a project-relative base-color, normal,
 packed surface, or emissive image to one live instance. The engine canonicalizes
@@ -48,7 +58,9 @@ replacement. The portable fixture covers one-to-many bindings, transform
 updates, duplicate IDs, foreign-world references, capacity, and stale-row
 cleanup. The native scene smoke now spawns real `World` entities, extracts
 their render rows, syncs twice to verify handle reuse, and despawns them to
-verify native retirement.
+verify native retirement. It also changes an asset ID, injects failure after
+one replacement has been created, verifies the prior frame and identity
+metadata remain intact, and retries the complete update successfully.
 
 `RenderScene` also exposes generation-checked `ElectricArcHandle`s and a bounded
 `ElectricArcBatch` of at most 1,024 arcs. Elisa supplies endpoints, phase, and
@@ -108,17 +120,25 @@ rendering and project-root path rejection. `python3 scripts/test_elisa_build_run
 and `python3 scripts/cook_assets.py "$PWD" && elisascript scripts/check.elisascript`
 passed.
 
+Snapshot transaction follow-up, 2026-09-20: the full Elisa suite passed, including
+the portable snapshot tests and both proof suites (17/17 and 6/6). The SDL3/Metal
+scene smoke passed after forcing a native entity-creation failure midway through
+a changed-asset batch, checking that the native object count and previous asset
+identity remain intact, then retrying and verifying update and despawn. The
+ordinary application smoke passed both lifecycle binaries. Source-length,
+module-hygiene, dependency-manifest, and `git diff --check` checks passed.
+
 This is an initial renderer. It owns one active scene and orthographic camera,
 uses unlit colors unless emission selects PBR shading, maps snapshot rows to
 default boxes, and loads static cooked geometry packages. Texture assignment
 is per instance; shared mesh/material ownership and complete imported material
 descriptors remain future work.
 Transforms are currently stored in the separate render binding table rather
-than extracted from a general world transform component. `InstanceBatch` is an
-Elisa-side collection of checked handles and does not batch renderer calls. The
-renderer does not yet expose shared mesh residency, FBX material mapping,
-parenting, a single transactional native batch submission, general lighting,
-or editor tooling.
+than extracted from a general world transform component. The general
+`InstanceBatch` remains an Elisa-side collection of checked handles and does
+not batch arbitrary renderer calls; snapshot reconciliation has its own
+transactional native submission. The renderer does not yet expose shared mesh
+residency, FBX material mapping, parenting, general lighting, or editor tooling.
 
 Electric arc follow-up, 2026-09-20: Wicked commit `c1c9300` adds a runtime trail
 queue that is independent of debug drawing. Engine commit `bef49cc` integrates

@@ -18,7 +18,7 @@ stricter than “the header links”:
 
 | Area | Entry points | Owner | Current label | Gap to reusable engine |
 |---|---|---|---|---|
-| Elisa world and identity | `src/world/`, `src/entity_id.elisa`, `src/backend/scene_bridge.elisa` | Elisa | Integrated for the maze slice | General world storage, streaming, save schema, and render extraction are still roadmap work. |
+| Elisa world and identity | `src/world/`, `src/entity_id.elisa`, `src/backend/scene_bridge.elisa`, `src/runtime/world_rendering.elisa`, `src/runtime/render_snapshot_scene.elisa` | Elisa | Integrated for the maze slice with bounded render snapshots | General world storage, streaming, save schema, general transform components, cooked-asset resolution, and replacing maze manifest construction remain. |
 | Native Wicked host | `native/wicked_probe.cpp`, `scripts/wicked_probe.elisascript` | Native shim, with Elisa state as input | Probe | It exits after a finite diagnostic run and still contains maze-specific scene construction. |
 | Embedded C ABI | `examples/maze/capi.elisa`, `native/embed_probe.cpp`, `scripts/embed_probe.py` | Elisa API plus narrow C shim | Adapter | Version negotiation, spans, malformed descriptors, and a persistent client belong to F04/F02. |
 | SDL3 platform | `src/backend/sdl3.elisa`, `native/input_probe.h`, `native/wicked_probe.cpp` | SDL3 host boundary | Adapter | Focus, resize, suspension, frame pacing, and restart are incomplete in F09. |

@@ -14,6 +14,7 @@ module RenderScene:
             UNKNOWN_HANDLE: i32 = -6
             GENERATION_EXHAUSTED: i32 = -7
             ASSET_LOAD_FAILED: i32 = -9
+            BATCH_ACTIVE: i32 = -10
 
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
@@ -47,6 +48,28 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_update_transform(handle: i64, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
 
         @callconv(c)
         extern elisa_render_scene_v1_play_animation(handle: i64, clip_name: cstr,
@@ -125,11 +148,13 @@ module RenderScene:
             raise RenderSceneError.UnknownHandle if status == NativeStatus::UNKNOWN_HANDLE
             raise RenderSceneError.GenerationExhausted if status == NativeStatus::GENERATION_EXHAUSTED
             raise RenderSceneError.AssetLoadFailure if status == NativeStatus::ASSET_LOAD_FAILED
+            raise RenderSceneError.BatchActive if status == NativeStatus::BATCH_ACTIVE
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
 
     public:
         # Native slots and owner-side batches use the same arc capacity.
         const MAX_ELECTRIC_ARCS: usize = 1024
+        const MAX_SNAPSHOT_ENTRIES: usize = 256
 
         enum Primitive:
             Box
@@ -194,6 +219,7 @@ module RenderScene:
             GenerationExhausted
             AssetLoadFailure
             BackendFailure
+            BatchActive
 
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1
