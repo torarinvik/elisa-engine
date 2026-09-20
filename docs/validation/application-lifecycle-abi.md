@@ -65,3 +65,8 @@ can initialize, pump one frame, read timing/window metrics, observe and consume
 a close-request edge, and shut down without game-owned C exports. The ordinary
 `test/action_input.elisa` suite covers focus-style held-state clearing while
 keeping a device connected.
+
+Window flag constants use the `WINDOW_` prefix to distinguish persistent
+window state from same-named event bits such as `MINIMIZED` and
+`CLOSE_REQUESTED`. This keeps Elisa accessors aligned with the native flag
+values.

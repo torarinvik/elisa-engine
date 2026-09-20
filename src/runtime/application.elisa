@@ -20,11 +20,11 @@ module Application:
             RESTORED: u32 = 32
 
         const module NativeWindowFlags:
-            FOCUSED: u32 = 1
-            MINIMIZED: u32 = 2
-            FULLSCREEN: u32 = 4
-            SUSPENDED: u32 = 8
-            CLOSE_REQUESTED: u32 = 16
+            WINDOW_FOCUSED: u32 = 1
+            WINDOW_MINIMIZED: u32 = 2
+            WINDOW_FULLSCREEN: u32 = 4
+            WINDOW_SUSPENDED: u32 = 8
+            WINDOW_CLOSE_REQUESTED: u32 = 16
 
         @callconv(c)
         extern elisa_application_abi_version() -> u32
@@ -183,19 +183,19 @@ module Application:
             (info.event_flags & NativeEvents::RESTORED) != 0
 
         def is_focused(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::FOCUSED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_FOCUSED) != 0
 
         def is_minimized(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::MINIMIZED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_MINIMIZED) != 0
 
         def is_fullscreen(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::FULLSCREEN) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_FULLSCREEN) != 0
 
         def is_suspended(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::SUSPENDED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_SUSPENDED) != 0
 
         def is_close_requested(info: FrameInfo&) -> bool:
-            (info.window_flags & NativeWindowFlags::CLOSE_REQUESTED) != 0
+            (info.window_flags & NativeWindowFlags::WINDOW_CLOSE_REQUESTED) != 0
 
         def request_exit() -> bool:
             elisa_application_v1_request_exit() == NativeStatus::OK
