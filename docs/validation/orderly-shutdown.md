@@ -187,3 +187,27 @@ in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 rendered
 This makes the standalone GPU baseline stable through the observed first-use
 allocation. F05 remains partial because the separate 512-cycle, host/device, and
 post-churn heap changes have not all been attributed.
+
+## Latest two-pass native gate (2026-09-20)
+
+After exposing the live capability profile through ordinary Elisa applications,
+the full SDL3/Wicked probe passed twice, including the profile query, cooked
+geometry reader, rendered-frame determinism, and lifecycle probes:
+
+```text
+DEVELOPER_DIR="$(xcode-select -p)" \
+ELISA_ALLOW_STALE_STAGE1=1 \
+elisascript scripts/wicked_probe.elisascript
+
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 gpu_delta_bytes=0 heap_delta_bytes=4128
+in-process scene restart: cycles=64 warmup_cycles=16 measured_cycles=48 gpu_delta_bytes=0 heap_delta_bytes=0
+host lifecycle heap: delta_bytes=3504 (both passes)
+churn memory: steady_delta_bytes=282336 and 272064
+Native frame verified: dimensions, determinism, Elisa topology.
+Native live-input frame rendered from the embedded game.
+```
+
+The scene GPU baseline stayed flat and the previous one-time host heap step did
+not recur. The small scene/host heap changes and post-churn deltas remain
+unattributed; F05 is still partial, and this two-pass gate is not a substitute
+for repeating the 512-cycle soak.

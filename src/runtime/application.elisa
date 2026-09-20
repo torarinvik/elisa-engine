@@ -1,5 +1,6 @@
 # Generic, process-level application lifecycle. Platform and renderer types stay
 # behind the engine-owned native ABI; game code sees only configuration/status.
+include "../backend/capabilities.elisa"
 module Application:
     private:
         const module NativeStatus:
@@ -10,6 +11,8 @@ module Application:
             INVALID_ARGUMENT: i32 = -1
             INVALID_STATE: i32 = -2
             WRONG_THREAD: i32 = -4
+            PROFILE_UNAVAILABLE: i32 = -6
+            EMPTY_PROFILE_VALUE: i64 = 0
 
         const module NativeEvents:
             CLOSE_REQUESTED: u32 = 1
@@ -43,6 +46,12 @@ module Application:
 
         @callconv(c)
         extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_backend_profile(capabilities: mutable i64&, optional: mutable i64&,
+            max_viewports: mutable i64&, max_workers: mutable i64&, memory_budget: mutable i64&,
+            memory_usage: mutable i64&, formats: mutable i64&, graphics_workers: mutable i64&,
+            streaming_workers: mutable i64&, service_version: mutable i64&) -> i32
 
         @callconv(c)
         extern elisa_application_v1_pump() -> i32
@@ -112,6 +121,12 @@ module Application:
             WrongThread
             Failed
 
+        error BackendProfileError:
+            NotInitialized
+            WrongThread
+            Unavailable
+            Invalid
+
         def default_config() -> Config:
             Config{
                 title: elisa_application_v1_project_title(),
@@ -128,6 +143,32 @@ module Application:
             return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
             return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
             InitializeStatus.BackendUnavailable
+
+        # This is a startup-time snapshot of the initialized host. Capabilities
+        # describe engine-owned services, not every linked vendor feature.
+        def backend_profile() -> Capabilities::BackendProfile error[BackendProfileError]:
+            capabilities: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            optional: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            max_viewports: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            max_workers: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            memory_budget: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            memory_usage: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            formats: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            graphics_workers: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            streaming_workers: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            service_version: i64 = NativeStatus::EMPTY_PROFILE_VALUE
+            status: i32 = elisa_application_v1_backend_profile(&capabilities, &optional,
+                &max_viewports, &max_workers, &memory_budget, &memory_usage, &formats,
+                &graphics_workers, &streaming_workers, &service_version)
+            raise BackendProfileError.NotInitialized if status == NativeStatus::INVALID_STATE
+            raise BackendProfileError.WrongThread if status == NativeStatus::WRONG_THREAD
+            raise BackendProfileError.Unavailable if status == NativeStatus::PROFILE_UNAVAILABLE
+            raise BackendProfileError.Invalid if status != NativeStatus::OK
+            profile: Capabilities::BackendProfile = Capabilities::backend_profile_from_native(
+                capabilities, optional, max_viewports, max_workers, memory_budget,
+                memory_usage, formats, graphics_workers, streaming_workers, service_version)
+            raise BackendProfileError.Invalid if not Capabilities::backend_profile_valid(profile)
+            profile
 
         def pump() -> PumpStatus:
             result: i32 = elisa_application_v1_pump()

@@ -75,6 +75,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
     {
         std::ofstream uv_package(uv_package_path);
         uv_package << "format=elisa-cooked-v2\nsource=triangle.fbx\ntriangles=1\n"
+            << "position_stride=12\nnormal_stride=12\nuv_stride=8\nindex_stride=4\n"
             << "positions=3\nindices=3\npositions_b64=" << std::string(48, 'A')
             << "\nnormals_b64=" << std::string(48, 'A') << "\nuvs_b64="
             << std::string(32, 'A') << "\nindices_b64=AAAAAAEAAAACAAAA\n";
