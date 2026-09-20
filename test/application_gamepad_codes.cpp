@@ -36,18 +36,25 @@ int main() {
         return 4;
     }
     const int64_t axis_token = pack_input_event_token(
-        ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, 2, GAMEPAD_AXIS_LEFT_X_POSITIVE, 0.5f, true, false);
-    const int32_t axis_code = static_cast<int32_t>((uint64_t(axis_token) >> 26) & 0xFFFu);
-    const float axis_value = static_cast<float>((uint64_t(axis_token) >> 6) & 0xFFFFFu) / 1048575.0f;
-    if ((axis_token & 0xFu) != ELISA_APPLICATION_INPUT_GAMEPAD_AXIS ||
-        ((axis_token >> 4) & 0x3) != 2 || axis_code != GAMEPAD_AXIS_LEFT_X_POSITIVE ||
-        std::fabs(axis_value - 0.5f) > 0.00001f || ((axis_token >> 38) & 1) == 0) {
+        ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, INPUT_DEVICE_GAMEPAD,
+        GAMEPAD_AXIS_LEFT_X_POSITIVE, 0.5f, true, false);
+    const uint64_t encoded_axis = uint64_t(axis_token);
+    const int32_t axis_code = static_cast<int32_t>(
+        (encoded_axis >> INPUT_TOKEN_AXIS_CODE_SHIFT) & INPUT_TOKEN_AXIS_CODE_MASK);
+    const float axis_value = static_cast<float>(
+        (encoded_axis >> INPUT_TOKEN_PAYLOAD_SHIFT) & INPUT_TOKEN_AXIS_VALUE_MASK) /
+        float(INPUT_TOKEN_AXIS_VALUE_MASK);
+    if ((encoded_axis & INPUT_TOKEN_KIND_MASK) != ELISA_APPLICATION_INPUT_GAMEPAD_AXIS ||
+        ((encoded_axis >> INPUT_TOKEN_DEVICE_SHIFT) & INPUT_TOKEN_DEVICE_MASK) != INPUT_DEVICE_GAMEPAD ||
+        axis_code != GAMEPAD_AXIS_LEFT_X_POSITIVE ||
+        std::fabs(axis_value - 0.5f) > 0.00001f ||
+        ((encoded_axis >> INPUT_TOKEN_PRESSED_SHIFT) & 1) == 0) {
         std::fprintf(stderr, "analog input token encoding failed\n");
         return 5;
     }
     const int64_t key_token = pack_input_event_token(
-        ELISA_APPLICATION_INPUT_KEY, 0, KEY_ARROW_LEFT, 1.0f, true, false);
-    if (((key_token >> 6) & 0xFFFFFFFFu) != uint32_t(KEY_ARROW_LEFT)) {
+        ELISA_APPLICATION_INPUT_KEY, INPUT_DEVICE_KEYBOARD, KEY_ARROW_LEFT, 1.0f, true, false);
+    if (((uint64_t(key_token) >> INPUT_TOKEN_PAYLOAD_SHIFT) & INPUT_TOKEN_DIGITAL_CODE_MASK) != uint32_t(KEY_ARROW_LEFT)) {
         std::fprintf(stderr, "digital input token compatibility failed\n");
         return 6;
     }

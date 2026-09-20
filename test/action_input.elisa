@@ -89,7 +89,7 @@ def application_input_tests() -> i32:
 
     remaining_controller: mutable ActionInput::Input = ActionInput::Input()
     remaining_binding: ActionInput::Binding = gamepad
-    remaining_binding.action <- 93
+    remaining_binding.action <- 95
     return 85 if ActionInput::bind_checked(&remaining_controller, remaining_binding) != ActionInput::BindResult.Bound
     ActionInputRuntime::apply_application_event(&remaining_controller,
         application_event(Application::InputEventKind.GamepadConnected, 0, 1.0, true, false, true))
@@ -97,10 +97,10 @@ def application_input_tests() -> i32:
         application_event(Application::InputEventKind.GamepadButton, remaining_binding.code, 1.0, true, false, false))
     ActionInputRuntime::apply_application_event(&remaining_controller,
         application_event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, true, true))
-    return 86 if ActionInput::action_down(&remaining_controller, 93) or not ActionInput::action_released(&remaining_controller, 93)
+    return 86 if ActionInput::action_down(&remaining_controller, 95) or not ActionInput::action_released(&remaining_controller, 95)
     ActionInputRuntime::apply_application_event(&remaining_controller,
         application_event(Application::InputEventKind.GamepadButton, remaining_binding.code, 1.0, true, false, false))
-    return 87 if not ActionInput::action_down(&remaining_controller, 93)
+    return 87 if not ActionInput::action_down(&remaining_controller, 95)
 
     trigger_code: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftTrigger)
     trigger: ActionInput::Binding = ActionInput::Binding{

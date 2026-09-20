@@ -91,7 +91,7 @@ void open_gamepad(ApplicationService& service, SDL_JoystickID id) {
         if (handle == nullptr) return;
         slot = OpenGamepad{id, handle};
         if (count_before == 0) {
-            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, 2,
+            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, probe::INPUT_DEVICE_GAMEPAD,
                 0, 1.0f, true, false);
         }
         return;
@@ -104,7 +104,7 @@ void close_gamepad(ApplicationService& service, SDL_JoystickID id) {
         SDL_CloseGamepad(slot.handle);
         slot = OpenGamepad{};
         const size_t remaining = open_gamepad_count(service);
-        queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_DISCONNECTED, 2,
+        queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_DISCONNECTED, probe::INPUT_DEVICE_GAMEPAD,
             0, 0.0f, remaining != 0, true);
         return;
     }
@@ -261,26 +261,26 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
             service.pending_events |= ELISA_APPLICATION_EVENT_FOCUS_LOST;
-            queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, -1, 0, 0.0f, false, true);
+            queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, probe::INPUT_DEVICE_GLOBAL, 0, 0.0f, false, true);
             break;
         case SDL_EVENT_KEY_DOWN:
             if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
-                queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, 0,
+                queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, probe::INPUT_DEVICE_KEYBOARD,
                     code, 1.0f, true, false);
             }
             break;
         case SDL_EVENT_KEY_UP:
             if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
-                queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, 0,
+                queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, probe::INPUT_DEVICE_KEYBOARD,
                     code, 0.0f, false, true);
             }
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, 1,
+            queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, probe::INPUT_DEVICE_MOUSE,
                 static_cast<int64_t>(event.button.button), 1.0f, true, false);
             break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
-            queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, 1,
+            queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, probe::INPUT_DEVICE_MOUSE,
                 static_cast<int64_t>(event.button.button), 0.0f, false, true);
             break;
         case SDL_EVENT_GAMEPAD_ADDED:
@@ -296,7 +296,7 @@ extern "C" int32_t elisa_application_v1_pump(void) {
                 static_cast<SDL_GamepadButton>(event.gbutton.button));
             if (code == 0) break;
             const bool pressed = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
-            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_BUTTON, 2,
+            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_BUTTON, probe::INPUT_DEVICE_GAMEPAD,
                 code, pressed ? 1.0f : 0.0f, pressed, !pressed);
             break;
         }
@@ -305,12 +305,12 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             const probe::GamepadAxisInput axis = probe::gamepad_axis_input(
                 static_cast<SDL_GamepadAxis>(event.gaxis.axis), event.gaxis.value);
             if (axis.negative_code != 0) {
-                queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, 2,
+                queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, probe::INPUT_DEVICE_GAMEPAD,
                     axis.negative_code, axis.negative_value, axis.negative_value > 0.0f,
                     axis.negative_value == 0.0f);
             }
             if (axis.positive_code != 0) {
-                queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, 2,
+                queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, probe::INPUT_DEVICE_GAMEPAD,
                     axis.positive_code, axis.positive_value, axis.positive_value > 0.0f,
                     axis.positive_value == 0.0f);
             }
@@ -318,7 +318,7 @@ extern "C" int32_t elisa_application_v1_pump(void) {
         }
         case SDL_EVENT_WINDOW_MINIMIZED:
             service.pending_events |= ELISA_APPLICATION_EVENT_MINIMIZED;
-            queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, -1, 0, 0.0f, false, true);
+            queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, probe::INPUT_DEVICE_GLOBAL, 0, 0.0f, false, true);
             break;
         case SDL_EVENT_WINDOW_RESTORED:
             service.pending_events |= ELISA_APPLICATION_EVENT_RESTORED;
