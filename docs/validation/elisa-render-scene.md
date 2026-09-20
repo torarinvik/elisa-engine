@@ -54,9 +54,11 @@ degenerate and out-of-range camera inputs, malformed transforms/colors, stale
 handles across scene replacement, camera resize, both explicit and
 application-triggered cleanup, real snapshot submission, stable-handle reuse,
 transform updates, removed-row retirement, and that the rendered center pixel
-differs from the clear corner. The bounded frame retry makes the pixel check
-independent of the first Metal frame's completion timing. The smoke requires the pinned
-macOS SDL3/Metal Wicked libraries; the Elisa module itself can also be compiled
+differs from the clear corner. The native pixel probe waits up to 400 ms for
+asynchronous pipeline creation, waits for GPU work, and reads the `RenderPath3D`
+offscreen target rather than the swapchain backbuffer. The bounded frame retry
+still handles a slow first Metal frame. The smoke requires the pinned macOS
+SDL3/Metal Wicked libraries; the Elisa module itself can also be compiled
 without those native dependencies. `elisascript scripts/check.elisascript`
 passes the combined persistent-snapshot and world-rendering portable fixture.
 Evidence for commit `f2266fd` on 2026-09-20:
@@ -65,6 +67,12 @@ Evidence for commit `f2266fd` on 2026-09-20:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/render_scene_native_smoke.py` — passed against SDL3/Metal/Wicked with live Elisa `World` entities.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` — passed with the public runtime bundle including `WorldRendering`.
 - `python3 scripts/check_source_length.py` and `python3 scripts/check_module_hygiene.py` — passed.
+
+Follow-up after the macOS 27.0 update: the native pixel query now waits for
+Wicked's asynchronous pipeline creation and compares the offscreen render-path
+target. `DEVELOPER_DIR=/Library/Developer/CommandLineTools elisascript
+scripts/wicked_probe.elisascript build` passed, including the generic
+application lifecycle smoke and this rendered-scene smoke.
 
 This is an initial generic primitive renderer. It owns one active scene and
 orthographic camera, uses unlit colors, and maps snapshot rows to default boxes.

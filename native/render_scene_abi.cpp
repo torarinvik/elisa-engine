@@ -1,9 +1,11 @@
 #include "render_scene_abi.h"
 
 #include "application_abi.h"
+#include "wiHelper.h"
 #include "wiApplication.h"
 #include "wiGraphics.h"
 #include "wiJobSystem.h"
+#include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
 
@@ -30,6 +32,8 @@ constexpr int32_t MAX_VIEWPORT = 16384;
 constexpr float MAX_SCENE_MAGNITUDE = 1.0e6f;
 constexpr float MAX_ORTHOGRAPHIC_HEIGHT = 1.0e6f;
 constexpr float MIN_ORTHOGRAPHIC_HEIGHT = 1.0e-3f;
+constexpr uint32_t PIPELINE_WAIT_ATTEMPTS = 40;
+constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
 
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -488,5 +492,24 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(v
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
-    return elisa_application_v1_active_path_center_differs_from_corner(state.path.get());
+    for (uint32_t attempt = 0; attempt < PIPELINE_WAIT_ATTEMPTS; ++attempt) {
+        if (wi::renderer::IsPipelineCreationActive() == 0) break;
+        wi::helper::Sleep(PIPELINE_WAIT_MILLISECONDS);
+    }
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.width == 0 || desc.height == 0 || pixel_size == 0 ||
+        !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * pixel_size) {
+        return 0;
+    }
+    const size_t center = (size_t(desc.height / 2) * desc.width + desc.width / 2) * pixel_size;
+    bool differs = false;
+    for (size_t index = 0; index < pixel_size; ++index) {
+        differs = differs || pixels[index] != pixels[center + index];
+    }
+    return differs ? 1 : 0;
 }

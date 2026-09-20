@@ -90,3 +90,28 @@ One eight-cycle host/device pass also contains an unexplained one-time ~540 KB
 step. The known Apple framework allocation cycles are outside the engine; longer
 allocation tracking is still needed to attribute the remaining heap changes
 before claiming scene and device lifetimes return to a stable resource baseline.
+
+## Follow-up allocation attribution (macOS 27.0, 2026-09-20)
+
+The restart probe now supports `ELISA_SCENE_RESTART_WARMUP_HOLD_SECONDS` as well
+as the existing final inspection hold. These pause points let `malloc_history`
+sample one process after warm-up and again after the measured cycles.
+
+In a `MallocStackLoggingNoCompact=1` run, cycle 6 reported 387,858,432 GPU bytes
+and 57,194,576 heap bytes; cycle 7 reported 422,445,056 GPU bytes and
+102,975,184 heap bytes. Both GPU usage and the instrumented heap then stayed
+near-flat through cycle 64. Comparing the two live allocation snapshots
+attributed most of the added GPU-side work to Wicked's asynchronous object
+pipeline cache (`wi::renderer::GetObjectPSO` and its `robin_hood` table) and
+Metal command/pipeline setup. The traced snapshot also gained 116 Lua table
+allocations (6,496 bytes) through `wi::lua::SetDeltaTime` and
+`wakeUpWaitingThreads()`, which creates a per-frame local table.
+
+These stack-logging numbers are deliberately excluded from the ordinary
+7–12 KB heap result: the instrumentation itself caused a ~45.8 MB heap jump at
+cycle 7 and changed GPU allocations. The pipeline cache appears to be expected
+first-use state; the Lua tables are temporary and may be waiting for Lua's
+collector. Neither observation proves a leak or a teardown defect. F05 remains
+open until a longer uninstrumented restart run shows whether the heap settles
+after renderer warm-up and Lua collection, and the one-time host/device heap
+step is independently explained.
