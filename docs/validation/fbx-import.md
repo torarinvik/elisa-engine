@@ -58,10 +58,17 @@ asset cooking was not exercised in this checkout.
 
 `native/package_load.h` now reads the optional UV channel and copies it into
 Wicked's first UV set. A synthetic native-reader package fixture checks UV
-preservation; no real FBX package was loaded in this checkout.
+preservation; `native/cooked_geometry_package.h` separately validates and
+decodes cooked geometry for the public `RenderScene::create_mesh` API. The
+runner accepts project `asset_cooks` declarations and invokes the cooker before
+building. Its automated test validates project-contained paths and cooker
+invocation, while the native probe tests geometry decoding with the synthetic
+triangle package. The SDL3/Metal native smoke cooks that triangle and verifies
+it renders through `RenderScene::create_mesh`, rejects traversal, absolute, and
+symlink-escape paths, and checks handle cleanup. Real game FBX assets were not
+cooked or rendered because they are absent from this checkout.
 
 Import and cooking still select one mesh. They do not preserve the full node
 hierarchy, material subsets or texture paths, skin weights or bind poses, or
-animation curves. The cooker's mesh output is not connected to an Elisa
-asset-load or render call. A05/C01 integration and real Wicked rendering remain
-the A09 completion criteria.
+animation curves. Runtime loading/rendering now works for normalized cooked
+packages; the real game-asset path and A05/C01 integration remain unverified.

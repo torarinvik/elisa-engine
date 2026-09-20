@@ -1,6 +1,7 @@
 #pragma once
 
 #include "package_load.h"
+#include "cooked_geometry_package.h"
 #include "probe_support.h"
 #include "virtual_file_service.h"
 #include "native_resource_loader.h"
@@ -79,6 +80,10 @@ inline bool probe_package_bounds(const std::string& valid_package,
             << std::string(32, 'A') << "\nindices_b64=AAAAAAEAAAACAAAA\n";
     }
     const CookedPackage uv_package = load_cooked_package(uv_package_path.string());
+    elisa::assets::CookedGeometry runtime_geometry;
+    std::string runtime_geometry_error;
+    const bool runtime_geometry_loaded = elisa::assets::load_cooked_geometry(
+        uv_package_path.string(), runtime_geometry, runtime_geometry_error);
     const std::filesystem::path binary = root / "valid.elpk";
     const std::filesystem::path overlap = root / "overlap.elpk";
     const std::filesystem::path compressed = root / "compression.elpk";
@@ -148,6 +153,10 @@ inline bool probe_package_bounds(const std::string& valid_package,
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
         check(uv_package.loaded && uv_package.uv_data.size() == 6,
             "cooked FBX UV channel survives native package loading") &&
+        check(runtime_geometry_loaded && runtime_geometry.positions.size() == 9 &&
+            runtime_geometry.normals.size() == 9 && runtime_geometry.uvs.size() == 6 &&
+            runtime_geometry.indices.size() == 3 && runtime_geometry.indices[2] == 2,
+            "Elisa runtime cooked-mesh reader validates and decodes geometry") &&
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&
         check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected") &&

@@ -8,6 +8,7 @@
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
+#include "render_cooked_mesh.h"
 
 #include <DirectXMath.h>
 
@@ -16,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <exception>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -396,6 +398,64 @@ extern "C" int64_t elisa_render_scene_v1_create(
     material->SetCastShadow(false);
     material->userBlendMode = alpha < 0.999f ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
     object->SetCastShadow(false);
+
+    instance.entity = entity;
+    instance.generation = generation;
+    instance.live = true;
+    return int64_t(encode_handle(slot, generation));
+}
+
+extern "C" int64_t elisa_render_scene_v1_create_mesh(
+    const char* package_path,
+    float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz,
+    float red, float green, float blue, float alpha) {
+    if (!valid_transform(px, py, pz, qx, qy, qz, qw, sx, sy, sz) ||
+        !valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = find_free_slot(state);
+    if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
+    InstanceSlot& instance = state.instances[slot];
+    if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    std::filesystem::path resolved_path;
+    elisa::assets::CookedGeometry geometry;
+    std::string load_error;
+    try {
+        if (!elisa::assets::resolve_project_package(package_path, resolved_path)) {
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+        if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
+            std::fprintf(stderr, "Elisa cooked mesh load failed: %s\n", load_error.c_str());
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "Elisa cooked mesh load exception: %s\n", error.what());
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    const uint64_t generation = instance.generation + 1;
+    const std::string name = "elisa_cooked_mesh_" + std::to_string(slot) + "_" + std::to_string(generation);
+
+    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
+    try {
+        // The cube helper creates the complete Wicked object/mesh/material
+        // relationship; replace its small starter geometry with cooked data.
+        entity = state.scene->Entity_CreateCube(name);
+        if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        if (!elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
+            px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha)) {
+            state.scene->Entity_Remove(entity);
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+    } catch (...) {
+        if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
 
     instance.entity = entity;
     instance.generation = generation;

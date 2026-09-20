@@ -13,6 +13,7 @@ module RenderScene:
             CAPACITY: i32 = -5
             UNKNOWN_HANDLE: i32 = -6
             GENERATION_EXHAUSTED: i32 = -7
+            ASSET_LOAD_FAILED: i32 = -9
 
         @callconv(c)
         extern elisa_render_scene_abi_version() -> u32
@@ -31,6 +32,11 @@ module RenderScene:
         extern elisa_render_scene_v1_create(primitive: i32, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32,
             red: f32, green: f32, blue: f32, alpha: f32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_create_mesh(package_path: cstr,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
 
         @callconv(c)
         extern elisa_render_scene_v1_update_transform(handle: i64, px: f32, py: f32, pz: f32,
@@ -62,6 +68,7 @@ module RenderScene:
             raise RenderSceneError.Capacity if status == NativeStatus::CAPACITY
             raise RenderSceneError.UnknownHandle if status == NativeStatus::UNKNOWN_HANDLE
             raise RenderSceneError.GenerationExhausted if status == NativeStatus::GENERATION_EXHAUSTED
+            raise RenderSceneError.AssetLoadFailure if status == NativeStatus::ASSET_LOAD_FAILED
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
 
     public:
@@ -97,6 +104,7 @@ module RenderScene:
             Capacity
             UnknownHandle
             GenerationExhausted
+            AssetLoadFailure
             BackendFailure
 
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
@@ -128,6 +136,20 @@ module RenderScene:
         def create(primitive: Primitive, transform: Geometry::Transform, color: Color) -> InstanceHandle error[RenderSceneError]:
             primitive_code: i32 = 1 if primitive == Primitive.Box else (2 if primitive == Primitive.Sphere else (3 if primitive == Primitive.Plane else 0))
             native_value: i64 = elisa_render_scene_v1_create(primitive_code,
+                transform.position.x, transform.position.y, transform.position.z,
+                transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
+                transform.scale.x, transform.scale.y, transform.scale.z,
+                color.red, color.green, color.blue, color.alpha)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            InstanceHandle{native_value: native_value}
+
+        # Package paths are relative to the project root and refer to bounded
+        # engine-cooked geometry, never authoring files such as FBX at runtime.
+        def create_mesh(package_path: cstr, transform: Geometry::Transform,
+            color: Color) -> InstanceHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_mesh(package_path,
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z,

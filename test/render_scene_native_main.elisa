@@ -27,6 +27,11 @@ def extract_world_render(world: World::World&, bindings: mutable WorldRendering:
         ok: 0
         error failure: 1
 
+def hide_render_instance(handle: RenderScene::InstanceHandle) -> i32:
+    catch RenderScene::set_visible(handle, false):
+        ok: 0
+        error failure: 1
+
 def main() -> i32:
     config: Application::Config = Application::Config{
         title: "Elisa Render Scene Smoke",
@@ -233,6 +238,59 @@ def main() -> i32:
     return 55 if despawn_a != 0
     return 56 if extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
     return 57 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
+
+    mesh_transform: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 2.0, y: 2.0, z: 2.0},
+    }
+    rejected_traversal_mesh: i32 = catch RenderScene::create_mesh(
+        "../build/cooked/render-scene-triangle.pkg", mesh_transform,
+        RenderScene::Color{red: 1.0, green: 0.75, blue: 0.1, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.AssetLoadFailure: 1
+        error failure: 2
+    return 58 if rejected_traversal_mesh != 1 or RenderScene::instance_count() != 3
+    rejected_absolute_mesh: i32 = catch RenderScene::create_mesh(
+        "/etc/passwd", mesh_transform,
+        RenderScene::Color{red: 1.0, green: 0.75, blue: 0.1, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.AssetLoadFailure: 1
+        error failure: 2
+    return 59 if rejected_absolute_mesh != 1 or RenderScene::instance_count() != 3
+    rejected_escape_mesh: i32 = catch RenderScene::create_mesh(
+        "build/cooked/render-scene-outside-link.pkg", mesh_transform,
+        RenderScene::Color{red: 1.0, green: 0.75, blue: 0.1, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.AssetLoadFailure: 1
+        error failure: 2
+    return 60 if rejected_escape_mesh != 1 or RenderScene::instance_count() != 3
+    cooked_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+        "build/cooked/render-scene-triangle.pkg", mesh_transform,
+        RenderScene::Color{red: 1.0, green: 0.75, blue: 0.1, alpha: 1.0}):
+        value: value
+        error failure: return 61
+    return 62 if RenderScene::instance_count() != 4
+    hidden_box: i32 = hide_render_instance(box)
+    hidden_sphere: i32 = hide_render_instance(sphere)
+    hidden_floor: i32 = hide_render_instance(floor)
+    return 63 if hidden_box != 0 or hidden_sphere != 0 or hidden_floor != 0
+    return 65 if Application::pump() != Application::PumpStatus.Running
+    rendered_cooked_mesh: mutable i32 = 0
+    for attempt in 0..<8 |rendered_cooked_mesh|:
+        break if rendered_cooked_mesh != 0
+        return 66 if Application::pump() != Application::PumpStatus.Running
+        rendered_cooked_mesh <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
+    return 67 if rendered_cooked_mesh == 0
+    destroyed_cooked_mesh: i32 = catch RenderScene::destroy(cooked_mesh):
+        ok: 0
+        error failure: 1
+    return 68 if destroyed_cooked_mesh != 0 or RenderScene::instance_count() != 3
+    stale_cooked_mesh: i32 = catch RenderScene::destroy(cooked_mesh):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 69 if stale_cooked_mesh != 1
 
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0

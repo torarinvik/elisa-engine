@@ -54,6 +54,16 @@ def main() -> int:
 
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
+    cooked_mesh = build / "cooked/render-scene-triangle.pkg"
+    status = run([
+        sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"),
+        str(ROOT / "test/fixtures/fbx_triangle.fbx"),
+        "--asset-path", "test/fixtures/fbx_triangle.fbx",
+        "--output", str(cooked_mesh),
+    ])
+    if status != 0:
+        return status
+
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
     archive = build / "render-scene-native-smoke.a"
@@ -102,8 +112,18 @@ def main() -> int:
 
     runtime_env = dict(os.environ)
     runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(wicked_source / "shaders")
-    with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory:
-        status = run([str(executable)], cwd=Path(working_directory), env=runtime_env)
+    runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)
+    with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory, \
+            tempfile.TemporaryDirectory(prefix="Elisa cooked mesh path escape ") as outside_directory:
+        outside_package = Path(outside_directory) / "outside.pkg"
+        outside_package.write_text("format=elisa-cooked-v2\n", encoding="ascii")
+        escape_link = build / "cooked/render-scene-outside-link.pkg"
+        escape_link.unlink(missing_ok=True)
+        escape_link.symlink_to(outside_package)
+        try:
+            status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
+        finally:
+            escape_link.unlink(missing_ok=True)
     if status == 0:
         print("Elisa scene rendered by Wicked; handle validation and cleanup passed.")
     return status
