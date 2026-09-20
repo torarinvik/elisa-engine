@@ -2,6 +2,7 @@
 # Elisa main; it imports only the public engine module and owns the loop calls.
 # The generic application builder injects src/runtime/public.elisa before this
 # entry point, so this smoke exercises the same import surface as a game.
+include "./physics_app_probe.elisa"
 using Capabilities
 
 def check_native_profile() -> i32:
@@ -72,7 +73,8 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     initial_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
     tick: mutable u64 = 0
     stage <- 7
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsAppProbe::fixed_step_pair(world)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if tick != PhysicsAppProbe::PAIR_TICK_COUNT
     stage <- 8
     tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
     stage <- 9
@@ -86,12 +88,10 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     stage <- 13
     tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
     stage <- 14
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
-    stage <- 15
     final_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
-    stage <- 16
+    stage <- 15
     raise PhysicsRuntime::PhysicsError.BackendFailure if tick != 8 or final_position.y >= initial_position.y - 0.05
-    stage <- 17
+    stage <- 16
     raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != 8
     _ = ground
     0

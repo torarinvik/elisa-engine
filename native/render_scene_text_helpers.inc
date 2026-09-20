@@ -1,7 +1,8 @@
 bool valid_overlay_text(const char* text, float x, float y, int32_t font_size,
     float red, float green, float blue, float alpha) {
     if (text == nullptr || !bounded(x, float(MAX_VIEWPORT)) || !bounded(y, float(MAX_VIEWPORT)) ||
-        font_size < 8 || font_size > 128 || !valid_color(red, green, blue, alpha)) return false;
+        font_size < MIN_OVERLAY_FONT_SIZE || font_size > MAX_OVERLAY_FONT_SIZE ||
+        !valid_color(red, green, blue, alpha)) return false;
     for (size_t index = 0; index <= MAX_OVERLAY_TEXT_BYTES; ++index) {
         if (text[index] == '\0') return true;
     }
@@ -18,8 +19,7 @@ bool valid_overlay_text_value(const char* text) {
 
 bool valid_overlay_text_prefix(const char* prefix) {
     if (prefix == nullptr) return false;
-    // A signed 64-bit decimal value needs at most 20 bytes.
-    for (size_t index = 0; index <= MAX_OVERLAY_TEXT_BYTES - 20; ++index) {
+    for (size_t index = 0; index <= MAX_OVERLAY_TEXT_PREFIX_BYTES; ++index) {
         if (prefix[index] == '\0') return true;
     }
     return false;
@@ -46,11 +46,11 @@ size_t decode_text_handle(const RenderSceneService& state, int64_t handle) {
 void apply_overlay_text(wi::SpriteFont& font, const char* text, float x, float y,
     int32_t font_size, float red, float green, float blue, float alpha) {
     font.SetText(text);
-    font.params.position = XMFLOAT3(x, y, 0.0f);
+    font.params.position = XMFLOAT3(x, y, OVERLAY_TEXT_DEPTH);
     font.params.size = font_size;
     font.params.color = wi::Color::fromFloat4(XMFLOAT4(red, green, blue, alpha));
-    font.params.shadowColor = wi::Color(0, 0, 0, 220);
-    font.params.shadow_offset_x = 1.0f;
-    font.params.shadow_offset_y = 2.0f;
+    font.params.shadowColor = wi::Color(0, 0, 0, OVERLAY_TEXT_SHADOW_ALPHA);
+    font.params.shadow_offset_x = OVERLAY_TEXT_SHADOW_OFFSET_X;
+    font.params.shadow_offset_y = OVERLAY_TEXT_SHADOW_OFFSET_Y;
     font.SetHidden(false);
 }

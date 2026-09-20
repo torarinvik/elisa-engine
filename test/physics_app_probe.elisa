@@ -1,6 +1,12 @@
-include "../src/physics/runtime.elisa"
+module PhysicsAppProbe:
+    private:
+        const module Tuning:
+            FIXED_STEP_SECONDS: f64 = 1.0 / 30.0
 
-def probe(world: mutable PhysicsRuntime::World&) -> u64 error[PhysicsRuntime::PhysicsError]:
-    try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
-    try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
-    PhysicsRuntime::committed_tick(world)
+    public:
+        const PAIR_TICK_COUNT: u64 = 2
+
+        def fixed_step_pair(world: mutable PhysicsRuntime::World&) -> u64 error[PhysicsRuntime::PhysicsError]:
+            try PhysicsRuntime::fixed_step(world, Tuning::FIXED_STEP_SECONDS)
+            try PhysicsRuntime::fixed_step(world, Tuning::FIXED_STEP_SECONDS)
+            PhysicsRuntime::committed_tick(world)

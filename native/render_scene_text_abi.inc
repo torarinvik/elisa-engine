@@ -22,7 +22,7 @@ extern "C" int64_t elisa_render_scene_v1_create_text(const char* text,
     }
     ++entry.generation;
     entry.live = true;
-    return int64_t((entry.generation << TEXT_SLOT_BITS) | uint64_t(slot + 1));
+    return int64_t((entry.generation << TEXT_SLOT_BITS) | uint64_t(slot + TEXT_SLOT_BASE));
 }
 
 extern "C" int32_t elisa_render_scene_v1_set_text(int64_t handle, const char* text) {
@@ -50,7 +50,7 @@ extern "C" int32_t elisa_render_scene_v1_set_text_i64(int64_t handle,
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     const size_t slot = decode_text_handle(state, handle);
     if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-    std::array<char, MAX_OVERLAY_TEXT_BYTES + 1> formatted{};
+    std::array<char, OVERLAY_TEXT_BUFFER_BYTES> formatted{};
     const int written = std::snprintf(formatted.data(), formatted.size(), "%s%lld",
         prefix, static_cast<long long>(value));
     if (written < 0 || size_t(written) > MAX_OVERLAY_TEXT_BYTES) {

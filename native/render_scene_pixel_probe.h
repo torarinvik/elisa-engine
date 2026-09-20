@@ -5,6 +5,13 @@
 namespace {
 
 constexpr uint32_t ARC_RENDER_PROBE_RADIUS = 8;
+constexpr uint32_t OVERLAY_TEXT_PROBE_WIDTH = 240;
+constexpr uint32_t OVERLAY_TEXT_PROBE_HEIGHT = 80;
+constexpr uint8_t OVERLAY_TEXT_ALPHA_THRESHOLD = 16;
+constexpr uint8_t OVERLAY_TEXT_BRIGHTNESS_THRESHOLD = 80;
+constexpr size_t RGBA8_COLOR_CHANNEL_COUNT = 3;
+constexpr size_t RGBA8_CHANNEL_COUNT = 4;
+constexpr size_t RGBA8_ALPHA_INDEX = 3;
 constexpr uint64_t FNV_OFFSET_BASIS = 14695981039346656037ull;
 constexpr uint64_t FNV_PRIME = 1099511628211ull;
 
@@ -49,14 +56,17 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_text(void) {
     if (!frame.IsValid() || desc.format != wi::graphics::Format::R8G8B8A8_UNORM ||
         desc.width == 0 || desc.height == 0 ||
         !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
-        pixels.size() < size_t(desc.width) * desc.height * 4) return 0;
-    const uint32_t max_x = std::min(desc.width, 240u);
-    const uint32_t max_y = std::min(desc.height, 80u);
+        pixels.size() < size_t(desc.width) * desc.height * RGBA8_CHANNEL_COUNT) return 0;
+    const uint32_t max_x = std::min(desc.width, OVERLAY_TEXT_PROBE_WIDTH);
+    const uint32_t max_y = std::min(desc.height, OVERLAY_TEXT_PROBE_HEIGHT);
     for (uint32_t y = 0; y < max_y; ++y) {
         for (uint32_t x = 0; x < max_x; ++x) {
-            const size_t index = (size_t(y) * desc.width + x) * 4;
-            if (pixels[index + 3] > 16 &&
-                (pixels[index] > 80 || pixels[index + 1] > 80 || pixels[index + 2] > 80)) return 1;
+            const size_t index = (size_t(y) * desc.width + x) * RGBA8_CHANNEL_COUNT;
+            bool visible = false;
+            for (size_t channel = 0; channel < RGBA8_COLOR_CHANNEL_COUNT; ++channel) {
+                visible = visible || pixels[index + channel] > OVERLAY_TEXT_BRIGHTNESS_THRESHOLD;
+            }
+            if (pixels[index + RGBA8_ALPHA_INDEX] > OVERLAY_TEXT_ALPHA_THRESHOLD && visible) return 1;
         }
     }
     return 0;

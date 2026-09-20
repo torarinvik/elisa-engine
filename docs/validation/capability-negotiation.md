@@ -172,7 +172,7 @@ Typed provider-map validation on 2026-09-20:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ../Elisa-compiler/scripts/elisac_stage1.sh -emit exe -o build/capabilities-test test/capabilities.elisa && build/capabilities-test` passed, covering provider identity, native routes, disallowed fallback state, and wrong-service rejection.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both the SDL3/Metal application smoke and startup-failure cleanup smoke.
 - Source-length, module-hygiene, dependency-manifest, and `git diff --check` policies passed.
-- The complete `scripts/check.elisascript` command reached Elisa Proof and exited 1 because the current sibling `elisa-proof` build reports the entity-ID proof file as `unsupported` (6 of 14 obligations proven, 8 unresolved; six certificates replayed). Portable engine tests, including capability negotiation and Godot 4.7.2 compatibility, passed before that step. The proof checkout has uncommitted kernel changes; no proof files were changed for this provider-map work.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed on the merged tree. The portable suite, including Godot 4.7.2 compatibility, passed; Elisa Proof proved both files (17/17 and 6/6 obligations) and replayed all 23 certificates.
 
 F08 remains partial. Typed routes prevent selecting a provider for the wrong
 service, but callers still must initialize the selected adapter, handle its
