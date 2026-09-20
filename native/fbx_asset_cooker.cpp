@@ -1,4 +1,5 @@
 #include "fbx_asset_import.h"
+#include "mesh_tangent_frames.h"
 #include "meshoptimizer.h"
 
 #include <array>
@@ -164,6 +165,11 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         return false;
     }
     if (!simplify_geometry(mesh, max_triangles)) return false;
+    if (!elisa::assets::generate_tangent_frames(mesh.positions, mesh.normals, mesh.uvs,
+        mesh.indices, mesh.tangents)) {
+        std::fprintf(stderr, "FBX tangent-frame generation failed for the cooked mesh\n");
+        return false;
+    }
     for (uint32_t index : mesh.indices) {
         if (index >= mesh.positions.size() / 3) {
             std::fprintf(stderr, "FBX importer returned an out-of-range mesh index\n");
@@ -173,14 +179,16 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const std::vector<uint8_t> positions = float_bytes(mesh.positions);
     const std::vector<uint8_t> normals = float_bytes(mesh.normals);
     const std::vector<uint8_t> uvs = float_bytes(mesh.uvs);
+    const std::vector<uint8_t> tangents = float_bytes(mesh.tangents);
     const std::vector<uint8_t> indices = index_bytes(mesh.indices);
     const size_t positions_encoded = base64_size(positions.size());
     const size_t normals_encoded = base64_size(normals.size());
     const size_t uvs_encoded = base64_size(uvs.size());
+    const size_t tangents_encoded = base64_size(tangents.size());
     const size_t indices_encoded = base64_size(indices.size());
     const size_t max_payload = MAX_LINE_BYTES - 14;
     if (positions_encoded > max_payload || normals_encoded > max_payload ||
-        uvs_encoded > max_payload || indices_encoded > max_payload) {
+        uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload) {
         std::fprintf(stderr, "FBX geometry exceeds the cooked package line limit; simplify or split the source asset\n");
         return false;
     }
@@ -188,7 +196,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     if (positions_encoded > MAX_PACKAGE_BYTES - metadata_budget ||
         normals_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded ||
         uvs_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded - normals_encoded ||
-        indices_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded - normals_encoded - uvs_encoded) {
+        tangents_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded - normals_encoded - uvs_encoded ||
+        indices_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded - normals_encoded - uvs_encoded - tangents_encoded) {
         std::fprintf(stderr, "FBX geometry exceeds the cooked package size limit; simplify or split the source asset\n");
         return false;
     }
@@ -204,10 +213,11 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         << "indices=" << mesh.indices.size() << "\n"
         << "bounds_min=" << mesh.bounds_min[0] << ',' << mesh.bounds_min[1] << ',' << mesh.bounds_min[2] << "\n"
         << "bounds_max=" << mesh.bounds_max[0] << ',' << mesh.bounds_max[1] << ',' << mesh.bounds_max[2] << "\n"
-        << "position_stride=12\nnormal_stride=12\nuv_stride=8\nindex_stride=4\n"
+        << "position_stride=12\nnormal_stride=12\nuv_stride=8\ntangent_stride=16\nindex_stride=4\n"
         << "positions_b64=" << base64(positions) << "\n"
         << "normals_b64=" << base64(normals) << "\n"
         << "uvs_b64=" << base64(uvs) << "\n"
+        << "tangents_b64=" << base64(tangents) << "\n"
         << "indices_b64=" << base64(indices) << "\n";
     const std::string bytes = package.str();
     if (bytes.size() > MAX_PACKAGE_BYTES) {

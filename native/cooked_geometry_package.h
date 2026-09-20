@@ -19,6 +19,7 @@ struct CookedGeometry {
     std::vector<float> positions;
     std::vector<float> normals;
     std::vector<float> uvs;
+    std::vector<float> tangents;
     std::vector<uint32_t> indices;
 };
 
@@ -161,6 +162,34 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
         !detail::decode_floats(package, "uvs_b64", size_t(vertices) * 2, geometry.uvs)) {
         error = "invalid cooked geometry vertex streams";
         return false;
+    }
+    const auto tangent_stride = package.sections.find("tangent_stride");
+    const auto encoded_tangents = package.sections.find("tangents_b64");
+    if ((tangent_stride == package.sections.end()) != (encoded_tangents == package.sections.end())) {
+        error = "incomplete cooked geometry tangent stream";
+        return false;
+    }
+    if (tangent_stride != package.sections.end()) {
+        if (tangent_stride->second != "16" ||
+            !detail::decode_floats(package, "tangents_b64", size_t(vertices) * 4, geometry.tangents)) {
+            error = "invalid cooked geometry tangent stream";
+            return false;
+        }
+        for (size_t vertex = 0; vertex < size_t(vertices); ++vertex) {
+            const double tx = geometry.tangents[vertex * 4];
+            const double ty = geometry.tangents[vertex * 4 + 1];
+            const double tz = geometry.tangents[vertex * 4 + 2];
+            const double tw = geometry.tangents[vertex * 4 + 3];
+            const double nx = geometry.normals[vertex * 3];
+            const double ny = geometry.normals[vertex * 3 + 1];
+            const double nz = geometry.normals[vertex * 3 + 2];
+            const double tangent_length = std::sqrt(tx * tx + ty * ty + tz * tz);
+            if (std::abs(tangent_length - 1.0) > 0.02 || std::abs(tx * nx + ty * ny + tz * nz) > 0.02 ||
+                std::abs(std::abs(tw) - 1.0) > 1.0e-4) {
+                error = "cooked geometry tangent frame is not normalized or orthogonal";
+                return false;
+            }
+        }
     }
     const auto encoded_indices = package.sections.find("indices_b64");
     std::vector<uint8_t> index_bytes;

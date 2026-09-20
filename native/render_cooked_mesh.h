@@ -36,6 +36,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr ||
         geometry.positions.size() % 3 != 0 || geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 || geometry.indices.empty() ||
+        (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
         geometry.indices.size() % 3 != 0 ||
         geometry.indices.size() > std::numeric_limits<uint32_t>::max()) return false;
 
@@ -60,6 +61,14 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         mesh->vertex_normals[index] = XMFLOAT3(geometry.normals[index * 3],
             geometry.normals[index * 3 + 1], geometry.normals[index * 3 + 2]);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[index * 2], geometry.uvs[index * 2 + 1]);
+    }
+    if (!geometry.tangents.empty()) {
+        mesh->vertex_tangents.resize(geometry.tangents.size() / 4);
+        for (size_t index = 0; index < mesh->vertex_tangents.size(); ++index) {
+            mesh->vertex_tangents[index] = XMFLOAT4(geometry.tangents[index * 4],
+                geometry.tangents[index * 4 + 1], geometry.tangents[index * 4 + 2],
+                geometry.tangents[index * 4 + 3]);
+        }
     }
     mesh->indices.assign(geometry.indices.begin(), geometry.indices.end());
     // Elisa's normalized meshes use counter-clockwise front faces; Wicked's

@@ -50,19 +50,22 @@ conversion, node translation, finite generated normals, and valid indices.
 
 The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
 existing `elisa-cooked-v2` geometry package with source identity and hash,
-float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It can
-simplify through pinned meshoptimizer with `--max-triangles COUNT`, compact
-unreferenced vertices, and validates finite streams, indices, and the runtime
-reader's 64 MiB package/16 MiB section limits. The amazing-labyrinth checkout
-records a 3,077,694-triangle Arc Gate reduced to 12,000 triangles, 10,009
-vertices, 619,538 bytes and 0.00124 relative error; that source is absent from
-this shared workspace, so the dense cook was not rerun here.
-`python3 scripts/cook_fbx_asset.py --self-test` passed on this checkout: a
-generated 512-triangle planar grid simplified to 128 triangles and 97 vertices
-at 0.00003 relative error, and two cooks produced byte-identical packages. The
-unbounded triangle fixture still verifies the normalized package path and exact
-one-triangle counts.
-For a real source, supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
+float32 positions/normals/UVs/tangents, uint32 indices, bounds, and fixed
+strides. It can simplify through pinned meshoptimizer with `--max-triangles
+COUNT`, compacts unreferenced vertices, and validates lengths, finite values,
+indices, and the runtime reader's 64 MiB package/16 MiB section limits. Tangents
+are generated from the final simplified geometry and checked for unit length,
+normal orthogonality, and handedness. The native reader accepts older cooked
+packages without the optional tangent stream and validates it when present.
+
+`python3 scripts/cook_fbx_asset.py --self-test` passed with a generated
+512-triangle planar grid simplified to 128 triangles and 97 vertices at 0.00003
+relative error; tangent frames passed unit-length and orthogonality checks, and
+repeated output was byte-identical. The sibling worktree records the 3,077,694-
+triangle Arc Gate reduced to 12,000 triangles, 10,009 vertices and 833,098 bytes
+with tangents at 0.00124 relative error. That external asset tree is absent from
+this checkout, so the dense cook was not independently rerun here. For a real
+source, supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
 DESTINATION.pkg`; the asset key must be safe and project-relative.
 
 `native/package_load.h` reads the optional UV channel and copies it into Wicked's
@@ -77,6 +80,8 @@ emission and bloom controls, with its own validation note.
 
 Import and cooking still select one mesh. They do not preserve the full node
 hierarchy, material subsets or texture paths, skin weights or bind poses, or
-animation curves. The current workspace has not cooked or rendered the real
-walking/running/fence FBX assets. Shared mesh residency, source texture mapping,
-and asynchronous asset residency remain.
+animation curves. Tangents make explicitly assigned normal maps usable through
+Wicked's PBR path, but the cooker does not discover FBX material maps. The
+current workspace has not cooked or rendered the real walking/running/fence FBX
+assets. Shared mesh residency, source texture mapping, and asynchronous asset
+residency remain.
