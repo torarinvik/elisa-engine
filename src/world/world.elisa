@@ -4,6 +4,7 @@
 
 include "../entity_id.elisa"
 include "./reference.elisa"
+include "../math/geometry.elisa"
 
 module World:
     public:
@@ -63,6 +64,7 @@ module World:
             kind: Entity
             live: mutable bool
             storage: StorageKind
+            transform: mutable Geometry::Transform
 
     private:
         def entity_storage_kind(kind: Entity) -> StorageKind:
@@ -192,6 +194,7 @@ module World:
                     live <- live + 1
                     valid <- false if row.id <= EntityId::ENTITY_ID_INVALID or row.id > EntityId::entity_id_last_issued(&world.allocator) or not entity_kind_is_spawnable(row.kind)
                     valid <- false if row.storage != entity_storage_kind(row.kind)
+                    valid <- false if not Geometry::transform_is_valid(row.transform)
                     if row.storage == StorageKind.Actor:
                         actors <- actors + 1
                         valid <- false if live_actor_matches(world, row.id) != 1
@@ -263,7 +266,13 @@ module World:
             raise WorldError.IdentityInvalid if allocation_status == 1
             raise WorldError.IdentityExhausted if allocation_status == 2
             id: i64 = EntityId::entity_id_last_issued(&world.allocator)
-            world.registry[registry_index] <- RegistryRow{id: id, kind: kind, live: true, storage: storage}
+            world.registry[registry_index] <- RegistryRow{
+                id: id,
+                kind: kind,
+                live: true,
+                storage: storage,
+                transform: Geometry::transform_identity(),
+            }
             world.registry_count <- world.registry_count + 1 if registry_index == world.registry_count
             if storage == StorageKind.Actor:
                 world.actors[storage_index] <- ActorRecord{id: id, live: true, health: Bounds::DEFAULT_ACTOR_HEALTH}
@@ -302,8 +311,23 @@ module World:
                 mark_actor_dead(world, reference.id) if storage == StorageKind.Actor else mark_enemy_dead(world, reference.id)
             raise WorldError.InvalidReference if not removed
             world.registry[index].live <- false
+            world.registry[index].transform <- zeroed
             world.live_count <- world.live_count - 1
             remove_live_id(world, reference.id)
+
+        def world_try_transform(world: World&, reference: EntityRef,
+            transform: mutable Geometry::Transform&) -> bool:
+            index: usize = registry_slot(world, reference)
+            return false if index == Sentinel::WORLD_INVALID_SLOT
+            transform <- world.registry[index].transform
+            true
+
+        def world_set_transform(world: mutable World&, reference: EntityRef,
+            transform: Geometry::Transform) -> void error[WorldError]:
+            raise WorldError.InvalidValue if not Geometry::transform_is_valid(transform)
+            index: usize = registry_slot(world, reference)
+            raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            world.registry[index].transform <- transform
 
         def world_lookup(world: World&, reference: EntityRef) -> EntityLookup error[WorldError]:
             index: usize = registry_slot(world, reference)

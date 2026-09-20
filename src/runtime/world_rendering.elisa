@@ -15,6 +15,7 @@ module WorldRendering:
             DuplicateRenderId
             Capacity
             InvalidBindings
+            InvalidTransform
             SnapshotRejected
 
     private:
@@ -22,7 +23,7 @@ module WorldRendering:
             gameplay: World::EntityRef
             render_id: i64
             visual: Assets::VisualAsset
-            transform: Geometry::Transform
+            local_transform: Geometry::Transform
 
         const module Sentinel:
             INVALID_SLOT: usize = WorldRendering::MAX_BINDINGS
@@ -38,7 +39,7 @@ module WorldRendering:
             return false if bindings.count > WorldRendering::MAX_BINDINGS
             for index in 0..<bindings.count |valid: bool = true| -> valid:
                 row: BindingRow = bindings.rows[index]
-                valid <- false if row.gameplay.world_epoch <= 0 or row.gameplay.id <= 0 or row.render_id <= 0 or not Assets::visual_asset_valid(row.visual)
+                valid <- false if row.gameplay.world_epoch <= 0 or row.gameplay.id <= 0 or row.render_id <= 0 or not Assets::visual_asset_valid(row.visual) or not Geometry::transform_is_valid(row.local_transform)
                 for earlier in 0..<index:
                     valid <- false if bindings.rows[earlier].render_id == row.render_id
             true
@@ -67,21 +68,29 @@ module WorldRendering:
             bindings.count
 
         # One gameplay entity may bind several stable render IDs. Rebinding the
-        # same pair updates its transform without growing the bounded table.
+        # same pair updates its asset or local attachment transform without
+        # growing the bounded table. The entity's world transform stays in World.
         def bind(bindings: mutable Bindings&, world: World::World&, gameplay: World::EntityRef,
-            render_id: i64, visual: Assets::VisualAsset, transform: Geometry::Transform) -> void error[WorldRenderingError]:
+            render_id: i64, visual: Assets::VisualAsset,
+            local_transform: Geometry::Transform) -> void error[WorldRenderingError]:
             raise WorldRenderingError.InvalidReference if not World::world_is_live(world, gameplay)
             raise WorldRenderingError.InvalidRenderId if render_id <= 0
             raise WorldRenderingError.InvalidBindings if not Assets::visual_asset_valid(visual)
+            raise WorldRenderingError.InvalidTransform if not Geometry::transform_is_valid(local_transform)
             slot: usize = binding_slot(bindings, gameplay, render_id)
             if slot < WorldRendering::MAX_BINDINGS:
                 bindings.rows[slot].visual <- visual
-                bindings.rows[slot].transform <- transform
+                bindings.rows[slot].local_transform <- local_transform
                 return
             for index in 0..<bindings.count:
                 raise WorldRenderingError.DuplicateRenderId if bindings.rows[index].render_id == render_id
             raise WorldRenderingError.Capacity if bindings.count >= WorldRendering::MAX_BINDINGS
-            bindings.rows[bindings.count] <- BindingRow{gameplay: gameplay, render_id: render_id, visual: visual, transform: transform}
+            bindings.rows[bindings.count] <- BindingRow{
+                gameplay: gameplay,
+                render_id: render_id,
+                visual: visual,
+                local_transform: local_transform,
+            }
             bindings.count <- bindings.count + 1
 
         def unbind(bindings: mutable Bindings&, gameplay: World::EntityRef, render_id: i64) -> bool:
@@ -106,6 +115,11 @@ module WorldRendering:
             for index in 0..<bindings.count |world, bindings, snapshot|:
                 row: BindingRow = bindings.rows[index]
                 if World::world_is_live(world, row.gameplay):
-                    inserted: bool = RenderSnapshot::snapshot_bind(snapshot, row.gameplay, row.render_id, row.visual, row.transform)
+                    transform: mutable Geometry::Transform = Geometry::transform_identity()
+                    has_transform: bool = World::world_try_transform(world, row.gameplay, &transform)
+                    raise WorldRenderingError.InvalidReference if not has_transform
+                    inserted: bool = RenderSnapshot::snapshot_bind(snapshot,
+                        row.gameplay, row.render_id, row.visual,
+                        Geometry::transform_compose(transform, row.local_transform))
                     raise WorldRenderingError.SnapshotRejected if not inserted
             prune_dead_bindings(world, bindings)

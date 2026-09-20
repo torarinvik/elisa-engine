@@ -80,6 +80,9 @@ module Geometry:
         def transform_identity() -> Transform:
             Transform{position: vec3_zero(), rotation: quat_identity(), scale: vec3_one()}
 
+        def transform_is_valid(value: Transform) -> bool:
+            Geometry::vec3_is_finite(value.position) and Geometry::quat_is_finite(value.rotation) and Geometry::quat_length(value.rotation) > Scalar::ZERO and Geometry::vec3_is_finite(value.scale) and value.scale.x != Scalar::ZERO and value.scale.y != Scalar::ZERO and value.scale.z != Scalar::ZERO
+
         def transform_translate(value: Transform, offset: Vec3) -> Transform:
             Transform{position: vec3_add(value.position, offset), rotation: value.rotation, scale: value.scale}
 
