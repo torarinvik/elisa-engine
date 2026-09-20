@@ -54,8 +54,9 @@ ELISA_ALLOW_STALE_STAGE1=1 ~/.local/bin/elisascript scripts/wicked_probe.elisasc
 
 Result: exit status 0; both native frame runs passed the coordinate probe,
 scene topology and determinism checks, the asymmetric signed-scale reference
-comparison, tangent-parity checks, and the frame-time budget. The Elisa check
-suite passed `test/geometry.elisa` with the matching parity cases. This closes
-the rendered-reference and centralized parity-math portions of F07. Tangent
-parity still lacks a production mesh/material consumer, and physics, skinning,
-and picking still need end-to-end signed-scale fixtures.
+comparison, tangent-parity checks, signed-scale ray-picking hit/miss checks,
+and the frame-time budget. The Elisa check suite passed
+`test/geometry.elisa` with the matching parity cases. The rendered-reference,
+centralized parity-math, and picking portions of F07 are covered. Tangent
+parity still lacks a production mesh/material consumer; physics and skinning
+still need end-to-end signed-scale fixtures.

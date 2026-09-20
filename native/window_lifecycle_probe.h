@@ -244,6 +244,15 @@ inline bool probe_repeated_host_lifecycle() {
                 static_cast<int>(hook_records.size() - index - 1);
         }
         const auto telemetry = host.telemetry();
+        if (telemetry.peak_shutdown_functions != NativeApplication::MAX_SHUTDOWN_HOOKS ||
+            telemetry.shutdown_functions_invoked != NativeApplication::MAX_SHUTDOWN_HOOKS ||
+            telemetry.rejected_shutdown_registrations != 1 || telemetry.drained_callback_batches != 1 ||
+            telemetry.peak_active_callbacks != 1) {
+            std::fprintf(stderr, "shutdown telemetry: peak_hooks=%u invoked=%u rejected=%u batches=%u peak_callbacks=%u\n",
+                telemetry.peak_shutdown_functions, telemetry.shutdown_functions_invoked,
+                telemetry.rejected_shutdown_registrations, telemetry.drained_callback_batches,
+                telemetry.peak_active_callbacks);
+        }
         if (!check(host.window() == nullptr && host.close_requested() && reverse_order,
                 "repeated host shutdown and reverse service order") ||
             !check(callback_admission_closed.load() && callback_finished.load() &&

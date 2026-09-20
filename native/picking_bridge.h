@@ -2,6 +2,8 @@
 
 #include "probe_core.h"
 #include "wiScene.h"
+#include "coordinate_conventions.h"
+#include "coordinate_transform_bridge.h"
 
 #include <array>
 #include <cmath>
@@ -96,7 +98,11 @@ inline bool probe_picking_bridge(wi::scene::Scene& scene) {
     auto* layer = scene.layers.GetComponent(target);
     if (!check(target != wi::ecs::INVALID_ENTITY && transform != nullptr && layer != nullptr,
         "picking target creates components")) return false;
-    transform->translation_local = XMFLOAT3(0, 0, 0);
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    const ElisaTransformPayload authored{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f},
+        {-0.5f, 0.25f, 1.5f}};
+    if (!check(submit_elisa_transform(&profile, &authored, transform),
+        "picking target submits signed nonuniform Elisa transform")) return false;
     transform->UpdateTransform();
     layer->layerMask = 1u << 5;
     scene.Update(0.0f);
@@ -105,11 +111,19 @@ inline bool probe_picking_bridge(wi::scene::Scene& scene) {
     const auto binding = bridge.bind(target, gameplay);
     PickGameplayRef picked;
     float distance = 0.0f;
-    const wi::primitive::Ray ray(XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 0.0f, 20.0f);
+    const XMFLOAT3 authored_origin(0.0f, 0.0f, -4.0f);
+    const XMFLOAT3 authored_direction(0.0f, 0.0f, 1.0f);
+    const wi::primitive::Ray ray(coordinates::to_wicked(authored_origin),
+        coordinates::to_wicked_direction(authored_direction), 0.0f, 20.0f);
+    const wi::primitive::Ray nonuniform_miss(
+        coordinates::to_wicked(XMFLOAT3(0.0f, 0.3f, -4.0f)),
+        coordinates::to_wicked_direction(authored_direction), 0.0f, 20.0f);
     PickingBridge foreign(scene);
     if (!check(bridge.pick(ray, 1u << 5, picked, distance) &&
         picked.world_epoch == 7 && picked.entity_id == 42 && distance > 0.0f,
-        "picking resolves checked gameplay reference") ||
+        "picking resolves signed-scale target from Elisa ray") ||
+        !check(!bridge.pick(nonuniform_miss, 1u << 5, picked, distance),
+            "picking applies nonuniform target scale") ||
         !check(!bridge.pick(ray, 1u << 4, picked, distance) && !foreign.unbind(binding),
             "picking enforces layer and owner boundaries")) return false;
     if (!check(bridge.unbind(binding) && !bridge.pick(ray, 1u << 5, picked, distance),
