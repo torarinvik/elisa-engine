@@ -21,8 +21,10 @@ struct FbxVertex {
     float position[3]{};
     float normal[3]{};
     float uv[2]{};
+    uint32_t bone_indices[4]{};
+    float bone_weights[4]{};
 };
-static_assert(sizeof(FbxVertex) == sizeof(float) * 8);
+static_assert(sizeof(FbxVertex) == sizeof(float) * 12 + sizeof(uint32_t) * 4);
 
 struct FbxMeshData {
     std::string node_name;
@@ -32,6 +34,9 @@ struct FbxMeshData {
     std::vector<float> uvs;
     std::vector<float> tangents;
     std::vector<uint32_t> indices;
+    std::vector<std::string> skin_bone_names;
+    std::vector<uint32_t> skin_indices;
+    std::vector<float> skin_weights;
     float bounds_min[3] = {
         std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::infinity(),
@@ -157,6 +162,33 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
     std::vector<uint32_t> triangle_indices(mesh.max_face_triangles * 3);
     const ufbx_matrix normal_matrix = ufbx_matrix_for_normals(&source_node->geometry_to_world);
 
+    const ufbx_skin_deformer* skin = nullptr;
+    if (mesh.skin_deformers.count > 1) {
+        fail(result, "multiple skin deformers on the primary FBX mesh are not supported yet");
+        return false;
+    }
+    if (mesh.skin_deformers.count == 1) {
+        skin = mesh.skin_deformers.data[0];
+        if (skin == nullptr || skin->clusters.count == 0 || skin->clusters.count > 64 ||
+            skin->vertices.count != mesh.num_vertices) {
+            fail(result, "primary FBX skin exceeds the bounded bone or vertex limits");
+            return false;
+        }
+        output.skin_bone_names.reserve(skin->clusters.count);
+        for (const ufbx_skin_cluster* cluster : skin->clusters) {
+            if (cluster == nullptr || cluster->bone_node == nullptr) {
+                fail(result, "primary FBX skin contains a cluster without a bone node");
+                return false;
+            }
+            if (cluster->bone_node->name.data == nullptr && cluster->bone_node->name.length != 0) {
+                fail(result, "primary FBX skin bone name has an invalid data range");
+                return false;
+            }
+            output.skin_bone_names.emplace_back(cluster->bone_node->name.data != nullptr
+                ? cluster->bone_node->name.data : "", cluster->bone_node->name.length);
+        }
+    }
+
     for (size_t face_index = 0; face_index < mesh.faces.count; ++face_index) {
         const ufbx_face face = mesh.faces.data[face_index];
         if (face.num_indices < 3) continue;
@@ -225,6 +257,57 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
                     return false;
                 }
             }
+            if (skin != nullptr) {
+                if (index >= mesh.vertex_indices.count) {
+                    fail(result, "FBX skin vertex index is out of range");
+                    return false;
+                }
+                const uint32_t source_vertex = mesh.vertex_indices.data[index];
+                if (source_vertex >= skin->vertices.count) {
+                    fail(result, "FBX skin source vertex is out of range");
+                    return false;
+                }
+                const ufbx_skin_vertex& skin_vertex = skin->vertices.data[source_vertex];
+                if (skin_vertex.weight_begin > skin->weights.count ||
+                    skin_vertex.num_weights > skin->weights.count - skin_vertex.weight_begin) {
+                    fail(result, "FBX skin weight range is out of bounds");
+                    return false;
+                }
+                double total_weight = 0.0;
+                for (size_t weight_index = 0; weight_index < skin_vertex.num_weights; ++weight_index) {
+                    const ufbx_skin_weight& source_weight =
+                        skin->weights.data[skin_vertex.weight_begin + weight_index];
+                    if (source_weight.cluster_index >= skin->clusters.count ||
+                        !std::isfinite(double(source_weight.weight)) || source_weight.weight < 0.0) {
+                        fail(result, "FBX skin contains an invalid bone influence");
+                        return false;
+                    }
+                    const float weight = float(source_weight.weight);
+                    if (weight == 0.0f) continue;
+                    size_t insert_at = 4;
+                    for (size_t slot = 0; slot < 4; ++slot) {
+                        if (weight > vertex.bone_weights[slot]) {
+                            insert_at = slot;
+                            break;
+                        }
+                    }
+                    if (insert_at < 4) {
+                        for (size_t slot = 3; slot > insert_at; --slot) {
+                            vertex.bone_indices[slot] = vertex.bone_indices[slot - 1];
+                            vertex.bone_weights[slot] = vertex.bone_weights[slot - 1];
+                        }
+                        vertex.bone_indices[insert_at] = source_weight.cluster_index;
+                        vertex.bone_weights[insert_at] = weight;
+                    }
+                }
+                for (float weight : vertex.bone_weights) total_weight += weight;
+                if (total_weight > 1.0e-20 && std::isfinite(total_weight)) {
+                    for (float& weight : vertex.bone_weights) weight = float(double(weight) / total_weight);
+                } else {
+                    fail(result, "FBX skin vertex has no positive bone influence");
+                    return false;
+                }
+            }
             corners.push_back(vertex);
         }
     }
@@ -250,6 +333,10 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
     output.positions.reserve(unique_count * 3);
     output.normals.reserve(unique_count * 3);
     output.uvs.reserve(unique_count * 2);
+    if (skin != nullptr) {
+        output.skin_indices.reserve(unique_count * 4);
+        output.skin_weights.reserve(unique_count * 4);
+    }
     for (const FbxVertex& vertex : corners) {
         for (size_t axis = 0; axis < 3; ++axis) {
             const float value = vertex.position[axis];
@@ -260,6 +347,12 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
         }
         output.uvs.push_back(vertex.uv[0]);
         output.uvs.push_back(vertex.uv[1]);
+        if (skin != nullptr) {
+            for (size_t influence = 0; influence < 4; ++influence) {
+                output.skin_indices.push_back(vertex.bone_indices[influence]);
+                output.skin_weights.push_back(vertex.bone_weights[influence]);
+            }
+        }
     }
     output.indices = std::move(indices);
     result.primary_mesh = std::move(output);

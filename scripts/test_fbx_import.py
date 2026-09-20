@@ -24,6 +24,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets-root", type=Path,
         help="also validate the supplied WallGame FBX files under this assets directory")
+    parser.add_argument("--cooked-skin", type=Path,
+        help="load and validate a cooked skinned-mesh package")
     args = parser.parse_args()
     dependency = ROOT / "dependencies/ufbx"
     source = dependency / "ufbx.c"
@@ -40,12 +42,21 @@ def main() -> int:
         ufbx_object = build / "ufbx.o"
         test_binary = build / "fbx-asset-import-test"
         run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(ufbx_object)])
-        run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(ROOT / "native"),
-            str(ROOT / "native/fbx_asset_import_test.cpp"), str(ufbx_object), "-o", str(test_binary)])
+        compile_command = [cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(ROOT / "native"),
+            str(ROOT / "native/fbx_asset_import_test.cpp"), str(ufbx_object), "-o", str(test_binary)]
+        if args.cooked_skin is not None:
+            compile_command.insert(1, "-DELISA_TEST_COOKED_SKIN")
+            zstd_flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "libzstd"],
+                cwd=ROOT, text=True).split()
+            compile_command.extend(zstd_flags)
+        run(compile_command)
         run([str(test_binary), "--fixture", str(ROOT / "test/fixtures/fbx_triangle.fbx")])
         if args.assets_root is not None:
             asset_root = args.assets_root.expanduser().resolve()
             run([str(test_binary), "--assets-root", str(asset_root)])
+        if args.cooked_skin is not None:
+            package = args.cooked_skin.expanduser().resolve(strict=True)
+            run([str(test_binary), "--cooked-skin", str(package)])
     print("Bounded FBX import tests passed.")
     return 0
 

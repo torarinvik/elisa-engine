@@ -1,4 +1,7 @@
 #include "fbx_asset_import.h"
+#if defined(ELISA_TEST_COOKED_SKIN)
+#include "cooked_geometry_package.h"
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -79,6 +82,35 @@ int decode_mesh(const std::filesystem::path& path) {
     return 0;
 }
 
+#if defined(ELISA_TEST_COOKED_SKIN)
+int cooked_skin_test(const std::filesystem::path& path) {
+    elisa::assets::CookedGeometry geometry;
+    std::string error;
+    if (!elisa::assets::load_cooked_geometry(path.string(), geometry, error)) {
+        std::fprintf(stderr, "cooked geometry load failed: %s\n", error.c_str());
+        return 1;
+    }
+    bool ok = check(geometry.skin_bone_names.size() == 34,
+        "cooked walking package retains its ordered 34-bone rig");
+    ok &= check(geometry.skin_indices.size() == geometry.positions.size() / 3 * 4 &&
+        geometry.skin_weights.size() == geometry.skin_indices.size(),
+        "cooked walking package has one four-influence row per vertex");
+    for (size_t vertex = 0; vertex < geometry.skin_weights.size() / 4; ++vertex) {
+        float total = 0.0f;
+        for (size_t influence = 0; influence < 4; ++influence) {
+            const size_t index = vertex * 4 + influence;
+            ok &= check(geometry.skin_indices[index] < 34 && std::isfinite(geometry.skin_weights[index]) &&
+                geometry.skin_weights[index] >= 0.0f, "cooked skin influence is valid");
+            total += geometry.skin_weights[index];
+        }
+        ok &= check(std::abs(total - 1.0f) < 0.005f, "cooked vertex weights are normalized");
+    }
+    std::printf("cooked skin package: bones=%zu vertices=%zu\n",
+        geometry.skin_bone_names.size(), geometry.positions.size() / 3);
+    return ok ? 0 : 1;
+}
+#endif
+
 int supplied_assets_test(const std::filesystem::path& root) {
     const std::filesystem::path walking = root / "walking anim" /
         "Meshy_AI_Blue_Sentinel_biped_Animation_Walking_withSkin.fbx";
@@ -91,6 +123,7 @@ int supplied_assets_test(const std::filesystem::path& root) {
     const auto run_asset = elisa::assets::import_fbx(running, false);
     const auto fence_asset = elisa::assets::import_fbx(fence, false);
     const auto walk_mesh = elisa::assets::import_fbx(walking, true);
+    const auto run_mesh = elisa::assets::import_fbx(running, true);
     for (const auto& pair : {std::pair<const char*, const elisa::assets::FbxImportResult*>{"walking", &walk_asset},
             {"running", &run_asset}, {"fence", &fence_asset}}) {
         if (!pair.second->ok) {
@@ -116,6 +149,26 @@ int supplied_assets_test(const std::filesystem::path& root) {
         walk_mesh.primary_mesh.mesh_name != "Icosphere" &&
         walk_mesh.primary_mesh.indices.size() == 83442 * 3,
         "largest cyborg mesh is selected without the auxiliary Icosphere");
+    ok &= check(walk_mesh.primary_mesh.skin_bone_names.size() == 34 &&
+        walk_mesh.primary_mesh.skin_indices.size() == walk_mesh.primary_mesh.positions.size() / 3 * 4 &&
+        walk_mesh.primary_mesh.skin_weights.size() == walk_mesh.primary_mesh.skin_indices.size(),
+        "walking mesh preserves its ordered 34-bone skin payload");
+    ok &= check(run_mesh.ok && run_mesh.primary_mesh_extracted &&
+        run_mesh.primary_mesh.skin_bone_names == walk_mesh.primary_mesh.skin_bone_names,
+        "walking and running mesh skin clusters share the same bone order");
+    bool valid_skin = walk_mesh.primary_mesh.skin_bone_names.size() == 34;
+    for (size_t vertex = 0; vertex < walk_mesh.primary_mesh.skin_weights.size() / 4; ++vertex) {
+        float sum = 0.0f;
+        for (size_t influence = 0; influence < 4; ++influence) {
+            const size_t index = vertex * 4 + influence;
+            const uint32_t bone = walk_mesh.primary_mesh.skin_indices[index];
+            const float weight = walk_mesh.primary_mesh.skin_weights[index];
+            valid_skin = valid_skin && bone < 34 && std::isfinite(weight) && weight >= 0.0f;
+            sum += weight;
+        }
+        valid_skin = valid_skin && std::abs(sum - 1.0f) < 0.001f;
+    }
+    ok &= check(valid_skin, "walking mesh has finite normalized four-bone influences");
     ok &= check(fence_asset.triangles > 3'000'000 && fence_asset.source_unit_meters > 0.0,
         "high-density fence source is imported within the configured limits");
     return ok ? 0 : 1;
@@ -133,6 +186,13 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--decode") {
         return decode_mesh(argv[2]);
     }
+#if defined(ELISA_TEST_COOKED_SKIN)
+    if (argc == 3 && std::string(argv[1]) == "--cooked-skin") {
+        return cooked_skin_test(argv[2]);
+    }
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
+#else
     std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --assets-root DIR | --decode FILE\n");
+#endif
     return 2;
 }

@@ -42,6 +42,10 @@ bool safe_asset_key(const std::string& value) {
 
 bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_triangles) {
     if (max_triangles == 0 || mesh.indices.size() / 3 <= max_triangles) return true;
+    if (!mesh.skin_indices.empty()) {
+        std::fprintf(stderr, "skinned FBX geometry cannot be simplified until bone influences are remapped with the mesh\n");
+        return false;
+    }
     const size_t original_triangles = mesh.indices.size() / 3;
     const size_t target_indices = max_triangles * 3;
     std::vector<uint32_t> simplified(mesh.indices.size());
@@ -117,6 +121,16 @@ std::vector<uint8_t> index_bytes(const std::vector<uint32_t>& values) {
     return bytes;
 }
 
+std::vector<uint8_t> skin_name_bytes(const std::vector<std::string>& names) {
+    std::vector<uint8_t> bytes;
+    for (const std::string& name : names) {
+        if (name.size() > std::numeric_limits<uint32_t>::max()) return {};
+        append_u32_le(bytes, uint32_t(name.size()));
+        bytes.insert(bytes.end(), name.begin(), name.end());
+    }
+    return bytes;
+}
+
 size_t base64_size(size_t byte_count) {
     if (byte_count > std::numeric_limits<size_t>::max() - 2) return std::numeric_limits<size_t>::max();
     const size_t groups = (byte_count + 2) / 3;
@@ -181,14 +195,28 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const std::vector<uint8_t> uvs = float_bytes(mesh.uvs);
     const std::vector<uint8_t> tangents = float_bytes(mesh.tangents);
     const std::vector<uint8_t> indices = index_bytes(mesh.indices);
+    const std::vector<uint8_t> skin_indices = index_bytes(mesh.skin_indices);
+    const std::vector<uint8_t> skin_weights = float_bytes(mesh.skin_weights);
+    const std::vector<uint8_t> skin_names = skin_name_bytes(mesh.skin_bone_names);
     const size_t positions_encoded = base64_size(positions.size());
     const size_t normals_encoded = base64_size(normals.size());
     const size_t uvs_encoded = base64_size(uvs.size());
     const size_t tangents_encoded = base64_size(tangents.size());
     const size_t indices_encoded = base64_size(indices.size());
+    const size_t skin_indices_encoded = base64_size(skin_indices.size());
+    const size_t skin_weights_encoded = base64_size(skin_weights.size());
+    const size_t skin_names_encoded = base64_size(skin_names.size());
+    const bool has_skin = !mesh.skin_bone_names.empty();
+    if (has_skin && (mesh.skin_indices.size() != mesh.positions.size() / 3 * 4 ||
+        mesh.skin_weights.size() != mesh.skin_indices.size() || skin_names.empty())) {
+        std::fprintf(stderr, "FBX importer returned incomplete skin streams\n");
+        return false;
+    }
     const size_t max_payload = MAX_LINE_BYTES - 14;
     if (positions_encoded > max_payload || normals_encoded > max_payload ||
-        uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload) {
+        uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload ||
+        (has_skin && (skin_indices_encoded > max_payload || skin_weights_encoded > max_payload ||
+            skin_names_encoded > max_payload))) {
         std::fprintf(stderr, "FBX geometry exceeds the cooked package line limit; simplify or split the source asset\n");
         return false;
     }
@@ -219,6 +247,13 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         << "uvs_b64=" << base64(uvs) << "\n"
         << "tangents_b64=" << base64(tangents) << "\n"
         << "indices_b64=" << base64(indices) << "\n";
+    if (has_skin) {
+        package << "skin_bones=" << mesh.skin_bone_names.size() << "\n"
+            << "skin_indices_stride=16\nskin_weights_stride=16\n"
+            << "skin_indices_b64=" << base64(skin_indices) << "\n"
+            << "skin_weights_b64=" << base64(skin_weights) << "\n"
+            << "skin_names_b64=" << base64(skin_names) << "\n";
+    }
     const std::string bytes = package.str();
     if (bytes.size() > MAX_PACKAGE_BYTES) {
         std::fprintf(stderr, "FBX geometry exceeds the cooked package size limit\n");

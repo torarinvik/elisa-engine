@@ -103,6 +103,42 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             raise ValueError("cooked package contains an invalid tangent frame")
     if any(value >= vertex_count for (value,) in struct.iter_unpack("<I", indices)):
         raise ValueError("cooked package contains an out-of-range index")
+    skin_fields = {"skin_bones", "skin_indices_stride", "skin_weights_stride",
+        "skin_indices_b64", "skin_weights_b64", "skin_names_b64"}
+    present_skin_fields = skin_fields.intersection(fields)
+    if present_skin_fields and present_skin_fields != skin_fields:
+        raise ValueError("cooked package has an incomplete skin payload")
+    if present_skin_fields:
+        try:
+            bone_count = int(fields["skin_bones"])
+        except ValueError as failure:
+            raise ValueError("cooked package has an invalid skin bone count") from failure
+        if not 1 <= bone_count <= 64 or fields["skin_indices_stride"] != "16" or fields["skin_weights_stride"] != "16":
+            raise ValueError("cooked package has unsupported skin bounds or strides")
+        skin_indices = decode("skin_indices_b64")
+        skin_weights = decode("skin_weights_b64")
+        skin_names = decode("skin_names_b64")
+        if len(skin_indices) != vertex_count * 16 or len(skin_weights) != vertex_count * 16:
+            raise ValueError("cooked package skin influence lengths do not match the mesh")
+        if not all(math.isfinite(value) for (value,) in struct.iter_unpack("<f", skin_weights)):
+            raise ValueError("cooked package contains non-finite skin weights")
+        for vertex in range(vertex_count):
+            joint_indices = struct.unpack_from("<4I", skin_indices, vertex * 16)
+            weights = struct.unpack_from("<4f", skin_weights, vertex * 16)
+            if any(weight < 0.0 or (weight > 0.0 and joint >= bone_count)
+                    for joint, weight in zip(joint_indices, weights)) or abs(sum(weights) - 1.0) > 0.005:
+                raise ValueError("cooked package contains invalid or unnormalized skin influences")
+        offset = 0
+        for _ in range(bone_count):
+            if len(skin_names) - offset < 4:
+                raise ValueError("cooked package bone-name stream is truncated")
+            (length,) = struct.unpack_from("<I", skin_names, offset)
+            offset += 4
+            if length > len(skin_names) - offset:
+                raise ValueError("cooked package bone name exceeds its stream")
+            offset += length
+        if offset != len(skin_names):
+            raise ValueError("cooked package bone-name stream has trailing bytes")
     return fields
 
 
