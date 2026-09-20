@@ -53,6 +53,9 @@ int32_t elisa_render_scene_v1_update_transform(
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
+int32_t elisa_render_scene_v1_set_emissive(
+    int64_t handle, float red, float green, float blue, float strength);
+int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy(int64_t handle);
 int32_t elisa_render_scene_v1_shutdown(void);

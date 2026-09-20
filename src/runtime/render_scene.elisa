@@ -46,6 +46,13 @@ module RenderScene:
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32,
+            blue: f32, strength: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_bloom(enabled: i32, threshold: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
@@ -82,6 +89,10 @@ module RenderScene:
             green: f32
             blue: f32
             alpha: f32
+
+        struct Emission:
+            color: Geometry::Vec3
+            strength: f32
 
         # Private storage makes a native instance token opaque to game code.
         struct InstanceHandle:
@@ -168,6 +179,16 @@ module RenderScene:
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
+
+        # Emission intensity is HDR and can exceed one; the render path's bloom
+        # threshold determines how much emitted light spreads into nearby pixels.
+        def set_emissive(handle: InstanceHandle, emission: Emission) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_emissive(handle.native_value,
+                emission.color.x, emission.color.y, emission.color.z, emission.strength))
+
+        def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
+            enabled_value: i32 = 1 if enabled else 0
+            try check_status(elisa_render_scene_v1_set_bloom(enabled_value, threshold))
 
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
