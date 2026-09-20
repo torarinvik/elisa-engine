@@ -2,8 +2,9 @@
 // miniaudio integration, the plan's selected audio library. The probe decodes
 // the same short clip the Wicked audio check uses and opens a null playback
 // device, so the library is exercised without needing an output device in a
-// headless run. The implementation is compiled into this one translation unit
-// (the native probe), which is what miniaudio's single-header model expects.
+// headless run. The implementation is compiled once in
+// native/miniaudio_implementation.cpp; the Elisa-facing ABI stays in
+// native/audio_service_abi.cpp.
 #include "probe_core.h"
 
 // Only WAV decoding is needed. The bundled FLAC decoder does not compile
@@ -13,7 +14,6 @@
 #define MA_NO_MP3
 #define MA_NO_VORBIS
 #define MA_NO_OPUS
-#define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 #include "miniaudio_service.h"
 

@@ -48,9 +48,10 @@ snapshot is taken from the running SDL3/Wicked host and is returned as an error
 union when the application is stopped, called from the wrong thread, or the
 native profile cannot be represented safely. It reports only engine-owned
 services: Input, Rendering, NativeWindow, AsyncUpload, and AssetLoading are
-available; Physics and Audio remain unavailable until public engine services
-own those integrations. The lifecycle smoke checks those capabilities, queried
-viewport and memory limits, and rejection after shutdown.
+available; Physics and Audio remain unavailable in the live profile until their
+native integrations are advertised and queried. The lifecycle smoke checks
+those capabilities, queried viewport and memory limits, and rejection after
+shutdown.
 
 `Application::initialize_with_requirements()` negotiates a bounded set of
 required services immediately after host initialization and before the caller
@@ -106,8 +107,9 @@ elisascript scripts/wicked_probe.elisascript` run passed two rendered native
 passes, the ordinary Elisa application profile query, and the existing native
 capability-policy checks. On the Apple M5 it reported profile bits `0xb3`,
 optional bits `0x7`, formats `0x7`, 16 viewports, and 9 graphics / 1 streaming
-workers. The application smoke verified Physics and Audio stay unavailable
-until Elisa-owned service adapters are integrated.
+workers. The live profile still reports Physics and Audio unavailable because
+it reflects initialized native host services; Elisa can explicitly apply the
+Audio fallback described in [`audio-runtime.md`](audio-runtime.md).
 
 The checked-startup additions also passed the native application smoke: the
 required Input/Rendering/NativeWindow set returned `Ready`; a Physics

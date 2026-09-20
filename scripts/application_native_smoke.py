@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import json
+import math
+import struct
 import subprocess
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 
@@ -28,6 +31,14 @@ def main() -> int:
             },
         }
         (project / "elisa.project.json").write_text(json.dumps(manifest), encoding="utf-8")
+        fixture = project / "test/fixtures/audio-smoke.wav"
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        samples = [int(6000 * math.sin(2.0 * math.pi * 440.0 * frame / 8000)) for frame in range(400)]
+        with wave.open(str(fixture), "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(8000)
+            output.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
         command = [sys.executable, str(ROOT / "scripts/elisa_build_run.py"), "run", "--project", str(project)]
         status = subprocess.run(command, check=False).returncode
     if status == 0:
