@@ -19,6 +19,7 @@ enum {
     ELISA_RENDER_SCENE_UNKNOWN_HANDLE = -6,
     ELISA_RENDER_SCENE_GENERATION_EXHAUSTED = -7,
     ELISA_RENDER_SCENE_BACKEND_FAILED = -8,
+    ELISA_RENDER_SCENE_ASSET_LOAD_FAILED = -9,
 };
 
 enum {
@@ -36,6 +37,12 @@ int32_t elisa_render_scene_v1_set_camera_look_at(
     float up_x, float up_y, float up_z);
 int64_t elisa_render_scene_v1_create(
     int32_t primitive,
+    float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz,
+    float red, float green, float blue, float alpha);
+int64_t elisa_render_scene_v1_create_mesh(
+    const char* package_path,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz,

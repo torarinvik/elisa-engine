@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from pathlib import PurePosixPath
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -181,6 +182,49 @@ def load_project_config(project: Path) -> dict[str, object]:
     return value
 
 
+def declared_project_path(project: Path, value: object, label: str, *, must_exist: bool) -> Path:
+    if not isinstance(value, str) or not value or "\0" in value or "\\" in value:
+        raise BuildConfigurationError(f"asset cook {label} must be a safe project-relative path")
+    logical = PurePosixPath(value)
+    if logical.is_absolute() or any(part in ("", ".", "..") for part in value.split("/")):
+        raise BuildConfigurationError(f"asset cook {label} must be a safe project-relative path")
+    try:
+        path = (project / Path(*logical.parts)).resolve(strict=must_exist)
+    except OSError as error:
+        raise BuildConfigurationError(f"asset cook {label} cannot be resolved: {error}") from error
+    if not path.is_relative_to(project):
+        raise BuildConfigurationError(f"asset cook {label} resolves outside the project")
+    if must_exist and not path.is_file():
+        raise BuildConfigurationError(f"asset cook {label} is not a regular file: {path}")
+    return path
+
+
+def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
+    declarations = config.get("asset_cooks", [])
+    if not isinstance(declarations, list) or len(declarations) > 64:
+        raise BuildConfigurationError("project 'asset_cooks' must be an array of at most 64 entries")
+    cooker = ENGINE_ROOT / "scripts/cook_fbx_asset.py"
+    for index, declaration in enumerate(declarations):
+        if not isinstance(declaration, dict):
+            raise BuildConfigurationError(f"asset_cooks[{index}] must be an object")
+        source = declared_project_path(project, declaration.get("source"), f"asset_cooks[{index}].source", must_exist=True)
+        output = declared_project_path(project, declaration.get("output"), f"asset_cooks[{index}].output", must_exist=False)
+        asset_path = declaration.get("asset_path")
+        if not isinstance(asset_path, str) or not asset_path:
+            raise BuildConfigurationError(f"asset_cooks[{index}].asset_path must be a non-empty package identity")
+        if "\0" in asset_path or "\\" in asset_path or PurePosixPath(asset_path).is_absolute() or \
+                any(part in ("", ".", "..") for part in asset_path.split("/")):
+            raise BuildConfigurationError(f"asset_cooks[{index}].asset_path must be a safe relative identity")
+        if output == source:
+            raise BuildConfigurationError(f"asset_cooks[{index}] cannot overwrite its source")
+        print(f"Cooking project asset: {source.relative_to(project)} -> {output.relative_to(project)}", flush=True)
+        status = run_command([sys.executable, str(cooker), str(source), "--asset-path", asset_path,
+            "--output", str(output)], cwd=project)
+        if status != 0:
+            return status
+    return 0
+
+
 def application_settings(config: dict[str, object]) -> dict[str, object]:
     application = config.get("application", {})
     if not isinstance(application, dict):
@@ -312,8 +356,12 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
         print("The SDL3/Metal Application host currently supports macOS only.", file=sys.stderr)
         return 2, None, None
     project, main_source, output = resolve_project_paths(args)
+    config = load_project_config(project)
     paths = resolve_native_paths(args)
     validate_native_files(paths)
+    status = cook_declared_assets(project, config)
+    if status != 0:
+        return status, None, None
     compiler = args.compiler or os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = args.cxx or os.environ.get("CXX", "clang++")
 
@@ -356,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_env["ELISA_PROJECT_WIDTH"] = str(app["width"])
         runtime_env["ELISA_PROJECT_HEIGHT"] = str(app["height"])
         runtime_env["ELISA_PROJECT_HIDDEN"] = "1" if app["hidden"] else "0"
+        runtime_env["ELISA_PROJECT_ROOT"] = str(project)
         return run_command([str(output)], cwd=project, env=runtime_env)
     except BuildConfigurationError as error:
         print(f"elisa-build-run: {error}", file=sys.stderr)

@@ -74,7 +74,7 @@ def write_fake_tools(root: Path) -> tuple[Path, Path, Path]:
         "pathlib.Path(os.environ['FAKE_LOG_DIR'], 'linker.json').write_text(json.dumps(sys.argv[1:]))\n"
         "output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
         "program = '#!/usr/bin/env python3\\nimport json, os\\nfrom pathlib import Path\\n'\n"
-        "program += 'settings = {key: os.environ.get(key) for key in (\"ELISA_PROJECT_TITLE\", \"ELISA_PROJECT_WIDTH\", \"ELISA_PROJECT_HEIGHT\", \"ELISA_PROJECT_HIDDEN\")}\\n'\n"
+        "program += 'settings = {key: os.environ.get(key) for key in (\"ELISA_PROJECT_TITLE\", \"ELISA_PROJECT_WIDTH\", \"ELISA_PROJECT_HEIGHT\", \"ELISA_PROJECT_HIDDEN\", \"ELISA_PROJECT_ROOT\")}\\n'\n"
         "program += 'Path(os.environ[\"FAKE_LOG_DIR\"], \"ran.json\").write_text(json.dumps({\"cwd\": os.getcwd(), \"settings\": settings}))\\n'\n"
         "output.write_text(program)\n"
         "output.chmod(0o755)\n",
@@ -134,6 +134,7 @@ class BuildRunCliTests(unittest.TestCase):
                 "ELISA_PROJECT_WIDTH": "1100",
                 "ELISA_PROJECT_HEIGHT": "700",
                 "ELISA_PROJECT_HIDDEN": "1",
+                "ELISA_PROJECT_ROOT": str(project.resolve()),
             })
             compiler_args = json.loads((log_dir / "compiler.json").read_text())
             wrapper_path = Path(compiler_args[-1])
@@ -181,6 +182,30 @@ class BuildRunCliTests(unittest.TestCase):
         ):
             with self.subTest(application=application), self.assertRaises(runner.BuildConfigurationError):
                 runner.application_settings({"application": application})
+
+    def test_declared_asset_cooks_resolve_inside_project(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa asset cook ") as temporary_directory:
+            project = Path(temporary_directory) / "Project with spaces"
+            source = project / "assets" / "walk.fbx"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"fbx")
+            config = {"asset_cooks": [{
+                "source": "assets/walk.fbx",
+                "asset_path": "assets/walk.fbx",
+                "output": "build/cooked/walk.pkg",
+            }]}
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], sys.executable)
+            self.assertEqual(command[1], str(SCRIPT.parent / "cook_fbx_asset.py"))
+            self.assertEqual(command[2], str(source.resolve()))
+            self.assertEqual(command[command.index("--output") + 1], str((project / "build/cooked/walk.pkg").resolve()))
+            self.assertEqual(run.call_args.kwargs["cwd"], project.resolve())
+            config["asset_cooks"][0]["output"] = "../outside.pkg"
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), config)
 
     def test_game_owned_exports_are_rejected_before_native_link(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa ABI audit ") as temporary_directory:
