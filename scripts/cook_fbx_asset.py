@@ -99,21 +99,26 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
 
 def build_cooker(build_dir: Path) -> Path:
     dependency = ROOT / "dependencies/ufbx"
+    meshoptimizer = ROOT / "dependencies/meshoptimizer"
     source = dependency / "ufbx.c"
     header = dependency / "ufbx.h"
     if not source.is_file() or not header.is_file():
         raise ValueError("missing pinned ufbx files; run python3 scripts/fetch_dependencies.py")
+    simplifier = meshoptimizer / "simplifier.cpp"
+    if not (meshoptimizer / "meshoptimizer.h").is_file() or not simplifier.is_file():
+        raise ValueError("missing pinned meshoptimizer simplifier; run python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier")
     cc = os.environ.get("CC", "cc")
     cxx = os.environ.get("CXX", "c++")
     object_file = build_dir / "ufbx.o"
     executable = build_dir / "fbx-asset-cooker"
     run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(object_file)])
-    run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(ROOT / "native"),
-        str(ROOT / "native/fbx_asset_cooker.cpp"), str(object_file), "-o", str(executable)])
+    run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer), "-I", str(ROOT / "native"),
+        str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(object_file), "-o", str(executable)])
     return executable
 
 
-def cook_one(cooker: Path, source: Path, asset_path: str, output: Path) -> dict[str, str]:
+def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
+    max_triangles: int | None = None) -> dict[str, str]:
     source = source.expanduser().resolve(strict=True)
     if not source.is_file():
         raise ValueError("FBX source must be a regular file")
@@ -123,8 +128,13 @@ def cook_one(cooker: Path, source: Path, asset_path: str, output: Path) -> dict[
     digest = source_hash(source)
     output = output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    run([str(cooker), "--source", str(source), "--asset-path", key,
-        "--output", str(output), "--sha256", digest])
+    command = [str(cooker), "--source", str(source), "--asset-path", key,
+        "--output", str(output), "--sha256", digest]
+    if max_triangles is not None:
+        if isinstance(max_triangles, bool) or not 1 <= max_triangles <= 1000000:
+            raise ValueError("max triangles must be an integer in [1, 1000000]")
+        command.extend(["--max-triangles", str(max_triangles)])
+    run(command)
     return parse_package(output, key, digest)
 
 
@@ -133,12 +143,15 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("source", nargs="?", type=Path, help="source FBX file")
     parser.add_argument("--asset-path", help="project-relative identity recorded in the cooked package")
     parser.add_argument("--output", type=Path, help="destination .pkg path")
+    parser.add_argument("--max-triangles", type=int, help="simplify output to no more than this many triangles")
     parser.add_argument("--self-test", action="store_true", help="cook and validate the synthetic triangle fixture")
     options = parser.parse_args(arguments)
     if not options.self_test and (options.source is None or options.asset_path is None or options.output is None):
         parser.error("source, --asset-path, and --output are required unless --self-test is used")
-    if options.self_test and (options.source is not None or options.asset_path is not None or options.output is not None):
-        parser.error("--self-test cannot be combined with source, --asset-path, or --output")
+    if options.self_test and (options.source is not None or options.asset_path is not None or options.output is not None or options.max_triangles is not None):
+        parser.error("--self-test cannot be combined with source, --asset-path, --output, or --max-triangles")
+    if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
+        parser.error("--max-triangles must be in [1, 1000000]")
 
     try:
         with tempfile.TemporaryDirectory(prefix="elisa-fbx-cooker-") as temporary:
@@ -152,7 +165,7 @@ def main(arguments: list[str]) -> int:
                     raise ValueError("triangle fixture package counts do not match")
                 print("FBX cooker self-test passed: one normalized triangle package")
             else:
-                fields = cook_one(cooker, options.source, options.asset_path, options.output)
+                fields = cook_one(cooker, options.source, options.asset_path, options.output, options.max_triangles)
                 print(f"FBX package validated: {fields['triangles']} triangles, {fields['positions']} vertices")
     except (OSError, ValueError, subprocess.CalledProcessError) as failure:
         print(f"FBX cooking failed: {failure}", file=sys.stderr)

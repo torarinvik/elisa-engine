@@ -217,9 +217,16 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
             raise BuildConfigurationError(f"asset_cooks[{index}].asset_path must be a safe relative identity")
         if output == source:
             raise BuildConfigurationError(f"asset_cooks[{index}] cannot overwrite its source")
+        max_triangles = declaration.get("max_triangles")
+        if max_triangles is not None and (isinstance(max_triangles, bool) or
+            not isinstance(max_triangles, int) or not 1 <= max_triangles <= 1000000):
+            raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
         print(f"Cooking project asset: {source.relative_to(project)} -> {output.relative_to(project)}", flush=True)
-        status = run_command([sys.executable, str(cooker), str(source), "--asset-path", asset_path,
-            "--output", str(output)], cwd=project)
+        command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
+            "--output", str(output)]
+        if max_triangles is not None:
+            command.extend(["--max-triangles", str(max_triangles)])
+        status = run_command(command, cwd=project)
         if status != 0:
             return status
     return 0

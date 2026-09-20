@@ -134,8 +134,8 @@ cooks the source into a versioned, hash-carrying package (normalized float32 pos
 indices) as part of the validation run, and both hosts build the goal
 marker's mesh from that package rather than from a source format. Fetch the
 pinned dependencies with `python3 scripts/fetch_dependencies.py` (cgltf,
-ufbx FBX import, and the meshoptimizer vertex-cache files, revision- and
-hash-locked) and
+ufbx FBX import, and meshoptimizer vertex-cache plus simplification sources,
+revision- and hash-locked) and
 `python3 scripts/fetch_ozz.py` (ozz-animation, pinned by commit and built into
 `dependencies/ozz`) and `python3 scripts/fetch_recast.py` (Recast/Detour,
 pinned by commit and built into `dependencies/recast`; miniaudio is a pinned
@@ -162,9 +162,12 @@ The bounded FBX import stage can be checked independently with
 also inspect the supplied WallGame walking, running, and fence FBX sources.
 `python3 scripts/cook_fbx_asset.py --self-test` verifies a normalized geometry
 package, and the tool accepts a source FBX, a project-relative asset key, and
-an output `.pkg` path for real assets. This currently packages the largest
-triangle mesh only; materials, skinning, animation and runtime rendering are
-still pending.
+an output `.pkg` path for real assets. `--max-triangles` applies bounded
+meshoptimizer simplification for dense meshes; the supplied 3.08-million-
+triangle Arc Gate cooks to 12,000 triangles and a 620 kB package. Elisa's
+`RenderScene::create_mesh`, `set_emissive`, and `set_bloom` APIs load and render
+cooked geometry and drive generic glow effects. Full scene/material cooking,
+skin weights and animation playback remain pending.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by

@@ -15,13 +15,13 @@ largest triangle mesh and returns indexed positions, normals, UVs, and bounds.
 This keeps helper meshes such as the cyborg's small `Icosphere` out of the
 current character geometry check.
 
-Input is bounded to 512 MiB per file, 512 MiB temporary parsing memory, 1.5
-GiB parsed scene memory, 4,096 nodes and bones, 1,024 meshes and materials,
-256 animation stacks, 5,000,000 scene triangles, 512 MiB extracted corner data,
-and 256 MiB for vertex indexing. Parsing is strict; external files are not read.
-Malformed input and limit failures return an error without exposing a partial
-mesh. Current game assets remain under these limits, including the 3,077,694-
-triangle fence model.
+Input is bounded to 512 MiB per file, 1.5 GiB temporary parsing memory, 3 GiB
+parsed scene memory, 4,096 nodes and bones, 1,024 meshes and materials, 256
+animation stacks, 5,000,000 scene triangles, 1 GiB extracted corner data, and
+768 MiB for vertex indexing. These are lazy hard ceilings for offline asset
+cooking, raised after the supplied dense gate exceeded the original decode
+budget. Parsing is strict; external files are not read. Malformed input and
+limit failures return an error without exposing a partial mesh.
 
 Run the synthetic cm-unit triangle fixture with:
 
@@ -29,6 +29,7 @@ Run the synthetic cm-unit triangle fixture with:
 python3 scripts/fetch_dependencies.py --only ufbx_source
 python3 scripts/fetch_dependencies.py --only ufbx_header
 python3 scripts/fetch_dependencies.py --only ufbx_license
+python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier
 python3 scripts/test_fbx_import.py
 ```
 
@@ -47,20 +48,24 @@ unit conversion, node translation, finite generated normals, and valid indices.
 The engine-owned `scripts/cook_fbx_asset.py` writes the selected mesh into the
 existing `elisa-cooked-v2` geometry package with source identity and hash,
 float32 positions/normals/UVs, uint32 indices, bounds, and fixed strides. It
-validates all decoded lengths, finite values, indices, and the runtime reader's
-64 MiB package/16 MiB section limits before reporting success. Run
-`python3 scripts/cook_fbx_asset.py --self-test` for the synthetic package test.
-For a real source, supply `SOURCE --asset-path PROJECT_RELATIVE_PATH --output
-DESTINATION.pkg`; the asset key is stored in the package and must be a safe
-relative path.
+can simplify through pinned meshoptimizer with `--max-triangles COUNT`, compacts
+unreferenced vertices, and validates lengths, finite values, indices, and the
+runtime reader's 64 MiB package/16 MiB section limits. The supplied Arc Gate
+cooks from 3,077,694 to 12,000 triangles, 10,009 vertices and 619,538 bytes at
+0.00124 relative error. Run `python3 scripts/cook_fbx_asset.py --self-test` for
+the synthetic package test. For a real source, supply `SOURCE --asset-path
+PROJECT_RELATIVE_PATH --output DESTINATION.pkg`; the asset key must be safe and
+project-relative.
 
-`native/package_load.h` now reads the optional UV channel and copies it into
-Wicked's first UV set. A native reader check loaded the generated walking
+`native/package_load.h` reads the optional UV channel and copies it into Wicked's
+first UV set. Elisa's public `RenderScene::create_mesh` loads cooked packages;
+the game instantiates the simplified Arc Gate throughout the maze and drives
+emission/bloom from Elisa. A native reader check loaded the generated walking
 package: 83,442 triangles, 97,679 normalized vertices, and one UV per vertex.
 The Wicked gate also has a package fixture that checks UV preservation.
 
 Import and cooking still select one mesh. They do not preserve the full node
 hierarchy, material subsets or texture paths, skin weights or bind poses, or
-animation curves. The cooker's mesh output is not connected to an Elisa
-asset-load or render call. A05/C01 integration and real Wicked rendering remain
-the A09 completion criteria.
+animation curves. The game currently uses one Arc Gate variant with uniform
+material color; source texture mapping, shared mesh residency, junction variants
+and electric particles remain.
