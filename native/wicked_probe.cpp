@@ -51,6 +51,7 @@
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
 #include "debug_draw_bridge.h"
+#include "postprocess_bridge.h"
 #include "parallel_executor.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -440,11 +441,9 @@ int main(int argc, char** argv) {
     wi::RenderPath3D render_path;
     render_path.scene = &scene;
     render_path.camera = camera_component;
-    // Disable occlusion queries because this one-shot probe has no primed history.
     render_path.setOcclusionCullingEnabled(false);
     wi::renderer::SetOcclusionCullingEnabled(false);
     application.ActivatePath(&render_path);
-    // Build and remove native UI buttons so the captured frame is unchanged.
     if (!probe_wicked_gui(render_path.GetGUI(), manifest)) {
         return 1;
     }
@@ -467,7 +466,6 @@ int main(int argc, char** argv) {
         }
         wi::helper::Sleep(16);
     }
-    // Depth-clear experiment was inconclusive; leave engine defaults intact.
     // Settle loop: pipeline states compile in the background on first use
     // and draws using them are skipped until ready, so give the queue wall
     // time between frames instead of only counting frames.
@@ -569,6 +567,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!probe_debug_draw_bridge()) {
+        return 1;
+    }
+    if (!probe_postprocess_bridge(render_path)) {
         return 1;
     }
     scene.Entity_Remove(object);

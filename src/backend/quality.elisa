@@ -1,0 +1,76 @@
+# Backend-neutral render quality. Native adapters translate this validated
+# profile to the features their queried renderer actually supports.
+module Quality:
+    private:
+        const module Limits:
+            MIN_SCALE: f32 = 0.25
+            MAX_SCALE: f32 = 1.0
+            MIN_BLOOM_THRESHOLD: f32 = 0.0
+            MAX_BLOOM_THRESHOLD: f32 = 100.0
+
+    public:
+        enum Level:
+            Low
+            Medium
+            High
+
+        enum Tonemap:
+            Reinhard
+            Aces
+            Uchimura
+
+        enum Upscaler:
+            None
+            Fsr1
+            Fsr2
+
+        struct Profile:
+            level: mutable Level
+            tonemap: mutable Tonemap
+            upscaler: mutable Upscaler
+            render_scale: mutable f32
+            bloom: mutable bool
+            bloom_threshold: mutable f32
+            fxaa: mutable bool
+            ambient_occlusion: mutable bool
+            screen_space_reflections: mutable bool
+            fog: mutable bool
+            depth_effects: mutable bool
+
+        def Profile() -> Profile:
+            Profile{
+                level: Level.Medium,
+                tonemap: Tonemap.Aces,
+                upscaler: Upscaler.None,
+                render_scale: 1.0,
+                bloom: true,
+                bloom_threshold: 1.0,
+                fxaa: false,
+                ambient_occlusion: false,
+                screen_space_reflections: false,
+                fog: true,
+                depth_effects: true,
+            }
+
+        def profile_valid(profile: Profile) -> bool:
+            profile.render_scale >= Limits::MIN_SCALE and profile.render_scale <= Limits::MAX_SCALE and profile.bloom_threshold >= Limits::MIN_BLOOM_THRESHOLD and profile.bloom_threshold <= Limits::MAX_BLOOM_THRESHOLD
+
+        def low() -> Profile:
+            profile: mutable Profile = Profile()
+            profile.level <- Level.Low
+            profile.render_scale <- 0.5
+            profile.bloom <- false
+            profile.fxaa <- true
+            profile.ambient_occlusion <- false
+            profile.screen_space_reflections <- false
+            profile.depth_effects <- false
+            profile
+
+        def high() -> Profile:
+            profile: mutable Profile = Profile()
+            profile.level <- Level.High
+            profile.render_scale <- 1.0
+            profile.ambient_occlusion <- true
+            profile.screen_space_reflections <- true
+            profile.depth_effects <- true
+            profile

@@ -1,21 +1,16 @@
-# Run with: elisascript scripts/check.elisascript
-# Tool arguments are passed directly; no shell command strings are constructed.
 def compiler_path() -> sview:
     _ =
         configured: sview = get_environment_or("ELISA_COMPILER_BIN", "")
         if configured != "":
             return configured
         configured
-
     directories: darray[sview] =
         search_path: sview = get_environment_or("PATH", "")
         split(search_path, ":")
-
     for directory in directories:
         candidate: sview =
             base: sview = "." if directory == "" else directory
             f"{base}/elisac-stage1"
-
         if is_file(path(candidate)) and is_executable(path(candidate)):
             return candidate
     ""
@@ -362,6 +357,11 @@ def main(arguments: darray[sview]) -> i64:
     return material_status if material_status != 0
     material_status <- run_visible(material_binary, [])
     return material_status if material_status != 0
+    quality_binary: sview = str(root.joinpath("build/quality-test"))
+    quality_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", quality_binary, str(root.joinpath("test/quality.elisa"))])
+    return quality_status if quality_status != 0
+    quality_status <- run_visible(quality_binary, [])
+    return quality_status if quality_status != 0
     replay_binary: sview = str(root.joinpath("build/replay-test"))
     replay_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", replay_binary, str(root.joinpath("test/replay.elisa"))])
     return replay_status if replay_status != 0

@@ -1,0 +1,17 @@
+include "../src/backend/quality.elisa"
+
+def main() -> i32:
+    profile: Quality::Profile = Quality::Profile()
+    return 1 if not Quality::profile_valid(profile)
+    return 2 if profile.tonemap != Quality::Tonemap.Aces or profile.bloom_threshold != 1.0
+    low: Quality::Profile = Quality::low()
+    return 3 if not Quality::profile_valid(low) or low.render_scale != 0.5 or low.bloom
+    high: Quality::Profile = Quality::high()
+    return 4 if not Quality::profile_valid(high) or not high.ambient_occlusion or not high.screen_space_reflections
+    invalid: mutable Quality::Profile = profile
+    invalid.render_scale <- 0.1
+    return 5 if Quality::profile_valid(invalid)
+    invalid.render_scale <- 1.0
+    invalid.bloom_threshold <- 101.0
+    return 6 if Quality::profile_valid(invalid)
+    0
