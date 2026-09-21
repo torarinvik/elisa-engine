@@ -2,6 +2,7 @@
 # Elisa owns entity-to-body links; native handles remain private to PhysicsRuntime.
 include "./services.elisa"
 include "../world/world.elisa"
+include "../world/hierarchy.elisa"
 include "../math/geometry.elisa"
 include "../vendor/elisa_math.elisa"
 
@@ -34,28 +35,12 @@ module WorldPhysics:
                 if bindings.entities[index].world_epoch == entity.world_epoch and bindings.entities[index].id == entity.id:
                     break index
 
-    public:
-        def Bindings() -> Bindings:
-            Bindings{
-                entities: zeroed,
-                bodies: PhysicsRuntime::ServiceBodyHandles::Pool(),
-                count: 0,
-            }
-
-        def binding_count(bindings: Bindings&) -> usize:
-            bindings.count
-
-        # Attach an axis-aligned box to the entity's current World position.
-        # The current Jolt bridge publishes position only; entity rotation and
-        # scale remain owned by World and are preserved during synchronization.
-        def bind(session: RuntimeServices::Session&, world: World::World&,
+        def create_binding(session: RuntimeServices::Session&,
             bindings: mutable Bindings&, entity: World::EntityRef,
-            kind: PhysicsRuntime::BodyKind, half_extents: Geometry::Vec3,
-            mass: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, World::WorldError, WorldPhysicsError]:
+            transform: Geometry::Transform, kind: PhysicsRuntime::BodyKind,
+            half_extents: Geometry::Vec3, mass: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
             raise WorldPhysicsError.EntityAlreadyBound if binding_index(bindings, entity) != Sentinel::NO_BINDING
             raise WorldPhysicsError.Capacity if bindings.count >= WorldPhysics::MAX_BINDINGS
-            transform: mutable Geometry::Transform = Geometry::transform_identity()
-            raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(world, entity, &transform)
             scaled_extents: Geometry::Vec3 = Geometry::Vec3{
                 x: half_extents.x * ElisaMath::fabsf(transform.scale.x),
                 y: half_extents.y * ElisaMath::fabsf(transform.scale.y),
@@ -76,6 +61,41 @@ module WorldPhysics:
                 raise WorldPhysicsError.Capacity
             bindings.entities[bindings.count] <- entity
             bindings.count <- bindings.count + 1
+
+    public:
+        def Bindings() -> Bindings:
+            Bindings{
+                entities: zeroed,
+                bodies: PhysicsRuntime::ServiceBodyHandles::Pool(),
+                count: 0,
+            }
+
+        def binding_count(bindings: Bindings&) -> usize:
+            bindings.count
+
+        # Attach an axis-aligned box to the entity's current World position.
+        # The current Jolt bridge publishes position only; entity rotation and
+        # scale remain owned by World and are preserved during synchronization.
+        def bind(session: RuntimeServices::Session&, world: World::World&,
+            bindings: mutable Bindings&, entity: World::EntityRef,
+            kind: PhysicsRuntime::BodyKind, half_extents: Geometry::Vec3,
+            mass: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            transform: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(world, entity, &transform)
+            try create_binding(session, bindings, entity, transform, kind, half_extents, mass)
+
+        # Attach a checked World entity using the hierarchy's composed pose.
+        # The hierarchy must have been updated after its latest local edits.
+        def bind_hierarchy(session: RuntimeServices::Session&, world: World::World&,
+            hierarchy: WorldHierarchy::Hierarchy&, bindings: mutable Bindings&,
+            entity: World::EntityRef, kind: PhysicsRuntime::BodyKind,
+            half_extents: Geometry::Vec3, mass: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            checked_transform: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(world, entity, &checked_transform)
+            transform: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldPhysicsError.EntityUnavailable if not WorldHierarchy::hierarchy_try_world(
+                hierarchy, entity.id, &transform)
+            try create_binding(session, bindings, entity, transform, kind, half_extents, mass)
 
         # Destroy the native body before removing its link, so failed cleanup
         # leaves the operation retryable.
@@ -113,6 +133,45 @@ module WorldPhysics:
             for index in 0..<bindings.count |world, bindings, poses|:
                 try World::world_set_transform(world, bindings.entities[index], poses[index])
 
+        # Capture and validate the whole physics result before mutating the
+        # hierarchy. Bound parent bodies publish first so each child's local
+        # pose is derived from its parent's newly simulated world pose.
+        def sync_hierarchy(session: RuntimeServices::Session&,
+            hierarchy: mutable WorldHierarchy::Hierarchy&, bindings: Bindings&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            poses: mutable Geometry::Transform[WorldPhysics::MAX_BINDINGS] = zeroed
+            depths: mutable usize[WorldPhysics::MAX_BINDINGS] = zeroed
+            order: mutable usize[WorldPhysics::MAX_BINDINGS] = zeroed
+            for index in 0..<bindings.count |session, hierarchy, bindings, poses, depths, order|:
+                existing: mutable Geometry::Transform = Geometry::transform_identity()
+                raise WorldPhysicsError.SynchronizationFailure if not WorldHierarchy::hierarchy_try_world(
+                    hierarchy, bindings.entities[index].id, &existing)
+                depth: usize = WorldHierarchy::hierarchy_depth(hierarchy, bindings.entities[index].id)
+                raise WorldPhysicsError.SynchronizationFailure if depth >= WorldHierarchy::MAX_NODES
+                body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
+                position: Geometry::Vec3 = try RuntimeServices::physics_body_position(session, body)
+                updated: Geometry::Transform = Geometry::Transform{
+                    position: position,
+                    rotation: existing.rotation,
+                    scale: existing.scale,
+                }
+                raise WorldPhysicsError.SynchronizationFailure if not Geometry::transform_is_valid(updated)
+                poses[index] <- updated
+                depths[index] <- depth
+                order[index] <- index
+            if bindings.count > 1:
+                for _ in 0..<bindings.count |order, depths|:
+                    for cursor in 0..<bindings.count - 1 |order, depths|:
+                        if depths[order[cursor]] > depths[order[cursor + 1]]:
+                            left: usize = order[cursor]
+                            right: usize = order[cursor + 1]
+                            order[cursor] <- right
+                            order[cursor + 1] <- left
+            for slot in 0..<bindings.count |hierarchy, bindings, poses, order|:
+                index: usize = order[slot]
+                applied: bool = WorldHierarchy::hierarchy_apply_physics(
+                    hierarchy, bindings.entities[index].id, poses[index], false)
+                raise WorldPhysicsError.SynchronizationFailure if not applied
+
         # One session frame advances the fixed clock, steps Jolt for each due
         # tick, and publishes the resulting entity poses after each tick.
         def advance_and_sync(session: mutable RuntimeServices::Session&,
@@ -127,6 +186,25 @@ module WorldPhysics:
                         error failure: 1
                     raise WorldPhysicsError.PhysicsFailure if step_status != 0
                     sync_status: i32 = catch sync_world(session, world, bindings):
+                        ok: 0
+                        error failure: 1
+                    raise WorldPhysicsError.SynchronizationFailure if sync_status != 0
+            frame
+
+        # Hierarchy callers share the session clock and publish every due pose
+        # through the same parent-first, staged synchronization path.
+        def advance_and_sync_hierarchy(session: mutable RuntimeServices::Session&,
+            hierarchy: mutable WorldHierarchy::Hierarchy&, bindings: Bindings&,
+            elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, WorldPhysicsError]:
+            frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(session, elapsed_micros)
+            if bindings.count > 0:
+                for _ in 0..<frame.steps |session, hierarchy, bindings|:
+                    step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
+                        Runtime::fixed_step_seconds()):
+                        value: 0
+                        error failure: 1
+                    raise WorldPhysicsError.PhysicsFailure if step_status != 0
+                    sync_status: i32 = catch sync_hierarchy(session, hierarchy, bindings):
                         ok: 0
                         error failure: 1
                     raise WorldPhysicsError.SynchronizationFailure if sync_status != 0
