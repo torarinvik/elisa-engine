@@ -10,6 +10,15 @@ include "../src/math/geometry.elisa"
 
 module RenderSceneSnapshotNativeTests:
     private:
+        const module Stress:
+            INSTANCE_COUNT: usize = 200
+            RENDER_ID_BASE: i64 = 10000
+            LAST_INDEX: usize = 199
+            INITIAL_NATIVE_INSTANCE_COUNT: u64 = 3
+            BATCH_ENVELOPE_CALLS: u64 = 2
+            POSITION_SPACING: f32 = 3.0
+            CHANGED_FIRST_POSITION_X: f32 = -7.0
+
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
 
@@ -28,6 +37,12 @@ module RenderSceneSnapshotNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_shared_mesh_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_position_x(render_id: i64, expected_x: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() -> u64
 
         @callconv(c)
         extern elisa_render_scene_v1_test_object_count() -> u64
@@ -257,7 +272,62 @@ module RenderSceneSnapshotNativeTests:
             return 72 if not despawn_a or after_a_extract != 0 or after_a_sync != 0
             return 73 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
             return 81 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 0
-            return 74 if unregister_test_snapshot_assets() != 0
             return 75 if elisa_render_scene_v1_test_snapshot_identity_matches(
                 gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
+
+            stress_references: mutable World::EntityRef[Stress::INSTANCE_COUNT] = zeroed
+            for index in 0..<Stress::INSTANCE_COUNT |world, bindings, stress_references|:
+                gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                    value: value
+                    error failure: return 83
+                stress_references[index] <- gameplay
+                transform: Geometry::Transform = Geometry::Transform{
+                    position: Geometry::Vec3{x: index.f32() * Stress::POSITION_SPACING, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                }
+                moved: bool = catch World::world_set_transform(&world, gameplay, transform):
+                    ok: true
+                    error failure: false
+                return 84 if not moved
+                return 85 if bind_world_render(&bindings, world, gameplay,
+                    Stress::RENDER_ID_BASE + index.i64(), render_visual(701),
+                    Geometry::transform_identity()) != 0
+
+            stress_extraction: i32 = extract_world_render(world, &bindings, &snapshot)
+            stress_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 86 if stress_extraction != 0 or stress_sync != 0
+            stress_counts_valid: bool = RenderSnapshot::snapshot_count(snapshot) == Stress::INSTANCE_COUNT and RenderSnapshotScene::binding_count(presenter) == Stress::INSTANCE_COUNT and RenderScene::instance_count() == Stress::INITIAL_NATIVE_INSTANCE_COUNT + Stress::INSTANCE_COUNT.u64()
+            return 87 if not stress_counts_valid
+            return 94 if elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() != Stress::INSTANCE_COUNT.u64() + Stress::BATCH_ENVELOPE_CALLS
+            return 88 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 1
+            stress_pair_shared: bool = elisa_render_scene_v1_test_snapshot_meshes_shared(
+                Stress::RENDER_ID_BASE, Stress::RENDER_ID_BASE + Stress::LAST_INDEX.i64()) != 0
+            return 89 if not stress_pair_shared
+
+            changed_transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: Stress::CHANGED_FIRST_POSITION_X, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            }
+            changed: bool = catch World::world_set_transform(&world, stress_references[0], changed_transform):
+                ok: true
+                error failure: false
+            return 90 if not changed
+            changed_extraction: i32 = extract_world_render(world, &bindings, &snapshot)
+            changed_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 91 if changed_extraction != 0 or changed_sync != 0
+            first_position_valid: bool = elisa_render_scene_v1_test_snapshot_position_x(
+                Stress::RENDER_ID_BASE, Stress::CHANGED_FIRST_POSITION_X) != 0
+            last_position_valid: bool = elisa_render_scene_v1_test_snapshot_position_x(
+                Stress::RENDER_ID_BASE + Stress::LAST_INDEX.i64(),
+                Stress::LAST_INDEX.f32() * Stress::POSITION_SPACING) != 0
+            stress_mesh_retained: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == 1
+            return 92 if not first_position_valid or not last_position_valid or not stress_mesh_retained
+
+            cleared: bool = catch RenderSnapshotScene::clear(&presenter):
+                ok: true
+                error failure: false
+            return 93 if not cleared or RenderScene::instance_count() != 3 or elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 0
+            return 74 if unregister_test_snapshot_assets() != 0
             0

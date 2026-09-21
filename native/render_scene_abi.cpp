@@ -106,6 +106,8 @@ struct RenderSceneService {
     size_t snapshot_shared_geometry_bytes = 0;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
+    uint64_t snapshot_test_transaction_api_calls = 0;
+    uint64_t snapshot_test_last_transaction_api_calls = 0;
 #endif
     size_t snapshot_row_count = 0;
     size_t snapshot_retire_count = 0;
@@ -325,6 +327,10 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_expected_previous_count = 0;
     state.snapshot_transaction_active = false;
     state.snapshot_test_fail_after_creates = -1;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    state.snapshot_test_transaction_api_calls = 0;
+    state.snapshot_test_last_transaction_api_calls = 0;
+#endif
     state.snapshot_rows = {};
     state.snapshot_retire_handles = {};
     state.snapshot_results = {};

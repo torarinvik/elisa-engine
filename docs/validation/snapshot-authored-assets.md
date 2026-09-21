@@ -21,7 +21,11 @@ its authored PBR materials before publishing the first snapshot. The native
 SDL3/Metal smoke verifies cooked vertex/index counts, material factors, two
 static instances sharing one Wicked mesh, pair-level mesh counts across
 replacement and despawn, live unregister rejection, rollback and retry, stable
-identity updates, and release of all shared pairs after clear.
+identity updates, and release of all shared pairs after clear. It also submits
+200 instances of one pair in one snapshot and checks the test-only ABI counter
+reports 202 calls: begin, 200 staged rows, and commit. Updating one instance's
+transform leaves the other instance at its own position, and clearing the batch
+releases the shared mesh while preserving the primitive baseline.
 
 The current glTF geometry cooker deliberately supports one untransformed mesh
 node, one indexed triangle primitive, and POSITION/NORMAL/optional

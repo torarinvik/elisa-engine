@@ -110,6 +110,26 @@ extern "C" uint64_t elisa_render_scene_v1_test_snapshot_shared_mesh_count(void) 
     return count;
 }
 
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_last_transaction_api_calls(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    return state.snapshot_test_last_transaction_api_calls;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_position_x(
+    int64_t render_id, float expected_x) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live || instance.render_id != render_id) continue;
+        const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
+        return transform != nullptr && std::abs(transform->translation_local.x - expected_x) <= 1.0e-5f ? 1 : 0;
+    }
+    return 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

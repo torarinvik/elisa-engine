@@ -8,6 +8,9 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_begin(uint32_t previous_count)
     close_snapshot_transaction(state, false);
     state.snapshot_expected_previous_count = previous_count;
     state.snapshot_transaction_active = true;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    state.snapshot_test_transaction_api_calls = 1;
+#endif
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -56,6 +59,9 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_stage(
         }
     }
     state.snapshot_rows[state.snapshot_row_count++] = row;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    ++state.snapshot_test_transaction_api_calls;
+#endif
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -75,6 +81,9 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_retire(int64_t handle) {
         if (state.snapshot_rows[index].existing_handle == handle) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     state.snapshot_retire_handles[state.snapshot_retire_count++] = handle;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    ++state.snapshot_test_transaction_api_calls;
+#endif
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -253,6 +262,9 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
     }
 
     state.snapshot_result_count = state.snapshot_row_count;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    state.snapshot_test_last_transaction_api_calls = state.snapshot_test_transaction_api_calls + 1;
+#endif
     state.snapshot_transaction_active = false;
     state.snapshot_row_count = 0;
     state.snapshot_retire_count = 0;
