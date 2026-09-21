@@ -138,6 +138,9 @@ module RenderScene:
             end_x: f32, end_y: f32, end_z: f32, phase: f32, visibility: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_electric_arc_depth_test(handle: i64, enabled: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_electric_arc_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
@@ -415,6 +418,12 @@ module RenderScene:
             end: Geometry::Vec3, phase: f32, visibility: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_update_electric_arc(handle.native_value,
                 start.x, start.y, start.z, end.x, end.y, end.z, phase, visibility))
+
+        # Enable physical occlusion for socket-anchored world-space electricity.
+        # Existing arcs default to overlay; this setting survives every update.
+        def set_electric_arc_depth_test(handle: ElectricArcHandle, enabled: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_electric_arc_depth_test(
+                handle.native_value, 1 if enabled else 0))
 
         def set_electric_arc_visible(handle: ElectricArcHandle, visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_electric_arc_visible(

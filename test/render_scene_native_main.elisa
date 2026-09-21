@@ -10,6 +10,7 @@ include "./maze_rendering_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
+include "./render_scene_arc_depth_native.elisa"
 using Maze
 using MazeGame
 using MazeTrace
@@ -156,6 +157,8 @@ def exercise_render_scene() -> i32:
     electric_arc: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.06, 0.15, 7):
         value: value
         error failure: return 89
+    arc_depth_test: i32 = RenderSceneArcDepthNativeTests::exercise(electric_arc)
+    return arc_depth_test if arc_depth_test != 0
     degenerate_arc: i32 = catch RenderScene::update_electric_arc(electric_arc,
         Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 0.1, 1.0):
         ok: 0

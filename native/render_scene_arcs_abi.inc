@@ -73,10 +73,11 @@ void populate_arc_trail(wi::TrailRenderer& trail, const ElectricArcSlot& arc,
     trail.Clear();
     trail.subdivision = ArcTuning::TRAIL_SUBDIVISION;
     trail.blendMode = wi::enums::BLENDMODE_ADDITIVE;
-    trail.depth_test_enabled = false;
+    trail.depth_test_enabled = arc.depth_test;
     trail.color = XMFLOAT4(1, 1, 1, 1);
     trail.width = ArcTuning::TRAIL_WIDTH;
-    trail.depth_soften = ArcTuning::TRAIL_DEPTH_SOFTEN;
+    // Orthographic arcs use hardware depth only; the legacy soft fade assumes perspective.
+    trail.depth_soften = arc.depth_test ? 0.0f : ArcTuning::TRAIL_DEPTH_SOFTEN;
 
     const float dx = end_x - start_x;
     const float dz = end_z - start_z;
@@ -134,6 +135,7 @@ extern "C" int64_t elisa_render_scene_v1_create_electric_arc(
     arc.seed = seed;
     arc.width = width;
     arc.amplitude = amplitude;
+    arc.depth_test = false;
     arc.visible = true;
     arc.live = true;
     arc.halo.Clear();
@@ -186,7 +188,7 @@ extern "C" int32_t elisa_render_scene_v1_update_electric_arc(
         const float direction = (arc.seed & 1u) == 0u ? 1.0f : -1.0f;
         arc.branch.subdivision = ArcTuning::BRANCH_SUBDIVISION;
         arc.branch.blendMode = wi::enums::BLENDMODE_ADDITIVE;
-        arc.branch.depth_test_enabled = false;
+        arc.branch.depth_test_enabled = arc.depth_test;
         arc.branch.color = XMFLOAT4(1, 1, 1, 1);
         arc.branch.width = ArcTuning::TRAIL_WIDTH;
         const XMFLOAT4 branch_color(ArcTuning::BRANCH_RED * intensity,
@@ -227,5 +229,25 @@ extern "C" int32_t elisa_render_scene_v1_destroy_electric_arc(int64_t handle) {
     arc.branch.Clear();
     arc.visible = false;
     arc.live = false;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+// Default remains overlay for compatibility. World-space effects opt into depth.
+extern "C" int32_t elisa_render_scene_v1_set_electric_arc_depth_test(int64_t handle, int32_t enabled) {
+    if (enabled != 0 && enabled != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_arc_handle(state, handle);
+    if (slot == MAX_ELECTRIC_ARCS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    ElectricArcSlot& arc = state.electric_arcs[slot];
+    arc.depth_test = enabled != 0;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    state.arc_depth_test_probe_handle = handle;
+#endif
+    arc.halo.depth_test_enabled = arc.depth_test;
+    arc.core.depth_test_enabled = arc.depth_test;
+    arc.branch.depth_test_enabled = arc.depth_test;
     return ELISA_RENDER_SCENE_OK;
 }

@@ -98,6 +98,7 @@ struct ElectricArcSlot {
     uint32_t seed = 0;
     float width = 0.0f;
     float amplitude = 0.0f;
+    bool depth_test = false;
     bool visible = false;
     bool live = false;
 };
@@ -112,6 +113,9 @@ struct RenderSceneService {
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
     std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    int64_t arc_depth_test_probe_handle = 0;
+#endif
     size_t snapshot_row_count = 0;
     size_t snapshot_retire_count = 0;
     size_t snapshot_result_count = 0;
@@ -591,4 +595,5 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 #include "render_scene_pixel_probe.h"
 #include "render_scene_environment_probe.h"
+#include "render_scene_arc_probe.h"
 #endif
