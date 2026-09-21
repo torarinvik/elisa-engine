@@ -1,0 +1,167 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Elisa multi-material panel fixture"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "panel"
+    }
+  ],
+  "materials": [
+    {
+      "name": "center"
+    },
+    {
+      "name": "edge"
+    }
+  ],
+  "meshes": [
+    {
+      "name": "panel",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 4,
+          "material": 1
+        },
+        {
+          "attributes": {
+            "POSITION": 3
+          },
+          "indices": 5,
+          "material": 0
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 6,
+          "material": 1
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 348,
+      "uri": "data:application/octet-stream;base64,AACAvwAAAAAAAIC/AACAvwAAAAAAAIA/q6qqvgAAAAAAAIA/q6qqvgAAAAAAAIC/q6qqPgAAAAAAAIC/q6qqPgAAAAAAAIA/AACAPwAAAAAAAIA/AACAPwAAAAAAAIC/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAP6uqqj4AAIA/q6qqPgAAAACrqio/AAAAAKuqKj8AAIA/AACAPwAAgD8AAIA/AAAAAKuqqr4AAAAAAACAv6uqqr4AAAAAAACAP6uqqj4AAAAAAACAP6uqqj4AAAAAAACAvwAAAQADAAEAAgADAAABAwECAwAABAAAAAUAAAAHAAAABQAAAAYAAAAHAAAA"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 96,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 192,
+      "byteLength": 64
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 256,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 304,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 316,
+      "byteLength": 6
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 324,
+      "byteLength": 24
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3",
+      "min": [
+        -1.0,
+        0.0,
+        -1.0
+      ],
+      "max": [
+        1.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [
+        -0.3333333333333333,
+        0.0,
+        -1.0
+      ],
+      "max": [
+        0.3333333333333333,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5123,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5121,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5125,
+      "count": 6,
+      "type": "SCALAR"
+    }
+  ]
+}

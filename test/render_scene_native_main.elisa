@@ -10,6 +10,7 @@ include "./maze_rendering_native.elisa"
 include "./render_scene_snapshot_native.elisa"
 include "./render_scene_bundle_texture_native.elisa"
 include "./render_scene_bundle_dependency_native.elisa"
+include "./render_scene_material_subset_native.elisa"
 include "./render_scene_async_asset_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
@@ -22,6 +23,11 @@ using MazeTrace
 
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
+
+# Test groups past the distinct exit codes exit with their group code after
+# logging the failing case.
+@callconv(c)
+extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
@@ -331,6 +337,8 @@ def exercise_render_scene() -> i32:
     return 160 + bundle_texture_status if bundle_texture_status != 0
     bundle_dependency_status: i32 = RenderSceneBundleDependencyNativeTests::exercise()
     return 200 + bundle_dependency_status if bundle_dependency_status != 0
+    material_subset_status: i32 = RenderSceneMaterialSubsetNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(193, material_subset_status) if material_subset_status != 0
     async_asset_status: i32 = RenderSceneAsyncAssetNativeTests::exercise()
     return 216 + async_asset_status if async_asset_status != 0
 

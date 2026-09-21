@@ -1,6 +1,8 @@
 constexpr size_t MAX_SNAPSHOT_MESH_ASSETS = 32;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_ASSETS = 64;
 constexpr size_t MAX_SNAPSHOT_TEXTURE_ASSETS = 128;
+constexpr size_t MAX_SNAPSHOT_MATERIAL_SETS = 32;
+constexpr size_t MAX_SNAPSHOT_MATERIAL_SET_SLOTS = elisa::assets::MAX_GEOMETRY_MATERIAL_SLOTS;
 constexpr size_t MAX_SNAPSHOT_BUNDLE_TEXTURE_BYTES = 256u * 1024u * 1024u;
 constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = 4;
 constexpr size_t MAX_SNAPSHOT_SHARED_MESHES = MAX_INSTANCES * 2;
@@ -30,7 +32,7 @@ struct SnapshotStageRow {
     bool tinted = false;
     size_t reserved_slot = MAX_INSTANCES;
     uint64_t reserved_generation = 0;
-    size_t shared_mesh_slot = MAX_INSTANCES;
+    size_t shared_mesh_slot = NO_SHARED_MESH;
     wi::ecs::Entity created_entity = wi::ecs::INVALID_ENTITY;
     std::vector<wi::ecs::Entity> created_joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> created_skin_joints;
@@ -87,6 +89,24 @@ struct SnapshotSharedMesh {
     size_t references = 0;
     size_t bytes = 0;
     bool live = false;
+};
+
+// A material set gives each material slot of a multi-material mesh its own
+// registered material. Sets share the material ID space, so a snapshot row
+// names one material for every slot or a set with one material per slot.
+struct SnapshotMaterialSet {
+    uint64_t high = 0;
+    uint64_t low = 0;
+    std::array<uint64_t, MAX_SNAPSHOT_MATERIAL_SET_SLOTS> material_high{};
+    std::array<uint64_t, MAX_SNAPSHOT_MATERIAL_SET_SLOTS> material_low{};
+    uint32_t count = 0;
+    bool live = false;
+};
+
+struct SnapshotMaterialSets {
+    std::array<SnapshotMaterialSet, MAX_SNAPSHOT_MATERIAL_SETS> sets{};
+    // The C ABI has no arrays: slots are staged in order, then registered.
+    SnapshotMaterialSet staged{};
 };
 
 // An asynchronous snapshot asset request. The worker resolves, verifies and

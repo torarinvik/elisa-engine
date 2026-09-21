@@ -451,6 +451,7 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_t
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    if (snapshot_material_set_slot(state, high, low) < MAX_SNAPSHOT_MATERIAL_SETS) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     const std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_high = {
         base_color_high, normal_high, surface_high, emissive_high};
     const std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low = {
@@ -554,18 +555,13 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
     const size_t slot = snapshot_material_asset_slot(state, high, low);
     if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    for (const InstanceSlot& instance : state.instances) {
-        if (instance.live && instance.material_high == high && instance.material_low == low) {
-            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-        }
-    }
-    for (const SnapshotSharedMesh& shared : state.snapshot_shared_meshes) {
-        if (shared.live && shared.material_high == high && shared.material_low == low) {
-            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-        }
+    if (snapshot_material_id_in_use(state, high, low) || snapshot_material_listed_by_set(state, high, low)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     const wi::ecs::Entity material_entity = state.snapshot_material_assets[slot].material_entity;
     if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
     state.snapshot_material_assets[slot] = SnapshotMaterialAssetSlot{};
     return ELISA_RENDER_SCENE_OK;
 }
+
+#include "render_scene_snapshot_material_set_abi.inc"

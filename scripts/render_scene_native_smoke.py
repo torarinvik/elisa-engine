@@ -16,6 +16,7 @@ import bundle_dependency_fixtures
 import bundle_texture_fixtures
 import elisa_build_run
 import packaged_maze_smoke
+import test_geometry_subsets
 
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORKS = [
@@ -82,6 +83,22 @@ def main() -> int:
         return maze_status
     normal_map = build / "cooked/render-scene-normal.png"
     shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
+    # The material-subset test draws the three-strip glTF panel and a skinned
+    # strip, which has a single material slot.
+    subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py")])
+    if subset_status != 0:
+        return subset_status
+    subset_directory = build / "cooked/subsets"
+    subset_directory.mkdir(parents=True, exist_ok=True)
+    subset_status = run([
+        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+        str(ROOT / "test/fixtures/multi_material_panel.gltf"),
+        "--asset-path", "test/fixtures/multi_material_panel.gltf",
+        "--output", str(subset_directory / "panel.elpk"),
+    ])
+    if subset_status != 0:
+        return subset_status
+    (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(2, skinned=True))
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")

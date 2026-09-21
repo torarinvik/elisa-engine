@@ -61,6 +61,16 @@ extend RenderScene:
         extern elisa_render_scene_v1_unregister_snapshot_material_asset(high: u64, low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_stage_snapshot_material_set_slot(slot: u32,
+            material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_material_set(high: u64, low: u64, count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_unregister_snapshot_material_set(high: u64, low: u64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_request_snapshot_mesh_asset(high: u64, low: u64,
             package_path: cstr) -> i32
 
@@ -81,6 +91,29 @@ extend RenderScene:
             RESIDENT: i32 = 2
 
     public:
+        # A cooked mesh has at most this many material slots.
+        const MAX_SNAPSHOT_MATERIAL_SLOTS: usize = 16
+
+        # One registered material for each material slot of a multi-material
+        # mesh, in slot order.
+        struct SnapshotMaterialSet:
+            private:
+                materials: mutable Assets::AssetId[RenderScene::MAX_SNAPSHOT_MATERIAL_SLOTS]
+                count: mutable usize
+
+        def SnapshotMaterialSet() -> SnapshotMaterialSet:
+            SnapshotMaterialSet{materials: zeroed, count: 0}
+
+        def snapshot_material_set_append(set: mutable SnapshotMaterialSet&,
+            material: Assets::AssetId) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(material)
+            raise RenderSceneError.Capacity if set.count >= RenderScene::MAX_SNAPSHOT_MATERIAL_SLOTS
+            set.materials[set.count] <- material
+            set.count <- set.count + 1
+
+        def snapshot_material_set_count(set: SnapshotMaterialSet&) -> usize:
+            set.count
+
         enum SnapshotAssetKind:
             Mesh
             Texture
@@ -149,6 +182,28 @@ extend RenderScene:
         def unregister_snapshot_material_asset(asset: Assets::AssetId) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
             try check_status(elisa_render_scene_v1_unregister_snapshot_material_asset(asset.high, asset.low))
+
+        # A snapshot entry may name a material set where it would name a
+        # material. A set draws each subset of a multi-material mesh with its
+        # slot's material and must list exactly one material per slot; a
+        # single material draws every slot. Sets share the material ID space.
+        # Registering a set again with the same materials is a no-op. A
+        # listed material can't be unregistered while the set exists, and the
+        # set can't be unregistered while an instance draws with it.
+        def register_snapshot_material_set(asset: Assets::AssetId,
+            set: SnapshotMaterialSet&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            raise RenderSceneError.InvalidValue if set.count == 0
+            for slot in 0..<set.count |set|:
+                material: Assets::AssetId = set.materials[slot]
+                try check_status(elisa_render_scene_v1_stage_snapshot_material_set_slot(
+                    slot.u32(), material.high, material.low))
+            try check_status(elisa_render_scene_v1_register_snapshot_material_set(
+                asset.high, asset.low, set.count.u32()))
+
+        def unregister_snapshot_material_set(asset: Assets::AssetId) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_unregister_snapshot_material_set(asset.high, asset.low))
 
         # Asynchronous registration. A request returns without file IO; a
         # worker thread resolves the path, checks the bundle's dependencies

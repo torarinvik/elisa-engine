@@ -127,6 +127,10 @@ int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
     float emissive_red, float emissive_green, float emissive_blue,
     float alpha_cutoff, int32_t alpha_mode, int32_t double_sided);
 int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint64_t high, uint64_t low);
+int32_t elisa_render_scene_v1_stage_snapshot_material_set_slot(
+    uint32_t slot, uint64_t material_high, uint64_t material_low);
+int32_t elisa_render_scene_v1_register_snapshot_material_set(uint64_t high, uint64_t low, uint32_t count);
+int32_t elisa_render_scene_v1_unregister_snapshot_material_set(uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);

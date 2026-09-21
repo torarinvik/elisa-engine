@@ -22,6 +22,8 @@ size_t snapshot_texture_asset_slot(const RenderSceneService& state, uint64_t hig
     return MAX_SNAPSHOT_TEXTURE_ASSETS;
 }
 
+#include "render_scene_snapshot_material_set_internal.inc"
+
 bool apply_snapshot_material_textures(RenderSceneService& state,
         const SnapshotMaterialAssetSlot& asset, wi::scene::MaterialComponent& material) {
     try {
@@ -60,7 +62,8 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
         !add_geometry_bytes(geometry.indices.size(), sizeof(uint32_t), total) ||
         !add_geometry_bytes(geometry.skin_indices.size(), sizeof(uint32_t), total) ||
         !add_geometry_bytes(geometry.skin_weights.size(), sizeof(float), total) ||
-        !add_geometry_bytes(geometry.skin_cluster_joints.size(), sizeof(uint32_t), total)) return false;
+        !add_geometry_bytes(geometry.skin_cluster_joints.size(), sizeof(uint32_t), total) ||
+        !add_geometry_bytes(geometry.subsets.size(), sizeof(elisa::assets::CookedGeometry::Subset), total)) return false;
     for (const std::string& name : geometry.skin_bone_names) {
         if (!add_geometry_bytes(name.size(), 1, total)) return false;
     }
@@ -93,10 +96,9 @@ bool cooked_geometry_is_static(const elisa::assets::CookedGeometry& geometry) {
 }
 
 bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity entity,
-    const elisa::assets::CookedGeometry& geometry, wi::ecs::Entity material_entity) {
+    const elisa::assets::CookedGeometry& geometry, const SnapshotSlotMaterials& materials) {
     wi::scene::MeshComponent* mesh = scene.meshes.GetComponent(entity);
-    if (mesh == nullptr || material_entity == wi::ecs::INVALID_ENTITY ||
-        geometry.positions.empty() || geometry.positions.size() % 3 != 0 ||
+    if (mesh == nullptr || geometry.subsets.empty() || geometry.positions.empty() || geometry.positions.size() % 3 != 0 ||
         geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
         (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
@@ -124,30 +126,35 @@ bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity ent
     for (size_t triangle = 0; triangle < mesh->indices.size(); triangle += 3) {
         std::swap(mesh->indices[triangle + 1], mesh->indices[triangle + 2]);
     }
+    // One Wicked subset per cooked subset, drawn with its slot's material.
     mesh->subsets.clear();
-    wi::scene::MeshComponent::MeshSubset& subset = mesh->subsets.emplace_back();
-    subset.indexOffset = 0;
-    subset.indexCount = uint32_t(mesh->indices.size());
-    subset.materialID = material_entity;
+    for (const auto& cooked : geometry.subsets) {
+        const SnapshotMaterialAssetSlot* material = cooked.material_slot < materials.size()
+            ? materials[cooked.material_slot] : nullptr;
+        if (material == nullptr || material->material_entity == wi::ecs::INVALID_ENTITY ||
+            cooked.index_count > mesh->indices.size() - std::min<size_t>(cooked.index_start, mesh->indices.size())) {
+            return false;
+        }
+        wi::scene::MeshComponent::MeshSubset& subset = mesh->subsets.emplace_back();
+        subset.indexOffset = cooked.index_start;
+        subset.indexCount = cooked.index_count;
+        subset.materialID = material->material_entity;
+    }
     mesh->CreateRenderData();
     return true;
 }
 
-size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state,
-    const SnapshotStageRow& row, const std::string& name, int32_t& failure_status) {
+size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state, const SnapshotStageRow& row,
+    const SnapshotSlotMaterials& materials, const std::string& name, int32_t& failure_status) {
     const size_t existing = snapshot_shared_mesh_slot(state,
         row.mesh_high, row.mesh_low, row.material_high, row.material_low);
     if (existing < MAX_SNAPSHOT_SHARED_MESHES) return existing;
     const size_t mesh_asset_slot_index = snapshot_mesh_asset_slot(state, row.mesh_high, row.mesh_low);
-    const size_t material_asset_slot_index = snapshot_material_asset_slot(state,
-        row.material_high, row.material_low);
-    if (mesh_asset_slot_index == MAX_SNAPSHOT_MESH_ASSETS ||
-        material_asset_slot_index == MAX_SNAPSHOT_MATERIAL_ASSETS) {
+    if (mesh_asset_slot_index == MAX_SNAPSHOT_MESH_ASSETS) {
         failure_status = ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         return MAX_SNAPSHOT_SHARED_MESHES;
     }
     const SnapshotMeshAssetSlot& mesh_asset = state.snapshot_mesh_assets[mesh_asset_slot_index];
-    const SnapshotMaterialAssetSlot& material_asset = state.snapshot_material_assets[material_asset_slot_index];
     if (!cooked_geometry_is_static(mesh_asset.geometry) ||
         mesh_asset.bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_shared_geometry_bytes) {
         failure_status = mesh_asset.bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_shared_geometry_bytes
@@ -170,8 +177,7 @@ size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state,
     try {
         entity = state.scene->Entity_CreateMesh(name);
         if (entity == wi::ecs::INVALID_ENTITY ||
-            !configure_shared_snapshot_mesh(*state.scene, entity, mesh_asset.geometry,
-                material_asset.material_entity)) {
+            !configure_shared_snapshot_mesh(*state.scene, entity, mesh_asset.geometry, materials)) {
             if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
             return MAX_SNAPSHOT_SHARED_MESHES;
         }
@@ -227,7 +233,7 @@ void clear_snapshot_instance(InstanceSlot& instance) {
     instance.mesh_low = 0;
     instance.material_high = 0;
     instance.material_low = 0;
-    instance.shared_mesh_slot = MAX_INSTANCES;
+    instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
@@ -289,14 +295,22 @@ wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageR
     std::vector<wi::ecs::Entity> joint_entities;
     try {
         const size_t mesh_slot = snapshot_mesh_asset_slot(state, row.mesh_high, row.mesh_low);
-        const size_t material_slot = snapshot_material_asset_slot(state, row.material_high, row.material_low);
-        if (mesh_slot == MAX_SNAPSHOT_MESH_ASSETS || material_slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return entity;
+        if (mesh_slot == MAX_SNAPSHOT_MESH_ASSETS) return entity;
         const SnapshotMeshAssetSlot& mesh_asset = state.snapshot_mesh_assets[mesh_slot];
-        const SnapshotMaterialAssetSlot& material_asset = state.snapshot_material_assets[material_slot];
+        SnapshotSlotMaterials materials;
+        const int32_t resolved = resolve_snapshot_slot_materials(state, row.material_high, row.material_low,
+            mesh_asset.geometry.material_slots, materials);
+        if (resolved != ELISA_RENDER_SCENE_OK) {
+            failure_status = resolved;
+            return entity;
+        }
+        // Skinned geometry has one material slot.
+        const SnapshotMaterialAssetSlot& material_asset = *materials[0];
         const std::string name = "elisa_snapshot_" + std::to_string(row.render_id) + "_" +
             std::to_string(slot) + "_" + std::to_string(generation);
         if (cooked_geometry_is_static(mesh_asset.geometry)) {
-            row.shared_mesh_slot = create_or_find_shared_snapshot_mesh(state, row, name + "_mesh", failure_status);
+            row.shared_mesh_slot = create_or_find_shared_snapshot_mesh(state, row, materials,
+                name + "_mesh", failure_status);
             if (row.shared_mesh_slot >= MAX_SNAPSHOT_SHARED_MESHES) return entity;
             entity = state.scene->Entity_CreateObject(name);
             if (entity == wi::ecs::INVALID_ENTITY) return entity;
@@ -311,7 +325,7 @@ wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageR
                 row.rotation[0], row.rotation[1], row.rotation[2], row.rotation[3],
                 row.scale[0], row.scale[1], row.scale[2]);
             object->meshID = state.snapshot_shared_meshes[row.shared_mesh_slot].entity;
-            object->SetCastShadow(material_asset.alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND);
+            object->SetCastShadow(snapshot_subsets_cast_shadow(mesh_asset.geometry, materials));
             return entity;
         }
         entity = state.scene->Entity_CreateCube(name);

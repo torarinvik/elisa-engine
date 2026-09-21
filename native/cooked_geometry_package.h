@@ -3,6 +3,7 @@
 // Bounded reader for the engine's normalized triangle-mesh package. FBX is
 // cooked offline; the runtime accepts only this versioned, validated format.
 #include "bundle_dependencies.h"
+#include "cooked_package_fields.h"
 #include "virtual_package.h"
 
 #include <algorithm>
@@ -18,6 +19,9 @@
 #include <vector>
 
 namespace elisa::assets {
+
+inline constexpr uint32_t MAX_GEOMETRY_SUBSETS = 16;
+inline constexpr uint32_t MAX_GEOMETRY_MATERIAL_SLOTS = 16;
 
 struct CookedGeometry {
     std::vector<float> positions;
@@ -44,6 +48,16 @@ struct CookedGeometry {
     std::vector<SkinJoint> skin_joints;
     std::vector<uint32_t> skin_cluster_joints;
     std::vector<AnimationClip> animation_clips;
+    struct Subset {
+        uint32_t index_start = 0;
+        uint32_t index_count = 0;
+        uint32_t material_slot = 0;
+    };
+    // An exact, ordered partition of `indices`. Each subset draws with the
+    // material its slot resolves to; a package without subset records holds
+    // one subset over every index in slot 0.
+    std::vector<Subset> subsets;
+    uint32_t material_slots = 1;
 };
 
 inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::path& resolved) {
@@ -80,122 +94,54 @@ inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::
 
 namespace detail {
 
-inline bool decode_base64(const std::string& text, std::vector<uint8_t>& bytes) {
-    if (text.empty() || text.size() % 4 != 0 || text.size() > 64u * 1024u * 1024u) return false;
-    auto value = [](char character) -> int {
-        if (character >= 'A' && character <= 'Z') return character - 'A';
-        if (character >= 'a' && character <= 'z') return character - 'a' + 26;
-        if (character >= '0' && character <= '9') return character - '0' + 52;
-        if (character == '+') return 62;
-        if (character == '/') return 63;
-        return -1;
-    };
-    bytes.clear();
-    bytes.reserve(text.size() / 4 * 3);
-    for (size_t offset = 0; offset < text.size(); offset += 4) {
-        const bool last = offset + 4 == text.size();
-        const int a = value(text[offset]);
-        const int b = value(text[offset + 1]);
-        const bool pad_c = text[offset + 2] == '=';
-        const bool pad_d = text[offset + 3] == '=';
-        const int c = pad_c ? 0 : value(text[offset + 2]);
-        const int d = pad_d ? 0 : value(text[offset + 3]);
-        if (a < 0 || b < 0 || c < 0 || d < 0 || (pad_c && !pad_d) ||
-            ((pad_c || pad_d) && !last) || (pad_c && (b & 15) != 0) ||
-            (pad_d && !pad_c && (c & 3) != 0)) return false;
-        const uint32_t word = (uint32_t(a) << 18) | (uint32_t(b) << 12) |
-            (uint32_t(c) << 6) | uint32_t(d);
-        bytes.push_back(uint8_t(word >> 16));
-        if (!pad_c) bytes.push_back(uint8_t(word >> 8));
-        if (!pad_d) bytes.push_back(uint8_t(word));
+// Subset records are all present or all absent. Skinned geometry draws with
+// one material, so it carries none.
+inline bool parse_geometry_subsets(const probe::PackageIndex& package, bool skinned,
+    CookedGeometry& geometry, std::string& error) {
+    size_t present = 0;
+    for (const char* key : {"material_slots", "subset_count", "subset_stride", "subsets_b64"}) {
+        present += package.sections.count(key);
     }
-    return true;
-}
-
-inline bool parse_count(const probe::PackageIndex& package, const char* key, uint64_t& value) {
-    const auto found = package.sections.find(key);
-    if (found == package.sections.end() || found->second.empty()) return false;
-    value = 0;
-    for (char character : found->second) {
-        if (character < '0' || character > '9') return false;
-        const uint64_t digit = uint64_t(character - '0');
-        if (value > (std::numeric_limits<uint64_t>::max() - digit) / 10) return false;
-        value = value * 10 + digit;
+    const uint32_t index_count = uint32_t(geometry.indices.size());
+    if (present == 0) {
+        geometry.subsets = {{0, index_count, 0}};
+        return true;
     }
-    return true;
-}
-
-inline bool decode_floats(const probe::PackageIndex& package, const char* key,
-    size_t count, std::vector<float>& output) {
-    const auto found = package.sections.find(key);
-    if (found == package.sections.end() || count > 16u * 1024u * 1024u / sizeof(float)) return false;
-    std::vector<uint8_t> bytes;
-    if (!decode_base64(found->second, bytes) || bytes.size() != count * sizeof(float)) return false;
-    output.resize(count);
-    for (size_t index = 0; index < count; ++index) {
-        const uint32_t bits = uint32_t(bytes[index * 4]) |
-            (uint32_t(bytes[index * 4 + 1]) << 8) |
-            (uint32_t(bytes[index * 4 + 2]) << 16) |
-            (uint32_t(bytes[index * 4 + 3]) << 24);
-        std::memcpy(&output[index], &bits, sizeof(bits));
-        if (!std::isfinite(output[index])) return false;
+    if (skinned) {
+        error = "skinned cooked geometry cannot declare material subsets";
+        return false;
     }
-    return true;
-}
-
-inline bool decode_u32(const probe::PackageIndex& package, const char* key,
-    size_t count, std::vector<uint32_t>& output) {
-    const auto found = package.sections.find(key);
-    if (found == package.sections.end() || count > 16u * 1024u * 1024u / sizeof(uint32_t)) return false;
-    std::vector<uint8_t> bytes;
-    if (!decode_base64(found->second, bytes) || bytes.size() != count * sizeof(uint32_t)) return false;
-    output.resize(count);
-    for (size_t index = 0; index < count; ++index) {
-        const size_t offset = index * 4;
-        output[index] = uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
-            (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
+    uint64_t slots = 0;
+    uint64_t count = 0;
+    std::vector<uint32_t> words;
+    if (present != 4 || !parse_count(package, "material_slots", slots) || slots == 0 ||
+        slots > MAX_GEOMETRY_MATERIAL_SLOTS || !parse_count(package, "subset_count", count) ||
+        count == 0 || count > MAX_GEOMETRY_SUBSETS || package.sections.at("subset_stride") != "12" ||
+        !decode_u32(package, "subsets_b64", size_t(count) * 3, words)) {
+        error = "invalid cooked geometry subset records";
+        return false;
     }
-    return true;
-}
-
-inline bool decode_i32(const probe::PackageIndex& package, const char* key,
-    size_t count, std::vector<int32_t>& output) {
-    std::vector<uint32_t> raw;
-    if (!decode_u32(package, key, count, raw)) return false;
-    output.resize(count);
-    for (size_t index = 0; index < count; ++index) {
-        std::memcpy(&output[index], &raw[index], sizeof(int32_t));
+    uint32_t next = 0;
+    for (size_t subset = 0; subset < size_t(count); ++subset) {
+        const uint32_t start = words[subset * 3];
+        const uint32_t indices = words[subset * 3 + 1];
+        const uint32_t slot = words[subset * 3 + 2];
+        if (start != next || indices == 0 || indices % 3 != 0 || indices > index_count - start) {
+            error = "cooked geometry subsets do not partition the index stream";
+            return false;
+        }
+        if (slot >= slots) {
+            error = "cooked geometry subset names a missing material slot";
+            return false;
+        }
+        next = start + indices;
+        geometry.subsets.push_back({start, indices, slot});
     }
-    return true;
-}
-
-inline bool decode_names(const std::vector<uint8_t>& bytes, size_t count,
-    std::vector<std::string>& names) {
-    size_t offset = 0;
-    names.clear();
-    names.reserve(count);
-    for (size_t index = 0; index < count; ++index) {
-        if (bytes.size() - offset < 4) return false;
-        const uint32_t length = uint32_t(bytes[offset]) |
-            (uint32_t(bytes[offset + 1]) << 8) |
-            (uint32_t(bytes[offset + 2]) << 16) |
-            (uint32_t(bytes[offset + 3]) << 24);
-        offset += 4;
-        if (length > bytes.size() - offset) return false;
-        names.emplace_back(reinterpret_cast<const char*>(bytes.data() + offset), length);
-        offset += length;
+    if (next != index_count) {
+        error = "cooked geometry subsets do not partition the index stream";
+        return false;
     }
-    return offset == bytes.size();
-}
-
-inline bool parse_finite_float(const probe::PackageIndex& package, const std::string& key,
-    float& value) {
-    const auto found = package.sections.find(key);
-    if (found == package.sections.end() || found->second.empty()) return false;
-    char* end = nullptr;
-    const float parsed = std::strtof(found->second.c_str(), &end);
-    if (end != found->second.c_str() + found->second.size() || !std::isfinite(parsed)) return false;
-    value = parsed;
+    geometry.material_slots = uint32_t(slots);
     return true;
 }
 
@@ -344,6 +290,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             }
         }
     }
+    if (!detail::parse_geometry_subsets(package, has_skin, geometry, error)) return false;
 
     const auto joint_count_section = package.sections.find("skin_joints");
     const auto parents_stride = package.sections.find("skin_joint_parent_stride");

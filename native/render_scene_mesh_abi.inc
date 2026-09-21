@@ -22,7 +22,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.mesh_low = 0;
     instance.material_high = 0;
     instance.material_low = 0;
-    instance.shared_mesh_slot = MAX_INSTANCES;
+    instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();

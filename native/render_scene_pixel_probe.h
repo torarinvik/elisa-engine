@@ -14,6 +14,17 @@ constexpr size_t RGBA8_CHANNEL_COUNT = 4;
 constexpr size_t RGBA8_ALPHA_INDEX = 3;
 constexpr uint64_t FNV_OFFSET_BASIS = 14695981039346656037ull;
 constexpr uint64_t FNV_PRIME = 1099511628211ull;
+// Wicked compiles object pipelines on worker threads and skips draws until
+// they are ready. Under CPU load that can take seconds after startup.
+constexpr uint32_t PIPELINE_WAIT_ATTEMPTS = 3000;
+constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
+
+void wait_for_object_pipelines() {
+    for (uint32_t attempt = 0; attempt < PIPELINE_WAIT_ATTEMPTS; ++attempt) {
+        if (wi::renderer::IsPipelineCreationActive() == 0) return;
+        wi::helper::Sleep(PIPELINE_WAIT_MILLISECONDS);
+    }
+}
 
 } // namespace
 
@@ -235,10 +246,7 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(v
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
-    for (uint32_t attempt = 0; attempt < PIPELINE_WAIT_ATTEMPTS; ++attempt) {
-        if (wi::renderer::IsPipelineCreationActive() == 0) break;
-        wi::helper::Sleep(PIPELINE_WAIT_MILLISECONDS);
-    }
+    wait_for_object_pipelines();
     if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
     const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
     const wi::graphics::TextureDesc& desc = frame.GetDesc();
@@ -335,3 +343,5 @@ extern "C" int32_t elisa_render_scene_v1_test_arc_capacity(void) {
     }
     return created == MAX_ELECTRIC_ARCS && overflow == ELISA_RENDER_SCENE_CAPACITY && cleanup_ok ? 1 : 0;
 }
+
+#include "render_scene_subset_probe.h"
