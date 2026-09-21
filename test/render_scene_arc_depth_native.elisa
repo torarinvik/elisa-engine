@@ -4,6 +4,10 @@ module RenderSceneArcDepthNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_arc_depth_matches(enabled: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_arc_endpoints_match(start_x: f32, start_y: f32, start_z: f32,
+            end_x: f32, end_y: f32, end_z: f32) -> i32
+
     public:
         def exercise(handle: RenderScene::ElectricArcHandle) -> i32:
             enabled: i32 = catch RenderScene::set_electric_arc_depth_test(handle, true):
@@ -18,6 +22,8 @@ module RenderSceneArcDepthNativeTests:
                 error failure: 1
             return 155 if updated != 0
             return 156 if elisa_render_scene_v1_test_arc_depth_matches(1) != 1
+            # The trail runs from -x to +x in Elisa space, whatever Wicked's frame.
+            return 158 if elisa_render_scene_v1_test_arc_endpoints_match(-1.0, 0.0, 0.0, 1.0, 0.0, 0.0) != 1
             retired: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.01, 0.01, 9):
                 value: value
                 error failure: return 153

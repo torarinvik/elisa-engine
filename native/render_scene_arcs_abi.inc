@@ -79,6 +79,8 @@ void populate_arc_trail(wi::TrailRenderer& trail, const ElectricArcSlot& arc,
     // Orthographic arcs use hardware depth only; the legacy soft fade assumes perspective.
     trail.depth_soften = arc.depth_test ? 0.0f : ArcTuning::TRAIL_DEPTH_SOFTEN;
 
+    // The arc is shaped in Elisa space; each point is reflected into Wicked's
+    // frame as it is added.
     const float dx = end_x - start_x;
     const float dz = end_z - start_z;
     const float planar_length = std::sqrt(dx * dx + dz * dz);
@@ -109,7 +111,7 @@ void populate_arc_trail(wi::TrailRenderer& trail, const ElectricArcSlot& arc,
             lift = arc.amplitude * ArcTuning::LIFT_SCALE *
                 std::sin(phase * ArcTuning::LIFT_FREQUENCY + seed + sample * ArcTuning::LIFT_SAMPLE_SPACING);
         }
-        trail.AddPoint(XMFLOAT3(start_x + dx * t + perpendicular_x * offset,
+        trail.AddPoint(probe::coordinates::to_wicked(start_x + dx * t + perpendicular_x * offset,
             start_y + (end_y - start_y) * t + lift,
             start_z + dz * t + perpendicular_z * offset), width, tint);
     }
@@ -194,9 +196,9 @@ extern "C" int32_t elisa_render_scene_v1_update_electric_arc(
         arc.branch.width = ArcTuning::TRAIL_WIDTH;
         const XMFLOAT4 branch_color(ArcTuning::BRANCH_RED * intensity,
             ArcTuning::BRANCH_GREEN * intensity, intensity, intensity);
-        arc.branch.AddPoint(XMFLOAT3(branch_x, branch_y, branch_z),
+        arc.branch.AddPoint(probe::coordinates::to_wicked(branch_x, branch_y, branch_z),
             arc.width * ArcTuning::BRANCH_WIDTH_SCALE, branch_color);
-        arc.branch.AddPoint(XMFLOAT3(branch_x + perpendicular_x * arc.amplitude *
+        arc.branch.AddPoint(probe::coordinates::to_wicked(branch_x + perpendicular_x * arc.amplitude *
                 ArcTuning::BRANCH_LENGTH_SCALE * direction,
             branch_y + arc.amplitude * ArcTuning::BRANCH_LIFT_SCALE,
             branch_z + perpendicular_z * arc.amplitude * ArcTuning::BRANCH_LENGTH_SCALE * direction),

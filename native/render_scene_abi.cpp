@@ -239,10 +239,17 @@ bool valid_look_at(
         direction_squared > 1.0e-8 && up_squared > 1.0e-8 && cross_squared > 1.0e-8;
 }
 
+// The look-at stays in Elisa space in `state` and is reflected into Wicked's
+// left-handed frame here, like every object, so world +X shows on the right
+// of a right-handed camera.
 void apply_camera_look_at(RenderSceneService& state) {
-    const XMVECTOR eye = XMVectorSet(state.eye[0], state.eye[1], state.eye[2], 1.0f);
-    const XMVECTOR target = XMVectorSet(state.target[0], state.target[1], state.target[2], 1.0f);
-    const XMVECTOR up = XMVectorSet(state.up[0], state.up[1], state.up[2], 0.0f);
+    const XMFLOAT3 wicked_eye = probe::coordinates::to_wicked(state.eye[0], state.eye[1], state.eye[2]);
+    const XMFLOAT3 wicked_target = probe::coordinates::to_wicked(state.target[0], state.target[1], state.target[2]);
+    const XMFLOAT3 wicked_up = probe::coordinates::to_wicked_direction(
+        XMFLOAT3(state.up[0], state.up[1], state.up[2]));
+    const XMVECTOR eye = XMVectorSet(wicked_eye.x, wicked_eye.y, wicked_eye.z, 1.0f);
+    const XMVECTOR target = XMVectorSet(wicked_target.x, wicked_target.y, wicked_target.z, 1.0f);
+    const XMVECTOR up = XMVectorSet(wicked_up.x, wicked_up.y, wicked_up.z, 0.0f);
     const XMMATRIX world = XMMatrixInverse(nullptr, XMMatrixLookAtLH(eye, target, up));
     wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(state.camera_entity);
     if (transform != nullptr) {
@@ -265,15 +272,7 @@ void apply_transform(wi::scene::TransformComponent& transform,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz) {
-    const double length = std::sqrt(double(qx) * qx + double(qy) * qy +
-        double(qz) * qz + double(qw) * qw);
-    const float inverse_length = float(1.0 / length);
-    transform.translation_local = XMFLOAT3(px, py, pz);
-    transform.rotation_local = XMFLOAT4(qx * inverse_length, qy * inverse_length,
-        qz * inverse_length, qw * inverse_length);
-    transform.scale_local = XMFLOAT3(sx, sy, sz);
-    transform.SetDirty();
-    transform.UpdateTransform();
+    elisa::rendering::set_transform(transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
 
 uint64_t encode_handle(size_t slot, uint64_t generation) {

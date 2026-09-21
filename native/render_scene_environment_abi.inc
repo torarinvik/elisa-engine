@@ -21,7 +21,10 @@ extern "C" int32_t elisa_render_scene_v1_set_environment(
         fog_start < 0.0f || fog_density < 0.0f || (fog_enabled != 0 && fog_enabled != 1)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
-    const XMVECTOR sun_direction = XMVectorSet(sun_direction_x, sun_direction_y, sun_direction_z, 0.0f);
+    const XMFLOAT3 wicked_sun_direction = probe::coordinates::to_wicked_direction(
+        XMFLOAT3(sun_direction_x, sun_direction_y, sun_direction_z));
+    const XMVECTOR sun_direction = XMVectorSet(wicked_sun_direction.x, wicked_sun_direction.y,
+        wicked_sun_direction.z, 0.0f);
     if (XMVectorGetX(XMVector3LengthSq(sun_direction)) <= 1.0e-8f) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }

@@ -205,9 +205,42 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_position_x(
     for (const InstanceSlot& instance : state.instances) {
         if (!instance.live || instance.render_id != render_id) continue;
         const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
-        const float delta = transform == nullptr ? 1.0e6f : std::abs(transform->translation_local.x - expected_x);
+        const float delta = transform == nullptr ? 1.0e6f :
+            std::abs(probe::coordinates::from_wicked(transform->translation_local).x - expected_x);
         const int32_t matches = transform != nullptr && delta <= 1.0e-5f ? 1 : 0;
         return matches;
+    }
+    return 0;
+}
+
+// A row's Wicked world matrix must be the change of basis S * M * S of the
+// Elisa transform it was staged with, computed here from the matrix instead
+// of the per-component rules the render service applies.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_world_matches(int64_t render_id,
+    float px, float py, float pz, float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    // DirectXMath's row-vector matrix, stored row by row, is the column-major
+    // layout of Elisa's column-vector matrix.
+    XMFLOAT4X4 authored;
+    XMStoreFloat4x4(&authored, XMMatrixScaling(sx, sy, sz) *
+        XMMatrixRotationQuaternion(XMQuaternionNormalize(XMVectorSet(qx, qy, qz, qw))) *
+        XMMatrixTranslation(px, py, pz));
+    ElisaMatrixPayload elisa{};
+    std::copy(&authored.m[0][0], &authored.m[0][0] + 16, elisa.values_column_major);
+    ElisaMatrixPayload expected{};
+    if (!elisa_matrix_to_wicked(&elisa, &expected)) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live || instance.render_id != render_id) continue;
+        const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
+        if (transform == nullptr) return 0;
+        const float* actual = &transform->world.m[0][0];
+        for (size_t index = 0; index < 16; ++index) {
+            if (std::abs(actual[index] - expected.values_column_major[index]) > 1.0e-4f) return 0;
+        }
+        return 1;
     }
     return 0;
 }
@@ -235,6 +268,35 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_orthographic_matches(
     return (camera._flags & wi::scene::CameraComponent::ORTHO) != 0 &&
         close(camera.width, width) && close(camera.height, height) &&
         close(camera.ortho_vertical_size, vertical_size) ? 1 : 0;
+}
+
+// A right-handed camera looking along f with up u shows f × u on the frame's
+// right. Wicked's camera shows GetRight() = Up × At there. Read back into Elisa
+// space, Wicked's eye, view direction and screen right must match the look-at.
+extern "C" int32_t elisa_render_scene_v1_test_camera_view_matches(
+    float eye_x, float eye_y, float eye_z, float target_x, float target_y, float target_z,
+    float up_x, float up_y, float up_z) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.camera == nullptr) return 0;
+    const XMVECTOR forward = XMVector3Normalize(XMVectorSet(target_x - eye_x,
+        target_y - eye_y, target_z - eye_z, 0.0f));
+    XMFLOAT3 expected_forward;
+    XMFLOAT3 expected_right;
+    XMStoreFloat3(&expected_forward, forward);
+    XMStoreFloat3(&expected_right, XMVector3Normalize(XMVector3Cross(forward,
+        XMVectorSet(up_x, up_y, up_z, 0.0f))));
+    XMFLOAT3 wicked_right;
+    XMStoreFloat3(&wicked_right, XMVector3Normalize(state.camera->GetRight()));
+    const XMFLOAT3 eye = probe::coordinates::from_wicked(state.camera->Eye);
+    const XMFLOAT3 at = probe::coordinates::from_wicked_direction(state.camera->At);
+    const XMFLOAT3 right = probe::coordinates::from_wicked_direction(wicked_right);
+    const auto close = [](const XMFLOAT3& left, const XMFLOAT3& right) {
+        return std::abs(left.x - right.x) <= 1.0e-4f && std::abs(left.y - right.y) <= 1.0e-4f &&
+            std::abs(left.z - right.z) <= 1.0e-4f;
+    };
+    return close(eye, XMFLOAT3(eye_x, eye_y, eye_z)) && close(at, expected_forward) &&
+        close(right, expected_right) ? 1 : 0;
 }
 
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {

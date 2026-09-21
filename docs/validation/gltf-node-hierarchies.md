@@ -144,8 +144,8 @@ y = 4 with scale (12, 1, 8), so the strips land at world x = -8, 0 and 8.
 | 1–5 | The baked mesh registers and counts three cooked materials. They register as a red, green and blue set, and each Wicked material holds its authored factors |
 | 6–9 | A two-material list for the mesh is `InvalidValue`. A plain two-material set registers, but staging a row with it is refused, because the mesh has three slots |
 | 11–12 | The row commits and draws three Wicked subsets: red (0, 12) for both red placements, green (12, 6) and blue (18, 6) |
-| 13–14 | The frame shows blue on the left, green in the center and red on the right. The gaps between the strips show none of the three colors |
-| 15–17 | A half turn about +Y keeps the row's handle and swaps the sides, and the row retires |
+| 13–14 | The frame shows red on the left, green in the center and blue on the right. The gaps between the strips show none of the three colors |
+| 15–18 | A half turn about +Y keeps the row's handle and swaps the sides. A generic pose's Wicked world matrix is the reflected Elisa matrix, and the row retires |
 | 21–23, 30 | Every set, material and mesh unregisters, and the shared-mesh, instance and set counts return to where they started |
 
 The strips' materials are single-sided. If the bake got a strip's facing
@@ -161,7 +161,9 @@ the Wicked boundary. The render service doesn't do that negation. It passes
 positions, transforms and the camera to Wicked unchanged, and swaps each cooked
 triangle's winding instead. The result is a mirror image: under the smoke
 camera, world +X shows on the frame's left. This slice didn't change that
-behavior. Its test now expects the mirrored sides.
+behavior. Its test expected the mirrored sides. (Since fixed: see
+[`render-scene-handedness.md`](render-scene-handedness.md). The table above
+shows the corrected sides.)
 
 ## Mutation checks
 
@@ -230,8 +232,9 @@ sign only changes lighting, and the emissive color still dominates.
 - **Bounds.** 256 nodes, 256 meshes, 16 primitives per mesh, 16 material
   slots and 16 subsets after merging. The existing vertex and index bounds
   apply to the baked totals.
-- **Mirrored frames.** The render service shows Elisa's right-handed world
-  mirrored, as described above. That predates this slice.
+- **Mirrored frames.** The render service showed Elisa's right-handed world
+  mirrored, as described above. That predated this slice. (Since fixed: see
+  [`render-scene-handedness.md`](render-scene-handedness.md).)
 - **No textures.** Material textures and `MASK` still fail in the cooker, as
   in [`cooked-slot-materials.md`](cooked-slot-materials.md). (Since
   superseded: see [`cooked-material-textures.md`](cooked-material-textures.md).)

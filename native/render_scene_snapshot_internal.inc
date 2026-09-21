@@ -111,21 +111,14 @@ bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity ent
     mesh->vertex_tangents.resize(geometry.tangents.size() / 4);
     mesh->vertex_uvset_0.resize(geometry.uvs.size() / 2);
     for (size_t index = 0; index < mesh->vertex_positions.size(); ++index) {
-        mesh->vertex_positions[index] = XMFLOAT3(geometry.positions[index * 3],
-            geometry.positions[index * 3 + 1], geometry.positions[index * 3 + 2]);
-        mesh->vertex_normals[index] = XMFLOAT3(geometry.normals[index * 3],
-            geometry.normals[index * 3 + 1], geometry.normals[index * 3 + 2]);
+        mesh->vertex_positions[index] = elisa::rendering::cooked_vector(geometry.positions, index);
+        mesh->vertex_normals[index] = elisa::rendering::cooked_vector(geometry.normals, index);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[index * 2], geometry.uvs[index * 2 + 1]);
         if (!geometry.tangents.empty()) {
-            mesh->vertex_tangents[index] = XMFLOAT4(geometry.tangents[index * 4],
-                geometry.tangents[index * 4 + 1], geometry.tangents[index * 4 + 2],
-                geometry.tangents[index * 4 + 3]);
+            mesh->vertex_tangents[index] = elisa::rendering::cooked_tangent(geometry.tangents, index);
         }
     }
-    mesh->indices.assign(geometry.indices.begin(), geometry.indices.end());
-    for (size_t triangle = 0; triangle < mesh->indices.size(); triangle += 3) {
-        std::swap(mesh->indices[triangle + 1], mesh->indices[triangle + 2]);
-    }
+    elisa::rendering::assign_cooked_indices(*mesh, geometry.indices);
     // One Wicked subset per cooked subset, drawn with its slot's material.
     mesh->subsets.clear();
     for (const auto& cooked : geometry.subsets) {

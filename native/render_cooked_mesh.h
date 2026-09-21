@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cooked_geometry_package.h"
+#include "coordinate_conventions.h"
 #include "wiScene.h"
 
 #include <algorithm>
@@ -24,6 +25,8 @@ struct JointEntityRollback {
     }
 };
 
+// Every render-service transform arrives in Elisa's right-handed space and is
+// reflected into Wicked's here, once (probe::coordinates::to_wicked).
 inline void set_transform(wi::scene::TransformComponent& transform,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
@@ -31,12 +34,34 @@ inline void set_transform(wi::scene::TransformComponent& transform,
     const double length = std::sqrt(double(qx) * qx + double(qy) * qy +
         double(qz) * qz + double(qw) * qw);
     const float inverse_length = float(1.0 / length);
-    transform.translation_local = XMFLOAT3(px, py, pz);
-    transform.rotation_local = XMFLOAT4(qx * inverse_length, qy * inverse_length,
-        qz * inverse_length, qw * inverse_length);
+    transform.translation_local = probe::coordinates::to_wicked(px, py, pz);
+    transform.rotation_local = probe::coordinates::to_wicked_rotation(qx * inverse_length,
+        qy * inverse_length, qz * inverse_length, qw * inverse_length);
     transform.scale_local = XMFLOAT3(sx, sy, sz);
     transform.SetDirty();
     transform.UpdateTransform();
+}
+
+// Cooked vertex streams are authored in Elisa space too.
+inline XMFLOAT3 cooked_vector(const std::vector<float>& values, size_t index) {
+    return probe::coordinates::to_wicked(values[index * 3], values[index * 3 + 1], values[index * 3 + 2]);
+}
+
+inline XMFLOAT4 cooked_tangent(const std::vector<float>& values, size_t index) {
+    return probe::coordinates::to_wicked_tangent(values[index * 4], values[index * 4 + 1],
+        values[index * 4 + 2], values[index * 4 + 3]);
+}
+
+// The reflection reverses every triangle (coordinates::winding_reversed), which
+// turns Elisa's counter-clockwise front faces into the order Wicked rasterizes
+// as front-facing, so indices keep their authored order. Instance scales are
+// validated positive and never reflect a mesh a second time.
+inline void assign_cooked_indices(wi::scene::MeshComponent& mesh, const std::vector<uint32_t>& indices) {
+    mesh.indices.assign(indices.begin(), indices.end());
+    if (probe::coordinates::winding_reversed(XMFLOAT3(1.0f, 1.0f, 1.0f))) return;
+    for (size_t triangle = 0; triangle < mesh.indices.size(); triangle += 3) {
+        std::swap(mesh.indices[triangle + 1], mesh.indices[triangle + 2]);
+    }
 }
 
 inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entity,
@@ -75,27 +100,18 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     mesh->vertex_windweights.clear();
     mesh->morph_targets.clear();
     for (size_t index = 0; index < mesh->vertex_positions.size(); ++index) {
-        mesh->vertex_positions[index] = XMFLOAT3(geometry.positions[index * 3],
-            geometry.positions[index * 3 + 1], geometry.positions[index * 3 + 2]);
-        mesh->vertex_normals[index] = XMFLOAT3(geometry.normals[index * 3],
-            geometry.normals[index * 3 + 1], geometry.normals[index * 3 + 2]);
+        mesh->vertex_positions[index] = cooked_vector(geometry.positions, index);
+        mesh->vertex_normals[index] = cooked_vector(geometry.normals, index);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[index * 2], geometry.uvs[index * 2 + 1]);
     }
     set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     if (!geometry.tangents.empty()) {
         mesh->vertex_tangents.resize(geometry.tangents.size() / 4);
         for (size_t index = 0; index < mesh->vertex_tangents.size(); ++index) {
-            mesh->vertex_tangents[index] = XMFLOAT4(geometry.tangents[index * 4],
-                geometry.tangents[index * 4 + 1], geometry.tangents[index * 4 + 2],
-                geometry.tangents[index * 4 + 3]);
+            mesh->vertex_tangents[index] = cooked_tangent(geometry.tangents, index);
         }
     }
-    mesh->indices.assign(geometry.indices.begin(), geometry.indices.end());
-    // Elisa's normalized meshes use counter-clockwise front faces; Wicked's
-    // mesh raster path expects the opposite index winding.
-    for (size_t triangle = 0; triangle < mesh->indices.size(); triangle += 3) {
-        std::swap(mesh->indices[triangle + 1], mesh->indices[triangle + 2]);
-    }
+    assign_cooked_indices(*mesh, geometry.indices);
     std::vector<wi::ecs::Entity> joint_entities;
     JointEntityRollback joint_rollback{scene, joint_entities};
     if (has_skin_rig) {

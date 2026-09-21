@@ -63,6 +63,13 @@ fixture also feeds render, physics, skin, and picking adapters; existing wall,
 marker, route, physics, and skinned-quad paths consume the same conversion
 functions.
 
+The render-scene service didn't use these functions at first. It passed
+Elisa coordinates to Wicked unreflected and swapped each cooked triangle's
+winding, so every frame showed world +X on the left. It now reflects
+transforms, the camera, cooked vertices and tangents, animation poses, the sun
+and arc points through them, and its frames match Godot's. See
+[`render-scene-handedness.md`](render-scene-handedness.md).
+
 Validation on the pinned SDL3/Wicked Metal build:
 
 ```text

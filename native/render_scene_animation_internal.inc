@@ -82,6 +82,15 @@ void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, flo
     interpolate_transform(first, second, weight, output);
 }
 
+// Poses are sampled and blended in Elisa space, then reflected into Wicked's
+// frame as they are stored, like every other render-service transform.
+void store_joint_pose(wi::scene::TransformComponent& transform, const float* pose) {
+    transform.translation_local = probe::coordinates::to_wicked(pose[0], pose[1], pose[2]);
+    transform.rotation_local = probe::coordinates::to_wicked_rotation(pose[3], pose[4], pose[5], pose[6]);
+    transform.scale_local = XMFLOAT3(pose[7], pose[8], pose[9]);
+    transform.SetDirty();
+}
+
 bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     InstanceSlot& instance = state.instances[slot];
     if (instance.skin_joints.empty() || instance.joint_entities.size() != instance.skin_joints.size()) return false;
@@ -107,20 +116,14 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
         if (instance.skin_joints[joint_index].parent_index < 0) {
             const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.entity);
             if (parent == nullptr) return false;
-            transform->translation_local = XMFLOAT3(pose[0], pose[1], pose[2]);
-            transform->rotation_local = XMFLOAT4(pose[3], pose[4], pose[5], pose[6]);
-            transform->scale_local = XMFLOAT3(pose[7], pose[8], pose[9]);
-            transform->SetDirty();
+            store_joint_pose(*transform, pose);
             transform->UpdateTransform_Parented(*parent);
         } else {
             const uint32_t parent_index = uint32_t(instance.skin_joints[joint_index].parent_index);
             if (parent_index >= joint_index) return false;
             const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.joint_entities[parent_index]);
             if (parent == nullptr) return false;
-            transform->translation_local = XMFLOAT3(pose[0], pose[1], pose[2]);
-            transform->rotation_local = XMFLOAT4(pose[3], pose[4], pose[5], pose[6]);
-            transform->scale_local = XMFLOAT3(pose[7], pose[8], pose[9]);
-            transform->SetDirty();
+            store_joint_pose(*transform, pose);
             transform->UpdateTransform_Parented(*parent);
         }
     }

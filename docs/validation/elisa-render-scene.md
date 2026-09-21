@@ -236,7 +236,7 @@ group G failed at case N` to stderr, then exits G.
 | --- | --- | --- |
 | 1–109 | checks in `render_scene_native_main.elisa` | the exit |
 | 121–144 | `maze_rendering_native.elisa` | exit − 120 |
-| 150–157 | `render_scene_arc_depth_native.elisa` | the exit |
+| 150–158 | `render_scene_arc_depth_native.elisa` | the exit |
 | 161–192 | `render_scene_bundle_texture_native.elisa` | exit − 160 |
 | 193 | `render_scene_material_subset_native.elisa` | logged |
 | 194 | `render_scene_async_asset_native.elisa` | logged |

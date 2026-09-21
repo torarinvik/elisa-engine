@@ -37,6 +37,22 @@ inline XMFLOAT3 from_wicked_direction(const XMFLOAT3& value) {
     return from_wicked(value);
 }
 
+// Conjugating a rotation by the reflection keeps its angle and turns its axis
+// (x, y, z) into (x, -y, -z), so a quaternion keeps x and w. Scale is diagonal
+// in the local frame and crosses unchanged (see elisa_transform_to_wicked).
+inline XMFLOAT4 to_wicked_rotation(float x, float y, float z, float w) {
+    return XMFLOAT4(x, -y, -z, w);
+}
+
+// Cooked tangents follow glTF, bitangent = cross(N, T) * W (see
+// mesh_tangent_frames.h), and Wicked's shaders build cross(T, N) * W. The
+// reflection turns cross(N, T) into cross(RT, RN), so the two sign changes
+// cancel and W crosses unchanged. The coordinate ABI's tangent parity, -1 at
+// the reflection, is for a bitangent built the same way on both sides.
+inline XMFLOAT4 to_wicked_tangent(float x, float y, float z, float w) {
+    return XMFLOAT4(-x, y, z, w);
+}
+
 inline XMFLOAT3 scaled(const XMFLOAT3& value, const XMFLOAT3& scale) {
     return XMFLOAT3(value.x * scale.x, value.y * scale.y, value.z * scale.z);
 }

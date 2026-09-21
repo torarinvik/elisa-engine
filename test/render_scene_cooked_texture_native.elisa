@@ -450,20 +450,20 @@ module RenderSceneCookedTextureNativeTests:
         def channel(x_permille: u32) -> i32:
             elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille, SAMPLE_ROW)
 
-        # Frames are mirrored, so world +x shows on the left. From the right:
-        # the cutout's opaque green half, the red backdrop through its clear
-        # half, the painted strip's red and blue halves, and the glow strip's
-        # red and blue halves.
+        # World +x shows on the frame's right. From the left: the cutout's
+        # opaque green half, the red backdrop through its clear half, the
+        # painted strip's red and blue halves, and the glow strip's red and
+        # blue halves.
         def strips_show() -> bool:
             shown: mutable bool = false
             for attempt in 0..<12 |shown|:
                 break if shown
                 return false if Application::pump() != Application::PumpStatus.Running
-                shown <- channel(590) == Channel::RED
+                shown <- channel(410) == Channel::RED
             return false if not shown
-            return false if channel(930) != Channel::GREEN or channel(770) != Channel::RED
-            return false if channel(410) != Channel::BLUE or channel(240) != Channel::RED
-            channel(100) == Channel::BLUE
+            return false if channel(70) != Channel::GREEN or channel(230) != Channel::RED
+            return false if channel(590) != Channel::BLUE or channel(760) != Channel::RED
+            channel(900) == Channel::BLUE
 
         def rendered() -> i32:
             return 1 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK

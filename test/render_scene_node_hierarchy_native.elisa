@@ -5,9 +5,8 @@
 # The cooker bakes them into three subsets whose strips sit at x = -2/3, 0 and
 # 2/3 of the panel, a quarter wide. The strips' materials are single-sided, so
 # a strip whose facing the bake got wrong is culled and its color is missing.
-# The render service hands Elisa's right-handed coordinates to Wicked's
-# left-handed camera unconverted, so under the smoke camera world +x shows on
-# the frame's left: the red strip at -2/3 lands on the right.
+# The smoke camera looks at the origin from (0, 10, 8) with +Y up, so world
+# +x shows on the frame's right: the red strip at -2/3 lands on the left.
 # scripts/render_scene_native_smoke.py cooks the fixture to
 # build/cooked/subsets/hierarchy.elpk.
 include "../src/runtime/application.elisa"
@@ -33,6 +32,11 @@ module RenderSceneNodeHierarchyNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille: u32, y_permille: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_world_matches(render_id: i64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
@@ -80,6 +84,16 @@ module RenderSceneNodeHierarchyNativeTests:
             RED: i32 = 0
             GREEN: i32 = 1
             BLUE: i32 = 2
+
+        # An off-axis panel pose turned about all three axes. The quaternion
+        # need not be unit length; the render service normalizes it.
+        const module Pose:
+            X: f32 = 1.5
+            Z: f32 = -0.5
+            QX: f32 = 0.2
+            QY: f32 = 0.5
+            QZ: f32 = 0.3
+            QW: f32 = 0.8
 
         const HIERARCHY: u64 = 1
         const PANEL_ROW: i64 = 22801
@@ -186,6 +200,21 @@ module RenderSceneNodeHierarchyNativeTests:
             return 0 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
             elisa_render_scene_v1_snapshot_result(0)
 
+        # Moves the retained panel to Pose. Wicked must hold the reflection of
+        # that transform; a missed or wrong rotation rule cannot match it.
+        def posed(handle: i64) -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(handle, 1, PANEL_ROW, PANEL_ROW,
+                Ids::MESHES, HIERARCHY, Ids::SETS, Set::STRIPS,
+                Pose::X, VISIBLE_Y, Pose::Z, Pose::QX, Pose::QY, Pose::QZ, Pose::QW, 12.0, 1.0, 8.0)
+            if staged != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            return false if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            return false if elisa_render_scene_v1_snapshot_result(0) != handle
+            elisa_render_scene_v1_test_snapshot_world_matches(PANEL_ROW, Pose::X, VISIBLE_Y, Pose::Z,
+                Pose::QX, Pose::QY, Pose::QZ, Pose::QW, 12.0, 1.0, 8.0) == 1
+
         def retire(handle: i64) -> bool:
             return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK
             if elisa_render_scene_v1_snapshot_retire(handle) != NATIVE_OK:
@@ -245,13 +274,14 @@ module RenderSceneNodeHierarchyNativeTests:
             handle: i64 = commit_panel(0, Set::STRIPS, 0.0, 1.0)
             return 1 if handle <= 0
             return 2 if not panel_draws()
-            # The mirrored blue strip at +2/3 shows on the frame's left.
-            return 3 if not strips_show(Channel::BLUE, Channel::RED)
+            # Red at -2/3 shows on the left, the mirrored blue strip on the right.
+            return 3 if not strips_show(Channel::RED, Channel::BLUE)
             return 4 if not gaps_clear()
             # Half a turn about +Y retains the row and swaps its sides.
             return 5 if commit_panel(handle, Set::STRIPS, 1.0, 0.0) != handle
-            return 6 if not strips_show(Channel::RED, Channel::BLUE)
-            return 7 if not retire(handle)
+            return 6 if not strips_show(Channel::BLUE, Channel::RED)
+            return 7 if not posed(handle)
+            return 8 if not retire(handle)
             0
 
         def cleanup() -> i32:
@@ -263,7 +293,7 @@ module RenderSceneNodeHierarchyNativeTests:
             0
 
     public:
-        # Returns 0 or the failing case: 1-9 registration, 11-17 rendering,
+        # Returns 0 or the failing case: 1-9 registration, 11-18 rendering,
         # 21-23 cleanup, 30 leftover state.
         def exercise() -> i32:
             shared_meshes: u64 = elisa_render_scene_v1_test_snapshot_shared_mesh_count()

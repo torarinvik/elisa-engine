@@ -8,6 +8,19 @@ module RenderSceneCameraNativeTests:
         extern elisa_render_scene_v1_test_camera_orthographic_matches(width: f32, height: f32,
             vertical_size: f32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_view_matches(eye_x: f32, eye_y: f32, eye_z: f32,
+            target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
+
+        # Points the camera, then checks that Wicked shows the right-handed
+        # view: the same eye and direction, with f × up on the frame's right.
+        def looks_along(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> bool:
+            pointed: i32 = catch RenderScene::set_camera_look_at(eye, target, up):
+                ok: 0
+                error failure: 1
+            pointed == 0 and elisa_render_scene_v1_test_camera_view_matches(eye.x, eye.y, eye.z,
+                target.x, target.y, target.z, up.x, up.y, up.z) != 0
+
     public:
         def exercise() -> i32:
             camera_height: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
@@ -58,4 +71,14 @@ module RenderSceneCameraNativeTests:
             orthographic_restored: bool = elisa_render_scene_v1_test_camera_orthographic_matches(
                 320.0, 200.0, 14.0) != 0
             return 129 if restore_orthographic != 0 or restore_viewport != 0 or not orthographic_restored
+
+            # Every component of this look-at is asymmetric, so an unreflected
+            # camera would show a different eye, direction or right side.
+            tilted: bool = looks_along(Geometry::Vec3{x: 3.0, y: 10.0, z: 8.0},
+                Geometry::Vec3{x: 1.0, y: 0.0, z: -2.0}, Geometry::Vec3{x: 0.3, y: 1.0, z: 0.2})
+            return 130 if not tilted
+            # The smoke camera again, which later groups read their frames from.
+            restored: bool = looks_along(Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+            return 131 if not restored
             0
