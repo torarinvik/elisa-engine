@@ -27,6 +27,12 @@ The active camera can also own a bounded offscreen render target through
 `set_camera_render_target`; a zero interval updates it every render, while a
 positive interval throttles updates. `clear_camera_render_target` releases the
 target and returns presentation to the normal path.
+`RenderScene::create_camera` allocates a bounded secondary perspective or
+orthographic view and returns a generation-checked `CameraHandle`. Elisa can
+update its projection, activate it on the shared render path, restore the
+default camera, and destroy inactive views; active-view destruction and stale
+handles are rejected. The native smoke covers projection updates, view
+switching, viewport restoration and cleanup.
 Scene post-processing is also checked at the render boundary: `set_tonemap`
 selects Wicked's Reinhard, ACES, or Uchimura operator, and `set_exposure`
 accepts a finite scene-wide multiplier in the range 0–8. The native smoke

@@ -51,6 +51,9 @@ constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
 constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
 constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
 constexpr size_t MAX_RENDER_LIGHTS = probe::LightingBridge::MAX_LIGHTS;
+constexpr size_t MAX_RENDER_CAMERAS = 8;
+constexpr unsigned CAMERA_HANDLE_SLOT_BITS = 4;
+constexpr uint64_t CAMERA_HANDLE_SLOT_MASK = (uint64_t(1) << CAMERA_HANDLE_SLOT_BITS) - 1;
 #include "render_scene_text_internal.inc"
 #include "render_scene_panel_internal.inc"
 struct InstanceSlot {
@@ -83,6 +86,11 @@ struct RenderLightSlot {
     probe::NativeLightHandle native{};
     bool live = false;
 };
+struct RenderCameraSlot {
+    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
+    uint64_t generation = 0;
+    bool live = false;
+};
 #include "render_scene_snapshot_state.inc"
 struct ElectricArcSlot {
     wi::TrailRenderer halo;
@@ -102,6 +110,7 @@ struct RenderSceneService {
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<RenderLightSlot, MAX_RENDER_LIGHTS> lights{};
+    std::array<RenderCameraSlot, MAX_RENDER_CAMERAS> cameras{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
@@ -134,6 +143,7 @@ struct RenderSceneService {
     std::unique_ptr<probe::LightingBridge> lighting;
     wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
+    wi::ecs::Entity primary_camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
     std::thread::id owner_thread{};
     int32_t width = 0;
@@ -308,6 +318,7 @@ void reset_unlocked(RenderSceneService& state) {
         state.scene.reset();
     }
     state.lights = {};
+    state.cameras = {};
     for (InstanceSlot& instance : state.instances) {
         instance.entity = wi::ecs::INVALID_ENTITY;
         instance.gameplay_epoch = 0;
@@ -359,6 +370,7 @@ void reset_unlocked(RenderSceneService& state) {
     }
     reset_overlay_slots(state);
     state.camera_entity = wi::ecs::INVALID_ENTITY;
+    state.primary_camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;
     state.owner_thread = std::thread::id{};
     state.width = 0;
@@ -422,6 +434,7 @@ extern "C" uint32_t elisa_render_scene_abi_version(void) {
 }
 #include "render_scene_initialize_abi.inc"
 #include "render_scene_camera_abi.inc"
+#include "render_scene_camera_handles_abi.inc"
 extern "C" int64_t elisa_render_scene_v1_create(
     int32_t primitive,
     float px, float py, float pz,

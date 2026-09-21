@@ -46,7 +46,9 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_orthographic_height(float ve
     if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     state.vertical_size = vertical_size;
     state.perspective_camera = false;
-    return resize_unlocked(state, state.width, state.height);
+    state.camera->CreateOrtho(float(state.width), float(state.height),
+        state.camera_near_clip, state.camera_far_clip, vertical_size);
+    return ELISA_RENDER_SCENE_OK;
 }
 
 extern "C" int32_t elisa_render_scene_v1_set_camera_perspective(
@@ -65,7 +67,9 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_perspective(
     state.camera_near_clip = near_clip;
     state.camera_far_clip = far_clip;
     state.perspective_camera = true;
-    return resize_unlocked(state, state.width, state.height);
+    state.camera->CreatePerspective(float(state.width), float(state.height),
+        near_clip, far_clip, vertical_fov_radians);
+    return ELISA_RENDER_SCENE_OK;
 }
 
 extern "C" int32_t elisa_render_scene_v1_set_camera_look_at(

@@ -29,6 +29,7 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
     state.camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
     state.perspective_camera = false;
     state.camera_entity = state.scene->Entity_CreateCamera("elisa_runtime_camera", float(width), float(height));
+    state.primary_camera_entity = state.camera_entity;
     state.camera = state.scene->cameras.GetComponent(state.camera_entity);
     wi::scene::TransformComponent* camera_transform = state.scene->transforms.GetComponent(state.camera_entity);
     if (state.camera_entity == wi::ecs::INVALID_ENTITY || state.camera == nullptr || camera_transform == nullptr) {
