@@ -17,6 +17,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace elisa::assets {
@@ -441,7 +442,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
 }
 
 inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geometry,
-    std::string& error) {
+    std::string& error, probe::BinaryPackageReadCancellationCheck cancellation_check = {}) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         error = "cooked geometry package is missing";
@@ -454,16 +455,31 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
     }
     std::vector<uint8_t> bytes(static_cast<size_t>(size));
     input.seekg(0);
-    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!input) {
-        error = "cooked geometry package read failed";
+    size_t bytes_read = 0;
+    while (bytes_read < bytes.size()) {
+        if (cancellation_check && cancellation_check(bytes_read, bytes.size())) {
+            error = "cooked geometry package read cancelled";
+            return false;
+        }
+        const size_t chunk = std::min(probe::BINARY_PACKAGE_READ_CHUNK_BYTES,
+            bytes.size() - bytes_read);
+        input.read(reinterpret_cast<char*>(bytes.data() + bytes_read),
+            static_cast<std::streamsize>(chunk));
+        if (input.gcount() != static_cast<std::streamsize>(chunk)) {
+            error = "cooked geometry package read failed";
+            return false;
+        }
+        bytes_read += chunk;
+    }
+    if (cancellation_check && cancellation_check(bytes_read, bytes.size())) {
+        error = "cooked geometry package read cancelled";
         return false;
     }
     return load_cooked_geometry_bytes(bytes.data(), bytes.size(), geometry, error);
 }
 
 inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& geometry,
-    std::string& error) {
+    std::string& error, probe::BinaryPackageReadCancellationCheck cancellation_check = {}) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         error = "cooked geometry package is missing";
@@ -473,7 +489,7 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
     input.read(reinterpret_cast<char*>(magic.data()), static_cast<std::streamsize>(magic.size()));
     if (input.gcount() != static_cast<std::streamsize>(magic.size()) ||
         magic != std::array<uint8_t, 4>{'E', 'L', 'P', 'K'}) {
-        if (!load_cooked_geometry(path, geometry, error)) return false;
+        if (!load_cooked_geometry(path, geometry, error, std::move(cancellation_check))) return false;
         if (geometry.texture_sections.empty()) return true;
         error = "cooked slot textures need an ELPK bundle";
         return false;
@@ -485,7 +501,8 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
         return false;
     }
     std::vector<uint8_t> bytes;
-    if (!probe::read_binary_package_section(path, index, "mesh", bytes, error) ||
+    if (!probe::read_binary_package_section(path, index, "mesh", bytes, error,
+            std::move(cancellation_check)) ||
         !load_cooked_geometry_bytes(bytes.data(), bytes.size(), geometry, error)) return false;
     for (const std::string& section : geometry.texture_sections) {
         const auto entry = std::find_if(index.sections.begin(), index.sections.end(),

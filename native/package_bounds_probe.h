@@ -3,10 +3,12 @@
 #include "package_load.h"
 #include "cooked_geometry_package.h"
 #include "probe_support.h"
+#include "snapshot_asset_worker.h"
 #include "virtual_file_service.h"
 #include "native_resource_loader.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -98,7 +100,16 @@ inline void write_zstd_bomb_package_fixture(const std::filesystem::path& path, u
 inline void write_large_binary_package_fixture(const std::filesystem::path& path, size_t payload_size) {
     const size_t index_end = BinaryPackageIndex::HEADER_BYTES + BinaryPackageIndex::ENTRY_BYTES;
     std::vector<uint8_t> header(index_end, 0);
-    const std::vector<uint8_t> payload(payload_size, 0x5A);
+    std::vector<uint8_t> payload(payload_size, 0x5A);
+    static constexpr uint8_t PNG_HEADER[33] = {
+        0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n',
+        0, 0, 0, 13, 'I', 'H', 'D', 'R',
+        0, 0, 0, 1, 0, 0, 0, 1,
+        8, 6, 0, 0, 0, 0, 0, 0, 0,
+    };
+    if (payload.size() >= sizeof(PNG_HEADER)) {
+        std::copy(PNG_HEADER, PNG_HEADER + sizeof(PNG_HEADER), payload.begin());
+    }
     header[0] = 'E'; header[1] = 'L'; header[2] = 'P'; header[3] = 'K';
     put_package_u16(header, 4, 1);
     put_package_u16(header, 6, 1);
@@ -324,6 +335,40 @@ inline bool probe_package_bounds(const std::string& valid_package,
                 return bytes_read >= BINARY_PACKAGE_READ_CHUNK_BYTES;
             }) && cancelled_section_progress == BINARY_PACKAGE_READ_CHUNK_BYTES &&
         cancelled_section_bytes.empty() && cancelled_section_error == "binary section read cancelled";
+    elisa::assets::SerialJobWorker<int> package_read_worker;
+    std::atomic<size_t> worker_read_progress{0};
+    std::atomic_bool release_cancel_boundary{false};
+    elisa::assets::BundleTexture worker_cancelled_texture;
+    std::string worker_cancelled_error;
+    const auto worker_checkpoint = elisa::assets::package_read_checkpoint(package_read_worker);
+    const bool package_read_job_submitted = package_read_worker.submit(1, [&] {
+        return elisa::assets::read_bundle_texture(in_flight_path, "payload",
+            worker_cancelled_texture, worker_cancelled_error,
+            [&](size_t bytes_read, size_t total_bytes) {
+                worker_read_progress.store(bytes_read);
+                if (bytes_read >= BINARY_PACKAGE_READ_CHUNK_BYTES) {
+                    while (!release_cancel_boundary.load()) std::this_thread::yield();
+                }
+                return worker_checkpoint(bytes_read, total_bytes);
+            }) ? 1 : 0;
+    });
+    const bool package_read_job_started = package_read_job_submitted &&
+        package_read_worker.wait_until(1, 0, std::chrono::seconds(3));
+    const auto worker_read_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (package_read_job_started &&
+        worker_read_progress.load() < BINARY_PACKAGE_READ_CHUNK_BYTES &&
+        std::chrono::steady_clock::now() < worker_read_deadline) {
+        std::this_thread::yield();
+    }
+    const bool saw_worker_read_chunk = worker_read_progress.load() == BINARY_PACKAGE_READ_CHUNK_BYTES;
+    const bool worker_cancel_accepted = package_read_job_started && package_read_worker.cancel(1);
+    release_cancel_boundary.store(true);
+    const bool worker_read_finished = package_read_job_submitted &&
+        package_read_worker.wait_until(1, 1, std::chrono::seconds(30));
+    const bool worker_read_cancelled_at_chunk = saw_worker_read_chunk && worker_cancel_accepted &&
+        worker_read_finished && package_read_worker.outstanding() == 0 &&
+        worker_cancelled_texture.encoded.empty() &&
+        worker_cancelled_error == "binary section read cancelled";
     VirtualFileService in_flight_vfs;
     const bool in_flight_mounted = in_flight_vfs.mount(base_root, {}, 12);
     const VirtualReadHandle in_flight_read = in_flight_vfs.request("in-flight.elpk", "payload");
@@ -472,6 +517,8 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(nested_names_resolve, "package dependency names relative to their package") &&
         check(bombs_rejected, "zstd decompression bombs rejected by declared size") &&
         check(section_read_cancelled_at_chunk, "binary section read cancels at a chunk boundary") &&
+        check(worker_read_cancelled_at_chunk,
+            "asset worker cancellation reaches an in-progress package read") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&

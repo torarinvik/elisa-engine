@@ -170,10 +170,9 @@ mutant exited 1 at the named check:
 
 - **Cancellation granularity.** `VirtualFileService` now reads ELPK sections
   in 64 KiB chunks and stops at the next chunk boundary after cancellation;
-  the currently blocking chunk completes. One-shot zstd decompression remains
-  uninterruptible. The production RenderScene snapshot worker still checks only
-  before its section read, so an in-progress read/decode finishes and its result
-  is discarded.
+  the currently blocking chunk completes. The production RenderScene snapshot
+  worker passes the same cancellation checkpoints into mesh and texture section
+  reads. One-shot zstd decompression and PNG/JPEG decode remain uninterruptible.
 - **Adoption can still fail.** Requests count against the slot limits at
   request time, but synchronous registration of another ID doesn't count
   pending requests and can take the last slot first. The budgets (256 MiB of
@@ -209,10 +208,10 @@ mutant exited 1 at the named check:
   section read, cancels before EOF, and verifies the result remains unpublished.
   A direct package-reader check cancels at the same boundary and confirms no
   partial section reaches its caller.
+- The production asset-worker check pauses after the first 64 KiB read of a
+  32 MiB bundle texture, cancels the job, and verifies no encoded texture is
+  returned and the worker releases the job.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON_BIN=/opt/homebrew/bin/python3 ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ elisascript scripts/wicked_probe.elisascript build` passed the native build and application/render smokes. The matching `frame` phase passed the new package cancellation probe and SDL3/Metal render checks.
-- `elisascript scripts/wicked_probe.elisascript build` rebuilt the probe with
-  the worker check and passed its application and render smokes. The `frame`
-  phase then passed.
 - `scripts/run_boundary_sanitized.py` passed. The boundary harness reported
   `worker=1` under ASan/UBSan, and the ThreadSanitizer worker harness reported
   no finding.

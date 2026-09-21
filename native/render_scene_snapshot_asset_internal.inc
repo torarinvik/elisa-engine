@@ -193,17 +193,18 @@ SnapshotAssetLoad load_snapshot_asset(elisa::assets::SerialJobWorker<SnapshotAss
         // A cancelled job stops here, before its section read. Test holds
         // park the job at this point.
         if (!worker.checkpoint()) return load;
+        auto cancellation_check = elisa::assets::package_read_checkpoint(worker);
         if (kind == SnapshotAssetKind::Mesh) {
             if (!elisa::assets::load_cooked_geometry_asset(
-                    load.canonical_path.string(), load.geometry, load.error)) return load;
+                    load.canonical_path.string(), load.geometry, load.error,
+                    cancellation_check)) return load;
             if (!cooked_geometry_bytes(load.geometry, load.bytes) || load.bytes == 0) {
                 load.status = ELISA_RENDER_SCENE_CAPACITY;
                 return load;
             }
         } else {
-            if (!elisa::assets::read_bundle_texture(load.canonical_path, section.c_str(), load.texture, load.error)) {
-                return load;
-            }
+            if (!elisa::assets::read_bundle_texture(load.canonical_path, section.c_str(),
+                    load.texture, load.error, std::move(cancellation_check))) return load;
             if (!elisa::rendering::textures::decode_image(load.texture.encoded,
                     load.texture.header.width, load.texture.header.height, load.decoded_texture)) {
                 load.error = "bundle texture image decode failed";

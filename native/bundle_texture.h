@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace elisa::assets {
@@ -124,7 +125,8 @@ inline const char* encoded_image_extension(EncodedImageFormat format) {
 // Reads one CRC-checked section. The unpacked size is bounded before the
 // section is read, and the image header before the bytes are returned.
 inline bool read_bundle_texture(const std::filesystem::path& bundle_path, const char* section,
-        BundleTexture& texture, std::string& error) {
+        BundleTexture& texture, std::string& error,
+        probe::BinaryPackageReadCancellationCheck cancellation_check = {}) {
     texture = BundleTexture{};
     if (!valid_bundle_section_name(section)) {
         error = "bundle texture section name rejected";
@@ -148,7 +150,8 @@ inline bool read_bundle_texture(const std::filesystem::path& bundle_path, const 
         return false;
     }
     std::vector<uint8_t> bytes;
-    if (!probe::read_binary_package_section(path, index, name, bytes, error)) return false;
+    if (!probe::read_binary_package_section(path, index, name, bytes, error,
+            std::move(cancellation_check))) return false;
     if (!inspect_encoded_image(bytes, texture.header, error)) return false;
     texture.checksum = entry->checksum;
     texture.encoded = std::move(bytes);

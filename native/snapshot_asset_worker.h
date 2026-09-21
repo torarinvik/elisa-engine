@@ -221,4 +221,12 @@ private:
     bool hold_running_ = false;
 };
 
+// Adapt a worker checkpoint to the bounded package-reader callback. The
+// reader calls this before each file chunk; cancellation therefore waits only
+// for the current OS read to finish.
+template <typename Result>
+auto package_read_checkpoint(SerialJobWorker<Result>& worker) {
+    return [&worker](size_t, size_t) { return !worker.checkpoint(); };
+}
+
 } // namespace elisa::assets
