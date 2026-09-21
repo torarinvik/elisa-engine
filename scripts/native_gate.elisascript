@@ -11,7 +11,7 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     result.exit_status
 
 def run_native_stage(program: sview, arguments: darray[sview]) -> i64:
-    run_process(executable(program), arguments)
+    try run_process(executable(program), arguments) else 1
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 1:

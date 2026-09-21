@@ -1,0 +1,219 @@
+# Own the Application host and activate engine-owned service fallbacks selected
+# by the validated startup report. Provider-specific handles stay encapsulated.
+include "./application.elisa"
+include "../backend/requirements.elisa"
+include "../physics/runtime.elisa"
+include "../audio/runtime.elisa"
+
+module RuntimeServices:
+    public:
+        enum OpenStatus:
+            Ready
+            FallbackRequired
+            SessionAlreadyOpen
+            ApplicationAlreadyRunning
+            InvalidRequirements
+            RequirementsUnavailable
+            ApplicationInitializationFailed
+            ProviderInitializationFailed
+            PhysicsInitializationFailed
+            AudioConfigurationInvalid
+            AudioDeviceUnavailable
+            AudioInitializationFailed
+            UnsupportedProvider
+            RollbackFailed
+
+        error RuntimeServicesError:
+            PhysicsUnavailable
+            AudioUnavailable
+            SessionStopped
+            ShutdownFailed
+
+        # Provider and host ownership stay inside this affine public value.
+        affine struct Session:
+            private:
+                physics: mutable PhysicsRuntime::ServiceState
+                audio_live: mutable bool
+                application_live: mutable bool
+
+    private:
+        enum ActivationStatus:
+            Ready
+            PhysicsOwnerUnavailable
+            PhysicsInitializationFailed
+            AudioConfigurationInvalid
+            AudioDeviceUnavailable
+            AudioInitializationFailed
+            UnsupportedProvider
+
+        # Tear down adapters before the host they use. Retain any live flag
+        # whose shutdown fails so callers can retry cleanup while its host is
+        # still available.
+        def close_state(session: mutable Session&) -> bool:
+            audio_closed: mutable bool = true
+            physics_closed: mutable bool = true
+            application_closed: mutable bool = true
+            if session.audio_live:
+                audio_closed <- catch AudioRuntime::shutdown():
+                    ok: true
+                    error failure: false
+                session.audio_live <- false if audio_closed
+            if PhysicsRuntime::service_is_live(session.physics):
+                physics_closed <- catch PhysicsRuntime::service_shutdown(&session.physics):
+                    ok: true
+                    error failure: false
+            if session.application_live:
+                application_closed <- Application::shutdown()
+                if application_closed:
+                    session.application_live <- false
+                    session.audio_live <- false
+                    PhysicsRuntime::service_reset(&session.physics)
+                    return true
+            audio_closed and physics_closed and application_closed
+
+        def fallback_is_supported(decision: Capabilities::BackendFeatureDecision) -> bool:
+            if decision.feature == Capabilities::BackendFeature.Physics:
+                return decision.fallback_provider == Capabilities::BackendFallbackProvider.JoltPhysics
+            if decision.feature == Capabilities::BackendFeature.Audio:
+                return decision.fallback_provider == Capabilities::BackendFallbackProvider.MiniaudioSilent or decision.fallback_provider == Capabilities::BackendFallbackProvider.MiniaudioDefault
+            false
+
+        def activate_silent_audio(sample_rate: u32, channels: u32) -> ActivationStatus:
+            catch AudioRuntime::initialize_silent(sample_rate, channels):
+                ok: ActivationStatus.Ready
+                AudioRuntime::AudioError.InvalidArgument: ActivationStatus.AudioConfigurationInvalid
+                AudioRuntime::AudioError.DeviceUnavailable: ActivationStatus.AudioDeviceUnavailable
+                error failure: ActivationStatus.AudioInitializationFailed
+
+        def activate_default_audio(sample_rate: u32, channels: u32) -> ActivationStatus:
+            catch AudioRuntime::initialize_default(sample_rate, channels):
+                ok: ActivationStatus.Ready
+                AudioRuntime::AudioError.InvalidArgument: ActivationStatus.AudioConfigurationInvalid
+                AudioRuntime::AudioError.DeviceUnavailable: ActivationStatus.AudioDeviceUnavailable
+                error failure: ActivationStatus.AudioInitializationFailed
+
+        def activate_provider(session: mutable Session&,
+            decision: Capabilities::BackendFeatureDecision,
+            sample_rate: u32, channels: u32) -> ActivationStatus:
+            if decision.feature == Capabilities::BackendFeature.Physics:
+                return ActivationStatus.Ready if PhysicsRuntime::service_is_live(session.physics)
+                initialized: ActivationStatus = catch PhysicsRuntime::service_initialize(
+                    &session.physics):
+                    ok: ActivationStatus.Ready
+                    PhysicsRuntime::PhysicsError.ApplicationUnavailable: ActivationStatus.PhysicsOwnerUnavailable
+                    error failure: ActivationStatus.PhysicsInitializationFailed
+                if initialized == ActivationStatus.Ready:
+                    return ActivationStatus.Ready
+                return initialized
+            if decision.feature == Capabilities::BackendFeature.Audio:
+                return ActivationStatus.AudioConfigurationInvalid if sample_rate < AudioRuntime::MIN_SAMPLE_RATE_HZ
+                status: ActivationStatus =
+                    match decision.fallback_provider:
+                        Capabilities::BackendFallbackProvider.MiniaudioSilent:
+                            activate_silent_audio(sample_rate, channels)
+                        Capabilities::BackendFallbackProvider.MiniaudioDefault:
+                            activate_default_audio(sample_rate, channels)
+                        _:
+                            ActivationStatus.UnsupportedProvider
+                session.audio_live <- true if status == ActivationStatus.Ready
+                return status
+            ActivationStatus.UnsupportedProvider
+
+        def open_status_for_activation(status: ActivationStatus) -> OpenStatus:
+            match status:
+                ActivationStatus.Ready:
+                    OpenStatus.Ready
+                ActivationStatus.PhysicsOwnerUnavailable:
+                    OpenStatus.ProviderInitializationFailed
+                ActivationStatus.PhysicsInitializationFailed:
+                    OpenStatus.PhysicsInitializationFailed
+                ActivationStatus.AudioConfigurationInvalid:
+                    OpenStatus.AudioConfigurationInvalid
+                ActivationStatus.AudioDeviceUnavailable:
+                    OpenStatus.AudioDeviceUnavailable
+                ActivationStatus.AudioInitializationFailed:
+                    OpenStatus.AudioInitializationFailed
+                ActivationStatus.UnsupportedProvider:
+                    OpenStatus.UnsupportedProvider
+
+    public:
+        # The inert affine value owns no native resources. `open` performs all
+        # fallible startup work explicitly, avoiding a fallible affine return.
+        def Session() -> Session:
+            Session{
+                physics: PhysicsRuntime::ServiceState(),
+                audio_live: false,
+                application_live: false,
+            }
+
+        def open(session: mutable Session&, config: Application::Config,
+            requirements: BackendRequirements::BackendStartupRequirements&,
+            audio_sample_rate: u32, audio_channels: u32,
+            report: mutable BackendRequirements::BackendRequirementsReport&) -> OpenStatus:
+            report <- BackendRequirements::backend_requirements_invalid_report()
+            return OpenStatus.SessionAlreadyOpen if session.application_live
+            session.audio_live <- false
+
+            opened: Application::InitializeStatus = Application::initialize_with_profile_requirements(
+                config, requirements, report)
+            if opened == Application::InitializeStatus.AlreadyRunning:
+                return OpenStatus.ApplicationAlreadyRunning
+            if opened == Application::InitializeStatus.InvalidRequirements:
+                return OpenStatus.InvalidRequirements
+            if opened == Application::InitializeStatus.RequirementsUnavailable:
+                return OpenStatus.RequirementsUnavailable
+            if opened == Application::InitializeStatus.ShutdownFailed:
+                session.application_live <- true
+                return OpenStatus.RollbackFailed if not close_state(session)
+                return OpenStatus.ApplicationInitializationFailed
+            return OpenStatus.ApplicationInitializationFailed if opened != Application::InitializeStatus.Ready and opened != Application::InitializeStatus.FallbackRequired
+            session.application_live <- true
+
+            provider_failure: mutable OpenStatus = OpenStatus.Ready
+            for index in 0..<report.services.decision_count |session, audio_sample_rate, audio_channels, provider_failure|:
+                if provider_failure == OpenStatus.Ready:
+                    decision: Capabilities::BackendFeatureDecision = report.services.decisions[index]
+                    if decision.resolution == Capabilities::BackendFeatureResolution.DeclaredFallback:
+                        if not fallback_is_supported(decision):
+                            provider_failure <- OpenStatus.UnsupportedProvider
+                        else:
+                            activation: ActivationStatus = activate_provider(session, decision,
+                                audio_sample_rate, audio_channels)
+                            if activation != ActivationStatus.Ready:
+                                provider_failure <- open_status_for_activation(activation)
+
+            if provider_failure != OpenStatus.Ready:
+                return OpenStatus.RollbackFailed if not close_state(session)
+                return provider_failure
+
+            return OpenStatus.FallbackRequired if opened == Application::InitializeStatus.FallbackRequired
+            OpenStatus.Ready
+
+        def physics_active(session: Session&) -> bool:
+            PhysicsRuntime::service_is_live(session.physics)
+
+        def audio_active(session: Session&) -> bool:
+            session.application_live and session.audio_live
+
+        def physics_fixed_step(session: mutable Session&, delta_seconds: f32) -> u64 error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_fixed_step(&session.physics, delta_seconds)
+
+        def physics_body_create(session: Session&, description: PhysicsRuntime::BodyDesc) -> PhysicsRuntime::BodyHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_create(session.physics, description)
+
+        def physics_body_position(session: Session&, body: PhysicsRuntime::BodyHandle) -> Geometry::Vec3 error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_position(session.physics, body)
+
+        def physics_body_destroy(session: Session&, body: PhysicsRuntime::BodyHandle) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_destroy(session.physics, body)
+
+        def shutdown(session: mutable Session&) -> bool:
+            close_state(session)
