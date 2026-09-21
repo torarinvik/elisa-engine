@@ -6,6 +6,13 @@ mesh through the existing bounded FBX cooker, and can transfer clips from an
 FBX animation source when that source contains every target joint name. Each
 source clip becomes an independent NLA take in the cooked Elisa package.
 
+Clip transfer bakes world-space bone rotations and root translations onto the
+target rig. It preserves the GLB armature's object scale and target bone lengths;
+source object-transform channels are never attached to the target. This prevents
+a source rig at scale 1 from replacing a GLB's required 0.01 unit conversion.
+The rigs must have compatible bone-axis conventions in addition to matching
+names; this is not a general humanoid retargeter or a foot-contact solver.
+
 The cooker can also extract the first material's base-color PNG or JPEG image
 from an embedded GLB bufferView, data URI, or project-local image URI. Texture
 extraction is opt-in. The game then assigns the generated image through
@@ -49,3 +56,16 @@ inside the project, and rejects invalid extensions and path escapes. An
 asset-root integration check should also cook a real skinned GLB, confirm the
 expected clip names and texture output, then build the game through
 `scripts/elisa_build_run.py`.
+
+Run the Blender regression with:
+
+```sh
+blender --background --python-exit-code 1 --python scripts/test_glb_retarget_blender.py
+```
+
+It transfers two clips between rigs with a 100x object-scale difference and
+different child rest orientations, checking root motion, world rotations,
+preserved limb length, and absence of object-transform animation keys.
+The supplied cyborg cooks to 1.6383 metres tall (previously 163.83 after the
+incorrect raw-action transfer). All six locomotion clips were sampled at their
+start, middle and end, retaining plausible character dimensions.
