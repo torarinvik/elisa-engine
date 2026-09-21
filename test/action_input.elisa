@@ -244,14 +244,16 @@ def checked_binding_tests() -> i32:
         error failure: 2
     return 54 if typed_capacity != 0
 
+    # Game clients can separate keyboard presets, gameplay, and menu actions
+    # without exhausting distinct action state slots.
     full_actions: mutable ActionInput::Input = ActionInput::Input()
-    for action in 0..<16 |full_actions|:
+    for action in 0..<32 |full_actions|:
         result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(1 + action.i64(), 1 + action.i64(), 0.0))
         return 55 if result != ActionInput::BindResult.Bound
     for attempt in 0..<16 |full_actions|:
-        result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(17 + attempt.i64(), 100 + attempt.i64(), 0.0))
+        result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(33 + attempt.i64(), 100 + attempt.i64(), 0.0))
         return 56 if result != ActionInput::BindResult.Capacity
-    for code in 16..<48 |full_actions|:
+    for code in 32..<48 |full_actions|:
         result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(1, 100 + code.i64(), 0.0))
         return 57 if result != ActionInput::BindResult.Bound
     return 58 if ActionInput::bind_checked(&full_actions, test_binding(1, 200, 0.0)) != ActionInput::BindResult.Capacity
