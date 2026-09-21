@@ -17,3 +17,19 @@ extern "C" int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled) {
     elisa::render_scene_effects::apply_fxaa(*state.path, enabled != 0);
     return ELISA_RENDER_SCENE_OK;
 }
+
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+extern "C" int32_t elisa_render_scene_v1_test_quality_matches(int32_t ambient_occlusion, int32_t fxaa) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    const wi::RenderPath3D::AO expected_ao = ambient_occlusion != 0 ?
+        wi::RenderPath3D::AO_SSAO : wi::RenderPath3D::AO_DISABLED;
+    return state.path->getAO() == expected_ao && state.path->getFXAAEnabled() == (fxaa != 0) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_quality_rejects_invalid_flags(void) {
+    return elisa_render_scene_v1_set_ambient_occlusion(2) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_set_fxaa(-1) == ELISA_RENDER_SCENE_INVALID_ARGUMENT ? 1 : 0;
+}
+#endif
