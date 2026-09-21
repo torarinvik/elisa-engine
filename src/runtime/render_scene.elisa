@@ -86,6 +86,13 @@ module RenderScene:
         extern elisa_render_scene_v1_advance_animation(handle: i64, delta_seconds: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_lit_material(handle: i64, roughness: f32, metallic: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_texture_uv_transform(handle: i64, scale_u: f32, scale_v: f32, offset_u: f32, offset_v: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_sun_shadows(enabled: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
 
         @callconv(c)
@@ -332,6 +339,20 @@ module RenderScene:
 
         def advance_animation(handle: InstanceHandle, delta_seconds: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_advance_animation(handle.native_value, delta_seconds))
+
+        # Opt into PBR illumination and shadow casting. Scalars multiply surface maps.
+        def set_lit_material(handle: InstanceHandle, roughness: f32, metallic: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_lit_material(handle.native_value, roughness, metallic))
+
+        # Applies to all material maps. Useful for tiling and source UV conventions.
+        def set_texture_uv_transform(handle: InstanceHandle, scale_u: f32, scale_v: f32,
+            offset_u: f32, offset_v: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_texture_uv_transform(handle.native_value,
+                scale_u, scale_v, offset_u, offset_v))
+
+        # Call after set_environment, which creates the directional sun.
+        def set_sun_shadows(enabled: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_sun_shadows(1 if enabled else 0))
 
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,

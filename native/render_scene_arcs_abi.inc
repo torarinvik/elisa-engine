@@ -189,6 +189,7 @@ extern "C" int32_t elisa_render_scene_v1_update_electric_arc(
         arc.branch.subdivision = ArcTuning::BRANCH_SUBDIVISION;
         arc.branch.blendMode = wi::enums::BLENDMODE_ADDITIVE;
         arc.branch.depth_test_enabled = arc.depth_test;
+        arc.branch.depth_soften = arc.depth_test ? 0.0f : ArcTuning::TRAIL_DEPTH_SOFTEN;
         arc.branch.color = XMFLOAT4(1, 1, 1, 1);
         arc.branch.width = ArcTuning::TRAIL_WIDTH;
         const XMFLOAT4 branch_color(ArcTuning::BRANCH_RED * intensity,
@@ -249,5 +250,9 @@ extern "C" int32_t elisa_render_scene_v1_set_electric_arc_depth_test(int64_t han
     arc.halo.depth_test_enabled = arc.depth_test;
     arc.core.depth_test_enabled = arc.depth_test;
     arc.branch.depth_test_enabled = arc.depth_test;
+    const float soften = arc.depth_test ? 0.0f : ArcTuning::TRAIL_DEPTH_SOFTEN;
+    arc.halo.depth_soften = soften;
+    arc.core.depth_soften = soften;
+    arc.branch.depth_soften = soften;
     return ELISA_RENDER_SCENE_OK;
 }

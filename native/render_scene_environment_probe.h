@@ -33,3 +33,32 @@ extern "C" int32_t elisa_render_scene_v1_test_environment_matches(void) {
         close(weather.fogDensity, 0.02f) && weather.IsHeightFog() && weather.IsOverrideFogColor()
         ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_art_material_settings(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    for (const auto& instance : state.instances) {
+        if (!instance.live) continue;
+        const auto* material = state.scene->materials.GetComponent(instance.entity);
+        const auto* object = state.scene->objects.GetComponent(instance.entity);
+        if (material && object && material->shaderType == wi::scene::MaterialComponent::SHADERTYPE_PBR &&
+            std::fabs(material->roughness - 0.65f) < 0.0001f &&
+            std::fabs(material->metalness - 0.3f) < 0.0001f &&
+            material->texMulAdd.x == 1 && material->texMulAdd.y == -1 &&
+            material->texMulAdd.z == 0 && material->texMulAdd.w == 1 &&
+            material->IsCastingShadow() && object->IsCastingShadow()) return 1;
+    }
+    return 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_sun_shadows_match(int32_t enabled) {
+    if (enabled != 0 && enabled != 1) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    const bool expected = enabled != 0;
+    return sun != nullptr && sun->IsCastingShadow() == expected &&
+        state.path->getShadowsEnabled() == expected ? 1 : 0;
+}

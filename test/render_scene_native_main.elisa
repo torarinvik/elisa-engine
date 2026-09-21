@@ -11,6 +11,7 @@ include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
 include "./render_scene_arc_depth_native.elisa"
+
 using Maze
 using MazeGame
 using MazeTrace
