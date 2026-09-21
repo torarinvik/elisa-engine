@@ -34,6 +34,10 @@ module PhysicsRuntime:
             body_generation: u64, x: mutable f32&, y: mutable f32&, z: mutable f32&) -> i32
 
         @callconv(c)
+        extern elisa_physics_v1_set_sleeping(world_generation: u64, slot: u32,
+            body_generation: u64, sleeping: i32) -> i32
+
+        @callconv(c)
         extern elisa_physics_v1_set_kinematic_target(world_generation: u64, slot: u32,
             body_generation: u64, position_x: f32, position_y: f32, position_z: f32,
             rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32) -> i32
@@ -201,6 +205,14 @@ module PhysicsRuntime:
                 target.rotation.x, target.rotation.y, target.rotation.z, target.rotation.w)
             try check_status(status)
 
+        def service_body_set_sleeping(state: ServiceState&, body: BodyHandle,
+            sleeping: bool) -> void error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            raise PhysicsError.StaleWorld if body.world_generation != state.generation
+            status: i32 = elisa_physics_v1_set_sleeping(state.generation, body.slot,
+                body.generation, 1 if sleeping else 0)
+            try check_status(status)
+
         def service_body_destroy(state: ServiceState&,
             body: BodyHandle) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
@@ -264,6 +276,14 @@ module PhysicsRuntime:
             status: i32 = elisa_physics_v1_set_kinematic_target(world.generation, body.slot,
                 body.generation, target.position.x, target.position.y, target.position.z,
                 target.rotation.x, target.rotation.y, target.rotation.z, target.rotation.w)
+            try check_status(status)
+
+        def body_set_sleeping(world: World&, body: BodyHandle,
+            sleeping: bool) -> void error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            raise PhysicsError.StaleWorld if body.world_generation != world.generation
+            status: i32 = elisa_physics_v1_set_sleeping(world.generation, body.slot,
+                body.generation, 1 if sleeping else 0)
             try check_status(status)
 
         def body_destroy(world: World&, body: BodyHandle) -> void error[PhysicsError]:
