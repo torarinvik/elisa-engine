@@ -5,12 +5,14 @@
 // pump() performs a bounded number of package reads for a worker or device
 // phase. A mount generation change makes queued work stale before allocation.
 #include "virtual_package.h"
+#include "package_manifest.h"
 
 #include <array>
 #include <cstdint>
 #include <filesystem>
 #include <future>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -50,8 +52,8 @@ public:
         const std::string& section, const std::vector<std::string>& dependencies,
         uint64_t dependency_generation = 0) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!dependencies_valid_locked(logical_name, dependencies)) return {};
-        return request_locked(logical_name, section, dependency_generation);
+        if (!dependency_names_valid_locked(logical_name, dependencies)) return {};
+        return request_locked(logical_name, section, dependency_generation, &dependencies);
     }
 
     std::future<uint32_t> pump_async(uint32_t budget = 1) {
@@ -101,13 +103,15 @@ public:
 
 private:
     VirtualReadHandle request_locked(const std::string& logical_name, const std::string& section,
-        uint64_t dependency_generation) {
+        uint64_t dependency_generation, const std::vector<std::string>* dependency_order = nullptr) {
         if (!mounted_ || !safe_package_path(logical_name) || section.empty()) return {};
         for (uint32_t slot = 0; slot < MAX_REQUESTS; ++slot) {
             Request& item = requests_[slot];
             if (item.state == VirtualReadState::Queued && item.logical_name == logical_name &&
                 item.section == section && item.mount_generation == generation_ &&
-                item.dependency_generation == dependency_generation) {
+                item.dependency_generation == dependency_generation &&
+                item.validate_dependency_order == (dependency_order != nullptr) &&
+                (dependency_order == nullptr || item.expected_dependency_order == *dependency_order)) {
                 return {slot, item.generation};
             }
         }
@@ -118,6 +122,10 @@ private:
             item = {};
             item.logical_name = logical_name;
             item.section = section;
+            if (dependency_order != nullptr) {
+                item.expected_dependency_order = *dependency_order;
+                item.validate_dependency_order = true;
+            }
             item.mount_generation = generation_;
             item.dependency_generation = dependency_generation;
             item.generation = previous_generation == UINT32_MAX ? 0 : previous_generation + 1;
@@ -128,15 +136,14 @@ private:
         return {};
     }
 
-    bool dependencies_valid_locked(const std::string& logical_name,
+    bool dependency_names_valid_locked(const std::string& logical_name,
         const std::vector<std::string>& dependencies) const {
         if (dependencies.size() > MAX_DEPENDENCIES) return false;
-        std::string previous;
+        std::set<std::string> seen;
         for (const std::string& dependency : dependencies) {
             if (!safe_package_path(dependency) || dependency == logical_name ||
-                (!previous.empty() && dependency <= previous) ||
+                !seen.insert(dependency).second ||
                 !resolve_package_path(base_root_, overrides_, dependency, generation_).found) return false;
-            previous = dependency;
         }
         return true;
     }
@@ -166,6 +173,16 @@ private:
                 ++completed;
                 continue;
             }
+            std::vector<std::string> dependency_order;
+            std::string dependency_error;
+            if (!package_dependency_order(base_root_, overrides_, item.logical_name,
+                    MAX_DEPENDENCIES, dependency_order, dependency_error) ||
+                (item.validate_dependency_order && dependency_order != item.expected_dependency_order)) {
+                item.error = dependency_error.empty() ? "package dependency order mismatch" : dependency_error;
+                item.state = VirtualReadState::Failed;
+                ++completed;
+                continue;
+            }
             const BinaryPackageIndex index = read_binary_package_index(resolved.path);
             if (!index.valid || !read_binary_package_section(resolved.path, index, item.section,
                     item.bytes, item.error)) {
@@ -182,11 +199,13 @@ private:
         std::string logical_name;
         std::string section;
         std::vector<uint8_t> bytes;
+        std::vector<std::string> expected_dependency_order;
         std::string error;
         uint64_t mount_generation = 0;
         uint64_t dependency_generation = 0;
         uint32_t generation = 0;
         VirtualReadState state = VirtualReadState::Empty;
+        bool validate_dependency_order = false;
     };
 
     Request* find(VirtualReadHandle handle) {

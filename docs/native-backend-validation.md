@@ -150,11 +150,14 @@ cooker self-test opens the database again after a rollback and checks the
 single-row cache invariant, while `record_validation_assets.py` checks the
 schema and dependency/cache rows produced by the real maze cook.
 
-Runtime package loading passes through `native/virtual_package.h`, which builds
-a bounded section index before geometry decoding. The native gate rejects
-duplicate section names, malformed records, unsafe source paths, and missing
-packages using temporary adversarial fixtures; the real cooked package remains
-the only input used to create a renderable mesh.
+Runtime package loading passes through `native/virtual_package.h`, which reads a
+bounded ELPK header and section index before decoding geometry. Optional
+`native/package_manifest.h` metadata establishes a bounded dependency DAG; the
+VFS worker rejects missing dependencies, cycles, and incorrect load order before
+reading the requested section. The native gate also rejects duplicate section
+names, malformed records, unsafe source paths, corrupt section checksums, and
+mount-escaping symlinks using temporary adversarial fixtures; the real cooked
+package remains the only input used to create a renderable mesh.
 
 For manual host work, set `ELISA_PERSISTENT_HOST=1` before launching the built
 probe. The same scene then opens as a visible client and runs until SDL close;

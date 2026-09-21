@@ -67,6 +67,46 @@ inline void write_binary_package_fixture(const std::filesystem::path& path, bool
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
 
+inline void write_binary_package_with_manifest(const std::filesystem::path& path,
+    const std::vector<std::string>& dependencies, bool compressed = false) {
+    const std::string payload = "elisa-bundle-section";
+    std::vector<uint8_t> encoded(payload.begin(), payload.end());
+    if (compressed) {
+        const size_t bound = ZSTD_compressBound(payload.size());
+        encoded.resize(bound);
+        const size_t size = ZSTD_compress(encoded.data(), encoded.size(), payload.data(), payload.size(), 1);
+        encoded.resize(size);
+    }
+    std::string manifest = "ELISA-PACKAGE-MANIFEST-1\n";
+    for (const std::string& dependency : dependencies) manifest += "dependency=" + dependency + "\n";
+    const size_t index_end = BinaryPackageIndex::HEADER_BYTES + 2 * BinaryPackageIndex::ENTRY_BYTES;
+    const size_t manifest_offset = (index_end + encoded.size() + 15) & ~size_t(15);
+    std::vector<uint8_t> bytes(manifest_offset + manifest.size(), 0);
+    bytes[0] = 'E'; bytes[1] = 'L'; bytes[2] = 'P'; bytes[3] = 'K';
+    put_package_u16(bytes, 4, 1);
+    put_package_u16(bytes, 6, 2);
+    put_package_u64(bytes, 8, BinaryPackageIndex::HEADER_BYTES);
+    put_package_u64(bytes, 16, 2 * BinaryPackageIndex::ENTRY_BYTES);
+    const auto write_entry = [&bytes](size_t index, const std::string& name, uint64_t offset,
+        uint64_t size, uint64_t unpacked_size, uint32_t compression, uint32_t checksum) {
+        const size_t entry = BinaryPackageIndex::HEADER_BYTES + index * BinaryPackageIndex::ENTRY_BYTES;
+        std::copy(name.begin(), name.end(), bytes.begin() + entry);
+        put_package_u64(bytes, entry + 16, offset);
+        put_package_u64(bytes, entry + 24, size);
+        put_package_u64(bytes, entry + 32, unpacked_size);
+        put_package_u32(bytes, entry + 40, compression);
+        put_package_u32(bytes, entry + 44, checksum);
+    };
+    write_entry(0, "mesh", index_end, encoded.size(), payload.size(), compressed ? 1 : 0,
+        package_crc32(reinterpret_cast<const uint8_t*>(payload.data()), payload.size()));
+    write_entry(1, "manifest", manifest_offset, manifest.size(), manifest.size(), 0,
+        package_crc32(reinterpret_cast<const uint8_t*>(manifest.data()), manifest.size()));
+    std::copy(encoded.begin(), encoded.end(), bytes.begin() + index_end);
+    std::copy(manifest.begin(), manifest.end(), bytes.begin() + manifest_offset);
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
 inline bool probe_package_bounds(const std::string& valid_package,
     wi::graphics::GraphicsDevice* device = nullptr) {
     const std::filesystem::path root = std::filesystem::temp_directory_path() / "elisa-package-probe";
@@ -125,11 +165,24 @@ inline bool probe_package_bounds(const std::string& valid_package,
     std::filesystem::remove(override_root / "escape.elpk", symlink_error);
     symlink_error.clear();
     std::filesystem::create_symlink(outside_package, override_root / "escape.elpk", symlink_error);
-    write_binary_package_fixture(base_root / "maze.elpk", false);
-    write_binary_package_fixture(override_root / "maze.elpk", false, false, true);
-    write_binary_package_fixture(base_root / "dep.elpk", false);
+    write_binary_package_with_manifest(base_root / "maze.elpk", {"dep.elpk"});
+    write_binary_package_with_manifest(override_root / "maze.elpk", {"dep.elpk"}, true);
+    write_binary_package_with_manifest(base_root / "dep.elpk", {});
+    write_binary_package_with_manifest(base_root / "leaf-a.elpk", {});
+    write_binary_package_with_manifest(base_root / "leaf-z.elpk", {});
+    write_binary_package_with_manifest(base_root / "branch.elpk", {"leaf-z.elpk"});
+    write_binary_package_with_manifest(base_root / "graph.elpk", {"branch.elpk", "leaf-a.elpk"});
+    write_binary_package_with_manifest(base_root / "cycle-a.elpk", {"cycle-b.elpk"});
+    write_binary_package_with_manifest(base_root / "cycle-b.elpk", {"cycle-a.elpk"});
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
     const BinaryPackageIndex corrupt_index = read_binary_package_index(corrupt.string());
+    BinaryPackageManifest unsorted_manifest;
+    const std::string unsorted_manifest_text =
+        "ELISA-PACKAGE-MANIFEST-1\ndependency=z.elpk\ndependency=a.elpk\n";
+    const std::vector<uint8_t> unsorted_manifest_bytes(unsorted_manifest_text.begin(), unsorted_manifest_text.end());
+    const bool unsorted_manifest_rejected = !parse_binary_package_manifest(
+        unsorted_manifest_bytes, unsorted_manifest) &&
+        unsorted_manifest.error == "package manifest dependency order rejected";
     const PackageResolution symlink_escape = resolve_package_path(
         base_root, {override_root}, "escape.elpk", 7);
     bool symlink_escape_ok = true;
@@ -167,6 +220,21 @@ inline bool probe_package_bounds(const std::string& valid_package,
         "maze.elpk", "mesh", {"missing.elpk"}, 10).generation == 0 &&
         worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"dep.elpk", "dep.elpk"}, 10).generation == 0 &&
         worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0;
+    VirtualFileService graph_vfs;
+    const bool graph_mounted = graph_vfs.mount(base_root, {}, 11);
+    const VirtualReadHandle graph_read = graph_vfs.request_with_dependencies("graph.elpk", "mesh",
+        {"leaf-z.elpk", "branch.elpk", "leaf-a.elpk"}, 11);
+    const VirtualReadHandle wrong_order_read = graph_vfs.request_with_dependencies("graph.elpk", "mesh",
+        {"leaf-a.elpk", "branch.elpk", "leaf-z.elpk"}, 11);
+    const VirtualReadHandle cyclic_read = graph_vfs.request_with_dependencies("cycle-a.elpk", "mesh",
+        {"cycle-b.elpk"}, 11);
+    const bool graph_pumped = graph_mounted && graph_vfs.pump(3) == 3;
+    const bool dependency_graph = graph_pumped &&
+        graph_vfs.state(graph_read) == VirtualReadState::Ready &&
+        graph_vfs.state(wrong_order_read) == VirtualReadState::Failed &&
+        graph_vfs.error(wrong_order_read) == "package dependency order mismatch" &&
+        graph_vfs.state(cyclic_read) == VirtualReadState::Failed &&
+        graph_vfs.error(cyclic_read) == "package dependency cycle";
     const VirtualReadHandle cancelled = vfs.request("maze.elpk", "missing");
     const bool cancelled_read = vfs.cancel(cancelled) && vfs.state(cancelled) == VirtualReadState::Cancelled;
     const VirtualReadHandle stale = vfs.request("maze.elpk", "mesh");
@@ -212,6 +280,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected") &&
         check(package_crc32(reinterpret_cast<const uint8_t*>("123456789"), 9) == 0xCBF43926u,
             "CRC-32 standard check value") &&
+        check(unsorted_manifest_rejected, "unsorted package manifest rejected") &&
         check(read_binary_package_index(binary.string()).valid, "binary package index") &&
         check(!read_binary_package_index(overlap.string()).valid, "binary package overlap rejected") &&
         check(!read_binary_package_index(compressed.string()).valid, "binary package compression rejected") &&
@@ -225,6 +294,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
         check(worker_read_ok, "virtual file worker scheduling") &&
         check(dependency_rejections, "virtual file dependency ordering and existence") &&
+        check(dependency_graph, "package manifest dependency DAG order and cycle rejection") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&

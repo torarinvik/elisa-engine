@@ -191,28 +191,32 @@ inline BinaryPackageIndex read_binary_package_index(const std::string& path) {
     if (stream_size < 0 || static_cast<uint64_t>(stream_size) > PackageIndex::MAX_PACKAGE_BYTES) {
         package.error = "binary package exceeds size bound"; return package;
     }
-    std::vector<uint8_t> bytes(static_cast<size_t>(stream_size));
+    std::vector<uint8_t> header(BinaryPackageIndex::HEADER_BYTES);
     input.seekg(0);
-    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!input && !bytes.empty()) { package.error = "binary package read failed"; return package; }
-    if (bytes.size() < BinaryPackageIndex::HEADER_BYTES || bytes[0] != 'E' || bytes[1] != 'L' ||
-        bytes[2] != 'P' || bytes[3] != 'K' || package_u16(bytes, 4) != 1) {
+    input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (!input || header[0] != 'E' || header[1] != 'L' ||
+        header[2] != 'P' || header[3] != 'K' || package_u16(header, 4) != 1) {
         package.error = "binary package header rejected"; return package;
     }
-    const uint16_t count = package_u16(bytes, 6);
-    const uint64_t index_offset = package_u64(bytes, 8);
-    const uint64_t index_size = package_u64(bytes, 16);
+    const uint16_t count = package_u16(header, 6);
+    const uint64_t index_offset = package_u64(header, 8);
+    const uint64_t index_size = package_u64(header, 16);
     if (count == 0 || count > PackageIndex::MAX_SECTIONS || index_offset < BinaryPackageIndex::HEADER_BYTES ||
         index_size != static_cast<uint64_t>(count) * BinaryPackageIndex::ENTRY_BYTES ||
-        index_offset > bytes.size() || index_size > bytes.size() - index_offset) {
+        index_offset > static_cast<uint64_t>(stream_size) ||
+        index_size > static_cast<uint64_t>(stream_size) - index_offset) {
         package.error = "binary package index bounds rejected"; return package;
     }
+    std::vector<uint8_t> bytes(static_cast<size_t>(index_size));
+    input.seekg(static_cast<std::streamoff>(index_offset));
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!input && !bytes.empty()) { package.error = "binary package index read failed"; return package; }
     const uint64_t index_end = index_offset + index_size;
     std::set<std::string> names;
     struct Range { uint64_t start; uint64_t end; };
     std::vector<Range> ranges;
     for (uint16_t index = 0; index < count; ++index) {
-        const size_t entry = static_cast<size_t>(index_offset) + index * BinaryPackageIndex::ENTRY_BYTES;
+        const size_t entry = static_cast<size_t>(index) * BinaryPackageIndex::ENTRY_BYTES;
         size_t name_end = entry;
         while (name_end < entry + 16 && bytes[name_end] != 0) ++name_end;
         if (name_end == entry || name_end == entry + 16) { package.error = "binary section name rejected"; return package; }
@@ -232,8 +236,9 @@ inline BinaryPackageIndex read_binary_package_index(const std::string& path) {
             (static_cast<uint32_t>(bytes[entry + 46]) << 16) |
             (static_cast<uint32_t>(bytes[entry + 47]) << 24);
         if (section.compression > 1 || section.unpacked_size > BinaryPackageIndex::MAX_UNPACKED_BYTES ||
-            section.offset % 16 != 0 || section.offset < index_end || section.offset > bytes.size() ||
-            section.size > bytes.size() - section.offset || section.size == 0) {
+            section.offset % 16 != 0 || section.offset < index_end ||
+            section.offset > static_cast<uint64_t>(stream_size) ||
+            section.size > static_cast<uint64_t>(stream_size) - section.offset || section.size == 0) {
             package.error = "binary section bounds or compression rejected"; return package;
         }
         ranges.push_back({section.offset, section.offset + section.size});
