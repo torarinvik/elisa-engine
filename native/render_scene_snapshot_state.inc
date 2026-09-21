@@ -1,5 +1,7 @@
 constexpr size_t MAX_SNAPSHOT_MESH_ASSETS = 32;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_ASSETS = 64;
+constexpr size_t MAX_SNAPSHOT_TEXTURE_ASSETS = 128;
+constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = 4;
 constexpr size_t MAX_SNAPSHOT_SHARED_MESHES = MAX_INSTANCES * 2;
 constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
 constexpr float DEFAULT_SNAPSHOT_ALPHA_CUTOFF = 0.5f;
@@ -45,8 +47,17 @@ struct SnapshotMaterialAssetSlot {
     float roughness = 1.0f;
     float alpha_cutoff = DEFAULT_SNAPSHOT_ALPHA_CUTOFF;
     int32_t alpha_mode = ELISA_RENDER_SCENE_ALPHA_OPAQUE;
+    std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_high{};
+    std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low{};
     wi::ecs::Entity material_entity = wi::ecs::INVALID_ENTITY;
     bool double_sided = false;
+    bool live = false;
+};
+
+struct SnapshotTextureAssetSlot {
+    uint64_t high = 0;
+    uint64_t low = 0;
+    std::filesystem::path canonical_path;
     bool live = false;
 };
 

@@ -33,11 +33,10 @@ inline bool valid_slot(int32_t slot) {
     return slot >= 0 && slot < SLOT_COUNT;
 }
 
-inline bool assign_project_texture(wi::scene::MaterialComponent& material,
-        int32_t slot_code, const char* asset_path) {
+inline bool assign_resolved_texture(wi::scene::MaterialComponent& material,
+        int32_t slot_code, const std::filesystem::path& resolved_path) {
     if (!valid_slot(slot_code)) return false;
-    std::filesystem::path resolved_path;
-    if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path)) return false;
+    if (resolved_path.empty()) return false;
 
     auto flags = wi::resourcemanager::Flags::IMPORT_BLOCK_COMPRESSED;
     if (slot_code == static_cast<int32_t>(Slot::Normal)) {
@@ -52,6 +51,13 @@ inline bool assign_project_texture(wi::scene::MaterialComponent& material,
     texture.name.swap(resource_name);
     material.SetDirty();
     return true;
+}
+
+inline bool assign_project_texture(wi::scene::MaterialComponent& material,
+        int32_t slot_code, const char* asset_path) {
+    std::filesystem::path resolved_path;
+    if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path)) return false;
+    return assign_resolved_texture(material, slot_code, resolved_path);
 }
 
 } // namespace elisa::rendering::textures

@@ -368,8 +368,69 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_mesh_asset(uint64_t
     return ELISA_RENDER_SCENE_OK;
 }
 
-extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_texture_asset(
+    uint64_t high, uint64_t low, const char* asset_path) {
+    if (high == 0 && low == 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    std::filesystem::path resolved_path;
+    try {
+        if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path)) {
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    const size_t existing = snapshot_texture_asset_slot(state, high, low);
+    if (existing < MAX_SNAPSHOT_TEXTURE_ASSETS) {
+        return state.snapshot_texture_assets[existing].canonical_path == resolved_path
+            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    size_t free_slot = MAX_SNAPSHOT_TEXTURE_ASSETS;
+    for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
+        if (!state.snapshot_texture_assets[index].live) {
+            free_slot = index;
+            break;
+        }
+    }
+    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
+    SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[free_slot];
+    asset.high = high;
+    asset.low = low;
+    asset.canonical_path = std::move(resolved_path);
+    asset.live = true;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint64_t high, uint64_t low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    const size_t slot = snapshot_texture_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    for (const SnapshotMaterialAssetSlot& material : state.snapshot_material_assets) {
+        if (!material.live) continue;
+        for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
+            if (material.texture_high[texture_slot] == high && material.texture_low[texture_slot] == low) {
+                return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            }
+        }
+    }
+    state.snapshot_texture_assets[slot] = SnapshotTextureAssetSlot{};
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
     uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
     float red, float green, float blue, float alpha,
     float metallic, float roughness,
     float emissive_red, float emissive_green, float emissive_blue,
@@ -389,6 +450,17 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    const std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_high = {
+        base_color_high, normal_high, surface_high, emissive_high};
+    const std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low = {
+        base_color_low, normal_low, surface_low, emissive_low};
+    for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
+        const bool empty = texture_high[texture_slot] == 0 && texture_low[texture_slot] == 0;
+        if (!empty && snapshot_texture_asset_slot(state,
+            texture_high[texture_slot], texture_low[texture_slot]) == MAX_SNAPSHOT_TEXTURE_ASSETS) {
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+    }
     const size_t existing = snapshot_material_asset_slot(state, high, low);
     if (existing < MAX_SNAPSHOT_MATERIAL_ASSETS) {
         const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[existing];
@@ -397,7 +469,8 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
             asset.metallic == metallic && asset.roughness == roughness &&
             asset.emissive[0] == emissive_red && asset.emissive[1] == emissive_green &&
             asset.emissive[2] == emissive_blue && asset.alpha_cutoff == alpha_cutoff &&
-            asset.alpha_mode == alpha_mode && asset.double_sided == (double_sided != 0)
+            asset.alpha_mode == alpha_mode && asset.double_sided == (double_sided != 0) &&
+            asset.texture_high == texture_high && asset.texture_low == texture_low
             ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     size_t free_slot = MAX_SNAPSHOT_MATERIAL_ASSETS;
@@ -429,6 +502,13 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
         material->userBlendMode = alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND
             ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
         material->SetCastShadow(alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND);
+        SnapshotMaterialAssetSlot texture_configuration{};
+        texture_configuration.texture_high = texture_high;
+        texture_configuration.texture_low = texture_low;
+        if (!apply_snapshot_material_textures(state, texture_configuration, *material)) {
+            state.scene->Entity_Remove(material_entity);
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
         material->CreateRenderData();
     } catch (...) {
         if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
@@ -444,10 +524,24 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
     asset.emissive[0] = emissive_red; asset.emissive[1] = emissive_green; asset.emissive[2] = emissive_blue;
     asset.alpha_cutoff = alpha_cutoff;
     asset.alpha_mode = alpha_mode;
+    asset.texture_high = texture_high;
+    asset.texture_low = texture_low;
     asset.material_entity = material_entity;
     asset.double_sided = double_sided != 0;
     asset.live = true;
     return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
+    uint64_t high, uint64_t low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided) {
+    return elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
+        high, low, 0, 0, 0, 0, 0, 0, 0, 0,
+        red, green, blue, alpha, metallic, roughness,
+        emissive_red, emissive_green, emissive_blue, alpha_cutoff, alpha_mode, double_sided);
 }
 
 extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint64_t high, uint64_t low) {

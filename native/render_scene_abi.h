@@ -75,8 +75,21 @@ int64_t elisa_render_scene_v1_snapshot_result(uint32_t index);
 int32_t elisa_render_scene_v1_register_snapshot_mesh_asset(
     uint64_t high, uint64_t low, const char* package_path);
 int32_t elisa_render_scene_v1_unregister_snapshot_mesh_asset(uint64_t high, uint64_t low);
+int32_t elisa_render_scene_v1_register_snapshot_texture_asset(
+    uint64_t high, uint64_t low, const char* asset_path);
+int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_register_snapshot_material_asset(
     uint64_t high, uint64_t low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided);
+int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
+    uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
     float red, float green, float blue, float alpha,
     float metallic, float roughness,
     float emissive_red, float emissive_green, float emissive_blue,
