@@ -32,6 +32,36 @@ void print_summary(const char* label, const elisa::assets::FbxImportResult& asse
         asset.first_clip_duration_seconds);
 }
 
+bool skin_bind_pose_test() {
+    ufbx_scene scene{};
+    ufbx_node root{}, rig{}, bone{};
+    root.node_to_world = ufbx_identity_matrix;
+    rig.parent = &root;
+    rig.node_to_world = ufbx_identity_matrix;
+    rig.node_to_world.m00 = rig.node_to_world.m11 = rig.node_to_world.m22 = 0.01;
+    bone.parent = &rig;
+    bone.node_to_world = rig.node_to_world;
+    bone.node_to_world.m13 = 1.5; // Default node pose differs from skin binding.
+    bone.local_transform = ufbx_identity_transform;
+    bone.local_transform.translation.y = 150.0;
+    ufbx_skin_cluster cluster{};
+    cluster.bone_node = &bone;
+    cluster.bind_to_world = rig.node_to_world;
+    cluster.bind_to_world.m13 = 0.9;
+    ufbx_skin_cluster* cluster_pointer = &cluster;
+    ufbx_skin_deformer skin{};
+    skin.clusters.data = &cluster_pointer;
+    skin.clusters.count = 1;
+    elisa::assets::FbxMeshData mesh;
+    elisa::assets::FbxImportResult result;
+    if (!check(elisa::assets::detail::append_skin_rig(scene, skin, mesh, result),
+            "bind-pose fixture imports")) return false;
+    return check(mesh.skin_joints.size() == 3 && mesh.skin_cluster_joints.size() == 1 &&
+        std::abs(mesh.skin_joints[1].rest_local[7] - 0.01f) < 1e-6f &&
+        std::abs(mesh.skin_joints[2].rest_local[1] - 90.0f) < 1e-4f,
+        "skin rest hierarchy uses cluster bind matrices, including scaled ancestors");
+}
+
 int fixture_test(const std::filesystem::path& path) {
     const auto asset = elisa::assets::import_fbx(path, true);
     if (!asset.ok) {
@@ -39,7 +69,7 @@ int fixture_test(const std::filesystem::path& path) {
         return 1;
     }
     print_summary("fixture", asset);
-    bool ok = true;
+    bool ok = skin_bind_pose_test();
     ok &= check(asset.primary_mesh_extracted && asset.meshes == 1 && asset.triangles == 1,
         "triangle fixture scene and geometry were imported");
     ok &= check(asset.primary_mesh.indices.size() == 3 && asset.primary_mesh.positions.size() == 9 &&

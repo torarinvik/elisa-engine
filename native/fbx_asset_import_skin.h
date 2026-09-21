@@ -16,11 +16,15 @@ namespace elisa::assets::detail {
 inline bool append_skin_rig(const ufbx_scene& scene, const ufbx_skin_deformer& skin,
     FbxMeshData& output, FbxImportResult& result) {
     std::unordered_set<const ufbx_node*> included;
+    std::unordered_map<const ufbx_node*, ufbx_matrix> bind_world;
     for (const ufbx_skin_cluster* cluster : skin.clusters) {
         if (cluster == nullptr || cluster->bone_node == nullptr) {
             fail(result, "primary FBX skin contains a cluster without a bone node");
             return false;
         }
+        // A node's default pose can be an arbitrary animation frame. Skin
+        // clusters carry the actual bind pose used by the mesh weights.
+        bind_world.emplace(cluster->bone_node, cluster->bind_to_world);
         for (const ufbx_node* node = cluster->bone_node; node != nullptr; node = node->parent) {
             included.insert(node);
             if (included.size() > MAX_SKIN_JOINTS) {
@@ -46,9 +50,17 @@ inline bool append_skin_rig(const ufbx_scene& scene, const ufbx_skin_deformer& s
     });
 
     std::unordered_map<const ufbx_node*, uint32_t> joint_indices;
+    for (const ufbx_node* node : ordered) {
+        bind_world.emplace(node, node->node_to_world);
+    }
     output.skin_joints.reserve(ordered.size());
     for (const ufbx_node* node : ordered) {
-        const ufbx_transform& transform = node->local_transform;
+        ufbx_matrix local_bind = bind_world.at(node);
+        if (node->parent != nullptr) {
+            const ufbx_matrix parent_inverse = ufbx_matrix_invert(&bind_world.at(node->parent));
+            local_bind = ufbx_matrix_mul(&parent_inverse, &local_bind);
+        }
+        const ufbx_transform transform = ufbx_matrix_to_transform(&local_bind);
         if (!finite(transform.translation) || !finite(transform.rotation) || !finite(transform.scale) ||
             (node->name.data == nullptr && node->name.length != 0)) {
             fail(result, "primary FBX rig contains an invalid joint transform or name");

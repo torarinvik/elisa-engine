@@ -69,3 +69,10 @@ preserved limb length, and absence of object-transform animation keys.
 The supplied cyborg cooks to 1.6383 metres tall (previously 163.83 after the
 incorrect raw-action transfer). All six locomotion clips were sampled at their
 start, middle and end, retaining plausible character dimensions.
+
+The FBX normalization step also reconstructs the rig's rest hierarchy from
+skin-cluster bind matrices. FBX default node transforms may contain a posed
+animation frame, so treating them as the bind pose deforms the new mesh
+incorrectly. A native fixture covers a distinct default/bind pose with a scaled
+ancestor. Comparing the cooked cyborg's CPU-skinned idle vertices to Blender's
+evaluated mesh gives a maximum surface-position difference below 0.000001 m.
