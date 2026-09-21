@@ -181,6 +181,8 @@ int32_t elisa_render_scene_v1_set_environment(
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_ambient_occlusion(int32_t enabled);
 int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled);
+int32_t elisa_render_scene_v1_set_tonemap(int32_t tonemap);
+int32_t elisa_render_scene_v1_set_exposure(float exposure);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int64_t elisa_render_scene_v1_create_text(const char* text, float x, float y,
     int32_t font_size, float red, float green, float blue, float alpha);

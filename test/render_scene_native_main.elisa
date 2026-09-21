@@ -53,6 +53,9 @@ extern elisa_render_scene_v1_test_quality_matches(ambient_occlusion: i32, fxaa: 
 @callconv(c)
 extern elisa_render_scene_v1_test_quality_rejects_invalid_flags() -> i32
 
+@callconv(c)
+extern elisa_render_scene_v1_test_postprocess_matches(tonemap: i32, exposure: f32) -> i32
+
 def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
     batch: mutable RenderScene::ElectricArcBatch = RenderScene::ElectricArcBatch()
     for index in 0..<RenderScene::MAX_ELECTRIC_ARCS:
@@ -296,6 +299,19 @@ def exercise_render_scene() -> i32:
         error failure: 1
     return 108 if disabled_fxaa_status != 0 or elisa_render_scene_v1_test_quality_matches(0, 0) != 1
     return 109 if elisa_render_scene_v1_test_quality_rejects_invalid_flags() != 1
+    tonemap_status: i32 = catch RenderScene::set_tonemap(RenderScene::Tonemap.Uchimura):
+        ok: 0
+        error failure: 1
+    return 110 if tonemap_status != 0 or elisa_render_scene_v1_test_postprocess_matches(2, 1.0) != 1
+    exposure_status: i32 = catch RenderScene::set_exposure(0.92):
+        ok: 0
+        error failure: 1
+    return 111 if exposure_status != 0 or elisa_render_scene_v1_test_postprocess_matches(2, 0.92) != 1
+    invalid_exposure: i32 = catch RenderScene::set_exposure(8.1):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 112 if invalid_exposure != 1
     bad_update: i32 = catch RenderScene::update_transform(box, invalid_transform):
         ok: 0
         RenderScene::RenderSceneError.InvalidValue: 1

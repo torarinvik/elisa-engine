@@ -129,6 +129,12 @@ module RenderScene:
         extern elisa_render_scene_v1_set_fxaa(enabled: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_tonemap(tonemap: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_exposure(exposure: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
@@ -240,6 +246,11 @@ module RenderScene:
             Opaque
             Mask
             Blend
+
+        enum Tonemap:
+            Reinhard
+            Aces
+            Uchimura
 
         struct Color:
             red: f32
@@ -484,6 +495,21 @@ module RenderScene:
         def set_fxaa(enabled: bool) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_fxaa(enabled_value))
+
+        def set_tonemap(tonemap: Tonemap) -> void error[RenderSceneError]:
+            tonemap_value: i32 =
+                match tonemap:
+                    RenderScene::Tonemap.Reinhard: 0
+                    RenderScene::Tonemap.Aces: 1
+                    RenderScene::Tonemap.Uchimura: 2
+            try check_status(elisa_render_scene_v1_set_tonemap(tonemap_value))
+
+        # Exposure is a bounded scene-wide post-process multiplier. Keep it
+        # separate from environment sky exposure so authored lighting remains
+        # stable while a project tunes final readability.
+        def set_exposure(exposure: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if exposure < 0.0 or exposure > 8.0
+            try check_status(elisa_render_scene_v1_set_exposure(exposure))
 
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
