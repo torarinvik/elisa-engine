@@ -24,6 +24,56 @@ def clip_name(action):
     return action.name.split("|")[-1].strip()
 
 
+def retarget_clips(armature, source_armature, actions):
+    """Bake world-space bone motion without copying source object transforms.
+
+    Joint names identify corresponding bones, not interchangeable action
+    channels: the rigs may have different object scales and rest poses.
+    Rotation constraints preserve target bone lengths; root translation is
+    transferred in world units. Visual baking converts this into target-local
+    pose keys while leaving the target object's unit conversion untouched.
+    """
+    source_armature.animation_data_create()
+    for track in source_armature.animation_data.nla_tracks:
+        track.mute = True
+    bpy.ops.object.select_all(action="DESELECT")
+    armature.select_set(True)
+    bpy.context.view_layer.objects.active = armature
+    baked = []
+    for action in actions:
+        source_armature.animation_data.action = action
+        if action.slots:
+            source_armature.animation_data.action_slot = action.slots[0]
+        armature.animation_data_clear()
+        for bone in armature.pose.bones:
+            bone.matrix_basis.identity()
+            rotation = bone.constraints.new("COPY_ROTATION")
+            rotation.target = source_armature
+            rotation.subtarget = bone.name
+            rotation.target_space = "WORLD"
+            rotation.owner_space = "WORLD"
+            if bone.parent is None:
+                location = bone.constraints.new("COPY_LOCATION")
+                location.target = source_armature
+                location.subtarget = bone.name
+                location.target_space = "WORLD"
+                location.owner_space = "WORLD"
+        start, end = (int(round(value)) for value in action.frame_range)
+        bpy.context.scene.frame_set(start)
+        bpy.ops.nla.bake(frame_start=start, frame_end=end, step=1,
+            only_selected=False, visual_keying=True, clear_constraints=True,
+            clear_parents=False, use_current_action=False, clean_curves=False,
+            bake_types={"POSE"})
+        result = armature.animation_data.action
+        if result is None:
+            raise RuntimeError("could not bake animation clip: " + clip_name(action))
+        result.name = "GLB|" + clip_name(action)
+        result.use_fake_user = True
+        baked.append(result)
+    armature.animation_data_clear()
+    return baked
+
+
 def parse_arguments():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description=__doc__)
@@ -48,6 +98,7 @@ def main():
 
     actions = []
     if options.animation_source is not None:
+        previous_actions = set(bpy.data.actions)
         source_objects = imported(bpy.ops.import_scene.fbx, options.animation_source)
         source_armature = armature_of(source_objects, "animation FBX")
         source_bones = {bone.name for bone in source_armature.data.bones}
@@ -55,7 +106,7 @@ def main():
         if missing:
             raise RuntimeError("animation rig is missing GLB joint names: " + ", ".join(missing))
         actions = [action for action in bpy.data.actions
-            if action.frame_range[1] - action.frame_range[0] >= 1.0]
+            if action not in previous_actions and action.frame_range[1] - action.frame_range[0] >= 1.0]
         if not 1 <= len(actions) <= 8:
             raise RuntimeError(f"animation FBX must provide 1 to 8 non-static clips; found {len(actions)}")
         names = [clip_name(action) for action in actions]
@@ -63,6 +114,7 @@ def main():
             raise RuntimeError("animation FBX has empty or duplicate clip names")
         for action in actions:
             action.use_fake_user = True
+        actions = retarget_clips(armature, source_armature, actions)
 
     keep_objects = {armature, *meshes}
     for item in list(bpy.context.scene.objects):
