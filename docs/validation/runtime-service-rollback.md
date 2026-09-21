@@ -78,8 +78,9 @@ back to World after staging every pose; it preserves the entity's existing rotat
 cleanup retryable. The native application probe verifies a dynamic body falls from its starting
 position, its World transform is updated, entity scale survives, duplicate links are rejected,
 and unbinding the first of two bodies compacts the mapping without disconnecting the remaining
-body. Generic user system callbacks still run in the game-owned plan, and hierarchy-aware
-physics synchronization remains open.
+body. The native probe also executes an automatic Physics -> WorldSync plan through the generic
+executor for each due tick; hierarchy-aware synchronization stages solver poses and publishes
+them parent-first. The affine-context compiler regression and application smoke are recorded below.
 
 Additional validation on 2026-09-21:
 
@@ -111,3 +112,34 @@ Validation of the World-to-Physics bridge on 2026-09-21:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh python3 scripts/application_native_smoke.py` passed both SDL3/Metal applications. The session probe attached two dynamic Jolt bodies to checked World entities, verified gravity-driven pose sync and scale preservation, rejected a duplicate binding, removed the first binding, confirmed the second continued syncing after compaction, and cleaned up both bodies.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` passed the portable suite, Godot 4.7.2 probes, both Elisa Proof suites (17/17 and 6/6), runtime scheduler checks, source-length policy, and module-hygiene policy.
+
+## Generic executor dispatch with affine runtime contexts
+
+The native `WorldPhysics` probe now dispatches its Physics -> WorldSync plan through
+`Executor::plan_execute_with_contexts` on every due fixed tick. This exposed two stage1
+compiler gaps: function values could not resolve private functions in the current module,
+and a module-qualified fallible generic could lose its owner during specialization when
+its callback arguments included affine runtime contexts. Elisa-compiler now covers both
+behaviors with `test/parity/generic_module_error_callback_smoke.sh`, which compares
+stage0/stage1 compilation and runs the specialized executable.
+
+Validation on 2026-09-21:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools scripts/elisac_stage1.sh --seed` passed in Elisa-compiler.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools test/parity/generic_module_error_callback_smoke.sh` passed; the specialized executable returned its expected status.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both SDL3/Metal application and failure-cleanup smokes with the generic schedule dispatch.
+- Engine source-length policy, module hygiene (89 production modules), and `git diff --check` passed.
+
+## Caller-owned fallback routes
+
+`RuntimeServices::Session::open` now accepts a valid `CallerDefined` route from the
+negotiated report without treating it as an engine-owned adapter. It returns
+`FallbackRequired` with the provider identity intact; the application initializes and
+uses that handler itself. The native service probe requests the unavailable callback
+service through this route, confirms no Physics or Audio adapter was activated, and
+shuts the host down cleanly.
+
+Validation on 2026-09-21:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both SDL3/Metal application and failure-cleanup smokes.
+- Source-length policy, module hygiene (89 production modules), and `git diff --check` passed.

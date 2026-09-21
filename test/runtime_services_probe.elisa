@@ -24,8 +24,8 @@ module RuntimeServicesProbe:
             }
 
         def dispatch_physics_system(state: mutable Executor::FrameState&,
-            session: mutable RuntimeServices::Session&,
-            context: mutable TickContext&, system: usize) -> void:
+            system: usize, context: mutable TickContext&,
+            session: mutable RuntimeServices::Session&) -> void:
             state.visits[system] <- state.visits[system] + 1
             if system == Systems::PHYSICS:
                 step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
@@ -99,6 +99,34 @@ module RuntimeServicesProbe:
             return 27 if audio_closed != 0
             0
 
+        def caller_defined_fallback_probe() -> i32:
+            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            requirements.services[0] <- Capabilities::BackendFeature.Callbacks
+            requirements.service_count <- 1
+            requirements.service_fallbacks <- Capabilities::BackendFallbackProviders{
+                input: Capabilities::BackendFallbackProvider.None,
+                rendering: Capabilities::BackendFallbackProvider.None,
+                physics: Capabilities::BackendFallbackProvider.None,
+                audio: Capabilities::BackendFallbackProvider.None,
+                native_window: Capabilities::BackendFallbackProvider.None,
+                async_upload: Capabilities::BackendFallbackProvider.None,
+                callbacks: Capabilities::BackendFallbackProvider.CallerDefined,
+                asset_loading: Capabilities::BackendFallbackProvider.None,
+            }
+            requirements.allow_service_fallbacks <- true
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            return 28 if opened != RuntimeServices::OpenStatus.FallbackRequired
+            return 29 if report.services.state != Capabilities::RequirementState.Fallback
+            return 30 if report.services.decisions[0].resolution != Capabilities::BackendFeatureResolution.DeclaredFallback
+            return 31 if report.services.decisions[0].fallback_provider != Capabilities::BackendFallbackProvider.CallerDefined
+            return 32 if RuntimeServices::physics_active(session) or RuntimeServices::audio_active(session)
+            return 33 if not RuntimeServices::shutdown(&session)
+            0
+
         def check_partial_world_frame(session: mutable RuntimeServices::Session&) -> i32:
             frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
                 session, 10000):
@@ -110,20 +138,12 @@ module RuntimeServicesProbe:
 
         def run_world_schedule_frame(session: mutable RuntimeServices::Session&,
             elapsed_micros: i64, context: mutable TickContext&,
-            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError]:
+            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, Executor::ExecError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(
                 session, elapsed_micros)
-            sequence: i64[Schedule::MAX_SYSTEMS] = Executor::plan_sequence(plan)
-            dispatch_count: usize = frame.steps * plan.count
-            slot: mutable usize = 0
-            for _ in 0..<dispatch_count |session, plan, plan_state, context, sequence, slot|:
-                system: usize = sequence[slot].usize()
-                dispatch_physics_system(plan_state, session, context, system)
-                if plan_state.length < Executor::MAX_TRACE_EVENTS:
-                    plan_state.trace[plan_state.length] <- system.i64()
-                    plan_state.length <- plan_state.length + 1
-                slot <- slot + 1
-                slot <- 0 if slot == plan.count
+            for _ in 0..<frame.steps |session, plan, plan_state, context|:
+                try Executor::plan_execute_with_contexts(
+                    plan, plan_state, context, session, dispatch_physics_system)
             frame
 
         def dispatch_first_world_ticks(session: mutable RuntimeServices::Session&,
@@ -424,6 +444,8 @@ module RuntimeServicesProbe:
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
             rollback: i32 = activation_rollback(&session, &requirements)
             return rollback if rollback != 0
+            caller_fallback: i32 = caller_defined_fallback_probe()
+            return caller_fallback if caller_fallback != 0
 
             report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
