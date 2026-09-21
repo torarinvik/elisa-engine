@@ -3,6 +3,9 @@ module RenderSceneArtMaterialNativeTests:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_test_art_material_settings() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_alpha_mode(mode: i32, cutoff: f32,
+            double_sided: i32) -> i32
 
     public:
         def exercise() -> i32:
@@ -21,7 +24,24 @@ module RenderSceneArtMaterialNativeTests:
             _ = catch RenderScene::set_texture_uv_transform(material, 1.0, -1.0, 0.0, 1.0):
                 ok: 0
                 error failure: return 158
-            return 159 if elisa_render_scene_v1_test_art_material_settings() != 1
+            _ = catch RenderScene::set_alpha_mode(material, RenderScene::AlphaMode.Mask, 0.48, true):
+                ok: 0
+                error failure: return 159
+            return 161 if elisa_render_scene_v1_test_art_material_settings() != 1
+            return 162 if elisa_render_scene_v1_test_alpha_mode(1, 0.48, 1) != 1
+            invalid_alpha_cutoff: i32 = catch RenderScene::set_alpha_mode(material,
+                RenderScene::AlphaMode.Mask, 1.1, true):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 163 if invalid_alpha_cutoff != 1
+            _ = catch RenderScene::set_alpha_mode(material, RenderScene::AlphaMode.Blend, 0.48, false):
+                ok: 0
+                error failure: return 164
+            return 165 if elisa_render_scene_v1_test_alpha_mode(2, 0.48, 0) != 1
+            _ = catch RenderScene::set_alpha_mode(material, RenderScene::AlphaMode.Mask, 0.48, true):
+                ok: 0
+                error failure: return 166
             _ = catch RenderScene::destroy(material):
                 ok: 0
                 error failure: return 160

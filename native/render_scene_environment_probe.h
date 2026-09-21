@@ -52,6 +52,31 @@ extern "C" int32_t elisa_render_scene_v1_test_art_material_settings(void) {
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_alpha_mode(
+    int32_t mode, float cutoff, int32_t double_sided) {
+    if (mode < 0 || mode > 2 || (double_sided != 0 && double_sided != 1)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    const bool blended = mode == 2;
+    const float expected_alpha_ref = mode == 1 ? cutoff : 1.0f;
+    for (const auto& instance : state.instances) {
+        if (!instance.live) continue;
+        const auto* material = state.scene->materials.GetComponent(instance.entity);
+        const auto* object = state.scene->objects.GetComponent(instance.entity);
+        if (material && object && material->shaderType == wi::scene::MaterialComponent::SHADERTYPE_PBR &&
+            std::fabs(material->roughness - 0.65f) < 0.0001f &&
+            std::fabs(material->metalness - 0.3f) < 0.0001f) {
+            return material->userBlendMode == (blended ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE) &&
+                std::fabs(material->alphaRef - expected_alpha_ref) < 0.0001f &&
+                material->IsDoubleSided() == (double_sided != 0) &&
+                material->IsCastingShadow() == !blended &&
+                object->IsCastingShadow() == !blended ? 1 : 0;
+        }
+    }
+    return 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_sun_shadows_match(int32_t enabled) {
     if (enabled != 0 && enabled != 1) return 0;
     RenderSceneService& state = service();
