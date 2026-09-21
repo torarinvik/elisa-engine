@@ -75,15 +75,12 @@ module Executor:
             for index in 0..<plan.count |plan|:
                 return false if plan.group[index] >= plan.group_count
             return false if plan.count > 0 and plan.group_count != max_group(plan) + 1
-            groups_ok: bool =
-                for left in 0..<plan.count |all_ok: bool = true| -> all_ok:
-                    row: bool =
-                        for right in 0..<plan.count |row_ok: bool = true| -> row_ok:
-                            same: bool = plan.group[left] == plan.group[right]
-                            conflicts: bool = left != right and Schedule::systems_conflict(systems[left], systems[right])
-                            row_ok <- false if same and conflicts
-                    all_ok <- all_ok and row
-            groups_ok
+            for left in 0..<plan.count |plan, systems|:
+                for right in 0..<plan.count |plan, systems, left|:
+                    conflicts: bool = left != right and Schedule::systems_conflict(systems[left], systems[right])
+                    return false if conflicts and plan.group[left] == plan.group[right]
+                    return false if left < right and conflicts and plan.group[left] >= plan.group[right]
+            true
 
         def max_group(plan: Plan&) -> usize:
             for index in 0..<plan.count |highest: usize = 0| -> highest:

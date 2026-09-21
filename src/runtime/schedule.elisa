@@ -64,12 +64,13 @@ module Schedule:
             total
 
     private:
-        def first_available_group(systems: System[Tune::MAX_SYSTEMS], groups: usize[Tune::MAX_SYSTEMS], index: usize) -> usize:
-            for group in 0..<Tune::MAX_SYSTEMS |selected: usize = Tune::MAX_SYSTEMS| -> selected:
-                clash: bool =
-                    for other in 0..<index |conflicting: bool = false| -> conflicting:
-                        conflicting <- true if groups[other] == group and systems_conflict(systems[other], systems[index])
-                break group if not clash
+        # Put a system strictly after every earlier system it conflicts with.
+        # Merely choosing the earliest free group can reorder a dependency:
+        # if A conflicts with B, and B conflicts with C but A does not, C must
+        # still follow B in the serial execution order.
+        def dependency_group(systems: System[Tune::MAX_SYSTEMS], groups: usize[Tune::MAX_SYSTEMS], index: usize) -> usize:
+            for other in 0..<index |next_group: usize = 0| -> next_group:
+                next_group <- groups[other] + 1 if systems_conflict(systems[other], systems[index]) and groups[other] >= next_group
 
         module Order:
             public:
@@ -90,17 +91,14 @@ module Schedule:
         def schedule_respects(order: usize[Tune::MAX_SYSTEMS], systems: System[Tune::MAX_SYSTEMS], count: usize) -> bool:
             Order::respects(order, systems, count)
 
-        # Earliest-fit grouping: each system joins the first group that holds no
-        # conflicting system. Two readers therefore share a group, while a
-        # writer is pushed past every reader and writer of the same resource.
-        # Systems are visited in declared order, so the assignment is
-        # deterministic and the plan it feeds is reproducible.
+        # Dependency waves: each system follows all earlier systems that
+        # conflict with it. Independent systems can still share a wave, while
+        # transitive dependencies retain declared execution order.
         def assign_groups(systems: System[Tune::MAX_SYSTEMS], count: usize) -> usize[Tune::MAX_SYSTEMS]:
             groups: mutable usize[Tune::MAX_SYSTEMS] = zeroed
             return groups if count > Tune::MAX_SYSTEMS
             for index in 0..<count |groups, systems|:
-                group: usize = first_available_group(systems, groups, index)
-                groups[index] <- group if group < Tune::MAX_SYSTEMS
+                groups[index] <- dependency_group(systems, groups, index)
             groups
 
         def wave_count(groups: usize[Tune::MAX_SYSTEMS], count: usize) -> usize:
