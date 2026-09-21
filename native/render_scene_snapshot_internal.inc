@@ -309,7 +309,6 @@ wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageR
             failure_status = resolved;
             return entity;
         }
-        // Skinned geometry has one material slot.
         const SnapshotMaterialAssetSlot& material_asset = *materials[0];
         const std::string name = "elisa_snapshot_" + std::to_string(row.render_id) + "_" +
             std::to_string(slot) + "_" + std::to_string(generation);
@@ -345,6 +344,23 @@ wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageR
             state.scene->Entity_Remove(entity);
             return wi::ecs::INVALID_ENTITY;
         }
+        wi::scene::MeshComponent* skinned_mesh = state.scene->meshes.GetComponent(entity);
+        if (skinned_mesh == nullptr || skinned_mesh->subsets.size() != mesh_asset.geometry.subsets.size()) {
+            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
+            state.scene->Entity_Remove(entity);
+            return wi::ecs::INVALID_ENTITY;
+        }
+        for (size_t subset = 0; subset < skinned_mesh->subsets.size(); ++subset) {
+            const uint32_t material_slot = mesh_asset.geometry.subsets[subset].material_slot;
+            if (material_slot >= materials.size() || materials[material_slot] == nullptr ||
+                materials[material_slot]->material_entity == wi::ecs::INVALID_ENTITY) {
+                for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
+                state.scene->Entity_Remove(entity);
+                return wi::ecs::INVALID_ENTITY;
+            }
+            skinned_mesh->subsets[subset].materialID = materials[material_slot]->material_entity;
+        }
+        skinned_mesh->CreateRenderData();
         wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(entity);
         wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(entity);
         if (material == nullptr || object == nullptr) {

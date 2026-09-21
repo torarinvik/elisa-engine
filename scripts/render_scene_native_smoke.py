@@ -89,7 +89,7 @@ def main() -> int:
     normal_map = build / "cooked/render-scene-normal.png"
     shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
     # The material-subset test draws the three-strip glTF panel and a skinned
-    # strip, which has a single material slot.
+    # strip split across two material slots.
     subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py")])
     if subset_status != 0:
         return subset_status
@@ -103,7 +103,8 @@ def main() -> int:
     ])
     if subset_status != 0:
         return subset_status
-    (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(2, skinned=True))
+    (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
+        2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
     # The cooked-material test also registers a variant whose center slot is
     # blended, single-sided glass. Its buffer is embedded, so the copy cooks
     # anywhere.

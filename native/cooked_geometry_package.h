@@ -104,10 +104,10 @@ inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::
 
 namespace detail {
 
-// Subset records are all present or all absent. Skinned geometry draws with
-// one material, so it carries none.
-inline bool parse_geometry_subsets(const probe::PackageIndex& package, bool skinned,
-    CookedGeometry& geometry, std::string& error) {
+// Subset records are all present or all absent. Static and skinned geometry
+// use the same ordered index partition; only the armature remains per entity.
+inline bool parse_geometry_subsets(const probe::PackageIndex& package, CookedGeometry& geometry,
+    std::string& error) {
     size_t present = 0;
     for (const char* key : {"material_slots", "subset_count", "subset_stride", "subsets_b64"}) {
         present += package.sections.count(key);
@@ -116,10 +116,6 @@ inline bool parse_geometry_subsets(const probe::PackageIndex& package, bool skin
     if (present == 0) {
         geometry.subsets = {{0, index_count, 0}};
         return true;
-    }
-    if (skinned) {
-        error = "skinned cooked geometry cannot declare material subsets";
-        return false;
     }
     uint64_t slots = 0;
     uint64_t count = 0;
@@ -300,7 +296,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             }
         }
     }
-    if (!detail::parse_geometry_subsets(package, has_skin, geometry, error)) return false;
+    if (!detail::parse_geometry_subsets(package, geometry, error)) return false;
     if (!detail::parse_slot_materials(package, geometry.material_slots, geometry.slot_materials, error) ||
         !detail::parse_slot_textures(package, geometry.slot_materials, geometry.texture_sections, error)) {
         return false;

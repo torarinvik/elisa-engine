@@ -6,8 +6,9 @@ The cooked multi-material panel, the baked node hierarchy panel, the bundled
 textured panel, the legacy maze tile, and synthetic packages must load with
 exactly the expected subsets, slot materials, and image sections. Packages
 whose subsets leave a gap, overlap, split a triangle, name a missing slot,
-exceed a bound, or appear on skinned geometry must be rejected for that
-reason, as must slot materials that are malformed, miscounted, or out of
+exceed a bound, or are malformed on skinned geometry must be rejected for
+that reason. Valid subsets and slot materials are accepted on skinned
+geometry. Slot materials that are malformed, miscounted, or out of
 range, and slot textures that are malformed, name a bad or missing section,
 leave an image unsampled, or sit outside a bundle. The loader runs under
 AddressSanitizer and UndefinedBehaviorSanitizer.
@@ -37,7 +38,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PARTITION = "subsets do not partition the index stream"
 RECORDS = "invalid cooked geometry subset records"
 MISSING_SLOT = "subset names a missing material slot"
-SKINNED = "skinned cooked geometry cannot declare material subsets"
 MATERIAL_RECORDS = "invalid cooked slot material records"
 MATERIAL_RANGE = "cooked slot material is out of range"
 TEXTURE_RECORDS = "invalid cooked slot texture records"
@@ -213,8 +213,10 @@ def cases(directory: Path) -> list[tuple]:
         ("reject", "stride.pkg", strip_package(2, [(0, 6, 0)], 1, stride="16"), RECORDS),
         ("reject", "no-slots.pkg", strip_package(2, [(0, 6, 0)], 1, omit=("material_slots",)), RECORDS),
         ("reject", "no-records.pkg", strip_package(2, [(0, 6, 0)], 1, omit=("subsets_b64",)), RECORDS),
-        ("reject", "skinned-subsets.pkg", strip_package(2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True), SKINNED),
-        ("reject", "skinned-single.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True), SKINNED),
+        ("accept", "skinned-subsets.pkg", strip_package(2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True),
+            (6, 2, [(0, 3, 0), (3, 3, 1)])),
+        ("accept", "skinned-single.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True),
+            (6, 1, [(0, 6, 0)])),
         ("accept", "materials.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT]),
             (6, 2, two, [GLASS, PAINT])),
         ("accept", "single-material.pkg", strip_package(2, [(0, 6, 0)], 1, materials=[PAINT]),
@@ -222,7 +224,8 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "material-bounds.pkg", strip_package(2, two, 2, materials=[ZEROS, ONES]),
             (6, 2, two, [ZEROS, ONES])),
         ("reject", "materials-without-subsets.pkg", strip_package(2, materials=[PAINT]), MATERIAL_RECORDS),
-        ("reject", "skinned-materials.pkg", strip_package(2, skinned=True, materials=[PAINT]), MATERIAL_RECORDS),
+        ("accept", "skinned-materials.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True, materials=[PAINT]),
+            (6, 1, [(0, 6, 0)], [PAINT])),
         ("reject", "material-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
             material_stride="44"), MATERIAL_RECORDS),
         ("reject", "material-no-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
