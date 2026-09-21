@@ -6,22 +6,22 @@ include "../backend/material.elisa"
 include "./render_scene.elisa"
 
 module SnapshotAssetCapabilities:
-    # Texture IDs remain rejected by registration until they resolve to
-    # uploaded native resources. This can drive feature negotiation in clients.
+    # Snapshot materials support registered textures and one packed Wicked
+    # surface map; separate occlusion and metallic-roughness maps need cooking.
     public:
-        const MATERIAL_TEXTURES_SUPPORTED: bool = false
+        const MATERIAL_TEXTURES_SUPPORTED: bool = true
 
 extend RenderScene:
     private:
         def snapshot_material_textures_supported(material: Material::Material&) -> bool:
-            return true if SnapshotAssetCapabilities::MATERIAL_TEXTURES_SUPPORTED
-            base_color_empty: bool = not Assets::asset_id_valid(material.base_color)
-            normal_empty: bool = not Assets::asset_id_valid(material.normal)
-            surface_empty: bool = not Assets::asset_id_valid(material.metallic_roughness)
-            occlusion_empty: bool = not Assets::asset_id_valid(material.occlusion)
-            emissive_empty: bool = not Assets::asset_id_valid(material.emissive)
-            base_color_empty and normal_empty and surface_empty and occlusion_empty and emissive_empty
-            true
+            return false if not SnapshotAssetCapabilities::MATERIAL_TEXTURES_SUPPORTED
+            return true if not Assets::asset_id_valid(material.metallic_roughness)
+            return true if not Assets::asset_id_valid(material.occlusion)
+            Assets::same_asset_id(material.metallic_roughness, material.occlusion)
+
+        def snapshot_surface_texture(material: Material::Material&) -> Assets::AssetId:
+            return material.metallic_roughness if Assets::asset_id_valid(material.metallic_roughness)
+            material.occlusion
 
         const module NativeAlphaMode:
             OPAQUE: i32 = 0
@@ -36,8 +36,20 @@ extend RenderScene:
         extern elisa_render_scene_v1_unregister_snapshot_mesh_asset(high: u64, low: u64) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_register_snapshot_material_asset(
-            high: u64, low: u64, red: f32, green: f32, blue: f32, alpha: f32,
+        extern elisa_render_scene_v1_register_snapshot_texture_asset(
+            high: u64, low: u64, asset_path: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_unregister_snapshot_texture_asset(high: u64, low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
+            high: u64, low: u64,
+            base_color_high: u64, base_color_low: u64,
+            normal_high: u64, normal_low: u64,
+            surface_high: u64, surface_low: u64,
+            emissive_high: u64, emissive_low: u64,
+            red: f32, green: f32, blue: f32, alpha: f32,
             metallic: f32, roughness: f32, emissive_red: f32, emissive_green: f32,
             emissive_blue: f32, alpha_cutoff: f32, alpha_mode: i32, double_sided: i32) -> i32
 
@@ -58,19 +70,34 @@ extend RenderScene:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
             try check_status(elisa_render_scene_v1_unregister_snapshot_mesh_asset(asset.high, asset.low))
 
+        def register_snapshot_texture_asset(asset: Assets::AssetId,
+            asset_path: cstr) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_register_snapshot_texture_asset(
+                asset.high, asset.low, asset_path))
+
+        def unregister_snapshot_texture_asset(asset: Assets::AssetId) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_unregister_snapshot_texture_asset(asset.high, asset.low))
+
         def register_snapshot_material_asset(asset: Assets::AssetId,
             material: Material::Material&) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
-            raise RenderSceneError.InvalidValue if not Material::material_valid(&material)
-            raise RenderSceneError.InvalidValue if not snapshot_material_textures_supported(&material)
+            raise RenderSceneError.InvalidValue if not Material::material_valid(material)
+            raise RenderSceneError.InvalidValue if not snapshot_material_textures_supported(material)
             alpha_mode: i32 =
                 match material.alpha_mode:
                     Material::AlphaMode.Opaque: NativeAlphaMode::OPAQUE
                     Material::AlphaMode.Mask: NativeAlphaMode::MASK
                     Material::AlphaMode.Blend: NativeAlphaMode::BLEND
             double_sided: i32 = 1 if material.double_sided else 0
-            try check_status(elisa_render_scene_v1_register_snapshot_material_asset(
+            surface_texture: Assets::AssetId = snapshot_surface_texture(material)
+            try check_status(elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
                 asset.high, asset.low,
+                material.base_color.high, material.base_color.low,
+                material.normal.high, material.normal.low,
+                surface_texture.high, surface_texture.low,
+                material.emissive.high, material.emissive.low,
                 material.base_color_factor[0], material.base_color_factor[1],
                 material.base_color_factor[2], material.base_color_factor[3],
                 material.metallic_factor, material.roughness_factor,

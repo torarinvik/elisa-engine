@@ -14,6 +14,34 @@ size_t snapshot_material_asset_slot(const RenderSceneService& state, uint64_t hi
     return MAX_SNAPSHOT_MATERIAL_ASSETS;
 }
 
+size_t snapshot_texture_asset_slot(const RenderSceneService& state, uint64_t high, uint64_t low) {
+    for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
+        const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[index];
+        if (asset.live && asset.high == high && asset.low == low) return index;
+    }
+    return MAX_SNAPSHOT_TEXTURE_ASSETS;
+}
+
+bool apply_snapshot_material_textures(RenderSceneService& state,
+        const SnapshotMaterialAssetSlot& asset, wi::scene::MaterialComponent& material) {
+    try {
+        for (size_t slot = 0; slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++slot) {
+            const uint64_t high = asset.texture_high[slot];
+            const uint64_t low = asset.texture_low[slot];
+            if (high == 0 && low == 0) continue;
+            const size_t texture_slot = snapshot_texture_asset_slot(state, high, low);
+            if (texture_slot == MAX_SNAPSHOT_TEXTURE_ASSETS ||
+                !elisa::rendering::textures::assign_resolved_texture(material,
+                    static_cast<int32_t>(slot), state.snapshot_texture_assets[texture_slot].canonical_path)) {
+                return false;
+            }
+        }
+    } catch (...) {
+        return false;
+    }
+    return true;
+}
+
 bool add_geometry_bytes(size_t count, size_t element_bytes, size_t& total) {
     if (element_bytes != 0 && count > (MAX_SNAPSHOT_GEOMETRY_BYTES - total) / element_bytes) return false;
     total += count * element_bytes;
@@ -309,6 +337,12 @@ wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageR
             ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
         const bool casts_shadow = material_asset.alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND;
         material->SetCastShadow(casts_shadow);
+        if (!apply_snapshot_material_textures(state, material_asset, *material)) {
+            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
+            state.scene->Entity_Remove(entity);
+            failure_status = ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+            return wi::ecs::INVALID_ENTITY;
+        }
         object->SetCastShadow(casts_shadow);
         row.created_joint_entities = std::move(joint_entities);
         row.created_skin_joints = mesh_asset.geometry.skin_joints;

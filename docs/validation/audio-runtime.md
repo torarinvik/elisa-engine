@@ -58,5 +58,27 @@ Validation on 2026-09-21:
 - `DEVELOPER_DIR="$(xcode-select -p)" python3 scripts/application_native_smoke.py` passed on macOS with SDL3, Metal, and Wicked. Both the normal audio/application smoke and injected startup-failure cleanup smoke passed.
 - `python3 scripts/check_source_length.py` and `python3 scripts/check_module_hygiene.py` passed.
 
-This validates handle semantics and the engine playback path. It does not
-measure audible output on physical speakers or a headset.
+Device-loss recovery is now owner-thread driven. Miniaudio's device notification
+callback only publishes an atomic recovery request; `RuntimeServices::pump`
+consumes it and reopens the adapter on miniaudio's silent backend. The active
+provider accessor reflects that route change. Recovery preserves decoded clips,
+invalidates active voices, and permits a preserved clip to play again. If reopen
+fails, the session marks Audio inactive and returns
+`RuntimeServicesError.AudioRecoveryFailed` instead of claiming audio is live.
+The native application smoke injects the actual stopped-notification callback,
+then checks provider change, voice invalidation, clip retention, replay, and
+shutdown cleanup.
+
+Validation on 2026-09-21:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh /opt/homebrew/bin/python3 scripts/application_native_smoke.py` passed both normal and startup-failure cleanup runs on SDL3/Metal/Wicked, including the synthetic device-loss/reopen path.
+- `PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/check.elisascript` passed the portable suite, Godot 4.7.2 compatibility check, both proof suites (17/17 and 6/6), and the validation report.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/native_gate.elisascript native` passed on macOS 27.0 / Apple M5 against the pinned Wicked checkout; the report recorded `hardware_verification=verified`. This included both Metal-rendered probe passes, exact frame determinism, live-input rendering, frame-time budget, asset checks, the device-loss application smoke, and orderly shutdown.
+
+See [`elisa-render-scene.md`](elisa-render-scene.md) for the Wicked pin and
+renderer evidence.
+
+Spatial source/listener submission, streaming decode, and live profile
+advertisement remain open work. This recovery test uses a deterministic
+synthetic device notification and a silent fallback; it does not measure
+audible output on physical speakers or a headset.

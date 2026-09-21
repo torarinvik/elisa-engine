@@ -37,6 +37,7 @@ module RenderResources:
 
         enum RenderError:
             InvalidAsset
+            InvalidTransform
             Capacity
             UnknownInstance
             DuplicateUpdate
@@ -63,6 +64,7 @@ module RenderResources:
             def create(registry: mutable Registry&, mesh: Assets::AssetId, material: Assets::AssetId,
                 transform: Geometry::Transform, layer: i64) -> InstanceHandle error[RenderError]:
                 raise RenderError.InvalidAsset if not Assets::asset_id_valid(mesh) or not Assets::asset_id_valid(material) or Assets::same_asset_id(mesh, material)
+                raise RenderError.InvalidTransform if not Geometry::transform_is_valid(transform)
                 raise RenderError.Capacity if registry.count >= Limits::MAX_INSTANCES
                 slot: usize =
                     for index in 0..<Limits::MAX_INSTANCES |slot: usize = Limits::INVALID_SLOT, registry| -> slot:
@@ -85,6 +87,7 @@ module RenderResources:
 
             def update_transform(registry: mutable Registry&, handle: InstanceHandle, transform: Geometry::Transform) -> void error[RenderError]:
                 raise RenderError.UnknownInstance if not handle_valid(registry, handle)
+                raise RenderError.InvalidTransform if not Geometry::transform_is_valid(transform)
                 registry.entries[handle.slot].state.transform <- transform
 
             def set_visible(registry: mutable Registry&, handle: InstanceHandle, visible: bool) -> void error[RenderError]:
@@ -99,6 +102,7 @@ module RenderResources:
                 raise RenderError.Capacity if count > Limits::MAX_INSTANCES
                 for index in 0..<count:
                     raise RenderError.UnknownInstance if not handle_valid(registry, updates[index].handle)
+                    raise RenderError.InvalidTransform if not Geometry::transform_is_valid(updates[index].transform)
                     for prior in 0..<index:
                         raise RenderError.DuplicateUpdate if updates[prior].handle.slot == updates[index].handle.slot and updates[prior].handle.generation == updates[index].handle.generation
                 for index in 0..<count:

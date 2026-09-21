@@ -66,6 +66,22 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_instance_resources(
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture(
+    uint64_t material_high, uint64_t material_low, int32_t slot_code) {
+    if (!elisa::rendering::textures::valid_slot(slot_code)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, material_high, material_low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(
+        state.snapshot_material_assets[slot].material_entity);
+    if (material == nullptr) return 0;
+    const size_t wicked_slot = elisa::rendering::textures::MATERIAL_SLOTS[static_cast<size_t>(slot_code)];
+    const wi::Resource& resource = material->textures[wicked_slot].resource;
+    return resource.IsValid() && resource.GetTexture().IsValid() ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_meshes_shared(
     int64_t first_render_id, int64_t second_render_id) {
     RenderSceneService& state = service();
@@ -125,7 +141,9 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_position_x(
     for (const InstanceSlot& instance : state.instances) {
         if (!instance.live || instance.render_id != render_id) continue;
         const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
-        return transform != nullptr && std::abs(transform->translation_local.x - expected_x) <= 1.0e-5f ? 1 : 0;
+        const float delta = transform == nullptr ? 1.0e6f : std::abs(transform->translation_local.x - expected_x);
+        const int32_t matches = transform != nullptr && delta <= 1.0e-5f ? 1 : 0;
+        return matches;
     }
     return 0;
 }

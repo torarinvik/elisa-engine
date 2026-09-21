@@ -9,11 +9,16 @@ mesh subset, so the material ID is part of the sharing key. Separate instances
 using the same pair retain that mesh until the last instance is removed. Skinned
 meshes still create per-instance mesh, armature, and joint resources.
 
-Material registration currently publishes PBR scalar factors, alpha
-mode/cutoff, and double-sided state through a Wicked material entity. A mesh or
-material cannot be unregistered while a live snapshot instance references it.
-Failed snapshot creation rolls back newly created objects, joints, and
-unreferenced shared meshes while preserving the previous frame.
+Material registration publishes PBR scalar factors, alpha mode/cutoff,
+double-sided state, and registered texture IDs through a Wicked material
+entity. Snapshot texture registration resolves paths inside the project root;
+base-color, normal, packed surface, and emissive maps are applied through
+Wicked's resource manager. The adapter has one packed surface slot, so distinct
+metallic-roughness and occlusion maps must be cooked together. Mesh, material,
+and texture assets cannot be unregistered while a live snapshot instance or
+material references them. Failed snapshot creation rolls back newly created
+objects, joints, and unreferenced shared meshes while preserving the previous
+frame.
 
 The maze project is the first client of this path. Its project manifest cooks
 `assets/maze_tile.gltf` to `assets/maze_tile.pkg`; Elisa registers that mesh and
@@ -30,11 +35,13 @@ releases the shared mesh while preserving the primitive baseline.
 The current glTF geometry cooker deliberately supports one untransformed mesh
 node, one indexed triangle primitive, and POSITION/NORMAL/optional
 TEXCOORD_0. It rejects transforms, skins, morph targets, source material
-bindings, unsupported vertex attributes, and extensions. Snapshot material
-descriptors with texture IDs are rejected until texture registration and GPU
-upload are connected. Static mesh/material pairs share their Wicked geometry;
-skinned snapshot resources are still per instance. These are explicit partial
-limitations, not completed glTF scene or production material support.
+bindings, unsupported vertex attributes, and extensions. Snapshot texture IDs
+must be registered separately from scalar material descriptors; only one
+packed Wicked surface map is supported, and nonidentical metallic-roughness and
+occlusion IDs are rejected until a cooker merges them. Static mesh/material
+pairs share their Wicked geometry; skinned snapshot resources are still per
+instance. These are explicit partial limitations, not completed glTF scene or
+production material support.
 
 Run the focused gates from the repository root:
 
@@ -44,9 +51,9 @@ python3 scripts/render_scene_native_smoke.py
 ```
 
 Validation on 2026-09-21: both commands passed on macOS SDL3/Metal. The native
-gate rendered the registered triangle, verified shared static-mesh references
-and counts across snapshot rollback/retry, replacement, and cleanup, then built
-and ran the authored maze project. The full
+gate rendered the registered triangle, verified snapshot texture loading and
+live texture-unregister rejection, shared static-mesh references and counts
+across rollback/retry, replacement, and cleanup, then built and ran the authored maze project. The full
 `elisascript scripts/check.elisascript` suite passed, including both Elisa
 Proof suites (17/17 and 6/6); `python3 scripts/test_elisa_build_run.py`,
 `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`,

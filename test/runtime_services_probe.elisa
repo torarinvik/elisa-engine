@@ -1,6 +1,9 @@
 # End-to-end activation and cleanup checks for report-selected providers.
 include "../src/runtime/executor.elisa"
 
+@callconv(c)
+extern elisa_audio_v1_test_request_device_recovery() -> i32
+
 module RuntimeServicesProbe:
     private:
         const module Systems:
@@ -455,6 +458,7 @@ module RuntimeServicesProbe:
             return 32 if report.state != Capabilities::RequirementState.Fallback
             return 33 if report.services.fallback_count != 2
             return 34 if not RuntimeServices::physics_active(session) or not RuntimeServices::audio_active(session)
+            return 118 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
             occupied_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             occupied: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
                 config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
@@ -493,6 +497,39 @@ module RuntimeServicesProbe:
                 value: value
                 error failure: return 56
             return 57 if quiet_voices != 0
+
+            recovery_clip: AudioRuntime::ClipHandle = catch RuntimeServices::audio_decode_file(session,
+                "test/fixtures/audio-smoke.wav"):
+                value: value
+                error failure: return 119
+            recovery_voice: AudioRuntime::VoiceHandle = catch RuntimeServices::audio_play(session,
+                recovery_clip, true, AudioRuntime::Bus.Effects, 1.0, 1):
+                value: value
+                error failure: return 120
+            return 121 if elisa_audio_v1_test_request_device_recovery() != 0
+            recovered_pump: Application::PumpStatus = catch RuntimeServices::pump(session):
+                value: value
+                RuntimeServices::RuntimeServicesError.AudioRecoveryFailed: Application::PumpStatus.Failed
+                error failure: Application::PumpStatus.Failed
+            return 122 if recovered_pump == Application::PumpStatus.Failed
+            return 123 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
+            recovered_voice_count: usize = catch RuntimeServices::audio_active_voice_count(session):
+                value: value
+                error failure: return 124
+            return 125 if recovered_voice_count != 0
+            recovered_stale_voice: i32 = catch RuntimeServices::audio_stop(session, recovery_voice):
+                ok: 0
+                AudioRuntime::AudioError.InvalidHandle: 1
+                error failure: 2
+            return 126 if recovered_stale_voice != 1
+            recovered_replay: AudioRuntime::VoiceHandle = catch RuntimeServices::audio_play(session,
+                recovery_clip, true, AudioRuntime::Bus.Effects, 1.0, 1):
+                value: value
+                error failure: return 127
+            replay_stopped: i32 = catch RuntimeServices::audio_stop(session, recovered_replay):
+                ok: 0
+                error failure: 1
+            return 128 if replay_stopped != 0
 
             world_scheduler_status: i32 = world_scheduler_probe(&session)
             return world_scheduler_status if world_scheduler_status != 0

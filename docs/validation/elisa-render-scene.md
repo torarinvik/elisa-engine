@@ -209,7 +209,8 @@ to core, halo and branches, persisting through updates. Existing arcs keep their
 overlay default. Orthographic scene arcs use hardware depth without the legacy
 perspective soft fade. The Wicked TrailRenderer change allows zero depth-soften
 to disable soft fading independently of hardware depth and avoids division by
-zero. No game-authored native code is required.
+zero. Elisa pins Wicked commit `14c15614d23717deae72713d392cce50e1cd0a04`,
+which contains that fix. No game-authored native code is required.
 
 Native smoke coverage checks lit material state, UV transform, shadow-casting
 flags, invalid roughness, arc depth toggling, and rejection of a retired arc

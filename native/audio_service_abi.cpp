@@ -56,7 +56,7 @@ int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
 
 void shutdown_audio() {
     AudioService& state = audio_service();
-    if (state.initialized) state.service.shutdown();
+    state.service.shutdown();
     state.initialized = false;
 }
 
@@ -110,6 +110,25 @@ extern "C" int32_t elisa_audio_v1_probe_provider(int32_t provider) {
     return ELISA_AUDIO_OK;
 }
 
+extern "C" int32_t elisa_audio_v1_take_device_recovery_request(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    AudioService& state = audio_service();
+    if (!state.initialized) return ELISA_AUDIO_INVALID_STATE;
+    return state.service.take_device_recovery_request()
+        ? ELISA_AUDIO_RECOVERY_REQUESTED : ELISA_AUDIO_RECOVERY_NOT_REQUESTED;
+}
+
+extern "C" int32_t elisa_audio_v1_recover_with_silent_device(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    AudioService& state = audio_service();
+    if (!state.initialized) return ELISA_AUDIO_INVALID_STATE;
+    if (state.service.reopen_null()) return ELISA_AUDIO_OK;
+    state.initialized = false;
+    return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+}
+
 #if defined(ELISA_AUDIO_TEST_PROBE)
 extern "C" int32_t elisa_audio_v1_test_fail_next_initialize_after_open(void) {
     const int32_t owner_status = require_application_owner();
@@ -117,6 +136,15 @@ extern "C" int32_t elisa_audio_v1_test_fail_next_initialize_after_open(void) {
     AudioService& state = audio_service();
     if (state.initialized || state.fail_next_initialize_after_open) return ELISA_AUDIO_INVALID_STATE;
     state.fail_next_initialize_after_open = true;
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_test_request_device_recovery(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    AudioService& state = audio_service();
+    if (!state.initialized) return ELISA_AUDIO_INVALID_STATE;
+    state.service.request_device_recovery_for_test();
     return ELISA_AUDIO_OK;
 }
 #endif

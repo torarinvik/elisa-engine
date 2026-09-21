@@ -142,7 +142,7 @@ module MazeNativeClient:
             return 48 if RenderScene::instance_count() != 40
             0
 
-        def interactive_loop(session: RuntimeServices::Session&,
+        def interactive_loop(session: mutable RuntimeServices::Session&,
             game: mutable MazeGame::MazeGame,
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
@@ -228,7 +228,7 @@ module MazeNativeClient:
             run_status
 
     private:
-        def run_after_host(session: RuntimeServices::Session&,
+        def run_after_host(session: mutable RuntimeServices::Session&,
             config: Application::Config, self_test: bool) -> i32:
             viewport: mutable Application::FrameInfo = catch RuntimeServices::frame_info(session):
                 value: value

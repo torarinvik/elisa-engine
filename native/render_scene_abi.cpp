@@ -107,6 +107,7 @@ struct RenderSceneService {
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
     std::array<SnapshotMeshAssetSlot, MAX_SNAPSHOT_MESH_ASSETS> snapshot_mesh_assets{};
     std::array<SnapshotMaterialAssetSlot, MAX_SNAPSHOT_MATERIAL_ASSETS> snapshot_material_assets{};
+    std::array<SnapshotTextureAssetSlot, MAX_SNAPSHOT_TEXTURE_ASSETS> snapshot_texture_assets{};
     std::array<SnapshotSharedMesh, MAX_SNAPSHOT_SHARED_MESHES> snapshot_shared_meshes{};
     size_t snapshot_geometry_bytes = 0;
     size_t snapshot_shared_geometry_bytes = 0;
@@ -346,6 +347,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_results = {};
     state.snapshot_mesh_assets = {};
     state.snapshot_material_assets = {};
+    state.snapshot_texture_assets = {};
     state.snapshot_shared_meshes = {};
     state.snapshot_geometry_bytes = 0;
     state.snapshot_shared_geometry_bytes = 0;

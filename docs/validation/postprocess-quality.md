@@ -15,3 +15,17 @@ calls `probe_postprocess_bridge` and checks both fallback and supported paths,
 including fog state. The probe restores the original scene weather after the
 check. History-resource resizing and measured GPU/VRAM costs remain open R07
 work.
+
+The public `RenderScene` API also exposes direct SSAO and FXAA toggles for
+applications that manage a scene without the backend profile bridge. The
+SDL3/Metal render-scene smoke enables both, checks their Wicked `RenderPath3D`
+state, disables both and checks the restored state, then verifies malformed
+integer flags are rejected at the C ABI boundary. Validation passed:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py` — render-scene API smoke and ordinary native maze smoke exited 0.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` — full shared suite exited 0; both Elisa Proof suites proved all 23 obligations with certificate replay.
+- `/opt/homebrew/bin/python3 scripts/check_source_length.py`, `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
+
+This verifies setting changes reach Wicked's runtime state; it does not yet
+provide an image-difference reference or a quality-profile policy for toggling
+these effects. Those remain R07 work.

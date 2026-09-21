@@ -32,6 +32,10 @@ module RenderSceneSnapshotNativeTests:
             metallic: f32, roughness: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture(
+            material_high: u64, material_low: u64, slot: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_meshes_shared(first_render_id: i64,
             second_render_id: i64) -> i32
 
@@ -107,8 +111,10 @@ module RenderSceneSnapshotNativeTests:
             material_registration: i32 = catch RenderScene::register_snapshot_material_asset(
                 Assets::AssetId{high: 800, low: 1}, &material):
                 ok: 0
-                error failure: 7
-            return material_registration
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.AssetLoadFailure: 7
+                RenderScene::RenderSceneError.BackendFailure: 8
+                error failure: 9
             textured_material: Material::Material = Material::Material{
                 base_color: Assets::AssetId{high: 900, low: 1},
                 normal: Assets::AssetId{high: 0, low: 0},
@@ -123,12 +129,38 @@ module RenderSceneSnapshotNativeTests:
                 alpha_mode: Material::AlphaMode.Opaque,
                 double_sided: false,
             }
-            textured_registration: i32 = catch RenderScene::register_snapshot_material_asset(
-                Assets::AssetId{high: 800, low: 2}, &textured_material):
+            split_surface_material: mutable Material::Material = Material::Material()
+            split_surface_material.metallic_roughness <- Assets::AssetId{high: 901, low: 1}
+            split_surface_material.occlusion <- Assets::AssetId{high: 902, low: 1}
+            split_surface_registration: i32 = catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 3}, &split_surface_material):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
-            return 8 if textured_registration != 1
+            return 13 if split_surface_registration != 1
+            unregistered_texture_material: i32 = catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 2}, &textured_material):
+                ok: 0
+                RenderScene::RenderSceneError.AssetLoadFailure: 7
+                error failure: 2
+            return 8 if unregistered_texture_material != 7
+            registered_texture: bool = catch RenderScene::register_snapshot_texture_asset(
+                Assets::AssetId{high: 900, low: 1}, "build/cooked/render-scene-normal.png"):
+                ok: true
+                error failure: false
+            return 9 if not registered_texture
+            textured_registration: bool = catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 2}, &textured_material):
+                ok: true
+                error failure: false
+            return 10 if not textured_registration
+            return 11 if elisa_render_scene_v1_test_snapshot_material_texture(800, 2, 0) == 0
+            live_texture_unregister: i32 = catch RenderScene::unregister_snapshot_texture_asset(
+                Assets::AssetId{high: 900, low: 1}):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 12 if live_texture_unregister != 1
             0
 
         def unregister_test_snapshot_assets() -> i32:
@@ -144,6 +176,16 @@ module RenderSceneSnapshotNativeTests:
                 ok: true
                 error failure: false
             return 2 if not removed_material
+            removed_textured_material: bool = catch RenderScene::unregister_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 2}):
+                ok: true
+                error failure: false
+            return 3 if not removed_textured_material
+            removed_texture: bool = catch RenderScene::unregister_snapshot_texture_asset(
+                Assets::AssetId{high: 900, low: 1}):
+                ok: true
+                error failure: false
+            return 4 if not removed_texture
             0
 
     public:
