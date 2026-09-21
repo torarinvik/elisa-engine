@@ -115,9 +115,12 @@ the public API connected to a real Elisa client.
    stages every solver pose before parent-first publication. The native SDL3/Metal probe
    binds a child before its parent with an unbound hierarchy node between them, advances
    multiple times through the shared fixed-step clock, and verifies recomposition preserves
-   both solver poses and intermediary interpolation history. A reusable context-carrying
-   Executor dispatch API remains open; other routes stay unavailable until real adapters
-   exist.
+   both solver poses and intermediary interpolation history. `Executor` now exposes
+   typed one- and two-context dispatch functions; `test/schedule.elisa` verifies order,
+   visits and context mutation. The native RuntimeServices probe still uses its explicit
+   typed dispatcher. Routing borrowed `RuntimeServices::Session` and `TickContext` through
+   the generic API needs a dedicated compiler regression before replacing that path; other
+   routes stay unavailable until real adapters exist.
    See [`service rollback validation`](docs/validation/runtime-service-rollback.md).
 2. **R01/R02 — make an Elisa World render authored resources.** Finish the transactional
    snapshot path with stable entity/asset identity, cooked mesh and material resolution,
