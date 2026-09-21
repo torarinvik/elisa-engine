@@ -17,6 +17,7 @@ module MazeNativeClient:
             RESTART: i64 = 7
             QUIT: i64 = 8
             SELF_TEST_FRAMES: usize = 10
+            ASSET_LOAD_NANOS: u64 = 30000000000
             CAMERA_VERTICAL_SIZE: f32 = 10.0
             FONT_SIZE: i32 = 18
 
@@ -228,6 +229,46 @@ module MazeNativeClient:
             run_status
 
     private:
+        # Frames keep running under a loading overlay while the asset worker
+        # reads the tile and texture bundles. Returns 0 once both are
+        # resident, -1 when the window closes first, 17 when a load fails or
+        # outlasts ASSET_LOAD_NANOS, and 16 or 18 when the host or overlay
+        # fails.
+        def load_assets(session: mutable RuntimeServices::Session&) -> i32:
+            return 17 if not MazeRenderAssets::request("assets/maze_tile.elpk", "assets/maze_textures.elpk")
+            loading_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "Loading maze assets", 12.0, 12.0, Actions::FONT_SIZE,
+                RenderScene::Color{red: 1.0, green: 0.9, blue: 0.65, alpha: 1.0}):
+                value: value
+                error failure: return 18
+            start: Application::FrameInfo = catch RuntimeServices::frame_info(session):
+                value: value
+                error failure: return 16
+            progress: mutable MazeRenderAssets::Progress = MazeRenderAssets::advance()
+            status: mutable i32 = 0
+            while progress == MazeRenderAssets::Progress.Loading and status == 0 |session, progress, status|:
+                pump: Application::PumpStatus = catch RuntimeServices::pump(session):
+                    value: value
+                    error failure: Application::PumpStatus.Failed
+                if pump == Application::PumpStatus.ExitRequested:
+                    status <- -1
+                elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
+                    status <- 16
+                else:
+                    frame: Application::FrameInfo = catch RuntimeServices::frame_info(session):
+                        value: value
+                        error failure: start
+                    progress <- MazeRenderAssets::advance()
+                    late: bool = frame.elapsed_nanos - start.elapsed_nanos > Actions::ASSET_LOAD_NANOS
+                    status <- 17 if progress == MazeRenderAssets::Progress.Loading and late
+            hidden: bool = catch RenderScene::destroy_overlay_text(loading_text):
+                ok: true
+                error failure: false
+            return status if status != 0
+            return 17 if progress != MazeRenderAssets::Progress.Ready
+            return 18 if not hidden
+            0
+
         def run_after_host(session: mutable RuntimeServices::Session&,
             config: Application::Config, self_test: bool) -> i32:
             viewport: mutable Application::FrameInfo = catch RuntimeServices::frame_info(session):
@@ -240,8 +281,9 @@ module MazeNativeClient:
                 ok: true
                 error failure: false
             return 6 if not initialized
-            assets_registered: bool = MazeRenderAssets::register("assets/maze_tile.elpk")
-            return 17 if not assets_registered
+            loaded: i32 = load_assets(session)
+            return 0 if loaded == -1
+            return loaded if loaded != 0
 
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):

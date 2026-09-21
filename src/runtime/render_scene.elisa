@@ -16,6 +16,7 @@ module RenderScene:
             GENERATION_EXHAUSTED: i32 = -7
             ASSET_LOAD_FAILED: i32 = -9
             BATCH_ACTIVE: i32 = -10
+            ASSET_PENDING: i32 = -11
 
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
@@ -193,6 +194,7 @@ module RenderScene:
             raise RenderSceneError.GenerationExhausted if status == NativeStatus::GENERATION_EXHAUSTED
             raise RenderSceneError.AssetLoadFailure if status == NativeStatus::ASSET_LOAD_FAILED
             raise RenderSceneError.BatchActive if status == NativeStatus::BATCH_ACTIVE
+            raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
 
     public:
@@ -269,6 +271,8 @@ module RenderScene:
             AssetLoadFailure
             BackendFailure
             BatchActive
+            # A snapshot row or material names an asset that is still loading.
+            AssetPending
 
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1

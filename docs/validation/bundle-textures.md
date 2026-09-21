@@ -117,10 +117,11 @@ and the source was restored.
 - **Checksum in the name.** No test rewrites a bundle during a run, so the
   checksum part of the resource name is untested. The section part is covered:
   without it, `truncated` would reuse the cached `albedo` resource.
-- **Importers.** Only glTF cooks take textures. The cooker doesn't read texture
-  references from the glTF source; the project declares the sections, and Elisa
-  code assigns them to materials.
-- **Remaining A03 work.** Custom dependency declarations are still open.
+- **Importers.** glTF cooks and texture-only `images` cooks take textures. The
+  cooker doesn't read texture references from the glTF source; the project
+  declares the sections, and Elisa code assigns them to materials. The maze
+  wall texture now lives in its own bundle, which the tile bundle declares as a
+  dependency (`docs/validation/bundle-dependencies.md`).
 
 ## Validation on 2026-09-21
 

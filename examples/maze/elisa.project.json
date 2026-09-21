@@ -10,13 +10,20 @@
   },
   "asset_cooks": [
     {
+      "importer": "images",
+      "output": "assets/maze_textures.elpk",
+      "textures": {
+        "wallalbedo": "assets/maze_wall.png"
+      }
+    },
+    {
       "importer": "gltf",
       "source": "assets/maze_tile.gltf",
       "asset_path": "assets/maze_tile.gltf",
       "output": "assets/maze_tile.elpk",
-      "textures": {
-        "wallalbedo": "assets/maze_wall.png"
-      }
+      "dependencies": [
+        "assets/maze_textures.elpk"
+      ]
     }
   ]
 }

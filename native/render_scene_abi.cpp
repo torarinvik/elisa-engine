@@ -14,6 +14,7 @@
 #include "render_scene_effects.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
+#include "snapshot_asset_worker.h"
 
 #include <DirectXMath.h>
 
@@ -113,6 +114,7 @@ struct RenderSceneService {
     size_t snapshot_geometry_bytes = 0;
     size_t snapshot_shared_geometry_bytes = 0;
     size_t snapshot_bundle_texture_bytes = 0;
+    SnapshotAssetRequests snapshot_asset_requests;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
     uint64_t snapshot_test_transaction_api_calls = 0;
@@ -340,6 +342,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_expected_previous_count = 0;
     state.snapshot_transaction_active = false;
     state.snapshot_test_fail_after_creates = -1;
+    state.snapshot_asset_requests.reset();
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     state.snapshot_test_transaction_api_calls = 0;
     state.snapshot_test_last_transaction_api_calls = 0;
@@ -524,6 +527,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_snapshot_abi.inc"
 #include "render_scene_snapshot_tint_abi.inc"
 #include "render_scene_snapshot_bundle_texture_abi.inc"
+#include "render_scene_snapshot_asset_request_abi.inc"
 
 #include "render_scene_animation_abi.inc"
 

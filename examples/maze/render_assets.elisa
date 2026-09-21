@@ -4,26 +4,21 @@ include "./visual_assets.elisa"
 include "../../src/runtime/render_scene_assets.elisa"
 
 module MazeRenderAssets:
+    public:
+        enum Progress:
+            Loading
+            Ready
+            Failed
+
     private:
         def register_material(asset: Assets::AssetId, material: Material::Material) -> bool:
             catch RenderScene::register_snapshot_material_asset(asset, &material):
                 ok: true
                 error failure: false
 
-    public:
-        def register(package_path: cstr) -> bool:
-            mesh_registered: bool = catch RenderScene::register_snapshot_mesh_asset(
-                MazeVisualAssets::tile_mesh_id(), package_path):
-                ok: true
-                error failure: false
-            return false if not mesh_registered
-            # Section name declared under asset_cooks[0].textures in elisa.project.json.
-            texture_registered: bool = catch RenderScene::register_snapshot_bundle_texture_asset(
-                MazeVisualAssets::wall_albedo_texture_id(), package_path, "wallalbedo"):
-                ok: true
-                error failure: false
-            return false if not texture_registered
-
+        # The wall material names the wall texture, so it registers only once
+        # that texture is resident.
+        def register_materials() -> bool:
             return false if not register_material(MazeVisualAssets::wall_material_id(),
                 MazeVisualAssets::wall_material())
             return false if not register_material(MazeVisualAssets::player_material_id(),
@@ -39,3 +34,62 @@ module MazeRenderAssets:
             return false if not register_material(MazeVisualAssets::hazard_material_id(),
                 MazeVisualAssets::hazard_material())
             true
+
+        # An absent asset was never requested or was dropped, so the maze
+        # can't finish loading it.
+        def progress_of(state: RenderScene::SnapshotAssetState) -> Progress:
+            match state:
+                RenderScene::SnapshotAssetState.Absent: Progress.Failed
+                RenderScene::SnapshotAssetState.Loading: Progress.Loading
+                RenderScene::SnapshotAssetState.Resident: Progress.Ready
+
+        def asset_progress(kind: RenderScene::SnapshotAssetKind, asset: Assets::AssetId) -> Progress:
+            catch RenderScene::snapshot_asset_state(kind, asset):
+                value: progress_of(value)
+                error failure: Progress.Failed
+
+    public:
+        # Loads the bundles on the calling thread. The tile bundle declares
+        # the texture bundle as a dependency in elisa.project.json, so mesh
+        # registration fails without it.
+        def register(tile_bundle: cstr, texture_bundle: cstr) -> bool:
+            mesh_registered: bool = catch RenderScene::register_snapshot_mesh_asset(
+                MazeVisualAssets::tile_mesh_id(), tile_bundle):
+                ok: true
+                error failure: false
+            return false if not mesh_registered
+            # Section name declared under the images cook's textures.
+            texture_registered: bool = catch RenderScene::register_snapshot_bundle_texture_asset(
+                MazeVisualAssets::wall_albedo_texture_id(), texture_bundle, "wallalbedo"):
+                ok: true
+                error failure: false
+            return false if not texture_registered
+            register_materials()
+
+        # Queues the same two loads on the asset worker and returns before
+        # any file IO. advance() reports when they are resident.
+        def request(tile_bundle: cstr, texture_bundle: cstr) -> bool:
+            mesh_requested: bool = catch RenderScene::request_snapshot_mesh_asset(
+                MazeVisualAssets::tile_mesh_id(), tile_bundle):
+                ok: true
+                error failure: false
+            return false if not mesh_requested
+            catch RenderScene::request_snapshot_bundle_texture_asset(
+                MazeVisualAssets::wall_albedo_texture_id(), texture_bundle, "wallalbedo"):
+                ok: true
+                error failure: false
+
+        # Adopts finished loads. Once the tile mesh and wall texture are both
+        # resident it registers the materials and reports Ready.
+        def advance() -> Progress:
+            pumped: bool = catch RenderScene::pump_snapshot_assets(2):
+                value: true
+                error failure: false
+            return Progress.Failed if not pumped
+            mesh: Progress = asset_progress(RenderScene::SnapshotAssetKind.Mesh, MazeVisualAssets::tile_mesh_id())
+            texture: Progress = asset_progress(RenderScene::SnapshotAssetKind.Texture,
+                MazeVisualAssets::wall_albedo_texture_id())
+            return Progress.Failed if mesh == Progress.Failed or texture == Progress.Failed
+            return Progress.Loading if mesh == Progress.Loading or texture == Progress.Loading
+            return Progress.Failed if not register_materials()
+            Progress.Ready

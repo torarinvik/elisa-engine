@@ -338,6 +338,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--asset-path", help="project-relative identity recorded in the cooked package")
     parser.add_argument("--output", type=Path, help="destination .pkg or .elpk path")
     parser.add_argument("--max-triangles", type=int, help="simplify output to no more than this many triangles")
+    parser.add_argument("--dependency", action="append", default=[], metavar="BUNDLE",
+        help="name a bundle this .elpk needs, relative to the output's directory")
     parser.add_argument("--self-test", action="store_true", help="cook and validate the synthetic triangle fixture")
     options = parser.parse_args(arguments)
     if not options.self_test and (options.source is None or options.asset_path is None or options.output is None):
@@ -346,6 +348,8 @@ def main(arguments: list[str]) -> int:
         parser.error("--self-test cannot be combined with source, --asset-path, --output, or --max-triangles")
     if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
         parser.error("--max-triangles must be in [1, 1000000]")
+    if options.dependency and (options.self_test or options.output.suffix.lower() != ".elpk"):
+        parser.error("--dependency requires an .elpk output bundle")
 
     try:
         with tempfile.TemporaryDirectory(prefix="elisa-fbx-cooker-") as temporary:
@@ -386,7 +390,8 @@ def main(arguments: list[str]) -> int:
                 geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output
                 fields = cook_one(cooker, options.source, options.asset_path, geometry_output, options.max_triangles)
                 if package_output.suffix.lower() == ".elpk":
-                    write_geometry_package(package_output, geometry_output.read_bytes())
+                    write_geometry_package(package_output, geometry_output.read_bytes(),
+                        dependencies=options.dependency)
                 print(f"FBX package validated: {fields['triangles']} triangles, {fields['positions']} vertices")
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as failure:
         print(f"FBX cooking failed: {failure}", file=sys.stderr)

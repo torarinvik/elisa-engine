@@ -40,7 +40,8 @@ module MazeRenderingNativeTests:
 
     public:
         def exercise() -> i32:
-            return 19 if not MazeRenderAssets::register("examples/maze/assets/maze_tile.elpk")
+            return 19 if not MazeRenderAssets::register(
+                "examples/maze/assets/maze_tile.elpk", "examples/maze/assets/maze_textures.elpk")
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
                 value: value
@@ -57,7 +58,7 @@ module MazeRenderingNativeTests:
             return 20 if not wall_ids_match
             return 21 if elisa_render_scene_v1_test_snapshot_instance_resources(
                 first_wall.render_id, 24, 36, 0.19, 0.25, 0.32, 1.0, 0.0, 0.82) == 0
-            # The wall's base color is the 32x32 brick image cooked into the tile bundle.
+            # The wall's base color is the 32x32 brick image from the texture bundle.
             return 24 if elisa_render_scene_v1_test_snapshot_material_texture_size(23, 2, 0, 32, 32) != 1
             initial_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 36)
             return 6 if initial_door.render_id != 2002 or initial_door.visual.material.low != 5

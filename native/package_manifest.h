@@ -2,6 +2,10 @@
 
 // Bounded ELPK dependency manifests and deterministic prerequisite-first
 // ordering. Manifest IO runs from VirtualFileService's worker pump.
+//
+// A manifest names each dependency relative to the directory of the package
+// that declares it, so a bundle means the same thing under any mount root.
+// Order entries are full logical names under the mount root.
 #include "virtual_package.h"
 
 #include <set>
@@ -96,6 +100,14 @@ inline BinaryPackageManifest read_binary_package_manifest(const std::string& pat
     return manifest;
 }
 
+// `dependency` is a safe relative path from a parsed manifest.
+inline std::string dependency_logical_name(const std::string& package_name,
+    const std::string& dependency) {
+    const size_t directory_end = package_name.rfind('/');
+    return directory_end == std::string::npos ? dependency :
+        package_name.substr(0, directory_end + 1) + dependency;
+}
+
 inline bool append_package_dependency_order(const std::filesystem::path& base_root,
     const std::vector<std::filesystem::path>& override_roots, const std::string& package_name,
     size_t max_dependencies, std::set<std::string>& visiting, std::set<std::string>& visited,
@@ -105,7 +117,10 @@ inline bool append_package_dependency_order(const std::filesystem::path& base_ro
         return false;
     }
     if (visited.count(package_name) != 0) return true;
-    if (visited.size() >= max_dependencies) {
+    // Count packages still on the search path as well as finished ones, so a
+    // long chain is bounded before recursion reaches its end. `visiting` also
+    // holds the root package.
+    if (visited.size() + visiting.size() > max_dependencies) {
         error = "package dependency count exceeded";
         return false;
     }
@@ -122,7 +137,8 @@ inline bool append_package_dependency_order(const std::filesystem::path& base_ro
     }
     visiting.insert(package_name);
     for (const std::string& dependency : manifest.dependencies) {
-        if (!append_package_dependency_order(base_root, override_roots, dependency,
+        if (!append_package_dependency_order(base_root, override_roots,
+                dependency_logical_name(package_name, dependency),
                 max_dependencies, visiting, visited, order, error)) return false;
     }
     visiting.erase(package_name);
@@ -154,7 +170,8 @@ inline bool package_dependency_order(const std::filesystem::path& base_root,
     std::set<std::string> visiting{package_name};
     std::set<std::string> visited;
     for (const std::string& dependency : root_manifest.dependencies) {
-        if (!append_package_dependency_order(base_root, override_roots, dependency,
+        if (!append_package_dependency_order(base_root, override_roots,
+                dependency_logical_name(package_name, dependency),
                 max_dependencies, visiting, visited, order, error)) {
             order.clear();
             return false;

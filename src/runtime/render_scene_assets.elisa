@@ -60,7 +60,36 @@ extend RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_unregister_snapshot_material_asset(high: u64, low: u64) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_request_snapshot_mesh_asset(high: u64, low: u64,
+            package_path: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
+            high: u64, low: u64, bundle_path: cstr, section: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_pump_snapshot_assets(budget: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_asset_state(kind: i32, high: u64, low: u64) -> i32
+
+        const module NativeSnapshotAsset:
+            MESH: i32 = 0
+            TEXTURE: i32 = 1
+            LOADING: i32 = 1
+            RESIDENT: i32 = 2
+
     public:
+        enum SnapshotAssetKind:
+            Mesh
+            Texture
+
+        enum SnapshotAssetState:
+            Absent
+            Loading
+            Resident
+
         # Snapshot IDs resolve to shared cooked geometry and backend-neutral
         # PBR factors. Registration is owner-thread-only and idempotent for an
         # unchanged ID/path or ID/material pair.
@@ -120,3 +149,46 @@ extend RenderScene:
         def unregister_snapshot_material_asset(asset: Assets::AssetId) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
             try check_status(elisa_render_scene_v1_unregister_snapshot_material_asset(asset.high, asset.low))
+
+        # Asynchronous registration. A request returns without file IO; a
+        # worker thread resolves the path, checks the bundle's dependencies
+        # and reads the asset. Requesting a loading or resident ID again with
+        # the same path is a no-op, and requesting a failed one retries it.
+        # Unregistering a loading ID cancels it.
+        def request_snapshot_mesh_asset(asset: Assets::AssetId,
+            package_path: cstr) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_request_snapshot_mesh_asset(
+                asset.high, asset.low, package_path))
+
+        def request_snapshot_bundle_texture_asset(asset: Assets::AssetId,
+            bundle_path: cstr, section: cstr) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
+                asset.high, asset.low, bundle_path, section))
+
+        # Makes up to `budget` finished loads resident on this thread and
+        # returns how many it adopted. Until then a snapshot row naming a
+        # loading mesh, or a material naming a loading texture, fails with
+        # AssetPending and the previous frame stays live.
+        def pump_snapshot_assets(budget: u32) -> u32 error[RenderSceneError]:
+            adopted: i32 = elisa_render_scene_v1_pump_snapshot_assets(budget)
+            if adopted < 0:
+                try check_status(adopted)
+            adopted.u32()
+
+        # A failed request raises its failure, AssetLoadFailure or Capacity,
+        # until the ID is unregistered or requested again.
+        def snapshot_asset_state(kind: SnapshotAssetKind,
+            asset: Assets::AssetId) -> SnapshotAssetState error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            native_kind: i32 =
+                match kind:
+                    SnapshotAssetKind.Mesh: NativeSnapshotAsset::MESH
+                    SnapshotAssetKind.Texture: NativeSnapshotAsset::TEXTURE
+            state: i32 = elisa_render_scene_v1_snapshot_asset_state(native_kind, asset.high, asset.low)
+            if state < 0:
+                try check_status(state)
+            return SnapshotAssetState.Resident if state == NativeSnapshotAsset::RESIDENT
+            return SnapshotAssetState.Loading if state == NativeSnapshotAsset::LOADING
+            SnapshotAssetState.Absent

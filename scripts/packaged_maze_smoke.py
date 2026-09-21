@@ -2,11 +2,12 @@
 """Run the native maze from a staged directory outside the engine checkout.
 
 A03 requires runtime loading to work outside the checkout. This stages the
-built maze executable and its cooked ELPK bundle, and nothing else, in a
+built maze executable and its two cooked ELPK bundles, and nothing else, in a
 temporary directory. It then runs the executable under a macOS sandbox profile
 that denies every read and write inside the checkout. The same sandbox must
-turn a missing, escaping, or corrupted bundle into the maze's asset
-registration failure (exit 17) rather than a crash or a silent fallback.
+turn a missing, escaping, or corrupted bundle, or a tile bundle whose declared
+dependency is missing, into the maze's asset registration failure (exit 17)
+rather than a crash or a silent fallback.
 """
 
 from __future__ import annotations
@@ -21,8 +22,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+import cook_gltf_asset
+
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_PATH = Path("assets/maze_tile.elpk")
+# The tile bundle's manifest names this bundle as a dependency.
+TEXTURE_BUNDLE_PATH = Path("assets/maze_textures.elpk")
 ASSET_REGISTRATION_FAILED = 17
 HEADER_BYTES = 32
 ENTRY_BYTES = 48
@@ -81,6 +86,7 @@ def run(executable: Path, project: Path, shader_path: Path, checkout: Path = ROO
         return 2
     checkout = checkout.resolve(strict=True)
     bundle = (project / BUNDLE_PATH).resolve(strict=True)
+    texture_bundle = (project / TEXTURE_BUNDLE_PATH).resolve(strict=True)
     with tempfile.TemporaryDirectory(prefix="Elisa packaged maze ") as temporary:
         base = Path(temporary).resolve()
         if base == checkout or checkout in base.parents:
@@ -93,9 +99,11 @@ def run(executable: Path, project: Path, shader_path: Path, checkout: Path = ROO
         stage = base / "elisa-maze"
         staged_executable = stage / executable.name
         staged_bundle = stage / BUNDLE_PATH
+        staged_textures = stage / TEXTURE_BUNDLE_PATH
         staged_bundle.parent.mkdir(parents=True)
         shutil.copy2(executable, staged_executable)
         shutil.copy2(bundle, staged_bundle)
+        shutil.copy2(texture_bundle, staged_textures)
 
         environment = application_environment(project, stage, shader_path)
         results = [check("staged maze runs with the checkout denied",
@@ -123,14 +131,34 @@ def run(executable: Path, project: Path, shader_path: Path, checkout: Path = ROO
             ASSET_REGISTRATION_FAILED))
         staged_bundle.unlink()
 
-        for section in ("mesh", "wallalbedo"):
-            corrupted = bytearray(original)
-            offset, stored = section_span(original, section)
+        textures = staged_textures.read_bytes()
+        for target, contents, section in ((staged_bundle, original, "mesh"),
+                (staged_textures, textures, "wallalbedo")):
+            corrupted = bytearray(contents)
+            offset, stored = section_span(contents, section)
             corrupted[offset + stored // 2] ^= 0xFF
-            staged_bundle.write_bytes(bytes(corrupted))
+            target.write_bytes(bytes(corrupted))
             results.append(check(f"a corrupted {section} section is rejected",
                 run_sandboxed(profile, staged_executable, working_directory, environment),
                 ASSET_REGISTRATION_FAILED))
+            target.write_bytes(contents)
+
+        staged_textures.unlink()
+        results.append(check("a missing texture bundle fails registration",
+            run_sandboxed(profile, staged_executable, working_directory, environment),
+            ASSET_REGISTRATION_FAILED))
+        staged_textures.write_bytes(textures)
+
+        # The texture bundle is intact here, so only the dependency check can
+        # fail the tile: its manifest names a bundle that isn't staged.
+        if cook_gltf_asset.main([str(project / "assets/maze_tile.gltf"), "--asset-path",
+                "assets/maze_tile.gltf", "--output", str(staged_bundle),
+                "--dependency", "maze_missing.elpk"]) != 0:
+            print("could not cook the tile bundle with a missing dependency", file=sys.stderr)
+            return 1
+        results.append(check("a tile bundle naming a missing dependency fails registration",
+            run_sandboxed(profile, staged_executable, working_directory, environment),
+            ASSET_REGISTRATION_FAILED))
 
         staged_bundle.write_bytes(original)
         results.append(check("the restored bundle runs again",

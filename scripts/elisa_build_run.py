@@ -209,8 +209,9 @@ def declared_textures(project: Path, declaration: dict[str, object], index: int,
     textures = declaration.get("textures", {})
     if not isinstance(textures, dict) or len(textures) > 16:
         raise BuildConfigurationError(f"asset_cooks[{index}].textures must be an object of at most 16 sections")
-    if textures and (importer != "gltf" or output.suffix.lower() != ".elpk"):
-        raise BuildConfigurationError(f"asset_cooks[{index}].textures requires the gltf importer and an .elpk output")
+    if textures and (importer not in ("gltf", "images") or output.suffix.lower() != ".elpk"):
+        raise BuildConfigurationError(
+            f"asset_cooks[{index}].textures requires the gltf or images importer and an .elpk output")
     declared = []
     for section in sorted(textures):
         if (not 1 <= len(section) <= 15 or section in ("mesh", "manifest") or
@@ -222,16 +223,52 @@ def declared_textures(project: Path, declaration: dict[str, object], index: int,
     return declared
 
 
-def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
-    declarations = config.get("asset_cooks", [])
-    if not isinstance(declarations, list) or len(declarations) > 64:
-        raise BuildConfigurationError("project 'asset_cooks' must be an array of at most 64 entries")
-    for index, declaration in enumerate(declarations):
-        if not isinstance(declaration, dict):
-            raise BuildConfigurationError(f"asset_cooks[{index}] must be an object")
+def declared_dependencies(project: Path, declaration: dict[str, object], index: int,
+    output: Path) -> list[tuple[Path, str]]:
+    """Validate an asset cook's bundle dependencies.
+
+    Each entry is a project path and the name the manifest records for it,
+    which is relative to the output bundle's directory.
+    """
+    dependencies = declaration.get("dependencies", [])
+    if not isinstance(dependencies, list) or len(dependencies) > 16:
+        raise BuildConfigurationError(f"asset_cooks[{index}].dependencies must be an array of at most 16 bundles")
+    if dependencies and output.suffix.lower() != ".elpk":
+        raise BuildConfigurationError(f"asset_cooks[{index}].dependencies requires an .elpk output")
+    declared = []
+    for position, value in enumerate(dependencies):
+        label = f"asset_cooks[{index}].dependencies[{position}]"
+        path = declared_project_path(project, value, label, must_exist=False)
+        if path == output or path.suffix.lower() != ".elpk":
+            raise BuildConfigurationError(f"asset cook {label} must name another .elpk bundle")
+        if not path.is_relative_to(output.parent):
+            raise BuildConfigurationError(
+                f"asset cook {label} must be in the output bundle's directory or below it")
+        declared.append((path, path.relative_to(output.parent).as_posix()))
+    if len({path for path, _ in declared}) != len(declared):
+        raise BuildConfigurationError(f"asset_cooks[{index}].dependencies must not repeat a bundle")
+    return declared
+
+
+def asset_cook_command(project: Path, declaration: object,
+    index: int) -> tuple[Path, str, list[str], list[Path]]:
+    """Validate one asset cook, returning its output, label, command and dependency outputs."""
+    if not isinstance(declaration, dict):
+        raise BuildConfigurationError(f"asset_cooks[{index}] must be an object")
+    output = declared_project_path(project, declaration.get("output"), f"asset_cooks[{index}].output", must_exist=False)
+    importer = declaration.get("importer", "fbx")
+    dependencies = declared_dependencies(project, declaration, index, output)
+    textures = declared_textures(project, declaration, index, importer, output)
+    if importer == "images":
+        for key in ("source", "asset_path", "max_triangles"):
+            if key in declaration:
+                raise BuildConfigurationError(f"asset_cooks[{index}] images importer does not accept {key}")
+        if not textures:
+            raise BuildConfigurationError(f"asset_cooks[{index}] images importer requires textures")
+        command = [sys.executable, str(ENGINE_ROOT / "scripts/cook_image_bundle.py"), "--output", str(output)]
+        source_label = "images"
+    else:
         source = declared_project_path(project, declaration.get("source"), f"asset_cooks[{index}].source", must_exist=True)
-        output = declared_project_path(project, declaration.get("output"), f"asset_cooks[{index}].output", must_exist=False)
-        importer = declaration.get("importer", "fbx")
         if importer == "fbx":
             cooker = ENGINE_ROOT / "scripts/cook_fbx_asset.py"
         elif importer == "gltf":
@@ -243,7 +280,7 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
                 raise BuildConfigurationError(f"asset_cooks[{index}] glb importer requires a .glb source")
             cooker = ENGINE_ROOT / "scripts/cook_glb_asset.py"
         else:
-            raise BuildConfigurationError(f"asset_cooks[{index}].importer must be 'fbx', 'gltf', or 'glb'")
+            raise BuildConfigurationError(f"asset_cooks[{index}].importer must be 'fbx', 'gltf', 'glb' or 'images'")
         asset_path = declaration.get("asset_path")
         if not isinstance(asset_path, str) or not asset_path:
             raise BuildConfigurationError(f"asset_cooks[{index}].asset_path must be a non-empty package identity")
@@ -258,9 +295,11 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
             raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
         if importer in ("gltf", "glb") and max_triangles is not None:
             raise BuildConfigurationError(f"asset_cooks[{index}] {importer} importer does not accept max_triangles")
-        textures = declared_textures(project, declaration, index, importer, output)
+        command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
+            "--output", str(output)]
+        if max_triangles is not None:
+            command.extend(["--max-triangles", str(max_triangles)])
         animation_source_value = declaration.get("animation_source")
-        animation_source = None
         if animation_source_value is not None:
             if importer != "glb":
                 raise BuildConfigurationError(f"asset_cooks[{index}].animation_source requires the glb importer")
@@ -268,8 +307,8 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
                 f"asset_cooks[{index}].animation_source", must_exist=True)
             if animation_source.suffix.lower() != ".fbx":
                 raise BuildConfigurationError(f"asset_cooks[{index}].animation_source must be an .fbx source")
+            command.extend(["--animation-source", str(animation_source)])
         texture_output_value = declaration.get("texture_output")
-        texture_output = None
         if texture_output_value is not None:
             if importer != "glb":
                 raise BuildConfigurationError(f"asset_cooks[{index}].texture_output requires the glb importer")
@@ -277,17 +316,53 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
                 f"asset_cooks[{index}].texture_output", must_exist=False)
             if texture_output in (source, output):
                 raise BuildConfigurationError(f"asset_cooks[{index}].texture_output cannot overwrite its source or package")
-        print(f"Cooking project asset: {source.relative_to(project)} -> {output.relative_to(project)}", flush=True)
-        command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
-            "--output", str(output)]
-        if max_triangles is not None:
-            command.extend(["--max-triangles", str(max_triangles)])
-        for section, texture in textures:
-            command.extend(["--texture", f"{section}={texture}"])
-        if animation_source is not None:
-            command.extend(["--animation-source", str(animation_source)])
-        if texture_output is not None:
             command.extend(["--texture-output", str(texture_output)])
+        source_label = str(source.relative_to(project))
+    for section, texture in textures:
+        command.extend(["--texture", f"{section}={texture}"])
+    for _, name in dependencies:
+        command.extend(["--dependency", name])
+    label = f"{source_label} -> {output.relative_to(project)}"
+    return output, label, command, [path for path, _ in dependencies]
+
+
+def asset_cook_order(project: Path, outputs: list[Path], dependencies: list[list[Path]]) -> list[int]:
+    """Order cooks so each bundle is written after the bundles it depends on."""
+    producers = {output: index for index, output in enumerate(outputs)}
+    if len(producers) != len(outputs):
+        raise BuildConfigurationError("two asset cooks write the same output")
+    for index, needed in enumerate(dependencies):
+        for dependency in needed:
+            if dependency not in producers:
+                raise BuildConfigurationError(
+                    f"asset_cooks[{index}] depends on {dependency.relative_to(project)}, which no asset cook writes")
+    order: list[int] = []
+    state: dict[int, str] = {}
+
+    def visit(index: int) -> None:
+        if state.get(index) == "done":
+            return
+        if state.get(index) == "visiting":
+            raise BuildConfigurationError(f"asset_cooks[{index}] is part of a dependency cycle")
+        state[index] = "visiting"
+        for dependency in dependencies[index]:
+            visit(producers[dependency])
+        state[index] = "done"
+        order.append(index)
+
+    for index in range(len(outputs)):
+        visit(index)
+    return order
+
+
+def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
+    declarations = config.get("asset_cooks", [])
+    if not isinstance(declarations, list) or len(declarations) > 64:
+        raise BuildConfigurationError("project 'asset_cooks' must be an array of at most 64 entries")
+    cooks = [asset_cook_command(project, declaration, index) for index, declaration in enumerate(declarations)]
+    for index in asset_cook_order(project, [cook[0] for cook in cooks], [cook[3] for cook in cooks]):
+        _, label, command, _ = cooks[index]
+        print(f"Cooking project asset: {label}", flush=True)
         status = run_command(command, cwd=project)
         if status != 0:
             return status

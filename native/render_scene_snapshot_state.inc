@@ -5,6 +5,8 @@ constexpr size_t MAX_SNAPSHOT_BUNDLE_TEXTURE_BYTES = 256u * 1024u * 1024u;
 constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = 4;
 constexpr size_t MAX_SNAPSHOT_SHARED_MESHES = MAX_INSTANCES * 2;
 constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
+constexpr size_t MAX_SNAPSHOT_ASSET_REQUESTS = elisa::assets::SerialJobWorker<int>::MAX_JOBS;
+constexpr uint32_t MAX_SNAPSHOT_ASSET_ADOPTIONS = MAX_SNAPSHOT_ASSET_REQUESTS;
 constexpr float DEFAULT_SNAPSHOT_ALPHA_CUTOFF = 0.5f;
 constexpr float OPAQUE_SNAPSHOT_ALPHA_REF = 1.0f;
 constexpr float DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH = 1.0f;
@@ -38,6 +40,8 @@ struct SnapshotStageRow {
 struct SnapshotMeshAssetSlot {
     uint64_t high = 0;
     uint64_t low = 0;
+    // The path as registered, so a later request compares without file IO.
+    std::string requested_path;
     std::filesystem::path canonical_path;
     elisa::assets::CookedGeometry geometry;
     size_t bytes = 0;
@@ -63,6 +67,7 @@ struct SnapshotMaterialAssetSlot {
 struct SnapshotTextureAssetSlot {
     uint64_t high = 0;
     uint64_t low = 0;
+    std::string requested_path;
     std::filesystem::path canonical_path;
     // A bundle-backed texture keeps its CRC-checked encoded image and a
     // content-keyed resource stem; the section is empty for a loose file.
@@ -82,4 +87,44 @@ struct SnapshotSharedMesh {
     size_t references = 0;
     size_t bytes = 0;
     bool live = false;
+};
+
+// An asynchronous snapshot asset request. The worker resolves, verifies and
+// reads the asset; the owner thread adopts the result into an ordinary asset
+// slot when it pumps. A request that fails stays here, holding its status,
+// until the ID is unregistered or requested again.
+enum class SnapshotAssetKind : int32_t { Mesh = 0, Texture = 1 };
+
+struct SnapshotAssetRequest {
+    uint64_t high = 0;
+    uint64_t low = 0;
+    uint64_t serial = 0;
+    SnapshotAssetKind kind = SnapshotAssetKind::Mesh;
+    std::string path;
+    std::string section;
+    int32_t failure = ELISA_RENDER_SCENE_OK;
+    bool live = false;
+};
+
+// A worker result. The default is a failed load, which is also what a job
+// that throws posts.
+struct SnapshotAssetLoad {
+    int32_t status = ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    std::filesystem::path canonical_path;
+    elisa::assets::CookedGeometry geometry;
+    elisa::assets::BundleTexture texture;
+    size_t bytes = 0;
+    std::string error;
+};
+
+struct SnapshotAssetRequests {
+    std::array<SnapshotAssetRequest, MAX_SNAPSHOT_ASSET_REQUESTS> requests{};
+    uint64_t next_serial = 1;
+    elisa::assets::SerialJobWorker<SnapshotAssetLoad> worker;
+
+    // Joins the worker before the tables it reports into are cleared.
+    void reset() {
+        worker.stop();
+        requests = {};
+    }
 };
