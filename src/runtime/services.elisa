@@ -83,7 +83,8 @@ module RuntimeServices:
                     return true
             audio_closed and physics_closed and application_closed
 
-        def fallback_is_supported(decision: Capabilities::BackendFeatureDecision) -> bool:
+        def fallback_is_accepted_by_session(decision: Capabilities::BackendFeatureDecision) -> bool:
+            return true if decision.fallback_provider == Capabilities::BackendFallbackProvider.CallerDefined
             if decision.feature == Capabilities::BackendFeature.Physics:
                 return decision.fallback_provider == Capabilities::BackendFallbackProvider.JoltPhysics
             if decision.feature == Capabilities::BackendFeature.Audio:
@@ -107,6 +108,9 @@ module RuntimeServices:
         def activate_provider(session: mutable Session&,
             decision: Capabilities::BackendFeatureDecision,
             sample_rate: u32, channels: u32) -> ActivationStatus:
+            # CallerDefined is owned by gameplay, so preserve its typed report
+            # and let the caller initialize it after Session::open returns.
+            return ActivationStatus.Ready if decision.fallback_provider == Capabilities::BackendFallbackProvider.CallerDefined
             if decision.feature == Capabilities::BackendFeature.Physics:
                 return ActivationStatus.Ready if PhysicsRuntime::service_is_live(session.physics)
                 initialized: ActivationStatus = catch PhysicsRuntime::service_initialize(
@@ -192,7 +196,7 @@ module RuntimeServices:
                 if provider_failure == OpenStatus.Ready:
                     decision: Capabilities::BackendFeatureDecision = report.services.decisions[index]
                     if decision.resolution == Capabilities::BackendFeatureResolution.DeclaredFallback:
-                        if not fallback_is_supported(decision):
+                        if not fallback_is_accepted_by_session(decision):
                             provider_failure <- OpenStatus.UnsupportedProvider
                         else:
                             activation: ActivationStatus = activate_provider(session, decision,

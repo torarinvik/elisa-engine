@@ -129,3 +129,17 @@ Validation on 2026-09-21:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools test/parity/generic_module_error_callback_smoke.sh` passed; the specialized executable returned its expected status.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both SDL3/Metal application and failure-cleanup smokes with the generic schedule dispatch.
 - Engine source-length policy, module hygiene (89 production modules), and `git diff --check` passed.
+
+## Caller-owned fallback routes
+
+`RuntimeServices::Session::open` now accepts a valid `CallerDefined` route from the
+negotiated report without treating it as an engine-owned adapter. It returns
+`FallbackRequired` with the provider identity intact; the application initializes and
+uses that handler itself. The native service probe requests the unavailable callback
+service through this route, confirms no Physics or Audio adapter was activated, and
+shuts the host down cleanly.
+
+Validation on 2026-09-21:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py` passed both SDL3/Metal application and failure-cleanup smokes.
+- Source-length policy, module hygiene (89 production modules), and `git diff --check` passed.

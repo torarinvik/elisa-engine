@@ -99,6 +99,34 @@ module RuntimeServicesProbe:
             return 27 if audio_closed != 0
             0
 
+        def caller_defined_fallback_probe() -> i32:
+            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            requirements.services[0] <- Capabilities::BackendFeature.Callbacks
+            requirements.service_count <- 1
+            requirements.service_fallbacks <- Capabilities::BackendFallbackProviders{
+                input: Capabilities::BackendFallbackProvider.None,
+                rendering: Capabilities::BackendFallbackProvider.None,
+                physics: Capabilities::BackendFallbackProvider.None,
+                audio: Capabilities::BackendFallbackProvider.None,
+                native_window: Capabilities::BackendFallbackProvider.None,
+                async_upload: Capabilities::BackendFallbackProvider.None,
+                callbacks: Capabilities::BackendFallbackProvider.CallerDefined,
+                asset_loading: Capabilities::BackendFallbackProvider.None,
+            }
+            requirements.allow_service_fallbacks <- true
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            return 28 if opened != RuntimeServices::OpenStatus.FallbackRequired
+            return 29 if report.services.state != Capabilities::RequirementState.Fallback
+            return 30 if report.services.decisions[0].resolution != Capabilities::BackendFeatureResolution.DeclaredFallback
+            return 31 if report.services.decisions[0].fallback_provider != Capabilities::BackendFallbackProvider.CallerDefined
+            return 32 if RuntimeServices::physics_active(session) or RuntimeServices::audio_active(session)
+            return 33 if not RuntimeServices::shutdown(&session)
+            0
+
         def check_partial_world_frame(session: mutable RuntimeServices::Session&) -> i32:
             frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
                 session, 10000):
@@ -416,6 +444,8 @@ module RuntimeServicesProbe:
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
             rollback: i32 = activation_rollback(&session, &requirements)
             return rollback if rollback != 0
+            caller_fallback: i32 = caller_defined_fallback_probe()
+            return caller_fallback if caller_fallback != 0
 
             report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
