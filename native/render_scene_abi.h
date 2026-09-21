@@ -118,6 +118,8 @@ int32_t elisa_render_scene_v1_set_environment(
     float fog_red, float fog_green, float fog_blue,
     float fog_start, float fog_density, int32_t fog_enabled);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
+int32_t elisa_render_scene_v1_set_ambient_occlusion(int32_t enabled);
+int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int64_t elisa_render_scene_v1_create_text(const char* text, float x, float y,
     int32_t font_size, float red, float green, float blue, float alpha);

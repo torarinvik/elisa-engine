@@ -27,4 +27,12 @@ inline void apply_bloom(wi::RenderPath3D& path, bool enabled, float threshold) {
     path.setBloomEnabled(enabled);
 }
 
+inline void apply_ambient_occlusion(wi::RenderPath3D& path, bool enabled) {
+    path.setAO(enabled ? wi::RenderPath3D::AO_SSAO : wi::RenderPath3D::AO_DISABLED);
+}
+
+inline void apply_fxaa(wi::RenderPath3D& path, bool enabled) {
+    path.setFXAAEnabled(enabled);
+}
+
 } // namespace elisa::render_scene_effects
