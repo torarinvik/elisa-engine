@@ -24,6 +24,12 @@ source material bindings, and unsupported vertex attributes instead of
 silently dropping them. The maze's PBR materials are authored separately in
 Elisa; the wall material takes its base color from the `wallalbedo` section.
 
+The client requests both bundles from the render scene's asset worker and
+keeps presenting frames with a "Loading maze assets" overlay until the mesh and
+texture are resident. It then registers the materials and builds the maze. A
+bundle that fails to load, or loading that takes more than 30 seconds, exits
+with status 17.
+
 Press **Space** to start, use the arrow keys or **WASD** to move, press **P** to
 pause or resume, **R** to restart, and **Escape** or the window close button to
 quit.

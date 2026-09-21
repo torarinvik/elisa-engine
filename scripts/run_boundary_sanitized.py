@@ -5,8 +5,10 @@ The full native probe links Wicked and needs a display session, which the
 sandbox aborts when instrumented. This harness exercises the untrusted-boundary
 libraries (ozz sampling, Recast/Detour navigation, miniaudio decode,
 FreeType/HarfBuzz shaping) without a renderer, so AddressSanitizer and
-UndefinedBehaviorSanitizer can run on that boundary anywhere. A nonzero exit
-status is a sanitizer finding or a failing library check.
+UndefinedBehaviorSanitizer can run on that boundary anywhere. It then runs the
+asset worker harness, the thread behind asynchronous snapshot asset requests,
+under ThreadSanitizer. A nonzero exit status is a sanitizer finding or a
+failing check.
 
 Requires `python3 scripts/fetch_ozz.py` and `python3 scripts/fetch_recast.py`,
 plus Homebrew freetype and harfbuzz.
@@ -27,6 +29,29 @@ DEPENDENCIES = ENGINE_ROOT / "dependencies"
 def require(path: Path, hint: str) -> None:
     if not path.is_file():
         raise SystemExit(f"missing {path}; {hint}")
+
+
+def run_asset_worker_tsan() -> int:
+    output = ENGINE_ROOT / "build/asset-worker-harness-tsan"
+    arguments = [
+        "c++", "-std=c++17", "-O1", "-g", "-fsanitize=thread",
+        "-I", str(ENGINE_ROOT / "native"),
+        str(ENGINE_ROOT / "native/asset_worker_harness.cpp"),
+        "-o", str(output),
+    ]
+    compile_result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    if compile_result.returncode != 0:
+        sys.stderr.write(compile_result.stderr)
+        return compile_result.returncode
+    environment = dict(os.environ)
+    environment["TSAN_OPTIONS"] = "halt_on_error=1"
+    run_result = subprocess.run([str(output)], capture_output=True, text=True, check=False, env=environment)
+    sys.stdout.write(run_result.stdout)
+    sys.stderr.write(run_result.stderr)
+    if run_result.returncode != 0:
+        return run_result.returncode
+    print("asset worker harness passed: no ThreadSanitizer finding")
+    return 0
 
 
 def main() -> int:
@@ -79,7 +104,7 @@ def main() -> int:
     if run_result.returncode != 0:
         return run_result.returncode
     print("sanitized boundary harness passed: no AddressSanitizer or UBSan finding")
-    return 0
+    return run_asset_worker_tsan()
 
 
 if __name__ == "__main__":

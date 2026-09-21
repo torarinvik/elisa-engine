@@ -10,6 +10,7 @@ include "./maze_rendering_native.elisa"
 include "./render_scene_snapshot_native.elisa"
 include "./render_scene_bundle_texture_native.elisa"
 include "./render_scene_bundle_dependency_native.elisa"
+include "./render_scene_async_asset_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
@@ -330,6 +331,8 @@ def exercise_render_scene() -> i32:
     return 160 + bundle_texture_status if bundle_texture_status != 0
     bundle_dependency_status: i32 = RenderSceneBundleDependencyNativeTests::exercise()
     return 200 + bundle_dependency_status if bundle_dependency_status != 0
+    async_asset_status: i32 = RenderSceneAsyncAssetNativeTests::exercise()
+    return 216 + async_asset_status if async_asset_status != 0
 
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},

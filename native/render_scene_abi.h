@@ -21,6 +21,21 @@ enum {
     ELISA_RENDER_SCENE_BACKEND_FAILED = -8,
     ELISA_RENDER_SCENE_ASSET_LOAD_FAILED = -9,
     ELISA_RENDER_SCENE_BATCH_ACTIVE = -10,
+    // An asset named by a snapshot row or material is still loading.
+    ELISA_RENDER_SCENE_ASSET_PENDING = -11,
+};
+
+// elisa_render_scene_v1_snapshot_asset_state results; a failed request
+// returns its failure status instead.
+enum {
+    ELISA_RENDER_SCENE_SNAPSHOT_ASSET_ABSENT = 0,
+    ELISA_RENDER_SCENE_SNAPSHOT_ASSET_LOADING = 1,
+    ELISA_RENDER_SCENE_SNAPSHOT_ASSET_RESIDENT = 2,
+};
+
+enum {
+    ELISA_RENDER_SCENE_SNAPSHOT_ASSET_MESH = 0,
+    ELISA_RENDER_SCENE_SNAPSHOT_ASSET_TEXTURE = 1,
 };
 
 enum {
@@ -86,6 +101,15 @@ int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint64_t high, u
 // Register a PNG or JPEG section of a cooked ELPK bundle as a snapshot texture.
 int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
     uint64_t high, uint64_t low, const char* bundle_path, const char* section);
+// Asynchronous forms: the request returns without file IO, a worker thread
+// reads the asset, and pump adopts up to `budget` finished loads on the owner
+// thread, returning how many became resident.
+int32_t elisa_render_scene_v1_request_snapshot_mesh_asset(
+    uint64_t high, uint64_t low, const char* package_path);
+int32_t elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
+    uint64_t high, uint64_t low, const char* bundle_path, const char* section);
+int32_t elisa_render_scene_v1_pump_snapshot_assets(uint32_t budget);
+int32_t elisa_render_scene_v1_snapshot_asset_state(int32_t kind, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_register_snapshot_material_asset(
     uint64_t high, uint64_t low,
     float red, float green, float blue, float alpha,

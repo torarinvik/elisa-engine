@@ -1,0 +1,332 @@
+# Native A04 coverage for asynchronous snapshot asset requests. A worker
+# thread reads meshes and bundle textures; the owner thread adopts them when it
+# pumps. Test hooks park the worker at its checkpoint, between the dependency
+# check and the section read, so each cancellation point is reached on
+# purpose. scripts/bundle_dependency_fixtures.py writes the bundles under
+# build/cooked/dependencies.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+
+module RenderSceneAsyncAssetNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_hold_snapshot_asset_worker(start: i32, running: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_asset_worker_started() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_asset_worker_finished() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_wait_snapshot_asset_worker(started: u64, finished: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_asset_requests() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_mesh_assets() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_geometry_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        const module Ids:
+            MESHES: u64 = 930
+            TEXTURES: u64 = 931
+            MATERIALS: u64 = 932
+            FILL_FIRST: u64 = 100
+            FILL_END: u64 = 140
+
+        # Codes returned by the helpers below.
+        const module Code:
+            OK: i32 = 0
+            INVALID: i32 = 1
+            LOAD_FAILED: i32 = 2
+            CAPACITY: i32 = 3
+            OTHER: i32 = 4
+            PENDING: i32 = 5
+            ABSENT: i32 = 0
+            LOADING: i32 = 1
+            RESIDENT: i32 = 2
+            FAILED_LOAD: i32 = 10
+            FAILED_CAPACITY: i32 = 11
+
+        const MAX_SNAPSHOT_MESH_ASSETS: u64 = 32
+        const NATIVE_ASSET_PENDING: i32 = -11
+        const NATIVE_ASSET_LOAD_FAILED: i32 = -9
+
+        def mesh_path() -> cstr:
+            "build/cooked/dependencies/mesh.elpk"
+
+        def missing_dependency_mesh_path() -> cstr:
+            "build/cooked/dependencies/mesh-missing.elpk"
+
+        def absent_path() -> cstr:
+            "build/cooked/dependencies/absent-mesh.elpk"
+
+        def texture_path() -> cstr:
+            "build/cooked/dependencies/leaf.elpk"
+
+        def missing_dependency_texture_path() -> cstr:
+            "build/cooked/dependencies/missing.elpk"
+
+        def mesh_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MESHES, low: low}
+
+        def texture_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::TEXTURES, low: low}
+
+        def hold(start: i32, running: i32) -> void:
+            _ = elisa_render_scene_v1_test_hold_snapshot_asset_worker(start, running)
+
+        def wait_for(started: u64, finished: u64) -> bool:
+            elisa_render_scene_v1_test_wait_snapshot_asset_worker(started, finished) == 1
+
+        def started() -> u64:
+            elisa_render_scene_v1_test_snapshot_asset_worker_started()
+
+        def finished() -> u64:
+            elisa_render_scene_v1_test_snapshot_asset_worker_finished()
+
+        def requests() -> u64:
+            elisa_render_scene_v1_test_snapshot_asset_requests()
+
+        def geometry_bytes() -> u64:
+            elisa_render_scene_v1_test_snapshot_geometry_bytes()
+
+        def request_mesh(low: u64, path: cstr) -> i32:
+            catch RenderScene::request_snapshot_mesh_asset(mesh_id(low), path):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.Capacity: Code::CAPACITY
+                error failure: Code::OTHER
+
+        def request_texture(low: u64, bundle: cstr) -> i32:
+            catch RenderScene::request_snapshot_bundle_texture_asset(texture_id(low), bundle, "albedo"):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.Capacity: Code::CAPACITY
+                error failure: Code::OTHER
+
+        def register_mesh(low: u64, path: cstr) -> i32:
+            catch RenderScene::register_snapshot_mesh_asset(mesh_id(low), path):
+                ok: Code::OK
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.AssetPending: Code::PENDING
+                error failure: Code::OTHER
+
+        def unregister_mesh(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_mesh_asset(mesh_id(low)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        def unregister_texture(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_texture_asset(texture_id(low)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        def register_material(low: u64, texture_low: u64) -> i32:
+            material: mutable Material::Material = Material::Material()
+            if texture_low != 0:
+                material.base_color <- texture_id(texture_low)
+            catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: Ids::MATERIALS, low: low}, &material):
+                ok: Code::OK
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.AssetPending: Code::PENDING
+                error failure: Code::OTHER
+
+        def unregister_material(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_material_asset(Assets::AssetId{high: Ids::MATERIALS, low: low}):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def state_code(state: RenderScene::SnapshotAssetState) -> i32:
+            match state:
+                RenderScene::SnapshotAssetState.Absent: Code::ABSENT
+                RenderScene::SnapshotAssetState.Loading: Code::LOADING
+                RenderScene::SnapshotAssetState.Resident: Code::RESIDENT
+
+        def asset_state(kind: RenderScene::SnapshotAssetKind, asset: Assets::AssetId) -> i32:
+            catch RenderScene::snapshot_asset_state(kind, asset):
+                value: state_code(value)
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::FAILED_LOAD
+                RenderScene::RenderSceneError.Capacity: Code::FAILED_CAPACITY
+                error failure: 19
+
+        def mesh_state(low: u64) -> i32:
+            asset_state(RenderScene::SnapshotAssetKind.Mesh, mesh_id(low))
+
+        def texture_state(low: u64) -> i32:
+            asset_state(RenderScene::SnapshotAssetKind.Texture, texture_id(low))
+
+        # Adopted count, or -1 when the pump fails.
+        def pump_assets() -> i32:
+            catch RenderScene::pump_snapshot_assets(8):
+                value: value.i32()
+                error failure: -1
+
+        # Stages one row naming the mesh and the plain material, then aborts.
+        def stage_row(mesh_low: u64) -> i32:
+            return -100 if elisa_render_scene_v1_snapshot_begin(0) != 0
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(0, 1, 9301, 9301,
+                Ids::MESHES, mesh_low, Ids::MATERIALS, 1,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+            return -101 if elisa_render_scene_v1_snapshot_abort() != 0
+            staged
+
+        # Frames keep running while the worker is parked mid-job.
+        def frames_while_loading() -> bool:
+            for attempt in 0..<4 |running: bool = true| -> running:
+                running <- false if Application::pump() != Application::PumpStatus.Running
+                running <- false if pump_assets() != 0
+
+        def fill_mesh_requests() -> u64:
+            for low in Ids::FILL_FIRST..<Ids::FILL_END |accepted: u64 = 0| -> accepted:
+                accepted <- accepted + 1 if request_mesh(low, mesh_path()) == Code::OK
+
+        def clear_mesh_requests() -> void:
+            for low in Ids::FILL_FIRST..<Ids::FILL_END:
+                _ = unregister_mesh(low)
+
+        # A request returns before any file IO. With the worker parked, the
+        # ID reads Loading, frames keep running, and rows naming it fail with
+        # AssetPending until a pump adopts it.
+        def loading_then_resident(base: u64, done: u64, baseline_bytes: u64) -> i32:
+            hold(0, 1)
+            return 1 if request_mesh(1, mesh_path()) != Code::OK
+            return 2 if request_mesh(1, mesh_path()) != Code::OK or request_mesh(1, texture_path()) != Code::INVALID
+            return 3 if not wait_for(base + 1, done)
+            pending: bool = mesh_state(1) == Code::LOADING and stage_row(1) == NATIVE_ASSET_PENDING
+            return 4 if not pending or register_mesh(1, mesh_path()) != Code::PENDING
+            return 6 if not frames_while_loading()
+            # The repeated request coalesced into the one job.
+            return 7 if started() != base + 1
+            hold(0, 0)
+            return 8 if not wait_for(base + 1, done + 1) or pump_assets() != 1
+            return 9 if mesh_state(1) != Code::RESIDENT or stage_row(1) != 0 or geometry_bytes() <= baseline_bytes
+            # A resident ID accepts only the path it was loaded from.
+            reused: bool = request_mesh(1, mesh_path()) == Code::OK and started() == base + 1
+            return 10 if not reused or request_mesh(1, texture_path()) != Code::INVALID
+            0
+
+        # Failures happen on the worker, allocate nothing, and stay reported
+        # until the ID is unregistered or requested again.
+        def failures(base: u64, done: u64, loaded: u64) -> i32:
+            return 11 if request_mesh(2, missing_dependency_mesh_path()) != Code::OK
+            return 12 if not wait_for(base + 2, done + 2) or pump_assets() != 0
+            return 13 if mesh_state(2) != Code::FAILED_LOAD or stage_row(2) != NATIVE_ASSET_LOAD_FAILED
+            return 14 if geometry_bytes() != loaded or unregister_mesh(2) != Code::OK or mesh_state(2) != Code::ABSENT
+            return 15 if request_mesh(3, absent_path()) != Code::OK
+            return 16 if not wait_for(base + 3, done + 3) or pump_assets() != 0 or mesh_state(3) != Code::FAILED_LOAD
+            return 17 if request_mesh(3, mesh_path()) != Code::OK
+            return 18 if not wait_for(base + 4, done + 4) or pump_assets() != 1 or mesh_state(3) != Code::RESIDENT
+            return 19 if unregister_mesh(3) != Code::OK or geometry_bytes() != loaded
+            0
+
+        # Unregistering while the job is parked mid-read, after it finished
+        # but before adoption, and while it is still queued.
+        def cancellations(base: u64, done: u64, loaded: u64) -> i32:
+            hold(0, 1)
+            return 20 if request_mesh(4, mesh_path()) != Code::OK or not wait_for(base + 5, done + 4)
+            return 21 if unregister_mesh(4) != Code::OK or mesh_state(4) != Code::ABSENT
+            hold(0, 0)
+            return 22 if not wait_for(base + 5, done + 5) or pump_assets() != 0 or geometry_bytes() != loaded
+            return 23 if request_mesh(5, mesh_path()) != Code::OK or not wait_for(base + 6, done + 6)
+            return 24 if unregister_mesh(5) != Code::OK or pump_assets() != 0 or geometry_bytes() != loaded
+            hold(1, 0)
+            return 25 if request_mesh(6, mesh_path()) != Code::OK or unregister_mesh(6) != Code::OK
+            hold(0, 0)
+            return 26 if request_mesh(7, mesh_path()) != Code::OK or not wait_for(base + 7, done + 7)
+            # Only mesh 7 ran; the cancelled queued job never started.
+            return 27 if started() != base + 7 or pump_assets() != 1
+            return 28 if mesh_state(6) != Code::ABSENT or mesh_state(7) != Code::RESIDENT or unregister_mesh(7) != Code::OK
+            0
+
+        # A material naming a loading texture fails with AssetPending, and one
+        # naming a failed texture with AssetLoadFailure.
+        def textures(base: u64, done: u64, texture_bytes: u64) -> i32:
+            hold(0, 1)
+            return 29 if request_texture(1, texture_path()) != Code::OK or not wait_for(base + 8, done + 7)
+            return 30 if texture_state(1) != Code::LOADING or register_material(2, 1) != Code::PENDING
+            hold(0, 0)
+            return 31 if not wait_for(base + 8, done + 8) or pump_assets() != 1 or texture_state(1) != Code::RESIDENT
+            grown: bool = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() > texture_bytes
+            return 32 if not grown or register_material(2, 1) != Code::OK
+            return 34 if request_texture(2, missing_dependency_texture_path()) != Code::OK
+            return 35 if not wait_for(base + 9, done + 9) or pump_assets() != 0 or texture_state(2) != Code::FAILED_LOAD
+            return 36 if register_material(3, 2) != Code::LOAD_FAILED or unregister_texture(2) != Code::OK
+            return 33 if not concurrent(base, done)
+            0
+
+        # A mesh and a texture finish in one pump. The mesh request reuses
+        # the request slot a cancelled one freed, so each result must find
+        # its request by serial rather than by slot order.
+        def concurrent(base: u64, done: u64) -> bool:
+            hold(1, 0)
+            queued: bool = request_mesh(9, mesh_path()) == Code::OK and request_texture(3, texture_path()) == Code::OK
+            reused: bool = unregister_mesh(9) == Code::OK and request_mesh(10, mesh_path()) == Code::OK
+            hold(0, 0)
+            adopted: bool = wait_for(base + 11, done + 11) and pump_assets() == 2
+            resident: bool = texture_state(3) == Code::RESIDENT and mesh_state(10) == Code::RESIDENT
+            released: bool = unregister_mesh(10) == Code::OK and unregister_texture(3) == Code::OK
+            queued and reused and adopted and resident and released
+
+    public:
+        def exercise() -> i32:
+            base: u64 = started()
+            done: u64 = finished()
+            baseline_bytes: u64 = geometry_bytes()
+            baseline_meshes: u64 = elisa_render_scene_v1_test_snapshot_mesh_assets()
+            baseline_textures: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            return 37 if requests() != 0 or register_material(1, 0) != Code::OK
+
+            loading: i32 = loading_then_resident(base, done, baseline_bytes)
+            return loading if loading != 0
+            loaded: u64 = geometry_bytes()
+            failed: i32 = failures(base, done, loaded)
+            return failed if failed != 0
+            cancelled: i32 = cancellations(base, done, loaded)
+            return cancelled if cancelled != 0
+            texture_status: i32 = textures(base, done, baseline_textures)
+            return texture_status if texture_status != 0
+
+            # Requests stop at the free mesh slots; queued ones cancel cleanly.
+            free_meshes: u64 = MAX_SNAPSHOT_MESH_ASSETS - elisa_render_scene_v1_test_snapshot_mesh_assets()
+            hold(1, 0)
+            accepted: u64 = fill_mesh_requests()
+            clear_mesh_requests()
+            hold(0, 0)
+            return 39 if accepted != free_meshes or started() != base + 11
+
+            materials_cleaned: bool = unregister_material(2) == Code::OK and unregister_material(1) == Code::OK
+            assets_cleaned: bool = unregister_texture(1) == Code::OK and unregister_mesh(1) == Code::OK
+            meshes: u64 = elisa_render_scene_v1_test_snapshot_mesh_assets()
+            texture_bytes: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            restored: bool = meshes == baseline_meshes and texture_bytes == baseline_textures
+            cleaned: bool = materials_cleaned and assets_cleaned and geometry_bytes() == baseline_bytes
+            return 38 if not cleaned or not restored or requests() != 0
+
+            # Leave one job parked mid-read. Application shutdown must
+            # release it, drop its result and join the worker.
+            hold(0, 1)
+            return 5 if request_mesh(8, mesh_path()) != Code::OK or not wait_for(base + 12, done + 11)
+            0

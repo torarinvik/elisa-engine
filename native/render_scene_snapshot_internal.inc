@@ -371,3 +371,5 @@ bool snapshot_handle_is_retired(const RenderSceneService& state, int64_t handle)
     }
     return false;
 }
+
+#include "render_scene_snapshot_asset_internal.inc"
