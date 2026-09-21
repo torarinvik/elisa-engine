@@ -9,8 +9,9 @@ read stable action IDs through `action_down`, `action_pressed`,
 The module validates action and device codes, dead zones, duplicate bindings,
 and bounded binding/state capacity. Bindings carry a context and an optional
 chord code. `begin_frame` clears edge state, `set_context` isolates gameplay
-and UI actions, and disconnecting a device releases all held actions from that
-device's state without leaving stale input live.
+and UI actions and clears both held and edge state, and disconnecting a device
+releases all held actions from that device's state without leaving stale input
+live.
 
 `bind_checked` reports those validation failures as `BindResult` without an
 error union. It checks both bounded tables before writing either, so a full
@@ -35,6 +36,12 @@ public engine key/button/axis codes, while
 `test/application_gamepad_codes.cpp` checks SDL code mapping and normalized
 axis/token conversion. The shared gate compiles and runs the Elisa fixtures
 with the stage1 compiler.
+
+The focused fixture also models render frames with no simulation step and a
+three-tick catch-up frame: a press edge remains pending until the first tick,
+then clears after that tick while its held value survives later ticks. A
+context-switch case verifies that an unconsumed gameplay edge cannot fire in
+the UI context.
 
 For the checked-binding change, `elisac-stage1 -emit exe -o
 build/action-input-test test/action_input.elisa && build/action-input-test`

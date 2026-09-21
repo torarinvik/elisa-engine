@@ -54,6 +54,33 @@ def application_input_tests() -> i32:
         application_event(Application::InputEventKind.FocusLost, 0, 0.0, false, true, false))
     return 70 if ActionInput::action_down(&input, 90) or not ActionInput::action_released(&input, 90)
 
+    tick_input: mutable ActionInput::Input = ActionInput::Input()
+    movement_binding: ActionInput::Binding = test_binding(96, key_a, 0.0)
+    ui_binding: ActionInput::Binding = test_binding(97, key_a, 0.0)
+    ui_binding.context <- ActionInput::Context.UI
+    return 90 if ActionInput::bind_checked(&tick_input, movement_binding) != ActionInput::BindResult.Bound
+    return 91 if ActionInput::bind_checked(&tick_input, ui_binding) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&tick_input,
+        application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
+    # A render frame without a fixed tick must leave the edge pending.
+    return 92 if not ActionInput::action_pressed(&tick_input, 96)
+    # Catch-up ticks see a one-shot edge once, while held movement survives.
+    return 93 if not ActionInput::action_pressed(&tick_input, 96)
+    ActionInput::begin_frame(&tick_input)
+    return 94 if ActionInput::action_pressed(&tick_input, 96) or not ActionInput::action_down(&tick_input, 96)
+    ActionInput::begin_frame(&tick_input)
+    return 95 if ActionInput::action_pressed(&tick_input, 96) or not ActionInput::action_down(&tick_input, 96)
+
+    context_input: mutable ActionInput::Input = ActionInput::Input()
+    return 96 if ActionInput::bind_checked(&context_input, movement_binding) != ActionInput::BindResult.Bound
+    return 97 if ActionInput::bind_checked(&context_input, ui_binding) != ActionInput::BindResult.Bound
+    ActionInputRuntime::apply_application_event(&context_input,
+        application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
+    return 98 if not ActionInput::action_pressed(&context_input, 96)
+    ActionInput::set_context(&context_input, ActionInput::Context.UI)
+    return 99 if ActionInput::action_down(&context_input, 96) or ActionInput::action_pressed(&context_input, 96) or ActionInput::action_released(&context_input, 96)
+    return 100 if ActionInput::action_down(&context_input, 97) or ActionInput::action_pressed(&context_input, 97)
+
     overflow_input: mutable ActionInput::Input = ActionInput::Input()
     plain_key: ActionInput::Binding = test_binding(95, key_a, 0.0)
     return 85 if ActionInput::bind_checked(&overflow_input, plain_key) != ActionInput::BindResult.Bound
