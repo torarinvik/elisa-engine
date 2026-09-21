@@ -7,8 +7,10 @@
 #include "native_resource_loader.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 #include <vector>
 #include <zstd.h>
 
@@ -63,6 +65,67 @@ inline void write_binary_package_fixture(const std::filesystem::path& path, bool
         }
         if (overlap && index == 1) bytes[offset + 1] = 0xA5;
     }
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+inline void write_large_binary_package_fixture(const std::filesystem::path& path, size_t payload_size) {
+    const size_t index_end = BinaryPackageIndex::HEADER_BYTES + BinaryPackageIndex::ENTRY_BYTES;
+    std::vector<uint8_t> header(index_end, 0);
+    const std::vector<uint8_t> payload(payload_size, 0x5A);
+    header[0] = 'E'; header[1] = 'L'; header[2] = 'P'; header[3] = 'K';
+    put_package_u16(header, 4, 1);
+    put_package_u16(header, 6, 1);
+    put_package_u64(header, 8, BinaryPackageIndex::HEADER_BYTES);
+    put_package_u64(header, 16, BinaryPackageIndex::ENTRY_BYTES);
+    const size_t entry = BinaryPackageIndex::HEADER_BYTES;
+    const std::string name = "payload";
+    std::copy(name.begin(), name.end(), header.begin() + entry);
+    put_package_u64(header, entry + 16, index_end);
+    put_package_u64(header, entry + 24, payload.size());
+    put_package_u64(header, entry + 32, payload.size());
+    put_package_u32(header, entry + 44, package_crc32(payload.data(), payload.size()));
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    output.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+}
+
+inline void write_binary_package_with_manifest(const std::filesystem::path& path,
+    const std::vector<std::string>& dependencies, bool compressed = false) {
+    const std::string payload = "elisa-bundle-section";
+    std::vector<uint8_t> encoded(payload.begin(), payload.end());
+    if (compressed) {
+        const size_t bound = ZSTD_compressBound(payload.size());
+        encoded.resize(bound);
+        const size_t size = ZSTD_compress(encoded.data(), encoded.size(), payload.data(), payload.size(), 1);
+        encoded.resize(size);
+    }
+    std::string manifest = "ELISA-PACKAGE-MANIFEST-1\n";
+    for (const std::string& dependency : dependencies) manifest += "dependency=" + dependency + "\n";
+    const size_t index_end = BinaryPackageIndex::HEADER_BYTES + 2 * BinaryPackageIndex::ENTRY_BYTES;
+    const size_t manifest_offset = (index_end + encoded.size() + 15) & ~size_t(15);
+    std::vector<uint8_t> bytes(manifest_offset + manifest.size(), 0);
+    bytes[0] = 'E'; bytes[1] = 'L'; bytes[2] = 'P'; bytes[3] = 'K';
+    put_package_u16(bytes, 4, 1);
+    put_package_u16(bytes, 6, 2);
+    put_package_u64(bytes, 8, BinaryPackageIndex::HEADER_BYTES);
+    put_package_u64(bytes, 16, 2 * BinaryPackageIndex::ENTRY_BYTES);
+    const auto write_entry = [&bytes](size_t index, const std::string& name, uint64_t offset,
+        uint64_t size, uint64_t unpacked_size, uint32_t compression, uint32_t checksum) {
+        const size_t entry = BinaryPackageIndex::HEADER_BYTES + index * BinaryPackageIndex::ENTRY_BYTES;
+        std::copy(name.begin(), name.end(), bytes.begin() + entry);
+        put_package_u64(bytes, entry + 16, offset);
+        put_package_u64(bytes, entry + 24, size);
+        put_package_u64(bytes, entry + 32, unpacked_size);
+        put_package_u32(bytes, entry + 40, compression);
+        put_package_u32(bytes, entry + 44, checksum);
+    };
+    write_entry(0, "mesh", index_end, encoded.size(), payload.size(), compressed ? 1 : 0,
+        package_crc32(reinterpret_cast<const uint8_t*>(payload.data()), payload.size()));
+    write_entry(1, "manifest", manifest_offset, manifest.size(), manifest.size(), 0,
+        package_crc32(reinterpret_cast<const uint8_t*>(manifest.data()), manifest.size()));
+    std::copy(encoded.begin(), encoded.end(), bytes.begin() + index_end);
+    std::copy(manifest.begin(), manifest.end(), bytes.begin() + manifest_offset);
     std::ofstream output(path, std::ios::binary);
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
@@ -125,13 +188,36 @@ inline bool probe_package_bounds(const std::string& valid_package,
     std::filesystem::remove(override_root / "escape.elpk", symlink_error);
     symlink_error.clear();
     std::filesystem::create_symlink(outside_package, override_root / "escape.elpk", symlink_error);
-    write_binary_package_fixture(base_root / "maze.elpk", false);
-    write_binary_package_fixture(override_root / "maze.elpk", false, false, true);
-    write_binary_package_fixture(base_root / "dep.elpk", false);
+    write_binary_package_with_manifest(base_root / "maze.elpk", {"dep.elpk"});
+    write_binary_package_with_manifest(override_root / "maze.elpk", {"dep.elpk"}, true);
+    write_binary_package_with_manifest(base_root / "dep.elpk", {});
+    write_binary_package_with_manifest(base_root / "missing-dep.elpk", {"missing.elpk"});
+    write_binary_package_with_manifest(base_root / "leaf-a.elpk", {});
+    write_binary_package_with_manifest(base_root / "leaf-z.elpk", {});
+    write_binary_package_with_manifest(base_root / "branch.elpk", {"leaf-z.elpk"});
+    write_binary_package_with_manifest(base_root / "graph.elpk", {"branch.elpk", "leaf-a.elpk"});
+    write_binary_package_with_manifest(base_root / "cycle-a.elpk", {"cycle-b.elpk"});
+    write_binary_package_with_manifest(base_root / "cycle-b.elpk", {"cycle-a.elpk"});
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
     const BinaryPackageIndex corrupt_index = read_binary_package_index(corrupt.string());
+    BinaryPackageManifest unsorted_manifest;
+    const std::string unsorted_manifest_text =
+        "ELISA-PACKAGE-MANIFEST-1\ndependency=z.elpk\ndependency=a.elpk\n";
+    const std::vector<uint8_t> unsorted_manifest_bytes(unsorted_manifest_text.begin(), unsorted_manifest_text.end());
+    const bool unsorted_manifest_rejected = !parse_binary_package_manifest(
+        unsorted_manifest_bytes, unsorted_manifest) &&
+        unsorted_manifest.error == "package manifest dependency order rejected";
     const PackageResolution symlink_escape = resolve_package_path(
         base_root, {override_root}, "escape.elpk", 7);
+    bool symlink_escape_ok = true;
+    if (symlink_error) {
+        std::fprintf(stderr, "wicked probe skipped: package symlink escape test unavailable: %s\n",
+            symlink_error.message().c_str());
+    } else {
+        symlink_escape_ok = check(!symlink_escape.found &&
+            symlink_escape.error == "package resolves outside mount root",
+            "package symlink escape rejected");
+    }
     std::vector<uint8_t> section;
     std::string section_error;
     std::vector<uint8_t> corrupt_section;
@@ -154,10 +240,67 @@ inline bool probe_package_bounds(const std::string& valid_package,
     auto worker = worker_vfs.pump_async(1);
     const bool worker_read_ok = worker_mounted && worker_read.generation != 0 && worker.get() == 1 &&
         worker_vfs.state(worker_read) == VirtualReadState::Ready;
-    const bool dependency_rejections = worker_vfs.request_with_dependencies(
-        "maze.elpk", "mesh", {"missing.elpk"}, 10).generation == 0 &&
+    const VirtualReadHandle missing_dependency_read = worker_vfs.request_with_dependencies(
+        "missing-dep.elpk", "mesh", {"missing.elpk"}, 10);
+    const bool dependency_rejections = missing_dependency_read.generation != 0 &&
         worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"dep.elpk", "dep.elpk"}, 10).generation == 0 &&
-        worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0;
+        worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0 &&
+        worker_vfs.pump(1) == 1 && worker_vfs.state(missing_dependency_read) == VirtualReadState::Failed &&
+        worker_vfs.error(missing_dependency_read) == "package dependency is missing";
+    const std::filesystem::path in_flight_path = base_root / "in-flight.elpk";
+    write_large_binary_package_fixture(in_flight_path, 32 * 1024 * 1024);
+    VirtualFileService in_flight_vfs;
+    const bool in_flight_mounted = in_flight_vfs.mount(base_root, {}, 12);
+    const VirtualReadHandle in_flight_read = in_flight_vfs.request("in-flight.elpk", "payload");
+    auto in_flight_worker = in_flight_vfs.pump_async(1);
+    const auto in_flight_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    VirtualReadState observed_in_flight_state = VirtualReadState::Queued;
+    while (std::chrono::steady_clock::now() < in_flight_deadline) {
+        observed_in_flight_state = in_flight_vfs.state(in_flight_read);
+        if (observed_in_flight_state != VirtualReadState::Queued) break;
+        std::this_thread::yield();
+    }
+    const bool saw_in_flight_read = in_flight_mounted &&
+        observed_in_flight_state == VirtualReadState::Reading;
+    const bool cancelled_in_flight = saw_in_flight_read && in_flight_vfs.cancel(in_flight_read) &&
+        in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled &&
+        in_flight_worker.get() == 1 && in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled;
+    std::future<uint32_t> shutdown_worker;
+    bool shutdown_worker_scheduled = false;
+    {
+        VirtualFileService shutdown_vfs;
+        shutdown_worker_scheduled = shutdown_vfs.mount(base_root, {}, 13) &&
+            shutdown_vfs.request("in-flight.elpk", "payload").generation != 0;
+        shutdown_worker = shutdown_vfs.pump_async(1);
+    }
+    const bool worker_shutdown_waits = shutdown_worker_scheduled &&
+        shutdown_worker.wait_for(std::chrono::seconds(0)) == std::future_status::ready &&
+        shutdown_worker.get() == 1;
+    VirtualFileService remount_vfs;
+    const bool first_epoch_mounted = remount_vfs.mount(base_root, {}, 14);
+    const VirtualReadHandle prior_epoch_read = remount_vfs.request("dep.elpk", "mesh");
+    const bool second_epoch_mounted = remount_vfs.mount(base_root, {}, 14);
+    const VirtualReadHandle current_epoch_read = remount_vfs.request("dep.elpk", "mesh");
+    const bool remount_epoch_invalidates = first_epoch_mounted && second_epoch_mounted &&
+        current_epoch_read.generation != 0 && current_epoch_read.slot != prior_epoch_read.slot &&
+        remount_vfs.pump(2) == 2 && remount_vfs.state(prior_epoch_read) == VirtualReadState::Failed &&
+        remount_vfs.error(prior_epoch_read) == "stale mount generation" &&
+        remount_vfs.state(current_epoch_read) == VirtualReadState::Ready;
+    VirtualFileService graph_vfs;
+    const bool graph_mounted = graph_vfs.mount(base_root, {}, 11);
+    const VirtualReadHandle graph_read = graph_vfs.request_with_dependencies("graph.elpk", "mesh",
+        {"leaf-z.elpk", "branch.elpk", "leaf-a.elpk"}, 11);
+    const VirtualReadHandle wrong_order_read = graph_vfs.request_with_dependencies("graph.elpk", "mesh",
+        {"leaf-a.elpk", "branch.elpk", "leaf-z.elpk"}, 11);
+    const VirtualReadHandle cyclic_read = graph_vfs.request_with_dependencies("cycle-a.elpk", "mesh",
+        {"cycle-b.elpk"}, 11);
+    const bool graph_pumped = graph_mounted && graph_vfs.pump(3) == 3;
+    const bool dependency_graph = graph_pumped &&
+        graph_vfs.state(graph_read) == VirtualReadState::Ready &&
+        graph_vfs.state(wrong_order_read) == VirtualReadState::Failed &&
+        graph_vfs.error(wrong_order_read) == "package dependency order mismatch" &&
+        graph_vfs.state(cyclic_read) == VirtualReadState::Failed &&
+        graph_vfs.error(cyclic_read) == "package dependency cycle";
     const VirtualReadHandle cancelled = vfs.request("maze.elpk", "missing");
     const bool cancelled_read = vfs.cancel(cancelled) && vfs.state(cancelled) == VirtualReadState::Cancelled;
     const VirtualReadHandle stale = vfs.request("maze.elpk", "mesh");
@@ -177,6 +320,26 @@ inline bool probe_package_bounds(const std::string& valid_package,
         loader_worker_done && loader.upload_ready(1) == 1 &&
         loader.state(asset) == NativeAssetState::Resident &&
         loader.texture(asset) != nullptr && loader.telemetry().coalesced == 1;
+    const bool asset_released = loader.release(asset) &&
+        loader.state(asset) == NativeAssetState::Empty && loader.texture(asset) == nullptr &&
+        loader.telemetry().released == 1;
+    const NativeAssetHandle reused_asset = loader.request("maze.elpk", "mesh");
+    auto reused_worker = loader.pump_io_async(1);
+    const bool asset_slot_reused = reused_asset.slot == asset.slot &&
+        reused_asset.generation != asset.generation && reused_worker.get() == 1 &&
+        loader.upload_ready(1) == 1 && loader.state(reused_asset) == NativeAssetState::Resident;
+    const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
+    const bool asset_cancelled = loader.cancel(cancelled_asset) &&
+        loader.state(cancelled_asset) == NativeAssetState::Cancelled;
+    const NativeAssetHandle retried_cancelled_asset = loader.request("maze.elpk", "missing");
+    const bool cancelled_slot_reused = retried_cancelled_asset.slot == cancelled_asset.slot &&
+        retried_cancelled_asset.generation != cancelled_asset.generation &&
+        loader.cancel(retried_cancelled_asset);
+    const NativeAssetHandle ready_cancel_asset = loader.request("dep.elpk", "mesh");
+    auto ready_cancel_worker = loader.pump_io_async(1);
+    const bool ready_cancelled = ready_cancel_worker.get() == 1 &&
+        loader.state(ready_cancel_asset) == NativeAssetState::Queued &&
+        loader.cancel(ready_cancel_asset) && loader.state(ready_cancel_asset) == NativeAssetState::Cancelled;
     const NativeAssetHandle corrupt_asset = loader.request("corrupt.elpk", "mesh");
     auto corrupt_worker = loader.pump_io_async(1);
     const bool corrupt_worker_done = corrupt_worker.get() == 1;
@@ -186,9 +349,11 @@ inline bool probe_package_bounds(const std::string& valid_package,
         loader.state(corrupt_asset) == NativeAssetState::Failed &&
         loader.texture(corrupt_asset) == nullptr &&
         loader.telemetry().uploaded == uploads_before_corrupt;
-    const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
-    const bool asset_cancelled = loader.cancel(cancelled_asset) &&
-        loader.state(cancelled_asset) == NativeAssetState::Cancelled;
+    const NativeAssetHandle retried_failed_asset = loader.request("corrupt.elpk", "mesh");
+    auto retry_worker = loader.pump_io_async(1);
+    const bool failed_slot_reused = retried_failed_asset.slot == corrupt_asset.slot &&
+        retried_failed_asset.generation != corrupt_asset.generation && retry_worker.get() == 1 &&
+        loader.upload_ready(1) == 0 && loader.state(retried_failed_asset) == NativeAssetState::Failed;
     const NativeAssetHandle stale_asset = loader.request("maze.elpk", "mesh", 8);
     const bool asset_stale = loader.pump(1, 1) == 0 && loader.state(stale_asset) == NativeAssetState::Failed;
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
@@ -203,6 +368,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected") &&
         check(package_crc32(reinterpret_cast<const uint8_t*>("123456789"), 9) == 0xCBF43926u,
             "CRC-32 standard check value") &&
+        check(unsorted_manifest_rejected, "unsorted package manifest rejected") &&
         check(read_binary_package_index(binary.string()).valid, "binary package index") &&
         check(!read_binary_package_index(overlap.string()).valid, "binary package overlap rejected") &&
         check(!read_binary_package_index(compressed.string()).valid, "binary package compression rejected") &&
@@ -215,21 +381,26 @@ inline bool probe_package_bounds(const std::string& valid_package,
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).override_used &&
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
         check(worker_read_ok, "virtual file worker scheduling") &&
-        check(dependency_rejections, "virtual file dependency ordering and existence") &&
+        check(dependency_rejections, "virtual file worker dependency validation") &&
+        check(cancelled_in_flight, "virtual file in-flight cancellation does not block publication") &&
+        check(worker_shutdown_waits, "virtual file worker lifetime joined on service destruction") &&
+        check(remount_epoch_invalidates, "virtual file remount epoch invalidation") &&
+        check(dependency_graph, "package manifest dependency DAG order and cycle rejection") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&
         check(!safe_package_path("models/./wall.elpk"), "package dot segment rejected") &&
-        check(!symlink_error && !symlink_escape.found &&
-            symlink_escape.error == "package resolves outside mount root",
-            "package symlink escape rejected") &&
+        symlink_escape_ok &&
         check(!resolve_package_path(base_root, {}, "maze.elpk", 0).found, "package zero generation rejected") &&
         check(virtual_read, "virtual file read coalescing") &&
         check(cancelled_read, "virtual file cancellation") &&
         check(stale_read, "virtual file generation invalidation");
     const bool loader_result = check(asset_loaded, "native loader coalesced upload") &&
+        check(asset_released && asset_slot_reused, "native loader resident release and slot reuse") &&
+        check(asset_cancelled && cancelled_slot_reused, "native loader cancellation and slot reuse") &&
+        check(ready_cancelled, "native loader drains completed read on cancellation") &&
         check(corrupt_asset_rejected, "corrupt section rejected before GPU upload") &&
-        check(asset_cancelled, "native loader cancellation") &&
+        check(failed_slot_reused, "native loader failed slot retry") &&
         check(asset_stale, "native loader dependency generation");
     std::filesystem::remove_all(root);
     return result && loader_result;

@@ -23,8 +23,28 @@ on 2026-09-19.
 virtual file service and Wicked device phase. The native gate coalesces a
 compressed override read, decodes it into a bounded 1x1 upload payload, creates
 a real shader-resource texture, and reports requested/coalesced/decoded/uploaded
-counts. Cancellation and stale dependency generations fail before upload.
-`pump_io_async` now schedules the bounded package read on a worker future, and
-`upload_ready` performs decode/upload on the caller's device phase. A
-production texture decoder and full in-flight cancellation remain open; the
-native work stays bounded and does not block an Elisa frame on IO.
+counts. Resident release destroys the texture and allows generation-safe slot
+reuse; failed and cancelled requests can be retried without returning a stale
+handle. Cancellation after IO completion drains the ready package bytes instead
+of leaving a request slot occupied. Manifest dependency failures and stale
+dependency generations fail before upload.
+`pump_io_async` schedules bounded package reads on a worker future, and
+`upload_ready` performs decode/upload on the caller's device phase. The virtual
+file service marks work as `Reading` while holding its mutex only briefly;
+filesystem resolution, manifest traversal, section reads, decompression, and
+checksum verification run without that mutex. A 32 MiB fixture lets the native
+gate observe an active read, cancel it, and verify the result stays cancelled
+when the worker finishes. Mount epochs and dependency generations are checked
+again before any result is published. This cancellation does not interrupt a
+filesystem call already in progress: it returns immediately and discards the
+eventual bytes. CRC-32 uses a table lookup per byte. Production texture
+decoders, GPU residency budgeting, and interruptible OS reads remain open.
+`VirtualFileService` uses two persistent workers with a bounded pump queue, and
+its destructor drains and joins pending work before releasing service state.
+
+On 2026-09-21, the `build` and `frame` phases of
+`scripts/wicked_probe.elisascript` passed on SDL3/Metal. The native frame gate
+exercised worker-side package reads, missing manifest dependencies, in-flight
+cancellation, remount-epoch invalidation, worker shutdown during pending IO,
+texture upload/release/retry, and the existing rendered-scene and orderly-
+shutdown checks.

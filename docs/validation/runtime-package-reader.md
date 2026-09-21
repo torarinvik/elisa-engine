@@ -8,8 +8,12 @@ base64 decoding failures return an unloaded package instead of escaping into
 the renderer. The same module now also parses a version-1 `ELPK` binary bundle
 index with fixed entry sizes, 16-byte data alignment, duplicate-name and
 non-overlap checks, supported compression values, and a 64 MiB unpacked-section
-bound. Each entry's CRC-32 is checked against decoded section bytes for both raw
-and zstd storage; a mismatch clears the output and fails before device upload.
+bound. Each entry's CRC-32 is checked against decoded section bytes for raw and
+zstd storage; a mismatch clears the output and fails before device upload.
+An optional `manifest` section uses the `ELISA-PACKAGE-MANIFEST-1` header and
+sorted `dependency=<logical-name>` lines. Manifests are capped at 16 KiB and 16
+direct dependencies; the VFS worker validates the transitive graph and derives
+a deterministic prerequisite-first order before reading the requested section.
 
 The SDL3/Metal native gate loads the real cooked maze package through this
 reader twice and runs `native/package_bounds_probe.h` against duplicate,
@@ -26,7 +30,8 @@ supplied pump budget, and a remount invalidates queued work whose captured
 generation is stale. Requests also carry a dependency generation token, which
 is rejected before package allocation when it belongs to an older mount. The
 probe covers override-backed zstd data, cancellation, generation invalidation,
-stale dependency tokens, and corruption of a raw section payload. `pump_async`
-runs the same bounded pump on a
-worker future, while dependency-aware requests reject missing, self,
-duplicate, and unsorted logical package dependencies before queueing.
+stale dependency tokens, corrupted raw payloads, and symlink escapes from mount
+roots. `pump_async` runs the same bounded pump on a worker future. Dependency-
+aware requests reject missing, self, duplicate, cyclic, and misordered package
+dependencies; the probe includes a transitive graph whose required order differs
+from simple lexical sorting.
