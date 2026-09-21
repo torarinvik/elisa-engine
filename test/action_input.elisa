@@ -267,6 +267,9 @@ def main() -> i32:
     return 59 if Application::keyboard_key_code(Application::KeyboardKeyCode.A) != 2001
     return 60 if Application::keyboard_key_code(Application::KeyboardKeyCode.ArrowDown) != 2016
     return 65 if Application::keyboard_key_code(Application::KeyboardKeyCode.V) != 2017
+    return 101 if Application::keyboard_key_code(Application::KeyboardKeyCode.C) != 2018
+    return 102 if Application::keyboard_key_code(Application::KeyboardKeyCode.Tab) != 2021
+    return 103 if Application::keyboard_key_code(Application::KeyboardKeyCode.Digit3) != 2024
     return 61 if Application::gamepad_button_code(Application::GamepadButtonCode.South) != 1001
     return 62 if Application::gamepad_button_code(Application::GamepadButtonCode.DpadLeft) != 1014
     return 63 if Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXNegative) != 1101
