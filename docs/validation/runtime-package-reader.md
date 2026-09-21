@@ -11,9 +11,13 @@ non-overlap checks, supported compression values, and a 64 MiB unpacked-section
 bound. Each entry's CRC-32 is checked against decoded section bytes for raw and
 zstd storage; a mismatch clears the output and fails before device upload.
 An optional `manifest` section uses the `ELISA-PACKAGE-MANIFEST-1` header and
-sorted `dependency=<logical-name>` lines. Manifests are capped at 16 KiB and 16
-direct dependencies; the VFS worker validates the transitive graph and derives
-a deterministic prerequisite-first order before reading the requested section.
+sorted `dependency=<logical-name>` lines. Each name is relative to the directory
+of the bundle that declares it. Manifests are capped at 16 KiB and 16 direct
+dependencies, and a whole closure at 16 bundles, counting those still on the
+search path. The VFS worker validates the transitive graph and derives a
+deterministic prerequisite-first order before reading the requested section.
+The render-scene loaders run the same check before reading a mesh or texture
+section (`docs/validation/bundle-dependencies.md`).
 
 The SDL3/Metal native gate loads the real cooked maze package through this
 reader twice and runs `native/package_bounds_probe.h` against duplicate,

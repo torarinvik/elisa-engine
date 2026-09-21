@@ -69,6 +69,32 @@ inline void write_binary_package_fixture(const std::filesystem::path& path, bool
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
 
+// One zstd section that expands to 80 MiB of zeros from a few KiB. Its index
+// entry either admits that size, over the 64 MiB bound, or claims 4 KiB.
+inline void write_zstd_bomb_package_fixture(const std::filesystem::path& path, uint64_t declared_size) {
+    const std::vector<uint8_t> payload(80 * 1024 * 1024, 0);
+    std::vector<uint8_t> encoded(ZSTD_compressBound(payload.size()));
+    encoded.resize(ZSTD_compress(encoded.data(), encoded.size(), payload.data(), payload.size(), 1));
+    const size_t index_end = BinaryPackageIndex::HEADER_BYTES + BinaryPackageIndex::ENTRY_BYTES;
+    std::vector<uint8_t> bytes(index_end + encoded.size(), 0);
+    bytes[0] = 'E'; bytes[1] = 'L'; bytes[2] = 'P'; bytes[3] = 'K';
+    put_package_u16(bytes, 4, 1);
+    put_package_u16(bytes, 6, 1);
+    put_package_u64(bytes, 8, BinaryPackageIndex::HEADER_BYTES);
+    put_package_u64(bytes, 16, BinaryPackageIndex::ENTRY_BYTES);
+    const size_t entry = BinaryPackageIndex::HEADER_BYTES;
+    const std::string name = "mesh";
+    std::copy(name.begin(), name.end(), bytes.begin() + entry);
+    put_package_u64(bytes, entry + 16, index_end);
+    put_package_u64(bytes, entry + 24, encoded.size());
+    put_package_u64(bytes, entry + 32, declared_size);
+    put_package_u32(bytes, entry + 40, 1);
+    put_package_u32(bytes, entry + 44, package_crc32(payload.data(), payload.size()));
+    std::copy(encoded.begin(), encoded.end(), bytes.begin() + index_end);
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
 inline void write_large_binary_package_fixture(const std::filesystem::path& path, size_t payload_size) {
     const size_t index_end = BinaryPackageIndex::HEADER_BYTES + BinaryPackageIndex::ENTRY_BYTES;
     std::vector<uint8_t> header(index_end, 0);
@@ -198,6 +224,42 @@ inline bool probe_package_bounds(const std::string& valid_package,
     write_binary_package_with_manifest(base_root / "graph.elpk", {"branch.elpk", "leaf-a.elpk"});
     write_binary_package_with_manifest(base_root / "cycle-a.elpk", {"cycle-b.elpk"});
     write_binary_package_with_manifest(base_root / "cycle-b.elpk", {"cycle-a.elpk"});
+    // chain-k.elpk depends on chain-(k+1).elpk, so chain-1 has 16 transitive
+    // dependencies and chain-0 has 17.
+    for (int link = 0; link <= 17; ++link) {
+        write_binary_package_with_manifest(base_root / ("chain-" + std::to_string(link) + ".elpk"),
+            link == 17 ? std::vector<std::string>{} :
+                std::vector<std::string>{"chain-" + std::to_string(link + 1) + ".elpk"});
+    }
+    // Manifest names are relative to the declaring package's directory.
+    std::filesystem::create_directories(base_root / "nested/textures");
+    write_binary_package_with_manifest(base_root / "nested/root.elpk", {"textures/leaf.elpk"});
+    write_binary_package_with_manifest(base_root / "nested/textures/leaf.elpk", {"detail.elpk"});
+    write_binary_package_with_manifest(base_root / "nested/textures/detail.elpk", {});
+    std::vector<std::string> chain_order;
+    std::string nested_error;
+    const bool nested_names_resolve = package_dependency_order(base_root, {}, "nested/root.elpk",
+        BinaryPackageManifest::MAX_DEPENDENCIES, chain_order, nested_error) &&
+        chain_order == std::vector<std::string>{"nested/textures/detail.elpk", "nested/textures/leaf.elpk"};
+    std::string chain_error;
+    const bool chain_of_sixteen = package_dependency_order(base_root, {}, "chain-1.elpk",
+        BinaryPackageManifest::MAX_DEPENDENCIES, chain_order, chain_error) &&
+        chain_order.size() == 16 && chain_order.front() == "chain-17.elpk";
+    const bool chain_of_seventeen_rejected = !package_dependency_order(base_root, {}, "chain-0.elpk",
+        BinaryPackageManifest::MAX_DEPENDENCIES, chain_order, chain_error) &&
+        chain_error == "package dependency count exceeded" && chain_order.empty();
+    const std::filesystem::path admitted_bomb = base_root / "bomb-admitted.elpk";
+    const std::filesystem::path hidden_bomb = base_root / "bomb-hidden.elpk";
+    write_zstd_bomb_package_fixture(admitted_bomb, 80 * 1024 * 1024);
+    write_zstd_bomb_package_fixture(hidden_bomb, 4096);
+    const BinaryPackageIndex hidden_bomb_index = read_binary_package_index(hidden_bomb.string());
+    std::vector<uint8_t> bomb_section;
+    std::string bomb_error;
+    // The output buffer is the declared 4 KiB; zstd stops at it instead of growing.
+    const bool bombs_rejected = !read_binary_package_index(admitted_bomb.string()).valid &&
+        hidden_bomb_index.valid &&
+        !read_binary_package_section(hidden_bomb.string(), hidden_bomb_index, "mesh", bomb_section, bomb_error) &&
+        bomb_section.empty() && bomb_error == "zstd section decompression failed";
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
     const BinaryPackageIndex corrupt_index = read_binary_package_index(corrupt.string());
     BinaryPackageManifest unsorted_manifest;
@@ -386,6 +448,9 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(worker_shutdown_waits, "virtual file worker lifetime joined on service destruction") &&
         check(remount_epoch_invalidates, "virtual file remount epoch invalidation") &&
         check(dependency_graph, "package manifest dependency DAG order and cycle rejection") &&
+        check(chain_of_sixteen && chain_of_seventeen_rejected, "package dependency chain bounded at 16") &&
+        check(nested_names_resolve, "package dependency names relative to their package") &&
+        check(bombs_rejected, "zstd decompression bombs rejected by declared size") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&

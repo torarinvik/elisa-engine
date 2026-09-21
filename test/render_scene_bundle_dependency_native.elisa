@@ -1,0 +1,103 @@
+# Native A03 coverage for ELPK bundle dependency manifests. Textures, snapshot
+# meshes and create_mesh all refuse a bundle whose dependency closure is
+# missing, cyclic, escaping, corrupted or longer than 16 bundles.
+# scripts/bundle_dependency_fixtures.py writes the bundles under
+# build/cooked/dependencies.
+include "../src/runtime/render_scene_assets.elisa"
+
+module RenderSceneBundleDependencyNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() -> u64
+
+        const module Ids:
+            TEXTURES: u64 = 920
+            MESHES: u64 = 921
+
+        def texture_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::TEXTURES, low: low}
+
+        def register(low: u64, bundle: cstr) -> i32:
+            catch RenderScene::register_snapshot_bundle_texture_asset(texture_id(low), bundle, "albedo"):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.AssetLoadFailure: 2
+                error failure: 4
+
+        def unregister(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_texture_asset(texture_id(low)):
+                ok: 0
+                error failure: 4
+
+        def register_mesh(low: u64, bundle: cstr) -> i32:
+            catch RenderScene::register_snapshot_mesh_asset(
+                Assets::AssetId{high: Ids::MESHES, low: low}, bundle):
+                ok: 0
+                RenderScene::RenderSceneError.AssetLoadFailure: 2
+                error failure: 4
+
+        def unregister_mesh(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_mesh_asset(Assets::AssetId{high: Ids::MESHES, low: low}):
+                ok: 0
+                error failure: 4
+
+        def mesh_color() -> RenderScene::Color:
+            RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}
+
+        # A typed-error arm that returns, beside `value: value`, makes stage1
+        # exit 2 without a diagnostic, so rejection and success are separate.
+        def rejected_mesh(bundle: cstr) -> i32:
+            catch RenderScene::create_mesh(bundle, Geometry::transform_identity(), mesh_color()):
+                value: 0
+                RenderScene::RenderSceneError.AssetLoadFailure: 2
+                error failure: 4
+
+        def created_mesh(bundle: cstr) -> i32:
+            handle: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                bundle, Geometry::transform_identity(), mesh_color()):
+                value: value
+                error failure: return 4
+            catch RenderScene::destroy(handle):
+                ok: 0
+                error failure: 5
+
+        # Every one of these must fail before any bytes are retained.
+        def rejected_textures() -> i32:
+            return 20 if register(9, "build/cooked/dependencies/missing.elpk") != 2
+            return 21 if register(9, "build/cooked/dependencies/cycle-a.elpk") != 2
+            return 22 if register(9, "build/cooked/dependencies/self.elpk") != 2
+            return 23 if register(9, "build/cooked/dependencies/escape.elpk") != 2
+            return 24 if register(9, "build/cooked/dependencies/corrupt-manifest.elpk") != 2
+            return 25 if register(9, "build/cooked/dependencies/parent.elpk") != 2
+            # 17 transitive dependencies; link-1 below has 16.
+            return 26 if register(9, "build/cooked/dependencies/chain/link-0.elpk") != 2
+            0
+
+    public:
+        def exercise() -> i32:
+            baseline: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            instances: usize = RenderScene::instance_count()
+            return 1 if register(1, "build/cooked/dependencies/leaf.elpk") != 0
+            # root.elpk needs leaf.elpk and textures/detail.elpk, which needs
+            # textures/shade.elpk: each name is relative to its own bundle.
+            return 2 if register(2, "build/cooked/dependencies/root.elpk") != 0
+            return 3 if register(3, "build/cooked/dependencies/textures/detail.elpk") != 0
+            return 4 if register(4, "build/cooked/dependencies/chain/link-1.elpk") != 0
+            retained: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            return 5 if retained <= baseline
+
+            rejected: i32 = rejected_textures()
+            return rejected if rejected != 0
+            return 6 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != retained
+
+            return 7 if register_mesh(1, "build/cooked/dependencies/mesh.elpk") != 0
+            return 8 if register_mesh(2, "build/cooked/dependencies/mesh-missing.elpk") != 2
+            return 9 if rejected_mesh("build/cooked/dependencies/mesh-missing.elpk") != 2
+            return 10 if RenderScene::instance_count() != instances
+            return 11 if created_mesh("build/cooked/dependencies/mesh.elpk") != 0
+            return 12 if RenderScene::instance_count() != instances
+
+            return 13 if unregister_mesh(1) != 0
+            return 14 if unregister(1) != 0 or unregister(2) != 0 or unregister(3) != 0 or unregister(4) != 0
+            return 15 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != baseline
+            0

@@ -90,6 +90,11 @@ def main(arguments: darray[sview]) -> i64:
             [str(root.joinpath("scripts/cook_gltf_asset.py")), "--self-test"])
         if gltf_cook_status != 0:
             return gltf_cook_status
+        image_bundle_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/cook_image_bundle.py")), "--self-test"])
+        if image_bundle_status != 0:
+            return image_bundle_status
         archive_status: i64 = run_visible(compiler, ["-emit", "c-archive", "-o", embed_archive, str(root.joinpath("examples/maze/capi.elisa"))])
         if archive_status != 0:
             return archive_status

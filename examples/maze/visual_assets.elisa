@@ -63,7 +63,7 @@ module MazeVisualAssets:
         def hazard_material_id() -> Assets::AssetId:
             asset_id(Identity::HAZARD_MATERIAL)
 
-        # The brick base-color image cooked into the tile bundle.
+        # The brick base-color image from the maze texture bundle.
         def wall_albedo_texture_id() -> Assets::AssetId:
             asset_id(Identity::WALL_ALBEDO_TEXTURE)
 

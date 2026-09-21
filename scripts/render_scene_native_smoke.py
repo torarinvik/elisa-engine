@@ -12,6 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import bundle_dependency_fixtures
 import bundle_texture_fixtures
 import elisa_build_run
 import packaged_maze_smoke
@@ -72,7 +73,7 @@ def main() -> int:
     ])
     if package_status != 0:
         return package_status
-    # The maze snapshot test registers the same bundle, textures included, that
+    # The maze snapshot test registers the same tile and texture bundles that
     # the project runner cooks from elisa.project.json.
     maze_project = ROOT / "examples/maze"
     maze_config = json.loads((maze_project / "elisa.project.json").read_text(encoding="utf-8"))
@@ -143,11 +144,13 @@ def main() -> int:
         escape_link.unlink(missing_ok=True)
         escape_link.symlink_to(outside_package)
         texture_link = bundle_texture_fixtures.write_fixtures(build / "cooked", Path(outside_directory))
+        dependency_link = bundle_dependency_fixtures.write_fixtures(build / "cooked", Path(outside_directory))
         try:
             status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
         finally:
             escape_link.unlink(missing_ok=True)
             texture_link.unlink(missing_ok=True)
+            dependency_link.unlink(missing_ok=True)
     if status == 0:
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

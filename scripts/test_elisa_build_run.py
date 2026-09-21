@@ -275,6 +275,57 @@ class BuildRunCliTests(unittest.TestCase):
                 with self.subTest(change=change), self.assertRaises(runner.BuildConfigurationError):
                     runner.cook_declared_assets(project.resolve(), {"asset_cooks": [{**declaration, **change}]})
 
+    def test_bundle_dependencies_cook_first_with_relative_names(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa bundle dependencies ") as temporary_directory:
+            project = Path(temporary_directory) / "Maze project"
+            (project / "assets").mkdir(parents=True)
+            (project / "assets" / "tile.gltf").write_text("{}", encoding="utf-8")
+            (project / "assets" / "wall.png").write_bytes(b"png")
+            tile = {
+                "importer": "gltf",
+                "source": "assets/tile.gltf",
+                "asset_path": "assets/tile.gltf",
+                "output": "assets/tile.elpk",
+                "dependencies": ["assets/textures/wall.elpk"],
+            }
+            images = {
+                "importer": "images",
+                "output": "assets/textures/wall.elpk",
+                "textures": {"wallalbedo": "assets/wall.png"},
+            }
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [tile, images]}), 0)
+            first, second = (call.args[0] for call in run.call_args_list)
+            self.assertEqual(first[1:], [
+                str(SCRIPT.parent / "cook_image_bundle.py"),
+                "--output", str((project / "assets/textures/wall.elpk").resolve()),
+                "--texture", f"wallalbedo={(project / 'assets/wall.png').resolve()}",
+            ])
+            self.assertEqual(second[1], str(SCRIPT.parent / "cook_gltf_asset.py"))
+            self.assertEqual(second[second.index("--dependency") + 1], "textures/wall.elpk")
+            rejected = [
+                ("no cook writes the dependency", [{**tile, "dependencies": ["assets/textures/other.elpk"]}, images]),
+                ("self dependency", [{**tile, "dependencies": ["assets/tile.elpk"]}, images]),
+                ("dependency outside the bundle's directory",
+                    [{**tile, "output": "assets/tiles/tile.elpk"}, images]),
+                ("repeated dependency",
+                    [{**tile, "dependencies": ["assets/textures/wall.elpk"] * 2}, images]),
+                ("dependency cycle", [{**tile, "dependencies": ["assets/wall.elpk"]},
+                    {**images, "output": "assets/wall.elpk", "dependencies": ["assets/tile.elpk"]}]),
+                ("dependency from a loose package", [{**tile, "output": "assets/tile.pkg"}, images]),
+                ("dependencies not an array", [{**tile, "dependencies": "assets/textures/wall.elpk"}, images]),
+                ("images cook with a source", [tile, {**images, "source": "assets/wall.png"}]),
+                ("images cook without textures", [tile, {**images, "textures": {}}]),
+                ("two cooks write one bundle", [tile, images, images]),
+            ]
+            for label, cooks in rejected:
+                with self.subTest(label), self.assertRaises(runner.BuildConfigurationError), \
+                        mock.patch.object(runner, "run_command", return_value=0) as run:
+                    runner.cook_declared_assets(project.resolve(), {"asset_cooks": cooks})
+                self.assertFalse(run.called, label)
+
     def test_game_owned_exports_are_rejected_before_native_link(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa ABI audit ") as temporary_directory:
             root = Path(temporary_directory)

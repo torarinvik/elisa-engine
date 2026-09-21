@@ -2,6 +2,7 @@
 
 // Bounded reader for the engine's normalized triangle-mesh package. FBX is
 // cooked offline; the runtime accepts only this versioned, validated format.
+#include "bundle_dependencies.h"
 #include "virtual_package.h"
 
 #include <algorithm>
@@ -64,11 +65,8 @@ inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::
     }
 
     std::error_code filesystem_error;
-    const char* configured_root = std::getenv("ELISA_PROJECT_ROOT");
-    const std::filesystem::path root = configured_root != nullptr && configured_root[0] != '\0'
-        ? std::filesystem::canonical(std::filesystem::u8path(configured_root), filesystem_error)
-        : std::filesystem::canonical(std::filesystem::current_path(filesystem_error), filesystem_error);
-    if (filesystem_error || !std::filesystem::is_directory(root, filesystem_error) || filesystem_error) return false;
+    std::filesystem::path root;
+    if (!project_asset_root(root)) return false;
     const std::filesystem::path candidate = std::filesystem::canonical(root / std::filesystem::u8path(value), filesystem_error);
     if (filesystem_error || !std::filesystem::is_regular_file(candidate, filesystem_error) || filesystem_error) return false;
     auto root_part = root.begin();

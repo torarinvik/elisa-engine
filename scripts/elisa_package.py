@@ -204,13 +204,43 @@ def encoded_image_dimensions(data: bytes) -> tuple[int, int]:
     return width, height
 
 
-def write_geometry_package(path: Path, geometry_package: bytes,
-    images: Mapping[str, bytes] | None = None) -> None:
-    """Wrap cooked geometry in an ELPK mesh section, with optional image sections."""
-    sections = {"mesh": geometry_package}
-    for name, data in (images or {}).items():
-        if name in sections or not _safe_section_name(name):
+def parse_texture_arguments(values: Sequence[str]) -> dict[str, Path]:
+    """Map repeated SECTION=PATH command-line values to image paths."""
+    textures: dict[str, Path] = {}
+    for value in values:
+        name, separator, path = value.partition("=")
+        if not separator or not path:
+            raise ValueError(f"--texture must be SECTION=PATH: {value!r}")
+        if name in textures:
+            raise ValueError(f"duplicate texture section: {name!r}")
+        textures[name] = Path(path)
+    return textures
+
+
+def _image_sections(images: Mapping[str, bytes], reserved: Sequence[str]) -> dict[str, bytes]:
+    sections: dict[str, bytes] = {}
+    for name, data in images.items():
+        if name in reserved or not _safe_section_name(name):
             raise ValueError(f"invalid image section name: {name!r}")
         encoded_image_dimensions(data)
         sections[name] = data
-    write_package(path, sections)
+    return sections
+
+
+def write_geometry_package(path: Path, geometry_package: bytes,
+    images: Mapping[str, bytes] | None = None, dependencies: Sequence[str] = ()) -> None:
+    """Wrap cooked geometry in an ELPK mesh section, with optional image sections.
+
+    Each dependency is a bundle path relative to this bundle's directory.
+    """
+    sections = {"mesh": geometry_package}
+    sections.update(_image_sections(images or {}, ("mesh", "manifest")))
+    write_package(path, sections, dependencies)
+
+
+def write_image_bundle(path: Path, images: Mapping[str, bytes],
+    dependencies: Sequence[str] = ()) -> None:
+    """Write an ELPK bundle holding only PNG and JPEG image sections."""
+    if not images:
+        raise ValueError("an image bundle needs at least one image section")
+    write_package(path, _image_sections(images, ("mesh", "manifest")), dependencies)

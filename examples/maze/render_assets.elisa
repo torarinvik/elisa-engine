@@ -11,15 +11,17 @@ module MazeRenderAssets:
                 error failure: false
 
     public:
-        def register(package_path: cstr) -> bool:
+        # The tile bundle declares the texture bundle as a dependency in
+        # elisa.project.json, so mesh registration fails without it.
+        def register(tile_bundle: cstr, texture_bundle: cstr) -> bool:
             mesh_registered: bool = catch RenderScene::register_snapshot_mesh_asset(
-                MazeVisualAssets::tile_mesh_id(), package_path):
+                MazeVisualAssets::tile_mesh_id(), tile_bundle):
                 ok: true
                 error failure: false
             return false if not mesh_registered
-            # Section name declared under asset_cooks[0].textures in elisa.project.json.
+            # Section name declared under the images cook's textures.
             texture_registered: bool = catch RenderScene::register_snapshot_bundle_texture_asset(
-                MazeVisualAssets::wall_albedo_texture_id(), package_path, "wallalbedo"):
+                MazeVisualAssets::wall_albedo_texture_id(), texture_bundle, "wallalbedo"):
                 ok: true
                 error failure: false
             return false if not texture_registered

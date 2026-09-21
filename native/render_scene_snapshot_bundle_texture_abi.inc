@@ -1,5 +1,6 @@
 // Snapshot textures read from an image section of a cooked ELPK bundle. The
-// bundle path resolves under the project root like any asset path. The section
+// bundle path resolves under the project root like any asset path, and its
+// declared dependencies must be present (bundle_dependencies.h). The section
 // is CRC-checked and its image header bounded before its bytes are retained;
 // Wicked decodes them when a material that references the texture registers.
 
@@ -37,7 +38,8 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
     elisa::assets::BundleTexture texture;
     std::string load_error;
     try {
-        if (!elisa::assets::read_bundle_texture(resolved_path, section, texture, load_error)) {
+        if (!elisa::assets::verify_bundle_dependencies(resolved_path, load_error) ||
+            !elisa::assets::read_bundle_texture(resolved_path, section, texture, load_error)) {
             std::fprintf(stderr, "Elisa bundle texture load failed: %s\n", load_error.c_str());
             return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         }
