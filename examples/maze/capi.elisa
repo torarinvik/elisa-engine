@@ -55,10 +55,7 @@ def capi_backend_status() -> i32:
     # Requirement negotiation uses the bounded eight-entry contract plus an
     # active count, so retain its fixed buffer shape and consume two entries.
     required: BackendFeature[8] = [BackendFeature.Rendering, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input]
-    no_fallbacks: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
-    }
+    no_fallbacks: BackendFallbackProviders = no_backend_fallback_providers()
     state: RequirementState = negotiate_requirements(embedded_backend_profile, required, 2, no_fallbacks, false)
     CapiPolicy::PROFILE_READY if state == RequirementState.Ready else CapiPolicy::PROFILE_UNAVAILABLE
 
@@ -68,10 +65,7 @@ def capi_backend_missing_feature() -> i32:
     return CapiPolicy::PROFILE_UNCONFIGURED if not embedded_backend_profile_configured
     return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(embedded_backend_profile)
     required: BackendFeature[8] = [BackendFeature.Rendering, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input]
-    no_fallbacks: BackendCapabilities = BackendCapabilities{
-        input: false, rendering: false, physics: false, audio: false,
-        native_window: false, async_upload: false, callbacks: false, asset_loading: false,
-    }
+    no_fallbacks: BackendFallbackProviders = no_backend_fallback_providers()
     report: BackendRequirementReport = backend_requirement_report(embedded_backend_profile, required, 2, no_fallbacks, false)
     return backend_feature_code(report.first_missing) if report.state == RequirementState.Unavailable
     return 0 if report.state == RequirementState.Ready

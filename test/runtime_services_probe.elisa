@@ -1,0 +1,110 @@
+# End-to-end activation and cleanup checks for report-selected providers.
+module RuntimeServicesProbe:
+    private:
+        def startup_requirements() -> BackendRequirements::BackendStartupRequirements:
+            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            requirements.services[0] <- Capabilities::BackendFeature.Input
+            requirements.services[1] <- Capabilities::BackendFeature.Rendering
+            requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+            requirements.services[3] <- Capabilities::BackendFeature.Physics
+            requirements.services[4] <- Capabilities::BackendFeature.Audio
+            requirements.service_count <- 5
+            requirements.service_fallbacks <- Capabilities::BackendFallbackProviders{
+                input: Capabilities::BackendFallbackProvider.None,
+                rendering: Capabilities::BackendFallbackProvider.None,
+                physics: Capabilities::BackendFallbackProvider.JoltPhysics,
+                audio: Capabilities::BackendFallbackProvider.MiniaudioSilent,
+                native_window: Capabilities::BackendFallbackProvider.None,
+                async_upload: Capabilities::BackendFallbackProvider.None,
+                callbacks: Capabilities::BackendFallbackProvider.None,
+                asset_loading: Capabilities::BackendFallbackProvider.None,
+            }
+            requirements.allow_service_fallbacks <- true
+            requirements
+
+        def config() -> Application::Config:
+            Application::Config{
+                title: "Elisa service session smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+
+        def activation_rollback(session: mutable RuntimeServices::Session&,
+            requirements: BackendRequirements::BackendStartupRequirements&) -> i32:
+            report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(session,
+                config(), requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ - 1,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            return 21 if opened != RuntimeServices::OpenStatus.AudioConfigurationInvalid
+            return 22 if report.services.state != Capabilities::RequirementState.Fallback
+            return 23 if report.services.fallback_count != 2
+            return 24 if RuntimeServices::physics_active(session) or RuntimeServices::audio_active(session)
+            return 25 if report.state != Capabilities::RequirementState.Fallback
+            closed_profile: i32 = catch Application::backend_profile():
+                value: 1
+                Application::BackendProfileError.NotInitialized: 0
+                error failure: 2
+            return 26 if closed_profile != 0
+            audio_closed: i32 = catch AudioRuntime::active_voice_count():
+                value: 1
+                AudioRuntime::AudioError.ApplicationUnavailable: 0
+                error failure: 2
+            return 27 if audio_closed != 0
+            0
+
+    public:
+        def run() -> i32:
+            requirements: BackendRequirements::BackendStartupRequirements = startup_requirements()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            rollback: i32 = activation_rollback(&session, &requirements)
+            return rollback if rollback != 0
+
+            report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            return 31 if opened != RuntimeServices::OpenStatus.FallbackRequired
+            return 32 if report.state != Capabilities::RequirementState.Fallback
+            return 33 if report.services.fallback_count != 2
+            return 34 if not RuntimeServices::physics_active(session) or not RuntimeServices::audio_active(session)
+            occupied_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            occupied: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &occupied_report)
+            return 49 if occupied != RuntimeServices::OpenStatus.SessionAlreadyOpen
+            return 50 if not RuntimeServices::physics_active(session) or not RuntimeServices::audio_active(session)
+            voices: usize = catch AudioRuntime::active_voice_count():
+                value: value
+                error failure: return 35
+            return 36 if voices != 0
+
+            body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(session,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+                    half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+                    mass: 1.0,
+                }):
+                value: value
+                error failure: return 37
+            tick: u64 = catch RuntimeServices::physics_fixed_step(session, 1.0 / 60.0):
+                value: value
+                error failure: return 38
+            return 39 if tick != 1
+            _ = catch RuntimeServices::physics_body_position(session, body):
+                value: value
+                error failure: return 40
+            return 41 if not RuntimeServices::shutdown(&session)
+
+            stopped: i32 = catch RuntimeServices::physics_fixed_step(&session, 1.0 / 60.0):
+                value: 1
+                RuntimeServices::RuntimeServicesError.SessionStopped: 0
+                error failure: 2
+            return 42 if stopped != 0
+            audio_closed: i32 = catch AudioRuntime::active_voice_count():
+                value: 1
+                AudioRuntime::AudioError.ApplicationUnavailable: 0
+                error failure: 2
+            return 43 if audio_closed != 0
+            0

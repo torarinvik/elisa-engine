@@ -92,11 +92,87 @@ module PhysicsRuntime:
                 tick: mutable u64
                 live: mutable bool
 
+        # A plain owner record for composite affine services such as
+        # RuntimeServices::Session. The enclosing affine session owns this
+        # value and passes it through the same operations as World.
+        struct ServiceState:
+            private:
+                generation: mutable u64
+                tick: mutable u64
+                live: mutable bool
+
+        def ServiceState() -> ServiceState:
+            ServiceState{generation: 0, tick: 0, live: false}
+
         def World() -> World error[PhysicsError]:
             generation: mutable u64 = 0
             status: i32 = elisa_physics_v1_initialize(&generation)
             try check_status(status)
             World{generation: generation, tick: 0, live: true}
+
+        def service_initialize(state: mutable ServiceState&) -> void error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if state.live
+            generation: mutable u64 = 0
+            try check_status(elisa_physics_v1_initialize(&generation))
+            state.generation <- generation
+            state.tick <- 0
+            state.live <- true
+
+        def service_fixed_step(state: mutable ServiceState&,
+            delta_seconds: f32) -> u64 error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            tick: mutable u64 = 0
+            try check_status(elisa_physics_v1_fixed_step(state.generation,
+                delta_seconds, &tick))
+            state.tick <- tick
+            tick
+
+        def service_body_create(state: ServiceState&,
+            description: BodyDesc) -> BodyHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_create_box(state.generation,
+                kind_code(description.kind), description.position.x, description.position.y,
+                description.position.z, description.half_extents.x, description.half_extents.y,
+                description.half_extents.z, description.mass, &slot, &generation)
+            try check_status(status)
+            BodyHandle{world_generation: state.generation, slot: slot, generation: generation}
+
+        def service_body_position(state: ServiceState&,
+            body: BodyHandle) -> Geometry::Vec3 error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            raise PhysicsError.StaleWorld if body.world_generation != state.generation
+            x: mutable f32 = 0.0
+            y: mutable f32 = 0.0
+            z: mutable f32 = 0.0
+            status: i32 = elisa_physics_v1_body_position(state.generation,
+                body.slot, body.generation, &x, &y, &z)
+            try check_status(status)
+            Geometry::Vec3{x: x, y: y, z: z}
+
+        def service_body_destroy(state: ServiceState&,
+            body: BodyHandle) -> void error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            raise PhysicsError.StaleWorld if body.world_generation != state.generation
+            status: i32 = elisa_physics_v1_destroy_body(state.generation,
+                body.slot, body.generation)
+            try check_status(status)
+
+        def service_shutdown(state: mutable ServiceState&) -> void error[PhysicsError]:
+            return if not state.live
+            try check_status(elisa_physics_v1_shutdown(state.generation))
+            state.live <- false
+
+        # Forget the local token after the owning Application has force-closed
+        # native providers. No native call is made here.
+        def service_reset(state: mutable ServiceState&) -> void:
+            state.generation <- 0
+            state.tick <- 0
+            state.live <- false
+
+        def service_is_live(state: ServiceState&) -> bool:
+            state.live
 
         def fixed_step(world: mutable World&, delta_seconds: f32) -> u64 error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
