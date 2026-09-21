@@ -102,4 +102,45 @@ module RenderSceneCameraNativeTests:
             restored: bool = looks_along(Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
                 Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
             return 131 if not restored
+
+            invalid_view: i32 = catch RenderScene::create_camera(RenderScene::CameraProjection.Perspective,
+                320, 200, 0.0, 0.1, 300.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 138 if invalid_view != 1
+            secondary: RenderScene::CameraHandle = catch RenderScene::create_camera(
+                RenderScene::CameraProjection.Perspective, 640, 400, 0.8, 0.2, 300.0):
+                value: value
+                error failure: return 139
+            activate_secondary: i32 = catch RenderScene::activate_camera(secondary):
+                ok: 0
+                error failure: 1
+            return 140 if activate_secondary != 0 or elisa_render_scene_v1_test_camera_perspective_matches(
+                640.0, 400.0, 0.8, 0.2, 300.0) != 1
+            update_secondary: i32 = catch RenderScene::update_camera(secondary,
+                RenderScene::CameraProjection.Orthographic, 200, 100, 8.0, 0.2, 300.0):
+                ok: 0
+                error failure: 1
+            return 141 if update_secondary != 0 or elisa_render_scene_v1_test_camera_orthographic_matches(
+                200.0, 100.0, 8.0) != 1
+            reject_active_destroy: i32 = catch RenderScene::destroy_camera(secondary):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 142 if reject_active_destroy != 1
+            restore_default: i32 = catch RenderScene::activate_default_camera():
+                ok: 0
+                error failure: 1
+            return 143 if restore_default != 0 or elisa_render_scene_v1_test_camera_orthographic_matches(
+                320.0, 200.0, 14.0) != 1
+            destroy_secondary: i32 = catch RenderScene::destroy_camera(secondary):
+                ok: 0
+                error failure: 1
+            return 144 if destroy_secondary != 0
+            stale_activate: i32 = catch RenderScene::activate_camera(secondary):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 145 if stale_activate != 1
             0

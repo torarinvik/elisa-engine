@@ -40,6 +40,18 @@ module RenderScene:
         extern elisa_render_scene_v1_set_camera_look_at(eye_x: f32, eye_y: f32, eye_z: f32,
             target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_create_camera(projection: i32, width: i32, height: i32,
+            projection_value: f32, near_clip: f32, far_clip: f32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_update_camera(handle: i64, projection: i32,
+            width: i32, height: i32, projection_value: f32, near_clip: f32, far_clip: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_activate_camera(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_activate_default_camera() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_camera(handle: i64) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_create(primitive: i32, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32,
             red: f32, green: f32, blue: f32, alpha: f32) -> i64
@@ -214,6 +226,9 @@ module RenderScene:
             Reinhard
             Aces
             Uchimura
+        enum CameraProjection:
+            Perspective
+            Orthographic
         struct Color:
             red: f32
             green: f32
@@ -230,6 +245,9 @@ module RenderScene:
             # The integer is an opaque, generation-checked engine token. It is
             # public so game-owned state can retain lights across frames.
             id: i64
+        struct CameraHandle:
+            private:
+                native_value: i64
         # Dynamic, socket-to-socket electrical ribbon. Its geometry and Wicked
         # TrailRenderer ownership stay inside the engine.
         struct ElectricArcHandle:
@@ -313,6 +331,27 @@ module RenderScene:
         def set_camera_look_at(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_look_at(
                 eye.x, eye.y, eye.z, target.x, target.y, target.z, up.x, up.y, up.z))
+        def create_camera(projection: CameraProjection, width: i32, height: i32,
+            projection_value: f32, near_clip: f32, far_clip: f32) -> CameraHandle error[RenderSceneError]:
+            projection_code: i32 = 0 if projection == CameraProjection.Orthographic else 1
+            native_value: i64 = elisa_render_scene_v1_create_camera(projection_code, width, height,
+                projection_value, near_clip, far_clip)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            CameraHandle{native_value: native_value}
+        def update_camera(handle: CameraHandle, projection: CameraProjection,
+            width: i32, height: i32, projection_value: f32, near_clip: f32,
+            far_clip: f32) -> void error[RenderSceneError]:
+            projection_code: i32 = 0 if projection == CameraProjection.Orthographic else 1
+            try check_status(elisa_render_scene_v1_update_camera(handle.native_value, projection_code,
+                width, height, projection_value, near_clip, far_clip))
+        def activate_camera(handle: CameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_activate_camera(handle.native_value))
+        def activate_default_camera() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_activate_default_camera())
+        def destroy_camera(handle: CameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_camera(handle.native_value))
         def create(primitive: Primitive, transform: Geometry::Transform, color: Color) -> InstanceHandle error[RenderSceneError]:
             primitive_code: i32 = 1 if primitive == Primitive.Box else (2 if primitive == Primitive.Sphere else (3 if primitive == Primitive.Plane else 0))
             native_value: i64 = elisa_render_scene_v1_create(primitive_code,
