@@ -20,6 +20,12 @@ and packaged games using the same Elisa-owned world and public API.
   cgltf, BasisU, meshoptimizer, ozz, Recast/Detour, and GameNetworkingSockets
   integrations into usable engine services. Prefer finishing these vertical slices
   over adding another dependency or a probe-only wrapper.
+- **Active workstream:** finish the reusable native game runtime first. Do not move
+  editor-shell, multiplayer, alternate-platform, or specialist-library breadth ahead
+  of the backend sequence below unless a prerequisite or test failure requires it.
+- A library integration is complete only when an ordinary Elisa application can use
+  its public service, resource ownership and failure paths are tested, and a real
+  sample consumes it. A native probe is supporting evidence, not the end product.
 - Godot receives compatibility maintenance for changed shared contracts. New features
   may initially be native-only; report unsupported capabilities explicitly. Godot
   installation or renderer feature parity must not block the native development gate.
@@ -85,11 +91,9 @@ The existing source inventory is the starting point, not a reason to rewrite wor
 | M4 — scale and network | Measured crowd/streaming scene and two-process multiplayer game; soak tests and native CI evidence | W07–W10, N05–N06, T01–T08, Q05–Q09 |
 | M5 — breadth | Tested opt-in advanced systems, each exercised by a shipped example | Remaining P2/P3 tasks |
 
-**Next foundation work: finish F08**, then complete R01 so an Elisa world drives the
-persistent Wicked scene instead of the diagnostic manifest. Continue with P01/P02,
-A03/A04, and R13 in dependency order. Do not restart completed identity or field-privacy
-work. Milestones are outcome gates; individual feature tasks may advance as soon as
-their explicit dependencies are ready.
+**Next foundation work: finish F08**, then follow the native backend sequence below.
+Do not restart completed identity or field-privacy work. Milestones are outcome gates;
+individual feature tasks may advance as soon as their explicit dependencies are ready.
 
 ## Current execution queue
 
@@ -97,48 +101,54 @@ Select the first ready item below unless new test evidence changes the order. Ea
 points to the full acceptance criteria in its task entry; keep work vertical and leave
 the public API connected to a real Elisa client.
 
-1. **F08 — finish service fallback integration.** Keep the live native profile honest,
-   return a typed provider with each fallback route, reject mismatched provider/service
-   pairs, and apply a route only after its adapter initializes successfully. Then test
-   rollback for each startup failure. Physics and Audio now inject a failure after real
-   partial initialization, verify adapter cleanup, shut down and re-negotiate the route,
-   then initialize successfully on retry. See [`service rollback validation`](docs/validation/runtime-service-rollback.md).
-   `Application` now probes the real Jolt and miniaudio adapters by initializing and
-   shutting down temporary providers before accepting those routes; failed probes return
-   `ProviderUnavailable` and roll back host startup. Other engine providers remain
-   unavailable until implemented, and fallback lifetimes still require caller-owned
-   initialization and shutdown.
-2. **R01 — finish resource-resolved game rendering.** The interactive maze now builds
-   its entities in Elisa `World` and submits snapshots through the native transactional
-   presenter. Connect cooked mesh and material resolution so gameplay roles use their
-   authored resources instead of placeholder boxes; keep entity and asset identity
-   stable through create/update/despawn and retain rollback coverage.
-3. **P01/P02 — connect the Jolt service to gameplay.** Make Elisa own world identity,
-   body/shape handles, and fixed-step policy; schedule one step per committed tick and
-   verify render pumping never advances simulation. Reuse `PhysicsRuntime` instead of
-   creating a second public physics path.
-4. **A03/A04 — make cooked content runnable.** Add the runtime package/VFS contract,
-   then a bounded asynchronous loader for the existing glTF, BasisU, and meshoptimizer
-   outputs with cancellation, capacity, stale-handle, and unload tests.
-5. **R13 — remove cold shader work from game startup.** Build versioned offline shader
-   packages/permutation manifests, actionable compiler diagnostics, and cache
-   invalidation; measure cold and warm startup on the pinned Metal path.
-6. **P03/P05 — deliver a character-ready physics slice.** Add filtered queries and
-   deterministic contact delivery, then a Jolt character controller exercised in an
-   authored obstacle course using SDL3 action input.
-7. **C01/C02 and N01/N02 — turn existing libraries into runtime services.** Cook
-   skeleton clips for ozz and navigation tiles for Recast/Detour; expose bounded Elisa
-   handles and prove animation/query results in a playable sample.
-8. **S02/S03 — make audio useful to games.** Add streaming, buses, voice budgets, and
-   world-attached spatial playback through miniaudio, with explicit device-loss and
-   fallback behavior.
-9. **I02/I04 and E01 — build the authoring surface.** Render Elisa UI and text through
-    Wicked, then use it in a native editor shell to inspect and edit a second authored
-    game. Keep editing models and undo history in Elisa.
+1. **F08 — finish runtime service selection and ownership.** Keep the live native
+   profile honest, return a typed provider with each fallback route, reject mismatched
+   provider/service pairs, and apply a route only after its adapter initializes. Finish
+   the owning session lifecycle, partial-startup rollback, shutdown order, and retry
+   tests for Jolt and miniaudio. Other routes stay unavailable until real adapters exist.
+   See [`service rollback validation`](docs/validation/runtime-service-rollback.md).
+2. **R01/R02 — make an Elisa World render authored resources.** Finish the transactional
+   snapshot path with stable entity/asset identity, cooked mesh and material resolution,
+   shared mesh/material lifetime, and create/update/despawn rollback. Replace gameplay
+   placeholder boxes with authored maze assets and keep the ordinary application as the
+   client; the diagnostic manifest remains test input only.
+3. **A03–A07 — make cooked content loadable in a packaged game.** Complete bounded
+   indexed package/VFS reads, asynchronous decode/upload, cancellation and unload, then
+   connect glTF scene/material/texture import, BasisU format selection, and meshoptimizer
+   output to actual Wicked resources. Verify capacities, stale generations, cache
+   invalidation, and operation outside the source checkout.
+4. **R03–R07/R13/R15 — finish the core Wicked renderer service.** Connect camera and
+   viewport lifetime, PBR material slots, lights/environment, quality negotiation,
+   packaged shader permutations, and dependent render passes. Exercise resize,
+   suspension, unsupported-feature fallbacks, and visual references in one authored
+   scene; measure cold startup separately from steady-state frames.
+5. **P01–P06 — make Jolt the gameplay physics service.** Elisa owns body and shape
+   identity, fixed-step scheduling, interpolation, filtered queries, contact delivery,
+   and character control. Prove one physics step per committed tick, no render-driven
+   simulation, rollback on creation failure, and a playable obstacle-course sample.
+6. **S01–S03/S05 — finish miniaudio as a game audio service.** Add generation-safe clips,
+   streaming, buses, voice budgets, world attachment, spatial playback, and device-loss
+   recovery. Test exhaustion, cancellation, fallback selection, and ordered shutdown in
+   an ordinary game session.
+7. **C01–C05/N01–N04 — turn ozz and Recast/Detour into gameplay services.** Cook
+   skeleton/clip and multi-tile navigation assets, add bounded generation-checked runtime
+   handles, then connect animation, IK, agent movement, and replanning to Elisa World.
+   Demonstrate both in a controllable character sample with unload/reload coverage.
+8. **I01–I07 — complete SDL3 input and Wicked UI/text services.** Use action maps for
+   keyboard, mouse, and controller input; render interactive Elisa-owned UI; connect
+   FreeType/HarfBuzz font shaping and IME text entry with focus/accessibility behavior.
+   Validate high-DPI resize, device removal, and deterministic input delivery.
+9. **W04/W05, R10/R11, and A10/A11 — scale the same backend vertically.** Stream scene
+   cells and resource generations, preserve references through hot reload, and add
+   visibility/LOD plus terrain/vegetation only with measured scene and memory budgets.
+10. **Q01–Q04/Q07 — prove the engine can ship.** Add representative backend regression
+    scenes, reproducible native CI/toolchain setup, useful crash diagnostics, a Release
+    package that runs outside the checkout, and a second authored game using the public
+    services. Move the editor shell E01–E09 forward after these runtime contracts exist.
 
-After these, select the next P1 task whose dependencies are complete. Defer multiplayer,
-XR, soft bodies, alternate 2D physics, and specialist importers until a playable sample
-demonstrates the need and the lower-priority prerequisites are met.
+Once this P1 native runtime lane is demonstrated in a packaged second game, advance the
+P2 scale/network work and P3 specialists (including Box2D, ACL, Steam Audio, and XR)
+according to their dependencies and measured consumers.
 
 ## F — native foundation and lifecycle
 
@@ -507,16 +517,14 @@ demonstrates the need and the lower-priority prerequisites are met.
 
 ## Validation and handoff
 
-Use the existing commands as regression anchors; F10 adds native-specific composition:
+Use the existing commands as regression anchors:
 
-- `elisascript scripts/check.elisascript` — shared runtime, rejection, proof, and package evidence;
-  currently includes a Godot probe, so it is not yet the native-only gate.
-- `elisascript scripts/wicked_probe.elisascript` — real native graphics and library evidence;
-  requires the configured Wicked build and a suitable graphics session.
+- `elisascript scripts/check.elisascript` — shared runtime, rejection, proof, package, and Godot compatibility checks.
+- `elisascript scripts/native_gate.elisascript native` — native-only startup, application, SDL3/Wicked, and library integration gate with structured evidence.
+- `elisascript scripts/wicked_probe.elisascript` — focused real native graphics and library checks; requires the configured Wicked build and a suitable graphics session.
 - `python3 scripts/run_boundary_sanitized.py` — untrusted native boundary checks.
 - `python3 test/check_workflow.py ~/.local/bin/elisascript` — orchestration behavior only.
-- `python3 scripts/check_module_hygiene.py` and `python3 scripts/check_source_length.py` — repository policies;
-  also check this new root plan's length until F10 includes it in the policy inventory.
+- `python3 scripts/check_module_hygiene.py` and `python3 scripts/check_source_length.py` — repository policies, including this plan's 600-line limit.
 - When changing compiler field/reference semantics, run the owning compiler's targeted
   regressions and `test/parity/driver_acceptance_smoke.sh`; do not raise its baseline to hide regressions.
 
