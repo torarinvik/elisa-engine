@@ -32,6 +32,9 @@ selects Wicked's Reinhard, ACES, or Uchimura operator, and `set_exposure`
 accepts a finite scene-wide multiplier in the range 0–8. The native smoke
 applies both settings, inspects Wicked's live render path, and rejects invalid
 exposure values before touching engine state.
+`set_ambient_occlusion_settings` separately bounds the SSAO range to 0.01–32
+world units and power to 0–8, then applies those values to Wicked's render
+path. Invalid range or power is rejected before the backend is touched.
 
 `RenderScene::sync_snapshot` connects `RenderSnapshot::Snapshot` to this scene
 service as one bounded native transaction of at most 256 rows. Each row carries
