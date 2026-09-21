@@ -279,6 +279,11 @@ module RuntimeServices:
             try require_audio(session)
             try AudioRuntime::stop(voice)
 
+        def audio_set_voice_spatial(session: Session&, voice: AudioRuntime::VoiceHandle,
+            gain: f32, pitch_ratio: f32) -> void error[RuntimeServicesError, AudioRuntime::AudioError]:
+            try require_audio(session)
+            try AudioRuntime::set_voice_spatial(voice, gain, pitch_ratio)
+
         def audio_set_bus_gain(session: Session&, bus: AudioRuntime::Bus,
             gain: f32) -> void error[RuntimeServicesError, AudioRuntime::AudioError]:
             try require_audio(session)

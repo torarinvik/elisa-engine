@@ -129,7 +129,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Physics authority (one solver per body) | Tested | `src/physics/policy.elisa`, `test/physics_policy.elisa` |
 | Audio generation/ownership policy | Tested | `src/audio/policy.elisa`, `test/audio_policy.elisa` |
 | Distance attenuation (spatial groundwork) | Tested | `AudioPolicy::attenuation`, `test/audio_policy.elisa` |
-| World-attached spatial source policy (cone, occlusion, Doppler) | Tested + Implemented | `src/audio/spatial.elisa`, `test/audio_spatial.elisa`, `native/miniaudio_service.h`, `native/miniaudio_probe.h`, [spatial-audio validation](validation/spatial-audio.md) |
+| World-attached spatial audio (cone, occlusion, Doppler, entity-bound voices) | Tested + Implemented | `src/audio/spatial.elisa`, `src/runtime/world_audio.elisa`, `test/audio_spatial.elisa`, `test/world_audio_probe.elisa` (application smoke), `native/miniaudio_spatial_probe.h`, [spatial-audio validation](validation/spatial-audio.md) |
 
 ## Assets
 
@@ -178,7 +178,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |
 | cgltf import, meshoptimizer cache optimization | Implemented | `native/asset_import.h`, `native/meshopt_probe.h` |
-| ozz sampling, Recast/Detour navigation, miniaudio | Partial + Implemented | `native/ozz_probe.h`, generation-checked `native/navmesh_service.h` exercised by `native/recast_probe.h`, bounded `native/miniaudio_service.h` exercised by `native/miniaudio_probe.h`; navigation ownership/query and clip/voice ownership adapters are integrated, while cooked multi-tile navigation, device recovery, streaming, spatial audio, and Elisa agent movement remain N01–N03/S01–S03 |
+| ozz sampling, Recast/Detour navigation, miniaudio | Partial + Implemented | `native/ozz_probe.h`, generation-checked `native/navmesh_service.h` exercised by `native/recast_probe.h`, bounded `native/miniaudio_service.h` exercised by `native/miniaudio_probe.h`; navigation ownership/query and clip/voice ownership adapters are integrated, and world-attached spatial mixing is integrated, while cooked multi-tile navigation, streaming, physics-query occlusion, and Elisa agent movement remain N01–N03/S01–S03 |
 | FreeType/HarfBuzz text | Implemented | `native/text_probe.h` |
 | Tracy profiling client | Implemented | `native/tracy_probe.h` |
 | Sanitizers at the untrusted boundary | Tested | `scripts/run_boundary_sanitized.py`, `native/boundary_harness.cpp` |

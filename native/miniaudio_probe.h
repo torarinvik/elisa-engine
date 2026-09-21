@@ -16,6 +16,7 @@
 #define MA_NO_OPUS
 #include "miniaudio.h"
 #include "miniaudio_service.h"
+#include "miniaudio_spatial_probe.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -185,8 +186,11 @@ inline bool probe_miniaudio() {
         return false;
     }
     service.shutdown();
-    return check(!service.voice_live(second) && !service.voice_live(reopened),
-        "miniaudio service invalidates voices on shutdown");
+    if (!check(!service.voice_live(second) && !service.voice_live(reopened),
+            "miniaudio service invalidates voices on shutdown")) {
+        return false;
+    }
+    return probe_miniaudio_spatial_mix(wav, rate, samples);
 }
 
 } // namespace probe

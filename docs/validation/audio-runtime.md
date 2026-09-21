@@ -75,6 +75,15 @@ Validation on 2026-09-21:
 - `PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/check.elisascript` passed the portable suite, Godot 4.7.2 compatibility check, both proof suites (17/17 and 6/6), and the validation report.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/native_gate.elisascript native` passed on macOS 27.0 / Apple M5 against the pinned Wicked checkout; the report recorded `hardware_verification=verified`. This included both Metal-rendered probe passes, exact frame determinism, live-input rendering, frame-time budget, asset checks, the device-loss application smoke, and orderly shutdown.
 
+## Spatial voice mix
+
+`AudioRuntime::set_voice_spatial` and the session-routed
+`RuntimeServices::audio_set_voice_spatial` apply an Elisa-computed gain in
+[0, 1] and a Doppler pitch ratio in [0.5, 2] to a live voice. `WorldAudio`
+drives both from World transforms. Reused voice slots now start from neutral
+spatial state. See [`spatial-audio.md`](spatial-audio.md) for the design and
+evidence.
+
 See [`elisa-render-scene.md`](elisa-render-scene.md) for the Wicked pin and
 renderer evidence.
 

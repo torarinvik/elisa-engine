@@ -27,6 +27,41 @@ module AudioRuntime:
                 slot: u32
                 generation: u32
 
+        # Opaque handles cannot be zero-initialized or copied element-wise by
+        # other modules, so bounded engine-owned tables keep them in this pool.
+        module VoiceHandles:
+            public:
+                const CAPACITY: usize = 32
+
+                affine struct Pool:
+                    private:
+                        values: mutable VoiceHandle[AudioRuntime::VoiceHandles::CAPACITY]
+                        live: mutable bool[AudioRuntime::VoiceHandles::CAPACITY]
+
+                def Pool() -> Pool:
+                    Pool{values: zeroed, live: zeroed}
+
+                def store(handles: mutable Pool&, index: usize,
+                    voice: VoiceHandle) -> bool:
+                    return false if index >= AudioRuntime::VoiceHandles::CAPACITY
+                    handles.values[index] <- voice
+                    handles.live[index] <- true
+                    true
+
+                def get(handles: Pool&, index: usize) -> VoiceHandle error[AudioRuntime::AudioError]:
+                    raise AudioRuntime::AudioError.InvalidHandle if index >= AudioRuntime::VoiceHandles::CAPACITY or not handles.live[index]
+                    handles.values[index]
+
+                def move(handles: mutable Pool&, source: usize, destination: usize) -> bool:
+                    return false if source >= AudioRuntime::VoiceHandles::CAPACITY or destination >= AudioRuntime::VoiceHandles::CAPACITY or not handles.live[source]
+                    handles.values[destination] <- handles.values[source]
+                    handles.live[destination] <- true
+                    handles.live[source] <- false
+                    true
+
+                def clear(handles: mutable Pool&, index: usize) -> void:
+                    handles.live[index] <- false if index < AudioRuntime::VoiceHandles::CAPACITY
+
     private:
         const module Limits:
             MIN_SAMPLE_RATE_HZ: u32 = 8000
@@ -71,6 +106,10 @@ module AudioRuntime:
         extern elisa_audio_v1_stop(slot: u32, generation: u32) -> i32
 
         @callconv(c)
+        extern elisa_audio_v1_set_voice_spatial(slot: u32, generation: u32, gain: f32,
+            pitch_ratio: f32) -> i32
+
+        @callconv(c)
         extern elisa_audio_v1_set_bus_gain(bus: i32, gain: f32) -> i32
 
         @callconv(c)
@@ -103,6 +142,8 @@ module AudioRuntime:
         const MAX_SAMPLE_RATE_HZ: u32 = Limits::MAX_SAMPLE_RATE_HZ
         const MIN_CHANNEL_COUNT: u32 = Limits::MIN_CHANNEL_COUNT
         const MAX_CHANNEL_COUNT: u32 = Limits::MAX_CHANNEL_COUNT
+        const MIN_PITCH_RATIO: f32 = 0.5
+        const MAX_PITCH_RATIO: f32 = 2.0
 
         # Invalid sentinels let Elisa-owned state store optional audio handles
         # without exposing their generation fields or relying on zeroed ABI data.
@@ -154,6 +195,16 @@ module AudioRuntime:
 
         def stop(voice: VoiceHandle) -> void error[AudioError]:
             try check_status(elisa_audio_v1_stop(voice.slot, voice.generation))
+
+        # Apply a spatial mix computed by Elisa policy. The mixer multiplies the
+        # voice by `gain` in [0, 1] and resamples it by a Doppler `pitch_ratio`
+        # in [0.5, 2]; NaN fails these ordered comparisons and is rejected.
+        def set_voice_spatial(voice: VoiceHandle, gain: f32,
+            pitch_ratio: f32) -> void error[AudioError]:
+            raise AudioError.InvalidArgument if not (gain >= 0.0 and gain <= 1.0)
+            raise AudioError.InvalidArgument if not (pitch_ratio >= MIN_PITCH_RATIO and pitch_ratio <= MAX_PITCH_RATIO)
+            try check_status(elisa_audio_v1_set_voice_spatial(voice.slot, voice.generation,
+                gain, pitch_ratio))
 
         def set_bus_gain(bus: Bus, gain: f32) -> void error[AudioError]:
             try check_status(elisa_audio_v1_set_bus_gain(bus_code(bus), gain))

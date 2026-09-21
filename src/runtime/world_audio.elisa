@@ -1,0 +1,343 @@
+# Binds checked World entities to session-owned miniaudio voices. Elisa owns
+# listener and source state and evaluates SpatialAudio policy each update; the
+# native mixer only applies the resulting per-voice gain and Doppler pitch.
+include "./services.elisa"
+include "../world/world.elisa"
+include "../audio/spatial.elisa"
+include "../math/geometry.elisa"
+
+module WorldAudio:
+    public:
+        const MAX_EMITTERS: usize = SpatialAudio::MAX_SOURCES
+        # Longer gaps (hitches, teleports, resumed sessions) reset velocity
+        # history instead of turning one jump into a bogus Doppler sweep.
+        const MAX_VELOCITY_SECONDS: f32 = 0.25
+
+        error WorldAudioError:
+            Capacity
+            EntityAlreadyAttached
+            EntityUnavailable
+            EmitterNotFound
+            InvalidSettings
+            InvalidTimeStep
+            VoiceUnavailable
+            AudioFailure
+            BindingTableCorrupt
+
+        # Authored emitter shape. `local_forward` is rotated by the entity's
+        # World rotation on every update; cosines describe the cone half-angles.
+        struct EmitterSettings:
+            local_forward: Geometry::Vec3
+            minimum_distance: f32
+            maximum_distance: f32
+            inner_cone_cos: f32
+            outer_cone_cos: f32
+            outer_cone_gain: f32
+
+        struct UpdateReport:
+            updated: usize
+            detached_despawned: usize
+            detached_finished: usize
+            listener_lost: bool
+
+        affine struct Emitters:
+            private:
+                entities: mutable World::EntityRef[WorldAudio::MAX_EMITTERS]
+                voices: mutable AudioRuntime::VoiceHandles::Pool
+                forwards: mutable Geometry::Vec3[WorldAudio::MAX_EMITTERS]
+                sources: mutable SpatialAudio::Scene
+                count: mutable usize
+                listener: mutable SpatialAudio::Listener
+                listener_entity: mutable World::EntityRef
+                listener_tracked: mutable bool
+
+    private:
+        const module Sentinel:
+            NO_EMITTER: usize = WorldAudio::MAX_EMITTERS
+
+        const module Mix:
+            OK: i32 = 0
+            VOICE_GONE: i32 = 1
+            SESSION_STOPPED: i32 = 2
+            AUDIO_UNAVAILABLE: i32 = 3
+            FAILED: i32 = 4
+
+        def emitter_index(emitters: Emitters&, entity: World::EntityRef) -> usize:
+            for index in 0..<emitters.count |found: usize = Sentinel::NO_EMITTER| -> found:
+                if emitters.entities[index].world_epoch == entity.world_epoch and emitters.entities[index].id == entity.id:
+                    break index
+
+        def still_listener() -> SpatialAudio::Listener:
+            SpatialAudio::Listener{position: Geometry::vec3_zero(), velocity: Geometry::vec3_zero()}
+
+        def finite(value: f32) -> bool:
+            value - value == 0.0
+
+        def settings_valid(settings: EmitterSettings) -> bool:
+            return false if not Geometry::vec3_is_finite(settings.local_forward)
+            return false if not (Geometry::vec3_length_squared(settings.local_forward) > 0.0)
+            finite(settings.minimum_distance) and finite(settings.maximum_distance) and finite(settings.inner_cone_cos) and finite(settings.outer_cone_cos) and finite(settings.outer_cone_gain)
+
+        def velocity_between(previous: Geometry::Vec3, current: Geometry::Vec3,
+            delta_seconds: f32) -> Geometry::Vec3:
+            return Geometry::vec3_zero() if delta_seconds > WorldAudio::MAX_VELOCITY_SECONDS
+            Geometry::vec3_scale(Geometry::vec3_sub(current, previous), 1.0 / delta_seconds)
+
+        # Rebuild the policy source at the entity's current pose. Range, cone,
+        # and occlusion carry over from the previously committed source.
+        def moved_source(previous: SpatialAudio::Source, pose: Geometry::Transform,
+            local_forward: Geometry::Vec3, delta_seconds: f32) -> SpatialAudio::Source:
+            SpatialAudio::Source{
+                id: previous.id,
+                position: pose.position,
+                velocity: velocity_between(previous.position, pose.position, delta_seconds),
+                forward: Geometry::vec3_normalize(Geometry::quat_rotate(pose.rotation, local_forward)),
+                minimum_distance: previous.minimum_distance,
+                maximum_distance: previous.maximum_distance,
+                inner_cone_cos: previous.inner_cone_cos,
+                outer_cone_cos: previous.outer_cone_cos,
+                outer_cone_gain: previous.outer_cone_gain,
+                occlusion: previous.occlusion,
+                live: true,
+            }
+
+        def occluded_source(previous: SpatialAudio::Source, occlusion: f32) -> SpatialAudio::Source:
+            SpatialAudio::Source{
+                id: previous.id,
+                position: previous.position,
+                velocity: previous.velocity,
+                forward: previous.forward,
+                minimum_distance: previous.minimum_distance,
+                maximum_distance: previous.maximum_distance,
+                inner_cone_cos: previous.inner_cone_cos,
+                outer_cone_cos: previous.outer_cone_cos,
+                outer_cone_gain: previous.outer_cone_gain,
+                occlusion: occlusion,
+                live: true,
+            }
+
+        def push_mix(session: RuntimeServices::Session&, voice: AudioRuntime::VoiceHandle,
+            source: SpatialAudio::Source, listener: SpatialAudio::Listener) -> i32:
+            catch RuntimeServices::audio_set_voice_spatial(session, voice,
+                SpatialAudio::spatial_gain(source, listener),
+                SpatialAudio::doppler_ratio(source, listener)):
+                ok: Mix::OK
+                AudioRuntime::AudioError.InvalidHandle: Mix::VOICE_GONE
+                RuntimeServices::RuntimeServicesError.SessionStopped: Mix::SESSION_STOPPED
+                RuntimeServices::RuntimeServicesError.AudioUnavailable: Mix::AUDIO_UNAVAILABLE
+                error failure: Mix::FAILED
+
+        # A voice that already ended or was stolen is as good as stopped.
+        def stop_voice(session: RuntimeServices::Session&, voice: AudioRuntime::VoiceHandle) -> i32:
+            catch RuntimeServices::audio_stop(session, voice):
+                ok: Mix::OK
+                AudioRuntime::AudioError.InvalidHandle: Mix::OK
+                RuntimeServices::RuntimeServicesError.SessionStopped: Mix::SESSION_STOPPED
+                RuntimeServices::RuntimeServicesError.AudioUnavailable: Mix::AUDIO_UNAVAILABLE
+                error failure: Mix::FAILED
+
+        def check_service(status: i32) -> void error[RuntimeServices::RuntimeServicesError, WorldAudioError]:
+            raise RuntimeServices::RuntimeServicesError.SessionStopped if status == Mix::SESSION_STOPPED
+            raise RuntimeServices::RuntimeServicesError.AudioUnavailable if status == Mix::AUDIO_UNAVAILABLE
+            raise WorldAudioError.AudioFailure if status == Mix::FAILED
+
+        def voice_at(emitters: Emitters&, index: usize) -> AudioRuntime::VoiceHandle error[WorldAudioError]:
+            catch AudioRuntime::VoiceHandles::get(&emitters.voices, index):
+                value: value
+                error failure: raise WorldAudioError.BindingTableCorrupt
+
+        def remove_at(emitters: mutable Emitters&, index: usize) -> void error[WorldAudioError]:
+            detached: bool = catch SpatialAudio::source_detach(&emitters.sources, emitters.entities[index].id):
+                ok: true
+                error failure: false
+            raise WorldAudioError.BindingTableCorrupt if not detached
+            for shift in index..<emitters.count - 1 |emitters|:
+                moved: bool = AudioRuntime::VoiceHandles::move(&emitters.voices, shift + 1, shift)
+                raise WorldAudioError.BindingTableCorrupt if not moved
+                emitters.entities[shift] <- emitters.entities[shift + 1]
+                emitters.forwards[shift] <- emitters.forwards[shift + 1]
+            AudioRuntime::VoiceHandles::clear(&emitters.voices, emitters.count - 1)
+            emitters.count <- emitters.count - 1
+
+    public:
+        def Emitters() -> Emitters:
+            Emitters{
+                entities: zeroed,
+                voices: AudioRuntime::VoiceHandles::Pool(),
+                forwards: zeroed,
+                sources: SpatialAudio::Scene(),
+                count: 0,
+                listener: still_listener(),
+                listener_entity: World::EntityRef{world_epoch: 0, id: 0},
+                listener_tracked: false,
+            }
+
+        def emitter_count(emitters: Emitters&) -> usize:
+            emitters.count
+
+        def listener(emitters: Emitters&) -> SpatialAudio::Listener:
+            emitters.listener
+
+        def listener_tracked(emitters: Emitters&) -> bool:
+            emitters.listener_tracked
+
+        def emitter_source(emitters: Emitters&, entity: World::EntityRef) -> SpatialAudio::Source error[WorldAudioError]:
+            raise WorldAudioError.EmitterNotFound if emitter_index(emitters, entity) == Sentinel::NO_EMITTER
+            catch SpatialAudio::source_read(&emitters.sources, entity.id):
+                value: value
+                error failure: raise WorldAudioError.BindingTableCorrupt
+
+        # Hear the world from a checked entity, usually the camera or player.
+        # Velocity history restarts so the switch itself carries no Doppler.
+        def listen_from(world: World::World&, emitters: mutable Emitters&,
+            entity: World::EntityRef) -> void error[WorldAudioError]:
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldAudioError.EntityUnavailable if not World::world_try_transform(world, entity, &pose)
+            emitters.listener <- SpatialAudio::Listener{position: pose.position, velocity: Geometry::vec3_zero()}
+            emitters.listener_entity <- entity
+            emitters.listener_tracked <- true
+
+        # Attach a playing voice to a checked entity. The first spatial mix is
+        # applied before the binding is committed, so a voice never plays a
+        # frame at unattenuated gain once attached.
+        def attach(session: RuntimeServices::Session&, world: World::World&,
+            emitters: mutable Emitters&, entity: World::EntityRef,
+            voice: AudioRuntime::VoiceHandle,
+            settings: EmitterSettings) -> void error[RuntimeServices::RuntimeServicesError, WorldAudioError]:
+            raise WorldAudioError.EntityAlreadyAttached if emitter_index(emitters, entity) != Sentinel::NO_EMITTER
+            raise WorldAudioError.Capacity if emitters.count >= WorldAudio::MAX_EMITTERS
+            raise WorldAudioError.VoiceUnavailable if AudioRuntime::voice_is_empty(voice)
+            raise WorldAudioError.InvalidSettings if not settings_valid(settings)
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldAudioError.EntityUnavailable if not World::world_try_transform(world, entity, &pose)
+            source: SpatialAudio::Source = SpatialAudio::Source{
+                id: entity.id,
+                position: pose.position,
+                velocity: Geometry::vec3_zero(),
+                forward: Geometry::vec3_normalize(Geometry::quat_rotate(pose.rotation, settings.local_forward)),
+                minimum_distance: settings.minimum_distance,
+                maximum_distance: settings.maximum_distance,
+                inner_cone_cos: settings.inner_cone_cos,
+                outer_cone_cos: settings.outer_cone_cos,
+                outer_cone_gain: settings.outer_cone_gain,
+                occlusion: 0.0,
+                live: true,
+            }
+            attached: i32 = catch SpatialAudio::source_attach(&emitters.sources, source):
+                ok: 0
+                SpatialAudio::SpatialError.DuplicateSource: 1
+                SpatialAudio::SpatialError.Capacity: 2
+                error failure: 3
+            raise WorldAudioError.EntityAlreadyAttached if attached == 1
+            raise WorldAudioError.Capacity if attached == 2
+            raise WorldAudioError.InvalidSettings if attached == 3
+            stored: bool = AudioRuntime::VoiceHandles::store(&emitters.voices, emitters.count, voice)
+            mixed: i32 = push_mix(session, voice, source, emitters.listener) if stored else Mix::FAILED
+            if mixed != Mix::OK:
+                AudioRuntime::VoiceHandles::clear(&emitters.voices, emitters.count)
+                rolled_back: bool = catch SpatialAudio::source_detach(&emitters.sources, entity.id):
+                    ok: true
+                    error failure: false
+                raise WorldAudioError.BindingTableCorrupt if not rolled_back or not stored
+                raise WorldAudioError.VoiceUnavailable if mixed == Mix::VOICE_GONE
+                try check_service(mixed)
+            emitters.entities[emitters.count] <- entity
+            emitters.forwards[emitters.count] <- settings.local_forward
+            emitters.count <- emitters.count + 1
+
+        # Feed a gameplay or physics-query occlusion estimate in [0, 1]. It is
+        # applied by the next update.
+        def set_occlusion(emitters: mutable Emitters&, entity: World::EntityRef,
+            occlusion: f32) -> void error[WorldAudioError]:
+            previous: SpatialAudio::Source = try emitter_source(emitters, entity)
+            updated: bool = catch SpatialAudio::source_update(&emitters.sources, occluded_source(previous, occlusion)):
+                ok: true
+                error failure: false
+            raise WorldAudioError.InvalidSettings if not updated
+
+        # Stop the voice before unlinking it, so a failed stop stays retryable.
+        def detach(session: RuntimeServices::Session&, emitters: mutable Emitters&,
+            entity: World::EntityRef) -> void error[RuntimeServices::RuntimeServicesError, WorldAudioError]:
+            index: usize = emitter_index(emitters, entity)
+            raise WorldAudioError.EmitterNotFound if index == Sentinel::NO_EMITTER
+            voice: AudioRuntime::VoiceHandle = try voice_at(emitters, index)
+            try check_service(stop_voice(session, voice))
+            try remove_at(emitters, index)
+
+        def detach_all(session: RuntimeServices::Session&,
+            emitters: mutable Emitters&) -> void error[RuntimeServices::RuntimeServicesError, WorldAudioError]:
+            total: usize = emitters.count
+            for _ in 0..<total |session, emitters|:
+                voice: AudioRuntime::VoiceHandle = try voice_at(emitters, emitters.count - 1)
+                try check_service(stop_voice(session, voice))
+                try remove_at(emitters, emitters.count - 1)
+
+        # One presentation or fixed-step update. Despawned entities have their
+        # voices stopped and are detached; voices that ended or were stolen are
+        # detached. Every surviving emitter is restaged from its World pose and
+        # receives a fresh gain and Doppler pitch before anything is committed.
+        def update(session: RuntimeServices::Session&, world: World::World&,
+            emitters: mutable Emitters&,
+            delta_seconds: f32) -> UpdateReport error[RuntimeServices::RuntimeServicesError, WorldAudioError]:
+            raise WorldAudioError.InvalidTimeStep if not (delta_seconds > 0.0 and finite(delta_seconds))
+            updated: mutable usize = 0
+            despawned: mutable usize = 0
+            finished: mutable usize = 0
+            listener_lost: mutable bool = false
+            listener: mutable SpatialAudio::Listener = emitters.listener
+            listener_tracked: mutable bool = emitters.listener_tracked
+            if emitters.listener_tracked:
+                listener_pose: mutable Geometry::Transform = Geometry::transform_identity()
+                if World::world_try_transform(world, emitters.listener_entity, &listener_pose):
+                    listener <- SpatialAudio::Listener{
+                        position: listener_pose.position,
+                        velocity: velocity_between(emitters.listener.position, listener_pose.position, delta_seconds),
+                    }
+                else:
+                    listener <- SpatialAudio::Listener{position: emitters.listener.position, velocity: Geometry::vec3_zero()}
+                    listener_tracked <- false
+                    listener_lost <- true
+
+            staged: mutable SpatialAudio::Source[WorldAudio::MAX_EMITTERS] = zeroed
+            removed: mutable bool[WorldAudio::MAX_EMITTERS] = zeroed
+            for index in 0..<emitters.count |session, world, emitters, listener, staged, removed, updated, despawned, finished|:
+                voice: AudioRuntime::VoiceHandle = try voice_at(emitters, index)
+                pose: mutable Geometry::Transform = Geometry::transform_identity()
+                if not World::world_try_transform(world, emitters.entities[index], &pose):
+                    try check_service(stop_voice(session, voice))
+                    removed[index] <- true
+                    despawned <- despawned + 1
+                else:
+                    previous: SpatialAudio::Source = try emitter_source(emitters, emitters.entities[index])
+                    source: SpatialAudio::Source = moved_source(previous, pose,
+                        emitters.forwards[index], delta_seconds)
+                    mixed: i32 = push_mix(session, voice, source, listener)
+                    if mixed == Mix::VOICE_GONE:
+                        removed[index] <- true
+                        finished <- finished + 1
+                    else:
+                        try check_service(mixed)
+                        staged[index] <- source
+                        updated <- updated + 1
+
+            # Commit: no service call can fail past this point.
+            for index in 0..<emitters.count |emitters, staged, removed|:
+                if not removed[index]:
+                    committed: bool = catch SpatialAudio::source_update(&emitters.sources, staged[index]):
+                        ok: true
+                        error failure: false
+                    raise WorldAudioError.BindingTableCorrupt if not committed
+            # Remove from the back: each removal shifts only processed slots.
+            total: usize = emitters.count
+            for offset in 0..<total |emitters, removed|:
+                index: usize = total - 1 - offset
+                if removed[index]:
+                    try remove_at(emitters, index)
+            emitters.listener <- listener
+            emitters.listener_tracked <- listener_tracked
+            UpdateReport{
+                updated: updated,
+                detached_despawned: despawned,
+                detached_finished: finished,
+                listener_lost: listener_lost,
+            }

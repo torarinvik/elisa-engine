@@ -48,6 +48,10 @@ int32_t elisa_audio_v1_decode_file(const char* path, uint32_t* slot, uint32_t* g
 int32_t elisa_audio_v1_play(uint32_t clip_slot, uint32_t clip_generation, int32_t looped,
     int32_t bus, float gain, uint32_t priority, uint32_t* slot, uint32_t* generation);
 int32_t elisa_audio_v1_stop(uint32_t slot, uint32_t generation);
+// Elisa computes spatial policy; the mixer applies gain in [0, 1] and a
+// Doppler pitch ratio in [0.5, 2] to one live voice.
+int32_t elisa_audio_v1_set_voice_spatial(uint32_t slot, uint32_t generation,
+    float gain, float pitch_ratio);
 int32_t elisa_audio_v1_set_bus_gain(int32_t bus, float gain);
 int32_t elisa_audio_v1_active_voice_count(void);
 int32_t elisa_audio_v1_shutdown(void);

@@ -191,6 +191,19 @@ extern "C" int32_t elisa_audio_v1_stop(uint32_t slot, uint32_t generation) {
         ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_HANDLE;
 }
 
+extern "C" int32_t elisa_audio_v1_set_voice_spatial(
+    uint32_t slot, uint32_t generation, float gain, float pitch_ratio) {
+    if (!std::isfinite(gain) || gain < 0.0f || gain > 1.0f || !std::isfinite(pitch_ratio) ||
+        pitch_ratio < probe::audio::MIN_PITCH_RATIO || pitch_ratio > probe::audio::MAX_PITCH_RATIO) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return audio_service().service.set_voice_spatial_mix(
+        probe::audio::VoiceHandle{slot, generation}, gain, pitch_ratio)
+        ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_HANDLE;
+}
+
 extern "C" int32_t elisa_audio_v1_set_bus_gain(int32_t bus, float gain) {
     if (bus < ELISA_AUDIO_BUS_MUSIC || bus > ELISA_AUDIO_BUS_UI ||
         !std::isfinite(gain) || gain < 0.0f || gain > 4.0f) {

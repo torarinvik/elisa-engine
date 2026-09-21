@@ -1,5 +1,6 @@
 # End-to-end activation and cleanup checks for report-selected providers.
 include "../src/runtime/executor.elisa"
+include "./world_audio_probe.elisa"
 
 @callconv(c)
 extern elisa_audio_v1_test_request_device_recovery() -> i32
@@ -531,6 +532,8 @@ module RuntimeServicesProbe:
                 error failure: 1
             return 128 if replay_stopped != 0
 
+            world_audio_status: i32 = WorldAudioProbe::run(session)
+            return world_audio_status if world_audio_status != 0
             world_scheduler_status: i32 = world_scheduler_probe(&session)
             return world_scheduler_status if world_scheduler_status != 0
             hierarchy_physics_status: i32 = hierarchy_physics_probe(&session)

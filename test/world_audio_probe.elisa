@@ -1,0 +1,260 @@
+# World-attached spatial audio through an open RuntimeServices session. The
+# application smoke opens miniaudio on its silent route; this probe binds
+# voices to World entities, drives SpatialAudio policy from their transforms,
+# and checks that despawned entities, ended voices, and a lost listener detach
+# safely instead of leaving stale native voices behind.
+module WorldAudioProbe:
+    private:
+        def pose_at(x: f32, y: f32, z: f32, rotation: Geometry::Quat) -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: x, y: y, z: z},
+                rotation: rotation,
+                scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            }
+
+        def omni(minimum: f32, maximum: f32) -> WorldAudio::EmitterSettings:
+            WorldAudio::EmitterSettings{
+                local_forward: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0},
+                minimum_distance: minimum,
+                maximum_distance: maximum,
+                inner_cone_cos: -1.0,
+                outer_cone_cos: -1.0,
+                outer_cone_gain: 1.0,
+            }
+
+        def quotient(numerator: f32, denominator: f32) -> f32:
+            numerator / denominator
+
+        def attach_code(session: RuntimeServices::Session&, world: World::World&,
+            emitters: mutable WorldAudio::Emitters&, entity: World::EntityRef,
+            voice: AudioRuntime::VoiceHandle, settings: WorldAudio::EmitterSettings) -> i32:
+            catch WorldAudio::attach(session, world, emitters, entity, voice, settings):
+                ok: 0
+                WorldAudio::WorldAudioError.EntityAlreadyAttached: 1
+                WorldAudio::WorldAudioError.EntityUnavailable: 2
+                WorldAudio::WorldAudioError.InvalidSettings: 3
+                WorldAudio::WorldAudioError.VoiceUnavailable: 4
+                error failure: 5
+
+        def update_report(session: RuntimeServices::Session&, world: World::World&,
+            emitters: mutable WorldAudio::Emitters&, delta_seconds: f32,
+            report: mutable WorldAudio::UpdateReport&) -> bool:
+            catch WorldAudio::update(session, world, emitters, delta_seconds):
+                value:
+                    report <- value
+                    true
+                error failure: false
+
+        def voice_count(session: RuntimeServices::Session&) -> usize:
+            catch RuntimeServices::audio_active_voice_count(session):
+                value: value
+                error failure: 999
+
+        def play(session: RuntimeServices::Session&, clip: AudioRuntime::ClipHandle) -> AudioRuntime::VoiceHandle:
+            catch RuntimeServices::audio_play(session, clip, true, AudioRuntime::Bus.Effects, 1.0, 1):
+                value: value
+                error failure: AudioRuntime::empty_voice()
+
+        def near(value: f32, expected: f32) -> bool:
+            ElisaMath::fabsf(value - expected) <= 0.01
+
+        # Rejected attachments must leave no binding and must not stop or
+        # adopt the offered voice.
+        def rejected_attachments(session: RuntimeServices::Session&, world: mutable World::World&,
+            emitters: mutable WorldAudio::Emitters&, entity: World::EntityRef,
+            clip: AudioRuntime::ClipHandle) -> i32:
+            voice: AudioRuntime::VoiceHandle = play(session, clip)
+            return 200 if AudioRuntime::voice_is_empty(voice)
+            return 201 if attach_code(session, world, emitters, entity,
+                AudioRuntime::empty_voice(), omni(1.0, 10.0)) != 4
+            zero_forward: WorldAudio::EmitterSettings = WorldAudio::EmitterSettings{
+                local_forward: Geometry::vec3_zero(),
+                minimum_distance: 1.0,
+                maximum_distance: 10.0,
+                inner_cone_cos: -1.0,
+                outer_cone_cos: -1.0,
+                outer_cone_gain: 1.0,
+            }
+            return 202 if attach_code(session, world, emitters, entity, voice, zero_forward) != 3
+            return 203 if attach_code(session, world, emitters, entity, voice,
+                omni(quotient(0.0, 0.0), 10.0)) != 3
+            return 204 if attach_code(session, world, emitters, entity, voice, omni(5.0, 2.0)) != 3
+            ghost: World::EntityRef = catch World::world_spawn(world, World::StaticObject.Structure):
+                value: value
+                error failure: return 205
+            despawned: bool = catch World::world_despawn(world, ghost):
+                ok: true
+                error failure: false
+            return 206 if not despawned
+            return 207 if attach_code(session, world, emitters, ghost, voice, omni(1.0, 10.0)) != 2
+            return 208 if WorldAudio::emitter_count(emitters) != 0
+            stopped: bool = catch RuntimeServices::audio_stop(session, voice):
+                ok: true
+                error failure: false
+            return 209 if not stopped
+            return 210 if attach_code(session, world, emitters, entity, voice, omni(1.0, 10.0)) != 4
+            return 211 if WorldAudio::emitter_count(emitters) != 0
+            0
+
+        def moving_emitters(session: RuntimeServices::Session&, world: mutable World::World&,
+            emitters: mutable WorldAudio::Emitters&, listener: World::EntityRef,
+            close: World::EntityRef, distant: World::EntityRef,
+            clip: AudioRuntime::ClipHandle) -> i32:
+            baseline: usize = voice_count(session)
+            close_voice: AudioRuntime::VoiceHandle = play(session, clip)
+            distant_voice: AudioRuntime::VoiceHandle = play(session, clip)
+            return 212 if AudioRuntime::voice_is_empty(close_voice) or AudioRuntime::voice_is_empty(distant_voice)
+            return 213 if attach_code(session, world, emitters, close, close_voice, omni(1.0, 10.0)) != 0
+            return 214 if attach_code(session, world, emitters, distant, distant_voice, omni(1.0, 10.0)) != 0
+            return 215 if attach_code(session, world, emitters, close, distant_voice, omni(1.0, 10.0)) != 1
+            return 216 if WorldAudio::emitter_count(emitters) != 2
+            report: mutable WorldAudio::UpdateReport = zeroed
+            step: f32 = 1.0 / 60.0
+            return 217 if not update_report(session, world, emitters, step, &report)
+            return 218 if report.updated != 2 or report.detached_despawned != 0 or report.listener_lost
+
+            # The close source approaches the listener at 30 m/s and faces away
+            # after a half turn; the distant one is beyond its audible range.
+            half_turn: Geometry::Quat = Geometry::Quat{x: 0.0, y: 1.0, z: 0.0, w: 0.0}
+            moved: bool = catch World::world_set_transform(world, close, pose_at(0.0, 0.0, -1.5, half_turn)):
+                ok: true
+                error failure: false
+            return 219 if not moved
+            return 220 if not update_report(session, world, emitters, step, &report)
+            close_source: SpatialAudio::Source = catch WorldAudio::emitter_source(emitters, close):
+                value: value
+                error failure: return 221
+            heard_from: SpatialAudio::Listener = WorldAudio::listener(emitters)
+            return 222 if not near(close_source.position.z, -1.5) or not near(close_source.velocity.z, 30.0)
+            return 223 if not near(close_source.forward.z, 1.0)
+            return 224 if SpatialAudio::doppler_ratio(close_source, heard_from) <= 1.0
+            return 225 if SpatialAudio::spatial_gain(close_source, heard_from) <= 0.0
+            distant_source: SpatialAudio::Source = catch WorldAudio::emitter_source(emitters, distant):
+                value: value
+                error failure: return 226
+            return 227 if SpatialAudio::spatial_gain(distant_source, heard_from) != 0.0
+
+            # A hitch longer than the velocity window restarts velocity history.
+            hitched: bool = catch World::world_set_transform(world, close, pose_at(0.0, 0.0, -3.0, half_turn)):
+                ok: true
+                error failure: false
+            return 228 if not hitched
+            return 229 if not update_report(session, world, emitters, 0.5, &report)
+            hitch_source: SpatialAudio::Source = catch WorldAudio::emitter_source(emitters, close):
+                value: value
+                error failure: return 230
+            return 231 if hitch_source.velocity.z != 0.0
+
+            occluded: bool = catch WorldAudio::set_occlusion(emitters, close, 0.5):
+                ok: true
+                error failure: false
+            return 232 if not occluded
+            bad_occlusion: i32 = catch WorldAudio::set_occlusion(emitters, close, quotient(0.0, 0.0)):
+                ok: 0
+                WorldAudio::WorldAudioError.InvalidSettings: 1
+                error failure: 2
+            return 233 if bad_occlusion != 1
+            unknown_occlusion: i32 = catch WorldAudio::set_occlusion(emitters, listener, 0.5):
+                ok: 0
+                WorldAudio::WorldAudioError.EmitterNotFound: 1
+                error failure: 2
+            return 234 if unknown_occlusion != 1
+            return 235 if not update_report(session, world, emitters, step, &report)
+            occluded_source: SpatialAudio::Source = catch WorldAudio::emitter_source(emitters, close):
+                value: value
+                error failure: return 236
+            return 237 if occluded_source.occlusion != 0.5
+
+            # Despawning an entity stops and detaches its voice on the next update.
+            return 238 if voice_count(session) != baseline + 2
+            despawned: bool = catch World::world_despawn(world, distant):
+                ok: true
+                error failure: false
+            return 239 if not despawned
+            return 240 if not update_report(session, world, emitters, step, &report)
+            return 241 if report.detached_despawned != 1 or report.updated != 1
+            return 242 if WorldAudio::emitter_count(emitters) != 1 or voice_count(session) != baseline + 1
+
+            # A voice that ended or was stolen outside WorldAudio detaches too.
+            ended: bool = catch RuntimeServices::audio_stop(session, close_voice):
+                ok: true
+                error failure: false
+            return 243 if not ended
+            return 244 if not update_report(session, world, emitters, step, &report)
+            return 245 if report.detached_finished != 1 or WorldAudio::emitter_count(emitters) != 0
+            0
+
+    public:
+        def run(session: RuntimeServices::Session&) -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 246
+            listener: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 247
+            close: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+                value: value
+                error failure: return 248
+            distant: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: return 249
+            placed_close: bool = catch World::world_set_transform(&world, close,
+                pose_at(0.0, 0.0, -2.0, Geometry::quat_identity())):
+                ok: true
+                error failure: false
+            placed_distant: bool = catch World::world_set_transform(&world, distant,
+                pose_at(0.0, 0.0, -50.0, Geometry::quat_identity())):
+                ok: true
+                error failure: false
+            return 250 if not placed_close or not placed_distant
+            clip: AudioRuntime::ClipHandle = catch RuntimeServices::audio_decode_file(session,
+                "test/fixtures/audio-smoke.wav"):
+                value: value
+                error failure: return 251
+            emitters: mutable WorldAudio::Emitters = WorldAudio::Emitters()
+            listening: bool = catch WorldAudio::listen_from(world, &emitters, listener):
+                ok: true
+                error failure: false
+            return 252 if not listening or not WorldAudio::listener_tracked(emitters)
+
+            rejected: i32 = rejected_attachments(session, &world, &emitters, close, clip)
+            return rejected if rejected != 0
+            moving: i32 = moving_emitters(session, &world, &emitters, listener, close, distant, clip)
+            if moving != 0:
+                _ = catch WorldAudio::detach_all(session, &emitters):
+                    ok: 0
+                    error failure: 1
+                return moving
+
+            # Losing the listener entity keeps its last position with no velocity.
+            spare_voice: AudioRuntime::VoiceHandle = play(session, clip)
+            return 253 if attach_code(session, world, &emitters, close, spare_voice, omni(1.0, 10.0)) != 0
+            listener_gone: bool = catch World::world_despawn(&world, listener):
+                ok: true
+                error failure: false
+            return 254 if not listener_gone
+            report: mutable WorldAudio::UpdateReport = zeroed
+            return 255 if not update_report(session, world, &emitters, 1.0 / 60.0, &report)
+            return 171 if not report.listener_lost or WorldAudio::listener_tracked(emitters)
+            bad_step: i32 = catch WorldAudio::update(session, world, &emitters, 0.0):
+                value: 0
+                WorldAudio::WorldAudioError.InvalidTimeStep: 1
+                error failure: 2
+            return 172 if bad_step != 1
+            nan_step: i32 = catch WorldAudio::update(session, world, &emitters, quotient(0.0, 0.0)):
+                value: 0
+                WorldAudio::WorldAudioError.InvalidTimeStep: 1
+                error failure: 2
+            return 173 if nan_step != 1
+            before_detach: usize = voice_count(session)
+            detached: bool = catch WorldAudio::detach(session, &emitters, close):
+                ok: true
+                error failure: false
+            return 174 if not detached or WorldAudio::emitter_count(emitters) != 0
+            return 175 if voice_count(session) + 1 != before_detach
+            missing: i32 = catch WorldAudio::detach(session, &emitters, close):
+                ok: 0
+                WorldAudio::WorldAudioError.EmitterNotFound: 1
+                error failure: 2
+            return 176 if missing != 1
+            0

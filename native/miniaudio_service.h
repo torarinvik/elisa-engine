@@ -18,6 +18,10 @@ namespace probe::audio {
 
 constexpr uint32_t MAX_CLIPS = 16;
 constexpr uint32_t MAX_VOICES = 32;
+// Doppler pitch is bounded to one octave either way and stepped in Q16.
+constexpr float MIN_PITCH_RATIO = 0.5f;
+constexpr float MAX_PITCH_RATIO = 2.0f;
+constexpr uint32_t PITCH_ONE_Q16 = 1u << 16;
 
 enum class Bus : uint8_t { Music = 0, Sfx = 1, Ui = 2, Count = 3 };
 constexpr uint32_t BUS_COUNT = static_cast<uint32_t>(Bus::Count);
@@ -156,13 +160,15 @@ public:
         if (slot == MAX_VOICES) return {};
         Voice& voice = voices_[slot];
         if (voice.generation == UINT32_MAX) return {};
+        // A reused slot must not inherit the previous voice's spatial state.
+        const uint32_t generation = voice.generation == 0 ? 1 : voice.generation + 1;
+        voice = Voice{};
         voice.clip = clip.slot;
-        voice.cursor = 0;
         voice.looped = looped;
         voice.bus = bus_index(bus);
         voice.gain = gain;
         voice.priority = priority;
-        voice.generation = voice.generation == 0 ? 1 : voice.generation + 1;
+        voice.generation = generation;
         voice.live = true;
         return VoiceHandle{slot, voice.generation};
     }
@@ -245,6 +251,19 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if (!voice_live_unlocked(handle) || occlusion < 0.0f || occlusion > 1.0f) return false;
         voices_[handle.slot].occlusion = occlusion;
+        return true;
+    }
+
+    // Apply a spatial mix computed by Elisa policy: gain in [0, 1] scales the
+    // voice after bus gain, and a Doppler pitch ratio in [0.5, 2] resamples it.
+    bool set_voice_spatial_mix(VoiceHandle handle, float gain, float pitch_ratio) {
+        if (!std::isfinite(gain) || !std::isfinite(pitch_ratio) || gain < 0.0f || gain > 1.0f ||
+            pitch_ratio < MIN_PITCH_RATIO || pitch_ratio > MAX_PITCH_RATIO) return false;
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!voice_live_unlocked(handle)) return false;
+        Voice& voice = voices_[handle.slot];
+        voice.mix_gain = gain;
+        voice.step_q16 = static_cast<uint32_t>(std::lround(pitch_ratio * PITCH_ONE_Q16));
         return true;
     }
 
@@ -346,6 +365,9 @@ private:
         float maximum_distance = 32.0f;
         bool spatialized = false;
         float occlusion = 0.0f;
+        float mix_gain = 1.0f;
+        uint32_t step_q16 = PITCH_ONE_Q16;
+        uint32_t fraction_q16 = 0;
         bool live = false;
     };
 
@@ -426,20 +448,31 @@ private:
                         (voice.maximum_distance - voice.minimum_distance);
                 }
             }
-            const float gain = voice.gain * bus_gains_[voice.bus] * spatial_gain * (1.0f - voice.occlusion);
+            const float gain = voice.gain * bus_gains_[voice.bus] * spatial_gain *
+                (1.0f - voice.occlusion) * voice.mix_gain;
+            const size_t clip_frames = clip.samples.size() / clip.channels;
             for (uint32_t frame = 0; frame < frames; ++frame) {
-                if (voice.cursor >= clip.samples.size() / clip.channels) {
-                    if (!voice.looped) { voice.live = false; break; }
-                    voice.cursor = 0;
+                if (voice.cursor >= clip_frames) {
+                    if (!voice.looped || clip_frames == 0) { voice.live = false; break; }
+                    voice.cursor %= clip_frames;
                 }
+                // Linear interpolation keeps unit pitch bit-identical: with a zero
+                // fraction the next frame contributes nothing.
+                const size_t next = voice.cursor + 1 < clip_frames ? voice.cursor + 1
+                    : (voice.looped ? 0 : voice.cursor);
+                const float blend = static_cast<float>(voice.fraction_q16) / PITCH_ONE_Q16;
                 for (uint32_t channel = 0; channel < channels_; ++channel) {
                     const uint32_t source_channel = std::min(channel, clip.channels - 1);
+                    const float current = clip.samples[voice.cursor * clip.channels + source_channel];
+                    const float following = clip.samples[next * clip.channels + source_channel];
                     const int mixed = output[frame * channels_ + channel] + static_cast<int>(
-                        clip.samples[voice.cursor * clip.channels + source_channel] * gain);
+                        (current + (following - current) * blend) * gain);
                     output[frame * channels_ + channel] = static_cast<int16_t>(
                         std::clamp(mixed, -32768, 32767));
                 }
-                ++voice.cursor;
+                const uint32_t advanced = voice.fraction_q16 + voice.step_q16;
+                voice.cursor += advanced >> 16;
+                voice.fraction_q16 = advanced & 0xFFFFu;
             }
         }
     }

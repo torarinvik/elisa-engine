@@ -1,5 +1,75 @@
 include "../src/audio/spatial.elisa"
 
+def quotient(numerator: f32, denominator: f32) -> f32:
+    numerator / denominator
+
+def attach_error(scene: mutable SpatialAudio::Scene&, source: SpatialAudio::Source) -> i32:
+    catch SpatialAudio::source_attach(scene, source):
+        ok: 0
+        SpatialAudio::SpatialError.InvalidValue: 1
+        SpatialAudio::SpatialError.InvalidRange: 2
+        SpatialAudio::SpatialError.InvalidCone: 3
+        SpatialAudio::SpatialError.InvalidOcclusion: 4
+        error failure: 5
+
+const module Field:
+    POSITION_X: i32 = 0
+    VELOCITY_Z: i32 = 1
+    MINIMUM: i32 = 2
+    MAXIMUM: i32 = 3
+    CONE_GAIN: i32 = 4
+    OCCLUSION: i32 = 5
+    LIVE: i32 = 6
+
+# Source fields are immutable; rebuild the value with one field replaced.
+def variant(source: SpatialAudio::Source, field: i32, value: f32) -> SpatialAudio::Source:
+    SpatialAudio::Source{
+        id: source.id,
+        position: Geometry::Vec3{x: value, y: source.position.y, z: source.position.z} if field == Field::POSITION_X else source.position,
+        velocity: Geometry::Vec3{x: source.velocity.x, y: source.velocity.y, z: value} if field == Field::VELOCITY_Z else source.velocity,
+        forward: source.forward,
+        minimum_distance: value if field == Field::MINIMUM else source.minimum_distance,
+        maximum_distance: value if field == Field::MAXIMUM else source.maximum_distance,
+        inner_cone_cos: source.inner_cone_cos,
+        outer_cone_cos: source.outer_cone_cos,
+        outer_cone_gain: value if field == Field::CONE_GAIN else source.outer_cone_gain,
+        occlusion: value if field == Field::OCCLUSION else source.occlusion,
+        live: false if field == Field::LIVE else source.live,
+    }
+
+# NaN and infinities must not pass the ordered range checks into gain math,
+# and a caller-supplied `live: false` must not strand capacity.
+def adversarial(source: SpatialAudio::Source) -> i32:
+    nan: f32 = quotient(0.0, 0.0)
+    infinity: f32 = quotient(1.0, 0.0)
+    scene: mutable SpatialAudio::Scene = SpatialAudio::Scene()
+    return 20 if attach_error(&scene, variant(source, Field::POSITION_X, nan)) != 1
+    return 21 if attach_error(&scene, variant(source, Field::VELOCITY_Z, infinity)) != 1
+    return 22 if attach_error(&scene, variant(source, Field::MINIMUM, nan)) != 2
+    return 23 if attach_error(&scene, variant(source, Field::MAXIMUM, infinity)) != 2
+    return 24 if attach_error(&scene, variant(source, Field::CONE_GAIN, nan)) != 3
+    return 25 if attach_error(&scene, variant(source, Field::OCCLUSION, nan)) != 4
+    return 26 if SpatialAudio::source_count(&scene) != 0
+    return 27 if attach_error(&scene, variant(source, Field::LIVE, 0.0)) != 0
+    stored: SpatialAudio::Source = catch SpatialAudio::source_read(&scene, source.id):
+        value: value
+        error failure: return 28
+    return 29 if not stored.live
+    update_status: i32 = catch SpatialAudio::source_update(&scene, variant(source, Field::OCCLUSION, nan)):
+        ok: 0
+        SpatialAudio::SpatialError.InvalidOcclusion: 1
+        error failure: 2
+    return 30 if update_status != 1
+    unchanged: SpatialAudio::Source = catch SpatialAudio::source_read(&scene, source.id):
+        value: value
+        error failure: return 31
+    return 32 if unchanged.occlusion != source.occlusion
+    detached: i32 = catch SpatialAudio::source_detach(&scene, source.id):
+        ok: 0
+        error failure: 1
+    return 33 if detached != 0 or SpatialAudio::source_count(&scene) != 0
+    0
+
 def main() -> i32:
     listener: SpatialAudio::Listener = SpatialAudio::Listener{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
@@ -37,4 +107,4 @@ def main() -> i32:
         ok: 0
         error failure: 1
     return 7 if detached != 0 or SpatialAudio::source_count(&scene) != 0
-    0
+    adversarial(source)
