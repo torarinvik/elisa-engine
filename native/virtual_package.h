@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 #include <zstd.h>
 
@@ -30,7 +31,7 @@ inline bool safe_package_path(const std::string& value) {
     while (start < value.size()) {
         const size_t end = value.find('/', start);
         const std::string component = value.substr(start, end == std::string::npos ? end : end - start);
-        if (component.empty() || component == "..") {
+        if (component.empty() || component == "." || component == "..") {
             return false;
         }
         if (end == std::string::npos) break;
@@ -46,6 +47,21 @@ struct PackageResolution {
     bool found = false;
     std::string error;
 };
+
+inline bool package_path_within_root(const std::filesystem::path& root,
+    const std::filesystem::path& candidate) {
+    std::error_code error;
+    const std::filesystem::path canonical_root = std::filesystem::weakly_canonical(root, error);
+    if (error) return false;
+    const std::filesystem::path canonical_candidate = std::filesystem::weakly_canonical(candidate, error);
+    if (error) return false;
+    auto root_part = canonical_root.begin();
+    auto candidate_part = canonical_candidate.begin();
+    for (; root_part != canonical_root.end(); ++root_part, ++candidate_part) {
+        if (candidate_part == canonical_candidate.end() || *root_part != *candidate_part) return false;
+    }
+    return candidate_part != canonical_candidate.end();
+}
 
 inline PackageResolution resolve_package_path(const std::filesystem::path& base_root,
     const std::vector<std::filesystem::path>& override_roots, const std::string& logical_name,
@@ -65,6 +81,10 @@ inline PackageResolution resolve_package_path(const std::filesystem::path& base_
     for (const auto& root : override_roots) {
         const std::filesystem::path path = candidate(root);
         if (std::filesystem::is_regular_file(path)) {
+            if (!package_path_within_root(root, path)) {
+                result.error = "package resolves outside mount root";
+                return result;
+            }
             result.path = path.string();
             result.generation = generation;
             result.override_used = true;
@@ -74,6 +94,10 @@ inline PackageResolution resolve_package_path(const std::filesystem::path& base_
     }
     const std::filesystem::path path = candidate(base_root);
     if (std::filesystem::is_regular_file(path)) {
+        if (!package_path_within_root(base_root, path)) {
+            result.error = "package resolves outside mount root";
+            return result;
+        }
         result.path = path.string();
         result.generation = generation;
         result.found = true;
@@ -137,6 +161,17 @@ struct BinaryPackageIndex {
     bool valid = false;
     std::string error;
 };
+
+inline uint32_t package_crc32(const uint8_t* bytes, size_t size) {
+    uint32_t checksum = 0xFFFFFFFFu;
+    for (size_t index = 0; index < size; ++index) {
+        checksum ^= bytes[index];
+        for (uint32_t bit = 0; bit < 8; ++bit) {
+            checksum = (checksum >> 1) ^ (0xEDB88320u & (0u - (checksum & 1u)));
+        }
+    }
+    return ~checksum;
+}
 
 inline uint16_t package_u16(const std::vector<uint8_t>& bytes, size_t offset) {
     return static_cast<uint16_t>(bytes[offset]) | static_cast<uint16_t>(bytes[offset + 1] << 8);
@@ -234,12 +269,15 @@ inline bool read_binary_package_section(const std::string& path, const BinaryPac
     if (section_it->compression == 0) {
         if (section_it->size != section_it->unpacked_size) { error = "raw section size mismatch"; return false; }
         output = std::move(compressed);
-        return true;
+    } else {
+        output.resize(static_cast<size_t>(section_it->unpacked_size));
+        const size_t result = ZSTD_decompress(output.data(), output.size(), compressed.data(), compressed.size());
+        if (ZSTD_isError(result) || result != output.size()) {
+            output.clear(); error = "zstd section decompression failed"; return false;
+        }
     }
-    output.resize(static_cast<size_t>(section_it->unpacked_size));
-    const size_t result = ZSTD_decompress(output.data(), output.size(), compressed.data(), compressed.size());
-    if (ZSTD_isError(result) || result != output.size()) {
-        output.clear(); error = "zstd section decompression failed"; return false;
+    if (package_crc32(output.data(), output.size()) != section_it->checksum) {
+        output.clear(); error = "binary section checksum mismatch"; return false;
     }
     return true;
 }
