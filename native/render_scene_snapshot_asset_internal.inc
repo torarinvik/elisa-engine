@@ -119,6 +119,45 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
     return ELISA_RENDER_SCENE_OK;
 }
 
+// Registers image `section` of the bundle at `canonical_path` as texture
+// `high:low`, or confirms the same registration. A nonnull `checksum` is the
+// section checksum the caller expects; a bundle rewritten since then fails
+// to load. Callers hold the service mutex on the owner thread, outside a
+// snapshot transaction.
+int32_t register_snapshot_bundle_texture_locked(RenderSceneService& state, uint64_t high, uint64_t low,
+        const std::string& requested_path, const std::filesystem::path& canonical_path,
+        const std::string& section, const uint32_t* checksum) {
+    const size_t existing = snapshot_texture_asset_slot(state, high, low);
+    if (existing < MAX_SNAPSHOT_TEXTURE_ASSETS) {
+        const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[existing];
+        return asset.canonical_path == canonical_path && asset.section == section
+            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    const int32_t claim = claim_snapshot_asset_id(state, SnapshotAssetKind::Texture, high, low);
+    if (claim != ELISA_RENDER_SCENE_OK) return claim;
+    const bool full = std::none_of(state.snapshot_texture_assets.begin(), state.snapshot_texture_assets.end(),
+        [](const SnapshotTextureAssetSlot& asset) { return !asset.live; });
+    if (full) return ELISA_RENDER_SCENE_CAPACITY;
+    elisa::assets::BundleTexture texture;
+    std::string load_error;
+    try {
+        if (!elisa::assets::verify_bundle_dependencies(canonical_path, load_error) ||
+            !elisa::assets::read_bundle_texture(canonical_path, section.c_str(), texture, load_error)) {
+            std::fprintf(stderr, "Elisa bundle texture load failed: %s\n", load_error.c_str());
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    if (checksum != nullptr && texture.checksum != *checksum) {
+        std::fprintf(stderr, "Elisa bundle texture load failed: %s changed since its mesh loaded\n",
+            canonical_path.string().c_str());
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    return install_snapshot_bundle_texture_asset(state, high, low, requested_path,
+        canonical_path, section, std::move(texture));
+}
+
 // Runs on the worker. It resolves the path, checks the dependency closure and
 // reads the mesh or texture section, all off the owner thread.
 SnapshotAssetLoad load_snapshot_asset(elisa::assets::SerialJobWorker<SnapshotAssetLoad>& worker,

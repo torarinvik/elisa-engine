@@ -233,7 +233,8 @@ sign only changes lighting, and the emissive color still dominates.
 - **Mirrored frames.** The render service shows Elisa's right-handed world
   mirrored, as described above. That predates this slice.
 - **No textures.** Material textures and `MASK` still fail in the cooker, as
-  in [`cooked-slot-materials.md`](cooked-slot-materials.md).
+  in [`cooked-slot-materials.md`](cooked-slot-materials.md). (Since
+  superseded: see [`cooked-material-textures.md`](cooked-material-textures.md).)
 
 ## Validation on 2026-09-21
 

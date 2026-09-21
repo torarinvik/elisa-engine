@@ -63,6 +63,8 @@ struct SnapshotMaterialAssetSlot {
     std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low{};
     wi::ecs::Entity material_entity = wi::ecs::INVALID_ENTITY;
     bool double_sided = false;
+    // The surface texture's red channel is ambient occlusion.
+    bool occlusion = false;
     bool live = false;
 };
 

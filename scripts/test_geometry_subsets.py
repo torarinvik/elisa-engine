@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Check cooked-geometry subset and slot material records with the production
-C++ loader.
+"""Check cooked-geometry subset, slot material and slot texture records with
+the production C++ loader.
 
-The cooked multi-material panel, the baked node hierarchy panel, the legacy
-maze tile, and synthetic packages must load with exactly the expected subsets
-and slot materials. Packages whose subsets leave a gap, overlap, split a
-triangle, name a missing slot, exceed a bound, or appear on skinned geometry
-must be rejected for that reason, as must slot materials that are malformed,
-miscounted, or out of range. The loader runs under AddressSanitizer and
-UndefinedBehaviorSanitizer.
+The cooked multi-material panel, the baked node hierarchy panel, the bundled
+textured panel, the legacy maze tile, and synthetic packages must load with
+exactly the expected subsets, slot materials, and image sections. Packages
+whose subsets leave a gap, overlap, split a triangle, name a missing slot,
+exceed a bound, or appear on skinned geometry must be rejected for that
+reason, as must slot materials that are malformed, miscounted, or out of
+range, and slot textures that are malformed, name a bad or missing section,
+leave an image unsampled, or sit outside a bundle. The loader runs under
+AddressSanitizer and UndefinedBehaviorSanitizer.
 """
 
 from __future__ import annotations
@@ -22,11 +24,13 @@ import struct
 import subprocess
 import sys
 import tempfile
+import zlib
 
 import cook_assets
 import cook_gltf_geometry
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
+import gltf_texture_self_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,12 +40,26 @@ MISSING_SLOT = "subset names a missing material slot"
 SKINNED = "skinned cooked geometry cannot declare material subsets"
 MATERIAL_RECORDS = "invalid cooked slot material records"
 MATERIAL_RANGE = "cooked slot material is out of range"
+TEXTURE_RECORDS = "invalid cooked slot texture records"
+SECTION_NAME = "invalid cooked texture section name"
+MISSING_IMAGE = "cooked slot texture names a missing image"
+UNSAMPLED = "cooked texture image is never sampled"
+NEEDS_TEXTURE = "cooked slot material lacks the texture it needs"
+NEEDS_BUNDLE = "cooked slot textures need an ELPK bundle"
+MISSING_SECTION = "cooked slot texture section is missing from its bundle"
 # Base color, metallic, roughness, emissive, alpha cutoff, alpha mode, flags.
 GLASS = (0.0, 0.0, 0.08, 0.5, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 2, 0)
 PAINT = (0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, 0, 1)
 ZEROS = (0.0,) * 10 + (0, 0)
 ONES = (1.0,) * 10 + (2, 1)
 PANEL_MATERIALS = [(0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 1), PAINT]
+# An alpha-masked material, and a double-sided one with occlusion.
+MASKED = (0.0, 0.5, 0.0, 1.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.25, 1, 0)
+SURFACED = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 3)
+# The textured panel's cutout, painted, glow, and backdrop slots, each with
+# its four image references.
+TEXTURED_MATERIALS = [struct.unpack_from("<10f2I", gltf_texture_self_test.SLOT_MATERIALS, slot * 48) +
+    struct.unpack_from("<4I", gltf_texture_self_test.SLOT_TEXTURES, slot * 16) for slot in range(4)]
 # The hierarchy panel's single-sided red, green, and blue emissive strips.
 HIERARCHY_MATERIALS = [(0.08, 0.0, 0.0, 1.0, 0.0, 0.9, 1.0, 0.0, 0.0, 0.5, 0, 0),
     (0.0, 0.08, 0.0, 1.0, 0.0, 0.9, 0.0, 1.0, 0.0, 0.5, 0, 0),
@@ -58,9 +76,11 @@ def encoded(format_string: str, values) -> str:
 
 def strip_package(triangles: int, subsets=None, slots: int | None = None,
         record_count: int | None = None, stride: str = "12", omit: tuple[str, ...] = (),
-        skinned: bool = False, materials=None, material_stride: str = "48") -> bytes:
-    """A row of `triangles` separate triangles with optional subset and slot
-    material records."""
+        skinned: bool = False, materials=None, material_stride: str = "48", textures=None,
+        texture_count: int | None = None, texture_stride: str = "16") -> bytes:
+    """A row of `triangles` separate triangles with optional subset, slot
+    material, and slot texture records. `textures` is (section names, one
+    four-reference record per slot)."""
     vertices = triangles * 3
     positions = []
     for triangle in range(triangles):
@@ -84,6 +104,17 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
             "slot_material_stride": f"slot_material_stride={material_stride}",
             "slot_materials_b64": "slot_materials_b64=" + base64.b64encode(
                 b"".join(struct.pack("<10f2I", *record) for record in materials)).decode("ascii"),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
+    if textures is not None:
+        names, references = textures
+        records = {
+            "texture_count": f"texture_count={len(names) if texture_count is None else texture_count}",
+            "texture_names_b64": "texture_names_b64=" + base64.b64encode(b"".join(
+                struct.pack("<I", len(name)) + name.encode("ascii") for name in names)).decode("ascii"),
+            "slot_texture_stride": f"slot_texture_stride={texture_stride}",
+            "slot_textures_b64": "slot_textures_b64=" + encoded(f"<{len(references) * 4}I",
+                [value for record in references for value in record]),
         }
         lines += [line for key, line in records.items() if key not in omit]
     lines += [
@@ -127,6 +158,30 @@ def cases(directory: Path) -> list[tuple]:
     sixteen = [(index * 3, 3, index) for index in range(16)]
     seventeen = [(index * 3, 3, index % 16) for index in range(17)]
     two = [(0, 3, 0), (3, 3, 1)]
+    # The textured panel may only load from a bundle that holds its images.
+    textured_path, _ = cook_gltf_geometry.cook_geometry_package(gltf_texture_self_test.SOURCE,
+        gltf_texture_self_test.ASSET_PATH, directory / "textured.pkg", allow_textures=True)
+    textured = textured_path.read_bytes()
+    images = dict(gltf_texture_self_test.SECTIONS)
+    write_geometry_package(directory / "textured.elpk", textured, images)
+    write_geometry_package(directory / "textured-missing.elpk", textured,
+        {name: data for name, data in images.items() if name != "image_2"})
+    textured_sections = [(name, zlib.crc32(data)) for name, data in gltf_texture_self_test.SECTIONS]
+    # Sections listed out of bundle order, beside a section nothing samples.
+    listed = {"surface_1": images["image_2"], "albedo": images["image_3"]}
+    write_geometry_package(directory / "listed.elpk", strip_package(2, two, 2, materials=[MASKED, SURFACED],
+        textures=(list(listed), [(2, 0, 0, 0), (2, 0, 1, 0)])), {**listed, "spare": images["image_1"]})
+    listed_materials = [MASKED + (2, 0, 0, 0), SURFACED + (2, 0, 1, 0)]
+    listed_sections = [(name, zlib.crc32(data)) for name, data in listed.items()]
+    plain = [GLASS, PAINT]
+
+    def textured_strip(names, references, **fields):
+        return strip_package(2, two, 2, materials=fields.pop("materials", plain),
+            textures=(names, references), **fields)
+
+    def named(name):
+        return textured_strip([name], [(1, 0, 0, 0), (0, 0, 0, 0)])
+
     return [
         ("accept", "panel.pkg", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
@@ -188,11 +243,52 @@ def cases(directory: Path) -> list[tuple]:
         ("reject", "material-cutoff.pkg", strip_package(2, two, 2,
             materials=[GLASS, with_field(PAINT, 9, 1.5)]), MATERIAL_RANGE),
         ("reject", "material-mask.pkg", strip_package(2, two, 2,
-            materials=[with_field(GLASS, 10, 1), PAINT]), MATERIAL_RANGE),
+            materials=[with_field(GLASS, 10, 1), PAINT]), NEEDS_TEXTURE),
         ("reject", "material-mode.pkg", strip_package(2, two, 2,
             materials=[with_field(GLASS, 10, 3), PAINT]), MATERIAL_RANGE),
         ("reject", "material-flags.pkg", strip_package(2, two, 2,
-            materials=[GLASS, with_field(PAINT, 11, 3)]), MATERIAL_RANGE),
+            materials=[GLASS, with_field(PAINT, 11, 4)]), MATERIAL_RANGE),
+        ("reject", "material-occlusion.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 11, 2)]), NEEDS_TEXTURE),
+        ("accept", "textured.elpk", None, (24, 4, gltf_texture_self_test.SUBSETS, TEXTURED_MATERIALS,
+            textured_sections)),
+        ("accept", "listed.elpk", None, (6, 2, two, listed_materials, listed_sections)),
+        ("reject", "textured.pkg", None, NEEDS_BUNDLE),
+        ("reject", "textured-missing.elpk", None, MISSING_SECTION),
+        ("reject", "texture-count-zero.pkg", textured_strip([], [(0,) * 4] * 2), TEXTURE_RECORDS),
+        ("reject", "texture-count-mismatch.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            texture_count=2), TEXTURE_RECORDS),
+        ("reject", "texture-too-many.pkg", textured_strip([f"image_{index}" for index in range(65)],
+            [(1, 2, 3, 4)] * 2), TEXTURE_RECORDS),
+        ("reject", "texture-stride.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2, texture_stride="12"),
+            TEXTURE_RECORDS),
+        ("reject", "texture-no-count.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("texture_count",)), TEXTURE_RECORDS),
+        ("reject", "texture-no-names.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("texture_names_b64",)), TEXTURE_RECORDS),
+        ("reject", "texture-no-stride.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("slot_texture_stride",)), TEXTURE_RECORDS),
+        ("reject", "texture-no-records.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("slot_textures_b64",)), TEXTURE_RECORDS),
+        ("reject", "texture-short.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)]), TEXTURE_RECORDS),
+        ("reject", "texture-long.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 3), TEXTURE_RECORDS),
+        ("reject", "texture-without-materials.pkg", strip_package(2, two, 2,
+            textures=(["albedo"], [(1, 0, 0, 0)] * 2)), TEXTURE_RECORDS),
+        ("reject", "texture-duplicate.pkg", textured_strip(["albedo", "albedo"], [(1, 0, 0, 0), (2, 0, 0, 0)]),
+            SECTION_NAME),
+        ("reject", "texture-mesh.pkg", named("mesh"), SECTION_NAME),
+        ("reject", "texture-manifest.pkg", named("manifest"), SECTION_NAME),
+        ("reject", "texture-empty-name.pkg", named(""), SECTION_NAME),
+        ("reject", "texture-uppercase.pkg", named("Albedo"), SECTION_NAME),
+        ("reject", "texture-path.pkg", named("../albedo"), SECTION_NAME),
+        ("reject", "texture-nul.pkg", named("albedo\0x"), SECTION_NAME),
+        ("reject", "texture-long-name.pkg", named("a" * 16), SECTION_NAME),
+        ("reject", "texture-beyond.pkg", textured_strip(["albedo"], [(1, 0, 0, 0), (0, 0, 2, 0)]), MISSING_IMAGE),
+        ("reject", "texture-unsampled.pkg", textured_strip(["albedo", "spare"], [(1, 0, 0, 0)] * 2), UNSAMPLED),
+        ("reject", "mask-without-base.pkg", textured_strip(["normal"], [(0, 1, 0, 0), (0, 0, 0, 0)],
+            materials=[MASKED, PAINT]), NEEDS_TEXTURE),
+        ("reject", "occlusion-without-surface.pkg", textured_strip(["albedo"], [(0, 0, 0, 0), (1, 0, 0, 0)],
+            materials=[GLASS, SURFACED]), NEEDS_TEXTURE),
     ]
 
 
@@ -205,12 +301,17 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     fields = [verdict, str(directory / name)]
     if verdict == "reject":
         return "\t".join(fields + [expectation])
-    index_count, slots, subsets, *materials = expectation
+    index_count, slots, subsets, *records = expectation
     fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
-    if materials:
+    if records:
         fields.append("materials")
-        for record in materials[0]:
+        for record in records[0]:
+            record += (0,) * (16 - len(record))
             fields += [float32_text(value) for value in record[:10]] + [str(value) for value in record[10:]]
+    if len(records) > 1:
+        fields.append("sections")
+        for name, checksum in records[1]:
+            fields += [name, str(checksum)]
     return "\t".join(fields)
 
 

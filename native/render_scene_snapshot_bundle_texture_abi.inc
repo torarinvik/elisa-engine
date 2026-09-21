@@ -21,33 +21,5 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
     } catch (...) {
         return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
     }
-    const size_t existing = snapshot_texture_asset_slot(state, high, low);
-    if (existing < MAX_SNAPSHOT_TEXTURE_ASSETS) {
-        const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[existing];
-        return asset.canonical_path == resolved_path && asset.section == section
-            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    const int32_t claim = claim_snapshot_asset_id(state, SnapshotAssetKind::Texture, high, low);
-    if (claim != ELISA_RENDER_SCENE_OK) return claim;
-    size_t free_slot = MAX_SNAPSHOT_TEXTURE_ASSETS;
-    for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
-        if (!state.snapshot_texture_assets[index].live) {
-            free_slot = index;
-            break;
-        }
-    }
-    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
-    elisa::assets::BundleTexture texture;
-    std::string load_error;
-    try {
-        if (!elisa::assets::verify_bundle_dependencies(resolved_path, load_error) ||
-            !elisa::assets::read_bundle_texture(resolved_path, section, texture, load_error)) {
-            std::fprintf(stderr, "Elisa bundle texture load failed: %s\n", load_error.c_str());
-            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-        }
-    } catch (...) {
-        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    }
-    return install_snapshot_bundle_texture_asset(state, high, low, bundle_path,
-        std::move(resolved_path), section, std::move(texture));
+    return register_snapshot_bundle_texture_locked(state, high, low, bundle_path, resolved_path, section, nullptr);
 }

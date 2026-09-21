@@ -78,6 +78,13 @@ extend RenderScene:
             slot: u32, high: u64, low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_texture_count(mesh_high: u64, mesh_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_mesh_texture(mesh_high: u64, mesh_low: u64,
+            index: u32, high: u64, low: u64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_register_snapshot_mesh_material_set(mesh_high: u64, mesh_low: u64,
             set_high: u64, set_low: u64, count: u32) -> i32
 
@@ -225,15 +232,35 @@ extend RenderScene:
             try check_status(elisa_render_scene_v1_unregister_snapshot_material_set(asset.high, asset.low))
 
         # A cooked mesh carries the glTF factors authored for its material
-        # slots: base color, metallic, roughness, emissive, opaque or blended
-        # alpha, and sidedness. The count is 0 when its source declared no
-        # materials, so the game supplies each slot's material.
+        # slots: base color, metallic, roughness, emissive, opaque, masked or
+        # blended alpha, sidedness, and the bundle images they sample. The
+        # count is 0 when its source declared no materials, so the game
+        # supplies each slot's material.
         def snapshot_mesh_material_count(mesh: Assets::AssetId) -> u32 error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
             count: i32 = elisa_render_scene_v1_snapshot_mesh_material_count(mesh.high, mesh.low)
             if count < 0:
                 try check_status(count)
             count.u32()
+
+        # The number of images a cooked mesh's slot materials sample.
+        def snapshot_mesh_texture_count(mesh: Assets::AssetId) -> u32 error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            count: i32 = elisa_render_scene_v1_snapshot_mesh_texture_count(mesh.high, mesh.low)
+            if count < 0:
+                try check_status(count)
+            count.u32()
+
+        # Registers image `index` of a resident cooked mesh as bundle texture
+        # `texture`, read from the mesh's own bundle, with the usual no-op and
+        # conflict rules. A slot material that samples an image needs it
+        # registered first, under exactly one ID.
+        def register_snapshot_mesh_texture(mesh: Assets::AssetId, index: u32,
+            texture: Assets::AssetId) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(texture)
+            try check_status(elisa_render_scene_v1_register_snapshot_mesh_texture(
+                mesh.high, mesh.low, index, texture.high, texture.low))
 
         # Registers the material cooked for one slot of a resident mesh as an
         # ordinary material, with the usual no-op and conflict rules.
