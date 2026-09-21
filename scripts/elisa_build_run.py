@@ -238,8 +238,12 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
             if source.suffix.lower() != ".gltf":
                 raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer requires a .gltf source")
             cooker = ENGINE_ROOT / "scripts/cook_gltf_asset.py"
+        elif importer == "glb":
+            if source.suffix.lower() != ".glb":
+                raise BuildConfigurationError(f"asset_cooks[{index}] glb importer requires a .glb source")
+            cooker = ENGINE_ROOT / "scripts/cook_glb_asset.py"
         else:
-            raise BuildConfigurationError(f"asset_cooks[{index}].importer must be 'fbx' or 'gltf'")
+            raise BuildConfigurationError(f"asset_cooks[{index}].importer must be 'fbx', 'gltf', or 'glb'")
         asset_path = declaration.get("asset_path")
         if not isinstance(asset_path, str) or not asset_path:
             raise BuildConfigurationError(f"asset_cooks[{index}].asset_path must be a non-empty package identity")
@@ -252,9 +256,27 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
         if max_triangles is not None and (isinstance(max_triangles, bool) or
             not isinstance(max_triangles, int) or not 1 <= max_triangles <= 1000000):
             raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
-        if importer == "gltf" and max_triangles is not None:
-            raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer does not accept max_triangles")
+        if importer in ("gltf", "glb") and max_triangles is not None:
+            raise BuildConfigurationError(f"asset_cooks[{index}] {importer} importer does not accept max_triangles")
         textures = declared_textures(project, declaration, index, importer, output)
+        animation_source_value = declaration.get("animation_source")
+        animation_source = None
+        if animation_source_value is not None:
+            if importer != "glb":
+                raise BuildConfigurationError(f"asset_cooks[{index}].animation_source requires the glb importer")
+            animation_source = declared_project_path(project, animation_source_value,
+                f"asset_cooks[{index}].animation_source", must_exist=True)
+            if animation_source.suffix.lower() != ".fbx":
+                raise BuildConfigurationError(f"asset_cooks[{index}].animation_source must be an .fbx source")
+        texture_output_value = declaration.get("texture_output")
+        texture_output = None
+        if texture_output_value is not None:
+            if importer != "glb":
+                raise BuildConfigurationError(f"asset_cooks[{index}].texture_output requires the glb importer")
+            texture_output = declared_project_path(project, texture_output_value,
+                f"asset_cooks[{index}].texture_output", must_exist=False)
+            if texture_output in (source, output):
+                raise BuildConfigurationError(f"asset_cooks[{index}].texture_output cannot overwrite its source or package")
         print(f"Cooking project asset: {source.relative_to(project)} -> {output.relative_to(project)}", flush=True)
         command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
             "--output", str(output)]
@@ -262,6 +284,10 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
             command.extend(["--max-triangles", str(max_triangles)])
         for section, texture in textures:
             command.extend(["--texture", f"{section}={texture}"])
+        if animation_source is not None:
+            command.extend(["--animation-source", str(animation_source)])
+        if texture_output is not None:
+            command.extend(["--texture-output", str(texture_output)])
         status = run_command(command, cwd=project)
         if status != 0:
             return status
