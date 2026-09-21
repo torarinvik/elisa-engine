@@ -16,6 +16,7 @@ module MazeVisualAssets:
             OPEN_DOOR_MATERIAL: u64 = 6
             GOAL_MATERIAL: u64 = 7
             HAZARD_MATERIAL: u64 = 8
+            WALL_ALBEDO_TEXTURE: u64 = 9
 
         def asset_id(low: u64) -> Assets::AssetId:
             Assets::AssetId{high: Identity::ASSET_NAMESPACE, low: low}
@@ -62,6 +63,10 @@ module MazeVisualAssets:
         def hazard_material_id() -> Assets::AssetId:
             asset_id(Identity::HAZARD_MATERIAL)
 
+        # The brick base-color image cooked into the tile bundle.
+        def wall_albedo_texture_id() -> Assets::AssetId:
+            asset_id(Identity::WALL_ALBEDO_TEXTURE)
+
         def tile_visual(material: Assets::AssetId) -> Assets::VisualAsset:
             Assets::VisualAsset{
                 mesh: tile_mesh_id(),
@@ -80,7 +85,9 @@ module MazeVisualAssets:
             }
 
         def wall_material() -> Material::Material:
-            pbr_material(0.19, 0.25, 0.32, 0.0, 0.82)
+            material: mutable Material::Material = pbr_material(0.19, 0.25, 0.32, 0.0, 0.82)
+            material.base_color <- wall_albedo_texture_id()
+            material
 
         def player_material() -> Material::Material:
             pbr_material(0.12, 0.38, 0.92, 0.0, 0.48)

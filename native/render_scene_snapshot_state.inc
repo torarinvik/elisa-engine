@@ -1,6 +1,7 @@
 constexpr size_t MAX_SNAPSHOT_MESH_ASSETS = 32;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_ASSETS = 64;
 constexpr size_t MAX_SNAPSHOT_TEXTURE_ASSETS = 128;
+constexpr size_t MAX_SNAPSHOT_BUNDLE_TEXTURE_BYTES = 256u * 1024u * 1024u;
 constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = 4;
 constexpr size_t MAX_SNAPSHOT_SHARED_MESHES = MAX_INSTANCES * 2;
 constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
@@ -63,6 +64,12 @@ struct SnapshotTextureAssetSlot {
     uint64_t high = 0;
     uint64_t low = 0;
     std::filesystem::path canonical_path;
+    // A bundle-backed texture keeps its CRC-checked encoded image and a
+    // content-keyed resource stem; the section is empty for a loose file.
+    std::string section;
+    std::string resource_stem;
+    std::vector<uint8_t> encoded;
+    const char* extension = nullptr;
     bool live = false;
 };
 

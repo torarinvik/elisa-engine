@@ -239,6 +239,42 @@ class BuildRunCliTests(unittest.TestCase):
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), {"asset_cooks": [declaration]})
 
+    def test_declared_gltf_textures_become_bundle_sections(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa glTF textures ") as temporary_directory:
+            project = Path(temporary_directory) / "Maze project"
+            (project / "assets").mkdir(parents=True)
+            (project / "assets" / "tile.gltf").write_text("{}", encoding="utf-8")
+            (project / "assets" / "wall.png").write_bytes(b"png")
+            (project / "assets" / "floor.jpg").write_bytes(b"jpg")
+            declaration = {
+                "importer": "gltf",
+                "source": "assets/tile.gltf",
+                "asset_path": "assets/tile.gltf",
+                "output": "assets/tile.elpk",
+                "textures": {"wall": "assets/wall.png", "floor": "assets/floor.jpg"},
+            }
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [declaration]}), 0)
+            command = run.call_args.args[0]
+            textures = [command[index + 1] for index, value in enumerate(command) if value == "--texture"]
+            self.assertEqual(textures, [
+                f"floor={(project / 'assets/floor.jpg').resolve()}",
+                f"wall={(project / 'assets/wall.png').resolve()}",
+            ])
+            rejected = [
+                {"textures": {"Wall": "assets/wall.png"}},
+                {"textures": {"mesh": "assets/wall.png"}},
+                {"textures": {"wall": "../wall.png"}},
+                {"textures": {"wall": "assets/missing.png"}},
+                {"textures": ["assets/wall.png"]},
+                {"output": "assets/tile.pkg"},
+            ]
+            for change in rejected:
+                with self.subTest(change=change), self.assertRaises(runner.BuildConfigurationError):
+                    runner.cook_declared_assets(project.resolve(), {"asset_cooks": [{**declaration, **change}]})
+
     def test_game_owned_exports_are_rejected_before_native_link(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa ABI audit ") as temporary_directory:
             root = Path(temporary_directory)

@@ -392,7 +392,8 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_texture_asset(
     }
     const size_t existing = snapshot_texture_asset_slot(state, high, low);
     if (existing < MAX_SNAPSHOT_TEXTURE_ASSETS) {
-        return state.snapshot_texture_assets[existing].canonical_path == resolved_path
+        const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[existing];
+        return asset.canonical_path == resolved_path && asset.section.empty()
             ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     size_t free_slot = MAX_SNAPSHOT_TEXTURE_ASSETS;
@@ -427,6 +428,7 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint6
             }
         }
     }
+    state.snapshot_bundle_texture_bytes -= state.snapshot_texture_assets[slot].encoded.size();
     state.snapshot_texture_assets[slot] = SnapshotTextureAssetSlot{};
     return ELISA_RENDER_SCENE_OK;
 }

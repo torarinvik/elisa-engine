@@ -86,20 +86,49 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_instance_tint(int64_t ren
     return 0;
 }
 
-extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture(
+namespace {
+
+// Returns the live texture in one slot of a registered snapshot material.
+const wi::graphics::Texture* snapshot_material_texture(RenderSceneService& state,
     uint64_t material_high, uint64_t material_low, int32_t slot_code) {
-    if (!elisa::rendering::textures::valid_slot(slot_code)) return 0;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    if (!elisa::rendering::textures::valid_slot(slot_code)) return nullptr;
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return nullptr;
     const size_t slot = snapshot_material_asset_slot(state, material_high, material_low);
-    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return nullptr;
     const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(
         state.snapshot_material_assets[slot].material_entity);
-    if (material == nullptr) return 0;
+    if (material == nullptr) return nullptr;
     const size_t wicked_slot = elisa::rendering::textures::MATERIAL_SLOTS[static_cast<size_t>(slot_code)];
     const wi::Resource& resource = material->textures[wicked_slot].resource;
-    return resource.IsValid() && resource.GetTexture().IsValid() ? 1 : 0;
+    if (!resource.IsValid() || !resource.GetTexture().IsValid()) return nullptr;
+    return &resource.GetTexture();
+}
+
+} // namespace
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture(
+    uint64_t material_high, uint64_t material_low, int32_t slot_code) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    return snapshot_material_texture(state, material_high, material_low, slot_code) != nullptr ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture_size(
+    uint64_t material_high, uint64_t material_low, int32_t slot_code, uint32_t width, uint32_t height) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::graphics::Texture* texture = snapshot_material_texture(state, material_high, material_low, slot_code);
+    if (texture == nullptr) return 0;
+    const wi::graphics::TextureDesc& desc = texture->GetDesc();
+    return desc.width == width && desc.height == height ? 1 : 0;
+}
+
+// Encoded bytes retained by bundle-backed texture registrations.
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_bundle_texture_bytes(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return UINT64_MAX;
+    return static_cast<uint64_t>(state.snapshot_bundle_texture_bytes);
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_meshes_shared(

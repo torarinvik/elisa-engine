@@ -12,6 +12,7 @@ import tempfile
 import cook_assets
 import cook_gltf_geometry
 from elisa_package import write_geometry_package
+from png_image import encode_png
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,8 +67,66 @@ def self_test() -> int:
                 continue
             print(f"glTF cooker self-test failed: accepted unsupported {label}", file=sys.stderr)
             return 1
-    print("glTF cooker self-test passed: deterministic 12-triangle runtime package")
+        texture_status = texture_self_test(source, Path(temporary))
+        if texture_status != 0:
+            return texture_status
+    print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections")
     return 0
+
+
+def texture_self_test(source: Path, temporary: Path) -> int:
+    image = temporary / "albedo.png"
+    image.write_bytes(encode_png(2, 1, bytes([255, 0, 0, 255, 0, 0, 255, 255])))
+    oversized = temporary / "oversized.png"
+    # A valid PNG header that claims 65535x1 pixels and has no image data.
+    oversized.write_bytes(encode_png(1, 1, bytes(4))[:16] + (65535).to_bytes(4, "big") +
+        encode_png(1, 1, bytes(4))[20:])
+    not_image = temporary / "not-image.png"
+    not_image.write_bytes(b"not an image")
+    bundles = []
+    for label in ("first", "second"):
+        bundle = temporary / f"{label}.elpk"
+        if main([str(source), "--asset-path", "assets/maze_tile.gltf", "--output", str(bundle),
+                "--texture", f"albedo={image}"]) != 0:
+            print("glTF cooker self-test failed: a PNG texture section was rejected", file=sys.stderr)
+            return 1
+        bundles.append(bundle.read_bytes())
+    if bundles[0] != bundles[1] or b"albedo" not in bundles[0]:
+        print("glTF cooker self-test failed: texture bundles differ or lack the section", file=sys.stderr)
+        return 1
+    rejected = [
+        ("oversized image header", [f"albedo={oversized}"], ".elpk"),
+        ("non-image section", [f"albedo={not_image}"], ".elpk"),
+        ("reserved mesh section", [f"mesh={image}"], ".elpk"),
+        ("unsafe section name", [f"Albedo={image}"], ".elpk"),
+        ("duplicate section", [f"albedo={image}", f"albedo={image}"], ".elpk"),
+        ("texture without a bundle", [f"albedo={image}"], ".pkg"),
+    ]
+    for label, textures, suffix in rejected:
+        arguments = [str(source), "--asset-path", "assets/maze_tile.gltf",
+            "--output", str(temporary / f"rejected{suffix}")]
+        for texture in textures:
+            arguments.extend(["--texture", texture])
+        try:
+            status = main(arguments)
+        except SystemExit as exit_request:
+            status = exit_request.code
+        if status == 0:
+            print(f"glTF cooker self-test failed: accepted {label}", file=sys.stderr)
+            return 1
+    return 0
+
+
+def parse_textures(values: list[str]) -> dict[str, Path]:
+    textures: dict[str, Path] = {}
+    for value in values:
+        name, separator, path = value.partition("=")
+        if not separator or not path:
+            raise ValueError(f"--texture must be SECTION=PATH: {value!r}")
+        if name in textures:
+            raise ValueError(f"duplicate texture section: {name!r}")
+        textures[name] = Path(path)
+    return textures
 
 
 def main(arguments: list[str]) -> int:
@@ -75,6 +134,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("source", nargs="?", type=Path, help="source glTF file")
     parser.add_argument("--asset-path", help="safe project-relative source identity")
     parser.add_argument("--output", type=Path, help="destination runtime package")
+    parser.add_argument("--texture", action="append", default=[], metavar="SECTION=PATH",
+        help="add a PNG or JPEG image as a named section of an .elpk bundle")
     parser.add_argument("--self-test", action="store_true", help="cook the authored maze mesh twice")
     options = parser.parse_args(arguments)
     if options.self_test:
@@ -84,11 +145,15 @@ def main(arguments: list[str]) -> int:
     if options.source is None or options.asset_path is None or options.output is None:
         parser.error("source, --asset-path, and --output are required")
     try:
+        textures = parse_textures(options.texture)
+        if textures and options.output.suffix.lower() != ".elpk":
+            raise ValueError("--texture requires an .elpk output bundle")
         if options.output.suffix.lower() == ".elpk":
+            images = {name: path.read_bytes() for name, path in textures.items()}
             with tempfile.TemporaryDirectory(prefix="elisa-gltf-bundle-") as temporary:
                 geometry_path, result = cook_assets.cook_geometry_package(
                     options.source, options.asset_path, Path(temporary) / "geometry.pkg")
-                write_geometry_package(options.output, geometry_path.read_bytes())
+                write_geometry_package(options.output, geometry_path.read_bytes(), images)
             output = options.output.expanduser().resolve()
         else:
             output, result = cook_assets.cook_geometry_package(

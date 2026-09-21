@@ -222,10 +222,17 @@ def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> P
         connection.execute("INSERT OR IGNORE INTO dependencies(source, dependency, kind) VALUES (?, ?, 'embedded-source')", (asset_rel, asset_rel))
         connection.execute("DELETE FROM diagnostics WHERE source = ?", (asset_rel,))
         connection.execute("INSERT INTO diagnostics(source, severity, code, message) VALUES (?, 'info', 'cook-ready', 'deterministic package recorded')", (asset_rel,))
+        artifact_path = f"build/cooked/{Path(asset_rel).stem}.pkg"
         connection.execute(
             "INSERT INTO cook_cache(cache_key, source, content_hash, settings_hash, artifact_path, status) VALUES (?, ?, ?, ?, ?, 'ready') "
             "ON CONFLICT(cache_key) DO UPDATE SET artifact_path=excluded.artifact_path, status='ready'",
-            (cache_key, asset_rel, digest, settings_hash, f"build/cooked/{Path(asset_rel).stem}.pkg"),
+            (cache_key, asset_rel, digest, settings_hash, artifact_path),
+        )
+        # Every content version of a source writes the same artifact file, so
+        # only the entry just cooked still describes what that file holds.
+        connection.execute(
+            "UPDATE cook_cache SET status='stale' WHERE source = ? AND artifact_path = ? AND cache_key != ?",
+            (asset_rel, artifact_path, cache_key),
         )
         connection.commit()
     finally:
@@ -440,6 +447,18 @@ def self_test() -> int:
         connection.close()
         if rows != (1, 1) or schema != "2":
             print("self-test: catalogue recovery/cache invariants failed", file=sys.stderr)
+            failures += 1
+        # An edited source overwrites the shared artifact; the older entry must
+        # stop claiming it, and reverting the edit makes that entry ready again.
+        statuses = []
+        for digest in ("def", "abc"):
+            record_catalogue(catalogue_root, "examples/maze/assets/maze_tile.gltf", digest, sample_counts)
+            connection = sqlite3.connect(catalogue_root / "build/catalogue.db")
+            statuses.append(connection.execute(
+                "SELECT content_hash, status FROM cook_cache ORDER BY content_hash").fetchall())
+            connection.close()
+        if statuses != [[("abc", "stale"), ("def", "ready")], [("abc", "ready"), ("def", "stale")]]:
+            print(f"self-test: edited sources left stale cache entries ready: {statuses}", file=sys.stderr)
             failures += 1
     # Fuzz the import boundary: structurally random documents must be rejected
     # with a declared error, never with an undeclared exception type.

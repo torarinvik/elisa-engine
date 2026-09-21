@@ -39,6 +39,7 @@ Asset registration failure is exit 17.
 | the staged bundle is missing | 17 |
 | the staged bundle is a symlink to an identical copy outside the project root | 17 |
 | one byte in the middle of the bundle's `mesh` section is flipped | 17 |
+| one byte in the middle of the bundle's `wallalbedo` texture section is flipped | 17 |
 | the original bundle is restored | 0 |
 
 - The control case shows that the sandbox denies reads from the checkout. If
@@ -50,6 +51,9 @@ Asset registration failure is exit 17.
 - The script locates the `mesh` section from the ELPK version-1 index. That
   section is zstd-compressed. The flipped byte fails either zstd decoding or the
   CRC-32 check on the decoded bytes, and the section is rejected before upload.
+- The `wallalbedo` section is the wall's brick image, stored uncompressed. The
+  flipped byte fails its CRC-32 check when the texture registers
+  (`docs/validation/bundle-textures.md`).
 
 `scripts/render_scene_native_smoke.py` runs these cases after the maze
 application smoke, against the executable that smoke just built. The native
@@ -83,8 +87,8 @@ script file was not edited.
 - **Asset root.** The application finds its assets through
   `ELISA_PROJECT_ROOT`, or the working directory when that variable is unset.
   There is no fallback to the executable's directory.
-- **Remaining A03 work.** Custom dependency declarations and bundle-backed
-  texture loading are still open.
+- **Remaining A03 work.** Custom dependency declarations are still open.
+  Bundle-backed textures are covered in `docs/validation/bundle-textures.md`.
 - **Platform.** The check needs macOS `sandbox-exec`. On other platforms it
   exits 2.
 

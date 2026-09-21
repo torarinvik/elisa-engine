@@ -203,6 +203,25 @@ def declared_project_path(project: Path, value: object, label: str, *, must_exis
     return path
 
 
+def declared_textures(project: Path, declaration: dict[str, object], index: int,
+    importer: object, output: Path) -> list[tuple[str, Path]]:
+    """Validate an asset cook's image sections, returned in section-name order."""
+    textures = declaration.get("textures", {})
+    if not isinstance(textures, dict) or len(textures) > 16:
+        raise BuildConfigurationError(f"asset_cooks[{index}].textures must be an object of at most 16 sections")
+    if textures and (importer != "gltf" or output.suffix.lower() != ".elpk"):
+        raise BuildConfigurationError(f"asset_cooks[{index}].textures requires the gltf importer and an .elpk output")
+    declared = []
+    for section in sorted(textures):
+        if (not 1 <= len(section) <= 15 or section in ("mesh", "manifest") or
+                any(not ("a" <= character <= "z" or "0" <= character <= "9" or character == "_")
+                    for character in section)):
+            raise BuildConfigurationError(f"asset_cooks[{index}].textures section {section!r} is not a safe name")
+        declared.append((section, declared_project_path(project, textures[section],
+            f"asset_cooks[{index}].textures.{section}", must_exist=True)))
+    return declared
+
+
 def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
     declarations = config.get("asset_cooks", [])
     if not isinstance(declarations, list) or len(declarations) > 64:
@@ -235,11 +254,14 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
             raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
         if importer == "gltf" and max_triangles is not None:
             raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer does not accept max_triangles")
+        textures = declared_textures(project, declaration, index, importer, output)
         print(f"Cooking project asset: {source.relative_to(project)} -> {output.relative_to(project)}", flush=True)
         command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
             "--output", str(output)]
         if max_triangles is not None:
             command.extend(["--max-triangles", str(max_triangles)])
+        for section, texture in textures:
+            command.extend(["--texture", f"{section}={texture}"])
         status = run_command(command, cwd=project)
         if status != 0:
             return status

@@ -83,6 +83,9 @@ int32_t elisa_render_scene_v1_unregister_snapshot_mesh_asset(uint64_t high, uint
 int32_t elisa_render_scene_v1_register_snapshot_texture_asset(
     uint64_t high, uint64_t low, const char* asset_path);
 int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint64_t high, uint64_t low);
+// Register a PNG or JPEG section of a cooked ELPK bundle as a snapshot texture.
+int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
+    uint64_t high, uint64_t low, const char* bundle_path, const char* section);
 int32_t elisa_render_scene_v1_register_snapshot_material_asset(
     uint64_t high, uint64_t low,
     float red, float green, float blue, float alpha,

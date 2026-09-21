@@ -13,7 +13,10 @@
       "importer": "gltf",
       "source": "assets/maze_tile.gltf",
       "asset_path": "assets/maze_tile.gltf",
-      "output": "assets/maze_tile.elpk"
+      "output": "assets/maze_tile.elpk",
+      "textures": {
+        "wallalbedo": "assets/maze_wall.png"
+      }
     }
   ]
 }

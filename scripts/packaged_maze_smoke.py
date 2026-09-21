@@ -123,13 +123,14 @@ def run(executable: Path, project: Path, shader_path: Path, checkout: Path = ROO
             ASSET_REGISTRATION_FAILED))
         staged_bundle.unlink()
 
-        corrupted = bytearray(original)
-        offset, stored = section_span(original, "mesh")
-        corrupted[offset + stored // 2] ^= 0xFF
-        staged_bundle.write_bytes(bytes(corrupted))
-        results.append(check("a corrupted mesh section is rejected",
-            run_sandboxed(profile, staged_executable, working_directory, environment),
-            ASSET_REGISTRATION_FAILED))
+        for section in ("mesh", "wallalbedo"):
+            corrupted = bytearray(original)
+            offset, stored = section_span(original, section)
+            corrupted[offset + stored // 2] ^= 0xFF
+            staged_bundle.write_bytes(bytes(corrupted))
+            results.append(check(f"a corrupted {section} section is rejected",
+                run_sandboxed(profile, staged_executable, working_directory, environment),
+                ASSET_REGISTRATION_FAILED))
 
         staged_bundle.write_bytes(original)
         results.append(check("the restored bundle runs again",

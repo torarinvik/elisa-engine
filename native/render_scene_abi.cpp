@@ -13,6 +13,7 @@
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
 #include "render_scene_textures.h"
+#include "bundle_texture.h"
 
 #include <DirectXMath.h>
 
@@ -111,6 +112,7 @@ struct RenderSceneService {
     std::array<SnapshotSharedMesh, MAX_SNAPSHOT_SHARED_MESHES> snapshot_shared_meshes{};
     size_t snapshot_geometry_bytes = 0;
     size_t snapshot_shared_geometry_bytes = 0;
+    size_t snapshot_bundle_texture_bytes = 0;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
     uint64_t snapshot_test_transaction_api_calls = 0;
@@ -351,6 +353,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_shared_meshes = {};
     state.snapshot_geometry_bytes = 0;
     state.snapshot_shared_geometry_bytes = 0;
+    state.snapshot_bundle_texture_bytes = 0;
     state.sun_entity = wi::ecs::INVALID_ENTITY;
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();
@@ -520,6 +523,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 
 #include "render_scene_snapshot_abi.inc"
 #include "render_scene_snapshot_tint_abi.inc"
+#include "render_scene_snapshot_bundle_texture_abi.inc"
 
 #include "render_scene_animation_abi.inc"
 

@@ -17,6 +17,12 @@ module MazeRenderAssets:
                 ok: true
                 error failure: false
             return false if not mesh_registered
+            # Section name declared under asset_cooks[0].textures in elisa.project.json.
+            texture_registered: bool = catch RenderScene::register_snapshot_bundle_texture_asset(
+                MazeVisualAssets::wall_albedo_texture_id(), package_path, "wallalbedo"):
+                ok: true
+                error failure: false
+            return false if not texture_registered
 
             return false if not register_material(MazeVisualAssets::wall_material_id(),
                 MazeVisualAssets::wall_material())

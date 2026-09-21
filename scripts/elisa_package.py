@@ -20,6 +20,8 @@ MAX_SECTION_BYTES = 64 * 1024 * 1024
 MAX_MANIFEST_BYTES = 16 * 1024
 MAX_DEPENDENCIES = 16
 ALIGNMENT_BYTES = 16
+MAX_IMAGE_DIMENSION = 8192
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MANIFEST_HEADER = "ELISA-PACKAGE-MANIFEST-1"
 
 
@@ -158,6 +160,57 @@ def write_package(path: Path, sections: Mapping[str, bytes], dependencies: Seque
             os.unlink(temporary_name)
 
 
-def write_geometry_package(path: Path, geometry_package: bytes) -> None:
-    """Wrap the normalized cooked geometry package in an ELPK mesh section."""
-    write_package(path, {"mesh": geometry_package})
+def _jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
+    offset = 2
+    while offset + 4 <= len(data):
+        if data[offset] != 0xFF:
+            return None
+        marker = data[offset + 1]
+        if marker == 0xFF:
+            offset += 1
+            continue
+        if marker in (0xD8, 0xD9, 0xDA):
+            return None
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            offset += 2
+            continue
+        length = int.from_bytes(data[offset + 2:offset + 4], "big")
+        if length < 2 or length > len(data) - offset - 2:
+            return None
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            if length < 8:
+                return None
+            height = int.from_bytes(data[offset + 5:offset + 7], "big")
+            width = int.from_bytes(data[offset + 7:offset + 9], "big")
+            return width, height
+        offset += 2 + length
+    return None
+
+
+def encoded_image_dimensions(data: bytes) -> tuple[int, int]:
+    """Return a PNG or JPEG image's header dimensions, bounded like the runtime reader."""
+    if not data or len(data) > MAX_SECTION_BYTES:
+        raise ValueError("image size rejected")
+    dimensions = None
+    if len(data) >= 33 and data[:8] == PNG_SIGNATURE and data[8:16] == b"\x00\x00\x00\x0dIHDR":
+        dimensions = struct.unpack(">II", data[16:24])
+    elif len(data) >= 4 and data[:2] == b"\xff\xd8":
+        dimensions = _jpeg_dimensions(data)
+    if dimensions is None:
+        raise ValueError("image is not a PNG or JPEG file")
+    width, height = dimensions
+    if not (1 <= width <= MAX_IMAGE_DIMENSION and 1 <= height <= MAX_IMAGE_DIMENSION):
+        raise ValueError(f"image dimensions {width}x{height} exceed {MAX_IMAGE_DIMENSION}")
+    return width, height
+
+
+def write_geometry_package(path: Path, geometry_package: bytes,
+    images: Mapping[str, bytes] | None = None) -> None:
+    """Wrap cooked geometry in an ELPK mesh section, with optional image sections."""
+    sections = {"mesh": geometry_package}
+    for name, data in (images or {}).items():
+        if name in sections or not _safe_section_name(name):
+            raise ValueError(f"invalid image section name: {name!r}")
+        encoded_image_dimensions(data)
+        sections[name] = data
+    write_package(path, sections)

@@ -8,6 +8,7 @@ include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
 include "./maze_rendering_native.elisa"
 include "./render_scene_snapshot_native.elisa"
+include "./render_scene_bundle_texture_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
@@ -324,6 +325,8 @@ def exercise_render_scene() -> i32:
 
     snapshot_test_status: i32 = RenderSceneSnapshotNativeTests::exercise()
     return snapshot_test_status if snapshot_test_status != 0
+    bundle_texture_status: i32 = RenderSceneBundleTextureNativeTests::exercise()
+    return 160 + bundle_texture_status if bundle_texture_status != 0
 
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},
