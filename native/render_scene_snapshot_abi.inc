@@ -168,11 +168,33 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
             state.snapshot_test_fail_after_creates = -1;
             return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_BACKEND_FAILED);
         }
-        row.created_entity = create_snapshot_entity(state, row, row.reserved_slot, row.reserved_generation);
+        int32_t create_status = ELISA_RENDER_SCENE_BACKEND_FAILED;
+        row.created_entity = create_snapshot_entity(state, row,
+            row.reserved_slot, row.reserved_generation, create_status);
         if (row.created_entity == wi::ecs::INVALID_ENTITY) {
-            return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_BACKEND_FAILED);
+            return fail_snapshot_transaction(state, create_status);
         }
         if (state.snapshot_test_fail_after_creates > 0) --state.snapshot_test_fail_after_creates;
+    }
+
+    // Retain newly created static mesh pairs before retiring their predecessors.
+    // A replacement may use the same shared pair as the object it replaces.
+    std::array<size_t, MAX_SNAPSHOT_SHARED_MESHES> shared_mesh_additions{};
+    for (size_t index = 0; index < state.snapshot_row_count; ++index) {
+        SnapshotStageRow& row = state.snapshot_rows[index];
+        if (row.existing_handle != 0 || row.shared_mesh_slot >= MAX_SNAPSHOT_SHARED_MESHES) continue;
+        SnapshotSharedMesh& shared = state.snapshot_shared_meshes[row.shared_mesh_slot];
+        if (!shared.live || shared_mesh_additions[row.shared_mesh_slot] == std::numeric_limits<size_t>::max()) {
+            return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_BACKEND_FAILED);
+        }
+        ++shared_mesh_additions[row.shared_mesh_slot];
+    }
+    for (size_t index = 0; index < MAX_SNAPSHOT_SHARED_MESHES; ++index) {
+        SnapshotSharedMesh& shared = state.snapshot_shared_meshes[index];
+        if (shared_mesh_additions[index] > std::numeric_limits<size_t>::max() - shared.references) {
+            return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_BACKEND_FAILED);
+        }
+        shared.references += shared_mesh_additions[index];
     }
 
     for (size_t index = 0; index < state.snapshot_row_count; ++index) {
@@ -191,6 +213,10 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         size_t slot = MAX_INSTANCES;
         valid_handle(state, state.snapshot_retire_handles[index], slot);
         state.scene->Entity_Remove(state.instances[slot].entity);
+        for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
+        if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
+            release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
+        }
         clear_snapshot_instance(state.instances[slot]);
     }
 
@@ -209,6 +235,10 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
             instance.generation = generation;
             instance.entity = row.created_entity;
             row.created_entity = wi::ecs::INVALID_ENTITY;
+            instance.shared_mesh_slot = row.shared_mesh_slot;
+            instance.joint_entities = std::move(row.created_joint_entities);
+            instance.skin_joints = std::move(row.created_skin_joints);
+            instance.animation_clips = std::move(row.created_animation_clips);
             instance.live = true;
         }
         InstanceSlot& instance = state.instances[slot];
@@ -316,6 +346,11 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_mesh_asset(uint64_t
             return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
         }
     }
+    for (const SnapshotSharedMesh& shared : state.snapshot_shared_meshes) {
+        if (shared.live && shared.mesh_high == high && shared.mesh_low == low) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+    }
     state.snapshot_geometry_bytes -= state.snapshot_mesh_assets[slot].bytes;
     state.snapshot_mesh_assets[slot] = SnapshotMeshAssetSlot{};
     return ELISA_RENDER_SCENE_OK;
@@ -361,6 +396,32 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
         }
     }
     if (free_slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
+    wi::ecs::Entity material_entity = wi::ecs::INVALID_ENTITY;
+    const std::string name = "elisa_snapshot_material_" + std::to_string(high) + "_" + std::to_string(low);
+    try {
+        material_entity = state.scene->Entity_CreateMaterial(name);
+        wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(material_entity);
+        if (material_entity == wi::ecs::INVALID_ENTITY || material == nullptr) {
+            if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_PBR;
+        material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
+        material->SetRoughness(roughness);
+        material->SetMetalness(metallic);
+        material->SetEmissiveColor(XMFLOAT4(emissive_red, emissive_green,
+            emissive_blue, DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH));
+        material->SetAlphaRef(alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK
+            ? alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF);
+        material->SetDoubleSided(double_sided != 0);
+        material->userBlendMode = alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND
+            ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
+        material->SetCastShadow(alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND);
+        material->CreateRenderData();
+    } catch (...) {
+        if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
     SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[free_slot];
     asset.high = high;
     asset.low = low;
@@ -371,6 +432,7 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
     asset.emissive[0] = emissive_red; asset.emissive[1] = emissive_green; asset.emissive[2] = emissive_blue;
     asset.alpha_cutoff = alpha_cutoff;
     asset.alpha_mode = alpha_mode;
+    asset.material_entity = material_entity;
     asset.double_sided = double_sided != 0;
     asset.live = true;
     return ELISA_RENDER_SCENE_OK;
@@ -389,6 +451,13 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint
             return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
         }
     }
+    for (const SnapshotSharedMesh& shared : state.snapshot_shared_meshes) {
+        if (shared.live && shared.material_high == high && shared.material_low == low) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+    }
+    const wi::ecs::Entity material_entity = state.snapshot_material_assets[slot].material_entity;
+    if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
     state.snapshot_material_assets[slot] = SnapshotMaterialAssetSlot{};
     return ELISA_RENDER_SCENE_OK;
 }

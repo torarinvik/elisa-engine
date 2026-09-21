@@ -57,6 +57,7 @@ struct InstanceSlot {
     uint64_t mesh_low = 0;
     uint64_t material_high = 0;
     uint64_t material_low = 0;
+    size_t shared_mesh_slot = MAX_INSTANCES;
     std::vector<wi::ecs::Entity> joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
@@ -100,7 +101,9 @@ struct RenderSceneService {
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
     std::array<SnapshotMeshAssetSlot, MAX_SNAPSHOT_MESH_ASSETS> snapshot_mesh_assets{};
     std::array<SnapshotMaterialAssetSlot, MAX_SNAPSHOT_MATERIAL_ASSETS> snapshot_material_assets{};
+    std::array<SnapshotSharedMesh, MAX_SNAPSHOT_SHARED_MESHES> snapshot_shared_meshes{};
     size_t snapshot_geometry_bytes = 0;
+    size_t snapshot_shared_geometry_bytes = 0;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
 #endif
@@ -309,6 +312,7 @@ void reset_unlocked(RenderSceneService& state) {
         instance.mesh_low = 0;
         instance.material_high = 0;
         instance.material_low = 0;
+        instance.shared_mesh_slot = MAX_INSTANCES;
         instance.joint_entities.clear();
         instance.skin_joints.clear();
         instance.animation_clips.clear();
@@ -326,7 +330,9 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_results = {};
     state.snapshot_mesh_assets = {};
     state.snapshot_material_assets = {};
+    state.snapshot_shared_meshes = {};
     state.snapshot_geometry_bytes = 0;
+    state.snapshot_shared_geometry_bytes = 0;
     state.sun_entity = wi::ecs::INVALID_ENTITY;
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();
@@ -466,6 +472,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.mesh_low = 0;
     instance.material_high = 0;
     instance.material_low = 0;
+    instance.shared_mesh_slot = MAX_INSTANCES;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
@@ -538,20 +545,13 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-    state.scene->Entity_Remove(state.instances[slot].entity);
-    state.instances[slot].entity = wi::ecs::INVALID_ENTITY;
-    state.instances[slot].gameplay_epoch = 0;
-    state.instances[slot].gameplay_id = 0;
-    state.instances[slot].render_id = 0;
-    state.instances[slot].mesh_high = 0;
-    state.instances[slot].mesh_low = 0;
-    state.instances[slot].material_high = 0;
-    state.instances[slot].material_low = 0;
-    state.instances[slot].joint_entities.clear();
-    state.instances[slot].skin_joints.clear();
-    state.instances[slot].animation_clips.clear();
-    clear_animation_state(state.instances[slot]);
-    state.instances[slot].live = false;
+    wi::ecs::Entity entity = state.instances[slot].entity;
+    state.scene->Entity_Remove(entity);
+    for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
+    if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
+        release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
+    }
+    clear_snapshot_instance(state.instances[slot]);
     return ELISA_RENDER_SCENE_OK;
 }
 

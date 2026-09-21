@@ -23,6 +23,13 @@ module RenderSceneSnapshotNativeTests:
             metallic: f32, roughness: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_meshes_shared(first_render_id: i64,
+            second_render_id: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_shared_mesh_count() -> u64
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_object_count() -> u64
 
         def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&,
@@ -163,13 +170,15 @@ module RenderSceneSnapshotNativeTests:
             return 42 if bind_world_render(&bindings, world, gameplay_a, 701,
                 render_visual(701), Geometry::transform_identity()) != 0
             return 43 if bind_world_render(&bindings, world, gameplay_a, 703,
-                render_visual(703), local_offset) != 0
+                render_visual(701), local_offset) != 0
             return 44 if bind_world_render(&bindings, world, gameplay_b, 702,
                 render_visual(702), Geometry::transform_identity()) != 0
             return 45 if extract_world_render(world, &bindings, &snapshot) != 0
             return 46 if RenderSnapshot::snapshot_count(snapshot) != 3
             return 47 if sync_snapshot(&presenter, snapshot) != 0
             return 48 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
+            return 76 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 2
+            return 77 if elisa_render_scene_v1_test_snapshot_meshes_shared(701, 703) == 0
             return 49 if elisa_render_scene_v1_test_snapshot_instance_resources(
                 702, 3, 3, 0.25, 0.5, 0.75, 1.0, 0.4, 0.6) == 0
             live_mesh_unregister: i32 = catch RenderScene::unregister_snapshot_mesh_asset(
@@ -207,6 +216,7 @@ module RenderSceneSnapshotNativeTests:
             failed_sync: i32 = sync_snapshot(&presenter, snapshot)
             batch_rolled_back: bool = failed_sync == 1 and RenderSnapshotScene::binding_count(presenter) == 3 and RenderScene::instance_count() == 6 and elisa_render_scene_v1_test_object_count() == objects_before_failure
             return 61 if not batch_rolled_back
+            return 78 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 2
             return 62 if elisa_render_scene_v1_test_snapshot_identity_matches(
                 gameplay_a.world_epoch, gameplay_a.id, 701, 700, 701, 800, 1) == 0
             return 63 if elisa_render_scene_v1_test_snapshot_identity_matches(
@@ -214,6 +224,9 @@ module RenderSceneSnapshotNativeTests:
             return 64 if sync_snapshot(&presenter, snapshot) != 0
             return 65 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
             return 66 if elisa_render_scene_v1_test_object_count() != objects_before_failure + 2
+            return 79 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 5
+            return 82 if elisa_render_scene_v1_test_snapshot_instance_resources(
+                703, 3, 3, 0.25, 0.5, 0.75, 1.0, 0.4, 0.6) == 0
             return 67 if elisa_render_scene_v1_test_snapshot_identity_matches(
                 gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) == 0
 
@@ -235,6 +248,7 @@ module RenderSceneSnapshotNativeTests:
             after_b_sync: i32 = sync_snapshot(&presenter, snapshot)
             return 70 if not despawn_b or after_b_extract != 0 or after_b_sync != 0
             return 71 if RenderSnapshot::snapshot_count(snapshot) != 4 or RenderSnapshotScene::binding_count(presenter) != 4 or RenderScene::instance_count() != 7
+            return 80 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 4
             despawn_a: bool = catch World::world_despawn(&world, gameplay_a):
                 ok: true
                 error failure: false
@@ -242,6 +256,7 @@ module RenderSceneSnapshotNativeTests:
             after_a_sync: i32 = sync_snapshot(&presenter, snapshot)
             return 72 if not despawn_a or after_a_extract != 0 or after_a_sync != 0
             return 73 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
+            return 81 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 0
             return 74 if unregister_test_snapshot_assets() != 0
             return 75 if elisa_render_scene_v1_test_snapshot_identity_matches(
                 gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
