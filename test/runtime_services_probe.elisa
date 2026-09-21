@@ -24,8 +24,8 @@ module RuntimeServicesProbe:
             }
 
         def dispatch_physics_system(state: mutable Executor::FrameState&,
-            session: mutable RuntimeServices::Session&,
-            context: mutable TickContext&, system: usize) -> void:
+            system: usize, context: mutable TickContext&,
+            session: mutable RuntimeServices::Session&) -> void:
             state.visits[system] <- state.visits[system] + 1
             if system == Systems::PHYSICS:
                 step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
@@ -110,20 +110,12 @@ module RuntimeServicesProbe:
 
         def run_world_schedule_frame(session: mutable RuntimeServices::Session&,
             elapsed_micros: i64, context: mutable TickContext&,
-            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError]:
+            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, Executor::ExecError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(
                 session, elapsed_micros)
-            sequence: i64[Schedule::MAX_SYSTEMS] = Executor::plan_sequence(plan)
-            dispatch_count: usize = frame.steps * plan.count
-            slot: mutable usize = 0
-            for _ in 0..<dispatch_count |session, plan, plan_state, context, sequence, slot|:
-                system: usize = sequence[slot].usize()
-                dispatch_physics_system(plan_state, session, context, system)
-                if plan_state.length < Executor::MAX_TRACE_EVENTS:
-                    plan_state.trace[plan_state.length] <- system.i64()
-                    plan_state.length <- plan_state.length + 1
-                slot <- slot + 1
-                slot <- 0 if slot == plan.count
+            for _ in 0..<frame.steps |session, plan, plan_state, context|:
+                try Executor::plan_execute_with_contexts(
+                    plan, plan_state, context, session, dispatch_physics_system)
             frame
 
         def dispatch_first_world_ticks(session: mutable RuntimeServices::Session&,
