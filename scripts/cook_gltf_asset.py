@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from copy import deepcopy
 from pathlib import Path
+import struct
 import sys
 import tempfile
 
@@ -55,7 +57,7 @@ def self_test() -> int:
         rejected.append(("morph target", morphed))
         material_bound = deepcopy(document)
         material_bound["meshes"][0]["primitives"][0]["material"] = 0
-        rejected.append(("source material binding", material_bound))
+        rejected.append(("material index outside the document", material_bound))
         multi_node = deepcopy(document)
         multi_node["nodes"].append({"mesh": 0})
         multi_node["scenes"][0]["nodes"].append(1)
@@ -70,7 +72,56 @@ def self_test() -> int:
         texture_status = texture_self_test(source, Path(temporary))
         if texture_status != 0:
             return texture_status
-    print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections")
+        subset_status = subset_self_test(Path(temporary))
+        if subset_status != 0:
+            return subset_status
+    print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections "
+        "and a three-subset, two-slot panel")
+    return 0
+
+
+def subset_self_test(temporary: Path) -> int:
+    """Cook the multi-material panel: three primitives, two material slots,
+    the outer strips sharing one vertex block."""
+    source = ROOT / "test/fixtures/multi_material_panel.gltf"
+    cooked = []
+    for label in ("first", "second"):
+        path, result = cook_gltf_geometry.cook_geometry_package(
+            source, "test/fixtures/multi_material_panel.gltf", temporary / f"panel-{label}.pkg")
+        cooked.append((path.read_bytes(), result))
+    sections = dict(line.split("=", 1) for line in cooked[0][0].decode("utf-8").splitlines())
+    if (cooked[0] != cooked[1] or cooked[0][1]["positions"] != 12 or cooked[0][1]["indices"] != 18 or
+            sections.get("material_slots") != "2" or sections.get("subset_count") != "3" or
+            base64.b64decode(sections.get("subsets_b64", "")) !=
+            struct.pack("<9I", 0, 6, 1, 6, 6, 0, 12, 6, 1)):
+        print("glTF cooker self-test failed: the panel's subsets are unstable or wrong", file=sys.stderr)
+        return 1
+    document = cook_assets.read_gltf(source.read_bytes())
+    buffer = cook_assets.source_bytes(source.parent, document)
+    variants = {
+        "a primitive without a material beside bound ones":
+            lambda d: d["meshes"][0]["primitives"][1].pop("material"),
+        "a material index outside the document": lambda d: d["meshes"][0]["primitives"][2].update(material=2),
+        "a material with properties": lambda d: d["materials"][0].update(doubleSided=True),
+        "17 materials": lambda d: d["materials"].extend({"name": "extra"} for _ in range(15)),
+        "17 primitives": lambda d: d["meshes"][0]["primitives"].extend(
+            deepcopy(d["meshes"][0]["primitives"][1]) for _ in range(14)),
+        "a line primitive": lambda d: d["meshes"][0]["primitives"][1].update(mode=1),
+        "shared positions with different attributes":
+            lambda d: d["meshes"][0]["primitives"][2]["attributes"].pop("NORMAL"),
+        "attributes that are not an accessor map": lambda d: d["meshes"][0]["primitives"][1].update(attributes=[0]),
+        "an attribute naming an accessor by list": lambda d: d["meshes"][0]["primitives"][1].update(
+            attributes={"POSITION": [3]}),
+    }
+    for label, mutate in variants.items():
+        variant = deepcopy(document)
+        mutate(variant)
+        try:
+            cook_gltf_geometry.normalized_geometry(variant, buffer)
+        except ValueError:
+            continue
+        print(f"glTF cooker self-test failed: accepted {label}", file=sys.stderr)
+        return 1
     return 0
 
 

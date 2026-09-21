@@ -23,15 +23,21 @@ int32_t snapshot_missing_asset_status(const RenderSceneService& state,
         ? ELISA_RENDER_SCENE_ASSET_PENDING : ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
 }
 
-// A missing material is a load failure even when the mesh is still pending.
+// A missing material or set is a load failure even when the mesh is still
+// pending. A set must match a resident mesh's material slot count.
 int32_t snapshot_row_asset_status(const RenderSceneService& state,
         uint64_t mesh_high, uint64_t mesh_low, uint64_t material_high, uint64_t material_low) {
-    if (snapshot_material_asset_slot(state, material_high, material_low) == MAX_SNAPSHOT_MATERIAL_ASSETS) {
+    if (snapshot_material_asset_slot(state, material_high, material_low) == MAX_SNAPSHOT_MATERIAL_ASSETS &&
+        snapshot_material_set_slot(state, material_high, material_low) == MAX_SNAPSHOT_MATERIAL_SETS) {
         return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
     }
-    return snapshot_mesh_asset_slot(state, mesh_high, mesh_low) == MAX_SNAPSHOT_MESH_ASSETS
-        ? snapshot_missing_asset_status(state, SnapshotAssetKind::Mesh, mesh_high, mesh_low)
-        : ELISA_RENDER_SCENE_OK;
+    const size_t mesh = snapshot_mesh_asset_slot(state, mesh_high, mesh_low);
+    if (mesh == MAX_SNAPSHOT_MESH_ASSETS) {
+        return snapshot_missing_asset_status(state, SnapshotAssetKind::Mesh, mesh_high, mesh_low);
+    }
+    SnapshotSlotMaterials materials;
+    return resolve_snapshot_slot_materials(state, material_high, material_low,
+        state.snapshot_mesh_assets[mesh].geometry.material_slots, materials);
 }
 
 // Synchronous registration can't take an ID from a pending request. It

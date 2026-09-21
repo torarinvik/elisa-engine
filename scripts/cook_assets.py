@@ -156,6 +156,8 @@ def normalized_counts(document: dict) -> dict:
     triangles = 0
     positions = 0
     bounds = None
+    # Primitives may share one POSITION accessor; its vertices count once.
+    counted_positions = set()
     for mesh in document.get("meshes", []):
         for primitive in mesh.get("primitives", []):
             accessors = document.get("accessors", [])
@@ -163,8 +165,9 @@ def normalized_counts(document: dict) -> dict:
             if indices is not None:
                 triangles += accessors[indices]["count"] // 3
             for (attribute, reference) in primitive.get("attributes", {}).items():
-                if attribute != "POSITION":
+                if attribute != "POSITION" or reference in counted_positions:
                     continue
+                counted_positions.add(reference)
                 accessor = accessors[reference]
                 positions += accessor["count"]
                 if "min" in accessor and "max" in accessor:

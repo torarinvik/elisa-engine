@@ -36,6 +36,8 @@
 namespace {
 
 constexpr size_t MAX_INSTANCES = 256;
+// An instance or snapshot row without a shared snapshot mesh.
+constexpr size_t NO_SHARED_MESH = std::numeric_limits<size_t>::max();
 constexpr size_t MAX_ELECTRIC_ARCS = 1024;
 constexpr unsigned HANDLE_SLOT_BITS = 11;
 constexpr uint64_t HANDLE_SLOT_MASK = (uint64_t(1) << HANDLE_SLOT_BITS) - 1;
@@ -50,8 +52,6 @@ constexpr float MIN_CAMERA_CLIP_DISTANCE = 1.0e-4f;
 constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
 constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
 constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
-constexpr uint32_t PIPELINE_WAIT_ATTEMPTS = 40;
-constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
 
 #include "render_scene_text_internal.inc"
 
@@ -65,7 +65,7 @@ struct InstanceSlot {
     uint64_t mesh_low = 0;
     uint64_t material_high = 0;
     uint64_t material_low = 0;
-    size_t shared_mesh_slot = MAX_INSTANCES;
+    size_t shared_mesh_slot = NO_SHARED_MESH;
     std::vector<wi::ecs::Entity> joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
@@ -109,6 +109,7 @@ struct RenderSceneService {
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
     std::array<SnapshotMeshAssetSlot, MAX_SNAPSHOT_MESH_ASSETS> snapshot_mesh_assets{};
     std::array<SnapshotMaterialAssetSlot, MAX_SNAPSHOT_MATERIAL_ASSETS> snapshot_material_assets{};
+    SnapshotMaterialSets snapshot_material_sets;
     std::array<SnapshotTextureAssetSlot, MAX_SNAPSHOT_TEXTURE_ASSETS> snapshot_texture_assets{};
     std::array<SnapshotSharedMesh, MAX_SNAPSHOT_SHARED_MESHES> snapshot_shared_meshes{};
     size_t snapshot_geometry_bytes = 0;
@@ -329,7 +330,7 @@ void reset_unlocked(RenderSceneService& state) {
         instance.mesh_low = 0;
         instance.material_high = 0;
         instance.material_low = 0;
-        instance.shared_mesh_slot = MAX_INSTANCES;
+        instance.shared_mesh_slot = NO_SHARED_MESH;
         instance.joint_entities.clear();
         instance.skin_joints.clear();
         instance.animation_clips.clear();
@@ -352,6 +353,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_results = {};
     state.snapshot_mesh_assets = {};
     state.snapshot_material_assets = {};
+    state.snapshot_material_sets = {};
     state.snapshot_texture_assets = {};
     state.snapshot_shared_meshes = {};
     state.snapshot_geometry_bytes = 0;
@@ -468,7 +470,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.mesh_low = 0;
     instance.material_high = 0;
     instance.material_low = 0;
-    instance.shared_mesh_slot = MAX_INSTANCES;
+    instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();

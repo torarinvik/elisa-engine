@@ -17,12 +17,19 @@ the brick wall image `assets/maze_wall.png` as the `wallalbedo` section of
 dependency. The runtime refuses to load the tile's mesh unless that dependency
 is present. The tile bundle stores the normalized mesh in a bounded, aligned,
 checksummed `mesh` section; the native loader still accepts loose `.pkg`
-geometry packages. This first runtime geometry cooker accepts a single static
-mesh node with one indexed triangle primitive and POSITION, NORMAL, and
-optional TEXCOORD_0 streams. It rejects node transforms, skins, morph targets,
-source material bindings, and unsupported vertex attributes instead of
-silently dropping them. The maze's PBR materials are authored separately in
-Elisa; the wall material takes its base color from the `wallalbedo` section.
+geometry packages. The runtime geometry cooker accepts one untransformed
+static mesh node with up to 16 indexed triangle primitives. Each primitive
+has POSITION and optional NORMAL and TEXCOORD_0 streams, and missing normals
+are generated. Each primitive becomes a material subset. A document may
+declare up to 16 materials, and a primitive's `material` index picks the slot
+its subset draws with. At runtime a snapshot row names a material set with one
+registered material per slot, or a single material for every slot. The
+maze tile has one primitive and no materials, so it has one slot. The cooker
+does not import material properties yet, so a material with anything beyond a
+name fails. It also rejects node transforms, skins, morph targets and other
+vertex attributes instead of silently dropping them. The maze's PBR materials
+are authored separately in Elisa; the wall material takes its base color from
+the `wallalbedo` section.
 
 The client requests both bundles from the render scene's asset worker and
 keeps presenting frames with a "Loading maze assets" overlay until the mesh and

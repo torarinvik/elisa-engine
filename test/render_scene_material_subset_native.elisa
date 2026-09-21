@@ -1,0 +1,486 @@
+# Native A05 coverage for multi-material cooked meshes. The glTF panel has
+# three strips in two material slots: edge, center, edge. A snapshot row that
+# names a material set draws each strip with its slot's material, and the
+# rendered frame must show those colors. scripts/render_scene_native_smoke.py
+# cooks the panel and a skinned strip under build/cooked/subsets.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+
+module RenderSceneMaterialSubsetNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_subset_count(render_id: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_subset_matches(render_id: i64, subset: u32,
+            index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_casts_shadow(render_id: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_set_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_shared_mesh_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille: u32, y_permille: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_stage_snapshot_material_set_slot(slot: u32,
+            material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_material_set(high: u64, low: u64, count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        const module Ids:
+            MESHES: u64 = 940
+            MATERIALS: u64 = 941
+            SETS: u64 = 942
+            EXTRA_SETS: u64 = 943
+            EXTRA_FIRST: u64 = 1
+            EXTRA_END: u64 = 33
+
+        const module Mesh:
+            PANEL: u64 = 1
+            TILE: u64 = 2
+            SKINNED: u64 = 3
+
+        const module Paint:
+            RED: u64 = 1
+            BLUE: u64 = 2
+            GLASS_RED: u64 = 3
+            GLASS_BLUE: u64 = 4
+            MISSING: u64 = 99
+
+        # Material sets, listed in slot order: center, then edge.
+        const module Set:
+            BLUE_CENTER: u64 = 1
+            RED_CENTER: u64 = 2
+            GLASS: u64 = 3
+            MIXED: u64 = 4
+            SINGLE: u64 = 5
+            TRIPLE: u64 = 6
+            BROKEN: u64 = 7
+            SCRATCH: u64 = 8
+            ABSENT: u64 = 99
+
+        const module Code:
+            OK: i32 = 0
+            INVALID: i32 = 1
+            LOAD_FAILED: i32 = 2
+            CAPACITY: i32 = 3
+            BATCH_ACTIVE: i32 = 4
+            OTHER: i32 = 5
+
+        const module Channel:
+            RED: i32 = 0
+            BLUE: i32 = 2
+
+        const module Row:
+            FIRST: i64 = 9401
+            SECOND: i64 = 9402
+            GLASS: i64 = 9403
+            MIXED: i64 = 9404
+            SINGLE: i64 = 9405
+            SKINNED: i64 = 9406
+            PROBE: i64 = 9409
+
+        const NATIVE_OK: i32 = 0
+        const NATIVE_INVALID: i32 = -1
+        const NATIVE_LOAD_FAILED: i32 = -9
+        const NATIVE_BATCH_ACTIVE: i32 = -10
+        const MAX_SNAPSHOT_MATERIAL_SETS: u64 = 32
+        const MAX_SET_SLOTS: u32 = 16
+        const VISIBLE_Y: f32 = 4.0
+        const HIDDEN_Y: f32 = -40.0
+        # The panel covers this frame row; the main test's electric arc
+        # crosses the middle row.
+        const SAMPLE_ROW: u32 = 300
+
+        def material_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MATERIALS, low: low}
+
+        def set_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::SETS, low: low}
+
+        def register_mesh(low: u64, path: cstr) -> i32:
+            catch RenderScene::register_snapshot_mesh_asset(Assets::AssetId{high: Ids::MESHES, low: low}, path):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def unregister_mesh(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_mesh_asset(Assets::AssetId{high: Ids::MESHES, low: low}):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        # A double-sided emissive paint; glass blends it at half alpha. The
+        # base color is dim and the emission stays at 1 so the ACES tonemap
+        # keeps each hue: brighter pure blue picks up red, and the scene's
+        # ambient light tints a bright base color.
+        def register_paint(asset: Assets::AssetId, red: f32, blue: f32, glass: bool) -> i32:
+            alpha: f32 = 0.5 if glass else 1.0
+            mode: Material::AlphaMode = Material::AlphaMode.Blend if glass else Material::AlphaMode.Opaque
+            material: Material::Material = Material::Material{
+                base_color: Assets::AssetId{high: 0, low: 0},
+                normal: Assets::AssetId{high: 0, low: 0},
+                metallic_roughness: Assets::AssetId{high: 0, low: 0},
+                occlusion: Assets::AssetId{high: 0, low: 0},
+                emissive: Assets::AssetId{high: 0, low: 0},
+                base_color_factor: [red * 0.1, 0.0, blue * 0.1, alpha],
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+                emissive_factor: [red, 0.0, blue],
+                alpha_cutoff: 0.5,
+                alpha_mode: mode,
+                double_sided: true,
+            }
+            catch RenderScene::register_snapshot_material_asset(asset, &material):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.BatchActive: Code::BATCH_ACTIVE
+                error failure: Code::OTHER
+
+        def unregister_material(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_material_asset(material_id(low)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        def append(materials: mutable RenderScene::SnapshotMaterialSet&, material: Assets::AssetId) -> i32:
+            catch RenderScene::snapshot_material_set_append(materials, material):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.Capacity: Code::CAPACITY
+                error failure: Code::OTHER
+
+        def register_built(asset: Assets::AssetId, materials: RenderScene::SnapshotMaterialSet&) -> i32:
+            catch RenderScene::register_snapshot_material_set(asset, materials):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.Capacity: Code::CAPACITY
+                RenderScene::RenderSceneError.BatchActive: Code::BATCH_ACTIVE
+                error failure: Code::OTHER
+
+        # Registers a set of up to three paints; a zero paint ends the list.
+        def register_set(asset: Assets::AssetId, first: u64, second: u64, third: u64) -> i32:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: mutable i32 = append(&materials, material_id(first))
+            if second != 0:
+                appended <- appended + append(&materials, material_id(second))
+            if third != 0:
+                appended <- appended + append(&materials, material_id(third))
+            return Code::OTHER if appended != Code::OK
+            register_built(asset, materials)
+
+        def unregister_set(asset: Assets::AssetId) -> i32:
+            catch RenderScene::unregister_snapshot_material_set(asset):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.BatchActive: Code::BATCH_ACTIVE
+                error failure: Code::OTHER
+
+        def set_count() -> u64:
+            elisa_render_scene_v1_test_snapshot_material_set_count()
+
+        def stage_slot(slot: u32, paint: u64) -> i32:
+            elisa_render_scene_v1_stage_snapshot_material_set_slot(slot, Ids::MATERIALS, paint)
+
+        def register_staged(low: u64, count: u32) -> i32:
+            elisa_render_scene_v1_register_snapshot_material_set(Ids::SETS, low, count)
+
+        # Stages one panel-sized row in the open transaction.
+        def stage(render_id: i64, mesh_low: u64, material: Assets::AssetId, y: f32) -> i32:
+            elisa_render_scene_v1_snapshot_stage(0, 1, render_id, render_id,
+                Ids::MESHES, mesh_low, material.high, material.low,
+                0.0, y, 0.0, 0.0, 0.0, 0.0, 1.0, 12.0, 1.0, 8.0)
+
+        # The status of staging one row alone; the transaction is aborted.
+        def stage_status(mesh_low: u64, material: Assets::AssetId) -> i32:
+            return -100 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            staged: i32 = stage(Row::PROBE, mesh_low, material, HIDDEN_Y)
+            return -101 if elisa_render_scene_v1_snapshot_abort() != NATIVE_OK
+            staged
+
+        # Commits one row, retiring `retired` unless it is 0, and returns the
+        # new handle or a negative step on failure.
+        def show(retired: i64, render_id: i64, material: Assets::AssetId) -> i64:
+            previous: u32 = 0 if retired == 0 else 1
+            return -1 if elisa_render_scene_v1_snapshot_begin(previous) != NATIVE_OK
+            if retired != 0:
+                if elisa_render_scene_v1_snapshot_retire(retired) != NATIVE_OK:
+                    _ = elisa_render_scene_v1_snapshot_abort()
+                    return -2
+            if stage(render_id, Mesh::PANEL, material, VISIBLE_Y) != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return -3
+            return -4 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            elisa_render_scene_v1_snapshot_result(0)
+
+        def retire(handle: i64) -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK
+            if elisa_render_scene_v1_snapshot_retire(handle) != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            elisa_render_scene_v1_snapshot_commit() == NATIVE_OK
+
+        def channel(x_permille: u32) -> i32:
+            elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille, SAMPLE_ROW)
+
+        # Pumps frames until the center strip shows `center`, then checks
+        # that both edge strips show `edge` in the same frame.
+        def strips_show(center: i32, edge: i32) -> bool:
+            shown: mutable bool = false
+            for attempt in 0..<12 |center, shown|:
+                break if shown
+                return false if Application::pump() != Application::PumpStatus.Running
+                shown <- channel(500) == center
+            return false if not shown
+            channel(150) == edge and channel(850) == edge
+
+        def subset_is(render_id: i64, subset: u32, start: u32, count: u32, paint: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_subset_matches(render_id, subset, start, count,
+                Ids::MATERIALS, paint) == 1
+
+        # The panel's cooked subsets draw edge, center, edge.
+        def panel_draws(render_id: i64, center: u64, edge: u64) -> bool:
+            return false if elisa_render_scene_v1_test_snapshot_subset_count(render_id) != 3
+            return false if not subset_is(render_id, 0, 0, 6, edge)
+            return false if not subset_is(render_id, 1, 6, 6, center)
+            subset_is(render_id, 2, 12, 6, edge)
+
+        def casts_shadow(render_id: i64) -> i32:
+            elisa_render_scene_v1_test_snapshot_casts_shadow(render_id)
+
+        def register_paints() -> i32:
+            return 1 if register_paint(material_id(Paint::RED), 1.0, 0.0, false) != Code::OK
+            return 2 if register_paint(material_id(Paint::BLUE), 0.0, 1.0, false) != Code::OK
+            return 3 if register_paint(material_id(Paint::GLASS_RED), 1.0, 0.0, true) != Code::OK
+            return 4 if register_paint(material_id(Paint::GLASS_BLUE), 0.0, 1.0, true) != Code::OK
+            0
+
+        def registrations() -> i32:
+            return 1 if register_set(set_id(Set::BLUE_CENTER), Paint::BLUE, Paint::RED, 0) != Code::OK
+            return 2 if register_set(set_id(Set::RED_CENTER), Paint::RED, Paint::BLUE, 0) != Code::OK
+            return 3 if register_set(set_id(Set::GLASS), Paint::GLASS_BLUE, Paint::GLASS_RED, 0) != Code::OK
+            return 4 if register_set(set_id(Set::MIXED), Paint::GLASS_BLUE, Paint::RED, 0) != Code::OK
+            return 5 if register_set(set_id(Set::SINGLE), Paint::RED, 0, 0) != Code::OK
+            return 6 if register_set(set_id(Set::TRIPLE), Paint::RED, Paint::BLUE, Paint::RED) != Code::OK
+            return 7 if set_count() != 6
+            # The same materials again are a no-op; different ones conflict.
+            return 8 if register_set(set_id(Set::BLUE_CENTER), Paint::BLUE, Paint::RED, 0) != Code::OK
+            return 9 if register_set(set_id(Set::BLUE_CENTER), Paint::RED, Paint::BLUE, 0) != Code::INVALID
+            return 10 if register_set(set_id(Set::BLUE_CENTER), Paint::BLUE, 0, 0) != Code::INVALID
+            return 11 if register_set(set_id(Set::BROKEN), Paint::RED, Paint::MISSING, 0) != Code::LOAD_FAILED
+            # Sets and materials share one ID space.
+            return 12 if register_set(material_id(Paint::RED), Paint::BLUE, Paint::RED, 0) != Code::INVALID
+            return 13 if register_paint(set_id(Set::BLUE_CENTER), 1.0, 0.0, false) != Code::INVALID
+            return 14 if set_count() != 6
+            0
+
+        def stage_sixteen() -> bool:
+            for slot in 0..<MAX_SET_SLOTS |staged: bool = true| -> staged:
+                staged <- false if stage_slot(slot, Paint::RED) != NATIVE_OK
+
+        # The C ABI stages set slots in order. Any rejected call clears the
+        # staging, and registering consumes it.
+        def staging_rejections() -> i32:
+            return 1 if stage_slot(1, Paint::RED) != NATIVE_INVALID
+            return 2 if stage_slot(0, Paint::RED) != NATIVE_OK or stage_slot(2, Paint::BLUE) != NATIVE_INVALID
+            return 3 if register_staged(Set::SCRATCH, 1) != NATIVE_INVALID
+            return 4 if stage_slot(0, Paint::RED) != NATIVE_OK or stage_slot(1, Paint::BLUE) != NATIVE_OK
+            return 5 if register_staged(Set::SCRATCH, 3) != NATIVE_INVALID
+            return 6 if register_staged(Set::SCRATCH, 2) != NATIVE_INVALID
+            return 7 if stage_slot(0, Paint::RED) != NATIVE_OK or register_staged(Set::SCRATCH, 0) != NATIVE_INVALID
+            return 8 if elisa_render_scene_v1_stage_snapshot_material_set_slot(0, 0, 0) != NATIVE_INVALID
+            return 9 if not stage_sixteen() or stage_slot(MAX_SET_SLOTS, Paint::RED) != NATIVE_INVALID
+            return 10 if register_staged(Set::SCRATCH, MAX_SET_SLOTS) != NATIVE_INVALID
+            # Restaging slot 0 starts over; a full sixteen-slot set registers.
+            return 11 if stage_slot(0, Paint::BLUE) != NATIVE_OK or not stage_sixteen()
+            return 12 if register_staged(Set::SCRATCH, MAX_SET_SLOTS) != NATIVE_OK or set_count() != 7
+            return 13 if register_staged(Set::SCRATCH, MAX_SET_SLOTS) != NATIVE_INVALID
+            return 14 if unregister_set(set_id(Set::SCRATCH)) != Code::OK or set_count() != 6
+            return 15 if unregister_set(set_id(Set::SCRATCH)) != Code::LOAD_FAILED
+            0
+
+        # The Elisa builder refuses an empty set, a zero ID, and a
+        # seventeenth material.
+        def builder_bounds() -> i32:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            return 1 if register_built(set_id(Set::SCRATCH), materials) != Code::INVALID
+            return 2 if append(&materials, Assets::AssetId{high: 0, low: 0}) != Code::INVALID
+            return 3 if RenderScene::snapshot_material_set_count(materials) != 0
+            appended: mutable u32 = 0
+            for slot in 0..<MAX_SET_SLOTS |materials, appended|:
+                appended <- appended + 1 if append(&materials, material_id(Paint::RED)) == Code::OK
+            return 4 if appended != MAX_SET_SLOTS or append(&materials, material_id(Paint::RED)) != Code::CAPACITY
+            return 5 if RenderScene::snapshot_material_set_count(materials) != 16
+            return 6 if register_built(set_id(Set::SCRATCH), materials) != Code::OK or set_count() != 7
+            return 7 if unregister_set(set_id(Set::SCRATCH)) != Code::OK
+            0
+
+        # A set must list one material per mesh slot; a material fills every slot.
+        def stage_checks() -> i32:
+            return 1 if stage_status(Mesh::PANEL, set_id(Set::SINGLE)) != NATIVE_INVALID
+            return 2 if stage_status(Mesh::PANEL, set_id(Set::TRIPLE)) != NATIVE_INVALID
+            return 3 if stage_status(Mesh::TILE, set_id(Set::BLUE_CENTER)) != NATIVE_INVALID
+            return 4 if stage_status(Mesh::SKINNED, set_id(Set::BLUE_CENTER)) != NATIVE_INVALID
+            return 5 if stage_status(Mesh::PANEL, set_id(Set::ABSENT)) != NATIVE_LOAD_FAILED
+            return 6 if stage_status(Mesh::PANEL, set_id(Set::BROKEN)) != NATIVE_LOAD_FAILED
+            return 7 if stage_status(Mesh::TILE, set_id(Set::SINGLE)) != NATIVE_OK
+            return 8 if stage_status(Mesh::PANEL, material_id(Paint::RED)) != NATIVE_OK
+            0
+
+        # Each strip renders in its slot's material, and swapping the set
+        # swaps the colors.
+        def rendered_strips() -> i32:
+            first: i64 = show(0, Row::FIRST, set_id(Set::BLUE_CENTER))
+            return 1 if first <= 0
+            return 2 if not panel_draws(Row::FIRST, Paint::BLUE, Paint::RED)
+            return 3 if not strips_show(Channel::BLUE, Channel::RED)
+            return 4 if casts_shadow(Row::FIRST) != 1
+            # Neither a set in use nor a material a set lists can go away.
+            return 5 if unregister_set(set_id(Set::BLUE_CENTER)) != Code::INVALID
+            return 6 if unregister_material(Paint::GLASS_RED) != Code::INVALID
+            second: i64 = show(first, Row::SECOND, set_id(Set::RED_CENTER))
+            return 7 if second <= 0
+            return 8 if not panel_draws(Row::SECOND, Paint::RED, Paint::BLUE)
+            return 9 if not strips_show(Channel::RED, Channel::BLUE)
+            # The retired instance released its set.
+            return 10 if unregister_set(set_id(Set::BLUE_CENTER)) != Code::OK
+            return 11 if register_set(set_id(Set::BLUE_CENTER), Paint::BLUE, Paint::RED, 0) != Code::OK
+            return 12 if not retire(second)
+            0
+
+        # Blended subsets cast no shadow; one opaque subset makes the object
+        # cast. A skinned mesh has one slot, so a one-material set draws it.
+        def committed_rows() -> i32:
+            return 1 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            glass: i32 = stage(Row::GLASS, Mesh::PANEL, set_id(Set::GLASS), HIDDEN_Y)
+            mixed: i32 = stage(Row::MIXED, Mesh::PANEL, set_id(Set::MIXED), HIDDEN_Y)
+            single: i32 = stage(Row::SINGLE, Mesh::PANEL, material_id(Paint::BLUE), HIDDEN_Y)
+            skinned: i32 = stage(Row::SKINNED, Mesh::SKINNED, set_id(Set::SINGLE), HIDDEN_Y)
+            panels_staged: bool = glass == NATIVE_OK and mixed == NATIVE_OK and single == NATIVE_OK
+            if not panels_staged or skinned != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 2
+            return 3 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            handles: i64[4] = [elisa_render_scene_v1_snapshot_result(0), elisa_render_scene_v1_snapshot_result(1),
+                elisa_render_scene_v1_snapshot_result(2), elisa_render_scene_v1_snapshot_result(3)]
+            return 4 if casts_shadow(Row::GLASS) != 0 or casts_shadow(Row::MIXED) != 1 or casts_shadow(Row::SINGLE) != 1
+            return 5 if not panel_draws(Row::GLASS, Paint::GLASS_BLUE, Paint::GLASS_RED)
+            return 6 if not panel_draws(Row::MIXED, Paint::GLASS_BLUE, Paint::RED)
+            return 7 if not panel_draws(Row::SINGLE, Paint::BLUE, Paint::BLUE)
+            return 8 if elisa_render_scene_v1_test_snapshot_subset_count(Row::SKINNED) != 1
+            return 9 if unregister_set(set_id(Set::MIXED)) != Code::INVALID
+            for index in 0..<4 |handles|:
+                return 10 if handles[index] <= 0 or not retire(handles[index])
+            return 11 if unregister_set(set_id(Set::MIXED)) != Code::OK
+            0
+
+        # Sets can't change while a snapshot transaction is open, and staging
+        # attempted during one leaves nothing behind.
+        def batch_refusals() -> i32:
+            return 1 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            refused_register: i32 = register_set(set_id(Set::SCRATCH), Paint::RED, 0, 0)
+            refused_unregister: i32 = unregister_set(set_id(Set::GLASS))
+            refused_slot: i32 = stage_slot(0, Paint::RED)
+            refused_raw: i32 = register_staged(Set::SCRATCH, 1)
+            return 2 if elisa_render_scene_v1_snapshot_abort() != NATIVE_OK
+            return 3 if refused_register != Code::BATCH_ACTIVE or refused_unregister != Code::BATCH_ACTIVE
+            return 4 if refused_slot != NATIVE_BATCH_ACTIVE or refused_raw != NATIVE_BATCH_ACTIVE
+            return 5 if register_staged(Set::SCRATCH, 1) != NATIVE_INVALID
+            0
+
+        def extra_set(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::EXTRA_SETS, low: low}
+
+        def fill_sets() -> u64:
+            for low in Ids::EXTRA_FIRST..<Ids::EXTRA_END |accepted: u64 = 0| -> accepted:
+                accepted <- accepted + 1 if register_set(extra_set(low), Paint::RED, 0, 0) == Code::OK
+
+        def clear_sets() -> void:
+            for low in Ids::EXTRA_FIRST..<Ids::EXTRA_END:
+                _ = unregister_set(extra_set(low))
+
+        # The set table holds 32 sets.
+        def set_capacity() -> i32:
+            free_sets: u64 = MAX_SNAPSHOT_MATERIAL_SETS - set_count()
+            accepted: u64 = fill_sets()
+            overflow: i32 = register_set(extra_set(Ids::EXTRA_END), Paint::RED, 0, 0)
+            clear_sets()
+            return 1 if accepted != free_sets or overflow != Code::CAPACITY
+            return 2 if set_count() != MAX_SNAPSHOT_MATERIAL_SETS - free_sets
+            0
+
+        def cleanup() -> i32:
+            # committed_rows already removed the mixed set.
+            set_ids: u64[5] = [Set::BLUE_CENTER, Set::RED_CENTER, Set::GLASS, Set::SINGLE, Set::TRIPLE]
+            for index in 0..<5 |set_ids|:
+                return 1 if unregister_set(set_id(set_ids[index])) != Code::OK
+            return 2 if set_count() != 0
+            paints: u64[4] = [Paint::RED, Paint::BLUE, Paint::GLASS_RED, Paint::GLASS_BLUE]
+            for index in 0..<4 |paints|:
+                return 3 if unregister_material(paints[index]) != Code::OK
+            meshes: u64[3] = [Mesh::PANEL, Mesh::TILE, Mesh::SKINNED]
+            for index in 0..<3 |meshes|:
+                return 4 if unregister_mesh(meshes[index]) != Code::OK
+            0
+
+    public:
+        def exercise() -> i32:
+            shared_meshes: u64 = elisa_render_scene_v1_test_snapshot_shared_mesh_count()
+            instances: u64 = RenderScene::instance_count()
+            return 1 if set_count() != 0
+            return 2 if register_mesh(Mesh::PANEL, "build/cooked/subsets/panel.elpk") != Code::OK
+            return 3 if register_mesh(Mesh::TILE, "examples/maze/assets/maze_tile.elpk") != Code::OK
+            return 4 if register_mesh(Mesh::SKINNED, "build/cooked/subsets/skinned.pkg") != Code::OK
+            painted: i32 = register_paints()
+            return 4 + painted if painted != 0
+            registered: i32 = registrations()
+            return 10 + registered if registered != 0
+            staging: i32 = staging_rejections()
+            return 30 + staging if staging != 0
+            bounds: i32 = builder_bounds()
+            return 50 + bounds if bounds != 0
+            staged: i32 = stage_checks()
+            return 60 + staged if staged != 0
+            rendered: i32 = rendered_strips()
+            return 70 + rendered if rendered != 0
+            committed: i32 = committed_rows()
+            return 90 + committed if committed != 0
+            refused: i32 = batch_refusals()
+            return 110 + refused if refused != 0
+            capacity: i32 = set_capacity()
+            return 120 + capacity if capacity != 0
+            cleaned: i32 = cleanup()
+            return 130 + cleaned if cleaned != 0
+            restored: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == shared_meshes
+            return 140 if not restored or RenderScene::instance_count() != instances
+            0
