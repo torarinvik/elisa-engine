@@ -1,13 +1,12 @@
 # Asynchronous snapshot assets
 
 A04 requires that frame threads never block on file IO, and that unloading
-during a read or after a failed dependency leaves nothing behind. The
-render-scene snapshot loaders read cooked meshes and bundle textures on the
-owner thread, inside registration. This slice adds a request path that moves
-path resolution, the dependency check and the section read onto a worker
-thread. The owner thread makes a finished load visible only when it pumps.
-The native maze now loads its tile mesh and wall texture this way and keeps
-presenting frames under a loading overlay while they load.
+during a read or after a failed dependency leaves nothing behind. The async
+snapshot path moves path resolution, dependency checks, section reads, and PNG
+or JPEG decode onto a worker. The owner thread makes finished CPU data visible
+when it pumps, then creates Wicked textures when materials bind them. The
+native maze loads its tile mesh and wall texture this way and keeps presenting
+frames under a loading overlay while they load.
 
 ## Path
 
@@ -33,18 +32,22 @@ presenting frames under a loading overlay while they load.
    - Each kind reserves capacity at request time. Live slots plus live
      requests can't exceed the 32 meshes or 128 textures that synchronous
      registration allows.
-2. **Load.** The job resolves the path under the project root, runs
-   `verify_bundle_dependencies`, then calls `worker.checkpoint()`. After that
-   it reads the mesh with the cooked-geometry loader or the texture section
-   with `read_bundle_texture`. Only the job's own strings are captured. The
-   job touches no service state and never takes the service mutex. The lock
-   order is always service mutex, then worker mutex.
+2. **Load and decode.** The job resolves the path under the project root,
+   runs `verify_bundle_dependencies`, then calls `worker.checkpoint()`. After
+   that it reads the mesh with the cooked-geometry loader or reads and decodes
+   the PNG/JPEG section into bounded CPU pixels. The texture decoder verifies
+   the dimensions against the checked image header and caps decoded storage at
+   256 MiB per service. Only the job's own strings and owner-thread identity
+   are captured. The job touches no service state and never takes the service
+   mutex. The lock order is always service mutex, then worker mutex.
 3. **Adopt.** `RenderScene::pump_snapshot_assets(budget)` takes up to `budget`
    finished results (1–64) in completion order. It matches each one to its
    request by serial and installs it with the same slot and byte-budget code
-   as synchronous registration. It returns the number adopted. A failed load,
-   or one that no longer fits a budget, marks its request failed and logs the
-   reason. Pumping inside a snapshot transaction is `BatchActive`.
+   as synchronous registration. Texture slots retain decoded pixels and
+   account for both source-section bytes and decoded bytes. It returns the
+   number adopted. A failed load, or one that no longer fits a budget, marks
+   its request failed and logs the reason. Pumping inside a snapshot
+   transaction is `BatchActive`.
 4. **Observe.** `RenderScene::snapshot_asset_state(kind, id)` returns
    `Absent`, `Loading` or `Resident`, or raises the failure (`AssetLoadFailure`
    or `Capacity`) until the ID is unregistered or requested again.
@@ -96,7 +99,7 @@ timing.
 | 1–10 | A mesh request returns OK, and repeating it coalesces into one job. The same ID with a texture bundle path is `InvalidValue`. With the job parked mid-load, the ID reads `Loading`, a snapshot row naming it and synchronous registration are both `AssetPending`, and four application frames run while no pump adopts anything. Releasing the job, one pump adopts it: the row stages and geometry bytes grow. A resident ID accepts only its own path. |
 | 11–19 | `mesh-missing.elpk` (missing dependency) and an absent file fail on the worker, adopt nothing, read as `AssetLoadFailure` and allocate no bytes. Unregistering clears the failure. Requesting the failed ID again with a valid path retries it and it becomes resident. |
 | 20–28 | Cancellation at each point: parked at the checkpoint, finished but not adopted, and still queued. Each leaves bytes unchanged and adopts nothing. The worker's started count shows the cancelled queued job never ran. |
-| 29–36 | A bundle texture request: a material naming it is `AssetPending` while it loads and registers once it is resident, and retained texture bytes grow. A texture whose dependency is missing fails, and a material naming it is `AssetLoadFailure`. |
+| 29–36 | A bundle texture request: a material naming it is `AssetPending` while it loads; the worker decodes it, pump adopts it, and owner-thread material registration creates the GPU resource. Source and decoded-byte accounting grows. A texture whose dependency is missing fails, and a material naming it is `AssetLoadFailure`. |
 | 33 | A mesh and a texture finish in one pump. The mesh request reuses the request slot that a cancelled request freed, so a pump that matched results by slot order instead of serial would adopt the texture into the mesh request. Both become resident. |
 | 37–39 | 40 requests with the worker held stop at exactly the free mesh slots, then cancel without starting. Unregistering everything returns geometry bytes, mesh slots and texture bytes to their baselines with no live request or worker job left. |
 | 5 | The test ends with a mesh job parked mid-load. Application shutdown must release it and join the worker. |
@@ -171,13 +174,15 @@ mutant exited 1 at the named check:
   discarded.
 - **Adoption can still fail.** Requests count against the slot limits at
   request time, but synchronous registration of another ID doesn't count
-  pending requests and can take the last slot first. The byte budgets
-  (256 MiB of geometry, 256 MiB of encoded textures) are only known after the
-  read. Adoption checks both and can fail with `Capacity`.
-- **Owner-thread work remains.** Adoption moves the loaded geometry or
-  encoded bytes into a slot. Wicked still decodes a bundle texture when a
-  material that names it registers, and a mesh is uploaded when a snapshot
-  row first uses it. Both happen on the owner thread.
+  pending requests and can take the last slot first. The budgets (256 MiB of
+  geometry, 256 MiB of source texture sections, and 256 MiB of decoded texture
+  pixels) are only known after the read and decode. Adoption checks them and
+  can fail with `Capacity`.
+- **Owner-thread work remains.** Adoption moves geometry or decoded CPU
+  pixels into a slot. Wicked creates the GPU texture, mip chain, and deferred
+  block-compression request when a material registers; a mesh is uploaded
+  when a snapshot row first uses it. Synchronous compatibility registration
+  still reads and decodes bundle textures on its calling owner thread.
 - **Priority and eviction.** Queued jobs use descending signed priorities, with
   FIFO order for ties; a running job cannot be preempted. Nothing is evicted
   under budget pressure; the caller unregisters assets explicitly.
@@ -194,6 +199,10 @@ mutant exited 1 at the named check:
   bundle-dependency tests, the maze snapshot test, the maze application smoke
   and all nine packaged maze cases. The three expected worker failures were
   logged: two missing dependencies and one absent file.
+- The async asset test asserts that the resident bundle texture was decoded
+  on a non-owner worker thread; its material creates and samples the texture
+  on the owner thread. The truncated-image registration test now fails before
+  retaining a texture slot.
 - `elisascript scripts/wicked_probe.elisascript build` rebuilt the probe with
   the worker check and passed its application and render smokes. The `frame`
   phase then passed.

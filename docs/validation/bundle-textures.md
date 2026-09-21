@@ -32,14 +32,17 @@ material now takes its base color from a 32×32 brick image in its tile bundle.
    - decompresses the section if needed and checks its CRC-32
    - reads the image header again and applies the same format and 1–8192
      dimension checks
-   - keeps the encoded bytes, up to 256 MiB across all bundle textures
-     (`Capacity` beyond that)
-4. **Decode.** When a material that uses the texture registers, Wicked decodes
-   the kept bytes from memory. The resource name is
-   `<canonical bundle path>#<section>-<crc32>.<png|jpg>`. Wicked caches
-   resources by name and picks the decoder from the extension, so the name
-   changes whenever the section or its bytes change. If the decode fails, the
-   material registration fails with `AssetLoadFailure`.
+   - decodes the checked PNG or JPEG to CPU pixels and accounts for at most
+     256 MiB of source sections and 256 MiB of decoded pixels across resident
+     bundle textures (`Capacity` beyond either budget)
+4. **Upload.** A material registration creates a Wicked texture from the
+   decoded pixels on the owner thread, creates its mip chain, and schedules
+   Wicked's block-compression work. Resources are cached per texture asset
+   and material role, so normal-map BC5 settings do not collide with color
+   texture formats. Async requests perform the decode on their worker before
+   pump adopts the pixels; the synchronous compatibility method decodes while
+   registering on the owner thread. Failed decode returns `AssetLoadFailure`
+   before it installs a texture slot.
 
 Registering the same ID again with the same bundle and section succeeds and
 changes nothing. The same ID with a different bundle or section, or as a loose
@@ -56,8 +59,8 @@ and `ktx`.
 
 | Case | Expected |
 | --- | --- |
-| register `albedo` | OK; retained bytes grow, and stay under 4096 |
-| register the same ID, bundle and section again | OK; retained bytes unchanged |
+| register `albedo` | OK; source-byte accounting grows, and stays under 4096 |
+| register the same ID, bundle and section again | OK; source-byte accounting is unchanged |
 | the same ID with section `photo` | `InvalidValue` |
 | the same ID as a loose image path to the same bundle | `InvalidValue` |
 | register `photo` under a second ID | OK |
@@ -69,11 +72,11 @@ and `ktx`.
 | a `..` path, an absolute path, a symlink to a valid copy outside the root | `AssetLoadFailure` |
 | the maze bundle's `mesh` section | `AssetLoadFailure`, not an image |
 | section names `Albedo`, empty, and 16 bytes | `InvalidValue` |
-| retained bytes after all the rejections | unchanged |
-| `truncated`: signature and `IHDR` intact, image data cut short | registration OK; the material using it fails with `AssetLoadFailure` |
+| source-byte accounting after all the rejections | unchanged |
+| `truncated`: signature and `IHDR` intact, image data cut short | registration fails with `AssetLoadFailure`; no texture slot or bytes remain |
 | unregister a texture a live material uses | `InvalidValue` |
 | unregister, re-register the ID as `photo`, register a material | the material's texture is 24×12 |
-| unregister everything | retained bytes return to 0 |
+| unregister everything | source and decoded-byte accounting return to 0 |
 
 Other checks:
 
@@ -100,23 +103,25 @@ and the source was restored.
 | --- | --- |
 | the 1–8192 dimension check always passes | the `huge` section registers; the native smoke exits 182 (test 22) |
 | loose-path re-registration ignores whether the slot holds a bundle section | the loose path re-registration succeeds; exit 167 (test 7) |
-| the resource name drops the section and checksum | `truncated` reuses the cached `albedo` resource, so its material registers; exit 174 (test 14) |
-| unregistering doesn't return the retained bytes | retained bytes stay above 0 after cleanup; exit 192 (test 32) |
+| unregistering doesn't return the source-byte accounting | the count stays above 0 after cleanup; exit 192 (test 32) |
 
 ## Limits
 
 - **Formats.** Only PNG and JPEG sections load. KTX2, Basis and DDS sections
   are rejected. KTX2 upload exists in `native/ktx2_upload.h`, but it isn't
   connected to bundle sections. That is A06.
-- **Decode timing.** Wicked decodes on the owner thread while the material
-  registers, not through the A04 loader.
-- **Memory.** Encoded bytes stay in memory for as long as the texture is
-  registered, so later materials can use them. The 256 MiB cap isn't tested.
+- **Decode timing.** Async bundle requests decode on the A04 worker. The
+  synchronous compatibility entrypoint decodes on the owner thread. GPU
+  texture creation and mip/compression scheduling stay on the owner thread.
+- **Memory.** Encoded section data is released after validation and decode.
+  Decoded pixels stay with the texture asset so later materials can create
+  role-specific resources. Source and decoded-pixel budgets are each 256 MiB;
+  their exact upper bounds aren't exercised by the smoke.
 - **Header bound.** A valid header may still claim 8192×8192, so the decoder
   can allocate about 256 MiB of RGBA pixels.
-- **Checksum in the name.** No test rewrites a bundle during a run, so the
-  checksum part of the resource name is untested. The section part is covered:
-  without it, `truncated` would reuse the cached `albedo` resource.
+- **Checksum identity.** The checksum and section form the native texture
+  resource label; asset-ID conflicts and rewritten-bundle checks cover the
+  identity rules. ResourceManager name caching is not used for bundle images.
 - **Importers.** glTF cooks and texture-only `images` cooks take textures. The
   cooker doesn't read texture references from the glTF source; the project
   declares the sections, and Elisa code assigns them to materials. The maze
@@ -127,7 +132,7 @@ and the source was restored.
 
 - `scripts/render_scene_native_smoke.py` passed on SDL3/Metal, including the
   bundle-texture cases, the textured maze and all seven packaged maze cases.
-- The four mutations above failed the native smoke with the listed exits.
+- The three mutations above failed the native smoke with the listed exits.
 - `scripts/cook_gltf_asset.py --self-test`, `scripts/test_elisa_build_run.py`
   (9 tests) and `scripts/cook_assets.py --self-test` passed.
 - The full `PYTHON_BIN=/opt/homebrew/bin/python3 elisascript

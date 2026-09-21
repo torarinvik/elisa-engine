@@ -106,8 +106,8 @@ int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint64_t high, u
 int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
     uint64_t high, uint64_t low, const char* bundle_path, const char* section);
 // Asynchronous forms: the request returns without file IO, a worker thread
-// reads the asset, and pump adopts up to `budget` finished loads on the owner
-// thread, returning how many became resident.
+// reads and decodes bundle images, and pump adopts up to `budget` finished
+// loads on the owner thread, returning how many became resident.
 int32_t elisa_render_scene_v1_request_snapshot_mesh_asset(
     uint64_t high, uint64_t low, const char* package_path);
 int32_t elisa_render_scene_v1_request_snapshot_mesh_asset_with_priority(

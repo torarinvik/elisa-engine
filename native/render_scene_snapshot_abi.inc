@@ -424,7 +424,8 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint6
             }
         }
     }
-    state.snapshot_bundle_texture_bytes -= state.snapshot_texture_assets[slot].encoded.size();
+    state.snapshot_bundle_texture_source_bytes -= state.snapshot_texture_assets[slot].source_bytes;
+    state.snapshot_decoded_texture_bytes -= state.snapshot_texture_assets[slot].decoded.pixels.size();
     state.snapshot_texture_assets[slot] = SnapshotTextureAssetSlot{};
     return ELISA_RENDER_SCENE_OK;
 }

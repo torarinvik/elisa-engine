@@ -1,8 +1,9 @@
 // Snapshot textures read from an image section of a cooked ELPK bundle. The
 // bundle path resolves under the project root like any asset path, and its
 // declared dependencies must be present (bundle_dependencies.h). The section
-// is CRC-checked and its image header bounded before its bytes are retained;
-// Wicked decodes them when a material that references the texture registers.
+// is CRC-checked, bounded and decoded to CPU pixels before it is installed.
+// Async callers decode on a worker; this compatibility entrypoint decodes on
+// the owner thread. Material registration creates the GPU texture there.
 
 extern "C" int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
     uint64_t high, uint64_t low, const char* bundle_path, const char* section) {

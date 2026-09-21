@@ -118,7 +118,8 @@ struct RenderSceneService {
     std::array<SnapshotSharedMesh, MAX_SNAPSHOT_SHARED_MESHES> snapshot_shared_meshes{};
     size_t snapshot_geometry_bytes = 0;
     size_t snapshot_shared_geometry_bytes = 0;
-    size_t snapshot_bundle_texture_bytes = 0;
+    size_t snapshot_bundle_texture_source_bytes = 0;
+    size_t snapshot_decoded_texture_bytes = 0;
     SnapshotAssetRequests snapshot_asset_requests;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
@@ -363,7 +364,8 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_shared_meshes = {};
     state.snapshot_geometry_bytes = 0;
     state.snapshot_shared_geometry_bytes = 0;
-    state.snapshot_bundle_texture_bytes = 0;
+    state.snapshot_bundle_texture_source_bytes = 0;
+    state.snapshot_decoded_texture_bytes = 0;
     state.sun_entity = wi::ecs::INVALID_ENTITY;
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();

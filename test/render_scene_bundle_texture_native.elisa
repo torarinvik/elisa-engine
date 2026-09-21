@@ -9,7 +9,7 @@ module RenderSceneBundleTextureNativeTests:
             material_high: u64, material_low: u64, slot: i32, width: u32, height: u32) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() -> u64
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() -> u64
 
         const module Ids:
             TEXTURES: u64 = 910
@@ -72,12 +72,12 @@ module RenderSceneBundleTextureNativeTests:
     public:
         def exercise() -> i32:
             bundle: cstr = "build/cooked/render-scene-textures.elpk"
-            return 1 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != 0
+            return 1 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != 0
             return 2 if register(1, bundle, "albedo") != 0
-            albedo_bytes: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            albedo_bytes: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
             return 3 if albedo_bytes == 0 or albedo_bytes > 4096
             return 4 if register(1, bundle, "albedo") != 0
-            return 5 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != albedo_bytes
+            return 5 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != albedo_bytes
             return 6 if register(1, bundle, "photo") != 1
             path_texture: i32 = catch RenderScene::register_snapshot_texture_asset(texture_id(1), bundle):
                 ok: 0
@@ -85,18 +85,18 @@ module RenderSceneBundleTextureNativeTests:
                 error failure: 2
             return 7 if path_texture != 1
             return 8 if register(2, bundle, "photo") != 0
-            return 9 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() <= albedo_bytes
+            return 9 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() <= albedo_bytes
 
             return 10 if register_material(1, 1) != 0 or not base_color_size(1, 16, 8)
             return 11 if register_material(2, 2) != 0 or not base_color_size(2, 24, 12)
-            retained: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            retained: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
             rejected: i32 = rejected_registrations()
             return rejected if rejected != 0
-            return 12 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != retained
+            return 12 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != retained
 
-            # The header passes inspection, so only Wicked's decode can fail it.
-            return 13 if register(4, bundle, "truncated") != 0
-            return 14 if register_material(4, 4) != 2
+            # The checked PNG decoder rejects this truncated image before
+            # retaining a texture slot.
+            return 13 if register(4, bundle, "truncated") != 2
             return 15 if unregister_texture(1) != 1
 
             return 16 if unregister_material(1) != 0 or unregister_texture(1) != 0
@@ -104,6 +104,6 @@ module RenderSceneBundleTextureNativeTests:
             return 17 if register(1, bundle, "photo") != 0
             return 18 if register_material(1, 1) != 0 or not base_color_size(1, 24, 12)
             return 19 if unregister_material(1) != 0 or unregister_material(2) != 0
-            return 31 if unregister_texture(1) != 0 or unregister_texture(2) != 0 or unregister_texture(4) != 0
-            return 32 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != 0
+            return 31 if unregister_texture(1) != 0 or unregister_texture(2) != 0 or unregister_texture(4) != 4
+            return 32 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != 0
             0

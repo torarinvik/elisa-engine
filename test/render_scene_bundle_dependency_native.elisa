@@ -8,7 +8,7 @@ include "../src/runtime/render_scene_assets.elisa"
 module RenderSceneBundleDependencyNativeTests:
     private:
         @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() -> u64
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() -> u64
 
         const module Ids:
             TEXTURES: u64 = 920
@@ -75,7 +75,7 @@ module RenderSceneBundleDependencyNativeTests:
 
     public:
         def exercise() -> i32:
-            baseline: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            baseline: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
             instances: usize = RenderScene::instance_count()
             return 1 if register(1, "build/cooked/dependencies/leaf.elpk") != 0
             # root.elpk needs leaf.elpk and textures/detail.elpk, which needs
@@ -83,12 +83,12 @@ module RenderSceneBundleDependencyNativeTests:
             return 2 if register(2, "build/cooked/dependencies/root.elpk") != 0
             return 3 if register(3, "build/cooked/dependencies/textures/detail.elpk") != 0
             return 4 if register(4, "build/cooked/dependencies/chain/link-1.elpk") != 0
-            retained: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            retained: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
             return 5 if retained <= baseline
 
             rejected: i32 = rejected_textures()
             return rejected if rejected != 0
-            return 6 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != retained
+            return 6 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != retained
 
             return 7 if register_mesh(1, "build/cooked/dependencies/mesh.elpk") != 0
             return 8 if register_mesh(2, "build/cooked/dependencies/mesh-missing.elpk") != 2
@@ -99,5 +99,5 @@ module RenderSceneBundleDependencyNativeTests:
 
             return 13 if unregister_mesh(1) != 0
             return 14 if unregister(1) != 0 or unregister(2) != 0 or unregister(3) != 0 or unregister(4) != 0
-            return 15 if elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() != baseline
+            return 15 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != baseline
             0

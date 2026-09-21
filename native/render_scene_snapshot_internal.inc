@@ -33,12 +33,12 @@ bool apply_snapshot_material_textures(RenderSceneService& state,
             if (high == 0 && low == 0) continue;
             const size_t texture_slot = snapshot_texture_asset_slot(state, high, low);
             if (texture_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return false;
-            const SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[texture_slot];
+            SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[texture_slot];
             const int32_t slot_code = static_cast<int32_t>(slot);
             const bool assigned = texture.section.empty()
                 ? elisa::rendering::textures::assign_resolved_texture(material, slot_code, texture.canonical_path)
-                : elisa::rendering::textures::assign_encoded_texture(material, slot_code,
-                    texture.resource_stem, texture.extension, texture.encoded);
+                : elisa::rendering::textures::assign_decoded_texture(material, slot_code,
+                    texture.resources[slot], texture.resource_stem, texture.extension, texture.decoded);
             if (!assigned) return false;
         }
     } catch (...) {

@@ -1,11 +1,12 @@
 // Asynchronous snapshot asset requests. A request records the ID and path and
 // returns without touching the filesystem. The worker thread resolves the
-// path, checks the bundle's dependency closure and reads the mesh or texture
-// section. Nothing becomes visible until the owner thread pumps: pump adopts
-// finished loads into ordinary asset slots under the same byte budgets as
-// synchronous registration. While a request is loading, a snapshot row that
-// names the mesh, or a material that names the texture, fails with
-// ELISA_RENDER_SCENE_ASSET_PENDING; the renderer substitutes nothing.
+// path, checks the bundle's dependency closure, reads the mesh or texture
+// section and decodes bundle images. Nothing becomes visible until the owner
+// thread pumps: pump adopts finished loads into ordinary asset slots under
+// the same byte budgets as synchronous registration. While a request is
+// loading, a row that names the mesh, or a material that names the texture,
+// fails with ELISA_RENDER_SCENE_ASSET_PENDING; the renderer substitutes
+// nothing.
 
 namespace {
 
@@ -86,10 +87,11 @@ int32_t request_snapshot_asset(SnapshotAssetKind kind, uint64_t high, uint64_t l
     if (free_request == MAX_SNAPSHOT_ASSET_REQUESTS) return ELISA_RENDER_SCENE_CAPACITY;
     SnapshotAssetRequests& requests = state.snapshot_asset_requests;
     const uint64_t serial = requests.next_serial++;
+    const std::thread::id owner_thread = state.owner_thread;
     elisa::assets::SerialJobWorker<SnapshotAssetLoad>& worker = requests.worker;
     try {
-        if (!worker.submit(serial, priority, [&worker, kind, requested_path, requested_section] {
-                return load_snapshot_asset(worker, kind, requested_path, requested_section);
+        if (!worker.submit(serial, priority, [&worker, kind, requested_path, requested_section, owner_thread] {
+                return load_snapshot_asset(worker, kind, requested_path, requested_section, owner_thread);
             })) {
             return ELISA_RENDER_SCENE_CAPACITY;
         }

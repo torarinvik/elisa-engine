@@ -30,7 +30,7 @@ module RenderSceneCookedTextureNativeTests:
         extern elisa_render_scene_v1_test_snapshot_material_occlusion(high: u64, low: u64) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() -> u64
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() -> u64
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_material_set_count() -> u64
@@ -270,7 +270,7 @@ module RenderSceneCookedTextureNativeTests:
                 error failure: Code::OTHER
 
         def texture_bytes() -> u64:
-            elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+            elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
 
         def set_count() -> u64:
             elisa_render_scene_v1_test_snapshot_material_set_count()

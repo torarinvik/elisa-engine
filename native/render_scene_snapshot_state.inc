@@ -3,12 +3,13 @@ constexpr size_t MAX_SNAPSHOT_MATERIAL_ASSETS = 64;
 constexpr size_t MAX_SNAPSHOT_TEXTURE_ASSETS = 128;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_SETS = 32;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_SET_SLOTS = elisa::assets::MAX_GEOMETRY_MATERIAL_SLOTS;
-constexpr size_t MAX_SNAPSHOT_BUNDLE_TEXTURE_BYTES = 256u * 1024u * 1024u;
+constexpr size_t MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES = 256u * 1024u * 1024u;
 constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = 4;
 constexpr size_t MAX_SNAPSHOT_SHARED_MESHES = MAX_INSTANCES * 2;
 constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
 constexpr size_t MAX_SNAPSHOT_ASSET_REQUESTS = elisa::assets::SerialJobWorker<int>::MAX_JOBS;
 constexpr uint32_t MAX_SNAPSHOT_ASSET_ADOPTIONS = MAX_SNAPSHOT_ASSET_REQUESTS;
+constexpr size_t MAX_SNAPSHOT_DECODED_TEXTURE_BYTES = elisa::rendering::textures::MAX_DECODED_IMAGE_BYTES;
 constexpr float DEFAULT_SNAPSHOT_ALPHA_CUTOFF = 0.5f;
 constexpr float OPAQUE_SNAPSHOT_ALPHA_REF = 1.0f;
 constexpr float DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH = 1.0f;
@@ -73,12 +74,16 @@ struct SnapshotTextureAssetSlot {
     uint64_t low = 0;
     std::string requested_path;
     std::filesystem::path canonical_path;
-    // A bundle-backed texture keeps its CRC-checked encoded image and a
-    // content-keyed resource stem; the section is empty for a loose file.
+    // Bundle sections decode to bounded CPU pixels before installation; async
+    // requests decode on the worker, while the compatibility call runs inline.
+    // Owner-thread import creates role-specific Wicked resources from pixels.
     std::string section;
     std::string resource_stem;
-    std::vector<uint8_t> encoded;
+    elisa::rendering::textures::DecodedImage decoded;
+    std::array<wi::Resource, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> resources{};
+    size_t source_bytes = 0;
     const char* extension = nullptr;
+    bool decoded_on_worker = false;
     bool live = false;
 };
 
@@ -135,6 +140,8 @@ struct SnapshotAssetLoad {
     std::filesystem::path canonical_path;
     elisa::assets::CookedGeometry geometry;
     elisa::assets::BundleTexture texture;
+    elisa::rendering::textures::DecodedImage decoded_texture;
+    bool decoded_on_worker = false;
     size_t bytes = 0;
     std::string error;
 };

@@ -138,12 +138,29 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture_size(
     return desc.width == width && desc.height == height ? 1 : 0;
 }
 
-// Encoded bytes retained by bundle-backed texture registrations.
-extern "C" uint64_t elisa_render_scene_v1_test_snapshot_bundle_texture_bytes(void) {
+// Source-section bytes admitted by the bundle-backed texture budget.
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state)) return UINT64_MAX;
-    return static_cast<uint64_t>(state.snapshot_bundle_texture_bytes);
+    return static_cast<uint64_t>(state.snapshot_bundle_texture_source_bytes);
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_texture_decoded_on_worker(
+        uint64_t high, uint64_t low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    const size_t slot = snapshot_texture_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return 0;
+    const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[slot];
+    const size_t pixel_count = static_cast<size_t>(asset.decoded.width) * asset.decoded.height;
+    const size_t stored_channels = asset.decoded.source_channels == 3 ? 4u :
+        static_cast<size_t>(asset.decoded.source_channels);
+    return asset.section.empty() || !asset.decoded_on_worker || asset.source_bytes == 0 ||
+        asset.decoded.width == 0 || asset.decoded.height == 0 || stored_channels == 0 ||
+        pixel_count > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES / stored_channels ||
+        asset.decoded.pixels.size() != pixel_count * stored_channels ? 0 : 1;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_meshes_shared(

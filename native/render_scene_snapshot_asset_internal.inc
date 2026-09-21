@@ -91,7 +91,8 @@ int32_t install_snapshot_mesh_asset(RenderSceneService& state, uint64_t high, ui
 
 int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_t high, uint64_t low,
         std::string requested_path, std::filesystem::path canonical_path, std::string section,
-        elisa::assets::BundleTexture texture) {
+        elisa::assets::BundleTexture texture, elisa::rendering::textures::DecodedImage decoded,
+        bool decoded_on_worker) {
     size_t free_slot = MAX_SNAPSHOT_TEXTURE_ASSETS;
     for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
         if (!state.snapshot_texture_assets[index].live) {
@@ -99,10 +100,20 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
             break;
         }
     }
-    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS ||
-        texture.encoded.size() > MAX_SNAPSHOT_BUNDLE_TEXTURE_BYTES - state.snapshot_bundle_texture_bytes) {
+    const size_t source_bytes = texture.encoded.size();
+    const size_t decoded_bytes = decoded.pixels.size();
+    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS || source_bytes == 0 || decoded_bytes == 0 ||
+        source_bytes > MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES - state.snapshot_bundle_texture_source_bytes ||
+        decoded_bytes > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES - state.snapshot_decoded_texture_bytes) {
         return ELISA_RENDER_SCENE_CAPACITY;
     }
+    const size_t pixel_count = static_cast<size_t>(decoded.width) * decoded.height;
+    const size_t stored_channels = decoded.source_channels == 3 ? 4u :
+        static_cast<size_t>(decoded.source_channels);
+    if (decoded.width != texture.header.width || decoded.height != texture.header.height ||
+        decoded.source_channels < 1 || decoded.source_channels > 4 ||
+        pixel_count > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES / stored_channels ||
+        decoded_bytes != pixel_count * stored_channels) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
     char checksum[9] = {};
     std::snprintf(checksum, sizeof(checksum), "%08x", texture.checksum);
     SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[free_slot];
@@ -113,9 +124,12 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
     asset.resource_stem = canonical_path.string() + "#" + asset.section + "-" + checksum;
     asset.extension = elisa::assets::encoded_image_extension(texture.header.format);
     asset.canonical_path = std::move(canonical_path);
-    asset.encoded = std::move(texture.encoded);
+    asset.decoded = std::move(decoded);
+    asset.source_bytes = source_bytes;
     asset.live = true;
-    state.snapshot_bundle_texture_bytes += asset.encoded.size();
+    asset.decoded_on_worker = decoded_on_worker;
+    state.snapshot_bundle_texture_source_bytes += source_bytes;
+    state.snapshot_decoded_texture_bytes += decoded_bytes;
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -149,19 +163,26 @@ int32_t register_snapshot_bundle_texture_locked(RenderSceneService& state, uint6
     } catch (...) {
         return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
     }
+    elisa::rendering::textures::DecodedImage decoded;
+    if (!elisa::rendering::textures::decode_image(texture.encoded, texture.header.width,
+            texture.header.height, decoded)) {
+        std::fprintf(stderr, "Elisa bundle texture decode failed: %s\n", canonical_path.string().c_str());
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
     if (checksum != nullptr && texture.checksum != *checksum) {
         std::fprintf(stderr, "Elisa bundle texture load failed: %s changed since its mesh loaded\n",
             canonical_path.string().c_str());
         return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
     }
     return install_snapshot_bundle_texture_asset(state, high, low, requested_path,
-        canonical_path, section, std::move(texture));
+        canonical_path, section, std::move(texture), std::move(decoded), false);
 }
 
 // Runs on the worker. It resolves the path, checks the dependency closure and
 // reads the mesh or texture section, all off the owner thread.
 SnapshotAssetLoad load_snapshot_asset(elisa::assets::SerialJobWorker<SnapshotAssetLoad>& worker,
-        SnapshotAssetKind kind, const std::string& path, const std::string& section) {
+        SnapshotAssetKind kind, const std::string& path, const std::string& section,
+        std::thread::id owner_thread) {
     SnapshotAssetLoad load;
     try {
         if (!elisa::assets::resolve_project_asset_path(path.c_str(), load.canonical_path)) {
@@ -179,8 +200,16 @@ SnapshotAssetLoad load_snapshot_asset(elisa::assets::SerialJobWorker<SnapshotAss
                 load.status = ELISA_RENDER_SCENE_CAPACITY;
                 return load;
             }
-        } else if (!elisa::assets::read_bundle_texture(load.canonical_path, section.c_str(), load.texture, load.error)) {
-            return load;
+        } else {
+            if (!elisa::assets::read_bundle_texture(load.canonical_path, section.c_str(), load.texture, load.error)) {
+                return load;
+            }
+            if (!elisa::rendering::textures::decode_image(load.texture.encoded,
+                    load.texture.header.width, load.texture.header.height, load.decoded_texture)) {
+                load.error = "bundle texture image decode failed";
+                return load;
+            }
+            load.decoded_on_worker = std::this_thread::get_id() != owner_thread;
         }
         load.status = ELISA_RENDER_SCENE_OK;
     } catch (const std::exception& error) {
@@ -199,7 +228,8 @@ int32_t adopt_snapshot_asset(RenderSceneService& state, const SnapshotAssetReque
             std::move(load.canonical_path), std::move(load.geometry), load.bytes);
     }
     return install_snapshot_bundle_texture_asset(state, request.high, request.low, request.path,
-        std::move(load.canonical_path), request.section, std::move(load.texture));
+        std::move(load.canonical_path), request.section, std::move(load.texture),
+        std::move(load.decoded_texture), load.decoded_on_worker);
 }
 
 #include "render_scene_snapshot_material_internal.inc"

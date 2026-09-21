@@ -93,12 +93,12 @@ valid.
 | `corrupt-manifest.elpk` → a bundle whose manifest fails its CRC-32 check; both names the manifest could hold exist | `AssetLoadFailure` | binary section checksum mismatch |
 | `parent.elpk`: a checksummed manifest naming `../render-scene-textures.elpk`, which exists | `AssetLoadFailure` | package manifest dependency order rejected |
 | `chain/link-0.elpk`, a chain of 17 | `AssetLoadFailure` | package dependency count exceeded |
-| retained texture bytes after the rejections | unchanged | |
+| texture source-byte accounting after the rejections | unchanged | |
 | snapshot mesh from `mesh.elpk`, cooked with `--dependency leaf.elpk` | OK | |
 | snapshot mesh from `mesh-missing.elpk`, cooked with `--dependency absent.elpk` | `AssetLoadFailure` | package dependency is missing |
 | `create_mesh` from `mesh-missing.elpk` | `AssetLoadFailure`; instance count unchanged | package dependency is missing |
 | `create_mesh` from `mesh.elpk`, then destroy | OK; instance count restored | |
-| unregister everything | retained bytes return to the baseline | |
+| unregister everything | source-byte accounting returns to the baseline | |
 
 Other checks:
 
