@@ -417,7 +417,10 @@ postconditions.
 Production modules keep dependencies qualified through their module namespace;
 `scripts/check_module_hygiene.py` rejects ambient `using` directives and duplicate
 or missing top-level module declarations under `src/`. Tests and examples may
-import modules locally for fixture readability.
+import modules locally for fixture readability. The same check rejects `&name`
+where `name` is already a reference parameter in `src/`, `examples/`, or `test/`:
+the stage1 compiler accepts that form but binds it to the wrong storage, so a
+reference is always forwarded as `name`.
 
 ## Next milestone
 

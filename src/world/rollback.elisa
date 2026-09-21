@@ -131,7 +131,7 @@ module World::Rollback:
             snapshot
 
         def restore(world: mutable World::World&, snapshot: Snapshot&) -> void error[RollbackError]:
-            raise RollbackError.InvalidSnapshot if not snapshot_valid(&snapshot)
+            raise RollbackError.InvalidSnapshot if not snapshot_valid(snapshot)
             raise RollbackError.WrongWorld if world.epoch != snapshot.epoch
             for index in 0..<Bounds::MAX_ENTITIES |world, snapshot|:
                 world.registry[index] <- snapshot.registry[index]

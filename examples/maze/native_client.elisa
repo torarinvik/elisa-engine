@@ -175,7 +175,7 @@ module MazeNativeClient:
                                 failure <- 63
                                 running <- false
                     if running:
-                        _ = ActionInputRuntime::begin_frame(&input)
+                        _ = ActionInputRuntime::begin_frame(input)
                         if ActionInput::action_pressed(input, Actions::QUIT):
                             MazeGame::game_quit(game)
                             exit_requested: bool = catch RuntimeServices::request_exit(session):

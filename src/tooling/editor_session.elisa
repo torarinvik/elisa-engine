@@ -73,7 +73,7 @@ module EditorSession:
             module Changes:
                 public:
                     def advance(session: mutable EditorSession::Session&) -> void error[EditorSession::SessionError]:
-                        raise EditorSession::SessionError.InvalidSession if not EditorSession::session_valid(&session)
+                        raise EditorSession::SessionError.InvalidSession if not EditorSession::session_valid(session)
                         session.revision <- session.revision + 1
                         session.dirty <- true
 

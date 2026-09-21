@@ -294,7 +294,7 @@ module RuntimeServices:
         def pump(session: mutable Session&) -> Application::PumpStatus error[RuntimeServicesError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             status: Application::PumpStatus = Application::pump()
-            raise RuntimeServicesError.AudioRecoveryFailed if not recover_audio_if_needed(&session)
+            raise RuntimeServicesError.AudioRecoveryFailed if not recover_audio_if_needed(session)
             status
 
         def frame_info(session: Session&) -> Application::FrameInfo error[RuntimeServicesError]:
