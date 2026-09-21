@@ -22,6 +22,12 @@ SDL3/Metal render-scene smoke enables both, checks their Wicked `RenderPath3D`
 state, disables both and checks the restored state, then verifies malformed
 integer flags are rejected at the C ABI boundary. Validation passed:
 
+`RenderScene::set_shadow_quality` adds a checked Low/Medium/High preset for
+Wicked's shadow atlas. The presets select 512/1024/2048-pixel 2D maps and a
+quarter-resolution cube map; the native quality fixture checks the High state
+and the C ABI rejects values outside the enum range. This keeps presentation
+quality in Elisa while retaining a predictable renderer-side budget.
+
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py` — render-scene API smoke and ordinary native maze smoke exited 0.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` — full shared suite exited 0; both Elisa Proof suites proved all 23 obligations with certificate replay.
 - `/opt/homebrew/bin/python3 scripts/check_source_length.py`, `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
