@@ -1,0 +1,70 @@
+module RenderScenePanelNativeTests:
+    private:
+        const module Fixture:
+            INITIAL_X: f32 = 180.0
+            INITIAL_Y: f32 = 70.0
+            INITIAL_WIDTH: f32 = 80.0
+            INITIAL_HEIGHT: f32 = 70.0
+            POSITION_X: f32 = 200.0
+            POSITION_Y: f32 = 80.0
+            PANEL_WIDTH: f32 = 100.0
+            PANEL_HEIGHT: f32 = 80.0
+            RED: f32 = 0.95
+            DIM: f32 = 0.05
+            OPAQUE_ALPHA: f32 = 1.0
+            INVALID_COORDINATE: f32 = 20000.0
+            INVALID_SIZE: f32 = 0.0
+            INVALID_ALPHA: f32 = 1.2
+
+    public:
+        def create() -> RenderScene::OverlayPanelHandle error[RenderScene::RenderSceneError]:
+            RenderScene::create_overlay_panel(Fixture::INITIAL_X, Fixture::INITIAL_Y,
+                Fixture::INITIAL_WIDTH, Fixture::INITIAL_HEIGHT,
+                RenderScene::Color{red: Fixture::DIM, green: Fixture::DIM,
+                    blue: Fixture::RED, alpha: Fixture::OPAQUE_ALPHA})
+
+        def exercise(handle: RenderScene::OverlayPanelHandle) -> i32:
+            position_status: i32 = catch RenderScene::set_overlay_panel_position(
+                handle, Fixture::POSITION_X, Fixture::POSITION_Y):
+                ok: 0
+                error failure: 1
+            return 123 if position_status != 0
+            size_status: i32 = catch RenderScene::set_overlay_panel_size(
+                handle, Fixture::PANEL_WIDTH, Fixture::PANEL_HEIGHT):
+                ok: 0
+                error failure: 1
+            return 124 if size_status != 0
+            color_status: i32 = catch RenderScene::set_overlay_panel_color(handle,
+                RenderScene::Color{red: Fixture::RED, green: Fixture::DIM,
+                    blue: Fixture::DIM, alpha: Fixture::OPAQUE_ALPHA}):
+                ok: 0
+                error failure: 1
+            return 125 if color_status != 0
+            hidden: i32 = catch RenderScene::set_overlay_panel_visible(handle, false):
+                ok: 0
+                error failure: 1
+            return 126 if hidden != 0
+            shown: i32 = catch RenderScene::set_overlay_panel_visible(handle, true):
+                ok: 0
+                error failure: 1
+            return 127 if shown != 0
+            invalid_position: i32 = catch RenderScene::set_overlay_panel_position(
+                handle, Fixture::INVALID_COORDINATE, Fixture::POSITION_Y):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 128 if invalid_position != 1
+            invalid_size: i32 = catch RenderScene::set_overlay_panel_size(
+                handle, Fixture::INVALID_SIZE, Fixture::PANEL_HEIGHT):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 129 if invalid_size != 1
+            invalid_color: i32 = catch RenderScene::set_overlay_panel_color(handle,
+                RenderScene::Color{red: Fixture::RED, green: Fixture::DIM,
+                    blue: Fixture::DIM, alpha: Fixture::INVALID_ALPHA}):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 130 if invalid_color != 1
+            0

@@ -216,6 +216,15 @@ Native smoke coverage checks lit material state, UV transform, shadow-casting
 flags, invalid roughness, arc depth toggling, and rejection of a retired arc
 handle. The Amazing Labyrinth art study supplies native visual evidence.
 
+`RenderScene::create_overlay_panel` creates a bounded, solid-color screen-space
+rectangle on Wicked's existing 2D render path. Elisa can update its logical-canvas
+position, size, color and visibility, then destroy it; its generation-checked
+handle rejects stale updates. The native smoke verifies the panel changes
+rendered pixels, disappears and returns when hidden/shown, rejects invalid
+dimensions/colors, and rejects updates after destruction. This is a reusable
+panel primitive; text measurement/layout, font selection, input focus and full
+widget behavior remain separate capabilities.
+
 ## Exit codes
 
 `scripts/render_scene_native_smoke.py` passes through the exit status of
@@ -239,6 +248,7 @@ group G failed at case N` to stderr, then exits G.
 | 201–226 | `render_scene_bundle_dependency_native.elisa` | exit − 200 |
 | 227 | `render_scene_snapshot_native.elisa` | logged |
 | 228 | `render_scene_node_hierarchy_native.elisa` | logged |
+| 229 | `render_scene_panel_native.elisa` | logged |
 | 230 | `render_scene_cooked_texture_native.elisa` | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
