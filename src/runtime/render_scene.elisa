@@ -68,6 +68,11 @@ module RenderScene:
             sx: f32, sy: f32, sz: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage_tint(render_id: i64,
+            red: f32, green: f32, blue: f32,
+            emissive_red: f32, emissive_green: f32, emissive_blue: f32, emissive_strength: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
 
         @callconv(c)

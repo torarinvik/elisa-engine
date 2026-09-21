@@ -519,6 +519,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 }
 
 #include "render_scene_snapshot_abi.inc"
+#include "render_scene_snapshot_tint_abi.inc"
 
 #include "render_scene_animation_abi.inc"
 

@@ -9,6 +9,11 @@ extern elisa_render_scene_v1_test_snapshot_instance_resources(render_id: i64,
     vertex_count: u64, index_count: u64, red: f32, green: f32, blue: f32, alpha: f32,
     metallic: f32, roughness: f32) -> i32
 
+@callconv(c)
+extern elisa_render_scene_v1_test_snapshot_instance_tint(render_id: i64,
+    red: f32, green: f32, blue: f32,
+    emissive_red: f32, emissive_green: f32, emissive_blue: f32, emissive_strength: f32) -> i32
+
 module MazeRenderingNativeTests:
     private:
         def extract(scene: mutable MazePresentation::MazeScene&,
@@ -63,12 +68,21 @@ module MazeRenderingNativeTests:
             return 12 if RenderSnapshotScene::binding_count(presenter) != 39 or RenderScene::instance_count() != 39
             opened_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 35)
             return 13 if opened_door.render_id != 2002 or opened_door.visual.material.low != 6
+            carrier: RenderSnapshot::Tint = MazePresentation::key_carrier_tint()
+            player_glows: bool = elisa_render_scene_v1_test_snapshot_instance_tint(2000,
+                carrier.color.x, carrier.color.y, carrier.color.z,
+                carrier.emissive.x, carrier.emissive.y, carrier.emissive.z, carrier.emissive_strength) != 0
+            door_neutral: bool = elisa_render_scene_v1_test_snapshot_instance_tint(2002,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) != 0
+            return 22 if not player_glows or not door_neutral
 
             MazeGame::game_restart(&game)
             return 14 if update(&scene, game) != 0
             return 15 if extract(&scene, &snapshot) != 0 or sync(&presenter, &snapshot) != 0
             return 16 if RenderSnapshot::snapshot_count(snapshot) != 40
             return 17 if RenderSnapshotScene::binding_count(presenter) != 40 or RenderScene::instance_count() != 40
+            return 23 if elisa_render_scene_v1_test_snapshot_instance_tint(2000,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) == 0
 
             cleared: i32 = catch RenderSnapshotScene::clear(&presenter):
                 ok: 0

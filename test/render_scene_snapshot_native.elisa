@@ -18,6 +18,8 @@ module RenderSceneSnapshotNativeTests:
             BATCH_ENVELOPE_CALLS: u64 = 2
             POSITION_SPACING: f32 = 3.0
             CHANGED_FIRST_POSITION_X: f32 = -7.0
+            TINTED_OFFSET: i64 = 1
+            PROBE_RENDER_ID: i64 = 50000
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
@@ -50,6 +52,67 @@ module RenderSceneSnapshotNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_object_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_instance_tint(render_id: i64,
+            red: f32, green: f32, blue: f32,
+            emissive_red: f32, emissive_green: f32, emissive_blue: f32, emissive_strength: f32) -> i32
+
+        # The transaction entry points are private to RenderScene; the tint
+        # checks below drive them directly to reach states the presenter never
+        # produces.
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage_tint(render_id: i64,
+            red: f32, green: f32, blue: f32,
+            emissive_red: f32, emissive_green: f32, emissive_blue: f32, emissive_strength: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        def quotient(numerator: f32, denominator: f32) -> f32:
+            numerator / denominator
+
+        def instance_tint_neutral(render_id: i64) -> bool:
+            elisa_render_scene_v1_test_snapshot_instance_tint(render_id,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) != 0
+
+        def stage_probe_tint(red: f32, emissive_strength: f32) -> i32:
+            elisa_render_scene_v1_snapshot_stage_tint(Stress::PROBE_RENDER_ID,
+                red, 1.0, 1.0, 1.0, 1.0, 1.0, emissive_strength)
+
+        # Stages one row directly and returns 0 when every invalid tint is
+        # rejected, a valid one is accepted once, and abort leaves the scene.
+        def direct_tint_rejections(gameplay: World::EntityRef) -> i32:
+            return 1 if elisa_render_scene_v1_snapshot_stage_tint(Stress::PROBE_RENDER_ID,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) != -1
+            return 2 if elisa_render_scene_v1_snapshot_begin(Stress::INSTANCE_COUNT.u32()) != 0
+            return 3 if stage_probe_tint(1.0, 1.0) != -1
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(0, gameplay.world_epoch, gameplay.id,
+                Stress::PROBE_RENDER_ID, 700, 701, 800, 1,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+            return 4 if staged != 0
+            nan: f32 = quotient(0.0, 0.0)
+            infinity: f32 = quotient(1.0, 0.0)
+            return 5 if stage_probe_tint(nan, 1.0) != -1 or stage_probe_tint(infinity, 1.0) != -1
+            return 6 if stage_probe_tint(-0.25, 1.0) != -1 or stage_probe_tint(4.5, 1.0) != -1
+            return 7 if stage_probe_tint(1.0, 65.0) != -1 or stage_probe_tint(1.0, -1.0) != -1 or stage_probe_tint(1.0, nan) != -1
+            bright_emissive: i32 = elisa_render_scene_v1_snapshot_stage_tint(Stress::PROBE_RENDER_ID,
+                1.0, 1.0, 1.0, 1.5, 1.0, 1.0, 1.0)
+            return 8 if bright_emissive != -1
+            return 9 if elisa_render_scene_v1_snapshot_stage_tint(0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) != -1
+            return 10 if stage_probe_tint(2.0, 1.0) != 0 or stage_probe_tint(3.0, 1.0) != -1
+            return 11 if elisa_render_scene_v1_snapshot_abort() != 0
+            0
 
         def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&,
             snapshot: RenderSnapshot::Snapshot&) -> i32:
@@ -366,6 +429,50 @@ module RenderSceneSnapshotNativeTests:
                 Stress::LAST_INDEX.f32() * Stress::POSITION_SPACING) != 0
             stress_mesh_retained: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == 1
             return 92 if not first_position_valid or not last_position_valid or not stress_mesh_retained
+
+            # Tint one of the 200 instances sharing a mesh and material. Only that
+            # instance changes, the shared material does not, and the override
+            # costs one native call.
+            tinted_id: i64 = Stress::RENDER_ID_BASE + Stress::TINTED_OFFSET
+            glow: RenderSnapshot::Tint = RenderSnapshot::Tint{
+                color: Geometry::Vec3{x: 1.5, y: 0.75, z: 0.5},
+                emissive: Geometry::Vec3{x: 1.0, y: 0.5, z: 0.25},
+                emissive_strength: 6.0,
+            }
+            tint_status: i32 = catch WorldRendering::set_tint(&bindings,
+                stress_references[Stress::TINTED_OFFSET.usize()], tinted_id, glow):
+                ok: 0
+                error failure: 1
+            tint_extraction: i32 = extract_world_render(world, &bindings, &snapshot)
+            tint_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 95 if tint_status != 0 or tint_extraction != 0 or tint_sync != 0
+            return 96 if elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() != Stress::INSTANCE_COUNT.u64() + Stress::BATCH_ENVELOPE_CALLS + 1
+            glow_applied: bool = elisa_render_scene_v1_test_snapshot_instance_tint(tinted_id,
+                1.5, 0.75, 0.5, 1.0, 0.5, 0.25, 6.0) != 0
+            neighbours_neutral: bool = instance_tint_neutral(tinted_id - 1) and instance_tint_neutral(tinted_id + 1)
+            return 97 if not glow_applied or not neighbours_neutral
+            tint_mesh_shared: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == 1 and elisa_render_scene_v1_test_snapshot_meshes_shared(tinted_id, tinted_id + 1) != 0
+            tinted_material: bool = elisa_render_scene_v1_test_snapshot_instance_resources(
+                tinted_id, 3, 3, 0.25, 0.5, 0.75, 1.0, 0.4, 0.6) != 0
+            neighbour_material: bool = elisa_render_scene_v1_test_snapshot_instance_resources(
+                tinted_id + 1, 3, 3, 0.25, 0.5, 0.75, 1.0, 0.4, 0.6) != 0
+            return 98 if not tint_mesh_shared or not tinted_material or not neighbour_material
+
+            objects_before_probe: u64 = elisa_render_scene_v1_test_object_count()
+            direct_code: i32 = direct_tint_rejections(stress_references[0])
+            return 100 + direct_code if direct_code != 0
+            return 99 if elisa_render_scene_v1_test_object_count() != objects_before_probe or RenderScene::instance_count() != Stress::INITIAL_NATIVE_INSTANCE_COUNT + Stress::INSTANCE_COUNT.u64()
+
+            # Dropping the override restores the neutral multipliers.
+            reset_status: i32 = catch WorldRendering::set_tint(&bindings,
+                stress_references[Stress::TINTED_OFFSET.usize()], tinted_id, RenderSnapshot::tint_neutral()):
+                ok: 0
+                error failure: 1
+            reset_extraction: i32 = extract_world_render(world, &bindings, &snapshot)
+            reset_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 113 if reset_status != 0 or reset_extraction != 0 or reset_sync != 0
+            return 114 if elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() != Stress::INSTANCE_COUNT.u64() + Stress::BATCH_ENVELOPE_CALLS
+            return 115 if not instance_tint_neutral(tinted_id)
 
             cleared: bool = catch RenderSnapshotScene::clear(&presenter):
                 ok: true

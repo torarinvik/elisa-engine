@@ -12,6 +12,16 @@ module MazePresentation:
             WorldRejected
             BindingRejected
 
+        # The player's marker warms while it carries the key. The tint is a
+        # per-instance override, so the player keeps its authored material;
+        # it is color-only because that material has no emission to scale.
+        def key_carrier_tint() -> RenderSnapshot::Tint:
+            RenderSnapshot::Tint{
+                color: Geometry::Vec3{x: 1.35, y: 1.2, z: 0.55},
+                emissive: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                emissive_strength: 1.0,
+            }
+
     private:
         const module Tune:
             GRID_ORIGIN: f32 = -2.1
@@ -51,6 +61,7 @@ module MazePresentation:
                 door: World::EntityRef
                 key_live: mutable bool
                 door_open: mutable bool
+                player_glowing: mutable bool
 
         def MazeScene(game: MazeGame::MazeGame&) -> MazeScene error[MazePresentationError, World::WorldError]:
             raise MazePresentationError.InvalidGame if not MazeGame::game_valid(game)
@@ -168,6 +179,7 @@ module MazePresentation:
                 door: door,
                 key_live: true,
                 door_open: false,
+                player_glowing: false,
             }
 
         def scene_world_count(scene: MazeScene&) -> usize:
@@ -218,6 +230,17 @@ module MazePresentation:
                     error failure: false
                 raise MazePresentationError.BindingRejected if not updated_binding
                 scene.door_open <- game.has_key
+
+            if scene.player_glowing != game.has_key:
+                tint: mutable RenderSnapshot::Tint = RenderSnapshot::tint_neutral()
+                if game.has_key:
+                    tint <- key_carrier_tint()
+                tinted: bool = catch WorldRendering::set_tint(&scene.bindings, scene.player,
+                    Tune::PLAYER_RENDER_ID, tint):
+                    ok: true
+                    error failure: false
+                raise MazePresentationError.BindingRejected if not tinted
+                scene.player_glowing <- game.has_key
 
         def scene_extract(scene: mutable MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&) -> void error[MazePresentationError]:

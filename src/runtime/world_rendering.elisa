@@ -17,6 +17,8 @@ module WorldRendering:
             InvalidBindings
             InvalidTransform
             SnapshotRejected
+            InvalidTint
+            UnknownBinding
 
     private:
         struct BindingRow:
@@ -24,6 +26,7 @@ module WorldRendering:
             render_id: i64
             visual: Assets::VisualAsset
             local_transform: Geometry::Transform
+            tint: RenderSnapshot::Tint
 
         const module Sentinel:
             INVALID_SLOT: usize = WorldRendering::MAX_BINDINGS
@@ -40,6 +43,7 @@ module WorldRendering:
             for index in 0..<bindings.count |valid: bool = true| -> valid:
                 row: BindingRow = bindings.rows[index]
                 valid <- false if row.gameplay.world_epoch <= 0 or row.gameplay.id <= 0 or row.render_id <= 0 or not Assets::visual_asset_valid(row.visual) or not Geometry::transform_is_valid(row.local_transform)
+                valid <- false if not RenderSnapshot::tint_valid(row.tint)
                 for earlier in 0..<index:
                     valid <- false if bindings.rows[earlier].render_id == row.render_id
 
@@ -68,7 +72,8 @@ module WorldRendering:
 
         # One gameplay entity may bind several stable render IDs. Rebinding the
         # same pair updates its asset or local attachment transform without
-        # growing the bounded table. The entity's world transform stays in World.
+        # growing the bounded table, and keeps its tint. A new binding starts
+        # neutral. The entity's world transform stays in World.
         def bind(bindings: mutable Bindings&, world: World::World&, gameplay: World::EntityRef,
             render_id: i64, visual: Assets::VisualAsset,
             local_transform: Geometry::Transform) -> void error[WorldRenderingError]:
@@ -89,8 +94,18 @@ module WorldRendering:
                 render_id: render_id,
                 visual: visual,
                 local_transform: local_transform,
+                tint: RenderSnapshot::tint_neutral(),
             }
             bindings.count <- bindings.count + 1
+
+        # Presentation-only override for one render ID. It never changes the
+        # shared material, so other instances of the same asset are unaffected.
+        def set_tint(bindings: mutable Bindings&, gameplay: World::EntityRef, render_id: i64,
+            tint: RenderSnapshot::Tint) -> void error[WorldRenderingError]:
+            raise WorldRenderingError.InvalidTint if not RenderSnapshot::tint_valid(tint)
+            slot: usize = binding_slot(bindings, gameplay, render_id)
+            raise WorldRenderingError.UnknownBinding if slot >= bindings.count
+            bindings.rows[slot].tint <- tint
 
         def unbind(bindings: mutable Bindings&, gameplay: World::EntityRef, render_id: i64) -> bool:
             slot: usize = binding_slot(bindings, gameplay, render_id)
@@ -117,8 +132,8 @@ module WorldRendering:
                     transform: mutable Geometry::Transform = Geometry::transform_identity()
                     has_transform: bool = World::world_try_transform(world, row.gameplay, &transform)
                     raise WorldRenderingError.InvalidReference if not has_transform
-                    inserted: bool = RenderSnapshot::snapshot_bind(snapshot,
+                    inserted: bool = RenderSnapshot::snapshot_bind_tinted(snapshot,
                         row.gameplay, row.render_id, row.visual,
-                        Geometry::transform_compose(transform, row.local_transform))
+                        Geometry::transform_compose(transform, row.local_transform), row.tint)
                     raise WorldRenderingError.SnapshotRejected if not inserted
             prune_dead_bindings(world, bindings)

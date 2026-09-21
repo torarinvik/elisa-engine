@@ -7,6 +7,7 @@ constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
 constexpr float DEFAULT_SNAPSHOT_ALPHA_CUTOFF = 0.5f;
 constexpr float OPAQUE_SNAPSHOT_ALPHA_REF = 1.0f;
 constexpr float DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH = 1.0f;
+constexpr float MAX_SNAPSHOT_TINT_COLOR_SCALE = 4.0f;
 
 struct SnapshotStageRow {
     int64_t existing_handle = 0;
@@ -20,6 +21,10 @@ struct SnapshotStageRow {
     float position[3] = {};
     float rotation[4] = {};
     float scale[3] = {};
+    // Per-instance ObjectComponent multipliers; neutral unless stage_tint runs.
+    float tint_color[3] = {1.0f, 1.0f, 1.0f};
+    float tint_emissive[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    bool tinted = false;
     size_t reserved_slot = MAX_INSTANCES;
     uint64_t reserved_generation = 0;
     size_t shared_mesh_slot = MAX_INSTANCES;

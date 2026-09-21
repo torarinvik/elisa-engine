@@ -48,6 +48,14 @@ extend RenderScene:
                 entry.transform.rotation.z, entry.transform.rotation.w,
                 entry.transform.scale.x, entry.transform.scale.y, entry.transform.scale.z)
 
+        # Rows stage neutral; only overridden rows pay for a second native call.
+        def snapshot_stage_tint(entry: RenderSnapshot::Entry) -> i32:
+            return NativeStatus::OK if RenderSnapshot::tint_is_neutral(entry.tint)
+            elisa_render_scene_v1_snapshot_stage_tint(entry.render_id,
+                entry.tint.color.x, entry.tint.color.y, entry.tint.color.z,
+                entry.tint.emissive.x, entry.tint.emissive.y, entry.tint.emissive.z,
+                entry.tint.emissive_strength)
+
         def snapshot_abort_after(status: i32) -> void error[RenderSceneError]:
             _ = elisa_render_scene_v1_snapshot_abort()
             try check_status(status)
@@ -75,6 +83,9 @@ extend RenderScene:
                 stage_status: i32 = snapshot_stage_row(entry, existing_handle)
                 if stage_status != NativeStatus::OK:
                     try snapshot_abort_after(stage_status)
+                tint_status: i32 = snapshot_stage_tint(entry)
+                if tint_status != NativeStatus::OK:
+                    try snapshot_abort_after(tint_status)
 
             for index in 0..<presenter.count |presenter, snapshot|:
                 old: SnapshotBinding = presenter.bindings[index]

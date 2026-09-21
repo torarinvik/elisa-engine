@@ -8,11 +8,44 @@ module RenderSnapshot:
     public:
         const MAX_ENTRIES: usize = 512
 
+        const module TintLimits:
+            MAX_COLOR_SCALE: f32 = 4.0
+            MAX_EMISSIVE_STRENGTH: f32 = 64.0
+
+        # Per-instance multipliers over a row's shared material. Color scales
+        # the base color. Emissive scales the material's own emission, so an
+        # instance can dim or boost a glow but cannot light a dark material.
+        struct Tint:
+            color: Geometry::Vec3
+            emissive: Geometry::Vec3
+            emissive_strength: f32
+
         struct Entry:
             gameplay: World::EntityRef
             render_id: i64
             visual: Assets::VisualAsset
             transform: Geometry::Transform
+            tint: Tint
+
+        def tint_neutral() -> Tint:
+            Tint{
+                color: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                emissive: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                emissive_strength: 1.0,
+            }
+
+        # Positive range checks, so NaN and infinities fail.
+        def tint_valid(tint: Tint) -> bool:
+            color_valid: bool = TintRange::within(tint.color, TintLimits::MAX_COLOR_SCALE)
+            emissive_valid: bool = TintRange::within(tint.emissive, 1.0)
+            strength_valid: bool = tint.emissive_strength >= 0.0 and tint.emissive_strength <= TintLimits::MAX_EMISSIVE_STRENGTH
+            color_valid and emissive_valid and strength_valid
+
+        def tint_is_neutral(tint: Tint) -> bool:
+            neutral: Tint = tint_neutral()
+            same_color: bool = tint.color.x == neutral.color.x and tint.color.y == neutral.color.y and tint.color.z == neutral.color.z
+            same_emissive: bool = tint.emissive.x == neutral.emissive.x and tint.emissive.y == neutral.emissive.y and tint.emissive.z == neutral.emissive.z
+            same_color and same_emissive and tint.emissive_strength == neutral.emissive_strength
 
         affine struct Snapshot:
             private:
@@ -32,16 +65,23 @@ module RenderSnapshot:
 
         def snapshot_bind(snapshot: mutable Snapshot&, gameplay: World::EntityRef,
             render_id: i64, visual: Assets::VisualAsset, transform: Geometry::Transform) -> bool:
+            snapshot_bind_tinted(snapshot, gameplay, render_id, visual, transform, tint_neutral())
+
+        def snapshot_bind_tinted(snapshot: mutable Snapshot&, gameplay: World::EntityRef,
+            render_id: i64, visual: Assets::VisualAsset, transform: Geometry::Transform,
+            tint: Tint) -> bool:
             return false if gameplay.world_epoch <= 0 or gameplay.id <= 0 or render_id <= 0 or not Assets::visual_asset_valid(visual)
+            return false if not tint_valid(tint)
             for index in 0..<snapshot.count:
                 if snapshot.entries[index].gameplay.world_epoch == gameplay.world_epoch and snapshot.entries[index].gameplay.id == gameplay.id and snapshot.entries[index].render_id == render_id:
                     snapshot.entries[index].visual <- visual
                     snapshot.entries[index].transform <- transform
+                    snapshot.entries[index].tint <- tint
                     return true
                 # A render ID belongs to one gameplay identity at a time.
                 return false if snapshot.entries[index].render_id == render_id
             return false if snapshot.count >= RenderSnapshot::MAX_ENTRIES
-            snapshot.entries[snapshot.count] <- Entry{gameplay: gameplay, render_id: render_id, visual: visual, transform: transform}
+            snapshot.entries[snapshot.count] <- Entry{gameplay: gameplay, render_id: render_id, visual: visual, transform: transform, tint: tint}
             snapshot.count <- snapshot.count + 1
             true
 
@@ -55,7 +95,7 @@ module RenderSnapshot:
             false
 
         def snapshot_entry(snapshot: Snapshot&, index: usize) -> Entry:
-            return Entry{gameplay: World::EntityRef{world_epoch: -1, id: -1}, render_id: -1, visual: zeroed, transform: Geometry::transform_identity()} if index >= snapshot.count
+            return Entry{gameplay: World::EntityRef{world_epoch: -1, id: -1}, render_id: -1, visual: zeroed, transform: Geometry::transform_identity(), tint: tint_neutral()} if index >= snapshot.count
             snapshot.entries[index]
 
         def snapshot_valid(snapshot: Snapshot&) -> bool:
@@ -63,5 +103,15 @@ module RenderSnapshot:
             for index in 0..<snapshot.count |valid: bool = true| -> valid:
                 entry: Entry = snapshot.entries[index]
                 valid <- false if entry.gameplay.world_epoch <= 0 or entry.gameplay.id <= 0 or entry.render_id <= 0 or not Assets::visual_asset_valid(entry.visual)
+                valid <- false if not tint_valid(entry.tint)
                 for earlier in 0..<index:
                     valid <- false if snapshot.entries[earlier].render_id == entry.render_id
+
+    private:
+        module TintRange:
+            public:
+                def within(channels: Geometry::Vec3, maximum: f32) -> bool:
+                    x_valid: bool = channels.x >= 0.0 and channels.x <= maximum
+                    y_valid: bool = channels.y >= 0.0 and channels.y <= maximum
+                    z_valid: bool = channels.z >= 0.0 and channels.z <= maximum
+                    x_valid and y_valid and z_valid

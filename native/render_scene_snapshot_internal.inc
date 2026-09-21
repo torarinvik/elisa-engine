@@ -272,6 +272,13 @@ bool snapshot_assets_valid(const SnapshotStageRow& row) {
     return mesh_valid && material_valid && !same_asset;
 }
 
+bool snapshot_tint_color_valid(float red, float green, float blue) {
+    const auto channel = [](float value) {
+        return std::isfinite(value) && value >= 0.0f && value <= MAX_SNAPSHOT_TINT_COLOR_SCALE;
+    };
+    return channel(red) && channel(green) && channel(blue);
+}
+
 wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageRow& row,
     size_t slot, uint64_t generation, int32_t& failure_status) {
     failure_status = ELISA_RENDER_SCENE_BACKEND_FAILED;

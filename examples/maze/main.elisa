@@ -26,6 +26,7 @@ module MazeApplication:
             return 23 if extracted != 0 or RenderSnapshot::snapshot_count(snapshot) != 40
             initial_player: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 34)
             return 24 if initial_player.render_id != 2000
+            return 36 if not RenderSnapshot::tint_is_neutral(initial_player.tint)
             return 34 if initial_player.transform.position.x < -1.5001 or initial_player.transform.position.x > -1.4999
             return 35 if initial_player.transform.position.z < -1.5001 or initial_player.transform.position.z > -1.4999
 
@@ -49,6 +50,9 @@ module MazeApplication:
             opened_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 35)
             return 30 if final_player.render_id != 2000 or final_player.transform.position.x < 1.4999 or final_player.transform.position.x > 1.5001 or final_player.transform.position.z < 1.4999 or final_player.transform.position.z > 1.5001
             return 31 if opened_door.render_id != 2002 or opened_door.visual.material.low != 6
+            carrier: RenderSnapshot::Tint = MazePresentation::key_carrier_tint()
+            glowing: bool = final_player.tint.color.x == carrier.color.x and final_player.tint.color.z == carrier.color.z and not RenderSnapshot::tint_is_neutral(final_player.tint)
+            return 37 if not glowing or not RenderSnapshot::tint_is_neutral(opened_door.tint)
 
             game_restart(&game)
             restarted: i32 = catch MazePresentation::scene_update(&scene, game):
@@ -59,6 +63,7 @@ module MazeApplication:
                 ok: 0
                 error failure: 1
             return 33 if extracted != 0 or RenderSnapshot::snapshot_count(snapshot) != 40
+            return 38 if not RenderSnapshot::tint_is_neutral(RenderSnapshot::snapshot_entry(snapshot, 34).tint)
             0
 
 def main() -> i32:

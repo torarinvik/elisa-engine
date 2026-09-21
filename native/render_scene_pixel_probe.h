@@ -66,6 +66,26 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_instance_resources(
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_instance_tint(int64_t render_id,
+    float red, float green, float blue,
+    float emissive_red, float emissive_green, float emissive_blue, float emissive_strength) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live || instance.render_id != render_id) continue;
+        const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+        if (object == nullptr) return 0;
+        const auto close = [](float left, float right) { return std::abs(left - right) <= 1.0e-5f; };
+        return close(object->color.x, red) && close(object->color.y, green) &&
+            close(object->color.z, blue) && close(object->color.w, 1.0f) &&
+            close(object->emissiveColor.x, emissive_red) && close(object->emissiveColor.y, emissive_green) &&
+            close(object->emissiveColor.z, emissive_blue) &&
+            close(object->emissiveColor.w, emissive_strength) ? 1 : 0;
+    }
+    return 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture(
     uint64_t material_high, uint64_t material_low, int32_t slot_code) {
     if (!elisa::rendering::textures::valid_slot(slot_code)) return 0;

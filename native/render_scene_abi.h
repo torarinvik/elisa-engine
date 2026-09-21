@@ -68,6 +68,11 @@ int32_t elisa_render_scene_v1_snapshot_stage(
     uint64_t mesh_high, uint64_t mesh_low, uint64_t material_high, uint64_t material_low,
     float px, float py, float pz, float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
+// Override the ObjectComponent color and emissive multipliers for a row staged
+// earlier in this transaction. Rows without a call commit neutral.
+int32_t elisa_render_scene_v1_snapshot_stage_tint(int64_t render_id,
+    float red, float green, float blue,
+    float emissive_red, float emissive_green, float emissive_blue, float emissive_strength);
 int32_t elisa_render_scene_v1_snapshot_retire(int64_t handle);
 int32_t elisa_render_scene_v1_snapshot_commit(void);
 int32_t elisa_render_scene_v1_snapshot_abort(void);

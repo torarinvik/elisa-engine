@@ -12,6 +12,24 @@ module WorldRenderingValidation:
                 },
             }
 
+        def quotient(numerator: f32, denominator: f32) -> f32:
+            numerator / denominator
+
+        def color_tint(red: f32, green: f32, blue: f32) -> RenderSnapshot::Tint:
+            RenderSnapshot::Tint{
+                color: Geometry::Vec3{x: red, y: green, z: blue},
+                emissive: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                emissive_strength: 1.0,
+            }
+
+        def tint_code(bindings: mutable WorldRendering::Bindings&, gameplay: World::EntityRef,
+            render_id: i64, tint: RenderSnapshot::Tint) -> i32:
+            catch WorldRendering::set_tint(bindings, gameplay, render_id, tint):
+                ok: 0
+                WorldRendering::WorldRenderingError.InvalidTint: 1
+                WorldRendering::WorldRenderingError.UnknownBinding: 2
+                error failure: 3
+
     public:
         def run() -> i32:
             world: mutable World::World = catch World::World():
@@ -98,6 +116,36 @@ module WorldRenderingValidation:
             return 10 if moved_entry.gameplay.id != player.id or moved_entry.transform.position.x != 2.0 or moved_entry.transform.position.z != 1.0 or moved_entry.visual.mesh.low != 2
             fanout_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 1)
             return 24 if fanout_entry.gameplay.id != player.id or fanout_entry.transform.position.x != 2.0 or fanout_entry.transform.position.y != 0.5 or fanout_entry.transform.position.z != 1.0
+
+            # A tint belongs to one render ID, survives rebinding, and reaches
+            # the snapshot; invalid or unknown overrides leave it unchanged.
+            return 25 if not RenderSnapshot::tint_is_neutral(moved_entry.tint) or not RenderSnapshot::tint_is_neutral(fanout_entry.tint)
+            highlight: RenderSnapshot::Tint = RenderSnapshot::Tint{
+                color: Geometry::Vec3{x: 1.5, y: 1.25, z: 0.5},
+                emissive: Geometry::Vec3{x: 1.0, y: 0.5, z: 0.25},
+                emissive_strength: 4.0,
+            }
+            tinted: i32 = tint_code(&bindings, player, 102, highlight)
+            rebound: i32 = catch WorldRendering::bind(&bindings, &world, player, 102, visual, local_offset):
+                ok: 0
+                error failure: 1
+            return 26 if tinted != 0 or rebound != 0
+            nan: f32 = quotient(0.0, 0.0)
+            infinity: f32 = quotient(1.0, 0.0)
+            return 27 if tint_code(&bindings, player, 102, color_tint(nan, 1.0, 1.0)) != 1 or tint_code(&bindings, player, 102, color_tint(1.0, infinity, 1.0)) != 1
+            return 28 if tint_code(&bindings, player, 102, color_tint(-0.5, 1.0, 1.0)) != 1 or tint_code(&bindings, player, 102, color_tint(1.0, 1.0, 4.5)) != 1
+            bright_emissive: RenderSnapshot::Tint = RenderSnapshot::Tint{color: highlight.color, emissive: Geometry::Vec3{x: 1.5, y: 0.0, z: 0.0}, emissive_strength: 1.0}
+            over_strength: RenderSnapshot::Tint = RenderSnapshot::Tint{color: highlight.color, emissive: highlight.emissive, emissive_strength: 65.0}
+            nan_strength: RenderSnapshot::Tint = RenderSnapshot::Tint{color: highlight.color, emissive: highlight.emissive, emissive_strength: nan}
+            return 29 if tint_code(&bindings, player, 102, bright_emissive) != 1 or tint_code(&bindings, player, 102, over_strength) != 1 or tint_code(&bindings, player, 102, nan_strength) != 1
+            return 30 if tint_code(&bindings, guard, 102, highlight) != 2 or tint_code(&bindings, player, 999, highlight) != 2
+            tinted_extract: i32 = catch WorldRendering::extract(&world, &bindings, &snapshot):
+                ok: 0
+                error failure: 1
+            tinted_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 1)
+            untinted_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 0)
+            return 31 if tinted_extract != 0 or tinted_entry.render_id != 102 or tinted_entry.tint.color.x != 1.5 or tinted_entry.tint.emissive.z != 0.25 or tinted_entry.tint.emissive_strength != 4.0
+            return 32 if not RenderSnapshot::tint_is_neutral(untinted_entry.tint) or not RenderSnapshot::snapshot_valid(snapshot)
 
             despawn_guard: i32 = catch World::world_despawn(&world, guard):
                 ok: 0

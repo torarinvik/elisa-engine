@@ -112,7 +112,8 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         }
         size_t slot = MAX_INSTANCES;
         if (!valid_handle(state, row.existing_handle, slot) ||
-            state.scene->transforms.GetComponent(state.instances[slot].entity) == nullptr) {
+            state.scene->transforms.GetComponent(state.instances[slot].entity) == nullptr ||
+            state.scene->objects.GetComponent(state.instances[slot].entity) == nullptr) {
             return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_UNKNOWN_HANDLE);
         }
         retained_slots[slot] = true;
@@ -258,6 +259,11 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         instance.mesh_low = row.mesh_low;
         instance.material_high = row.material_high;
         instance.material_low = row.material_low;
+        // Every committed row carries its tint, so dropping an override resets it.
+        wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+        object->color = XMFLOAT4(row.tint_color[0], row.tint_color[1], row.tint_color[2], 1.0f);
+        object->emissiveColor = XMFLOAT4(row.tint_emissive[0], row.tint_emissive[1],
+            row.tint_emissive[2], row.tint_emissive[3]);
         state.snapshot_results[index] = int64_t(encode_handle(slot, generation));
     }
 

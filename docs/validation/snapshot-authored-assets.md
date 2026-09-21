@@ -30,7 +30,9 @@ identity updates, and release of all shared pairs after clear. It also submits
 200 instances of one pair in one snapshot and checks the test-only ABI counter
 reports 202 calls: begin, 200 staged rows, and commit. Updating one instance's
 transform leaves the other instance at its own position, and clearing the batch
-releases the shared mesh while preserving the primitive baseline.
+releases the shared mesh while preserving the primitive baseline. Per-instance
+color and emissive tints leave the shared pair intact; see
+[`instance-tints.md`](instance-tints.md).
 
 The current glTF geometry cooker deliberately supports one untransformed mesh
 node, one indexed triangle primitive, and POSITION/NORMAL/optional
