@@ -1,0 +1,29 @@
+module RenderSceneTextNativeTests:
+    public:
+        def exercise(handle: RenderScene::OverlayTextHandle) -> i32:
+            text_update: i32 = catch RenderScene::set_overlay_text(handle, "LIVES  2"):
+                ok: 0
+                error failure: 2
+            return 83 if text_update != 0
+            text_hidden: i32 = catch RenderScene::set_overlay_text_visible(handle, false):
+                ok: 0
+                error failure: 2
+            return 84 if text_hidden != 0
+            text_shown: i32 = catch RenderScene::set_overlay_text_visible(handle, true):
+                ok: 0
+                error failure: 2
+            return 85 if text_shown != 0
+            text_number_update: i32 = catch RenderScene::set_overlay_text_i64(handle, "LIVES  ", 2):
+                ok: 0
+                error failure: 2
+            return 86 if text_number_update != 0
+            text_position_update: i32 = catch RenderScene::set_overlay_text_position(handle, 28.0, 32.0):
+                ok: 0
+                error failure: 2
+            return 121 if text_position_update != 0
+            invalid_text_position: i32 = catch RenderScene::set_overlay_text_position(handle, 20000.0, 32.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 122 if invalid_text_position != 1
+            0
