@@ -1,12 +1,9 @@
 module PhysicsAppProbe:
-    private:
-        const module Tuning:
-            FIXED_STEP_SECONDS: f64 = 1.0 / 30.0
-
     public:
+        const FIXED_STEP_SECONDS: f32 = 1.0 / 30.0
         const PAIR_TICK_COUNT: u64 = 2
 
         def fixed_step_pair(world: mutable PhysicsRuntime::World&) -> u64 error[PhysicsRuntime::PhysicsError]:
-            try PhysicsRuntime::fixed_step(world, Tuning::FIXED_STEP_SECONDS)
-            try PhysicsRuntime::fixed_step(world, Tuning::FIXED_STEP_SECONDS)
+            try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
+            try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
             PhysicsRuntime::committed_tick(world)

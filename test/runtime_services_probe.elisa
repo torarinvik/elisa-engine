@@ -1,6 +1,51 @@
 # End-to-end activation and cleanup checks for report-selected providers.
+include "../src/runtime/executor.elisa"
+
 module RuntimeServicesProbe:
     private:
+        const module Systems:
+            PHYSICS: usize = 0
+            WORLD_SYNC: usize = 1
+
+        affine struct TickContext:
+            world: mutable World::World
+            bodies: mutable WorldPhysics::Bindings
+            physics_steps: mutable i64
+            sync_passes: mutable i64
+            failed: mutable bool
+
+        def TickContext(world: World::World, bodies: WorldPhysics::Bindings) -> TickContext:
+            TickContext{
+                world: world,
+                bodies: bodies,
+                physics_steps: 0,
+                sync_passes: 0,
+                failed: false,
+            }
+
+        def dispatch_physics_system(state: mutable Executor::FrameState&,
+            session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, system: usize) -> void:
+            state.visits[system] <- state.visits[system] + 1
+            if system == Systems::PHYSICS:
+                step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: 0
+                    error failure: 1
+                if step_status == 0:
+                    context.physics_steps <- context.physics_steps + 1
+                else:
+                    context.failed <- true
+            elif system == Systems::WORLD_SYNC:
+                sync_status: bool = catch WorldPhysics::sync_world(session,
+                    &context.world, context.bodies):
+                    ok: true
+                    error failure: false
+                if sync_status:
+                    context.sync_passes <- context.sync_passes + 1
+                else:
+                    context.failed <- true
+
         def startup_requirements() -> BackendRequirements::BackendStartupRequirements:
             requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
             requirements.services[0] <- Capabilities::BackendFeature.Input
@@ -51,6 +96,204 @@ module RuntimeServicesProbe:
                 AudioRuntime::AudioError.ApplicationUnavailable: 0
                 error failure: 2
             return 27 if audio_closed != 0
+            0
+
+        def check_partial_world_frame(session: mutable RuntimeServices::Session&) -> i32:
+            frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
+                session, 10000):
+                value: value
+                error failure: return 58
+            return 59 if frame.steps != 0 or frame.tick_count != 0
+            return 60 if frame.interpolation <= 0.0
+            0
+
+        def run_world_schedule_frame(session: mutable RuntimeServices::Session&,
+            elapsed_micros: i64, context: mutable TickContext&,
+            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&,
+            systems: Schedule::System[Schedule::MAX_SYSTEMS]) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError]:
+            frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(
+                session, elapsed_micros)
+            sequence: i64[Schedule::MAX_SYSTEMS] = Executor::plan_sequence(plan)
+            dispatch_count: usize = frame.steps * plan.count
+            slot: mutable usize = 0
+            for _ in 0..<dispatch_count |session, plan, plan_state, systems, context, sequence, slot|:
+                system: usize = sequence[slot].usize()
+                dispatch_physics_system(plan_state, session, context, system)
+                if plan_state.length < Executor::MAX_TRACE_EVENTS:
+                    plan_state.trace[plan_state.length] <- system.i64()
+                    plan_state.length <- plan_state.length + 1
+                slot <- slot + 1
+                slot <- 0 if slot == plan.count
+            frame
+
+        def dispatch_first_world_ticks(session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, plan: Executor::Plan&,
+            systems: Schedule::System[Schedule::MAX_SYSTEMS],
+            plan_state: mutable Executor::FrameState&) -> i32:
+            frame: RuntimeServices::SimulationFrame = catch run_world_schedule_frame(
+                session, 24000, context, plan, plan_state, systems):
+                value: value
+                error failure: return 61
+            return 62 if frame.steps != 2 or frame.tick_count != 2
+            return 82 if context.failed or context.physics_steps != 2 or context.sync_passes != 2
+            return 83 if plan_state.visits[Systems::PHYSICS] != 2 or plan_state.visits[Systems::WORLD_SYNC] != 2
+            0
+
+        def dispatch_remaining_world_tick(session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, plan: Executor::Plan&,
+            systems: Schedule::System[Schedule::MAX_SYSTEMS],
+            plan_state: mutable Executor::FrameState&) -> i32:
+            frame: RuntimeServices::SimulationFrame = catch run_world_schedule_frame(
+                session, Runtime::fixed_step_micros(), context, plan, plan_state, systems):
+                value: value
+                error failure: return 76
+            return 77 if frame.steps != 1 or frame.tick_count != 3
+            return 85 if context.failed or context.physics_steps != 3 or context.sync_passes != 3
+            0
+
+        def check_first_world_trace(state: Executor::FrameState&) -> i32:
+            return 84 if state.length != 4 or state.trace[0] != Systems::PHYSICS.i64() or state.trace[1] != Systems::WORLD_SYNC.i64() or state.trace[2] != Systems::PHYSICS.i64() or state.trace[3] != Systems::WORLD_SYNC.i64()
+            0
+
+        def check_second_world_trace(state: Executor::FrameState&) -> i32:
+            return 86 if state.length != 6 or state.trace[4] != Systems::PHYSICS.i64() or state.trace[5] != Systems::WORLD_SYNC.i64()
+            0
+
+        def check_first_world_pose(context: mutable TickContext&,
+            entity: World::EntityRef, initial_pose: Geometry::Transform) -> i32:
+            synced_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            return 69 if not World::world_try_transform(context.world, entity, &synced_pose)
+            return 70 if synced_pose.position.y >= initial_pose.position.y
+            return 71 if synced_pose.scale.x != initial_pose.scale.x or synced_pose.scale.z != initial_pose.scale.z
+            0
+
+        def check_second_world_pose(context: mutable TickContext&,
+            entity: World::EntityRef, initial_pose: Geometry::Transform) -> i32:
+            synced_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            return 78 if not World::world_try_transform(context.world, entity, &synced_pose)
+            return 79 if synced_pose.position.y >= initial_pose.position.y
+            0
+
+        def unbind_world_body(session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, entity: World::EntityRef,
+            expected_count: usize, failure_code: i32, count_code: i32) -> i32:
+            status: i32 = catch WorldPhysics::unbind(session, &context.bodies, entity):
+                ok: 0
+                error failure: 1
+            return failure_code if status != 0
+            return count_code if WorldPhysics::binding_count(context.bodies) != expected_count
+            0
+
+        def first_world_schedule_batch(session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, physics_entity: World::EntityRef,
+            initial_pose: Geometry::Transform, plan: Executor::Plan&,
+            systems: Schedule::System[Schedule::MAX_SYSTEMS],
+            plan_state: mutable Executor::FrameState&) -> i32:
+            partial_status: i32 = check_partial_world_frame(session)
+            return partial_status if partial_status != 0
+            tick_status: i32 = dispatch_first_world_ticks(session, context, plan,
+                systems, plan_state)
+            return tick_status if tick_status != 0
+            trace_status: i32 = check_first_world_trace(plan_state)
+            return trace_status if trace_status != 0
+            pose_status: i32 = check_first_world_pose(context, physics_entity, initial_pose)
+            return pose_status if pose_status != 0
+            unbind_world_body(session, context, physics_entity, 1, 72, 72)
+
+        def second_world_schedule_batch(session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, second_entity: World::EntityRef,
+            second_initial_pose: Geometry::Transform, plan: Executor::Plan&,
+            systems: Schedule::System[Schedule::MAX_SYSTEMS],
+            plan_state: mutable Executor::FrameState&) -> i32:
+            tick_status: i32 = dispatch_remaining_world_tick(session, context, plan,
+                systems, plan_state)
+            return tick_status if tick_status != 0
+            pose_status: i32 = check_second_world_pose(context, second_entity,
+                second_initial_pose)
+            return pose_status if pose_status != 0
+            trace_status: i32 = check_second_world_trace(plan_state)
+            return trace_status if trace_status != 0
+            unbind_world_body(session, context, second_entity, 0, 80, 80)
+
+        def execute_world_schedule(session: mutable RuntimeServices::Session&,
+            context: mutable TickContext&, physics_entity: World::EntityRef,
+            initial_pose: Geometry::Transform, second_entity: World::EntityRef,
+            second_initial_pose: Geometry::Transform) -> i32:
+            systems: Schedule::System[Schedule::MAX_SYSTEMS] = zeroed
+            physics_access: Schedule::System = Schedule::with_write(
+                Schedule::system_empty(Systems::PHYSICS.i64()), Schedule::Resource.Bodies)
+            sync_access: Schedule::System = Schedule::with_write(Schedule::with_read(
+                Schedule::system_empty(Systems::WORLD_SYNC.i64()), Schedule::Resource.Bodies),
+                Schedule::Resource.Transforms)
+            systems[Systems::PHYSICS] <- physics_access
+            systems[Systems::WORLD_SYNC] <- sync_access
+            plan: Executor::Plan = catch Executor::plan_auto(systems, 2):
+                value: value
+                error failure: return 81
+            plan_state: mutable Executor::FrameState = Executor::FrameState()
+
+            first_status: i32 = first_world_schedule_batch(session, context,
+                physics_entity, initial_pose, plan, systems, &plan_state)
+            return first_status if first_status != 0
+            second_status: i32 = second_world_schedule_batch(session, context,
+                second_entity, second_initial_pose, plan, systems, &plan_state)
+            return second_status if second_status != 0
+            0
+
+        def world_scheduler_probe(session: mutable RuntimeServices::Session&) -> i32:
+            physics_world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 64
+            physics_entity: World::EntityRef = catch World::world_spawn(&physics_world,
+                World::Actor.Player):
+                value: value
+                error failure: return 65
+            initial_pose: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 2.0, y: 1.0, z: 0.5},
+            }
+            initial_pose_status: i32 = catch World::world_set_transform(&physics_world,
+                physics_entity, initial_pose):
+                ok: 0
+                error failure: 1
+            return 66 if initial_pose_status != 0
+            second_entity: World::EntityRef = catch World::world_spawn(&physics_world,
+                World::Enemy.Guard):
+                value: value
+                error failure: return 73
+            second_initial_pose: Geometry::Transform = Geometry::transform_translate(
+                Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 4.0, z: 0.0})
+            second_pose_status: i32 = catch World::world_set_transform(&physics_world,
+                second_entity, second_initial_pose):
+                ok: 0
+                error failure: 1
+            return 74 if second_pose_status != 0
+            bodies: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            body_bind_status: i32 = catch WorldPhysics::bind(session, &physics_world,
+                &bodies, physics_entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
+                ok: 0
+                error failure: 1
+            return 67 if body_bind_status != 0 or WorldPhysics::binding_count(bodies) != 1
+            second_bind_status: i32 = catch WorldPhysics::bind(session, &physics_world,
+                &bodies, second_entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
+                ok: 0
+                error failure: 1
+            return 75 if second_bind_status != 0 or WorldPhysics::binding_count(bodies) != 2
+            duplicate_body_status: i32 = catch WorldPhysics::bind(session, &physics_world,
+                &bodies, physics_entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
+                ok: 0
+                WorldPhysics::WorldPhysicsError.EntityAlreadyBound: 1
+                error failure: 2
+            return 68 if duplicate_body_status != 1
+
+            context: mutable TickContext = TickContext(physics_world, bodies)
+            schedule_status: i32 = execute_world_schedule(session, &context,
+                physics_entity, initial_pose, second_entity, second_initial_pose)
+            return schedule_status if schedule_status != 0
             0
 
     public:
@@ -107,89 +350,12 @@ module RuntimeServicesProbe:
                 error failure: return 56
             return 57 if quiet_voices != 0
 
-            physics_world: mutable World::World = catch World::World():
-                value: value
-                error failure: return 64
-            physics_entity: World::EntityRef = catch World::world_spawn(&physics_world,
-                World::Actor.Player):
-                value: value
-                error failure: return 65
-            initial_pose: Geometry::Transform = Geometry::Transform{
-                position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
-                rotation: Geometry::quat_identity(),
-                scale: Geometry::Vec3{x: 2.0, y: 1.0, z: 0.5},
-            }
-            initial_pose_status: i32 = catch World::world_set_transform(&physics_world,
-                physics_entity, initial_pose):
-                ok: 0
-                error failure: 1
-            return 66 if initial_pose_status != 0
-            second_entity: World::EntityRef = catch World::world_spawn(&physics_world,
-                World::Enemy.Guard):
-                value: value
-                error failure: return 73
-            second_initial_pose: Geometry::Transform = Geometry::transform_translate(
-                Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 4.0, z: 0.0})
-            second_pose_status: i32 = catch World::world_set_transform(&physics_world,
-                second_entity, second_initial_pose):
-                ok: 0
-                error failure: 1
-            return 74 if second_pose_status != 0
-            bodies: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
-            body_bind_status: i32 = catch WorldPhysics::bind(session, &physics_world,
-                &bodies, physics_entity, PhysicsRuntime::BodyKind.Dynamic,
-                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
-                ok: 0
-                error failure: 1
-            return 67 if body_bind_status != 0 or WorldPhysics::binding_count(bodies) != 1
-            second_bind_status: i32 = catch WorldPhysics::bind(session, &physics_world,
-                &bodies, second_entity, PhysicsRuntime::BodyKind.Dynamic,
-                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
-                ok: 0
-                error failure: 1
-            return 75 if second_bind_status != 0 or WorldPhysics::binding_count(bodies) != 2
-            duplicate_body_status: i32 = catch WorldPhysics::bind(session, &physics_world,
-                &bodies, physics_entity, PhysicsRuntime::BodyKind.Dynamic,
-                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
-                ok: 0
-                WorldPhysics::WorldPhysicsError.EntityAlreadyBound: 1
-                error failure: 2
-            return 68 if duplicate_body_status != 1
-
-            partial_frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
-                session, 10000):
-                value: value
-                error failure: return 58
-            return 59 if partial_frame.steps != 0 or partial_frame.tick_count != 0
-            return 60 if partial_frame.interpolation <= 0.0
-            due_frame: RuntimeServices::SimulationFrame = catch WorldPhysics::advance_and_sync(
-                &session, &physics_world, &bodies, 24000):
-                value: value
-                error failure: return 61
-            return 62 if due_frame.steps != 2 or due_frame.tick_count != 2
-            synced_pose: mutable Geometry::Transform = Geometry::transform_identity()
-            return 69 if not World::world_try_transform(&physics_world, physics_entity, &synced_pose)
-            return 70 if synced_pose.position.y >= initial_pose.position.y
-            return 71 if synced_pose.scale.x != initial_pose.scale.x or synced_pose.scale.z != initial_pose.scale.z
-            unbind_status: i32 = catch WorldPhysics::unbind(session, &bodies, physics_entity):
-                ok: 0
-                error failure: 1
-            return 72 if unbind_status != 0 or WorldPhysics::binding_count(bodies) != 1
-            remaining_frame: RuntimeServices::SimulationFrame = catch WorldPhysics::advance_and_sync(
-                &session, &physics_world, &bodies, Runtime::fixed_step_micros()):
-                value: value
-                error failure: return 76
-            return 77 if remaining_frame.steps != 1 or remaining_frame.tick_count != 3
-            second_synced_pose: mutable Geometry::Transform = Geometry::transform_identity()
-            return 78 if not World::world_try_transform(&physics_world, second_entity, &second_synced_pose)
-            return 79 if second_synced_pose.position.y >= second_initial_pose.position.y
-            second_unbind_status: i32 = catch WorldPhysics::unbind(session, &bodies, second_entity):
-                ok: 0
-                error failure: 1
-            return 80 if second_unbind_status != 0 or WorldPhysics::binding_count(bodies) != 0
+            world_scheduler_status: i32 = world_scheduler_probe(&session)
+            return world_scheduler_status if world_scheduler_status != 0
             return 41 if not RuntimeServices::shutdown(&session)
 
-            stopped: i32 = catch RuntimeServices::physics_fixed_step(&session, 1.0 / 60.0):
+            stopped: i32 = catch RuntimeServices::physics_fixed_step(&session,
+                Runtime::fixed_step_seconds()):
                 value: 1
                 RuntimeServices::RuntimeServicesError.SessionStopped: 0
                 error failure: 2

@@ -5,10 +5,13 @@
 # the legal parallelism; task size and backend affinity decide whether it
 # pays. Nested parallelism is capped by construction: phases are flat.
 module Schedule:
+    public:
+        const MAX_SYSTEMS: usize = 8
+
     private:
         const module Tune:
             RESOURCES: usize = 4
-            MAX_SYSTEMS: usize = 8
+            MAX_SYSTEMS: usize = Schedule::MAX_SYSTEMS
 
     public:
         enum Resource:
