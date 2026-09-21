@@ -134,6 +134,36 @@ module Executor:
                     state.trace[state.length] <- system.i64()
                     state.length <- state.length + 1
 
+        # Context remains statically typed at the call site and is passed by
+        # reference, so system dispatch needs no captured closure or allocation.
+        def plan_execute_with_context[Context](plan: Plan&,
+            state: mutable FrameState&, context: mutable Context&,
+            dispatch: fn(mutable FrameState&, usize, mutable Context&) -> void) -> void error[ExecError]:
+            raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
+            sequence: i64[Limits::MAX_SYSTEMS] = plan_sequence(plan)
+            for slot in 0..<plan.count |state, sequence, context, dispatch|:
+                system: usize = sequence[slot].usize()
+                dispatch(state, system, context)
+                if state.length < Executor::MAX_TRACE_EVENTS:
+                    state.trace[state.length] <- system.i64()
+                    state.length <- state.length + 1
+
+        # Two independently owned contexts can be passed without wrapping
+        # mutable references in an aggregate (which would require capturing
+        # references in a struct). Both remain statically typed and borrowed.
+        def plan_execute_with_contexts[ContextA, ContextB](plan: Plan&,
+            state: mutable FrameState&, context_a: mutable ContextA&,
+            context_b: mutable ContextB&,
+            dispatch: fn(mutable FrameState&, usize, mutable ContextA&, mutable ContextB&) -> void) -> void error[ExecError]:
+            raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
+            sequence: i64[Limits::MAX_SYSTEMS] = plan_sequence(plan)
+            for slot in 0..<plan.count |state, sequence, context_a, context_b, dispatch|:
+                system: usize = sequence[slot].usize()
+                dispatch(state, system, context_a, context_b)
+                if state.length < Executor::MAX_TRACE_EVENTS:
+                    state.trace[state.length] <- system.i64()
+                    state.length <- state.length + 1
+
         def run_count(work: Work&, system: usize) -> i64:
             return -1 if system >= Limits::MAX_SYSTEMS
             work.runs[system]

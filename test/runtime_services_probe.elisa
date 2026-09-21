@@ -36,6 +36,7 @@ module RuntimeServicesProbe:
                     context.physics_steps <- context.physics_steps + 1
                 else:
                     context.failed <- true
+
             elif system == Systems::WORLD_SYNC:
                 sync_status: bool = catch WorldPhysics::sync_world(session,
                     &context.world, context.bodies):
@@ -109,14 +110,13 @@ module RuntimeServicesProbe:
 
         def run_world_schedule_frame(session: mutable RuntimeServices::Session&,
             elapsed_micros: i64, context: mutable TickContext&,
-            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&,
-            systems: Schedule::System[Schedule::MAX_SYSTEMS]) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError]:
+            plan: Executor::Plan&, plan_state: mutable Executor::FrameState&) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(
                 session, elapsed_micros)
             sequence: i64[Schedule::MAX_SYSTEMS] = Executor::plan_sequence(plan)
             dispatch_count: usize = frame.steps * plan.count
             slot: mutable usize = 0
-            for _ in 0..<dispatch_count |session, plan, plan_state, systems, context, sequence, slot|:
+            for _ in 0..<dispatch_count |session, plan, plan_state, context, sequence, slot|:
                 system: usize = sequence[slot].usize()
                 dispatch_physics_system(plan_state, session, context, system)
                 if plan_state.length < Executor::MAX_TRACE_EVENTS:
@@ -128,10 +128,9 @@ module RuntimeServicesProbe:
 
         def dispatch_first_world_ticks(session: mutable RuntimeServices::Session&,
             context: mutable TickContext&, plan: Executor::Plan&,
-            systems: Schedule::System[Schedule::MAX_SYSTEMS],
             plan_state: mutable Executor::FrameState&) -> i32:
             frame: RuntimeServices::SimulationFrame = catch run_world_schedule_frame(
-                session, 24000, context, plan, plan_state, systems):
+                session, 24000, context, plan, plan_state):
                 value: value
                 error failure: return 61
             return 62 if frame.steps != 2 or frame.tick_count != 2
@@ -141,10 +140,9 @@ module RuntimeServicesProbe:
 
         def dispatch_remaining_world_tick(session: mutable RuntimeServices::Session&,
             context: mutable TickContext&, plan: Executor::Plan&,
-            systems: Schedule::System[Schedule::MAX_SYSTEMS],
             plan_state: mutable Executor::FrameState&) -> i32:
             frame: RuntimeServices::SimulationFrame = catch run_world_schedule_frame(
-                session, Runtime::fixed_step_micros(), context, plan, plan_state, systems):
+                session, Runtime::fixed_step_micros(), context, plan, plan_state):
                 value: value
                 error failure: return 76
             return 77 if frame.steps != 1 or frame.tick_count != 3
@@ -313,12 +311,11 @@ module RuntimeServicesProbe:
         def first_world_schedule_batch(session: mutable RuntimeServices::Session&,
             context: mutable TickContext&, physics_entity: World::EntityRef,
             initial_pose: Geometry::Transform, plan: Executor::Plan&,
-            systems: Schedule::System[Schedule::MAX_SYSTEMS],
             plan_state: mutable Executor::FrameState&) -> i32:
             partial_status: i32 = check_partial_world_frame(session)
             return partial_status if partial_status != 0
             tick_status: i32 = dispatch_first_world_ticks(session, context, plan,
-                systems, plan_state)
+                plan_state)
             return tick_status if tick_status != 0
             trace_status: i32 = check_first_world_trace(plan_state)
             return trace_status if trace_status != 0
@@ -329,10 +326,9 @@ module RuntimeServicesProbe:
         def second_world_schedule_batch(session: mutable RuntimeServices::Session&,
             context: mutable TickContext&, second_entity: World::EntityRef,
             second_initial_pose: Geometry::Transform, plan: Executor::Plan&,
-            systems: Schedule::System[Schedule::MAX_SYSTEMS],
             plan_state: mutable Executor::FrameState&) -> i32:
             tick_status: i32 = dispatch_remaining_world_tick(session, context, plan,
-                systems, plan_state)
+                plan_state)
             return tick_status if tick_status != 0
             pose_status: i32 = check_second_world_pose(context, second_entity,
                 second_initial_pose)
@@ -359,10 +355,10 @@ module RuntimeServicesProbe:
             plan_state: mutable Executor::FrameState = Executor::FrameState()
 
             first_status: i32 = first_world_schedule_batch(session, context,
-                physics_entity, initial_pose, plan, systems, &plan_state)
+                physics_entity, initial_pose, plan, &plan_state)
             return first_status if first_status != 0
             second_status: i32 = second_world_schedule_batch(session, context,
-                second_entity, second_initial_pose, plan, systems, &plan_state)
+                second_entity, second_initial_pose, plan, &plan_state)
             return second_status if second_status != 0
             0
 

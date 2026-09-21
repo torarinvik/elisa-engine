@@ -3,6 +3,13 @@ include "../src/runtime/executor.elisa"
 using Schedule
 using Executor
 
+struct DispatchContext:
+    seed: i64
+    total: mutable i64
+
+struct DispatchOffset:
+    value: i64
+
 def gameplay() -> System:
     with_write(with_read(system_empty(0), Resource.Transforms), Resource.Bodies)
 
@@ -17,6 +24,16 @@ def audio() -> System:
 
 def dispatch(state: mutable FrameState&, system: usize) -> void:
     state.visits[system] <- state.visits[system] + 1
+
+def dispatch_with_context(state: mutable FrameState&, system: usize,
+    context: mutable DispatchContext&) -> void:
+    state.visits[system] <- state.visits[system] + 1
+    context.total <- context.total + context.seed + system.i64()
+
+def dispatch_with_contexts(state: mutable FrameState&, system: usize,
+    context: mutable DispatchContext&, offset: mutable DispatchOffset&) -> void:
+    state.visits[system] <- state.visits[system] + 1
+    context.total <- context.total + context.seed + offset.value + system.i64()
 
 def main() -> i32:
     return 1 if resource_count() != 4 or resource_index(Resource.Cues) != 3
@@ -82,6 +99,28 @@ def main() -> i32:
     return 25 if state.trace[0] != 0 or state.trace[1] != 2 or state.trace[2] != 1
     return 26 if state.visits[0] != 1 or state.visits[1] != 1 or state.visits[2] != 1
     return 27 if state.length != 3
+    context: mutable DispatchContext = DispatchContext{seed: 40, total: 0}
+    context_state: mutable FrameState = FrameState()
+    context_run: i32 =
+        catch plan_execute_with_context(&grouped_plan, &context_state, &context,
+            dispatch_with_context):
+            ok: 0
+            error failure: 1
+    return 38 if context_run != 0
+    return 39 if context_state.trace[0] != 0 or context_state.trace[1] != 2 or context_state.trace[2] != 1
+    return 40 if context.total != 123 or context_state.visits[0] != 1 or context_state.visits[1] != 1 or context_state.visits[2] != 1
+    return 41 if context_state.length != 3
+    pair_context: mutable DispatchContext = DispatchContext{seed: 40, total: 0}
+    pair_offset: mutable DispatchOffset = DispatchOffset{value: 10}
+    pair_state: mutable FrameState = FrameState()
+    pair_run: i32 =
+        catch plan_execute_with_contexts(&grouped_plan, &pair_state, &pair_context,
+            &pair_offset, dispatch_with_contexts):
+            ok: 0
+            error failure: 1
+    return 42 if pair_run != 0
+    return 43 if pair_context.total != 153 or pair_state.visits[0] != 1 or pair_state.visits[1] != 1 or pair_state.visits[2] != 1
+    return 44 if pair_state.length != 3
     work: mutable Work = Work()
     ran: i32 =
         catch plan_run(&plan, &work, 3):
