@@ -101,6 +101,42 @@ module PhysicsRuntime:
                 tick: mutable u64
                 live: mutable bool
 
+        # PhysicsRuntime owns initialization and copies of native-backed
+        # handles. Other modules retain this affine pool without exposing or
+        # zero-initializing BodyHandle's private generation fields.
+        module ServiceBodyHandles:
+            public:
+                const CAPACITY: usize = 128
+
+                affine struct Pool:
+                    private:
+                        values: mutable BodyHandle[PhysicsRuntime::ServiceBodyHandles::CAPACITY]
+                        live: mutable bool[PhysicsRuntime::ServiceBodyHandles::CAPACITY]
+
+                def Pool() -> Pool:
+                    Pool{values: zeroed, live: zeroed}
+
+                def store(handles: mutable Pool&, index: usize,
+                    body: BodyHandle) -> bool:
+                    return false if index >= PhysicsRuntime::ServiceBodyHandles::CAPACITY
+                    handles.values[index] <- body
+                    handles.live[index] <- true
+                    true
+
+                def get(handles: Pool&, index: usize) -> BodyHandle error[PhysicsRuntime::PhysicsError]:
+                    raise PhysicsRuntime::PhysicsError.InvalidHandle if index >= PhysicsRuntime::ServiceBodyHandles::CAPACITY or not handles.live[index]
+                    handles.values[index]
+
+                def move(handles: mutable Pool&, source: usize, destination: usize) -> bool:
+                    return false if source >= PhysicsRuntime::ServiceBodyHandles::CAPACITY or destination >= PhysicsRuntime::ServiceBodyHandles::CAPACITY or not handles.live[source]
+                    handles.values[destination] <- handles.values[source]
+                    handles.live[destination] <- true
+                    handles.live[source] <- false
+                    true
+
+                def clear(handles: mutable Pool&, index: usize) -> void:
+                    handles.live[index] <- false if index < PhysicsRuntime::ServiceBodyHandles::CAPACITY
+
         def ServiceState() -> ServiceState:
             ServiceState{generation: 0, tick: 0, live: false}
 

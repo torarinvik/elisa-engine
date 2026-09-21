@@ -1,0 +1,133 @@
+# Bridges the checked World registry and the session-owned Jolt service.
+# Elisa owns entity-to-body links; native handles remain private to PhysicsRuntime.
+include "./services.elisa"
+include "../world/world.elisa"
+include "../math/geometry.elisa"
+include "../vendor/elisa_math.elisa"
+
+module WorldPhysics:
+    public:
+        const MAX_BINDINGS: usize = PhysicsRuntime::ServiceBodyHandles::CAPACITY
+
+        error WorldPhysicsError:
+            Capacity
+            EntityAlreadyBound
+            EntityUnavailable
+            BindingNotFound
+            PhysicsFailure
+            SynchronizationFailure
+            BindingRollbackFailed
+            BindingTableCorrupt
+
+        affine struct Bindings:
+            private:
+                entities: mutable World::EntityRef[WorldPhysics::MAX_BINDINGS]
+                bodies: mutable PhysicsRuntime::ServiceBodyHandles::Pool
+                count: mutable usize
+
+    private:
+        const module Sentinel:
+            NO_BINDING: usize = WorldPhysics::MAX_BINDINGS
+
+        def binding_index(bindings: Bindings&, entity: World::EntityRef) -> usize:
+            for index in 0..<bindings.count |found: usize = Sentinel::NO_BINDING| -> found:
+                if bindings.entities[index].world_epoch == entity.world_epoch and bindings.entities[index].id == entity.id:
+                    break index
+
+    public:
+        def Bindings() -> Bindings:
+            Bindings{
+                entities: zeroed,
+                bodies: PhysicsRuntime::ServiceBodyHandles::Pool(),
+                count: 0,
+            }
+
+        def binding_count(bindings: Bindings&) -> usize:
+            bindings.count
+
+        # Attach an axis-aligned box to the entity's current World position.
+        # The current Jolt bridge publishes position only; entity rotation and
+        # scale remain owned by World and are preserved during synchronization.
+        def bind(session: RuntimeServices::Session&, world: World::World&,
+            bindings: mutable Bindings&, entity: World::EntityRef,
+            kind: PhysicsRuntime::BodyKind, half_extents: Geometry::Vec3,
+            mass: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, World::WorldError, WorldPhysicsError]:
+            raise WorldPhysicsError.EntityAlreadyBound if binding_index(bindings, entity) != Sentinel::NO_BINDING
+            raise WorldPhysicsError.Capacity if bindings.count >= WorldPhysics::MAX_BINDINGS
+            transform: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(world, entity, &transform)
+            scaled_extents: Geometry::Vec3 = Geometry::Vec3{
+                x: half_extents.x * ElisaMath::fabsf(transform.scale.x),
+                y: half_extents.y * ElisaMath::fabsf(transform.scale.y),
+                z: half_extents.z * ElisaMath::fabsf(transform.scale.z),
+            }
+            body: PhysicsRuntime::BodyHandle = try RuntimeServices::physics_body_create(session,
+                PhysicsRuntime::BodyDesc{
+                    kind: kind,
+                    position: transform.position,
+                    half_extents: scaled_extents,
+                    mass: mass,
+                })
+            if not PhysicsRuntime::ServiceBodyHandles::store(&bindings.bodies, bindings.count, body):
+                cleanup_ok: bool = catch RuntimeServices::physics_body_destroy(session, body):
+                    ok: true
+                    error failure: false
+                raise WorldPhysicsError.BindingRollbackFailed if not cleanup_ok
+                raise WorldPhysicsError.Capacity
+            bindings.entities[bindings.count] <- entity
+            bindings.count <- bindings.count + 1
+
+        # Destroy the native body before removing its link, so failed cleanup
+        # leaves the operation retryable.
+        def unbind(session: RuntimeServices::Session&, bindings: mutable Bindings&,
+            entity: World::EntityRef) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            index: usize = binding_index(bindings, entity)
+            raise WorldPhysicsError.BindingNotFound if index == Sentinel::NO_BINDING
+            body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
+            try RuntimeServices::physics_body_destroy(session, body)
+            for shift in index..<bindings.count - 1 |bindings|:
+                moved: bool = PhysicsRuntime::ServiceBodyHandles::move(&bindings.bodies,
+                    shift + 1, shift)
+                raise WorldPhysicsError.BindingTableCorrupt if not moved
+                bindings.entities[shift] <- bindings.entities[shift + 1]
+            PhysicsRuntime::ServiceBodyHandles::clear(&bindings.bodies, bindings.count - 1)
+            bindings.count <- bindings.count - 1
+
+        # Stage every pose before publishing any of them. A stale entity or body
+        # therefore cannot leave half of this synchronization pass in World.
+        def sync_world(session: RuntimeServices::Session&, world: mutable World::World&,
+            bindings: Bindings&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, World::WorldError, WorldPhysicsError]:
+            poses: mutable Geometry::Transform[WorldPhysics::MAX_BINDINGS] = zeroed
+            for index in 0..<bindings.count |session, world, bindings, poses|:
+                existing: mutable Geometry::Transform = Geometry::transform_identity()
+                raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(world, bindings.entities[index], &existing)
+                body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
+                position: Geometry::Vec3 = try RuntimeServices::physics_body_position(session, body)
+                updated: Geometry::Transform = Geometry::Transform{
+                    position: position,
+                    rotation: existing.rotation,
+                    scale: existing.scale,
+                }
+                raise World::WorldError.InvalidValue if not Geometry::transform_is_valid(updated)
+                poses[index] <- updated
+            for index in 0..<bindings.count |world, bindings, poses|:
+                try World::world_set_transform(world, bindings.entities[index], poses[index])
+
+        # One session frame advances the fixed clock, steps Jolt for each due
+        # tick, and publishes the resulting entity poses after each tick.
+        def advance_and_sync(session: mutable RuntimeServices::Session&,
+            world: mutable World::World&, bindings: Bindings&,
+            elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, WorldPhysicsError]:
+            frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(session, elapsed_micros)
+            if bindings.count > 0:
+                for _ in 0..<frame.steps |session, world, bindings|:
+                    step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
+                        Runtime::fixed_step_seconds()):
+                        value: 0
+                        error failure: 1
+                    raise WorldPhysicsError.PhysicsFailure if step_status != 0
+                    sync_status: i32 = catch sync_world(session, world, bindings):
+                        ok: 0
+                        error failure: 1
+                    raise WorldPhysicsError.SynchronizationFailure if sync_status != 0
+            frame
