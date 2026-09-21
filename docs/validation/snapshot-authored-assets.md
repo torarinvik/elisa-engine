@@ -29,10 +29,12 @@ replacement and despawn, live unregister rejection, rollback and retry, stable
 identity updates, and release of all shared pairs after clear. It also submits
 200 instances of one pair in one snapshot and checks the test-only ABI counter
 reports 202 calls: begin, 200 staged rows, and commit. Updating one instance's
-transform leaves the other instance at its own position, and clearing the batch
-releases the shared mesh while preserving the primitive baseline. Per-instance
-color and emissive tints leave the shared pair intact; see
-[`instance-tints.md`](instance-tints.md).
+transform leaves the other instance at its own position. Despawning one of the
+200 leaves 199 instances, the neighbors' positions and material factors, and
+one shared pair; that transaction makes 202 calls (begin, 199 rows, one retire,
+commit). Clearing the batch releases the shared mesh while preserving the
+primitive baseline. Per-instance color and emissive tints leave the shared pair
+intact; see [`instance-tints.md`](instance-tints.md).
 
 The current glTF geometry cooker deliberately supports one untransformed mesh
 node, one indexed triangle primitive, and POSITION/NORMAL/optional
@@ -41,8 +43,10 @@ bindings, unsupported vertex attributes, and extensions. Snapshot texture IDs
 must be registered separately from scalar material descriptors; only one
 packed Wicked surface map is supported, and nonidentical metallic-roughness and
 occlusion IDs are rejected until a cooker merges them. Static mesh/material
-pairs share their Wicked geometry; skinned snapshot resources are still per
-instance. These are explicit partial limitations, not completed glTF scene or
+pairs share their Wicked geometry. Skinned snapshot resources stay per instance
+by design: Wicked keeps the armature on `MeshComponent::armatureID`, so objects
+sharing a skinned mesh would share one pose. The cooked geometry is still
+registered and loaded once. These are explicit partial limitations, not completed glTF scene or
 production material support.
 
 Run the focused gates from the repository root:

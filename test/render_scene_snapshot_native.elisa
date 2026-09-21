@@ -19,6 +19,7 @@ module RenderSceneSnapshotNativeTests:
             POSITION_SPACING: f32 = 3.0
             CHANGED_FIRST_POSITION_X: f32 = -7.0
             TINTED_OFFSET: i64 = 1
+            REMOVED_INDEX: usize = 100
             PROBE_RENDER_ID: i64 = 50000
 
         @callconv(c)
@@ -473,6 +474,31 @@ module RenderSceneSnapshotNativeTests:
             return 113 if reset_status != 0 or reset_extraction != 0 or reset_sync != 0
             return 114 if elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() != Stress::INSTANCE_COUNT.u64() + Stress::BATCH_ENVELOPE_CALLS
             return 115 if not instance_tint_neutral(tinted_id)
+
+            # Destroying one shared instance leaves the other 199 and their pair
+            # intact. The transaction is begin, 199 staged rows, one retire and
+            # commit.
+            removed_id: i64 = Stress::RENDER_ID_BASE + Stress::REMOVED_INDEX.i64()
+            despawned: bool = catch World::world_despawn(&world, stress_references[Stress::REMOVED_INDEX]):
+                ok: true
+                error failure: false
+            removed_extraction: i32 = extract_world_render(world, &bindings, &snapshot)
+            removed_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 116 if not despawned or removed_extraction != 0 or removed_sync != 0
+            remaining_counts_valid: bool = RenderSnapshot::snapshot_count(snapshot) == Stress::INSTANCE_COUNT - 1 and RenderSnapshotScene::binding_count(presenter) == Stress::INSTANCE_COUNT - 1 and RenderScene::instance_count() == Stress::INITIAL_NATIVE_INSTANCE_COUNT + Stress::INSTANCE_COUNT.u64() - 1
+            return 117 if not remaining_counts_valid
+            return 118 if elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() != Stress::INSTANCE_COUNT.u64() + Stress::BATCH_ENVELOPE_CALLS
+            removed_gone: bool = elisa_render_scene_v1_test_snapshot_position_x(removed_id,
+                Stress::REMOVED_INDEX.f32() * Stress::POSITION_SPACING) == 0
+            before_kept: bool = elisa_render_scene_v1_test_snapshot_position_x(removed_id - 1,
+                (Stress::REMOVED_INDEX - 1).f32() * Stress::POSITION_SPACING) != 0
+            after_kept: bool = elisa_render_scene_v1_test_snapshot_position_x(removed_id + 1,
+                (Stress::REMOVED_INDEX + 1).f32() * Stress::POSITION_SPACING) != 0
+            return 119 if not removed_gone or not before_kept or not after_kept
+            pair_kept: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == 1 and elisa_render_scene_v1_test_snapshot_meshes_shared(removed_id - 1, removed_id + 1) != 0
+            neighbour_resources: bool = elisa_render_scene_v1_test_snapshot_instance_resources(
+                removed_id + 1, 3, 3, 0.25, 0.5, 0.75, 1.0, 0.4, 0.6) != 0
+            return 120 if not pair_kept or not neighbour_resources
 
             cleared: bool = catch RenderSnapshotScene::clear(&presenter):
                 ok: true
