@@ -134,6 +134,21 @@ def exercise_render_scene() -> i32:
         error failure: 1
     return 33 if valid_camera != 0
 
+    camera_height: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+        ok: 0
+        error failure: 1
+    return 121 if camera_height != 0
+    bad_camera_height: i32 = catch RenderScene::set_camera_orthographic_height(0.0):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 122 if bad_camera_height != 1
+    excessive_camera_height: i32 = catch RenderScene::set_camera_orthographic_height(1.0e30):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 123 if excessive_camera_height != 1
+
     invalid_arc_width: i32 = catch RenderScene::create_electric_arc(0.0, 0.1, 7):
         value: 0
         RenderScene::RenderSceneError.InvalidValue: 1

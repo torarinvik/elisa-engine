@@ -411,6 +411,20 @@ extern "C" int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height) {
     return resize_unlocked(state, width, height);
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_camera_orthographic_height(float vertical_size) {
+    if (!finite(vertical_size) || vertical_size < MIN_ORTHOGRAPHIC_HEIGHT ||
+        vertical_size > MAX_ORTHOGRAPHIC_HEIGHT) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.vertical_size = vertical_size;
+    return resize_unlocked(state, state.width, state.height);
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_camera_look_at(
     float eye_x, float eye_y, float eye_z,
     float target_x, float target_y, float target_z,

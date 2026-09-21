@@ -32,6 +32,7 @@ enum {
 uint32_t elisa_render_scene_abi_version(void);
 int32_t elisa_render_scene_v1_initialize(int32_t width, int32_t height, float vertical_size);
 int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
+int32_t elisa_render_scene_v1_set_camera_orthographic_height(float vertical_size);
 int32_t elisa_render_scene_v1_set_camera_look_at(
     float eye_x, float eye_y, float eye_z,
     float target_x, float target_y, float target_z,
