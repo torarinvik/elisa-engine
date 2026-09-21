@@ -227,8 +227,9 @@ module RenderScene:
             private:
                 native_value: i64
         struct LightHandle:
-            private:
-                native_value: i64
+            # The integer is an opaque, generation-checked engine token. It is
+            # public so game-owned state can retain lights across frames.
+            id: i64
         # Dynamic, socket-to-socket electrical ribbon. Its geometry and Wicked
         # TrailRenderer ownership stay inside the engine.
         struct ElectricArcHandle:
@@ -419,18 +420,18 @@ module RenderScene:
             if native_value <= 0:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
-            LightHandle{native_value: native_value}
+            LightHandle{id: native_value}
         def update_light(handle: LightHandle, light: Lighting::Light) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
             kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
-            try check_status(elisa_render_scene_v1_update_light(handle.native_value, kind,
+            try check_status(elisa_render_scene_v1_update_light(handle.id, kind,
                 light.color.x, light.color.y, light.color.z,
                 light.position.x, light.position.y, light.position.z,
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
                 1 if light.casts_shadow else 0))
         def destroy_light(handle: LightHandle) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_destroy_light(handle.native_value))
+            try check_status(elisa_render_scene_v1_destroy_light(handle.id))
         def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_bloom(enabled_value, threshold))
