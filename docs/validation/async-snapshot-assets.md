@@ -71,8 +71,10 @@ keeps the synchronous path for `test/maze_rendering_native.elisa`.
 ## Evidence
 
 `test/render_scene_async_asset_native.elisa` runs inside the SDL3/Metal native
-smoke, after the bundle-dependency test. Exit codes are `216 + case`. It loads
-the bundles that `scripts/bundle_dependency_fixtures.py` writes to
+smoke, after the bundle-dependency and material-subset tests. It exits 194 and
+logs its failing case through `elisa_render_scene_v1_test_failed_case`
+("render scene test group 194 failed at case N"); see [Group code](#group-code).
+It loads the bundles that `scripts/bundle_dependency_fixtures.py` writes to
 `build/cooked/dependencies`. Test hooks built only into the smoke host
 (`ELISA_RENDER_SCENE_TEST_PROBE`) can:
 - hold the worker before a job starts, or at its checkpoint
@@ -123,17 +125,21 @@ through the new path. The worker now reports each bad-bundle failure:
 The render-scene mutations were applied to a copy of `native/`. The smoke's
 C++ host was rebuilt from that copy, linked against the Elisa archive from the
 full smoke, and run against the same fixtures. An unmutated control built the
-same way exited 0.
+same way exited 0. Every mutant failed this group at the listed case. These
+runs predate group code 194. The group then exited `216 + case`, so each case
+below is the recorded exit minus 216. Exits 220 and 226 were also
+bundle-dependency exits, so those two mutants were rerun with the group code.
+Each exited 194 and logged the case listed.
 
-| Mutation | Result |
+| Mutation | Failing case |
 | --- | --- |
-| the job skips its checkpoint | exit 222: the parked job completes, and a pump adopts it while frames should still be loading |
-| a missing requested asset reads as `AssetLoadFailure` instead of `AssetPending` | exit 220 |
-| a loading request never coalesces | exit 218: the same ID with a texture path is accepted |
-| unregistering a loading ID doesn't cancel its worker job | exit 243: the cancelled queued job starts |
-| a resident mesh accepts any path | exit 226 |
-| requests ignore the per-kind slot bound | exit 255: all 40 fill requests are accepted |
-| pump adopts each result into the first live request instead of matching serials | exit 249 (case 33). Before case 33 existed this mutant survived, because worker cancellation had removed every stale result. |
+| the job skips its checkpoint | 6: the parked job completes, and a pump adopts it while frames should still be loading |
+| a missing requested asset reads as `AssetLoadFailure` instead of `AssetPending` | 4 (rerun) |
+| a loading request never coalesces | 2: the same ID with a texture path is accepted |
+| unregistering a loading ID doesn't cancel its worker job | 27: the cancelled queued job starts |
+| a resident mesh accepts any path | 10 (rerun) |
+| requests ignore the per-kind slot bound | 39: all 40 fill requests are accepted |
+| pump adopts each result into the first live request instead of matching serials | 33. Before case 33 existed this mutant survived, because worker cancellation had removed every stale result. |
 
 The worker mutations were applied to a copy of `snapshot_asset_worker.h` and
 run through the ThreadSanitizer harness. The unmutated control exited 0. Each
@@ -200,3 +206,14 @@ mutant exited 1 at the named check:
 - That binary has no line continuation after `and` or `or`. The first draft of
   the native test wrapped two conditions and failed to parse. The test now
   names each part as a bool.
+
+## Group code
+
+The group first exited `216 + case`, so its exits 220–226 matched
+bundle-dependency cases 20–26. It now exits 194, a code no other group in the
+smoke returns, and logs its failing case. On 2026-09-21, with only that change
+applied to a clean checkout:
+- `scripts/render_scene_native_smoke.py` exited 0.
+- The two mutants whose old exits were ambiguous exited 194. They logged
+  "render scene test group 194 failed at case 4" and "... at case 10". Their
+  control exited 0.

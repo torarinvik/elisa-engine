@@ -340,7 +340,7 @@ def exercise_render_scene() -> i32:
     material_subset_status: i32 = RenderSceneMaterialSubsetNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(193, material_subset_status) if material_subset_status != 0
     async_asset_status: i32 = RenderSceneAsyncAssetNativeTests::exercise()
-    return 216 + async_asset_status if async_asset_status != 0
+    return elisa_render_scene_v1_test_failed_case(194, async_asset_status) if async_asset_status != 0
 
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},

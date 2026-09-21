@@ -75,10 +75,12 @@ this; the package probe now does.
 ## Evidence
 
 `test/render_scene_bundle_dependency_native.elisa` runs inside the SDL3/Metal
-native smoke. Exit codes are `200 + case`. `scripts/bundle_dependency_fixtures.py`
-first writes its bundles to `build/cooked/dependencies`. Each bundle holds a
-2×1 PNG `albedo` section, so registering it as a texture succeeds exactly when
-its dependency closure is valid.
+native smoke. Exit codes are `200 + case`, and no other group in the smoke
+exits 201–226; see [Exit codes](#exit-codes).
+`scripts/bundle_dependency_fixtures.py` first writes its bundles to
+`build/cooked/dependencies`. Each bundle holds a 2×1 PNG `albedo` section, so
+registering it as a texture succeeds exactly when its dependency closure is
+valid.
 
 | Case | Expected | Logged reason |
 | --- | --- | --- |
@@ -132,15 +134,17 @@ Other checks:
 Each mutation was applied to a copy of `native/`. The render smoke's C++ host
 was rebuilt from that copy, linked against the Elisa archive the full smoke had
 just compiled, and run against the same fixtures. An unmutated control built
-the same way exited 0. The checkout's sources weren't edited.
+the same way exited 0. The checkout's sources weren't edited. These runs came
+before the asynchronous asset test existed, so each exit below is this group's
+case plus 200.
 
 | Mutation | Result |
 | --- | --- |
-| the closure bound counts only finished bundles again (`visited.size() >= max`) | exit 226: the 17-bundle chain registers |
-| `register_snapshot_bundle_texture_asset` skips the dependency check | exit 220: `missing.elpk` registers |
-| `create_mesh` skips the dependency check | exit 209: `mesh-missing.elpk` creates an instance |
-| `register_snapshot_mesh_asset` skips the dependency check | exit 208: `mesh-missing.elpk` registers |
-| dependency names resolve against the mount root again | exit 202: `root.elpk` can't find `leaf.elpk` |
+| the closure bound counts only finished bundles again (`visited.size() >= max`) | exit 226 (case 26): the 17-bundle chain registers |
+| `register_snapshot_bundle_texture_asset` skips the dependency check | exit 220 (case 20): `missing.elpk` registers |
+| `create_mesh` skips the dependency check | exit 209 (case 9): `mesh-missing.elpk` creates an instance |
+| `register_snapshot_mesh_asset` skips the dependency check | exit 208 (case 8): `mesh-missing.elpk` registers |
+| dependency names resolve against the mount root again | exit 202 (case 2): `root.elpk` can't find `leaf.elpk` |
 
 ## Limits
 
@@ -184,3 +188,10 @@ the same way exited 0. The checkout's sources weren't edited.
   the existing binary.
 - That binary exits 2 with no diagnostic when a typed-error `catch` arm
   returns beside a `value: value` arm. The native test avoids that form.
+
+## Exit codes
+
+The asynchronous asset test first exited `216 + case`, which overlapped this
+group's exits 220–226. It now exits 194 and logs its case. Every `return` in
+the render smoke's test files was checked on 2026-09-21: only this group
+produces exits 201–226.
