@@ -10,6 +10,9 @@ include "./maze_rendering_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
+@callconv(c)
+extern elisa_render_scene_v1_test_art_material_settings() -> i32
+
 using Maze
 using MazeGame
 using MazeTrace
@@ -156,6 +159,26 @@ def exercise_render_scene() -> i32:
     electric_arc: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.06, 0.15, 7):
         value: value
         error failure: return 89
+    depth_enabled: i32 = catch RenderScene::set_electric_arc_depth_test(electric_arc, true):
+        ok: 0
+        error failure: 1
+    return 150 if depth_enabled != 0
+    retired_arc: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.01, 0.01, 9):
+        value: value
+        error failure: return 153
+    retired_status: i32 = catch RenderScene::destroy_electric_arc(retired_arc):
+        ok: 0
+        error failure: 1
+    return 154 if retired_status != 0
+    invalid_depth_handle: i32 = catch RenderScene::set_electric_arc_depth_test(retired_arc, true):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 151 if invalid_depth_handle != 1
+    depth_disabled: i32 = catch RenderScene::set_electric_arc_depth_test(electric_arc, false):
+        ok: 0
+        error failure: 1
+    return 152 if depth_disabled != 0
     degenerate_arc: i32 = catch RenderScene::update_electric_arc(electric_arc,
         Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 0.1, 1.0):
         ok: 0
@@ -176,6 +199,26 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 94 if arc_shown != 0
+
+    material_probe: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box,
+        Geometry::transform_identity(), RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+        value: value
+        error failure: return 155
+    invalid_material: i32 = catch RenderScene::set_lit_material(material_probe, -0.1, 0.3):
+        ok: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 156 if invalid_material != 1
+    _ = catch RenderScene::set_lit_material(material_probe, 0.65, 0.3):
+        ok: 0
+        error failure: return 157
+    _ = catch RenderScene::set_texture_uv_transform(material_probe, 1.0, -1.0, 0.0, 1.0):
+        ok: 0
+        error failure: return 158
+    return 159 if elisa_render_scene_v1_test_art_material_settings() != 1
+    _ = catch RenderScene::destroy(material_probe):
+        ok: 0
+        error failure: return 160
 
     hud_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
         "LIVES  3", 16.0, 14.0, 24,

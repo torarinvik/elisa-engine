@@ -98,6 +98,7 @@ struct ElectricArcSlot {
     uint32_t seed = 0;
     float width = 0.0f;
     float amplitude = 0.0f;
+    bool depth_test = false;
     bool visible = false;
     bool live = false;
 };

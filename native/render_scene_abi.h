@@ -68,6 +68,9 @@ int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
+int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
+int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float scale_u, float scale_v, float offset_u, float offset_v);
+int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
 // Texture slots: 0 base color, 1 normal, 2 packed surface, 3 emissive.
 // Surface RGBA channels are occlusion, roughness, metalness, reflectance.
@@ -95,6 +98,7 @@ int64_t elisa_render_scene_v1_create_electric_arc(float width, float amplitude, 
 int32_t elisa_render_scene_v1_update_electric_arc(int64_t handle,
     float start_x, float start_y, float start_z,
     float end_x, float end_y, float end_z, float phase, float visibility);
+int32_t elisa_render_scene_v1_set_electric_arc_depth_test(int64_t handle, int32_t enabled);
 int32_t elisa_render_scene_v1_set_electric_arc_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_electric_arc(int64_t handle);
 int32_t elisa_render_scene_v1_destroy(int64_t handle);

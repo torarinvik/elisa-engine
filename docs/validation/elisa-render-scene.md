@@ -184,3 +184,27 @@ python3 scripts/render_scene_native_smoke.py`. The full native gate command
 scripts/native_gate.elisascript native` passed every stage on macOS 27.0 / Apple
 M5 with `hardware_verification=verified`; [`build/native-gate.json`](../../build/native-gate.json)
 records the `bef49cc338a4bb483e910003f3a3b773b33bf445` source revision.
+
+## Art-direction APIs (2026-09-21)
+
+`RenderScene::set_lit_material(instance, roughness, metallic)` opts a primitive or
+cooked mesh into Wicked PBR lighting and shadow casting. Both scalars must be
+finite and in [0, 1]; surface-map channels multiply them. Legacy instances remain
+unlit until opted in. `set_sun_shadows(enabled)` controls the environment sun and
+render-path shadows; call it after `set_environment` (which resets sun shadows).
+
+`set_texture_uv_transform(instance, scale_u, scale_v, offset_u, offset_v)` sets a
+finite material UV transform for all maps. FBX exports using a bottom-left V
+origin can use `(1, -1, 0, 1)` to align maps in Wicked. This does not modify source
+meshes or automatically identify their UV convention.
+
+`set_electric_arc_depth_test(arc, enabled)` enables physical occlusion and applies
+to core, halo and branches, persisting through updates. Existing arcs keep their
+overlay default. Orthographic scene arcs use hardware depth without the legacy
+perspective soft fade. The Wicked TrailRenderer change allows zero depth-soften
+to disable soft fading independently of hardware depth and avoids division by
+zero. No game-authored native code is required.
+
+Native smoke coverage checks lit material state, UV transform, shadow-casting
+flags, invalid roughness, arc depth toggling, and rejection of a retired arc
+handle. The Amazing Labyrinth art study supplies native visual evidence.

@@ -76,3 +76,16 @@ extern "C" int32_t elisa_render_scene_v1_set_environment(
     weather.SetOverrideFogColor(fog_enabled != 0);
     return ELISA_RENDER_SCENE_OK;
 }
+
+extern "C" int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled) {
+    if (enabled != 0 && enabled != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (!sun) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    sun->SetCastShadow(enabled != 0);
+    state.path->setShadowsEnabled(enabled != 0);
+    return ELISA_RENDER_SCENE_OK;
+}
