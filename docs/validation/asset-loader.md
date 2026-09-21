@@ -38,11 +38,13 @@ when the worker finishes. Mount epochs and dependency generations are checked
 again before any result is published. This cancellation does not interrupt a
 filesystem call already in progress: it returns immediately and discards the
 eventual bytes. CRC-32 uses a table lookup per byte. Production texture
-decoders, GPU residency budgeting, worker-pool integration, and interruptible
-OS reads remain open.
+decoders, GPU residency budgeting, and interruptible OS reads remain open.
+`VirtualFileService` uses two persistent workers with a bounded pump queue, and
+its destructor drains and joins pending work before releasing service state.
 
 On 2026-09-21, the `build` and `frame` phases of
 `scripts/wicked_probe.elisascript` passed on SDL3/Metal. The native frame gate
 exercised worker-side package reads, missing manifest dependencies, in-flight
-cancellation, remount-epoch invalidation, texture upload/release/retry, and the
-existing rendered-scene and orderly-shutdown checks.
+cancellation, remount-epoch invalidation, worker shutdown during pending IO,
+texture upload/release/retry, and the existing rendered-scene and orderly-
+shutdown checks.

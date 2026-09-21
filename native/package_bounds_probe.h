@@ -265,6 +265,17 @@ inline bool probe_package_bounds(const std::string& valid_package,
     const bool cancelled_in_flight = saw_in_flight_read && in_flight_vfs.cancel(in_flight_read) &&
         in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled &&
         in_flight_worker.get() == 1 && in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled;
+    std::future<uint32_t> shutdown_worker;
+    bool shutdown_worker_scheduled = false;
+    {
+        VirtualFileService shutdown_vfs;
+        shutdown_worker_scheduled = shutdown_vfs.mount(base_root, {}, 13) &&
+            shutdown_vfs.request("in-flight.elpk", "payload").generation != 0;
+        shutdown_worker = shutdown_vfs.pump_async(1);
+    }
+    const bool worker_shutdown_waits = shutdown_worker_scheduled &&
+        shutdown_worker.wait_for(std::chrono::seconds(0)) == std::future_status::ready &&
+        shutdown_worker.get() == 1;
     VirtualFileService remount_vfs;
     const bool first_epoch_mounted = remount_vfs.mount(base_root, {}, 14);
     const VirtualReadHandle prior_epoch_read = remount_vfs.request("dep.elpk", "mesh");
@@ -372,6 +383,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(worker_read_ok, "virtual file worker scheduling") &&
         check(dependency_rejections, "virtual file worker dependency validation") &&
         check(cancelled_in_flight, "virtual file in-flight cancellation does not block publication") &&
+        check(worker_shutdown_waits, "virtual file worker lifetime joined on service destruction") &&
         check(remount_epoch_invalidates, "virtual file remount epoch invalidation") &&
         check(dependency_graph, "package manifest dependency DAG order and cycle rejection") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&

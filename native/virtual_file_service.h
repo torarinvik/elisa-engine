@@ -9,12 +9,16 @@
 #include "package_manifest.h"
 
 #include <array>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
+#include <exception>
 #include <filesystem>
 #include <future>
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace probe {
@@ -31,6 +35,37 @@ class VirtualFileService {
 public:
     static constexpr uint32_t MAX_REQUESTS = 32;
     static constexpr uint32_t MAX_DEPENDENCIES = 16;
+    static constexpr uint32_t ASYNC_WORKERS = 2;
+    static constexpr size_t MAX_PENDING_PUMPS = 32;
+
+    VirtualFileService() {
+        try {
+            for (uint32_t worker = 0; worker < ASYNC_WORKERS; ++worker) {
+                workers_.emplace_back([this]() { worker_loop(); });
+            }
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                stopping_workers_ = true;
+            }
+            worker_condition_.notify_all();
+            for (std::thread& worker : workers_) {
+                if (worker.joinable()) worker.join();
+            }
+            throw;
+        }
+    }
+
+    ~VirtualFileService() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_workers_ = true;
+        }
+        worker_condition_.notify_all();
+        for (std::thread& worker : workers_) {
+            if (worker.joinable()) worker.join();
+        }
+    }
 
     bool mount(std::filesystem::path base_root, std::vector<std::filesystem::path> overrides,
         uint64_t generation) {
@@ -58,8 +93,22 @@ public:
         return request_locked(logical_name, section, dependency_generation, &dependencies);
     }
 
+    // Returns zero without queueing when shutdown has started or the bounded
+    // async pump queue is full.
     std::future<uint32_t> pump_async(uint32_t budget = 1) {
-        return std::async(std::launch::async, [this, budget]() { return pump(budget); });
+        AsyncPump task;
+        task.budget = budget;
+        std::future<uint32_t> result = task.completion.get_future();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_workers_ || pending_pumps_.size() >= MAX_PENDING_PUMPS) {
+                task.completion.set_value(0);
+                return result;
+            }
+            pending_pumps_.push_back(std::move(task));
+        }
+        worker_condition_.notify_one();
+        return result;
     }
 
     bool cancel(VirtualReadHandle handle) {
@@ -266,6 +315,31 @@ private:
         bool validate_dependency_order = false;
     };
 
+    struct AsyncPump {
+        uint32_t budget = 0;
+        std::promise<uint32_t> completion;
+    };
+
+    void worker_loop() {
+        for (;;) {
+            AsyncPump task;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                worker_condition_.wait(lock, [this]() {
+                    return stopping_workers_ || !pending_pumps_.empty();
+                });
+                if (stopping_workers_ && pending_pumps_.empty()) return;
+                task = std::move(pending_pumps_.front());
+                pending_pumps_.pop_front();
+            }
+            try {
+                task.completion.set_value(pump(task.budget));
+            } catch (...) {
+                task.completion.set_exception(std::current_exception());
+            }
+        }
+    }
+
     Request* find(VirtualReadHandle handle) {
         return handle.slot < MAX_REQUESTS && requests_[handle.slot].generation == handle.generation &&
                 handle.generation != 0 ? &requests_[handle.slot] : nullptr;
@@ -282,6 +356,10 @@ private:
     uint64_t mount_epoch_ = 0;
     bool mounted_ = false;
     mutable std::mutex mutex_;
+    std::condition_variable worker_condition_;
+    std::deque<AsyncPump> pending_pumps_;
+    std::vector<std::thread> workers_;
+    bool stopping_workers_ = false;
     std::array<Request, MAX_REQUESTS> requests_{};
 };
 
