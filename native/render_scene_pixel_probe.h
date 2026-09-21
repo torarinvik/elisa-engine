@@ -130,6 +130,31 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_position_x(
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_camera_perspective_matches(
+    float width, float height, float fov, float near_clip, float far_clip) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.camera == nullptr) return 0;
+    const wi::scene::CameraComponent& camera = *state.camera;
+    const auto close = [](float left, float right) { return std::abs(left - right) <= 1.0e-5f; };
+    return (camera._flags & wi::scene::CameraComponent::ORTHO) == 0 &&
+        close(camera.width, width) && close(camera.height, height) &&
+        close(camera.fov, fov) && close(camera.zNearP, near_clip) &&
+        close(camera.zFarP, far_clip) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_camera_orthographic_matches(
+    float width, float height, float vertical_size) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.camera == nullptr) return 0;
+    const wi::scene::CameraComponent& camera = *state.camera;
+    const auto close = [](float left, float right) { return std::abs(left - right) <= 1.0e-5f; };
+    return (camera._flags & wi::scene::CameraComponent::ORTHO) != 0 &&
+        close(camera.width, width) && close(camera.height, height) &&
+        close(camera.ortho_vertical_size, vertical_size) ? 1 : 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

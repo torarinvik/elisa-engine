@@ -15,11 +15,14 @@ Quaternions must be non-zero and are normalized; colors must be finite within
 0–1; look-at direction and up vectors must be non-degenerate. Calls run on the
 thread that initialized the application, and wrong-thread initialization is
 rejected before touching Wicked scene state.
-`RenderScene::resize` updates the orthographic projection and preserves the
-current view; applications should pass the pixel extent reported by
+`RenderScene::set_camera_perspective(vertical_fov_radians, near_clip, far_clip)`
+selects Wicked's perspective projection after validating the radian field of
+view and clipping range. `RenderScene::resize` preserves the active projection
+and its settings; `set_camera_orthographic_height` switches back to orthographic
+mode. Applications should pass the pixel extent reported by
 `Application::frame_info` when the window changes size. The initial camera is
-centered over the origin with +Y up, and game code can set its pose with
-`RenderScene::set_camera_look_at`.
+orthographic, centered over the origin with +Y up, and game code can set its
+pose with `RenderScene::set_camera_look_at`.
 
 `RenderScene::sync_snapshot` connects `RenderSnapshot::Snapshot` to this scene
 service as one bounded native transaction of at most 256 rows. Each row carries
@@ -93,8 +96,10 @@ loads it through `RenderScene::create_mesh`, and verifies that the cooked mesh
 alone changes the rendered image. Traversal, absolute paths, and a symlink
 escaping the project root are rejected. It also checks invalid dimensions,
 degenerate and out-of-range camera inputs, malformed transforms/colors, stale
-handles across scene replacement, camera resize, both explicit and
-application-triggered cleanup, real snapshot submission, stable-handle reuse,
+handles across scene replacement, orthographic and perspective camera changes,
+invalid perspective field-of-view and clipping inputs, projection-preserving
+resize and return to orthographic mode, both explicit and application-triggered
+cleanup, real snapshot submission, stable-handle reuse,
 transform updates, removed-row retirement, and that the rendered center pixel
 differs from the clear corner. The native pixel probe waits up to 400 ms for
 asynchronous pipeline creation, waits for GPU work, and reads the `RenderPath3D`
@@ -140,11 +145,11 @@ asset replacement rollback/retry, and despawn retirement after this change.
 Source-length, module-hygiene, native dependency-manifest, and
 `git diff --check` checks passed.
 
-This is an initial renderer. It owns one active scene and orthographic camera,
-uses unlit colors unless emission selects PBR shading, maps snapshot rows to
-default boxes, and loads static cooked geometry packages. Texture assignment
-is per instance; shared mesh/material ownership and complete imported material
-descriptors remain future work.
+This is an initial renderer. It owns one active scene and a configurable
+orthographic or perspective camera, uses unlit colors unless emission selects
+PBR shading, and loads static cooked geometry packages for authored snapshots.
+Texture assignment is per instance; complete imported material descriptors
+remain future work.
 Entity world transforms are stored in `World`; only per-render local attachment
 offsets live in the render binding table. The general `InstanceBatch` remains
 an Elisa-side collection of checked handles and does

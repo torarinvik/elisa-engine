@@ -23,6 +23,10 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
 
     state.owner_thread = std::this_thread::get_id();
     state.vertical_size = vertical_size;
+    state.perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
+    state.camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
+    state.camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
+    state.perspective_camera = false;
     state.camera_entity = state.scene->Entity_CreateCamera("elisa_runtime_camera", float(width), float(height));
     state.camera = state.scene->cameras.GetComponent(state.camera_entity);
     wi::scene::TransformComponent* camera_transform = state.scene->transforms.GetComponent(state.camera_entity);
@@ -31,7 +35,8 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
 
-    state.camera->CreateOrtho(float(width), float(height), 0.01f, 1000.0f, vertical_size);
+    state.camera->CreateOrtho(float(width), float(height),
+        state.camera_near_clip, state.camera_far_clip, vertical_size);
     state.eye[0] = 0.0f;
     state.eye[1] = vertical_size * 1.5f;
     state.eye[2] = 0.0f;

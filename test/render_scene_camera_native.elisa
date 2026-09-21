@@ -1,4 +1,13 @@
 module RenderSceneCameraNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_perspective_matches(width: f32, height: f32,
+            fov: f32, near_clip: f32, far_clip: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_orthographic_matches(width: f32, height: f32,
+            vertical_size: f32) -> i32
+
     public:
         def exercise() -> i32:
             camera_height: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
@@ -15,4 +24,38 @@ module RenderSceneCameraNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 123 if excessive_camera_height != 1
+
+            perspective_camera: i32 = catch RenderScene::set_camera_perspective(1.0, 0.1, 500.0):
+                ok: 0
+                error failure: 1
+            return 124 if perspective_camera != 0
+            perspective_matches: bool = elisa_render_scene_v1_test_camera_perspective_matches(
+                320.0, 200.0, 1.0, 0.1, 500.0) != 0
+            return 125 if not perspective_matches
+            bad_field_of_view: i32 = catch RenderScene::set_camera_perspective(0.0, 0.1, 500.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 126 if bad_field_of_view != 1
+            bad_clip_range: i32 = catch RenderScene::set_camera_perspective(1.0, 2.0, 1.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 127 if bad_clip_range != 1
+
+            perspective_resize: i32 = catch RenderScene::resize(640, 400):
+                ok: 0
+                error failure: 1
+            perspective_resize_matches: bool = elisa_render_scene_v1_test_camera_perspective_matches(
+                640.0, 400.0, 1.0, 0.1, 500.0) != 0
+            return 128 if perspective_resize != 0 or not perspective_resize_matches
+            restore_orthographic: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: 1
+            restore_viewport: i32 = catch RenderScene::resize(320, 200):
+                ok: 0
+                error failure: 1
+            orthographic_restored: bool = elisa_render_scene_v1_test_camera_orthographic_matches(
+                320.0, 200.0, 14.0) != 0
+            return 129 if restore_orthographic != 0 or restore_viewport != 0 or not orthographic_restored
             0
