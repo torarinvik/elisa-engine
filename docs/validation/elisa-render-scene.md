@@ -27,6 +27,11 @@ The active camera can also own a bounded offscreen render target through
 `set_camera_render_target`; a zero interval updates it every render, while a
 positive interval throttles updates. `clear_camera_render_target` releases the
 target and returns presentation to the normal path.
+Scene post-processing is also checked at the render boundary: `set_tonemap`
+selects Wicked's Reinhard, ACES, or Uchimura operator, and `set_exposure`
+accepts a finite scene-wide multiplier in the range 0–8. The native smoke
+applies both settings, inspects Wicked's live render path, and rejects invalid
+exposure values before touching engine state.
 
 `RenderScene::sync_snapshot` connects `RenderSnapshot::Snapshot` to this scene
 service as one bounded native transaction of at most 256 rows. Each row carries
