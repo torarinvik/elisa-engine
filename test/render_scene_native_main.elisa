@@ -331,7 +331,7 @@ def exercise_render_scene() -> i32:
         scale: Geometry::Vec3{x: 2.0, y: 2.0, z: 2.0},
     }
     rejected_traversal_mesh: i32 = catch RenderScene::create_mesh(
-        "../build/cooked/render-scene-triangle.pkg", mesh_transform,
+        "../build/cooked/render-scene-triangle.elpk", mesh_transform,
         RenderScene::Color{red: 1.0, green: 0.75, blue: 0.1, alpha: 1.0}):
         value: 0
         RenderScene::RenderSceneError.AssetLoadFailure: 1
@@ -352,7 +352,7 @@ def exercise_render_scene() -> i32:
         error failure: 2
     return 60 if rejected_escape_mesh != 1 or RenderScene::instance_count() != 3
     cooked_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
-        "build/cooked/render-scene-triangle.pkg", mesh_transform,
+        "build/cooked/render-scene-triangle.elpk", mesh_transform,
         RenderScene::Color{red: 1.0, green: 0.75, blue: 0.1, alpha: 1.0}):
         value: value
         error failure: return 61

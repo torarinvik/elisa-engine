@@ -34,7 +34,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
         if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
             return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         }
-        if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
+        if (!elisa::assets::load_cooked_geometry_asset(resolved_path.string(), geometry, load_error)) {
             std::fprintf(stderr, "Elisa cooked mesh load failed: %s\n", load_error.c_str());
             return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         }

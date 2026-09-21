@@ -11,6 +11,7 @@ import tempfile
 
 import cook_assets
 import cook_gltf_geometry
+from elisa_package import write_geometry_package
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,11 +84,18 @@ def main(arguments: list[str]) -> int:
     if options.source is None or options.asset_path is None or options.output is None:
         parser.error("source, --asset-path, and --output are required")
     try:
-        output, result = cook_assets.cook_geometry_package(
-            options.source, options.asset_path, options.output)
+        if options.output.suffix.lower() == ".elpk":
+            with tempfile.TemporaryDirectory(prefix="elisa-gltf-bundle-") as temporary:
+                geometry_path, result = cook_assets.cook_geometry_package(
+                    options.source, options.asset_path, Path(temporary) / "geometry.pkg")
+                write_geometry_package(options.output, geometry_path.read_bytes())
+            output = options.output.expanduser().resolve()
+        else:
+            output, result = cook_assets.cook_geometry_package(
+                options.source, options.asset_path, options.output)
         print(f"cooked {options.asset_path} -> {output} "
             f"({result['triangles']} triangles, {result['positions']} vertices)")
-    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError) as failure:
+    except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError, AttributeError) as failure:
         print(f"glTF cooking failed: {failure}", file=sys.stderr)
         return 1
     return 0

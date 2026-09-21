@@ -108,18 +108,11 @@ inline PackageResolution resolve_package_path(const std::filesystem::path& base_
     return result;
 }
 
-inline PackageIndex read_package_index(const std::string& path) {
+inline PackageIndex parse_package_index(const std::string& bytes) {
     PackageIndex package;
-    std::ifstream input(path, std::ios::binary | std::ios::ate);
-    if (!input) { package.error = "missing package"; return package; }
-    const std::streamoff size = input.tellg();
-    if (size < 0 || static_cast<size_t>(size) > PackageIndex::MAX_PACKAGE_BYTES) {
+    if (bytes.size() > PackageIndex::MAX_PACKAGE_BYTES) {
         package.error = "package exceeds size bound"; return package;
     }
-    input.seekg(0);
-    std::string bytes(static_cast<size_t>(size), '\0');
-    input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    if (!input && !bytes.empty()) { package.error = "package read failed"; return package; }
     size_t offset = 0;
     while (offset < bytes.size()) {
         const size_t newline = bytes.find('\n', offset);
@@ -143,6 +136,21 @@ inline PackageIndex read_package_index(const std::string& path) {
     }
     package.valid = true;
     return package;
+}
+
+inline PackageIndex read_package_index(const std::string& path) {
+    PackageIndex package;
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) { package.error = "missing package"; return package; }
+    const std::streamoff size = input.tellg();
+    if (size < 0 || static_cast<size_t>(size) > PackageIndex::MAX_PACKAGE_BYTES) {
+        package.error = "package exceeds size bound"; return package;
+    }
+    input.seekg(0);
+    std::string bytes(static_cast<size_t>(size), '\0');
+    input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!input && !bytes.empty()) { package.error = "package read failed"; return package; }
+    return parse_package_index(bytes);
 }
 
 struct BinaryPackageSection {

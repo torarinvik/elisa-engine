@@ -319,7 +319,7 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_asset(
     elisa::assets::CookedGeometry geometry;
     std::string load_error;
     try {
-        if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
+        if (!elisa::assets::load_cooked_geometry_asset(resolved_path.string(), geometry, load_error)) {
             std::fprintf(stderr, "Elisa snapshot mesh load failed: %s\n", load_error.c_str());
             return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
         }

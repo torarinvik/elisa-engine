@@ -240,7 +240,7 @@ module MazeNativeClient:
                 ok: true
                 error failure: false
             return 6 if not initialized
-            assets_registered: bool = MazeRenderAssets::register("assets/maze_tile.pkg")
+            assets_registered: bool = MazeRenderAssets::register("assets/maze_tile.elpk")
             return 17 if not assets_registered
 
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()

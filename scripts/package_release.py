@@ -74,7 +74,9 @@ def cook(root: Path) -> Path:
     )
     if result.returncode != 0:
         raise RuntimeError(f"asset cooking failed: {result.stderr.strip() or result.stdout.strip()}")
-    packages = sorted((root / "build/cooked").glob("*.pkg"))
+    packages = sorted((root / "build/cooked").glob("*.elpk"))
+    if not packages:
+        packages = sorted((root / "build/cooked").glob("*.pkg"))
     if not packages:
         raise RuntimeError("asset cooking produced no package")
     return packages[0]

@@ -27,6 +27,7 @@ import sys
 import tempfile
 import zlib
 from pathlib import Path
+from elisa_package import write_package
 
 PACKAGE_FORMAT = "elisa-cooked-v2"
 
@@ -364,7 +365,23 @@ def cook(root: Path) -> Path:
     package, cooked = cook_geometry_package(asset_path, asset_rel, package)
     database = record_catalogue(root, asset_rel, cooked["source_sha256"], counts)
     texture = write_texture_package(root)
+    sections = {"mesh": package.read_bytes()}
+    texture_sections = (
+        ("texrgba", "maze_tile_tex.rgba"),
+        ("texrgba16", "maze_tile_tex16.rgba"),
+        ("texbc1", "maze_tile_tex_bc1.rgba"),
+        ("texktx", "maze_tile_tex.ktx"),
+        ("texbc1ktx", "maze_tile_tex_bc1.ktx"),
+        ("texktx2", "maze_tile_tex.ktx2"),
+    )
+    for section_name, file_name in texture_sections:
+        texture_path = package_dir / file_name
+        if texture_path.is_file():
+            sections[section_name] = texture_path.read_bytes()
+    bundle = package_dir / (asset_path.stem + ".elpk")
+    write_package(bundle, sections)
     print(f'cooked {asset_rel} -> {package} ({counts["triangles"]} triangles, sha256 {cooked["source_sha256"][:12]})')
+    print(f"bundled cooked assets -> {bundle}")
     print(f"cooked texture -> {texture}")
     print(f"catalogue -> {database}")
     return package

@@ -19,6 +19,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Python 3.14 provides compression.zstd for ELPK bundles on runners
+      # where libzstd is not on the loader path.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
       - name: Python syntax
         run: |
           python - <<'PY'

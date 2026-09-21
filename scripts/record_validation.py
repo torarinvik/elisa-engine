@@ -359,7 +359,28 @@ def cook_asset(root: Path) -> dict:
     if not packages:
         raise ValueError("asset cooking produced no package")
     package = packages[0]
-    return {"package": package.name, "sha256": sha256_file(package), "bytes": package.stat().st_size}
+    bundles = sorted((root / "build/cooked").glob("*.elpk"))
+    if not bundles:
+        raise ValueError("asset cooking produced no ELPK bundle")
+    bundle = bundles[0]
+    return {
+        "package": package.name,
+        "sha256": sha256_file(package),
+        "bytes": package.stat().st_size,
+        "bundle": bundle.name,
+        "bundle_sha256": sha256_file(bundle),
+        "bundle_bytes": bundle.stat().st_size,
+    }
+
+
+def native_package_test(root: Path) -> str:
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts/test_elisa_package.py")],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"ELPK writer/reader test failed: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout.strip()
 
 
 MAX_SOURCE_LINES = 600
@@ -451,6 +472,7 @@ def main(arguments: list[str]) -> int:
             "entity_id": verified_proof(engine / "build/entity-id-proof.json"),
             "world": verified_proof(engine / "build/world-proof.json"),
         }
+        package_format = native_package_test(engine)
         cooked = cook_asset(engine)
         release = release_package(engine, compiler)
         compiler_path = Path(compiler).resolve(strict=True)
@@ -468,6 +490,7 @@ def main(arguments: list[str]) -> int:
                 "elisascript": tool_identity(launcher),
             },
             "proofs": proofs,
+            "binary_package_format": {"status": "passed", "evidence": package_format},
             "scene_manifest": scene_manifest_matches_bridge(engine),
             "source_length_policy": source_length_policy(engine),
             "module_hygiene_policy": namespace_policy,
@@ -479,7 +502,7 @@ def main(arguments: list[str]) -> int:
             "asset_catalogue_database": asset_catalogue_database(engine),
             "dependencies": dependency_provenance(engine),
             "release": release,
-            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "cooked_texture_bc1", "asset_catalogue_database", "dependency_pins", "source_length_policy", "module_hygiene_policy", "scene_manifest_link", "affine_copy_rejections", "private_owner_fields"],
+            "checks": ["identity", "world", "geometry", "assets", "input", "backend_capabilities", "sdl3_platform", "godot_host", "fake_bridge", "ffi_contracts", "recording", "clock", "headless_game", "scene_bridge", "image_compare", "asset_cooking", "binary_package_format", "maze_slice", "maze_game", "anim_state", "grid_nav", "inspector_perf", "replication_scope", "physics_authority", "runtime_scheduler", "editor_reload", "net_session", "maze_bundle", "audio_ownership", "anim_codec", "asset_catalogue", "release_packaging", "asset_import_bounds", "cooked_texture", "cooked_texture_packed", "cooked_texture_bc1", "asset_catalogue_database", "dependency_pins", "source_length_policy", "module_hygiene_policy", "scene_manifest_link", "affine_copy_rejections", "private_owner_fields"],
         }
         temporary = report_path.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

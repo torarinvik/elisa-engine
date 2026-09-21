@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <vector>
@@ -202,13 +203,19 @@ inline bool parse_finite_float(const probe::PackageIndex& package, const std::st
 
 } // namespace detail
 
-inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geometry,
-    std::string& error) {
-    const probe::PackageIndex package = probe::read_package_index(path);
+inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
+    CookedGeometry& geometry, std::string& error) {
+    if (bytes == nullptr || byte_count == 0 || byte_count > probe::PackageIndex::MAX_PACKAGE_BYTES) {
+        error = "cooked geometry byte stream exceeds its bound";
+        return false;
+    }
+    const std::string text(reinterpret_cast<const char*>(bytes), byte_count);
+    const probe::PackageIndex package = probe::parse_package_index(text);
     if (!package.valid) {
         error = package.error.empty() ? "invalid cooked geometry package" : package.error;
         return false;
     }
+    geometry = CookedGeometry{};
     const auto format = package.sections.find("format");
     if (format == package.sections.end() ||
         (format->second != "elisa-cooked-v2" && format->second != "elisa-cooked-v3")) {
@@ -473,6 +480,52 @@ inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geomet
         }
     }
     return true;
+}
+
+inline bool load_cooked_geometry(const std::string& path, CookedGeometry& geometry,
+    std::string& error) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) {
+        error = "cooked geometry package is missing";
+        return false;
+    }
+    const std::streamoff size = input.tellg();
+    if (size <= 0 || static_cast<uint64_t>(size) > probe::PackageIndex::MAX_PACKAGE_BYTES) {
+        error = "cooked geometry package exceeds its bound";
+        return false;
+    }
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    input.seekg(0);
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!input) {
+        error = "cooked geometry package read failed";
+        return false;
+    }
+    return load_cooked_geometry_bytes(bytes.data(), bytes.size(), geometry, error);
+}
+
+inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& geometry,
+    std::string& error) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        error = "cooked geometry package is missing";
+        return false;
+    }
+    std::array<uint8_t, 4> magic{};
+    input.read(reinterpret_cast<char*>(magic.data()), static_cast<std::streamsize>(magic.size()));
+    if (input.gcount() != static_cast<std::streamsize>(magic.size()) ||
+        magic != std::array<uint8_t, 4>{'E', 'L', 'P', 'K'}) {
+        return load_cooked_geometry(path, geometry, error);
+    }
+
+    const probe::BinaryPackageIndex index = probe::read_binary_package_index(path);
+    if (!index.valid) {
+        error = index.error.empty() ? "invalid binary cooked geometry package" : index.error;
+        return false;
+    }
+    std::vector<uint8_t> bytes;
+    if (!probe::read_binary_package_section(path, index, "mesh", bytes, error)) return false;
+    return load_cooked_geometry_bytes(bytes.data(), bytes.size(), geometry, error);
 }
 
 } // namespace elisa::assets

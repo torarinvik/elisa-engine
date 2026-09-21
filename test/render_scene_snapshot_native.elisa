@@ -83,7 +83,7 @@ module RenderSceneSnapshotNativeTests:
 
         def register_test_mesh(asset_key: u64) -> i32:
             catch RenderScene::register_snapshot_mesh_asset(
-                Assets::AssetId{high: 700, low: asset_key}, "build/cooked/render-scene-triangle.pkg"):
+                Assets::AssetId{high: 700, low: asset_key}, "build/cooked/render-scene-triangle.elpk"):
                 ok: 0
                 error failure: 1
 

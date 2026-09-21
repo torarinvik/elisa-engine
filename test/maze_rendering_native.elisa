@@ -31,7 +31,7 @@ module MazeRenderingNativeTests:
 
     public:
         def exercise() -> i32:
-            return 19 if not MazeRenderAssets::register("examples/maze/assets/maze_tile.pkg")
+            return 19 if not MazeRenderAssets::register("examples/maze/assets/maze_tile.elpk")
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
                 value: value

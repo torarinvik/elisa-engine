@@ -12,7 +12,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORKS = [
     "Foundation", "CoreFoundation", "CoreGraphics", "CoreText", "ImageIO",
@@ -55,7 +54,7 @@ def main() -> int:
 
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
-    cooked_mesh = build / "cooked/render-scene-triangle.pkg"
+    cooked_mesh = build / "cooked/render-scene-triangle.elpk"
     status = run([
         sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"),
         str(ROOT / "test/fixtures/fbx_triangle.fbx"),
@@ -64,6 +63,21 @@ def main() -> int:
     ])
     if status != 0:
         return status
+    package_status = run([
+        sys.executable, str(ROOT / "scripts/test_elisa_package.py"), str(cooked_mesh),
+    ])
+    if package_status != 0:
+        return package_status
+    # The maze snapshot test registers the same bundle the project runner cooks.
+    maze_project = ROOT / "examples/maze"
+    maze_status = run([
+        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+        str(maze_project / "assets/maze_tile.gltf"),
+        "--asset-path", "assets/maze_tile.gltf",
+        "--output", str(maze_project / "assets/maze_tile.elpk"),
+    ], cwd=maze_project)
+    if maze_status != 0:
+        return maze_status
     normal_map = build / "cooked/render-scene-normal.png"
     shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
 

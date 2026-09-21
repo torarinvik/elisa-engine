@@ -15,6 +15,8 @@ import subprocess
 import sys
 import tempfile
 
+from elisa_package import write_geometry_package
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_PACKAGE_BYTES = 64 * 1024 * 1024
@@ -334,7 +336,7 @@ def main(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", type=Path, help="source FBX file")
     parser.add_argument("--asset-path", help="project-relative identity recorded in the cooked package")
-    parser.add_argument("--output", type=Path, help="destination .pkg path")
+    parser.add_argument("--output", type=Path, help="destination .pkg or .elpk path")
     parser.add_argument("--max-triangles", type=int, help="simplify output to no more than this many triangles")
     parser.add_argument("--self-test", action="store_true", help="cook and validate the synthetic triangle fixture")
     options = parser.parse_args(arguments)
@@ -380,9 +382,13 @@ def main(arguments: list[str]) -> int:
                 print(f"FBX cooker self-test passed: triangle package plus {original_triangles} -> "
                     f"{grid_triangles} deterministic simplified grid triangles")
             else:
-                fields = cook_one(cooker, options.source, options.asset_path, options.output, options.max_triangles)
+                package_output = options.output
+                geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output
+                fields = cook_one(cooker, options.source, options.asset_path, geometry_output, options.max_triangles)
+                if package_output.suffix.lower() == ".elpk":
+                    write_geometry_package(package_output, geometry_output.read_bytes())
                 print(f"FBX package validated: {fields['triangles']} triangles, {fields['positions']} vertices")
-    except (OSError, ValueError, subprocess.CalledProcessError) as failure:
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as failure:
         print(f"FBX cooking failed: {failure}", file=sys.stderr)
         return 1
     return 0

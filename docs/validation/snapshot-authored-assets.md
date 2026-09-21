@@ -21,7 +21,7 @@ objects, joints, and unreferenced shared meshes while preserving the previous
 frame.
 
 The maze project is the first client of this path. Its project manifest cooks
-`assets/maze_tile.gltf` to `assets/maze_tile.pkg`; Elisa registers that mesh and
+`assets/maze_tile.gltf` to `assets/maze_tile.elpk`; Elisa registers the bundle's `mesh` section and
 its authored PBR materials before publishing the first snapshot. The native
 SDL3/Metal smoke verifies cooked vertex/index counts, material factors, two
 static instances sharing one Wicked mesh, pair-level mesh counts across
