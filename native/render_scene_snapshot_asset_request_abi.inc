@@ -33,7 +33,7 @@ size_t snapshot_assets_claimed(const RenderSceneService& state, SnapshotAssetKin
 }
 
 int32_t request_snapshot_asset(SnapshotAssetKind kind, uint64_t high, uint64_t low,
-        const char* path, const char* section) {
+        const char* path, const char* section, int32_t priority) {
     if ((high == 0 && low == 0) || !bounded_asset_path(path) ||
         (kind == SnapshotAssetKind::Texture && !elisa::assets::valid_bundle_section_name(section))) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
@@ -65,8 +65,11 @@ int32_t request_snapshot_asset(SnapshotAssetKind kind, uint64_t high, uint64_t l
     if (pending < MAX_SNAPSHOT_ASSET_REQUESTS) {
         SnapshotAssetRequest& request = state.snapshot_asset_requests.requests[pending];
         if (request.failure == ELISA_RENDER_SCENE_OK) {
-            return request.path == requested_path && request.section == requested_section
-                ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            if (request.path != requested_path || request.section != requested_section) {
+                return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            }
+            state.snapshot_asset_requests.worker.set_priority(request.serial, priority);
+            return ELISA_RENDER_SCENE_OK;
         }
         request = SnapshotAssetRequest{};
     }
@@ -85,7 +88,7 @@ int32_t request_snapshot_asset(SnapshotAssetKind kind, uint64_t high, uint64_t l
     const uint64_t serial = requests.next_serial++;
     elisa::assets::SerialJobWorker<SnapshotAssetLoad>& worker = requests.worker;
     try {
-        if (!worker.submit(serial, [&worker, kind, requested_path, requested_section] {
+        if (!worker.submit(serial, priority, [&worker, kind, requested_path, requested_section] {
                 return load_snapshot_asset(worker, kind, requested_path, requested_section);
             })) {
             return ELISA_RENDER_SCENE_CAPACITY;
@@ -113,12 +116,22 @@ bool valid_snapshot_asset_kind(int32_t kind) {
 
 extern "C" int32_t elisa_render_scene_v1_request_snapshot_mesh_asset(
     uint64_t high, uint64_t low, const char* package_path) {
-    return request_snapshot_asset(SnapshotAssetKind::Mesh, high, low, package_path, nullptr);
+    return request_snapshot_asset(SnapshotAssetKind::Mesh, high, low, package_path, nullptr, 0);
+}
+
+extern "C" int32_t elisa_render_scene_v1_request_snapshot_mesh_asset_with_priority(
+    uint64_t high, uint64_t low, const char* package_path, int32_t priority) {
+    return request_snapshot_asset(SnapshotAssetKind::Mesh, high, low, package_path, nullptr, priority);
 }
 
 extern "C" int32_t elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
     uint64_t high, uint64_t low, const char* bundle_path, const char* section) {
-    return request_snapshot_asset(SnapshotAssetKind::Texture, high, low, bundle_path, section);
+    return request_snapshot_asset(SnapshotAssetKind::Texture, high, low, bundle_path, section, 0);
+}
+
+extern "C" int32_t elisa_render_scene_v1_request_snapshot_bundle_texture_asset_with_priority(
+    uint64_t high, uint64_t low, const char* bundle_path, const char* section, int32_t priority) {
+    return request_snapshot_asset(SnapshotAssetKind::Texture, high, low, bundle_path, section, priority);
 }
 
 // Adopts up to `budget` finished loads, oldest first. A result whose request

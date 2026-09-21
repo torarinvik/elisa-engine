@@ -110,8 +110,12 @@ int32_t elisa_render_scene_v1_register_snapshot_bundle_texture_asset(
 // thread, returning how many became resident.
 int32_t elisa_render_scene_v1_request_snapshot_mesh_asset(
     uint64_t high, uint64_t low, const char* package_path);
+int32_t elisa_render_scene_v1_request_snapshot_mesh_asset_with_priority(
+    uint64_t high, uint64_t low, const char* package_path, int32_t priority);
 int32_t elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
     uint64_t high, uint64_t low, const char* bundle_path, const char* section);
+int32_t elisa_render_scene_v1_request_snapshot_bundle_texture_asset_with_priority(
+    uint64_t high, uint64_t low, const char* bundle_path, const char* section, int32_t priority);
 int32_t elisa_render_scene_v1_pump_snapshot_assets(uint32_t budget);
 int32_t elisa_render_scene_v1_snapshot_asset_state(int32_t kind, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_register_snapshot_material_asset(

@@ -69,13 +69,13 @@ module MazeRenderAssets:
         # Queues the same two loads on the asset worker and returns before
         # any file IO. advance() reports when they are resident.
         def request(tile_bundle: cstr, texture_bundle: cstr) -> bool:
-            mesh_requested: bool = catch RenderScene::request_snapshot_mesh_asset(
-                MazeVisualAssets::tile_mesh_id(), tile_bundle):
+            mesh_requested: bool = catch RenderScene::request_snapshot_mesh_asset_prioritized(
+                MazeVisualAssets::tile_mesh_id(), tile_bundle, 100):
                 ok: true
                 error failure: false
             return false if not mesh_requested
-            catch RenderScene::request_snapshot_bundle_texture_asset(
-                MazeVisualAssets::wall_albedo_texture_id(), texture_bundle, "wallalbedo"):
+            catch RenderScene::request_snapshot_bundle_texture_asset_prioritized(
+                MazeVisualAssets::wall_albedo_texture_id(), texture_bundle, "wallalbedo", 50):
                 ok: true
                 error failure: false
 
