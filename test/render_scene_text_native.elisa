@@ -21,6 +21,17 @@ module RenderSceneTextNativeTests:
                 ok: 0
                 error failure: 2
             return 121 if text_position_update != 0
+            text_color_update: i32 = catch RenderScene::set_overlay_text_color(handle,
+                RenderScene::Color{red: 1.0, green: 0.42, blue: 0.18, alpha: 0.92}):
+                ok: 0
+                error failure: 2
+            return 143 if text_color_update != 0
+            invalid_text_color: i32 = catch RenderScene::set_overlay_text_color(handle,
+                RenderScene::Color{red: 1.0, green: 0.42, blue: 0.18, alpha: 1.4}):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 144 if invalid_text_color != 1
             invalid_text_position: i32 = catch RenderScene::set_overlay_text_position(handle, 20000.0, 32.0):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
