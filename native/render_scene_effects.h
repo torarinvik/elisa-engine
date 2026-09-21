@@ -1,6 +1,7 @@
 #pragma once
 
 #include "wiRenderPath3D.h"
+#include "wiRenderer.h"
 #include "wiScene.h"
 
 #include <cmath>
@@ -13,6 +14,8 @@ constexpr float MIN_AO_RANGE = 0.01f;
 constexpr float MAX_AO_RANGE = 32.0f;
 constexpr float MIN_AO_POWER = 0.0f;
 constexpr float MAX_AO_POWER = 8.0f;
+constexpr int MIN_SHADOW_QUALITY = 0;
+constexpr int MAX_SHADOW_QUALITY = 2;
 
 inline bool valid_emission(float red, float green, float blue, float strength) {
     return std::isfinite(red) && std::isfinite(green) && std::isfinite(blue) && std::isfinite(strength) &&
@@ -49,6 +52,16 @@ inline void apply_ambient_occlusion_settings(wi::RenderPath3D& path,
 
 inline void apply_fxaa(wi::RenderPath3D& path, bool enabled) {
     path.setFXAAEnabled(enabled);
+}
+
+inline bool valid_shadow_quality(int quality) {
+    return quality >= MIN_SHADOW_QUALITY && quality <= MAX_SHADOW_QUALITY;
+}
+
+inline void apply_shadow_quality(int quality) {
+    const int resolution = quality == 0 ? 512 : quality == 1 ? 1024 : 2048;
+    wi::renderer::SetShadowProps2D(resolution);
+    wi::renderer::SetShadowPropsCube(resolution / 4);
 }
 
 } // namespace elisa::render_scene_effects

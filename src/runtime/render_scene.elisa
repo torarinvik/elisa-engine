@@ -139,6 +139,8 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_exposure(exposure: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_shadow_quality(quality: i32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_create_text(text: cstr, x: f32, y: f32,
@@ -205,7 +207,6 @@ module RenderScene:
             raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
     public:
-        # Native slots and owner-side batches use the same arc capacity.
         const MAX_ELECTRIC_ARCS: usize = 1024
         const MAX_SNAPSHOT_ENTRIES: usize = 256
         const MAX_OVERLAY_PANELS: usize = 64
@@ -226,6 +227,10 @@ module RenderScene:
             Reinhard
             Aces
             Uchimura
+        enum ShadowQuality:
+            Low
+            Medium
+            High
         enum CameraProjection:
             Perspective
             Orthographic
@@ -237,27 +242,18 @@ module RenderScene:
         struct Emission:
             color: Geometry::Vec3
             strength: f32
-        # Private storage makes a native instance token opaque to game code.
         struct InstanceHandle:
             private:
                 native_value: i64
         struct LightHandle:
-            # The integer is an opaque, generation-checked engine token. It is
-            # public so game-owned state can retain lights across frames.
             id: i64
         struct CameraHandle:
             private:
                 native_value: i64
-        # Dynamic, socket-to-socket electrical ribbon. Its geometry and Wicked
-        # TrailRenderer ownership stay inside the engine.
         struct ElectricArcHandle:
             private:
                 native_value: i64
-        # A checked, generation-safe screen-space text item owned by the
-        # engine's 2D render path. Position uses the logical canvas origin.
         struct OverlayTextHandle:
-            # A generation-checked engine identifier, never a vendor object or
-            # pointer. Its integer form stays usable in game-owned state.
             id: i64
         # A generation-checked screen-space rectangle handle. Its integer
         # value is safe to carry in game-owned Elisa state.
@@ -502,6 +498,13 @@ module RenderScene:
         def set_exposure(exposure: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if exposure < 0.0 or exposure > 8.0
             try check_status(elisa_render_scene_v1_set_exposure(exposure))
+        def set_shadow_quality(quality: ShadowQuality) -> void error[RenderSceneError]:
+            quality_value: i32 =
+                match quality:
+                    RenderScene::ShadowQuality.Low: 0
+                    RenderScene::ShadowQuality.Medium: 1
+                    RenderScene::ShadowQuality.High: 2
+            try check_status(elisa_render_scene_v1_set_shadow_quality(quality_value))
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
             try check_status(elisa_render_scene_v1_set_visible(handle.native_value, visible_value))
