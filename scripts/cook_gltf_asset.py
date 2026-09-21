@@ -14,6 +14,7 @@ import tempfile
 import cook_assets
 import cook_gltf_geometry
 from elisa_package import parse_texture_arguments, write_geometry_package
+from gltf_hierarchy_self_test import hierarchy_self_test
 from png_image import encode_png
 
 
@@ -43,9 +44,9 @@ def self_test() -> int:
         document = cook_assets.read_gltf(source.read_bytes())
         buffer = cook_assets.source_bytes(source.parent, document)
         rejected = []
-        transformed = deepcopy(document)
-        transformed["nodes"][0]["translation"] = [1.0, 0.0, 0.0]
-        rejected.append(("node transform", transformed))
+        camera_node = deepcopy(document)
+        camera_node["nodes"][0]["camera"] = 0
+        rejected.append(("camera node", camera_node))
         skinned = deepcopy(document)
         skinned["skins"] = [{}]
         rejected.append(("skin", skinned))
@@ -58,10 +59,9 @@ def self_test() -> int:
         material_bound = deepcopy(document)
         material_bound["meshes"][0]["primitives"][0]["material"] = 0
         rejected.append(("material index outside the document", material_bound))
-        multi_node = deepcopy(document)
-        multi_node["nodes"].append({"mesh": 0})
-        multi_node["scenes"][0]["nodes"].append(1)
-        rejected.append(("multiple mesh nodes", multi_node))
+        two_scenes = deepcopy(document)
+        two_scenes["scenes"].append({"nodes": [0]})
+        rejected.append(("second scene", two_scenes))
         for label, unsupported in rejected:
             try:
                 cook_gltf_geometry.normalized_geometry(unsupported, buffer)
@@ -75,8 +75,11 @@ def self_test() -> int:
         subset_status = subset_self_test(Path(temporary))
         if subset_status != 0:
             return subset_status
-    print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections "
-        "and a three-subset, two-slot panel with authored slot materials")
+        hierarchy_status = hierarchy_self_test(Path(temporary))
+        if hierarchy_status != 0:
+            return hierarchy_status
+    print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections, "
+        "a three-subset, two-slot panel with authored slot materials, and a baked node hierarchy")
     return 0
 
 

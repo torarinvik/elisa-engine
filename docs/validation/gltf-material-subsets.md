@@ -212,6 +212,9 @@ per-subset bound rejects it.
 - **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
   cameras and lights still fail in the runtime cooker. The normalized scene
   contract and `native/asset_import.h` cover them only in the Wicked probe.
+  Superseded for hierarchies, transforms and multiple meshes by
+  [`gltf-node-hierarchies.md`](gltf-node-hierarchies.md); cameras and lights
+  remain.
 - **Shared per set.** Two sets that list the same materials still create two
   shared Wicked meshes.
 - **Shadow policy.** An object casts a shadow when any subset is not

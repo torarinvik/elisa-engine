@@ -111,6 +111,15 @@ def main() -> int:
     glass_source.write_text(json.dumps(glass, indent=2) + "\n", encoding="utf-8")
     cook_gltf_geometry.cook_geometry_package(
         glass_source, "build/cooked/subsets/glass_panel.gltf", subset_directory / "glass_panel.pkg")
+    # The node-hierarchy test draws a static glTF scene baked into one mesh.
+    subset_status = run([
+        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+        str(ROOT / "test/fixtures/node_hierarchy_panel.gltf"),
+        "--asset-path", "test/fixtures/node_hierarchy_panel.gltf",
+        "--output", str(subset_directory / "hierarchy.elpk"),
+    ])
+    if subset_status != 0:
+        return subset_status
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")

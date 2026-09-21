@@ -1,0 +1,280 @@
+# Native A05 coverage for a static glTF node hierarchy baked into one cooked
+# mesh. test/fixtures/node_hierarchy_panel.gltf places, under a matrix root, a
+# red strip twice under a translated group, a green strip authored facing down
+# and turned up by a rotation, and a blue strip mirrored by a negative scale.
+# The cooker bakes them into three subsets whose strips sit at x = -2/3, 0 and
+# 2/3 of the panel, a quarter wide. The strips' materials are single-sided, so
+# a strip whose facing the bake got wrong is culled and its color is missing.
+# The render service hands Elisa's right-handed coordinates to Wicked's
+# left-handed camera unconverted, so under the smoke camera world +x shows on
+# the frame's left: the red strip at -2/3 lands on the right.
+# scripts/render_scene_native_smoke.py cooks the fixture to
+# build/cooked/subsets/hierarchy.elpk.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+
+module RenderSceneNodeHierarchyNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_matches(high: u64, low: u64,
+            red: f32, green: f32, blue: f32, alpha: f32, metallic: f32, roughness: f32,
+            emissive_red: f32, emissive_green: f32, emissive_blue: f32, alpha_cutoff: f32,
+            alpha_mode: i32, double_sided: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_subset_matches(render_id: i64, subset: u32,
+            index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_set_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_shared_mesh_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille: u32, y_permille: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        const module Ids:
+            MESHES: u64 = 2280
+            MATERIALS: u64 = 2281
+            SETS: u64 = 2282
+
+        const module Paint:
+            RED: u64 = 1
+            GREEN: u64 = 2
+            BLUE: u64 = 3
+
+        const module Set:
+            STRIPS: u64 = 1
+            SHORT: u64 = 2
+            SCRATCH: u64 = 3
+
+        const module Code:
+            OK: i32 = 0
+            INVALID: i32 = 1
+            OTHER: i32 = 2
+
+        const module Channel:
+            RED: i32 = 0
+            GREEN: i32 = 1
+            BLUE: i32 = 2
+
+        const HIERARCHY: u64 = 1
+        const PANEL_ROW: i64 = 22801
+        const NATIVE_OK: i32 = 0
+        const NATIVE_INVALID: i32 = -1
+        const ALPHA_OPAQUE: i32 = 0
+        const VISIBLE_Y: f32 = 4.0
+        # The panel covers this frame row; the main test's electric arc
+        # crosses the middle row.
+        const SAMPLE_ROW: u32 = 300
+        # Frame columns, in thousandths from the frame's left edge, of the
+        # left, center and right strips, and of the gaps between them.
+        const LEFT: u32 = 150
+        const CENTER: u32 = 500
+        const RIGHT: u32 = 850
+        const LEFT_GAP: u32 = 321
+        const RIGHT_GAP: u32 = 679
+
+        def mesh_id() -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MESHES, low: HIERARCHY}
+
+        def material_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MATERIALS, low: low}
+
+        def set_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::SETS, low: low}
+
+        def register_mesh() -> i32:
+            catch RenderScene::register_snapshot_mesh_asset(mesh_id(), "build/cooked/subsets/hierarchy.elpk"):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def unregister_mesh() -> i32:
+            catch RenderScene::unregister_snapshot_mesh_asset(mesh_id()):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def unregister_material(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_material_asset(material_id(low)):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def unregister_set(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_material_set(set_id(low)):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def material_count() -> i32:
+            catch RenderScene::snapshot_mesh_material_count(mesh_id()):
+                value: value.i32()
+                error failure: -1
+
+        def append(materials: mutable RenderScene::SnapshotMaterialSet&, paint: u64) -> i32:
+            catch RenderScene::snapshot_material_set_append(materials, material_id(paint)):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        # The mesh's cooked materials under the given paints, in slot order,
+        # as `set`; a zero third paint lists two.
+        def register_cooked(set: u64, first: u64, second: u64, third: u64) -> i32:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: mutable i32 = append(&materials, first)
+            appended <- appended + append(&materials, second)
+            if third != 0:
+                appended <- appended + append(&materials, third)
+            return Code::OTHER if appended != Code::OK
+            catch RenderScene::register_snapshot_mesh_materials(mesh_id(), materials, set_id(set)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                error failure: Code::OTHER
+
+        # A plain set of two registered paints, not tied to a mesh.
+        def register_short_set() -> i32:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: mutable i32 = append(&materials, Paint::RED)
+            appended <- appended + append(&materials, Paint::GREEN)
+            return Code::OTHER if appended != Code::OK
+            catch RenderScene::register_snapshot_material_set(set_id(Set::SHORT), materials):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        # A single-sided strip: dim base color, rough, and emissive in the
+        # paint's channel.
+        def is_strip(paint: u64, red: f32, green: f32, blue: f32) -> bool:
+            elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                red * 0.08, green * 0.08, blue * 0.08, 1.0, 0.0, 0.9, red, green, blue, 0.5, ALPHA_OPAQUE, 0) == 1
+
+        def set_count() -> u64:
+            elisa_render_scene_v1_test_snapshot_material_set_count()
+
+        def stage(handle: i64, set: u64, qy: f32, qw: f32) -> i32:
+            elisa_render_scene_v1_snapshot_stage(handle, 1, PANEL_ROW, PANEL_ROW,
+                Ids::MESHES, HIERARCHY, Ids::SETS, set,
+                0.0, VISIBLE_Y, 0.0, 0.0, qy, 0.0, qw, 12.0, 1.0, 8.0)
+
+        # Commits the panel row, new or retained, turned by the yaw quaternion
+        # (0, qy, 0, qw), and returns its handle or 0.
+        def commit_panel(handle: i64, set: u64, qy: f32, qw: f32) -> i64:
+            previous: u32 = 1 if handle != 0 else 0
+            return 0 if elisa_render_scene_v1_snapshot_begin(previous) != NATIVE_OK
+            if stage(handle, set, qy, qw) != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 0
+            return 0 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            elisa_render_scene_v1_snapshot_result(0)
+
+        def retire(handle: i64) -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK
+            if elisa_render_scene_v1_snapshot_retire(handle) != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            elisa_render_scene_v1_snapshot_commit() == NATIVE_OK
+
+        def channel(x_permille: u32) -> i32:
+            elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille, SAMPLE_ROW)
+
+        # Pumps frames until the left strip shows `left`, then checks the
+        # center and right strips in the same frame.
+        def strips_show(left: i32, right: i32) -> bool:
+            shown: mutable bool = false
+            for attempt in 0..<12 |left, shown|:
+                break if shown
+                return false if Application::pump() != Application::PumpStatus.Running
+                shown <- channel(LEFT) == left
+            return false if not shown
+            channel(CENTER) == Channel::GREEN and channel(RIGHT) == right
+
+        # Each gap shows neither strip beside it.
+        def gaps_clear() -> bool:
+            left: i32 = channel(LEFT_GAP)
+            right: i32 = channel(RIGHT_GAP)
+            left_clear: bool = left != Channel::RED and left != Channel::GREEN and left != Channel::BLUE
+            left_clear and right != Channel::RED and right != Channel::GREEN and right != Channel::BLUE
+
+        def subset_is(subset: u32, start: u32, count: u32, paint: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_subset_matches(PANEL_ROW, subset, start, count,
+                Ids::MATERIALS, paint) == 1
+
+        # The two red placements share one subset.
+        def panel_draws() -> bool:
+            return false if not subset_is(0, 0, 12, Paint::RED)
+            return false if not subset_is(1, 12, 6, Paint::GREEN)
+            subset_is(2, 18, 6, Paint::BLUE)
+
+        def registered() -> i32:
+            return 1 if register_mesh() != Code::OK
+            return 2 if material_count() != 3
+            return 3 if register_cooked(Set::STRIPS, Paint::RED, Paint::GREEN, Paint::BLUE) != Code::OK
+            return 4 if not is_strip(Paint::RED, 1.0, 0.0, 0.0) or not is_strip(Paint::GREEN, 0.0, 1.0, 0.0)
+            return 5 if not is_strip(Paint::BLUE, 0.0, 0.0, 1.0)
+            # The baked mesh has three slots: two cooked materials, or a
+            # two-material set on a row, don't fit it.
+            return 6 if register_cooked(Set::SCRATCH, Paint::RED, Paint::GREEN, 0) != Code::INVALID
+            return 7 if register_short_set() != Code::OK
+            return 8 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            short: i32 = stage(0, Set::SHORT, 0.0, 1.0)
+            return 9 if elisa_render_scene_v1_snapshot_abort() != NATIVE_OK or short != NATIVE_INVALID
+            0
+
+        # The baked strips render where the hierarchy put them, and a turned
+        # row carries them with it.
+        def rendered() -> i32:
+            handle: i64 = commit_panel(0, Set::STRIPS, 0.0, 1.0)
+            return 1 if handle <= 0
+            return 2 if not panel_draws()
+            # The mirrored blue strip at +2/3 shows on the frame's left.
+            return 3 if not strips_show(Channel::BLUE, Channel::RED)
+            return 4 if not gaps_clear()
+            # Half a turn about +Y retains the row and swaps its sides.
+            return 5 if commit_panel(handle, Set::STRIPS, 1.0, 0.0) != handle
+            return 6 if not strips_show(Channel::RED, Channel::BLUE)
+            return 7 if not retire(handle)
+            0
+
+        def cleanup() -> i32:
+            return 1 if unregister_set(Set::STRIPS) != Code::OK or unregister_set(Set::SHORT) != Code::OK
+            paints: u64[3] = [Paint::RED, Paint::GREEN, Paint::BLUE]
+            for index in 0..<3 |paints|:
+                return 2 if unregister_material(paints[index]) != Code::OK
+            return 3 if unregister_mesh() != Code::OK
+            0
+
+    public:
+        # Returns 0 or the failing case: 1-9 registration, 11-17 rendering,
+        # 21-23 cleanup, 30 leftover state.
+        def exercise() -> i32:
+            shared_meshes: u64 = elisa_render_scene_v1_test_snapshot_shared_mesh_count()
+            instances: usize = RenderScene::instance_count()
+            sets: u64 = set_count()
+            registration: i32 = registered()
+            return registration if registration != 0
+            drawn: i32 = rendered()
+            return 10 + drawn if drawn != 0
+            cleaned: i32 = cleanup()
+            return 20 + cleaned if cleaned != 0
+            restored: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == shared_meshes
+            return 30 if not restored or RenderScene::instance_count() != instances or set_count() != sets
+            0

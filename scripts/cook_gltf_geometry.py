@@ -1,4 +1,4 @@
-"""Normalize a static glTF mesh into Elisa's bounded runtime package."""
+"""Normalize a static glTF scene into Elisa's bounded runtime mesh package."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 import struct
 
 import cook_assets
+import cook_gltf_nodes
 
 # The native loader enforces the same bounds.
 MAX_SUBSETS = 16
@@ -96,41 +97,36 @@ def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes]]:
 
 
 def validate_static_geometry_source(document: dict) -> tuple[list, int, list[bytes]]:
-    """Return the triangle primitives, material slot count, and slot material
-    records after rejecting unhandled glTF semantics."""
+    """Return each mesh placement's (mesh index, world matrix), the material
+    slot count, and slot material records after rejecting unhandled glTF
+    semantics."""
     if document.get("extensionsUsed") or document.get("extensionsRequired"):
         raise ValueError("runtime geometry cooker does not support glTF extensions")
     if any(document.get(name) for name in ("animations", "skins", "cameras")):
         raise ValueError("runtime geometry cooker accepts static geometry only")
 
     meshes = document.get("meshes", [])
-    if len(meshes) != 1:
-        raise ValueError("runtime geometry cooker requires exactly one mesh")
-    mesh = meshes[0]
-    if set(mesh) - {"name", "primitives"}:
-        raise ValueError("runtime geometry cooker encountered unsupported mesh properties")
-    primitives = mesh.get("primitives", [])
-    if not isinstance(primitives, list) or not 1 <= len(primitives) <= MAX_SUBSETS:
-        raise ValueError(f"runtime geometry cooker requires 1 to {MAX_SUBSETS} primitives")
-    for primitive in primitives:
-        if not isinstance(primitive, dict) or set(primitive) - {"attributes", "indices", "mode", "material"}:
-            raise ValueError("runtime geometry cooker encountered unsupported primitive properties")
-        attributes = primitive.get("attributes", {})
-        if not isinstance(attributes, dict) or any(type(value) is not int for value in attributes.values()):
-            raise ValueError("primitive attributes must name accessors by index")
-        if set(attributes) - {"POSITION", "NORMAL", "TEXCOORD_0"}:
-            raise ValueError("runtime geometry cooker encountered an unsupported vertex attribute")
-    slot_count, slot_records = material_slots(document, primitives)
-
-    nodes = document.get("nodes", [])
-    scenes = document.get("scenes", [])
-    if (len(nodes) != 1 or nodes[0].get("mesh") != 0 or
-            set(nodes[0]) - {"mesh", "name"}):
-        raise ValueError("runtime geometry cooker requires one untransformed mesh node")
-    if (len(scenes) != 1 or document.get("scene") != 0 or
-            scenes[0].get("nodes") != [0] or set(scenes[0]) - {"nodes", "name"}):
-        raise ValueError("runtime geometry cooker requires one scene containing only its mesh node")
-    return primitives, slot_count, slot_records
+    if not isinstance(meshes, list) or not 1 <= len(meshes) <= cook_gltf_nodes.MAX_NODES:
+        raise ValueError(f"runtime geometry cooker requires 1 to {cook_gltf_nodes.MAX_NODES} meshes")
+    every_primitive = []
+    for mesh in meshes:
+        if not isinstance(mesh, dict) or set(mesh) - {"name", "primitives"}:
+            raise ValueError("runtime geometry cooker encountered unsupported mesh properties")
+        primitives = mesh.get("primitives", [])
+        if not isinstance(primitives, list) or not 1 <= len(primitives) <= MAX_SUBSETS:
+            raise ValueError(f"runtime geometry cooker requires 1 to {MAX_SUBSETS} primitives")
+        for primitive in primitives:
+            if not isinstance(primitive, dict) or set(primitive) - {"attributes", "indices", "mode", "material"}:
+                raise ValueError("runtime geometry cooker encountered unsupported primitive properties")
+            attributes = primitive.get("attributes", {})
+            if not isinstance(attributes, dict) or any(type(value) is not int for value in attributes.values()):
+                raise ValueError("primitive attributes must name accessors by index")
+            if set(attributes) - {"POSITION", "NORMAL", "TEXCOORD_0"}:
+                raise ValueError("runtime geometry cooker encountered an unsupported vertex attribute")
+        every_primitive += primitives
+    slot_count, slot_records = material_slots(document, every_primitive)
+    placements = cook_gltf_nodes.mesh_placements(document, len(meshes))
+    return placements, slot_count, slot_records
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -214,51 +210,84 @@ def generated_normals(positions: bytes, vertex_count: int, indices: list[int]) -
 
 
 def normalized_geometry(document: dict, buffer: bytes):
-    # Each primitive becomes one index subset bound to its material slot.
-    # Primitives that name the same vertex accessors share one copy of those
-    # vertices. Material factors become slot records. Scene graphs, skins, and
+    # The scene's nodes bake into world space: each mesh placement's
+    # primitives become index subsets bound to their material slots, and
+    # adjacent subsets on one slot merge. Primitives of one placement that
+    # name the same vertex accessors share one copy of those vertices.
+    # Material factors become slot records. Skins, animation, cameras and
     # material textures stay in their dedicated import paths; silently
     # flattening them would produce wrong assets.
-    primitives, slot_count, slot_records = validate_static_geometry_source(document)
+    placements, slot_count, slot_records = validate_static_geometry_source(document)
+    sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
-    block_for_position: dict = {}
-    primitive_indices = []
-    for primitive in primitives:
-        if primitive.get("mode", 4) != 4:
-            raise ValueError("runtime geometry cooker supports triangle primitives only")
-        attributes = primitive.get("attributes", {})
-        key = tuple(sorted(attributes.items()))
-        if block_for_position.setdefault(attributes.get("POSITION"), key) != key:
-            raise ValueError("primitives that share positions must share every vertex attribute")
-        if key not in blocks:
-            blocks[key] = read_vertices(document, buffer, attributes)
-        values = read_indices(document, buffer, primitive, blocks[key]["count"])
-        blocks[key]["triangles"].extend(values)
-        primitive_indices.append((key, values))
+    placed = []
+    vertex_total = index_total = 0
+    for placement, (mesh, matrix) in enumerate(placements):
+        block_for_position: dict = {}
+        for primitive in document["meshes"][mesh]["primitives"]:
+            if primitive.get("mode", 4) != 4:
+                raise ValueError("runtime geometry cooker supports triangle primitives only")
+            attributes = primitive.get("attributes", {})
+            key = tuple(sorted(attributes.items()))
+            if block_for_position.setdefault(attributes.get("POSITION"), key) != key:
+                raise ValueError("primitives that share positions must share every vertex attribute")
+            if key not in sources:
+                sources[key] = read_vertices(document, buffer, attributes)
+            block = (placement, key)
+            if block not in blocks:
+                vertex_total += sources[key]["count"]
+                if vertex_total > MAX_VERTICES:
+                    raise ValueError("position count is empty or exceeds the runtime bound")
+                blocks[block] = {"source": sources[key], "matrix": matrix, "triangles": []}
+            values = read_indices(document, buffer, primitive, sources[key]["count"])
+            index_total += len(values)
+            if index_total > MAX_INDICES:
+                raise ValueError("index count is not a bounded triangle list")
+            values = cook_gltf_nodes.placed_indices(values, matrix)
+            blocks[block]["triangles"].extend(values)
+            placed.append((block, values, primitive.get("material", 0)))
 
     positions, normals, uvs = bytearray(), bytearray(), bytearray()
     base_vertex: dict[tuple, int] = {}
     for key, block in blocks.items():
+        source, matrix = block["source"], block["matrix"]
         base_vertex[key] = len(positions) // 12
-        if base_vertex[key] + block["count"] > MAX_VERTICES:
-            raise ValueError("position count is empty or exceeds the runtime bound")
-        positions += block["positions"]
-        normals += block["normals"] if block["normals"] is not None else \
-            generated_normals(block["positions"], block["count"], block["triangles"])
-        uvs += block["uvs"]
+        world = cook_gltf_nodes.transform_points(source["positions"], matrix)
+        positions += world
+        normals += cook_gltf_nodes.transform_normals(source["normals"], matrix) \
+            if source["normals"] is not None else \
+            generated_normals(world, source["count"], block["triangles"])
+        uvs += source["uvs"]
 
     indices = bytearray()
     subsets = []
-    for primitive, (key, values) in zip(primitives, primitive_indices):
+    for block, values, slot in placed:
         start = len(indices) // 4
-        if start + len(values) > MAX_INDICES:
-            raise ValueError("index count is not a bounded triangle list")
-        indices += struct.pack(f"<{len(values)}I", *(value + base_vertex[key] for value in values))
-        subsets.append((start, len(values), primitive.get("material", 0)))
+        indices += struct.pack(f"<{len(values)}I", *(value + base_vertex[block] for value in values))
+        if subsets and subsets[-1][2] == slot:
+            subsets[-1] = (subsets[-1][0], subsets[-1][1] + len(values), slot)
+        else:
+            subsets.append((start, len(values), slot))
+    if len(subsets) > MAX_SUBSETS:
+        raise ValueError(f"placed primitives need more than {MAX_SUBSETS} material subsets")
     return {"positions": bytes(positions), "normals": bytes(normals), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records)}
+
+
+def placed_counts(document: dict) -> dict:
+    """Triangles and positions summed over node placements, counting a
+    POSITION accessor once per placement, recounted from the accessors."""
+    placements = cook_gltf_nodes.mesh_placements(document, len(document["meshes"]))
+    accessors = document["accessors"]
+    triangles = positions = 0
+    for mesh, _ in placements:
+        primitives = document["meshes"][mesh]["primitives"]
+        triangles += sum(accessors[primitive["indices"]]["count"] // 3 for primitive in primitives)
+        positions += sum(accessors[reference]["count"]
+            for reference in {primitive["attributes"]["POSITION"] for primitive in primitives})
+    return {"triangles": triangles, "positions": positions}
 
 
 def safe_asset_path(value: str) -> str:
@@ -298,9 +327,10 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path)
     data = source_path.read_bytes()
     document = cook_assets.read_gltf(data)
     geometry = normalized_geometry(document, cook_assets.source_bytes(source_path.parent, document))
-    counts = cook_assets.normalized_counts(document)
+    counts = placed_counts(document)
     if (counts["triangles"] <= 0 or geometry["index_count"] != counts["triangles"] * 3 or
-            geometry["vertex_count"] != counts["positions"] or counts["bounds"] is None):
+            geometry["vertex_count"] != counts["positions"] or
+            cook_assets.normalized_counts(document)["bounds"] is None):
         raise ValueError("normalized geometry does not match the declared source counts")
     digest = hashlib.sha256(data).hexdigest()
     output_path = output_path.expanduser().resolve()

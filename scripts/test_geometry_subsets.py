@@ -2,17 +2,19 @@
 """Check cooked-geometry subset and slot material records with the production
 C++ loader.
 
-The cooked multi-material panel, the legacy maze tile, and synthetic packages
-must load with exactly the expected subsets and slot materials. Packages whose
-subsets leave a gap, overlap, split a triangle, name a missing slot, exceed a
-bound, or appear on skinned geometry must be rejected for that reason, as must
-slot materials that are malformed, miscounted, or out of range. The loader runs
-under AddressSanitizer and UndefinedBehaviorSanitizer.
+The cooked multi-material panel, the baked node hierarchy panel, the legacy
+maze tile, and synthetic packages must load with exactly the expected subsets
+and slot materials. Packages whose subsets leave a gap, overlap, split a
+triangle, name a missing slot, exceed a bound, or appear on skinned geometry
+must be rejected for that reason, as must slot materials that are malformed,
+miscounted, or out of range. The loader runs under AddressSanitizer and
+UndefinedBehaviorSanitizer.
 """
 
 from __future__ import annotations
 
 import base64
+import json
 import os
 from pathlib import Path
 import shutil
@@ -21,8 +23,10 @@ import subprocess
 import sys
 import tempfile
 
+import cook_assets
 import cook_gltf_geometry
 from elisa_package import write_geometry_package
+import gltf_hierarchy_self_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +42,10 @@ PAINT = (0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, 0, 1)
 ZEROS = (0.0,) * 10 + (0, 0)
 ONES = (1.0,) * 10 + (2, 1)
 PANEL_MATERIALS = [(0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 1), PAINT]
+# The hierarchy panel's single-sided red, green, and blue emissive strips.
+HIERARCHY_MATERIALS = [(0.08, 0.0, 0.0, 1.0, 0.0, 0.9, 1.0, 0.0, 0.0, 0.5, 0, 0),
+    (0.0, 0.08, 0.0, 1.0, 0.0, 0.9, 0.0, 1.0, 0.0, 0.5, 0, 0),
+    (0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 0)]
 
 
 def with_field(record: tuple, index: int, value) -> tuple:
@@ -104,6 +112,17 @@ def cases(directory: Path) -> list[tuple]:
     write_geometry_package(directory / "panel.elpk", panel)
     tile_path, _ = cook_gltf_geometry.cook_geometry_package(
         ROOT / "examples/maze/assets/maze_tile.gltf", "assets/maze_tile.gltf", directory / "tile.pkg")
+    hierarchy_source = ROOT / "test/fixtures/node_hierarchy_panel.gltf"
+    cook_gltf_geometry.cook_geometry_package(
+        hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
+    # Fifteen placements alternating red and green, then blue: the most
+    # subsets a baked hierarchy may need.
+    alternating = cook_assets.read_gltf(hierarchy_source.read_bytes())
+    gltf_hierarchy_self_test.alternating(15)(alternating)
+    (directory / "alternating.gltf").write_text(json.dumps(alternating), encoding="utf-8")
+    cook_gltf_geometry.cook_geometry_package(
+        directory / "alternating.gltf", "test/alternating.gltf", directory / "alternating.pkg")
+    alternating_subsets = [(index * 6, 6, index % 2) for index in range(15)] + [(90, 6, 2)]
     panel_subsets = [(0, 6, 1), (6, 6, 0), (12, 6, 1)]
     sixteen = [(index * 3, 3, index) for index in range(16)]
     seventeen = [(index * 3, 3, index % 16) for index in range(17)]
@@ -112,6 +131,8 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "panel.pkg", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
+        ("accept", "hierarchy.pkg", None, (24, 3, gltf_hierarchy_self_test.SUBSETS, HIERARCHY_MATERIALS)),
+        ("accept", "alternating.pkg", None, (96, 3, alternating_subsets, HIERARCHY_MATERIALS)),
         ("accept", "legacy.pkg", strip_package(2), (6, 1, [(0, 6, 0)])),
         ("accept", "explicit-single.pkg", strip_package(2, [(0, 6, 0)], 1), (6, 1, [(0, 6, 0)])),
         ("accept", "unused-slot.pkg", strip_package(2, [(0, 3, 2), (3, 3, 0)], 3),
