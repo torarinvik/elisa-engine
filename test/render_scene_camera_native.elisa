@@ -12,6 +12,10 @@ module RenderSceneCameraNativeTests:
         extern elisa_render_scene_v1_test_camera_view_matches(eye_x: f32, eye_y: f32, eye_z: f32,
             target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_render_target_matches(width: i32, height: i32,
+            expected_live: i32) -> i32
+
         # Points the camera, then checks that Wicked shows the right-handed
         # view: the same eye and direction, with f × up on the frame's right.
         def looks_along(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> bool:
@@ -71,6 +75,23 @@ module RenderSceneCameraNativeTests:
             orthographic_restored: bool = elisa_render_scene_v1_test_camera_orthographic_matches(
                 320.0, 200.0, 14.0) != 0
             return 129 if restore_orthographic != 0 or restore_viewport != 0 or not orthographic_restored
+
+            bad_target: i32 = catch RenderScene::set_camera_render_target(0, 100, 0.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 132 if bad_target != 1
+            target_status: i32 = catch RenderScene::set_camera_render_target(160, 100, 0.0):
+                ok: 0
+                error failure: 1
+            return 133 if target_status != 0
+            return 134 if Application::pump() != Application::PumpStatus.Running
+            return 135 if elisa_render_scene_v1_test_camera_render_target_matches(160, 100, 1) != 1
+            clear_target: i32 = catch RenderScene::clear_camera_render_target():
+                ok: 0
+                error failure: 1
+            return 136 if clear_target != 0
+            return 137 if elisa_render_scene_v1_test_camera_render_target_matches(160, 100, 0) != 1
 
             # Every component of this look-at is asymmetric, so an unreflected
             # camera would show a different eye, direction or right side.

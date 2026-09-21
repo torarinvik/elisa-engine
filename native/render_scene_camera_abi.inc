@@ -6,6 +6,34 @@ extern "C" int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height) {
     return resize_unlocked(state, width, height);
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_camera_render_target(
+    int32_t width, int32_t height, float update_interval) {
+    if (!valid_viewport(width, height) || !finite(update_interval) ||
+        update_interval < 0.0f || update_interval > 60.0f) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.camera->render_to_texture.resolution = XMUINT2(uint32_t(width), uint32_t(height));
+    state.camera->render_to_texture.sample_count = 1;
+    state.camera->render_to_texture.update_interval = update_interval;
+    state.camera->render_to_texture.time_accumulator = 0.0f;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_camera_render_target(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.camera->render_to_texture = {};
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_camera_orthographic_height(float vertical_size) {
     if (!finite(vertical_size) || vertical_size < MIN_ORTHOGRAPHIC_HEIGHT ||
         vertical_size > MAX_ORTHOGRAPHIC_HEIGHT) {

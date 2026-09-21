@@ -23,6 +23,10 @@ mode. Applications should pass the pixel extent reported by
 `Application::frame_info` when the window changes size. The initial camera is
 orthographic, centered over the origin with +Y up, and game code can set its
 pose with `RenderScene::set_camera_look_at`.
+The active camera can also own a bounded offscreen render target through
+`set_camera_render_target`; a zero interval updates it every render, while a
+positive interval throttles updates. `clear_camera_render_target` releases the
+target and returns presentation to the normal path.
 
 `RenderScene::sync_snapshot` connects `RenderSnapshot::Snapshot` to this scene
 service as one bounded native transaction of at most 256 rows. Each row carries
@@ -99,7 +103,8 @@ degenerate and out-of-range camera inputs, malformed transforms/colors, stale
 handles across scene replacement, orthographic and perspective camera changes,
 invalid perspective field-of-view and clipping inputs, projection-preserving
 resize, a rendered scene frame with perspective active, and return to
-orthographic mode; both explicit and application-triggered cleanup, real
+orthographic mode; render-target allocation, target inspection after a real
+SDL3/Metal frame, and target cleanup; both explicit and application-triggered cleanup, real
 snapshot submission, stable-handle reuse,
 transform updates, removed-row retirement, and that the rendered center pixel
 differs from the clear corner. The native pixel probe waits up to 400 ms for
