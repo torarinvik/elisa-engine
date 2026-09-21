@@ -44,4 +44,22 @@ def main() -> i32:
     return 19 if not WorldHierarchy::hierarchy_set_local(&deep, 1, root_shift, false)
     WorldHierarchy::hierarchy_update(&deep)
     return 20 if WorldHierarchy::hierarchy_world(&deep, 31).position.x != 34.0
+
+    checked: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+    root_pose: Geometry::Transform = Geometry::transform_identity()
+    child_pose: Geometry::Transform = Geometry::transform_translate(root_pose,
+        Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0})
+    return 21 if not WorldHierarchy::hierarchy_spawn(&checked, 1, root_pose)
+    return 22 if not WorldHierarchy::hierarchy_spawn(&checked, 2, child_pose)
+    return 23 if not WorldHierarchy::hierarchy_set_parent(&checked, 2, 1, false)
+    WorldHierarchy::hierarchy_update(&checked)
+    root_moved: Geometry::Transform = Geometry::transform_translate(root_pose,
+        Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0})
+    return 24 if not WorldHierarchy::hierarchy_set_local(&checked, 1, root_moved, false)
+    stale_child: mutable Geometry::Transform = Geometry::transform_identity()
+    return 25 if WorldHierarchy::hierarchy_try_world(&checked, 2, &stale_child)
+    return 26 if WorldHierarchy::hierarchy_depth(&checked, 2) != WorldHierarchy::MAX_NODES
+    WorldHierarchy::hierarchy_update(&checked)
+    return 27 if not WorldHierarchy::hierarchy_try_world(&checked, 2, &stale_child)
+    return 28 if stale_child.position.x != 8.0
     0

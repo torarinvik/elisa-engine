@@ -89,6 +89,8 @@ module WorldHierarchy:
         # Physics is the sole writer of an authoritative simulated pose. The
         # pose is converted to local space for the next hierarchy pass while
         # the published world snapshot stays exactly at the solver result.
+        # Dirty ancestors refresh root-first and advance interpolation state
+        # before a simulated descendant derives its new local pose.
         def hierarchy_apply_physics(hierarchy: mutable Hierarchy&, id: i64,
             world: Geometry::Transform, teleport: bool) -> bool:
             slot: usize = slot_of(hierarchy, id)
@@ -97,6 +99,38 @@ module WorldHierarchy:
             if parent == WorldHierarchy::ROOT:
                 hierarchy.nodes[slot].local <- world
             else:
+                ancestor_slots: mutable usize[WorldHierarchy::MAX_NODES] = zeroed
+                ancestor_count: mutable usize = 0
+                cursor: mutable i64 = parent
+                for _ in 0..<WorldHierarchy::MAX_NODES |hierarchy, ancestor_slots, ancestor_count, cursor|:
+                    break if cursor == WorldHierarchy::ROOT
+                    ancestor_slot: usize = slot_of(hierarchy, cursor)
+                    return false if ancestor_slot == WorldHierarchy::MAX_NODES or ancestor_count >= WorldHierarchy::MAX_NODES
+                    ancestor_slots[ancestor_count] <- ancestor_slot
+                    ancestor_count <- ancestor_count + 1
+                    cursor <- hierarchy.nodes[ancestor_slot].parent
+                return false if cursor != WorldHierarchy::ROOT
+                for depth in 0..<ancestor_count |hierarchy, ancestor_slots, ancestor_count|:
+                    ancestor_index: usize = ancestor_count - depth - 1
+                    ancestor_slot: usize = ancestor_slots[ancestor_index]
+                    ancestor_parent: i64 = hierarchy.nodes[ancestor_slot].parent
+                    if hierarchy.nodes[ancestor_slot].dirty:
+                        old_ancestor_world: Geometry::Transform = hierarchy.nodes[ancestor_slot].world
+                        if ancestor_parent == WorldHierarchy::ROOT:
+                            hierarchy.nodes[ancestor_slot].world <- hierarchy.nodes[ancestor_slot].local
+                        else:
+                            ancestor_parent_slot: usize = slot_of(hierarchy, ancestor_parent)
+                            return false if ancestor_parent_slot == WorldHierarchy::MAX_NODES
+                            hierarchy.nodes[ancestor_slot].world <- Geometry::transform_compose(
+                                hierarchy.nodes[ancestor_parent_slot].world,
+                                hierarchy.nodes[ancestor_slot].local)
+                        hierarchy.nodes[ancestor_slot].previous_world <- hierarchy.nodes[ancestor_slot].world if hierarchy.nodes[ancestor_slot].teleport_pending else old_ancestor_world
+                        hierarchy.nodes[ancestor_slot].teleport_published <- hierarchy.nodes[ancestor_slot].teleport_pending
+                        hierarchy.nodes[ancestor_slot].teleport_pending <- false
+                        hierarchy.nodes[ancestor_slot].dirty <- false
+                        ancestor_id: i64 = hierarchy.nodes[ancestor_slot].id
+                        for child in 0..<hierarchy.count |hierarchy, ancestor_id|:
+                            hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == ancestor_id
                 parent_slot: usize = slot_of(hierarchy, parent)
                 return false if parent_slot == WorldHierarchy::MAX_NODES
                 hierarchy.nodes[slot].local <- Geometry::transform_apply_inverse(hierarchy.nodes[parent_slot].world, world)
@@ -145,6 +179,31 @@ module WorldHierarchy:
             slot: usize = slot_of(hierarchy, id)
             return Geometry::transform_identity() if slot == WorldHierarchy::MAX_NODES
             hierarchy.nodes[slot].world
+
+        # Checked read for systems that require the latest composed transform.
+        # A dirty node has valid storage but its world-space pose is stale.
+        def hierarchy_try_world(hierarchy: Hierarchy&, id: i64,
+            transform: mutable Geometry::Transform&) -> bool:
+            slot: usize = slot_of(hierarchy, id)
+            depth: usize = hierarchy_depth(hierarchy, id)
+            return false if slot == WorldHierarchy::MAX_NODES or depth >= WorldHierarchy::MAX_NODES
+            return false if not Geometry::transform_is_valid(hierarchy.nodes[slot].world)
+            transform <- hierarchy.nodes[slot].world
+            true
+
+        # Root depth is zero. Invalid, dirty, or cyclic ancestry returns the
+        # capacity sentinel so synchronization can validate before publishing.
+        def hierarchy_depth(hierarchy: Hierarchy&, id: i64) -> usize:
+            cursor: mutable i64 = id
+            depth: mutable usize = 0
+            for _ in 0..<WorldHierarchy::MAX_NODES |cursor, depth, hierarchy|:
+                slot: usize = slot_of(hierarchy, cursor)
+                return WorldHierarchy::MAX_NODES if slot == WorldHierarchy::MAX_NODES or hierarchy.nodes[slot].dirty
+                parent: i64 = hierarchy.nodes[slot].parent
+                return depth if parent == WorldHierarchy::ROOT
+                cursor <- parent
+                depth <- depth + 1
+            WorldHierarchy::MAX_NODES
 
         def hierarchy_sample(hierarchy: Hierarchy&, id: i64, alpha: f32) -> Geometry::Transform:
             slot: usize = slot_of(hierarchy, id)
