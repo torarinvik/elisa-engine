@@ -1,5 +1,4 @@
 #include "render_scene_abi.h"
-
 #include "application_abi.h"
 #include "wiHelper.h"
 #include "wiApplication.h"
@@ -14,12 +13,11 @@
 #include "wiTrailRenderer.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
+#include "lighting_bridge.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
-
 #include <DirectXMath.h>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -34,9 +32,7 @@
 #include <string>
 #include <thread>
 #include <vector>
-
 namespace {
-
 constexpr size_t MAX_INSTANCES = 256;
 // An instance or snapshot row without a shared snapshot mesh.
 constexpr size_t NO_SHARED_MESH = std::numeric_limits<size_t>::max();
@@ -54,10 +50,9 @@ constexpr float MIN_CAMERA_CLIP_DISTANCE = 1.0e-4f;
 constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
 constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
 constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
-
+constexpr size_t MAX_RENDER_LIGHTS = probe::LightingBridge::MAX_LIGHTS;
 #include "render_scene_text_internal.inc"
 #include "render_scene_panel_internal.inc"
-
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
@@ -84,9 +79,11 @@ struct InstanceSlot {
     bool previous_animation_loop = true;
     bool live = false;
 };
-
+struct RenderLightSlot {
+    probe::NativeLightHandle native{};
+    bool live = false;
+};
 #include "render_scene_snapshot_state.inc"
-
 struct ElectricArcSlot {
     wi::TrailRenderer halo;
     wi::TrailRenderer core;
@@ -99,12 +96,12 @@ struct ElectricArcSlot {
     bool visible = false;
     bool live = false;
 };
-
 struct RenderSceneService {
     std::mutex mutex;
     std::unique_ptr<wi::scene::Scene> scene;
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
+    std::array<RenderLightSlot, MAX_RENDER_LIGHTS> lights{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
@@ -134,6 +131,7 @@ struct RenderSceneService {
     size_t snapshot_expected_previous_count = 0;
     bool snapshot_transaction_active = false;
     int32_t snapshot_test_fail_after_creates = -1;
+    std::unique_ptr<probe::LightingBridge> lighting;
     wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
@@ -151,12 +149,10 @@ struct RenderSceneService {
     bool initialized = false;
     bool shutdown_hook_registered = false;
 };
-
 class ElisaRenderPath3D final : public wi::RenderPath3D {
 public:
     explicit ElisaRenderPath3D(const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs)
         : arcs_(arcs) {}
-
     void Render() const override {
         if (arcs_ != nullptr) {
             for (const ElectricArcSlot& arc : *arcs_) {
@@ -169,11 +165,9 @@ public:
         }
         wi::RenderPath3D::Render();
     }
-
 private:
     const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs_;
 };
-
 RenderSceneService& service() {
     // NativeApplication owns a static host and runs registered hooks while
     // that host is being destroyed. Keep the callback context alive until
@@ -182,33 +176,26 @@ RenderSceneService& service() {
     static RenderSceneService* value = new RenderSceneService();
     return *value;
 }
-
 bool finite(float value) {
     return std::isfinite(value);
 }
-
 bool bounded(float value, float magnitude = MAX_SCENE_MAGNITUDE) {
     return finite(value) && std::abs(value) <= magnitude;
 }
-
 bool valid_viewport(int32_t width, int32_t height) {
     return width > 0 && height > 0 && width <= MAX_VIEWPORT && height <= MAX_VIEWPORT;
 }
-
 bool valid_color(float red, float green, float blue, float alpha) {
     return finite(red) && finite(green) && finite(blue) && finite(alpha) &&
         red >= 0.0f && red <= 1.0f && green >= 0.0f && green <= 1.0f &&
         blue >= 0.0f && blue <= 1.0f && alpha >= 0.0f && alpha <= 1.0f;
 }
-
 #include "render_scene_text_helpers.inc"
 #include "render_scene_panel_helpers.inc"
 #include "render_scene_overlay_reset.inc"
-
 bool on_owner_thread(const RenderSceneService& state) {
     return state.owner_thread == std::this_thread::get_id();
 }
-
 bool valid_transform(
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
@@ -221,7 +208,6 @@ bool valid_transform(
         double(qz) * qz + double(qw) * qw;
     return std::isfinite(length_squared) && length_squared > 1.0e-12;
 }
-
 bool valid_look_at(
     float eye_x, float eye_y, float eye_z,
     float target_x, float target_y, float target_z,
@@ -241,7 +227,6 @@ bool valid_look_at(
     return std::isfinite(direction_squared) && std::isfinite(up_squared) && std::isfinite(cross_squared) &&
         direction_squared > 1.0e-8 && up_squared > 1.0e-8 && cross_squared > 1.0e-8;
 }
-
 // The look-at stays in Elisa space in `state` and is reflected into Wicked's
 // left-handed frame here, like every object, so world +X shows on the right
 // of a right-handed camera.
@@ -270,24 +255,20 @@ void apply_camera_look_at(RenderSceneService& state) {
     }
     state.camera->UpdateCamera();
 }
-
 void apply_transform(wi::scene::TransformComponent& transform,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz) {
     elisa::rendering::set_transform(transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
-
 uint64_t encode_handle(size_t slot, uint64_t generation) {
     return (generation << HANDLE_SLOT_BITS) | uint64_t(slot + 1);
 }
-
 size_t decode_handle(uint64_t value) {
     const uint64_t encoded_slot = value & HANDLE_SLOT_MASK;
     if (encoded_slot == 0 || encoded_slot > MAX_INSTANCES) return MAX_INSTANCES;
     return size_t(encoded_slot - 1);
 }
-
 bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot) {
     if (handle <= 0) return false;
     const uint64_t value = uint64_t(handle);
@@ -297,23 +278,19 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
     return generation != 0 && state.instances[slot].live &&
         state.instances[slot].generation == generation;
 }
-
 #include "render_scene_animation_internal.inc"
-
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
         if (!state.instances[index].live) return index;
     }
     return MAX_INSTANCES;
 }
-
 size_t find_free_arc_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_ELECTRIC_ARCS; ++index) {
         if (!state.electric_arcs[index].live) return index;
     }
     return MAX_ELECTRIC_ARCS;
 }
-
 void reset_unlocked(RenderSceneService& state) {
     if (state.initialized) {
         wi::jobsystem::WaitForAllJobs();
@@ -325,10 +302,12 @@ void reset_unlocked(RenderSceneService& state) {
         state.path->camera = nullptr;
         state.path.reset();
     }
+    state.lighting.reset();
     if (state.scene != nullptr) {
         state.scene->Clear();
         state.scene.reset();
     }
+    state.lights = {};
     for (InstanceSlot& instance : state.instances) {
         instance.entity = wi::ecs::INVALID_ENTITY;
         instance.gameplay_epoch = 0;
@@ -391,7 +370,6 @@ void reset_unlocked(RenderSceneService& state) {
     state.perspective_camera = false;
     state.initialized = false;
 }
-
 void on_application_shutdown(void* context) {
     auto* state = static_cast<RenderSceneService*>(context);
     if (state == nullptr) return;
@@ -410,7 +388,6 @@ void on_application_shutdown(void* context) {
         std::fprintf(stderr, "render scene shutdown exception at stage %d\n", stage);
     }
 }
-
 int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height) {
     if (!valid_viewport(width, height)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
@@ -426,7 +403,6 @@ int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height
     state.height = height;
     return ELISA_RENDER_SCENE_OK;
 }
-
 int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
@@ -439,18 +415,13 @@ int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     apply_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     return ELISA_RENDER_SCENE_OK;
 }
-
 #include "render_scene_snapshot_internal.inc"
-
 } // namespace
-
 extern "C" uint32_t elisa_render_scene_abi_version(void) {
     return ELISA_RENDER_SCENE_ABI_VERSION;
 }
-
 #include "render_scene_initialize_abi.inc"
 #include "render_scene_camera_abi.inc"
-
 extern "C" int64_t elisa_render_scene_v1_create(
     int32_t primitive,
     float px, float py, float pz,
@@ -461,7 +432,6 @@ extern "C" int64_t elisa_render_scene_v1_create(
         primitive != ELISA_RENDER_PRIMITIVE_PLANE) ||
         !valid_transform(px, py, pz, qx, qy, qz, qw, sx, sy, sz) ||
         !valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
@@ -483,7 +453,6 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.animation_clips.clear();
     clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;
-
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     const std::string name = "elisa_primitive_" + std::to_string(slot) + "_" + std::to_string(generation);
     try {
@@ -494,7 +463,6 @@ extern "C" int64_t elisa_render_scene_v1_create(
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-
     wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
     wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(entity);
     wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(entity);
@@ -502,23 +470,19 @@ extern "C" int64_t elisa_render_scene_v1_create(
         state.scene->Entity_Remove(entity);
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
-
     apply_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
     material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
     material->SetCastShadow(false);
     material->userBlendMode = alpha < 0.999f ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
     object->SetCastShadow(false);
-
     instance.entity = entity;
     instance.generation = generation;
     instance.live = true;
     return int64_t(encode_handle(slot, generation));
 }
-
 #include "render_scene_mesh_abi.inc"
 #include "render_scene_arcs_abi.inc"
-
 extern "C" int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,
     float px, float py, float pz,
@@ -532,22 +496,18 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     return update_transform_unlocked(state, slot, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
-
 #include "render_scene_snapshot_abi.inc"
 #include "render_scene_snapshot_tint_abi.inc"
 #include "render_scene_snapshot_bundle_texture_abi.inc"
 #include "render_scene_snapshot_asset_request_abi.inc"
-
 #include "render_scene_animation_abi.inc"
-
 #include "render_scene_material_abi.inc"
 #include "render_scene_environment_abi.inc"
+#include "render_scene_lighting_abi.inc"
 #include "render_scene_visibility_abi.inc"
 #include "render_scene_quality_abi.inc"
-
 #include "render_scene_text_abi.inc"
 #include "render_scene_panel_abi.inc"
-
 extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -564,7 +524,6 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     clear_snapshot_instance(state.instances[slot]);
     return ELISA_RENDER_SCENE_OK;
 }
-
 extern "C" int32_t elisa_render_scene_v1_shutdown(void) {
     RenderSceneService& state = service();
     {
@@ -578,7 +537,6 @@ extern "C" int32_t elisa_render_scene_v1_shutdown(void) {
     reset_unlocked(state);
     return ELISA_RENDER_SCENE_OK;
 }
-
 extern "C" uint64_t elisa_render_scene_v1_instance_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -586,13 +544,11 @@ extern "C" uint64_t elisa_render_scene_v1_instance_count(void) {
     for (const InstanceSlot& instance : state.instances) count += instance.live ? 1 : 0;
     return count;
 }
-
 extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     return state.initialized ? 1 : 0;
 }
-
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 #include "render_scene_pixel_probe.h"
 #include "render_scene_environment_probe.h"

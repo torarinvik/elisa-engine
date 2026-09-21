@@ -1,0 +1,81 @@
+module RenderSceneLightingNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_light_matches(kind: i32,
+            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_light_count() -> i32
+
+    public:
+        def exercise() -> i32:
+            bad_spot: i32 = catch RenderScene::create_light(Lighting::Light{
+                kind: Lighting::LightKind.Spot,
+                color: Geometry::Vec3{x: 1.0, y: 0.8, z: 0.6},
+                position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+                direction: Geometry::vec3_zero(),
+                intensity: 3.0,
+                range: 8.0,
+                inner_cone: 0.2,
+                outer_cone: 0.6,
+                casts_shadow: true,
+            }):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 120 if bad_spot != 1
+
+            point: Lighting::Light = Lighting::Light{
+                kind: Lighting::LightKind.Point,
+                color: Geometry::Vec3{x: 0.3, y: 0.7, z: 1.0},
+                position: Geometry::Vec3{x: 1.0, y: 2.0, z: 3.0},
+                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
+                intensity: 2.0,
+                range: 10.0,
+                inner_cone: 0.0,
+                outer_cone: 0.8,
+                casts_shadow: true,
+            }
+            point_handle: RenderScene::LightHandle = catch RenderScene::create_light(point):
+                value: value
+                error failure: return 121
+            return 122 if elisa_render_scene_v1_test_light_count() != 1
+            return 123 if elisa_render_scene_v1_test_light_matches(1,
+                1.0, 2.0, 3.0, 0.0, -1.0, 0.0) != 1
+
+            moved: Lighting::Light = point
+            moved.position <- Geometry::Vec3{x: -2.0, y: 4.0, z: 1.0}
+            moved.direction <- Geometry::Vec3{x: 1.0, y: -1.0, z: 0.0}
+            _ = catch RenderScene::update_light(point_handle, moved):
+                ok: 0
+                error failure: return 124
+            return 125 if elisa_render_scene_v1_test_light_matches(1,
+                -2.0, 4.0, 1.0, 1.0, -1.0, 0.0) != 1
+
+            spot: Lighting::Light = Lighting::Light{
+                kind: Lighting::LightKind.Spot,
+                color: Geometry::Vec3{x: 1.0, y: 0.8, z: 0.6},
+                position: Geometry::Vec3{x: 4.0, y: 5.0, z: -1.0},
+                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.2},
+                intensity: 4.0,
+                range: 14.0,
+                inner_cone: 0.2,
+                outer_cone: 0.7,
+                casts_shadow: false,
+            }
+            spot_handle: RenderScene::LightHandle = catch RenderScene::create_light(spot):
+                value: value
+                error failure: return 126
+            return 127 if elisa_render_scene_v1_test_light_count() != 2
+            _ = catch RenderScene::destroy_light(spot_handle):
+                ok: 0
+                error failure: return 128
+            _ = catch RenderScene::destroy_light(point_handle):
+                ok: 0
+                error failure: return 129
+            return 130 if elisa_render_scene_v1_test_light_count() != 0
+            stale: i32 = catch RenderScene::destroy_light(point_handle):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 131 if stale != 1
+            0

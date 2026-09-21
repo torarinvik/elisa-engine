@@ -2,7 +2,6 @@
 # behind the engine-owned scalar ABI.
 include "../math/geometry.elisa"
 include "../backend/lighting.elisa"
-
 module RenderScene:
     private:
         const module NativeStatus:
@@ -102,6 +101,20 @@ module RenderScene:
             fog_red: f32, fog_green: f32, fog_blue: f32,
             fog_start: f32, fog_density: f32, fog_enabled: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_create_light(kind: i32,
+            red: f32, green: f32, blue: f32,
+            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
+            intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
+            casts_shadow: i32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_update_light(handle: i64, kind: i32,
+            red: f32, green: f32, blue: f32,
+            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
+            intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
+            casts_shadow: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_light(handle: i64) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_bloom(enabled: i32, threshold: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_ambient_occlusion(enabled: i32) -> i32
@@ -167,7 +180,6 @@ module RenderScene:
         extern elisa_render_scene_v1_instance_count() -> u64
         @callconv(c)
         extern elisa_render_scene_v1_is_initialized() -> i32
-
         def check_status(status: i32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if status == NativeStatus::INVALID_ARGUMENT
             raise RenderSceneError.NotInitialized if status == NativeStatus::NOT_INITIALIZED
@@ -180,72 +192,62 @@ module RenderScene:
             raise RenderSceneError.BatchActive if status == NativeStatus::BATCH_ACTIVE
             raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
-
     public:
         # Native slots and owner-side batches use the same arc capacity.
         const MAX_ELECTRIC_ARCS: usize = 1024
         const MAX_SNAPSHOT_ENTRIES: usize = 256
         const MAX_OVERLAY_PANELS: usize = 64
-
         enum Primitive:
             Box
             Sphere
             Plane
-
         enum TextureSlot:
             BaseColor
             Normal
             Surface
             Emissive
-
         enum AlphaMode:
             Opaque
             Mask
             Blend
-
         enum Tonemap:
             Reinhard
             Aces
             Uchimura
-
         struct Color:
             red: f32
             green: f32
             blue: f32
             alpha: f32
-
         struct Emission:
             color: Geometry::Vec3
             strength: f32
-
         # Private storage makes a native instance token opaque to game code.
         struct InstanceHandle:
             private:
                 native_value: i64
-
+        struct LightHandle:
+            private:
+                native_value: i64
         # Dynamic, socket-to-socket electrical ribbon. Its geometry and Wicked
         # TrailRenderer ownership stay inside the engine.
         struct ElectricArcHandle:
             private:
                 native_value: i64
-
         # A checked, generation-safe screen-space text item owned by the
         # engine's 2D render path. Position uses the logical canvas origin.
         struct OverlayTextHandle:
             # A generation-checked engine identifier, never a vendor object or
             # pointer. Its integer form stays usable in game-owned state.
             id: i64
-
         # A generation-checked screen-space rectangle handle. Its integer
         # value is safe to carry in game-owned Elisa state.
         struct OverlayPanelHandle:
             id: i64
-
         struct ElectricArcBatch:
             private:
                 handles: mutable ElectricArcHandle[RenderScene::MAX_ELECTRIC_ARCS]
                 count: mutable usize
-
         # A compact owner-side collection avoids exposing the representation of
         # opaque handles to projects. It is useful for batches such as maze
         # tiles that are created once and shown or hidden as topology changes.
@@ -253,7 +255,6 @@ module RenderScene:
             private:
                 handles: mutable InstanceHandle[256]
                 count: mutable usize
-
         error RenderSceneError:
             InvalidValue
             NotInitialized
@@ -267,66 +268,50 @@ module RenderScene:
             BatchActive
             # A snapshot row or material names an asset that is still loading.
             AssetPending
-
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1
             try check_status(elisa_render_scene_v1_initialize(width, height, orthographic_height))
-
         def InstanceBatch() -> InstanceBatch:
             InstanceBatch{handles: zeroed, count: 0}
-
         def batch_append(batch: mutable InstanceBatch&, handle: InstanceHandle) -> void error[RenderSceneError]:
             raise RenderSceneError.Capacity if batch.count >= 256
             batch.handles[batch.count] <- handle
             batch.count <- batch.count + 1
-
         def batch_get(batch: InstanceBatch&, index: usize) -> InstanceHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if index >= batch.count
             batch.handles[index]
-
         def ElectricArcBatch() -> ElectricArcBatch:
             ElectricArcBatch{handles: zeroed, count: 0}
-
         def electric_arc_batch_append(batch: mutable ElectricArcBatch&,
             handle: ElectricArcHandle) -> void error[RenderSceneError]:
             raise RenderSceneError.Capacity if batch.count >= RenderScene::MAX_ELECTRIC_ARCS
             batch.handles[batch.count] <- handle
             batch.count <- batch.count + 1
-
         def electric_arc_batch_get(batch: ElectricArcBatch&,
             index: usize) -> ElectricArcHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if index >= batch.count
             batch.handles[index]
-
         def electric_arc_batch_count(batch: ElectricArcBatch&) -> usize:
             batch.count
-
         def batch_count(batch: InstanceBatch&) -> usize:
             batch.count
-
         def resize(width: i32, height: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_resize(width, height))
-
         def set_camera_render_target(width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_render_target(width, height, update_interval))
-
         def clear_camera_render_target() -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_clear_camera_render_target())
-
         def set_camera_orthographic_height(vertical_size: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_orthographic_height(vertical_size))
-
         # Field of view is vertical and measured in radians. Resize preserves
         # this projection and its clipping range until orthographic mode returns.
         def set_camera_perspective(vertical_fov_radians: f32, near_clip: f32,
             far_clip: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_perspective(
                 vertical_fov_radians, near_clip, far_clip))
-
         def set_camera_look_at(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_look_at(
                 eye.x, eye.y, eye.z, target.x, target.y, target.z, up.x, up.y, up.z))
-
         def create(primitive: Primitive, transform: Geometry::Transform, color: Color) -> InstanceHandle error[RenderSceneError]:
             primitive_code: i32 = 1 if primitive == Primitive.Box else (2 if primitive == Primitive.Sphere else (3 if primitive == Primitive.Plane else 0))
             native_value: i64 = elisa_render_scene_v1_create(primitive_code,
@@ -338,7 +323,6 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             InstanceHandle{native_value: native_value}
-
         # Package paths are relative to the project root and refer to bounded
         # engine-cooked geometry, never authoring files such as FBX at runtime.
         def create_mesh(package_path: cstr, transform: Geometry::Transform,
@@ -352,13 +336,11 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             InstanceHandle{native_value: native_value}
-
         def update_transform(handle: InstanceHandle, transform: Geometry::Transform) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_update_transform(handle.native_value,
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
-
         # Clip names may be the full imported FBX stack name or its final
         # segment (for example, "Walking"). Each instance advances independently.
         def play_animation(handle: InstanceHandle, clip_name: cstr, loop: bool,
@@ -366,32 +348,25 @@ module RenderScene:
             loop_value: i32 = 1 if loop else 0
             try check_status(elisa_render_scene_v1_play_animation(handle.native_value,
                 clip_name, loop_value, speed, blend_seconds))
-
         # A stopped skinned instance blends from its current pose to its rest pose.
         def stop_animation(handle: InstanceHandle, blend_seconds: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_stop_animation(handle.native_value, blend_seconds))
-
         def advance_animation(handle: InstanceHandle, delta_seconds: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_advance_animation(handle.native_value, delta_seconds))
-
         # Opt into PBR illumination and shadow casting. Scalars multiply surface maps.
         def set_lit_material(handle: InstanceHandle, roughness: f32, metallic: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_lit_material(handle.native_value, roughness, metallic))
-
         # Applies to all material maps. Useful for tiling and source UV conventions.
         def set_texture_uv_transform(handle: InstanceHandle, scale_u: f32, scale_v: f32,
             offset_u: f32, offset_v: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_texture_uv_transform(handle.native_value,
                 scale_u, scale_v, offset_u, offset_v))
-
         # Call after set_environment, which creates the directional sun.
         def set_sun_shadows(enabled: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_sun_shadows(1 if enabled else 0))
-
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
-
         # Mask keeps the mesh opaque while discarding texels below cutoff, which is
         # suitable for fences and foliage. Blend is sorted transparency.
         def set_alpha_mode(handle: InstanceHandle, mode: AlphaMode, cutoff: f32,
@@ -403,7 +378,6 @@ module RenderScene:
                     AlphaMode.Blend: 2
             try check_status(elisa_render_scene_v1_set_alpha_mode(handle.native_value,
                 mode_code, cutoff, 1 if double_sided else 0))
-
         # Paths are project-relative. Surface uses Wicked's RGBA packed surface
         # channels; Normal selects Wicked's normal-map import path.
         # This assigns maps without changing the material's shading model.
@@ -416,13 +390,11 @@ module RenderScene:
                     RenderScene::TextureSlot.Surface: NativeTextureSlot::SURFACE
                     RenderScene::TextureSlot.Emissive: NativeTextureSlot::EMISSIVE
             try check_status(elisa_render_scene_v1_set_texture(handle.native_value, slot_code, asset_path))
-
         # Emission intensity is HDR and can exceed one; the render path's bloom
         # threshold determines how much emitted light spreads into nearby pixels.
         def set_emissive(handle: InstanceHandle, emission: Emission) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_emissive(handle.native_value,
                 emission.color.x, emission.color.y, emission.color.z, emission.strength))
-
         # Configures the scene's physical sky and directional sunlight. Elisa
         # owns the environment choice; Wicked entities stay engine-owned.
         def set_environment(environment: Lighting::Environment) -> void error[RenderSceneError]:
@@ -435,29 +407,48 @@ module RenderScene:
                 environment.sky_exposure,
                 environment.fog_color.x, environment.fog_color.y, environment.fog_color.z,
                 environment.fog_start, environment.fog_density, fog_enabled))
-
+        def create_light(light: Lighting::Light) -> LightHandle error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
+            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            native_value: i64 = elisa_render_scene_v1_create_light(kind,
+                light.color.x, light.color.y, light.color.z,
+                light.position.x, light.position.y, light.position.z,
+                light.direction.x, light.direction.y, light.direction.z,
+                light.intensity, light.range, light.inner_cone, light.outer_cone,
+                1 if light.casts_shadow else 0)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            LightHandle{native_value: native_value}
+        def update_light(handle: LightHandle, light: Lighting::Light) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
+            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            try check_status(elisa_render_scene_v1_update_light(handle.native_value, kind,
+                light.color.x, light.color.y, light.color.z,
+                light.position.x, light.position.y, light.position.z,
+                light.direction.x, light.direction.y, light.direction.z,
+                light.intensity, light.range, light.inner_cone, light.outer_cone,
+                1 if light.casts_shadow else 0))
+        def destroy_light(handle: LightHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_light(handle.native_value))
         def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_bloom(enabled_value, threshold))
-
         # Screen-space ambient occlusion adds contact shading around feet,
         # fence bases, and other nearby surfaces.
         def set_ambient_occlusion(enabled: bool) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_ambient_occlusion(enabled_value))
-
         # Range is measured in world units; power controls contact contrast.
         # Both values are bounded so projects cannot destabilize the renderer.
         def set_ambient_occlusion_settings(range: f32, power: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if range < 0.01 or range > 32.0
             raise RenderSceneError.InvalidValue if power < 0.0 or power > 8.0
             try check_status(elisa_render_scene_v1_set_ambient_occlusion_settings(range, power))
-
         # FXAA smooths thin geometry edges at the current render resolution.
         def set_fxaa(enabled: bool) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_fxaa(enabled_value))
-
         def set_tonemap(tonemap: Tonemap) -> void error[RenderSceneError]:
             tonemap_value: i32 =
                 match tonemap:
@@ -465,18 +456,15 @@ module RenderScene:
                     RenderScene::Tonemap.Aces: 1
                     RenderScene::Tonemap.Uchimura: 2
             try check_status(elisa_render_scene_v1_set_tonemap(tonemap_value))
-
         # Exposure is a bounded scene-wide post-process multiplier. Keep it
         # separate from environment sky exposure so authored lighting remains
         # stable while a project tunes final readability.
         def set_exposure(exposure: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if exposure < 0.0 or exposure > 8.0
             try check_status(elisa_render_scene_v1_set_exposure(exposure))
-
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
             try check_status(elisa_render_scene_v1_set_visible(handle.native_value, visible_value))
-
         def create_overlay_text(text: cstr, x: f32, y: f32, font_size: i32,
             color: Color) -> OverlayTextHandle error[RenderSceneError]:
             native_value: i64 = elisa_render_scene_v1_create_text(text, x, y, font_size,
@@ -485,34 +473,26 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             OverlayTextHandle{id: native_value}
-
         def set_overlay_text(handle: OverlayTextHandle, text: cstr) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text(handle.id, text))
-
         def set_overlay_text_i64(handle: OverlayTextHandle, prefix: cstr,
             value: i64) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_i64(handle.id, prefix, value))
-
         def set_overlay_text_position(handle: OverlayTextHandle, x: f32,
             y: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_position(handle.id, x, y))
-
         def set_overlay_text_size(handle: OverlayTextHandle,
             font_size: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_size(handle.id, font_size))
-
         def set_overlay_text_color(handle: OverlayTextHandle,
             color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_color(handle.id,
                 color.red, color.green, color.blue, color.alpha))
-
         def set_overlay_text_visible(handle: OverlayTextHandle, visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_visible(
                 handle.id, 1 if visible else 0))
-
         def destroy_overlay_text(handle: OverlayTextHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_text(handle.id))
-
         # Position is the panel's upper-left corner in the logical canvas.
         def create_overlay_panel(x: f32, y: f32, width: f32, height: f32,
             color: Color) -> OverlayPanelHandle error[RenderSceneError]:
@@ -522,30 +502,24 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             OverlayPanelHandle{id: native_value}
-
         def set_overlay_panel_position(handle: OverlayPanelHandle, x: f32,
             y: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_position(
                 handle.id, x, y))
-
         def set_overlay_panel_size(handle: OverlayPanelHandle,
             width: f32, height: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_size(
                 handle.id, width, height))
-
         def set_overlay_panel_color(handle: OverlayPanelHandle,
             color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_color(handle.id,
                 color.red, color.green, color.blue, color.alpha))
-
         def set_overlay_panel_visible(handle: OverlayPanelHandle,
             visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_visible(
                 handle.id, 1 if visible else 0))
-
         def destroy_overlay_panel(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.id))
-
         # Creates a reusable jagged, additive ribbon. Elisa supplies the live
         # connector endpoints and phase each frame; the engine keeps endpoints
         # pinned while generating the interior flicker and blue halo.
@@ -555,34 +529,26 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             ElectricArcHandle{native_value: native_value}
-
         def update_electric_arc(handle: ElectricArcHandle, start: Geometry::Vec3,
             end: Geometry::Vec3, phase: f32, visibility: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_update_electric_arc(handle.native_value,
                 start.x, start.y, start.z, end.x, end.y, end.z, phase, visibility))
-
         # Enable physical occlusion for socket-anchored world-space electricity.
         # Existing arcs default to overlay; this setting survives every update.
         def set_electric_arc_depth_test(handle: ElectricArcHandle, enabled: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_electric_arc_depth_test(
                 handle.native_value, 1 if enabled else 0))
-
         def set_electric_arc_visible(handle: ElectricArcHandle, visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_electric_arc_visible(
                 handle.native_value, 1 if visible else 0))
-
         def destroy_electric_arc(handle: ElectricArcHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_electric_arc(handle.native_value))
-
         def destroy(handle: InstanceHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy(handle.native_value))
-
         # Safe to call more than once, including after application shutdown.
         def shutdown() -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_shutdown())
-
         def instance_count() -> usize:
             elisa_render_scene_v1_instance_count().usize()
-
         def is_initialized() -> bool:
             elisa_render_scene_v1_is_initialized() != 0

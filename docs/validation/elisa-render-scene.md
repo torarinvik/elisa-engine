@@ -241,6 +241,17 @@ table, verifies the next creation is rejected, and destroys the entries.
 Text measurement/layout, font selection, input focus and full widget behavior
 remain separate capabilities.
 
+`RenderScene::create_light` accepts the validated backend-neutral directional,
+point, and spot descriptors from `Lighting`. It returns an opaque,
+generation-checked `LightHandle`; `update_light` changes the descriptor in place
+and `destroy_light` retires it. The native SDL3/Metal smoke rejects a spot with
+no direction, creates and matches a point light, updates its position and
+direction, creates a spot light, verifies the live count, and rejects a stale
+destroy. Light slots are bounded by the existing native lighting bridge, and
+all positions and directions cross the Elisa-to-Wicked coordinate boundary in
+one place. Authored light scenes, shadow-bias policy, and reference captures
+remain open under R05.
+
 ## Exit codes
 
 `scripts/render_scene_native_smoke.py` passes through the exit status of
@@ -261,6 +272,7 @@ group G failed at case N` to stderr, then exits G.
 | 197 | `render_scene_environment_native.elisa`, including `render_scene_art_material_native.elisa` | logged |
 | 198 | `render_scene_camera_native.elisa` | logged |
 | 199 | `render_scene_text_native.elisa` | logged |
+| 200 | `render_scene_lighting_native.elisa` | logged |
 | 201–226 | `render_scene_bundle_dependency_native.elisa` | exit − 200 |
 | 227 | `render_scene_snapshot_native.elisa` | logged |
 | 228 | `render_scene_node_hierarchy_native.elisa` | logged |
