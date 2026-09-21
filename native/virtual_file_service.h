@@ -1,9 +1,10 @@
 #pragma once
 
-// Bounded, generation-aware virtual file requests. The service keeps file IO
-// out of the frame call site: request() only resolves and queues work, while
-// pump() performs a bounded number of package reads for a worker or device
-// phase. A mount generation change makes queued work stale before allocation.
+// Bounded, generation-aware virtual file requests. request() validates and
+// queues work; pump() claims a bounded number of requests and performs their
+// package IO without holding the service lock. A mount generation change
+// makes queued work stale before allocation and in-flight results stale before
+// publication.
 #include "virtual_package.h"
 #include "package_manifest.h"
 
@@ -18,7 +19,7 @@
 
 namespace probe {
 
-enum class VirtualReadState : uint8_t { Empty, Queued, Ready, Failed, Cancelled };
+enum class VirtualReadState : uint8_t { Empty, Queued, Reading, Ready, Failed, Cancelled };
 
 struct VirtualReadHandle {
     static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
@@ -34,10 +35,11 @@ public:
     bool mount(std::filesystem::path base_root, std::vector<std::filesystem::path> overrides,
         uint64_t generation) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (generation == 0 || overrides.size() > 16) return false;
+        if (generation == 0 || overrides.size() > 16 || mount_epoch_ == UINT64_MAX) return false;
         base_root_ = std::move(base_root);
         overrides_ = std::move(overrides);
         generation_ = generation;
+        ++mount_epoch_;
         mounted_ = true;
         return true;
     }
@@ -63,14 +65,103 @@ public:
     bool cancel(VirtualReadHandle handle) {
         std::lock_guard<std::mutex> lock(mutex_);
         Request* item = find(handle);
-        if (item == nullptr || item->state != VirtualReadState::Queued) return false;
+        if (item == nullptr || (item->state != VirtualReadState::Queued &&
+                item->state != VirtualReadState::Reading)) return false;
         item->state = VirtualReadState::Cancelled;
         return true;
     }
 
     uint32_t pump(uint32_t budget = 1) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return pump_locked(budget);
+        uint32_t completed = 0;
+        while (completed < budget) {
+            Work work;
+            bool claimed = false;
+            bool settled_stale = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                for (uint32_t slot = 0; slot < MAX_REQUESTS; ++slot) {
+                    Request& item = requests_[slot];
+                    if (item.state != VirtualReadState::Queued) continue;
+                    if (item.mount_epoch != mount_epoch_ || item.mount_generation != generation_) {
+                        item.error = "stale mount generation";
+                        item.state = VirtualReadState::Failed;
+                        settled_stale = true;
+                        break;
+                    }
+                    if (item.dependency_generation != 0 && item.dependency_generation != generation_) {
+                        item.error = "stale dependency generation";
+                        item.state = VirtualReadState::Failed;
+                        settled_stale = true;
+                        break;
+                    }
+                    item.state = VirtualReadState::Reading;
+                    work.handle = {slot, item.generation};
+                    work.logical_name = item.logical_name;
+                    work.section = item.section;
+                    work.expected_dependency_order = item.expected_dependency_order;
+                    work.mount_generation = item.mount_generation;
+                    work.mount_epoch = item.mount_epoch;
+                    work.validate_dependency_order = item.validate_dependency_order;
+                    work.base_root = base_root_;
+                    work.overrides = overrides_;
+                    claimed = true;
+                    break;
+                }
+            }
+            if (settled_stale) {
+                ++completed;
+                continue;
+            }
+            if (!claimed) break;
+
+            std::vector<uint8_t> bytes;
+            std::string error;
+            const PackageResolution resolved = resolve_package_path(
+                work.base_root, work.overrides, work.logical_name, work.mount_generation);
+            bool succeeded = false;
+            if (!resolved.found) {
+                error = resolved.error;
+            } else {
+                std::vector<std::string> dependency_order;
+                std::string dependency_error;
+                if (!package_dependency_order(work.base_root, work.overrides, work.logical_name,
+                        MAX_DEPENDENCIES, dependency_order, dependency_error) ||
+                    (work.validate_dependency_order && dependency_order != work.expected_dependency_order)) {
+                    error = dependency_error.empty() ? "package dependency order mismatch" : dependency_error;
+                } else {
+                    const BinaryPackageIndex index = read_binary_package_index(resolved.path);
+                    succeeded = index.valid && read_binary_package_section(
+                        resolved.path, index, work.section, bytes, error);
+                    if (!succeeded && error.empty()) error = index.error;
+                }
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                Request* item = find(work.handle);
+                if (item != nullptr && item->state == VirtualReadState::Reading) {
+                    if (item->mount_epoch != mount_epoch_ || item->mount_generation != generation_ ||
+                        item->mount_generation != work.mount_generation) {
+                        item->error = "stale mount generation";
+                        item->state = VirtualReadState::Failed;
+                    } else if (item->dependency_generation != 0 &&
+                        item->dependency_generation != generation_) {
+                        item->error = "stale dependency generation";
+                        item->state = VirtualReadState::Failed;
+                    } else if (!succeeded) {
+                        item->error = std::move(error);
+                        item->state = VirtualReadState::Failed;
+                    } else {
+                        item->bytes = std::move(bytes);
+                        item->state = VirtualReadState::Ready;
+                    }
+                }
+            }
+            // Cancellation and slot reuse do not publish the abandoned result,
+            // but the bounded work item still counts against this pump budget.
+            ++completed;
+        }
+        return completed;
     }
 
     VirtualReadState state(VirtualReadHandle handle) const {
@@ -94,11 +185,10 @@ public:
         return true;
     }
 
-    const std::string& error(VirtualReadHandle handle) const {
+    std::string error(VirtualReadHandle handle) const {
         std::lock_guard<std::mutex> lock(mutex_);
-        static const std::string empty;
         const Request* item = find(handle);
-        return item == nullptr ? empty : item->error;
+        return item == nullptr ? std::string{} : item->error;
     }
 
 private:
@@ -107,8 +197,10 @@ private:
         if (!mounted_ || !safe_package_path(logical_name) || section.empty()) return {};
         for (uint32_t slot = 0; slot < MAX_REQUESTS; ++slot) {
             Request& item = requests_[slot];
-            if (item.state == VirtualReadState::Queued && item.logical_name == logical_name &&
+            if ((item.state == VirtualReadState::Queued || item.state == VirtualReadState::Reading) &&
+                item.logical_name == logical_name &&
                 item.section == section && item.mount_generation == generation_ &&
+                item.mount_epoch == mount_epoch_ &&
                 item.dependency_generation == dependency_generation &&
                 item.validate_dependency_order == (dependency_order != nullptr) &&
                 (dependency_order == nullptr || item.expected_dependency_order == *dependency_order)) {
@@ -117,7 +209,8 @@ private:
         }
         for (uint32_t slot = 0; slot < MAX_REQUESTS; ++slot) {
             Request& item = requests_[slot];
-            if (item.state == VirtualReadState::Queued || item.state == VirtualReadState::Ready) continue;
+            if (item.state == VirtualReadState::Queued || item.state == VirtualReadState::Reading ||
+                item.state == VirtualReadState::Ready) continue;
             const uint32_t previous_generation = item.generation;
             item = {};
             item.logical_name = logical_name;
@@ -127,6 +220,7 @@ private:
                 item.validate_dependency_order = true;
             }
             item.mount_generation = generation_;
+            item.mount_epoch = mount_epoch_;
             item.dependency_generation = dependency_generation;
             item.generation = previous_generation == UINT32_MAX ? 0 : previous_generation + 1;
             if (item.generation == 0) { item.state = VirtualReadState::Failed; return {}; }
@@ -142,59 +236,22 @@ private:
         std::set<std::string> seen;
         for (const std::string& dependency : dependencies) {
             if (!safe_package_path(dependency) || dependency == logical_name ||
-                !seen.insert(dependency).second ||
-                !resolve_package_path(base_root_, overrides_, dependency, generation_).found) return false;
+                !seen.insert(dependency).second) return false;
         }
         return true;
     }
 
-    uint32_t pump_locked(uint32_t budget) {
-        uint32_t completed = 0;
-        for (Request& item : requests_) {
-            if (completed >= budget) break;
-            if (item.state != VirtualReadState::Queued) continue;
-            if (item.mount_generation != generation_) {
-                item.error = "stale mount generation";
-                item.state = VirtualReadState::Failed;
-                ++completed;
-                continue;
-            }
-            if (item.dependency_generation != 0 && item.dependency_generation != generation_) {
-                item.error = "stale dependency generation";
-                item.state = VirtualReadState::Failed;
-                ++completed;
-                continue;
-            }
-            const PackageResolution resolved = resolve_package_path(
-                base_root_, overrides_, item.logical_name, item.mount_generation);
-            if (!resolved.found) {
-                item.error = resolved.error;
-                item.state = VirtualReadState::Failed;
-                ++completed;
-                continue;
-            }
-            std::vector<std::string> dependency_order;
-            std::string dependency_error;
-            if (!package_dependency_order(base_root_, overrides_, item.logical_name,
-                    MAX_DEPENDENCIES, dependency_order, dependency_error) ||
-                (item.validate_dependency_order && dependency_order != item.expected_dependency_order)) {
-                item.error = dependency_error.empty() ? "package dependency order mismatch" : dependency_error;
-                item.state = VirtualReadState::Failed;
-                ++completed;
-                continue;
-            }
-            const BinaryPackageIndex index = read_binary_package_index(resolved.path);
-            if (!index.valid || !read_binary_package_section(resolved.path, index, item.section,
-                    item.bytes, item.error)) {
-                if (item.error.empty()) item.error = index.error;
-                item.state = VirtualReadState::Failed;
-            } else {
-                item.state = VirtualReadState::Ready;
-            }
-            ++completed;
-        }
-        return completed;
-    }
+    struct Work {
+        VirtualReadHandle handle;
+        std::string logical_name;
+        std::string section;
+        std::vector<std::string> expected_dependency_order;
+        std::filesystem::path base_root;
+        std::vector<std::filesystem::path> overrides;
+        uint64_t mount_generation = 0;
+        uint64_t mount_epoch = 0;
+        bool validate_dependency_order = false;
+    };
     struct Request {
         std::string logical_name;
         std::string section;
@@ -202,6 +259,7 @@ private:
         std::vector<std::string> expected_dependency_order;
         std::string error;
         uint64_t mount_generation = 0;
+        uint64_t mount_epoch = 0;
         uint64_t dependency_generation = 0;
         uint32_t generation = 0;
         VirtualReadState state = VirtualReadState::Empty;
@@ -221,6 +279,7 @@ private:
     std::filesystem::path base_root_;
     std::vector<std::filesystem::path> overrides_;
     uint64_t generation_ = 0;
+    uint64_t mount_epoch_ = 0;
     bool mounted_ = false;
     mutable std::mutex mutex_;
     std::array<Request, MAX_REQUESTS> requests_{};

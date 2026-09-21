@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <filesystem>
@@ -163,12 +164,20 @@ struct BinaryPackageIndex {
 };
 
 inline uint32_t package_crc32(const uint8_t* bytes, size_t size) {
+    static const std::array<uint32_t, 256> table = []() {
+        std::array<uint32_t, 256> values{};
+        for (uint32_t index = 0; index < values.size(); ++index) {
+            uint32_t value = index;
+            for (uint32_t bit = 0; bit < 8; ++bit) {
+                value = (value >> 1) ^ (0xEDB88320u & (0u - (value & 1u)));
+            }
+            values[index] = value;
+        }
+        return values;
+    }();
     uint32_t checksum = 0xFFFFFFFFu;
     for (size_t index = 0; index < size; ++index) {
-        checksum ^= bytes[index];
-        for (uint32_t bit = 0; bit < 8; ++bit) {
-            checksum = (checksum >> 1) ^ (0xEDB88320u & (0u - (checksum & 1u)));
-        }
+        checksum = table[(checksum ^ bytes[index]) & 0xFFu] ^ (checksum >> 8);
     }
     return ~checksum;
 }

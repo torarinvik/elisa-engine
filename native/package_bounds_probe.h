@@ -7,8 +7,10 @@
 #include "native_resource_loader.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 #include <vector>
 #include <zstd.h>
 
@@ -65,6 +67,27 @@ inline void write_binary_package_fixture(const std::filesystem::path& path, bool
     }
     std::ofstream output(path, std::ios::binary);
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+inline void write_large_binary_package_fixture(const std::filesystem::path& path, size_t payload_size) {
+    const size_t index_end = BinaryPackageIndex::HEADER_BYTES + BinaryPackageIndex::ENTRY_BYTES;
+    std::vector<uint8_t> header(index_end, 0);
+    const std::vector<uint8_t> payload(payload_size, 0x5A);
+    header[0] = 'E'; header[1] = 'L'; header[2] = 'P'; header[3] = 'K';
+    put_package_u16(header, 4, 1);
+    put_package_u16(header, 6, 1);
+    put_package_u64(header, 8, BinaryPackageIndex::HEADER_BYTES);
+    put_package_u64(header, 16, BinaryPackageIndex::ENTRY_BYTES);
+    const size_t entry = BinaryPackageIndex::HEADER_BYTES;
+    const std::string name = "payload";
+    std::copy(name.begin(), name.end(), header.begin() + entry);
+    put_package_u64(header, entry + 16, index_end);
+    put_package_u64(header, entry + 24, payload.size());
+    put_package_u64(header, entry + 32, payload.size());
+    put_package_u32(header, entry + 44, package_crc32(payload.data(), payload.size()));
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    output.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
 }
 
 inline void write_binary_package_with_manifest(const std::filesystem::path& path,
@@ -168,6 +191,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
     write_binary_package_with_manifest(base_root / "maze.elpk", {"dep.elpk"});
     write_binary_package_with_manifest(override_root / "maze.elpk", {"dep.elpk"}, true);
     write_binary_package_with_manifest(base_root / "dep.elpk", {});
+    write_binary_package_with_manifest(base_root / "missing-dep.elpk", {"missing.elpk"});
     write_binary_package_with_manifest(base_root / "leaf-a.elpk", {});
     write_binary_package_with_manifest(base_root / "leaf-z.elpk", {});
     write_binary_package_with_manifest(base_root / "branch.elpk", {"leaf-z.elpk"});
@@ -216,10 +240,41 @@ inline bool probe_package_bounds(const std::string& valid_package,
     auto worker = worker_vfs.pump_async(1);
     const bool worker_read_ok = worker_mounted && worker_read.generation != 0 && worker.get() == 1 &&
         worker_vfs.state(worker_read) == VirtualReadState::Ready;
-    const bool dependency_rejections = worker_vfs.request_with_dependencies(
-        "maze.elpk", "mesh", {"missing.elpk"}, 10).generation == 0 &&
+    const VirtualReadHandle missing_dependency_read = worker_vfs.request_with_dependencies(
+        "missing-dep.elpk", "mesh", {"missing.elpk"}, 10);
+    const bool dependency_rejections = missing_dependency_read.generation != 0 &&
         worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"dep.elpk", "dep.elpk"}, 10).generation == 0 &&
-        worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0;
+        worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0 &&
+        worker_vfs.pump(1) == 1 && worker_vfs.state(missing_dependency_read) == VirtualReadState::Failed &&
+        worker_vfs.error(missing_dependency_read) == "package dependency is missing";
+    const std::filesystem::path in_flight_path = base_root / "in-flight.elpk";
+    write_large_binary_package_fixture(in_flight_path, 32 * 1024 * 1024);
+    VirtualFileService in_flight_vfs;
+    const bool in_flight_mounted = in_flight_vfs.mount(base_root, {}, 12);
+    const VirtualReadHandle in_flight_read = in_flight_vfs.request("in-flight.elpk", "payload");
+    auto in_flight_worker = in_flight_vfs.pump_async(1);
+    const auto in_flight_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    VirtualReadState observed_in_flight_state = VirtualReadState::Queued;
+    while (std::chrono::steady_clock::now() < in_flight_deadline) {
+        observed_in_flight_state = in_flight_vfs.state(in_flight_read);
+        if (observed_in_flight_state != VirtualReadState::Queued) break;
+        std::this_thread::yield();
+    }
+    const bool saw_in_flight_read = in_flight_mounted &&
+        observed_in_flight_state == VirtualReadState::Reading;
+    const bool cancelled_in_flight = saw_in_flight_read && in_flight_vfs.cancel(in_flight_read) &&
+        in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled &&
+        in_flight_worker.get() == 1 && in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled;
+    VirtualFileService remount_vfs;
+    const bool first_epoch_mounted = remount_vfs.mount(base_root, {}, 14);
+    const VirtualReadHandle prior_epoch_read = remount_vfs.request("dep.elpk", "mesh");
+    const bool second_epoch_mounted = remount_vfs.mount(base_root, {}, 14);
+    const VirtualReadHandle current_epoch_read = remount_vfs.request("dep.elpk", "mesh");
+    const bool remount_epoch_invalidates = first_epoch_mounted && second_epoch_mounted &&
+        current_epoch_read.generation != 0 && current_epoch_read.slot != prior_epoch_read.slot &&
+        remount_vfs.pump(2) == 2 && remount_vfs.state(prior_epoch_read) == VirtualReadState::Failed &&
+        remount_vfs.error(prior_epoch_read) == "stale mount generation" &&
+        remount_vfs.state(current_epoch_read) == VirtualReadState::Ready;
     VirtualFileService graph_vfs;
     const bool graph_mounted = graph_vfs.mount(base_root, {}, 11);
     const VirtualReadHandle graph_read = graph_vfs.request_with_dependencies("graph.elpk", "mesh",
@@ -315,7 +370,9 @@ inline bool probe_package_bounds(const std::string& valid_package,
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).override_used &&
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
         check(worker_read_ok, "virtual file worker scheduling") &&
-        check(dependency_rejections, "virtual file dependency ordering and existence") &&
+        check(dependency_rejections, "virtual file worker dependency validation") &&
+        check(cancelled_in_flight, "virtual file in-flight cancellation does not block publication") &&
+        check(remount_epoch_invalidates, "virtual file remount epoch invalidation") &&
         check(dependency_graph, "package manifest dependency DAG order and cycle rejection") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
