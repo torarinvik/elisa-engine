@@ -177,6 +177,7 @@ int32_t elisa_render_scene_v1_set_environment(
     float fog_start, float fog_density, int32_t fog_enabled);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_ambient_occlusion(int32_t enabled);
+int32_t elisa_render_scene_v1_set_ambient_occlusion_settings(float range, float power);
 int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled);
 int32_t elisa_render_scene_v1_set_tonemap(int32_t tonemap);
 int32_t elisa_render_scene_v1_set_exposure(float exposure);

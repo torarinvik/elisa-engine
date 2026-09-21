@@ -86,11 +86,9 @@ module RenderScene:
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_texture(handle: i64, slot: i32, asset_path: cstr) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32,
             blue: f32, strength: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_environment(
             sun_direction_x: f32, sun_direction_y: f32, sun_direction_z: f32,
@@ -99,25 +97,20 @@ module RenderScene:
             sky_exposure: f32,
             fog_red: f32, fog_green: f32, fog_blue: f32,
             fog_start: f32, fog_density: f32, fog_enabled: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_bloom(enabled: i32, threshold: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_ambient_occlusion(enabled: i32) -> i32
-
+        @callconv(c)
+        extern elisa_render_scene_v1_set_ambient_occlusion_settings(range: f32, power: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_fxaa(enabled: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_tonemap(tonemap: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_exposure(exposure: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_create_text(text: cstr, x: f32, y: f32,
             font_size: i32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
@@ -464,6 +457,13 @@ module RenderScene:
         def set_ambient_occlusion(enabled: bool) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_ambient_occlusion(enabled_value))
+
+        # Range is measured in world units; power controls contact contrast.
+        # Both values are bounded so projects cannot destabilize the renderer.
+        def set_ambient_occlusion_settings(range: f32, power: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if range < 0.01 or range > 32.0
+            raise RenderSceneError.InvalidValue if power < 0.0 or power > 8.0
+            try check_status(elisa_render_scene_v1_set_ambient_occlusion_settings(range, power))
 
         # FXAA smooths thin geometry edges at the current render resolution.
         def set_fxaa(enabled: bool) -> void error[RenderSceneError]:
