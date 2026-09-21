@@ -160,6 +160,21 @@ module RuntimeServicesProbe:
                 RuntimeServices::RuntimeServicesError.SessionStopped: 0
                 error failure: 2
             return 64 if stopped_clock != 0
+            stopped_pump: Application::PumpStatus = catch RuntimeServices::pump(session):
+                value: Application::PumpStatus.NotRunning
+                RuntimeServices::RuntimeServicesError.SessionStopped: Application::PumpStatus.Failed
+                error failure: Application::PumpStatus.Failed
+            return 68 if stopped_pump != Application::PumpStatus.Failed
+            stopped_frame_info: bool = catch RuntimeServices::frame_info(session):
+                value: true
+                RuntimeServices::RuntimeServicesError.SessionStopped: false
+                error failure: true
+            return 69 if stopped_frame_info
+            stopped_exit: bool = catch RuntimeServices::request_exit(session):
+                value: true
+                RuntimeServices::RuntimeServicesError.SessionStopped: false
+                error failure: true
+            return 70 if stopped_exit
 
             requirements.service_count <- 4
             without_audio_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
