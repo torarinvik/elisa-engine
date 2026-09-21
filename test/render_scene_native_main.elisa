@@ -8,6 +8,7 @@ include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
 include "./maze_rendering_native.elisa"
 include "./render_scene_snapshot_native.elisa"
+include "./render_scene_snapshot_retained_native.elisa"
 include "./render_scene_bundle_texture_native.elisa"
 include "./render_scene_bundle_dependency_native.elisa"
 include "./render_scene_material_subset_native.elisa"
@@ -25,8 +26,9 @@ using MazeTrace
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
 
-# Test groups past the distinct exit codes exit with their group code after
-# logging the failing case.
+# Test groups without an exit range of their own exit with their group code
+# after logging the failing case. docs/validation/elisa-render-scene.md lists
+# every exit; check it before adding a group.
 @callconv(c)
 extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 
@@ -119,10 +121,10 @@ def exercise_render_scene() -> i32:
     return 33 if valid_camera != 0
 
     environment_test_status: i32 = RenderSceneEnvironmentNativeTests::exercise()
-    return environment_test_status if environment_test_status != 0
+    return elisa_render_scene_v1_test_failed_case(197, environment_test_status) if environment_test_status != 0
 
     camera_test: i32 = RenderSceneCameraNativeTests::exercise()
-    return camera_test if camera_test != 0
+    return elisa_render_scene_v1_test_failed_case(198, camera_test) if camera_test != 0
 
     invalid_arc_width: i32 = catch RenderScene::create_electric_arc(0.0, 0.1, 7):
         value: 0
@@ -172,7 +174,7 @@ def exercise_render_scene() -> i32:
         error failure: 2
     return 77 if invalid_hud_text != 1
     text_updates: i32 = RenderSceneTextNativeTests::exercise(hud_text)
-    return text_updates if text_updates != 0
+    return elisa_render_scene_v1_test_failed_case(199, text_updates) if text_updates != 0
 
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
@@ -333,7 +335,9 @@ def exercise_render_scene() -> i32:
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
 
     snapshot_test_status: i32 = RenderSceneSnapshotNativeTests::exercise()
-    return snapshot_test_status if snapshot_test_status != 0
+    return elisa_render_scene_v1_test_failed_case(227, snapshot_test_status) if snapshot_test_status != 0
+    retained_snapshot_status: i32 = RenderSceneSnapshotRetainedNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(195, retained_snapshot_status) if retained_snapshot_status != 0
     bundle_texture_status: i32 = RenderSceneBundleTextureNativeTests::exercise()
     return 160 + bundle_texture_status if bundle_texture_status != 0
     bundle_dependency_status: i32 = RenderSceneBundleDependencyNativeTests::exercise()

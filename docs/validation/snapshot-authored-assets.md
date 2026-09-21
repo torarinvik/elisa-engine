@@ -65,11 +65,11 @@ gameplay entity or to a later world epoch. Before this change the presenter
 compared only the render ID, mesh and material, so either identity change would
 have staged a refused row.
 
-`test/render_scene_snapshot_retained_native.elisa` runs in the render smoke's
-snapshot group. A failure logs `render scene test group 195 failed at case N`
-and exits 195. It registers two meshes, two paints and two sets, each listing
-one paint. It then commits one row naming a paint and one naming a set, both for
-the same gameplay entity.
+`test/render_scene_snapshot_retained_native.elisa` runs in the render smoke as
+group 195, right after the snapshot group (227). A failure logs `render scene
+test group 195 failed at case N` and exits 195. It registers two meshes, two
+paints and two sets, each listing one paint. It then commits one row naming a
+paint and one naming a set, both for the same gameplay entity.
 
 | Cases | Check |
 | --- | --- |

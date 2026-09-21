@@ -215,3 +215,73 @@ which contains that fix. No game-authored native code is required.
 Native smoke coverage checks lit material state, UV transform, shadow-casting
 flags, invalid roughness, arc depth toggling, and rejection of a retired arc
 handle. The Amazing Labyrinth art study supplies native visual evidence.
+
+## Exit codes
+
+`scripts/render_scene_native_smoke.py` passes through the exit status of
+`test/render_scene_native_main.elisa`, and each nonzero exit names one test
+group. A group without an exit range of its own first writes `render scene test
+group G failed at case N` to stderr, then exits G.
+
+| Exit | Group | Failing case |
+| --- | --- | --- |
+| 1–109 | checks in `render_scene_native_main.elisa` | the exit |
+| 121–144 | `maze_rendering_native.elisa` | exit − 120 |
+| 150–157 | `render_scene_arc_depth_native.elisa` | the exit |
+| 161–192 | `render_scene_bundle_texture_native.elisa` | exit − 160 |
+| 193 | `render_scene_material_subset_native.elisa` | logged |
+| 194 | `render_scene_async_asset_native.elisa` | logged |
+| 195 | `render_scene_snapshot_retained_native.elisa` | logged |
+| 196 | `render_scene_cooked_material_native.elisa` | logged |
+| 197 | `render_scene_environment_native.elisa`, including `render_scene_art_material_native.elisa` | logged |
+| 198 | `render_scene_camera_native.elisa` | logged |
+| 199 | `render_scene_text_native.elisa` | logged |
+| 201–226 | `render_scene_bundle_dependency_native.elisa` | exit − 200 |
+| 227 | `render_scene_snapshot_native.elisa` | logged |
+
+Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
+codes also belonged to other groups:
+- Camera's 121–129 and text's 121–122 were maze exits.
+- Text's 83–86 were snapshot exits.
+- Snapshot's 31–120 overlapped many of the main file's own exits, such as
+  58–61 and 70–109, and environment's 40–46.
+- Art material's 155–166 overlapped arc depth's 155–157 and bundle texture's
+  161–166.
+
+Each of these groups now logs its old code as the case, so a code in an older
+record still names the same check. The retained snapshot test used to run
+inside the snapshot test and return 195 through it. Main now runs it right
+after the snapshot group, so a retained failure isn't logged as snapshot
+case 195.
+
+Case numbers still repeat inside some groups:
+- The main file uses 58–61 twice, and 103 for both a perspective render failure
+  and a failed application shutdown.
+- Snapshot uses 40 for four checks and 41–43 for two each.
+- Arc depth uses 154 twice.
+
+Validation on 2026-09-21 ran in a detached worktree of `5565090` plus this
+change:
+- `scripts/render_scene_native_smoke.py` exited 0 on SDL3/Metal.
+- A scan of every `return` in the main file and the test files it includes
+  found no exit shared by two groups. The scan composed the `120 +`, `160 +`
+  and `200 +` offsets in main, and snapshot's `30 +` and `100 +`.
+- Each change below was applied to a copy of `native/`, and the smoke's C++
+  host was rebuilt against the smoke's Elisa archive. An unmutated control
+  exited 0. Two probe hooks were made to report a mismatch, to force a known
+  case.
+
+| Change | Exit | Logged case | Old exit, also used by |
+| --- | --- | --- | --- |
+| the environment probe reports a mismatch | 197 | 42 | snapshot |
+| the art-material probe reports a mismatch | 197 | 161 | bundle texture case 1 |
+| an orthographic height below 100 is refused | 198 | 121 | maze case 1, text |
+| `set_text` refuses every update | 199 | 83 | snapshot |
+| the snapshot probe counts one extra API call | 227 | 94 | the main file's arc visibility check |
+| staging skips the retained-row identity check | 195 | 112 | none; it exited 195 before too |
+
+- Two earlier attempts forced no group exit. Native code that accepted a zero
+  sun direction exited 0, because `RenderScene::set_environment` rejects it in
+  Elisa first. Accepting a zero orthographic height aborted the host with
+  SIGABRT and logged no group; a signal carries no group code.
+- `scripts/check_source_length.py` and `git diff --check` passed.
