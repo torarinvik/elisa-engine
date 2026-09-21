@@ -249,6 +249,7 @@ group G failed at case N` to stderr, then exits G.
 | 227 | `render_scene_snapshot_native.elisa` | logged |
 | 228 | `render_scene_node_hierarchy_native.elisa` | logged |
 | 229 | `render_scene_panel_native.elisa` | logged |
+| 230 | `render_scene_cooked_texture_native.elisa` | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
 codes also belonged to other groups:

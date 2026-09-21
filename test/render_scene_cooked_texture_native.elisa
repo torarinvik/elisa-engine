@@ -1,0 +1,524 @@
+# Native A05 coverage for glTF material textures cooked into a mesh bundle.
+# The textured panel fixture has four slots: an alpha-masked, double-sided
+# cutout over a red-emissive backdrop, a lit strip painted red and blue with
+# normal and surface images and occlusion, and a strip whose emissive image
+# glows red and blue. A game registers the mesh's images, then its
+# materials, which must bind exactly those images and draw them. A slot's
+# image must come from the mesh's own bundle, under one texture ID, unchanged
+# since the mesh loaded. scripts/render_scene_native_smoke.py cooks the
+# bundles under build/cooked/subsets.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+
+module RenderSceneCookedTextureNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_matches(high: u64, low: u64,
+            red: f32, green: f32, blue: f32, alpha: f32, metallic: f32, roughness: f32,
+            emissive_red: f32, emissive_green: f32, emissive_blue: f32, alpha_cutoff: f32,
+            alpha_mode: i32, double_sided: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_id(high: u64, low: u64, slot: i32,
+            texture_high: u64, texture_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_size(
+            material_high: u64, material_low: u64, slot: i32, width: u32, height: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_occlusion(high: u64, low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_set_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_shared_mesh_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_replace_cooked_file(source: cstr, destination: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille: u32, y_permille: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_texture_count(mesh_high: u64, mesh_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_mesh_texture(mesh_high: u64, mesh_low: u64,
+            index: u32, high: u64, low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        const module Ids:
+            MESHES: u64 = 970
+            TEXTURES: u64 = 971
+            MATERIALS: u64 = 972
+            SETS: u64 = 973
+
+        const module Mesh:
+            TEXTURED: u64 = 1
+            PLAIN: u64 = 2
+            REWRITTEN: u64 = 3
+            ABSENT: u64 = 99
+
+        # The textured mesh's image i registers as texture i + 1.
+        const module Image:
+            EXTRA: u64 = 5
+            FOREIGN: u64 = 6
+            SPARE: u64 = 7
+            REWRITTEN_BASE: u64 = 8
+            REWRITTEN_SURFACE: u64 = 9
+
+        const module Paint:
+            CUTOUT: u64 = 1
+            PAINTED: u64 = 2
+            GLOW: u64 = 3
+            BACKDROP: u64 = 4
+            SPARE: u64 = 5
+            HAND: u64 = 6
+
+        const module Set:
+            PANEL: u64 = 1
+            SCRATCH: u64 = 2
+
+        const module Code:
+            OK: i32 = 0
+            INVALID: i32 = 1
+            LOAD_FAILED: i32 = 2
+            BATCH_ACTIVE: i32 = 3
+            PENDING: i32 = 4
+            OTHER: i32 = 5
+
+        # Texture counts are never negative, so failures read below 0.
+        const module Count:
+            INVALID: i32 = -1
+            LOAD_FAILED: i32 = -2
+            PENDING: i32 = -3
+            OTHER: i32 = -4
+
+        # Render scene material texture slots.
+        const module Slot:
+            BASE: i32 = 0
+            NORMAL: i32 = 1
+            SURFACE: i32 = 2
+            EMISSIVE: i32 = 3
+
+        const module Channel:
+            RED: i32 = 0
+            GREEN: i32 = 1
+            BLUE: i32 = 2
+
+        const ROW: i64 = 9701
+        const NATIVE_OK: i32 = 0
+        const NATIVE_INVALID: i32 = -1
+        const ALPHA_OPAQUE: i32 = 0
+        const ALPHA_MASK: i32 = 1
+        const VISIBLE_Y: f32 = 4.0
+        # The panel covers this frame row; the main test's electric arc
+        # crosses the middle row.
+        const SAMPLE_ROW: u32 = 300
+
+        def mesh_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MESHES, low: low}
+
+        def texture_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::TEXTURES, low: low}
+
+        def material_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MATERIALS, low: low}
+
+        def set_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::SETS, low: low}
+
+        def register_mesh(low: u64, path: cstr) -> i32:
+            catch RenderScene::register_snapshot_mesh_asset(mesh_id(low), path):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def unregister_mesh(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_mesh_asset(mesh_id(low)):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def register_image(mesh_low: u64, index: u32, texture_low: u64) -> i32:
+            catch RenderScene::register_snapshot_mesh_texture(mesh_id(mesh_low), index, texture_id(texture_low)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.AssetPending: Code::PENDING
+                RenderScene::RenderSceneError.BatchActive: Code::BATCH_ACTIVE
+                error failure: Code::OTHER
+
+        def register_bundle_image(low: u64, bundle: cstr, section: cstr) -> i32:
+            catch RenderScene::register_snapshot_bundle_texture_asset(texture_id(low), bundle, section):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        def request_bundle_image(low: u64, bundle: cstr, section: cstr) -> i32:
+            catch RenderScene::request_snapshot_bundle_texture_asset(texture_id(low), bundle, section):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def unregister_texture(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_texture_asset(texture_id(low)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        def unregister_material(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_material_asset(material_id(low)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        def unregister_set(asset: Assets::AssetId) -> i32:
+            catch RenderScene::unregister_snapshot_material_set(asset):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                error failure: Code::OTHER
+
+        # Typed error arms and a value arm in one catch stop stage1, so the
+        # failure and the count come from separate calls.
+        def count_failure(mesh: Assets::AssetId) -> i32:
+            catch RenderScene::snapshot_mesh_texture_count(mesh):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: Count::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Count::LOAD_FAILED
+                RenderScene::RenderSceneError.AssetPending: Count::PENDING
+                error failure: Count::OTHER
+
+        def texture_count(mesh: Assets::AssetId) -> i32:
+            failure: i32 = count_failure(mesh)
+            return failure if failure != 0
+            catch RenderScene::snapshot_mesh_texture_count(mesh):
+                value: value.i32()
+                error failure: Count::OTHER
+
+        def register_slot(slot: u32, paint: u64) -> i32:
+            catch RenderScene::register_snapshot_mesh_material(mesh_id(Mesh::TEXTURED), slot, material_id(paint)):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.AssetPending: Code::PENDING
+                RenderScene::RenderSceneError.BatchActive: Code::BATCH_ACTIVE
+                error failure: Code::OTHER
+
+        def append(materials: mutable RenderScene::SnapshotMaterialSet&, paint: u64) -> i32:
+            catch RenderScene::snapshot_material_set_append(materials, material_id(paint)):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def register_built(materials: RenderScene::SnapshotMaterialSet&, set: Assets::AssetId) -> i32:
+            catch RenderScene::register_snapshot_mesh_materials(mesh_id(Mesh::TEXTURED), materials, set):
+                ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
+                RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
+                RenderScene::RenderSceneError.AssetPending: Code::PENDING
+                RenderScene::RenderSceneError.BatchActive: Code::BATCH_ACTIVE
+                error failure: Code::OTHER
+
+        # Registers the textured mesh's four cooked materials, in slot order,
+        # as `set`.
+        def register_panel(set: Assets::AssetId, cutout: u64, painted: u64, glow: u64, backdrop: u64) -> i32:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: mutable i32 = append(&materials, cutout)
+            appended <- appended + append(&materials, painted)
+            appended <- appended + append(&materials, glow)
+            appended <- appended + append(&materials, backdrop)
+            return Code::OTHER if appended != Code::OK
+            register_built(materials, set)
+
+        # The painted slot's factors and images, registered by hand, which
+        # can't enable occlusion.
+        def register_hand_painted() -> i32:
+            material: mutable Material::Material = Material::Material()
+            material.base_color <- texture_id(1)
+            material.normal <- texture_id(2)
+            material.metallic_roughness <- texture_id(3)
+            material.metallic_factor <- 1.0
+            catch RenderScene::register_snapshot_material_asset(material_id(Paint::HAND), &material):
+                ok: Code::OK
+                error failure: Code::OTHER
+
+        def texture_bytes() -> u64:
+            elisa_render_scene_v1_test_snapshot_bundle_texture_bytes()
+
+        def set_count() -> u64:
+            elisa_render_scene_v1_test_snapshot_material_set_count()
+
+        # Material `paint` samples texture `image` in `slot`, a `size` square.
+        def binds(paint: u64, slot: i32, image: u64, size: u32) -> bool:
+            named: i32 = elisa_render_scene_v1_test_snapshot_material_texture_id(Ids::MATERIALS, paint, slot,
+                Ids::TEXTURES, image)
+            return false if named != 1
+            elisa_render_scene_v1_test_snapshot_material_texture_size(Ids::MATERIALS, paint, slot, size, size) == 1
+
+        def unbound(paint: u64, slot: i32) -> bool:
+            elisa_render_scene_v1_test_snapshot_material_texture_id(Ids::MATERIALS, paint, slot, 0, 0) == 1
+
+        def occlusion(paint: u64) -> i32:
+            elisa_render_scene_v1_test_snapshot_material_occlusion(Ids::MATERIALS, paint)
+
+        # White, nonmetallic, masked at 0.5 and double-sided, cut out by
+        # image 3.
+        def is_cutout(paint: u64) -> bool:
+            factors: i32 = elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5, ALPHA_MASK, 1)
+            return false if factors != 1 or not binds(paint, Slot::BASE, 4, 32)
+            return false if not unbound(paint, Slot::NORMAL) or not unbound(paint, Slot::SURFACE)
+            unbound(paint, Slot::EMISSIVE) and occlusion(paint) == 0
+
+        # Painted by image 0, bumped by image 1, and surfaced and occluded by
+        # image 2.
+        def is_painted(paint: u64) -> bool:
+            factors: i32 = elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, ALPHA_OPAQUE, 0)
+            return false if factors != 1 or not binds(paint, Slot::BASE, 1, 16)
+            return false if not binds(paint, Slot::NORMAL, 2, 8) or not binds(paint, Slot::SURFACE, 3, 4)
+            unbound(paint, Slot::EMISSIVE) and occlusion(paint) == 1
+
+        # Black, glowing through image 0.
+        def is_glow(paint: u64) -> bool:
+            factors: i32 = elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, ALPHA_OPAQUE, 0)
+            return false if factors != 1 or not unbound(paint, Slot::BASE) or not unbound(paint, Slot::NORMAL)
+            return false if not unbound(paint, Slot::SURFACE) or occlusion(paint) != 0
+            binds(paint, Slot::EMISSIVE, 1, 16)
+
+        # Black, glowing red, with no image.
+        def is_backdrop(paint: u64) -> bool:
+            factors: i32 = elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.5, ALPHA_OPAQUE, 0)
+            return false if factors != 1 or not unbound(paint, Slot::BASE) or not unbound(paint, Slot::NORMAL)
+            return false if not unbound(paint, Slot::SURFACE) or not unbound(paint, Slot::EMISSIVE)
+            occlusion(paint) == 0
+
+        def meshes() -> i32:
+            return 1 if register_mesh(Mesh::TEXTURED, "build/cooked/subsets/textured.elpk") != Code::OK
+            return 2 if register_mesh(Mesh::PLAIN, "build/cooked/subsets/panel.elpk") != Code::OK
+            return 3 if register_mesh(Mesh::REWRITTEN, "build/cooked/subsets/textured_rewrite.elpk") != Code::OK
+            0
+
+        # Only the textured mesh's slots sample images.
+        def counts() -> i32:
+            return 1 if texture_count(mesh_id(Mesh::TEXTURED)) != 4 or texture_count(mesh_id(Mesh::PLAIN)) != 0
+            return 2 if texture_count(mesh_id(Mesh::ABSENT)) != Count::LOAD_FAILED
+            return 3 if texture_count(Assets::AssetId{high: 0, low: 0}) != Count::INVALID
+            return 4 if elisa_render_scene_v1_snapshot_mesh_texture_count(0, 0) != NATIVE_INVALID
+            0
+
+        # A textured slot can't register until its images are registered from
+        # the mesh's own bundle: the same image from another bundle doesn't
+        # count. Nothing is left behind, and an untextured slot registers at
+        # once.
+        def before_images() -> i32:
+            textures: u64 = texture_bytes()
+            sets: u64 = set_count()
+            variant: cstr = "build/cooked/subsets/textured_variant.elpk"
+            return 1 if register_bundle_image(Image::FOREIGN, variant, "image_3") != Code::OK
+            return 2 if register_slot(0, Paint::CUTOUT) != Code::LOAD_FAILED
+            whole: i32 = register_panel(set_id(Set::PANEL), Paint::CUTOUT, Paint::PAINTED, Paint::GLOW, Paint::BACKDROP)
+            return 3 if whole != Code::LOAD_FAILED
+            # That ID already holds the other bundle's image.
+            return 4 if register_image(Mesh::TEXTURED, 3, Image::FOREIGN) != Code::INVALID
+            return 5 if unregister_texture(Image::FOREIGN) != Code::OK or texture_bytes() != textures
+            return 6 if unregister_material(Paint::CUTOUT) != Code::LOAD_FAILED or set_count() != sets
+            return 7 if unregister_material(Paint::BACKDROP) != Code::LOAD_FAILED
+            return 8 if register_slot(3, Paint::BACKDROP) != Code::OK or not is_backdrop(Paint::BACKDROP)
+            0
+
+        # Each image registers from the mesh's bundle under its own ID, and a
+        # repeat is a no-op.
+        def images() -> i32:
+            textures: u64 = texture_bytes()
+            lows: u64[4] = [1, 2, 3, 4]
+            for index in 0..<4 |lows|:
+                return 1 if register_image(Mesh::TEXTURED, index.u32(), lows[index]) != Code::OK
+            added: u64 = texture_bytes()
+            return 2 if added <= textures
+            return 3 if register_image(Mesh::TEXTURED, 0, 1) != Code::OK or texture_bytes() != added
+            # One ID can't hold two images, and there is no fifth image.
+            return 4 if register_image(Mesh::TEXTURED, 1, 1) != Code::INVALID
+            return 5 if register_image(Mesh::TEXTURED, 4, Image::SPARE) != Code::INVALID
+            return 6 if register_image(Mesh::PLAIN, 0, Image::SPARE) != Code::INVALID
+            return 7 if register_image(Mesh::ABSENT, 0, Image::SPARE) != Code::LOAD_FAILED
+            zero_texture: i32 = elisa_render_scene_v1_register_snapshot_mesh_texture(Ids::MESHES, Mesh::TEXTURED,
+                0, 0, 0)
+            zero_mesh: i32 = elisa_render_scene_v1_register_snapshot_mesh_texture(0, 0, 0, Ids::TEXTURES,
+                Image::SPARE)
+            return 8 if zero_texture != NATIVE_INVALID or zero_mesh != NATIVE_INVALID
+            return 9 if unregister_texture(Image::SPARE) != Code::LOAD_FAILED or texture_bytes() != added
+            # Not inside an open snapshot transaction.
+            return 10 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            refused: i32 = register_image(Mesh::TEXTURED, 0, Image::SPARE)
+            return 11 if elisa_render_scene_v1_snapshot_abort() != NATIVE_OK
+            return 12 if refused != Code::BATCH_ACTIVE or unregister_texture(Image::SPARE) != Code::LOAD_FAILED
+            # Nor under an ID an asynchronous request still holds.
+            return 13 if request_bundle_image(Image::SPARE, "build/cooked/subsets/textured.elpk", "image_0") != Code::OK
+            pending: i32 = register_image(Mesh::TEXTURED, 0, Image::SPARE)
+            return 14 if unregister_texture(Image::SPARE) != Code::OK or pending != Code::PENDING
+            return 15 if texture_bytes() != added
+            0
+
+        # The whole mesh registers with its images bound, and each slot holds
+        # exactly its cooked factors, images, and occlusion.
+        def whole_mesh() -> i32:
+            sets: u64 = set_count()
+            whole: i32 = register_panel(set_id(Set::PANEL), Paint::CUTOUT, Paint::PAINTED, Paint::GLOW, Paint::BACKDROP)
+            return 1 if whole != Code::OK or set_count() != sets + 1
+            return 2 if not is_cutout(Paint::CUTOUT)
+            return 3 if not is_painted(Paint::PAINTED)
+            return 4 if not is_glow(Paint::GLOW)
+            return 5 if not is_backdrop(Paint::BACKDROP)
+            again: i32 = register_panel(set_id(Set::PANEL), Paint::CUTOUT, Paint::PAINTED, Paint::GLOW, Paint::BACKDROP)
+            return 6 if again != Code::OK or register_slot(1, Paint::PAINTED) != Code::OK
+            # The glow samples the painted strip's base image, but as emission.
+            return 7 if register_slot(2, Paint::PAINTED) != Code::INVALID or not is_painted(Paint::PAINTED)
+            return 8 if set_count() != sets + 1
+            # Without occlusion, the same factors and images are another
+            # material.
+            return 9 if register_hand_painted() != Code::OK or occlusion(Paint::HAND) != 0
+            return 10 if register_slot(1, Paint::HAND) != Code::INVALID or unregister_material(Paint::HAND) != Code::OK
+            0
+
+        # A second ID for one of the mesh's images makes every slot that
+        # samples it ambiguous until that ID goes away.
+        def ambiguous() -> i32:
+            extra: i32 = register_bundle_image(Image::EXTRA, "build/cooked/subsets/textured.elpk", "image_0")
+            return 1 if extra != Code::OK
+            painted: i32 = register_slot(1, Paint::SPARE)
+            glow: i32 = register_slot(2, Paint::SPARE)
+            whole: i32 = register_panel(set_id(Set::SCRATCH), Paint::CUTOUT, Paint::PAINTED, Paint::GLOW, Paint::BACKDROP)
+            cutout: i32 = register_slot(0, Paint::CUTOUT)
+            return 2 if unregister_texture(Image::EXTRA) != Code::OK
+            return 3 if painted != Code::INVALID or glow != Code::INVALID or whole != Code::INVALID
+            return 4 if cutout != Code::OK or unregister_material(Paint::SPARE) != Code::LOAD_FAILED
+            return 5 if unregister_set(set_id(Set::SCRATCH)) != Code::LOAD_FAILED
+            return 6 if register_slot(1, Paint::PAINTED) != Code::OK
+            0
+
+        # A bundle rewritten after its mesh loaded lends none of its changed
+        # images; its unchanged surface image still registers.
+        def rewritten() -> i32:
+            textures: u64 = texture_bytes()
+            replaced: i32 = elisa_render_scene_v1_test_replace_cooked_file(
+                "build/cooked/subsets/textured_variant.elpk", "build/cooked/subsets/textured_rewrite.elpk")
+            return 1 if replaced != 1
+            return 2 if register_image(Mesh::REWRITTEN, 0, Image::REWRITTEN_BASE) != Code::LOAD_FAILED
+            return 3 if texture_bytes() != textures or unregister_texture(Image::REWRITTEN_BASE) != Code::LOAD_FAILED
+            return 4 if register_image(Mesh::REWRITTEN, 2, Image::REWRITTEN_SURFACE) != Code::OK
+            return 5 if texture_bytes() <= textures or unregister_texture(Image::REWRITTEN_SURFACE) != Code::OK
+            return 6 if texture_bytes() != textures
+            0
+
+        def retire(handle: i64) -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK
+            if elisa_render_scene_v1_snapshot_retire(handle) != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            elisa_render_scene_v1_snapshot_commit() == NATIVE_OK
+
+        def channel(x_permille: u32) -> i32:
+            elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille, SAMPLE_ROW)
+
+        # Frames are mirrored, so world +x shows on the left. From the right:
+        # the cutout's opaque green half, the red backdrop through its clear
+        # half, the painted strip's red and blue halves, and the glow strip's
+        # red and blue halves.
+        def strips_show() -> bool:
+            shown: mutable bool = false
+            for attempt in 0..<12 |shown|:
+                break if shown
+                return false if Application::pump() != Application::PumpStatus.Running
+                shown <- channel(590) == Channel::RED
+            return false if not shown
+            return false if channel(930) != Channel::GREEN or channel(770) != Channel::RED
+            return false if channel(410) != Channel::BLUE or channel(240) != Channel::RED
+            channel(100) == Channel::BLUE
+
+        def rendered() -> i32:
+            return 1 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(0, 1, ROW, ROW, Ids::MESHES, Mesh::TEXTURED,
+                Ids::SETS, Set::PANEL, 0.0, VISIBLE_Y, 0.0, 0.0, 0.0, 0.0, 1.0, 12.0, 1.0, 8.0)
+            if staged != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 2
+            return 3 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            handle: i64 = elisa_render_scene_v1_snapshot_result(0)
+            return 4 if handle <= 0
+            return 5 if not strips_show()
+            # The materials' images can't go away.
+            return 6 if unregister_texture(1) != Code::INVALID or unregister_texture(4) != Code::INVALID
+            return 7 if not retire(handle)
+            0
+
+        def cleanup() -> i32:
+            return 1 if unregister_set(set_id(Set::PANEL)) != Code::OK
+            paints: u64[4] = [Paint::CUTOUT, Paint::PAINTED, Paint::GLOW, Paint::BACKDROP]
+            for index in 0..<4 |paints|:
+                return 2 if unregister_material(paints[index]) != Code::OK
+            images: u64[4] = [1, 2, 3, 4]
+            for index in 0..<4 |images|:
+                return 3 if unregister_texture(images[index]) != Code::OK
+            mesh_lows: u64[3] = [Mesh::TEXTURED, Mesh::PLAIN, Mesh::REWRITTEN]
+            for index in 0..<3 |mesh_lows|:
+                return 4 if unregister_mesh(mesh_lows[index]) != Code::OK
+            0
+
+    public:
+        def exercise() -> i32:
+            shared_meshes: u64 = elisa_render_scene_v1_test_snapshot_shared_mesh_count()
+            instances: usize = RenderScene::instance_count()
+            sets: u64 = set_count()
+            textures: u64 = texture_bytes()
+            registered: i32 = meshes()
+            return registered if registered != 0
+            counted: i32 = counts()
+            return 10 + counted if counted != 0
+            early: i32 = before_images()
+            return 20 + early if early != 0
+            imaged: i32 = images()
+            return 30 + imaged if imaged != 0
+            whole: i32 = whole_mesh()
+            return 50 + whole if whole != 0
+            ambiguity: i32 = ambiguous()
+            return 60 + ambiguity if ambiguity != 0
+            rewrite: i32 = rewritten()
+            return 70 + rewrite if rewrite != 0
+            drawn: i32 = rendered()
+            return 80 + drawn if drawn != 0
+            cleaned: i32 = cleanup()
+            return 90 + cleaned if cleaned != 0
+            restored: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == shared_meshes
+            return 100 if not restored or RenderScene::instance_count() != instances or set_count() != sets
+            return 101 if texture_bytes() != textures
+            0

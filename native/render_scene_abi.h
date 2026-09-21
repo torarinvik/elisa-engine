@@ -147,6 +147,12 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_material(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t slot, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_register_snapshot_mesh_material_set(
     uint64_t mesh_high, uint64_t mesh_low, uint64_t set_high, uint64_t set_low, uint32_t count);
+// Cooked slot textures: the images a mesh's slot materials sample, each
+// registered as a bundle texture from the mesh's own bundle before the
+// materials that sample it.
+int32_t elisa_render_scene_v1_snapshot_mesh_texture_count(uint64_t mesh_high, uint64_t mesh_low);
+int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
+    uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);

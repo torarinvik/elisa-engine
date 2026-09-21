@@ -10,6 +10,7 @@ import struct
 
 import cook_assets
 import cook_gltf_nodes
+import cook_gltf_textures
 
 # The native loader enforces the same bounds.
 MAX_SUBSETS = 16
@@ -18,14 +19,14 @@ MAX_VERTICES = 2_000_000
 MAX_INDICES = 15_000_000
 
 
-# Render scene alpha modes. Alpha masking needs a base-color texture, which
-# this cooker does not cook.
-ALPHA_MODES = {"OPAQUE": 0, "BLEND": 2}
-MATERIAL_KEYS = {"name", "pbrMetallicRoughness", "emissiveFactor", "alphaMode", "alphaCutoff", "doubleSided"}
-PBR_KEYS = {"baseColorFactor", "metallicFactor", "roughnessFactor"}
-TEXTURE_KEYS = {"normalTexture", "occlusionTexture", "emissiveTexture",
-    "baseColorTexture", "metallicRoughnessTexture"}
+# Render scene alpha modes. Alpha masking needs a base-color texture.
+ALPHA_MODES = {"OPAQUE": 0, "MASK": 1, "BLEND": 2}
+MATERIAL_KEYS = {"name", "pbrMetallicRoughness", "emissiveFactor", "alphaMode", "alphaCutoff", "doubleSided",
+    "normalTexture", "occlusionTexture", "emissiveTexture"}
+PBR_KEYS = {"baseColorFactor", "metallicFactor", "roughnessFactor", "baseColorTexture", "metallicRoughnessTexture"}
 SLOT_MATERIAL_STRIDE = 48
+DOUBLE_SIDED = 1
+OCCLUSION = 2
 
 
 def unit_factor(value, label: str) -> float:
@@ -40,42 +41,42 @@ def unit_factors(value, count: int, label: str) -> list[float]:
     return [unit_factor(component, label) for component in value]
 
 
-def slot_material(material) -> bytes:
+def slot_material(document: dict, material) -> tuple[bytes, list]:
     """Pack one glTF material's factors, with glTF defaults for absent ones,
     into a 48-byte slot record: base color, metallic, roughness, emissive,
-    alpha cutoff, alpha mode, and flags (bit 0: double-sided)."""
+    alpha cutoff, alpha mode, and flags (bit 0: double-sided, bit 1: the
+    surface image carries occlusion). Also return the image each runtime
+    texture slot samples, or None."""
     if not isinstance(material, dict):
         raise ValueError("every glTF material must be an object")
     pbr = material.get("pbrMetallicRoughness", {})
     if not isinstance(pbr, dict):
         raise ValueError("material pbrMetallicRoughness must be an object")
-    if TEXTURE_KEYS & (set(material) | set(pbr)):
-        raise ValueError("runtime geometry cooker does not cook material textures yet; "
-            "register textured slot materials at runtime")
     if set(material) - MATERIAL_KEYS or set(pbr) - PBR_KEYS:
         raise ValueError("runtime geometry cooker encountered unsupported material properties")
+    images, occlusion = cook_gltf_textures.material_images(document, material, pbr)
     mode = material.get("alphaMode", "OPAQUE")
-    if mode == "MASK":
-        raise ValueError("alpha-mask materials need a base-color texture, "
-            "which the runtime geometry cooker does not cook")
     if mode not in ALPHA_MODES:
         raise ValueError("material alphaMode must be OPAQUE, MASK, or BLEND")
+    if mode == "MASK" and images[0] is None:
+        raise ValueError("alpha-mask materials need a base-color texture")
     double_sided = material.get("doubleSided", False)
     if type(double_sided) is not bool:
         raise ValueError("material doubleSided must be a boolean")
-    return struct.pack("<10f2I",
+    record = struct.pack("<10f2I",
         *unit_factors(pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0]), 4, "baseColorFactor"),
         unit_factor(pbr.get("metallicFactor", 1.0), "metallicFactor"),
         unit_factor(pbr.get("roughnessFactor", 1.0), "roughnessFactor"),
         *unit_factors(material.get("emissiveFactor", [0.0, 0.0, 0.0]), 3, "emissiveFactor"),
         unit_factor(material.get("alphaCutoff", 0.5), "alphaCutoff"),
-        ALPHA_MODES[mode], int(double_sided))
+        ALPHA_MODES[mode], (DOUBLE_SIDED if double_sided else 0) | (OCCLUSION if occlusion else 0))
+    return record, images
 
 
-def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes]]:
-    """Return the mesh's material slot count and each declared material's slot
-    record: one slot per declared glTF material, or one unrecorded slot when
-    the document declares none.
+def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], list]:
+    """Return the mesh's material slot count, each declared material's slot
+    record, and the images each slot samples: one slot per declared glTF
+    material, or one unrecorded slot when the document declares none.
 
     Either every primitive binds a declared material or the document declares
     none. Material properties the runtime cannot reproduce are rejected rather
@@ -84,22 +85,26 @@ def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes]]:
     materials = document.get("materials", [])
     if not isinstance(materials, list) or len(materials) > MAX_MATERIAL_SLOTS:
         raise ValueError(f"runtime geometry cooker accepts at most {MAX_MATERIAL_SLOTS} materials")
-    records = [slot_material(material) for material in materials]
+    slots = [slot_material(document, material) for material in materials]
     bindings = [primitive.get("material") for primitive in primitives]
     if not materials:
         if any(binding is not None for binding in bindings):
             raise ValueError("primitive binds a material the document does not declare")
-        return 1, []
+        return 1, [], []
     for binding in bindings:
         if type(binding) is not int or not 0 <= binding < len(materials):
             raise ValueError("every primitive must bind one of the document's materials")
-    return len(materials), records
+    for primitive in primitives:
+        textured = any(image is not None for image in slots[primitive["material"]][1])
+        if textured and "TEXCOORD_0" not in primitive.get("attributes", {}):
+            raise ValueError("a primitive with a textured material needs TEXCOORD_0")
+    return len(materials), [record for record, _ in slots], [images for _, images in slots]
 
 
-def validate_static_geometry_source(document: dict) -> tuple[list, int, list[bytes]]:
+def validate_static_geometry_source(document: dict) -> tuple[list, int, list[bytes], list]:
     """Return each mesh placement's (mesh index, world matrix), the material
-    slot count, and slot material records after rejecting unhandled glTF
-    semantics."""
+    slot count, slot material records, and each slot's images after rejecting
+    unhandled glTF semantics."""
     if document.get("extensionsUsed") or document.get("extensionsRequired"):
         raise ValueError("runtime geometry cooker does not support glTF extensions")
     if any(document.get(name) for name in ("animations", "skins", "cameras")):
@@ -124,9 +129,9 @@ def validate_static_geometry_source(document: dict) -> tuple[list, int, list[byt
             if set(attributes) - {"POSITION", "NORMAL", "TEXCOORD_0"}:
                 raise ValueError("runtime geometry cooker encountered an unsupported vertex attribute")
         every_primitive += primitives
-    slot_count, slot_records = material_slots(document, every_primitive)
+    slot_count, slot_records, slot_images = material_slots(document, every_primitive)
     placements = cook_gltf_nodes.mesh_placements(document, len(meshes))
-    return placements, slot_count, slot_records
+    return placements, slot_count, slot_records, slot_images
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -214,10 +219,11 @@ def normalized_geometry(document: dict, buffer: bytes):
     # primitives become index subsets bound to their material slots, and
     # adjacent subsets on one slot merge. Primitives of one placement that
     # name the same vertex accessors share one copy of those vertices.
-    # Material factors become slot records. Skins, animation, cameras and
-    # material textures stay in their dedicated import paths; silently
-    # flattening them would produce wrong assets.
-    placements, slot_count, slot_records = validate_static_geometry_source(document)
+    # Material factors become slot records, and the images their textures
+    # sample become bundle sections. Skins, animation and cameras stay in
+    # their dedicated import paths; silently flattening them would produce
+    # wrong assets.
+    placements, slot_count, slot_records, slot_images = validate_static_geometry_source(document)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
     placed = []
@@ -270,10 +276,11 @@ def normalized_geometry(document: dict, buffer: bytes):
             subsets.append((start, len(values), slot))
     if len(subsets) > MAX_SUBSETS:
         raise ValueError(f"placed primitives need more than {MAX_SUBSETS} material subsets")
+    slot_textures, images = cook_gltf_textures.cooked_textures(document, buffer, slot_images)
     return {"positions": bytes(positions), "normals": bytes(normals), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
-        "slot_materials": b"".join(slot_records)}
+        "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images}
 
 
 def placed_counts(document: dict) -> dict:
@@ -316,10 +323,13 @@ def subset_lines(geometry: dict) -> list[str]:
     if slot_materials:
         lines += [f"slot_material_stride={SLOT_MATERIAL_STRIDE}",
             "slot_materials_b64=" + base64.b64encode(slot_materials).decode("ascii")]
-    return lines
+    return lines + cook_gltf_textures.texture_lines(geometry["slot_textures"], geometry["images"])
 
 
-def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path) -> tuple[Path, dict]:
+def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
+        allow_textures: bool = False) -> tuple[Path, dict]:
+    """Write the mesh package. A textured source cooks only when the caller
+    will bundle the returned images beside it."""
     asset_path = safe_asset_path(asset_path)
     source_path = source_path.expanduser().resolve(strict=True)
     if not source_path.is_file() or source_path.stat().st_size == 0 or source_path.stat().st_size > cook_assets.MAX_DOCUMENT_BYTES:
@@ -327,6 +337,8 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path)
     data = source_path.read_bytes()
     document = cook_assets.read_gltf(data)
     geometry = normalized_geometry(document, cook_assets.source_bytes(source_path.parent, document))
+    if geometry["images"] and not allow_textures:
+        raise ValueError("material textures need an .elpk bundle output")
     counts = placed_counts(document)
     if (counts["triangles"] <= 0 or geometry["index_count"] != counts["triangles"] * 3 or
             geometry["vertex_count"] != counts["positions"] or
@@ -359,4 +371,5 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path)
     return output_path, {"triangles": counts["triangles"], "positions": geometry["vertex_count"],
         "indices": geometry["index_count"], "subsets": len(geometry["subsets"]),
         "material_slots": geometry["material_slots"],
-        "slot_materials": len(geometry["slot_materials"]) // SLOT_MATERIAL_STRIDE, "source_sha256": digest}
+        "slot_materials": len(geometry["slot_materials"]) // SLOT_MATERIAL_STRIDE, "source_sha256": digest,
+        "images": dict(geometry["images"])}

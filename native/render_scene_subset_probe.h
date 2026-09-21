@@ -3,6 +3,8 @@
 // Test-only hooks for multi-material snapshot meshes, built into the render
 // smoke host with ELISA_RENDER_SCENE_TEST_PROBE.
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
 
 namespace {
 
@@ -122,6 +124,10 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_matches(uint64_t
     expected.alpha_cutoff = alpha_cutoff;
     expected.alpha_mode = alpha_mode;
     expected.double_sided = double_sided != 0;
+    // Textures and occlusion have their own probes.
+    expected.texture_high = asset.texture_high;
+    expected.texture_low = asset.texture_low;
+    expected.occlusion = asset.occlusion;
     const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
     if (!snapshot_material_values_match(asset, expected) || material == nullptr) return 0;
     const bool blended = alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND;
@@ -180,4 +186,58 @@ extern "C" int32_t elisa_render_scene_v1_test_last_frame_dominant_channel(uint32
         }
     }
     return DOMINANT_CHANNEL_NONE;
+}
+
+// 1 when registered material `high:low` names texture
+// `texture_high:texture_low` in `slot_code`, a zero ID for none, and the
+// Wicked material drawn with it has a texture in that slot exactly when it
+// names one.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_texture_id(uint64_t high, uint64_t low,
+    int32_t slot_code, uint64_t texture_high, uint64_t texture_low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !elisa::rendering::textures::valid_slot(slot_code)) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (material == nullptr) return 0;
+    const size_t index = static_cast<size_t>(slot_code);
+    const wi::Resource& resource = material->textures[elisa::rendering::textures::MATERIAL_SLOTS[index]].resource;
+    const bool drawn = resource.IsValid() && resource.GetTexture().IsValid();
+    const bool named = texture_high != 0 || texture_low != 0;
+    return asset.texture_high[index] == texture_high && asset.texture_low[index] == texture_low &&
+        drawn == named ? 1 : 0;
+}
+
+// 1 when registered material `high:low` reads occlusion from its surface
+// texture, 0 when it doesn't, and -1 when it is missing or its Wicked
+// material disagrees.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_occlusion(uint64_t high, uint64_t low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return -1;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return -1;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (material == nullptr || material->IsOcclusionEnabled_Primary() != asset.occlusion) return -1;
+    return asset.occlusion ? 1 : 0;
+}
+
+// Overwrites cooked file `destination` with a copy of `source`, so a test can
+// rewrite a bundle after a mesh loaded from it. Both are existing project
+// paths under build/cooked/. 1 on success.
+extern "C" int32_t elisa_render_scene_v1_test_replace_cooked_file(const char* source, const char* destination) {
+    std::filesystem::path from;
+    std::filesystem::path to;
+    const auto cooked = [](const char* path) { return std::strncmp(path, "build/cooked/", 13) == 0; };
+    if (!elisa::assets::resolve_project_asset_path(source, from) ||
+        !elisa::assets::resolve_project_asset_path(destination, to) || !cooked(source) || !cooked(destination)) {
+        return 0;
+    }
+    std::error_code error;
+    std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing, error);
+    return error ? 0 : 1;
 }

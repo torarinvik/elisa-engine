@@ -15,6 +15,7 @@ import cook_assets
 import cook_gltf_geometry
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
+from gltf_texture_self_test import material_texture_self_test
 from png_image import encode_png
 
 
@@ -78,8 +79,12 @@ def self_test() -> int:
         hierarchy_status = hierarchy_self_test(Path(temporary))
         if hierarchy_status != 0:
             return hierarchy_status
+        material_texture_status = material_texture_self_test(Path(temporary), main)
+        if material_texture_status != 0:
+            return material_texture_status
     print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections, "
-        "a three-subset, two-slot panel with authored slot materials, and a baked node hierarchy")
+        "a three-subset, two-slot panel with authored slot materials, a baked node hierarchy, "
+        "and a bundled panel with masked, lit and emissive material textures")
     return 0
 
 
@@ -151,7 +156,8 @@ def subset_self_test(temporary: Path) -> int:
     def factors(index: int, **fields):
         return lambda d: d["materials"][index]["pbrMetallicRoughness"].update(fields)
 
-    textures = "does not cook material textures"
+    # The panel declares no textures, so every texture slot is read and checked.
+    textures = "names a missing texture"
     unsupported = "unsupported material properties"
     rejected = {
         "a primitive without a material beside bound ones":
@@ -278,10 +284,13 @@ def main(arguments: list[str]) -> int:
         if (textures or options.dependency) and options.output.suffix.lower() != ".elpk":
             raise ValueError("--texture and --dependency require an .elpk output bundle")
         if options.output.suffix.lower() == ".elpk":
-            images = {name: path.read_bytes() for name, path in textures.items()}
             with tempfile.TemporaryDirectory(prefix="elisa-gltf-bundle-") as temporary:
-                geometry_path, result = cook_assets.cook_geometry_package(
-                    options.source, options.asset_path, Path(temporary) / "geometry.pkg")
+                geometry_path, result = cook_gltf_geometry.cook_geometry_package(
+                    options.source, options.asset_path, Path(temporary) / "geometry.pkg", allow_textures=True)
+                images = result["images"]
+                if images.keys() & textures.keys():
+                    raise ValueError("--texture names a section the source's material images use")
+                images.update((name, path.read_bytes()) for name, path in textures.items())
                 write_geometry_package(options.output, geometry_path.read_bytes(), images,
                     options.dependency)
             output = options.output.expanduser().resolve()

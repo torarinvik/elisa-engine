@@ -18,7 +18,7 @@ bool snapshot_material_values_match(const SnapshotMaterialAssetSlot& asset,
         asset.metallic == values.metallic && asset.roughness == values.roughness &&
         std::equal(std::begin(asset.emissive), std::end(asset.emissive), std::begin(values.emissive)) &&
         asset.alpha_cutoff == values.alpha_cutoff && asset.alpha_mode == values.alpha_mode &&
-        asset.double_sided == values.double_sided &&
+        asset.double_sided == values.double_sided && asset.occlusion == values.occlusion &&
         asset.texture_high == values.texture_high && asset.texture_low == values.texture_low;
 }
 
@@ -72,6 +72,7 @@ int32_t register_snapshot_material_locked(RenderSceneService& state, uint64_t hi
         material->SetAlphaRef(values.alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK
             ? values.alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF);
         material->SetDoubleSided(values.double_sided);
+        material->SetOcclusionEnabled_Primary(values.occlusion);
         material->userBlendMode = values.alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND
             ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
         material->SetCastShadow(values.alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND);
@@ -100,8 +101,27 @@ void remove_snapshot_material(RenderSceneService& state, size_t slot) {
     state.snapshot_material_assets[slot] = SnapshotMaterialAssetSlot{};
 }
 
-SnapshotMaterialAssetSlot cooked_slot_material_values(const elisa::assets::CookedGeometry::SlotMaterial& cooked) {
-    SnapshotMaterialAssetSlot values;
+// The texture registered from image `section` of the bundle at
+// `canonical_path`: missing is a load failure, and two IDs are ambiguous.
+int32_t bundle_image_texture(const RenderSceneService& state, const std::filesystem::path& canonical_path,
+        const std::string& section, size_t& found) {
+    found = MAX_SNAPSHOT_TEXTURE_ASSETS;
+    for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
+        const SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[index];
+        if (!texture.live || texture.section != section || texture.canonical_path != canonical_path) continue;
+        if (found != MAX_SNAPSHOT_TEXTURE_ASSETS) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        found = index;
+    }
+    return found == MAX_SNAPSHOT_TEXTURE_ASSETS ? ELISA_RENDER_SCENE_ASSET_LOAD_FAILED : ELISA_RENDER_SCENE_OK;
+}
+
+// The registration values for cooked material `slot` of `mesh`. Each image
+// the slot samples must be registered from the mesh's own bundle under
+// exactly one texture ID.
+int32_t cooked_slot_material_values(const RenderSceneService& state, const SnapshotMeshAssetSlot& mesh,
+        uint32_t slot, SnapshotMaterialAssetSlot& values) {
+    const elisa::assets::CookedGeometry::SlotMaterial& cooked = mesh.geometry.slot_materials[slot];
+    values = SnapshotMaterialAssetSlot{};
     std::copy(cooked.base_color.begin(), cooked.base_color.end(), std::begin(values.base_color));
     values.metallic = cooked.metallic;
     values.roughness = cooked.roughness;
@@ -109,19 +129,31 @@ SnapshotMaterialAssetSlot cooked_slot_material_values(const elisa::assets::Cooke
     values.alpha_cutoff = cooked.alpha_cutoff;
     values.alpha_mode = int32_t(cooked.alpha_mode);
     values.double_sided = cooked.double_sided;
-    return values;
+    values.occlusion = cooked.occlusion;
+    for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
+        const uint32_t reference = cooked.textures[texture_slot];
+        if (reference == 0) continue;
+        size_t found = MAX_SNAPSHOT_TEXTURE_ASSETS;
+        const int32_t status = bundle_image_texture(state, mesh.canonical_path,
+            mesh.geometry.texture_sections[reference - 1], found);
+        if (status != ELISA_RENDER_SCENE_OK) return status;
+        values.texture_high[texture_slot] = state.snapshot_texture_assets[found].high;
+        values.texture_low[texture_slot] = state.snapshot_texture_assets[found].low;
+    }
+    return ELISA_RENDER_SCENE_OK;
 }
 
-// The slot materials cooked into resident mesh `high:low`, or why there are
-// none to read: a zero ID is invalid, and a missing mesh is pending or failed.
-int32_t cooked_slot_materials(const RenderSceneService& state, uint64_t high, uint64_t low,
-        const std::vector<elisa::assets::CookedGeometry::SlotMaterial>*& materials) {
-    materials = nullptr;
+// Resident mesh `high:low`, whose cooked slot materials and images the
+// mesh-material calls read, or why there is none: a zero ID is invalid, and
+// a missing mesh is pending or failed.
+int32_t cooked_mesh_asset(const RenderSceneService& state, uint64_t high, uint64_t low,
+        const SnapshotMeshAssetSlot*& mesh) {
+    mesh = nullptr;
     if (high == 0 && low == 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    const size_t mesh = snapshot_mesh_asset_slot(state, high, low);
-    if (mesh == MAX_SNAPSHOT_MESH_ASSETS) {
+    const size_t slot = snapshot_mesh_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MESH_ASSETS) {
         return snapshot_missing_asset_status(state, SnapshotAssetKind::Mesh, high, low);
     }
-    materials = &state.snapshot_mesh_assets[mesh].geometry.slot_materials;
+    mesh = &state.snapshot_mesh_assets[slot];
     return ELISA_RENDER_SCENE_OK;
 }

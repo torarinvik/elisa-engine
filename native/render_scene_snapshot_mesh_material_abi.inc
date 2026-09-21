@@ -1,6 +1,7 @@
-// A cooked mesh can carry the glTF factors authored for each material slot.
-// These calls register them as ordinary snapshot materials, so a game names
-// a slot's material instead of restating its factors.
+// A cooked mesh can carry the glTF factors and bundle images authored for
+// each material slot. These calls register them as ordinary snapshot
+// textures and materials, so a game names a slot's material instead of
+// restating it.
 
 // The number of slot materials cooked into resident mesh `high:low`: 0 when
 // its source authored none, otherwise its material slot count.
@@ -9,13 +10,46 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_mesh_material_count(uint64_t m
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    const std::vector<elisa::assets::CookedGeometry::SlotMaterial>* cooked = nullptr;
-    const int32_t status = cooked_slot_materials(state, mesh_high, mesh_low, cooked);
-    return status == ELISA_RENDER_SCENE_OK ? int32_t(cooked->size()) : status;
+    const SnapshotMeshAssetSlot* mesh = nullptr;
+    const int32_t status = cooked_mesh_asset(state, mesh_high, mesh_low, mesh);
+    return status == ELISA_RENDER_SCENE_OK ? int32_t(mesh->geometry.slot_materials.size()) : status;
+}
+
+// The number of bundle images the cooked slot materials of resident mesh
+// `high:low` sample.
+extern "C" int32_t elisa_render_scene_v1_snapshot_mesh_texture_count(uint64_t mesh_high, uint64_t mesh_low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const SnapshotMeshAssetSlot* mesh = nullptr;
+    const int32_t status = cooked_mesh_asset(state, mesh_high, mesh_low, mesh);
+    return status == ELISA_RENDER_SCENE_OK ? int32_t(mesh->geometry.texture_sections.size()) : status;
+}
+
+// Registers image `index` of resident mesh `mesh_high:mesh_low` as texture
+// `high:low`, read from the bundle the mesh loaded from, with the rules of
+// elisa_render_scene_v1_register_snapshot_bundle_texture_asset. A bundle
+// rewritten since the mesh loaded fails to load.
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
+    uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low) {
+    if (high == 0 && low == 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    const SnapshotMeshAssetSlot* mesh = nullptr;
+    const int32_t status = cooked_mesh_asset(state, mesh_high, mesh_low, mesh);
+    if (status != ELISA_RENDER_SCENE_OK) return status;
+    if (index >= mesh->geometry.texture_sections.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    return register_snapshot_bundle_texture_locked(state, high, low, mesh->requested_path, mesh->canonical_path,
+        mesh->geometry.texture_sections[index], &mesh->geometry.texture_checksums[index]);
 }
 
 // Registers the cooked material of one slot as material `high:low`, with
-// the same no-op and conflict rules as any material registration.
+// the same no-op and conflict rules as any material registration. Its
+// images must already be registered (elisa_render_scene_v1_register_snapshot_mesh_texture).
 extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_material(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t slot, uint64_t high, uint64_t low) {
     RenderSceneService& state = service();
@@ -23,12 +57,15 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_material(
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
-    const std::vector<elisa::assets::CookedGeometry::SlotMaterial>* cooked = nullptr;
-    const int32_t status = cooked_slot_materials(state, mesh_high, mesh_low, cooked);
+    const SnapshotMeshAssetSlot* mesh = nullptr;
+    const int32_t status = cooked_mesh_asset(state, mesh_high, mesh_low, mesh);
     if (status != ELISA_RENDER_SCENE_OK) return status;
-    if (slot >= cooked->size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (slot >= mesh->geometry.slot_materials.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    SnapshotMaterialAssetSlot values;
+    const int32_t resolved = cooked_slot_material_values(state, *mesh, slot, values);
+    if (resolved != ELISA_RENDER_SCENE_OK) return resolved;
     bool created = false;
-    return register_snapshot_material_locked(state, high, low, cooked_slot_material_values((*cooked)[slot]), created);
+    return register_snapshot_material_locked(state, high, low, values, created);
 }
 
 // Registers every cooked slot material of a mesh under the material IDs
@@ -45,10 +82,18 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_material_set(
     const SnapshotMaterialSet set = state.snapshot_material_sets.staged;
     state.snapshot_material_sets.staged = SnapshotMaterialSet{};
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
-    const std::vector<elisa::assets::CookedGeometry::SlotMaterial>* cooked = nullptr;
-    const int32_t status = cooked_slot_materials(state, mesh_high, mesh_low, cooked);
+    const SnapshotMeshAssetSlot* mesh = nullptr;
+    const int32_t status = cooked_mesh_asset(state, mesh_high, mesh_low, mesh);
     if (status != ELISA_RENDER_SCENE_OK) return status;
-    if (count == 0 || count != set.count || count != cooked->size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (count == 0 || count != set.count || count != mesh->geometry.slot_materials.size()) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    // Every slot's images resolve before any material is created.
+    std::array<SnapshotMaterialAssetSlot, MAX_SNAPSHOT_MATERIAL_SET_SLOTS> values{};
+    for (uint32_t slot = 0; slot < count; ++slot) {
+        const int32_t resolved = cooked_slot_material_values(state, *mesh, slot, values[slot]);
+        if (resolved != ELISA_RENDER_SCENE_OK) return resolved;
+    }
     std::array<bool, MAX_SNAPSHOT_MATERIAL_SET_SLOTS> created{};
     const auto roll_back = [&state, &set, &created](int32_t failure) {
         for (uint32_t slot = 0; slot < set.count; ++slot) {
@@ -60,7 +105,7 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_material_set(
     };
     for (uint32_t slot = 0; slot < count; ++slot) {
         const int32_t registered = register_snapshot_material_locked(state, set.material_high[slot],
-            set.material_low[slot], cooked_slot_material_values((*cooked)[slot]), created[slot]);
+            set.material_low[slot], values[slot], created[slot]);
         if (registered != ELISA_RENDER_SCENE_OK) return roll_back(registered);
     }
     const int32_t registered = register_snapshot_material_set_locked(state, set_high, set_low, set, count);

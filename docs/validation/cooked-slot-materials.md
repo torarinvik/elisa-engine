@@ -217,7 +217,8 @@ The control passed.
 - **No textures.** Materials with textures still fail in the cooker. The game
   registers those slots at runtime with `register_snapshot_material_asset`
   and texture IDs. Because a mask needs the base-color texture's alpha,
-  `MASK` fails too.
+  `MASK` fails too. (Since superseded: textures and masks now cook, as
+  [`cooked-material-textures.md`](cooked-material-textures.md) describes.)
 - **Unit emission.** glTF `emissiveFactor` is at most 1, and
   `KHR_materials_emissive_strength` is an extension, which fails. Cooked
   emission uses the runtime's default strength.

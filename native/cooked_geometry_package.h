@@ -4,6 +4,7 @@
 // cooked offline; the runtime accepts only this versioned, validated format.
 #include "bundle_dependencies.h"
 #include "cooked_package_fields.h"
+#include "cooked_slot_materials.h"
 #include "virtual_package.h"
 
 #include <algorithm>
@@ -58,20 +59,14 @@ struct CookedGeometry {
     // one subset over every index in slot 0.
     std::vector<Subset> subsets;
     uint32_t material_slots = 1;
-    // glTF factors authored for one material slot. Alpha mode uses the render
-    // scene codes; a cooked slot has no texture, so it is never alpha-masked.
-    struct SlotMaterial {
-        std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
-        float metallic = 1.0f;
-        float roughness = 1.0f;
-        std::array<float, 3> emissive{};
-        float alpha_cutoff = 0.5f;
-        uint32_t alpha_mode = 0;
-        bool double_sided = false;
-    };
+    using SlotMaterial = CookedSlotMaterial;
     // One entry per material slot, or none when the source authored no
     // material factors and the game supplies every slot's material.
     std::vector<SlotMaterial> slot_materials;
+    // Image sections of the enclosing ELPK bundle that slot materials sample,
+    // and each section's checksum when the mesh loaded.
+    std::vector<std::string> texture_sections;
+    std::vector<uint32_t> texture_checksums;
 };
 
 inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::path& resolved) {
@@ -156,45 +151,6 @@ inline bool parse_geometry_subsets(const probe::PackageIndex& package, bool skin
         return false;
     }
     geometry.material_slots = uint32_t(slots);
-    return true;
-}
-
-// Slot material records are both present or both absent and need explicit
-// subset records. Each 48-byte record holds ten factors in [0, 1] (base
-// color, metallic, roughness, emissive, alpha cutoff), the alpha mode, and
-// flags whose only bit marks a double-sided material.
-inline bool parse_slot_materials(const probe::PackageIndex& package,
-    CookedGeometry& geometry, std::string& error) {
-    const size_t present = package.sections.count("slot_material_stride") +
-        package.sections.count("slot_materials_b64");
-    if (present == 0) return true;
-    std::vector<uint32_t> words;
-    if (present != 2 || package.sections.count("material_slots") == 0 ||
-        package.sections.at("slot_material_stride") != "48" ||
-        !decode_u32(package, "slot_materials_b64", size_t(geometry.material_slots) * 12, words)) {
-        error = "invalid cooked slot material records";
-        return false;
-    }
-    for (uint32_t slot = 0; slot < geometry.material_slots; ++slot) {
-        const uint32_t* record = words.data() + size_t(slot) * 12;
-        std::array<float, 10> factors{};
-        std::memcpy(factors.data(), record, sizeof(float) * factors.size());
-        const bool factors_valid = std::all_of(factors.begin(), factors.end(),
-            [](float factor) { return factor >= 0.0f && factor <= 1.0f; });
-        if (!factors_valid || (record[10] != 0 && record[10] != 2) || (record[11] & ~1u) != 0) {
-            error = "cooked slot material is out of range";
-            return false;
-        }
-        CookedGeometry::SlotMaterial material;
-        std::copy(factors.begin(), factors.begin() + 4, material.base_color.begin());
-        material.metallic = factors[4];
-        material.roughness = factors[5];
-        std::copy(factors.begin() + 6, factors.begin() + 9, material.emissive.begin());
-        material.alpha_cutoff = factors[9];
-        material.alpha_mode = record[10];
-        material.double_sided = record[11] == 1;
-        geometry.slot_materials.push_back(material);
-    }
     return true;
 }
 
@@ -344,7 +300,10 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         }
     }
     if (!detail::parse_geometry_subsets(package, has_skin, geometry, error)) return false;
-    if (!detail::parse_slot_materials(package, geometry, error)) return false;
+    if (!detail::parse_slot_materials(package, geometry.material_slots, geometry.slot_materials, error) ||
+        !detail::parse_slot_textures(package, geometry.slot_materials, geometry.texture_sections, error)) {
+        return false;
+    }
 
     const auto joint_count_section = package.sections.find("skin_joints");
     const auto parents_stride = package.sections.find("skin_joint_parent_stride");
@@ -514,7 +473,10 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
     input.read(reinterpret_cast<char*>(magic.data()), static_cast<std::streamsize>(magic.size()));
     if (input.gcount() != static_cast<std::streamsize>(magic.size()) ||
         magic != std::array<uint8_t, 4>{'E', 'L', 'P', 'K'}) {
-        return load_cooked_geometry(path, geometry, error);
+        if (!load_cooked_geometry(path, geometry, error)) return false;
+        if (geometry.texture_sections.empty()) return true;
+        error = "cooked slot textures need an ELPK bundle";
+        return false;
     }
 
     const probe::BinaryPackageIndex index = probe::read_binary_package_index(path);
@@ -523,8 +485,18 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
         return false;
     }
     std::vector<uint8_t> bytes;
-    if (!probe::read_binary_package_section(path, index, "mesh", bytes, error)) return false;
-    return load_cooked_geometry_bytes(bytes.data(), bytes.size(), geometry, error);
+    if (!probe::read_binary_package_section(path, index, "mesh", bytes, error) ||
+        !load_cooked_geometry_bytes(bytes.data(), bytes.size(), geometry, error)) return false;
+    for (const std::string& section : geometry.texture_sections) {
+        const auto entry = std::find_if(index.sections.begin(), index.sections.end(),
+            [&section](const probe::BinaryPackageSection& candidate) { return candidate.name == section; });
+        if (entry == index.sections.end()) {
+            error = "cooked slot texture section is missing from its bundle";
+            return false;
+        }
+        geometry.texture_checksums.push_back(entry->checksum);
+    }
+    return true;
 }
 
 } // namespace elisa::assets

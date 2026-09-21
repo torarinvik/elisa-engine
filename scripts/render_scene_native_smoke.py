@@ -18,6 +18,8 @@ import cook_assets
 import cook_gltf_asset
 import cook_gltf_geometry
 import elisa_build_run
+from elisa_package import write_geometry_package
+import gltf_texture_self_test
 import packaged_maze_smoke
 import test_geometry_subsets
 
@@ -120,6 +122,23 @@ def main() -> int:
     ])
     if subset_status != 0:
         return subset_status
+    # The cooked-texture test draws the textured panel from its bundle. The
+    # variant swaps the first two images; the test rewrites a copy of the
+    # bundle into it after loading the copy's mesh.
+    textured = subset_directory / "textured.elpk"
+    subset_status = run([
+        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+        str(gltf_texture_self_test.SOURCE), "--asset-path", gltf_texture_self_test.ASSET_PATH,
+        "--output", str(textured),
+    ])
+    if subset_status != 0:
+        return subset_status
+    shutil.copyfile(textured, subset_directory / "textured_rewrite.elpk")
+    textured_package, _ = cook_gltf_geometry.cook_geometry_package(gltf_texture_self_test.SOURCE,
+        gltf_texture_self_test.ASSET_PATH, subset_directory / "textured.pkg", allow_textures=True)
+    variant = dict(gltf_texture_self_test.SECTIONS)
+    variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
+    write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
