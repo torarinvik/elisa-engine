@@ -279,6 +279,10 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.InvalidValue: 1
         error failure: 2
     return 17 if bad_resize != 1
+    perspective_render: i32 = catch RenderScene::set_camera_perspective(1.0, 0.1, 500.0):
+        ok: 0
+        error failure: 1
+    return 103 if perspective_render != 0
 
     return 18 if Application::pump() != Application::PumpStatus.Running
     rendered_geometry: mutable i32 = 0
@@ -287,6 +291,10 @@ def exercise_render_scene() -> i32:
         return 19 if Application::pump() != Application::PumpStatus.Running
         rendered_geometry <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
     return 20 if rendered_geometry == 0
+    restore_render_projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+        ok: 0
+        error failure: 1
+    return 104 if restore_render_projection != 0
     for attempt in 0..<4:
         return 78 if Application::pump() != Application::PumpStatus.Running
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
