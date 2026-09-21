@@ -3,6 +3,7 @@
 # The generic application builder injects src/runtime/public.elisa before this
 # entry point, so this smoke exercises the same import surface as a game.
 include "./physics_app_probe.elisa"
+include "./user_data_probe.elisa"
 using Capabilities
 
 module NativeApplicationTestProbe:
@@ -440,6 +441,8 @@ def exercise_application() -> i32:
 # This mirrors the host contract: returning early from game code still closes
 # runtime services before the native process exits.
 def main() -> i32:
+    storage_result: i32 = exercise_user_data()
+    return 104 + storage_result if storage_result != 0
     result: i32 = exercise_application()
     shutdown_ok: bool = Application::shutdown()
     return 103 if not shutdown_ok
