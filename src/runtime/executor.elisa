@@ -9,9 +9,13 @@
 include "./schedule.elisa"
 
 module Executor:
+    public:
+        const MAX_TRACE_EVENTS: usize = 32
+
     private:
         const module Limits:
-            MAX_SYSTEMS: usize = 8
+            MAX_SYSTEMS: usize = Schedule::MAX_SYSTEMS
+            MAX_TRACE_EVENTS: usize = Executor::MAX_TRACE_EVENTS
 
     public:
         error ExecError:
@@ -32,7 +36,7 @@ module Executor:
         # without the executor knowing anything about the systems.
         struct FrameState:
             visits: mutable i64[Limits::MAX_SYSTEMS]
-            trace: mutable i64[Limits::MAX_SYSTEMS]
+            trace: mutable i64[Limits::MAX_TRACE_EVENTS]
             length: mutable usize
 
         def FrameState() -> FrameState:
@@ -126,7 +130,7 @@ module Executor:
             for slot in 0..<plan.count |state, sequence, dispatch|:
                 system: usize = sequence[slot].usize()
                 dispatch(state, system)
-                if state.length < Limits::MAX_SYSTEMS:
+                if state.length < Executor::MAX_TRACE_EVENTS:
                     state.trace[state.length] <- system.i64()
                     state.length <- state.length + 1
 

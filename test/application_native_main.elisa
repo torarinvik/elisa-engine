@@ -103,17 +103,17 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     tick <- try PhysicsAppProbe::fixed_step_pair(world)
     raise PhysicsRuntime::PhysicsError.BackendFailure if tick != PhysicsAppProbe::PAIR_TICK_COUNT
     stage <- 8
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 9
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 10
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 11
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 12
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 13
-    tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 14
     final_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
     stage <- 15
@@ -292,7 +292,8 @@ def check_startup_requirements(config: Application::Config) -> i32:
     physics_shutdown_ok: bool = Application::shutdown()
     return physics_result if physics_result != 0
     return 101 if not physics_shutdown_ok
-    closed_physics_status: i32 = catch PhysicsRuntime::fixed_step(&physics_world, 1.0 / 60.0):
+    closed_physics_status: i32 = catch PhysicsRuntime::fixed_step(&physics_world,
+        PhysicsAppProbe::FIXED_STEP_SECONDS):
         value: 1
         PhysicsRuntime::PhysicsError.ApplicationUnavailable: 0
         error failure: 2
