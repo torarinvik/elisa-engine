@@ -1,0 +1,348 @@
+# Native R01 coverage for retained snapshot rows. A row that names an existing
+# handle keeps that instance, and commit only moves it, so staging refuses a
+# retained row whose mesh, material or material set, gameplay identity, or
+# render ID differs from the instance's. The presenter retires and recreates
+# the instance for any such change, so it never stages a refused row.
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+include "../src/runtime/render_snapshot_scene.elisa"
+
+module RenderSceneSnapshotRetainedNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_identity_matches(gameplay_epoch: i64, gameplay_id: i64,
+            render_id: i64, mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_position_x(render_id: i64, expected_x: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_object_count() -> u64
+
+        const module Ids:
+            MESHES: u64 = 960
+            MATERIALS: u64 = 961
+            SETS: u64 = 962
+            EPOCH: i64 = 7
+            GAMEPLAY: i64 = 9600
+
+        const module Mesh:
+            FIRST: u64 = 1
+            SECOND: u64 = 2
+            ABSENT: u64 = 99
+
+        const module Paint:
+            FIRST: u64 = 1
+            SECOND: u64 = 2
+
+        # Each set lists one paint, for the triangle's one material slot.
+        const module Set:
+            FIRST: u64 = 1
+            SECOND: u64 = 2
+
+        const module Row:
+            PLAIN: i64 = 9601
+            SET: i64 = 9602
+            OTHER: i64 = 9603
+            PRESENTED: i64 = 9604
+
+        # Native API calls the test probe counts for one transaction.
+        const module Calls:
+            TWO_ROWS: u64 = 4
+            ONE_ROW: u64 = 3
+            REPLACED: u64 = 4
+
+        const NATIVE_OK: i32 = 0
+        const NATIVE_INVALID: i32 = -1
+        const START_X: f32 = 1.0
+        const MOVED_X: f32 = 2.0
+        const REFUSED_X: f32 = 5.0
+        const HIDDEN_Y: f32 = -40.0
+
+        def mesh_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MESHES, low: low}
+
+        def material_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MATERIALS, low: low}
+
+        def set_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::SETS, low: low}
+
+        def register_mesh(low: u64) -> bool:
+            catch RenderScene::register_snapshot_mesh_asset(mesh_id(low), "build/cooked/render-scene-triangle.elpk"):
+                ok: true
+                error failure: false
+
+        def register_paint(low: u64, red: f32) -> bool:
+            material: Material::Material = Material::Material{
+                base_color: Assets::AssetId{high: 0, low: 0},
+                normal: Assets::AssetId{high: 0, low: 0},
+                metallic_roughness: Assets::AssetId{high: 0, low: 0},
+                occlusion: Assets::AssetId{high: 0, low: 0},
+                emissive: Assets::AssetId{high: 0, low: 0},
+                base_color_factor: [red, 0.5, 0.5, 1.0],
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+                emissive_factor: [0.0, 0.0, 0.0],
+                alpha_cutoff: 0.5,
+                alpha_mode: Material::AlphaMode.Opaque,
+                double_sided: false,
+            }
+            catch RenderScene::register_snapshot_material_asset(material_id(low), &material):
+                ok: true
+                error failure: false
+
+        def register_set(low: u64, paint: u64) -> bool:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: bool = catch RenderScene::snapshot_material_set_append(&materials, material_id(paint)):
+                ok: true
+                error failure: false
+            return false if not appended
+            catch RenderScene::register_snapshot_material_set(set_id(low), &materials):
+                ok: true
+                error failure: false
+
+        def register_assets() -> i32:
+            return 1 if not register_mesh(Mesh::FIRST) or not register_mesh(Mesh::SECOND)
+            return 2 if not register_paint(Paint::FIRST, 0.8) or not register_paint(Paint::SECOND, 0.2)
+            return 3 if not register_set(Set::FIRST, Paint::FIRST) or not register_set(Set::SECOND, Paint::SECOND)
+            0
+
+        def unregister_assets() -> i32:
+            for low in Set::FIRST..<Set::SECOND + 1:
+                removed: bool = catch RenderScene::unregister_snapshot_material_set(set_id(low)):
+                    ok: true
+                    error failure: false
+                return 1 if not removed
+            for low in Paint::FIRST..<Paint::SECOND + 1:
+                removed: bool = catch RenderScene::unregister_snapshot_material_asset(material_id(low)):
+                    ok: true
+                    error failure: false
+                return 2 if not removed
+            for low in Mesh::FIRST..<Mesh::SECOND + 1:
+                removed: bool = catch RenderScene::unregister_snapshot_mesh_asset(mesh_id(low)):
+                    ok: true
+                    error failure: false
+                return 3 if not removed
+            0
+
+        # Stages one hidden row at `x` in the open transaction.
+        def stage(handle: i64, epoch: i64, gameplay: i64, render_id: i64,
+            mesh_low: u64, material: Assets::AssetId, x: f32) -> i32:
+            elisa_render_scene_v1_snapshot_stage(handle, epoch, gameplay, render_id,
+                Ids::MESHES, mesh_low, material.high, material.low,
+                x, HIDDEN_Y, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+
+        # The plain row names a paint and the set row a set listing that
+        # paint; both belong to one gameplay entity.
+        def own_material(render_id: i64) -> Assets::AssetId:
+            material_id(Paint::FIRST) if render_id == Row::PLAIN else set_id(Set::FIRST)
+
+        def stage_own(handle: i64, render_id: i64, x: f32) -> i32:
+            stage(handle, Ids::EPOCH, Ids::GAMEPLAY, render_id, Mesh::FIRST, own_material(render_id), x)
+
+        def at(render_id: i64, x: f32) -> bool:
+            elisa_render_scene_v1_test_snapshot_position_x(render_id, x) != 0
+
+        def keeps_identity(render_id: i64) -> bool:
+            material: Assets::AssetId = own_material(render_id)
+            elisa_render_scene_v1_test_snapshot_identity_matches(Ids::EPOCH, Ids::GAMEPLAY, render_id,
+                Ids::MESHES, Mesh::FIRST, material.high, material.low) != 0
+
+        def create_rows() -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            plain: i32 = stage_own(0, Row::PLAIN, START_X)
+            with_set: i32 = stage_own(0, Row::SET, START_X)
+            if plain != NATIVE_OK or with_set != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            elisa_render_scene_v1_snapshot_commit() == NATIVE_OK
+
+        # The same IDs retain both instances: commit keeps their handles and
+        # moves them in one begin, two rows, commit transaction.
+        def retained_rows(plain: i64, with_set: i64) -> i32:
+            return 1 if elisa_render_scene_v1_snapshot_begin(2) != NATIVE_OK
+            moved_plain: i32 = stage_own(plain, Row::PLAIN, MOVED_X)
+            moved_set: i32 = stage_own(with_set, Row::SET, MOVED_X)
+            if moved_plain != NATIVE_OK or moved_set != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 2
+            return 3 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            return 4 if elisa_render_scene_v1_snapshot_result(0) != plain or elisa_render_scene_v1_snapshot_result(1) != with_set
+            return 5 if elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() != Calls::TWO_ROWS
+            return 6 if not at(Row::PLAIN, MOVED_X) or not at(Row::SET, MOVED_X)
+            return 7 if not keeps_identity(Row::PLAIN) or not keeps_identity(Row::SET)
+            0
+
+        # Stages one changed row for `handle`, whose own row is `own_row`.
+        # Staging must refuse it and record nothing, so the own row stages
+        # after it, and aborting leaves the instance where it was.
+        def refused(handle: i64, own_row: i64, epoch: i64, gameplay: i64, render_id: i64,
+            mesh_low: u64, material: Assets::AssetId) -> i32:
+            return 1 if elisa_render_scene_v1_snapshot_begin(2) != NATIVE_OK
+            changed: i32 = stage(handle, epoch, gameplay, render_id, mesh_low, material, REFUSED_X)
+            own: i32 = stage_own(handle, own_row, REFUSED_X)
+            aborted: bool = elisa_render_scene_v1_snapshot_abort() == NATIVE_OK
+            return 2 if changed != NATIVE_INVALID
+            return 3 if own != NATIVE_OK or not aborted
+            return 4 if not at(own_row, MOVED_X) or not keeps_identity(own_row)
+            0
+
+        def refused_rows(plain: i64, with_set: i64) -> i32:
+            paint: Assets::AssetId = material_id(Paint::FIRST)
+            set: Assets::AssetId = set_id(Set::FIRST)
+            mesh: i32 = refused(plain, Row::PLAIN, Ids::EPOCH, Ids::GAMEPLAY, Row::PLAIN, Mesh::SECOND, paint)
+            return 10 + mesh if mesh != 0
+            # A changed mesh that isn't resident is still a changed row.
+            absent: i32 = refused(plain, Row::PLAIN, Ids::EPOCH, Ids::GAMEPLAY, Row::PLAIN, Mesh::ABSENT, paint)
+            return 20 + absent if absent != 0
+            material: i32 = refused(plain, Row::PLAIN, Ids::EPOCH, Ids::GAMEPLAY, Row::PLAIN, Mesh::FIRST,
+                material_id(Paint::SECOND))
+            return 30 + material if material != 0
+            # The set draws the same paint, but it is a different ID.
+            to_set: i32 = refused(plain, Row::PLAIN, Ids::EPOCH, Ids::GAMEPLAY, Row::PLAIN, Mesh::FIRST, set)
+            return 40 + to_set if to_set != 0
+            other_set: i32 = refused(with_set, Row::SET, Ids::EPOCH, Ids::GAMEPLAY, Row::SET, Mesh::FIRST,
+                set_id(Set::SECOND))
+            return 50 + other_set if other_set != 0
+            to_paint: i32 = refused(with_set, Row::SET, Ids::EPOCH, Ids::GAMEPLAY, Row::SET, Mesh::FIRST, paint)
+            return 60 + to_paint if to_paint != 0
+            epoch: i32 = refused(plain, Row::PLAIN, Ids::EPOCH + 1, Ids::GAMEPLAY, Row::PLAIN, Mesh::FIRST, paint)
+            return 70 + epoch if epoch != 0
+            gameplay: i32 = refused(plain, Row::PLAIN, Ids::EPOCH, Ids::GAMEPLAY + 1, Row::PLAIN, Mesh::FIRST, paint)
+            return 80 + gameplay if gameplay != 0
+            render_change: i32 = refused(plain, Row::PLAIN, Ids::EPOCH, Ids::GAMEPLAY, Row::OTHER, Mesh::FIRST, paint)
+            return 90 + render_change if render_change != 0
+            0
+
+        def retire_rows(plain: i64, with_set: i64) -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(2) != NATIVE_OK
+            first: i32 = elisa_render_scene_v1_snapshot_retire(plain)
+            second: i32 = elisa_render_scene_v1_snapshot_retire(with_set)
+            if first != NATIVE_OK or second != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            elisa_render_scene_v1_snapshot_commit() == NATIVE_OK
+
+        def entity_ref(epoch: i64, id: i64) -> World::EntityRef:
+            World::EntityRef{world_epoch: epoch, id: id}
+
+        # Publishes one presenter row through the ordinary Elisa client path.
+        def present(presenter: mutable RenderScene::SnapshotPresenter&,
+            snapshot: mutable RenderSnapshot::Snapshot&, gameplay: World::EntityRef,
+            mesh_low: u64, material: Assets::AssetId, x: f32) -> i32:
+            visual: Assets::VisualAsset = Assets::VisualAsset{
+                mesh: mesh_id(mesh_low),
+                material: material,
+                local_bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                    maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                },
+            }
+            transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: x, y: HIDDEN_Y, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            }
+            RenderSnapshot::snapshot_clear(snapshot)
+            return 1 if not RenderSnapshot::snapshot_bind(snapshot, gameplay, Row::PRESENTED, visual, transform)
+            catch RenderSnapshotScene::sync(presenter, snapshot):
+                ok: 0
+                error failure: 2
+
+        # The presented row has these IDs at `x`, and the last transaction
+        # made `calls` native calls: three to retain, four to replace.
+        def shows(gameplay: World::EntityRef, mesh_low: u64, material: Assets::AssetId,
+            x: f32, calls: u64) -> bool:
+            identity: bool = elisa_render_scene_v1_test_snapshot_identity_matches(gameplay.world_epoch,
+                gameplay.id, Row::PRESENTED, Ids::MESHES, mesh_low, material.high, material.low) != 0
+            same_calls: bool = elisa_render_scene_v1_test_snapshot_last_transaction_api_calls() == calls
+            identity and same_calls and at(Row::PRESENTED, x)
+
+        # Only an unchanged row is retained; every other change replaces the
+        # instance under the same render ID.
+        def presenter_rows() -> i32:
+            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+            first: World::EntityRef = entity_ref(Ids::EPOCH, Ids::GAMEPLAY)
+            other: World::EntityRef = entity_ref(Ids::EPOCH, Ids::GAMEPLAY + 1)
+            later: World::EntityRef = entity_ref(Ids::EPOCH + 1, Ids::GAMEPLAY + 1)
+            paint: Assets::AssetId = material_id(Paint::FIRST)
+            other_paint: Assets::AssetId = material_id(Paint::SECOND)
+            set: Assets::AssetId = set_id(Set::FIRST)
+            other_set: Assets::AssetId = set_id(Set::SECOND)
+            return 1 if present(&presenter, &snapshot, first, Mesh::FIRST, paint, START_X) != 0
+            return 2 if not shows(first, Mesh::FIRST, paint, START_X, Calls::ONE_ROW)
+            return 3 if present(&presenter, &snapshot, first, Mesh::FIRST, paint, MOVED_X) != 0
+            return 4 if not shows(first, Mesh::FIRST, paint, MOVED_X, Calls::ONE_ROW)
+            return 5 if present(&presenter, &snapshot, first, Mesh::FIRST, other_paint, MOVED_X) != 0
+            return 6 if not shows(first, Mesh::FIRST, other_paint, MOVED_X, Calls::REPLACED)
+            return 7 if present(&presenter, &snapshot, first, Mesh::FIRST, set, MOVED_X) != 0
+            return 8 if not shows(first, Mesh::FIRST, set, MOVED_X, Calls::REPLACED)
+            return 9 if present(&presenter, &snapshot, first, Mesh::FIRST, other_set, MOVED_X) != 0
+            return 10 if not shows(first, Mesh::FIRST, other_set, MOVED_X, Calls::REPLACED)
+            return 11 if present(&presenter, &snapshot, first, Mesh::SECOND, other_set, MOVED_X) != 0
+            return 12 if not shows(first, Mesh::SECOND, other_set, MOVED_X, Calls::REPLACED)
+            # The render ID passes to another entity, then to a later world.
+            return 13 if present(&presenter, &snapshot, other, Mesh::SECOND, other_set, MOVED_X) != 0
+            return 14 if not shows(other, Mesh::SECOND, other_set, MOVED_X, Calls::REPLACED)
+            return 15 if present(&presenter, &snapshot, later, Mesh::SECOND, other_set, MOVED_X) != 0
+            return 16 if not shows(later, Mesh::SECOND, other_set, MOVED_X, Calls::REPLACED)
+            return 17 if present(&presenter, &snapshot, later, Mesh::SECOND, other_set, START_X) != 0
+            return 18 if not shows(later, Mesh::SECOND, other_set, START_X, Calls::ONE_ROW)
+            return 19 if RenderSnapshotScene::binding_count(presenter) != 1
+            cleared: bool = catch RenderSnapshotScene::clear(&presenter):
+                ok: true
+                error failure: false
+            return 20 if not cleared
+            0
+
+    public:
+        # Returns 0 or the failing case: 1-9 setup, 10-19 retained rows,
+        # 100-199 refused rows, 200-219 presenter rows, 300-309 cleanup.
+        def exercise() -> i32:
+            instances: u64 = RenderScene::instance_count()
+            objects: u64 = elisa_render_scene_v1_test_object_count()
+            registered: i32 = register_assets()
+            return registered if registered != 0
+            return 5 if not create_rows()
+            plain: i64 = elisa_render_scene_v1_snapshot_result(0)
+            with_set: i64 = elisa_render_scene_v1_snapshot_result(1)
+            return 6 if plain <= 0 or with_set <= 0
+            return 7 if not at(Row::PLAIN, START_X) or not keeps_identity(Row::SET)
+            retained: i32 = retained_rows(plain, with_set)
+            return 10 + retained if retained != 0
+            refusals: i32 = refused_rows(plain, with_set)
+            return 100 + refusals if refusals != 0
+            return 8 if not retire_rows(plain, with_set)
+            presented: i32 = presenter_rows()
+            return 200 + presented if presented != 0
+            unregistered: i32 = unregister_assets()
+            return 300 + unregistered if unregistered != 0
+            return 309 if RenderScene::instance_count() != instances or elisa_render_scene_v1_test_object_count() != objects
+            0

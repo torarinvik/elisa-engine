@@ -281,6 +281,18 @@ bool snapshot_assets_valid(const SnapshotStageRow& row) {
     return mesh_valid && material_valid && !same_asset;
 }
 
+// Commit only moves a retained instance and sets its tint, so its row must
+// name the instance's own identity, mesh, and material or material set. Any
+// other change retires the instance and stages a new row.
+bool snapshot_row_retains_instance(const SnapshotStageRow& row, const InstanceSlot& instance) {
+    const bool same_identity = row.gameplay_epoch == instance.gameplay_epoch &&
+        row.gameplay_id == instance.gameplay_id && row.render_id == instance.render_id;
+    const bool same_mesh = row.mesh_high == instance.mesh_high && row.mesh_low == instance.mesh_low;
+    const bool same_material = row.material_high == instance.material_high &&
+        row.material_low == instance.material_low;
+    return same_identity && same_mesh && same_material;
+}
+
 bool snapshot_tint_color_valid(float red, float green, float blue) {
     const auto channel = [](float value) {
         return std::isfinite(value) && value >= 0.0f && value <= MAX_SNAPSHOT_TINT_COLOR_SCALE;

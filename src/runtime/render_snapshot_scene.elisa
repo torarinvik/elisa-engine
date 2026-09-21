@@ -31,12 +31,19 @@ extend RenderScene:
             for index in 0..<presenter.count |slot: usize = SnapshotLimits::INVALID_SLOT| -> slot:
                 break index if presenter.bindings[index].render_id == render_id
 
+        # Native staging retains an instance only for a row with the same
+        # gameplay identity, render ID, mesh and material or set; any other
+        # change retires the binding and creates a new instance.
+        def snapshot_binding_matches(binding: SnapshotBinding, entry: RenderSnapshot::Entry) -> bool:
+            same_epoch: bool = binding.gameplay.world_epoch == entry.gameplay.world_epoch
+            same_gameplay: bool = same_epoch and binding.gameplay.id == entry.gameplay.id
+            same_mesh: bool = Assets::same_asset_id(binding.visual.mesh, entry.visual.mesh)
+            same_material: bool = Assets::same_asset_id(binding.visual.material, entry.visual.material)
+            binding.render_id == entry.render_id and same_gameplay and same_mesh and same_material
+
         def snapshot_retains(snapshot: RenderSnapshot::Snapshot&, binding: SnapshotBinding) -> bool:
             for index in 0..<RenderSnapshot::snapshot_count(snapshot) |retained: bool = false| -> retained:
-                entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, index)
-                same_mesh: bool = Assets::same_asset_id(entry.visual.mesh, binding.visual.mesh)
-                same_material: bool = Assets::same_asset_id(entry.visual.material, binding.visual.material)
-                retained <- true if entry.render_id == binding.render_id and same_mesh and same_material
+                retained <- true if snapshot_binding_matches(binding, RenderSnapshot::snapshot_entry(snapshot, index))
 
         def snapshot_stage_row(entry: RenderSnapshot::Entry, existing_handle: i64) -> i32:
             elisa_render_scene_v1_snapshot_stage(existing_handle,
@@ -76,9 +83,7 @@ extend RenderScene:
                 existing_handle: mutable i64 = 0
                 if old_slot != SnapshotLimits::INVALID_SLOT:
                     old: SnapshotBinding = presenter.bindings[old_slot]
-                    same_mesh: bool = Assets::same_asset_id(old.visual.mesh, entry.visual.mesh)
-                    same_material: bool = Assets::same_asset_id(old.visual.material, entry.visual.material)
-                    if same_mesh and same_material:
+                    if snapshot_binding_matches(old, entry):
                         existing_handle <- old.handle.native_value
                 stage_status: i32 = snapshot_stage_row(entry, existing_handle)
                 if stage_status != NativeStatus::OK:

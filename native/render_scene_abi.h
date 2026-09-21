@@ -78,6 +78,10 @@ int32_t elisa_render_scene_v1_update_transform(
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
 int32_t elisa_render_scene_v1_snapshot_begin(uint32_t previous_count);
+// A row with a nonzero existing_handle retains that instance and must name its
+// gameplay epoch/ID, render ID, mesh ID, and material or material-set ID, or
+// staging returns INVALID_ARGUMENT. Commit updates only its transform and tint;
+// to change the mesh, material, or identity, retire it and stage a new row.
 int32_t elisa_render_scene_v1_snapshot_stage(
     int64_t existing_handle, int64_t gameplay_epoch, int64_t gameplay_id, int64_t render_id,
     uint64_t mesh_high, uint64_t mesh_low, uint64_t material_high, uint64_t material_low,

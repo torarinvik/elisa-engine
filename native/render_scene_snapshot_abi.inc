@@ -41,19 +41,22 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_stage(
     row.rotation[0] = qx; row.rotation[1] = qy; row.rotation[2] = qz; row.rotation[3] = qw;
     row.scale[0] = sx; row.scale[1] = sy; row.scale[2] = sz;
     if (!snapshot_assets_valid(row)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    // A retained row is checked against its instance first, so a changed
+    // mesh or material is refused even when that asset isn't resident.
+    if (existing_handle != 0) {
+        size_t slot = MAX_INSTANCES;
+        if (!valid_handle(state, existing_handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+        if (!snapshot_row_retains_instance(row, state.instances[slot])) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        if (state.scene->transforms.GetComponent(state.instances[slot].entity) == nullptr) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+    }
     const int32_t asset_status = snapshot_row_asset_status(state, mesh_high, mesh_low, material_high, material_low);
     if (asset_status != ELISA_RENDER_SCENE_OK) return asset_status;
     for (size_t index = 0; index < state.snapshot_row_count; ++index) {
         if (state.snapshot_rows[index].render_id == render_id ||
             (existing_handle != 0 && state.snapshot_rows[index].existing_handle == existing_handle)) {
             return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-        }
-    }
-    if (existing_handle != 0) {
-        size_t slot = MAX_INSTANCES;
-        if (!valid_handle(state, existing_handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-        if (state.scene->transforms.GetComponent(state.instances[slot].entity) == nullptr) {
-            return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
     }
     state.snapshot_rows[state.snapshot_row_count++] = row;

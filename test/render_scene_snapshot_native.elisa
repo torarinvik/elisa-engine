@@ -7,6 +7,7 @@ include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
+include "./render_scene_snapshot_retained_native.elisa"
 
 module RenderSceneSnapshotNativeTests:
     private:
@@ -21,6 +22,12 @@ module RenderSceneSnapshotNativeTests:
             TINTED_OFFSET: i64 = 1
             REMOVED_INDEX: usize = 100
             PROBE_RENDER_ID: i64 = 50000
+            # Retained rows log their case under this group; the smoke has no
+            # distinct exit codes left.
+            RETAINED_GROUP: i32 = 195
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
@@ -505,4 +512,6 @@ module RenderSceneSnapshotNativeTests:
                 error failure: false
             return 93 if not cleared or RenderScene::instance_count() != 3 or elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 0
             return 74 if unregister_test_snapshot_assets() != 0
+            retained: i32 = RenderSceneSnapshotRetainedNativeTests::exercise()
+            return elisa_render_scene_v1_test_failed_case(Stress::RETAINED_GROUP, retained) if retained != 0
             0
