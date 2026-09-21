@@ -96,6 +96,9 @@ module RenderScene:
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_texture(handle: i64, slot: i32, asset_path: cstr) -> i32
 
         @callconv(c)
@@ -192,6 +195,11 @@ module RenderScene:
             Normal
             Surface
             Emissive
+
+        enum AlphaMode:
+            Opaque
+            Mask
+            Blend
 
         struct Color:
             red: f32
@@ -357,6 +365,18 @@ module RenderScene:
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
+
+        # Mask keeps the mesh opaque while discarding texels below cutoff, which is
+        # suitable for fences and foliage. Blend is sorted transparency.
+        def set_alpha_mode(handle: InstanceHandle, mode: AlphaMode, cutoff: f32,
+            double_sided: bool) -> void error[RenderSceneError]:
+            mode_code: i32 =
+                match mode:
+                    AlphaMode.Opaque: 0
+                    AlphaMode.Mask: 1
+                    AlphaMode.Blend: 2
+            try check_status(elisa_render_scene_v1_set_alpha_mode(handle.native_value,
+                mode_code, cutoff, 1 if double_sided else 0))
 
         # Paths are project-relative. Surface uses Wicked's RGBA packed surface
         # channels; Normal selects Wicked's normal-map import path.

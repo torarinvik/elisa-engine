@@ -15,6 +15,32 @@ extern "C" int32_t elisa_render_scene_v1_set_color(
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_alpha_mode(
+    int64_t handle, int32_t mode, float cutoff, int32_t double_sided) {
+    if (mode < 0 || mode > 2 || !finite(cutoff) || cutoff < 0.0f || cutoff > 1.0f ||
+        (double_sided != 0 && double_sided != 1)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(state.instances[slot].entity);
+    wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(state.instances[slot].entity);
+    if (material == nullptr || object == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+
+    const bool blended = mode == 2;
+    material->SetAlphaRef(mode == 1 ? cutoff : 1.0f);
+    material->userBlendMode = blended ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
+    material->SetDoubleSided(double_sided != 0);
+    material->SetCastShadow(!blended);
+    object->SetCastShadow(!blended);
+    material->SetDirty();
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_texture(
     int64_t handle, int32_t slot, const char* asset_path) {
     if (!elisa::rendering::textures::valid_slot(slot)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
