@@ -18,6 +18,19 @@ extern "C" int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled) {
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_ambient_occlusion_settings(
+    float range, float power) {
+    if (!elisa::render_scene_effects::valid_ambient_occlusion_settings(range, power)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    elisa::render_scene_effects::apply_ambient_occlusion_settings(*state.path, range, power);
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_tonemap(int32_t tonemap) {
     if (tonemap < 0 || tonemap > 2) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
@@ -54,10 +67,20 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_matches(int32_t ambient_oc
 
 extern "C" int32_t elisa_render_scene_v1_test_quality_rejects_invalid_flags(void) {
     return elisa_render_scene_v1_set_ambient_occlusion(2) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_set_ambient_occlusion_settings(0.0f, 1.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_set_ambient_occlusion_settings(1.0f, 9.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_fxaa(-1) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_tonemap(3) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_exposure(-1.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_exposure(9.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_ambient_occlusion_matches(
+    float range, float power) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    return state.path->getAORange() == range && state.path->getAOPower() == power ? 1 : 0;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_postprocess_matches(

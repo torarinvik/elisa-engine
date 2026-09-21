@@ -106,6 +106,8 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_ambient_occlusion(enabled: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_ambient_occlusion_settings(range: f32, power: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_fxaa(enabled: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_tonemap(tonemap: i32) -> i32
@@ -443,6 +445,13 @@ module RenderScene:
         def set_ambient_occlusion(enabled: bool) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_ambient_occlusion(enabled_value))
+
+        # Range is measured in world units; power controls contact contrast.
+        # Both values are bounded so projects cannot destabilize the renderer.
+        def set_ambient_occlusion_settings(range: f32, power: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if range < 0.01 or range > 32.0
+            raise RenderSceneError.InvalidValue if power < 0.0 or power > 8.0
+            try check_status(elisa_render_scene_v1_set_ambient_occlusion_settings(range, power))
 
         # FXAA smooths thin geometry edges at the current render resolution.
         def set_fxaa(enabled: bool) -> void error[RenderSceneError]:

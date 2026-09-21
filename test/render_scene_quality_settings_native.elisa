@@ -1,0 +1,34 @@
+# Native smoke coverage for the public presentation quality controls.
+module RenderSceneQualitySettingsNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_postprocess_matches(tonemap: i32, exposure: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_ambient_occlusion_matches(range: f32, power: f32) -> i32
+
+    public:
+        def exercise() -> i32:
+            tonemap_status: i32 = catch RenderScene::set_tonemap(RenderScene::Tonemap.Uchimura):
+                ok: 0
+                error failure: 1
+            return 110 if tonemap_status != 0 or elisa_render_scene_v1_test_postprocess_matches(2, 1.0) != 1
+            exposure_status: i32 = catch RenderScene::set_exposure(0.92):
+                ok: 0
+                error failure: 1
+            return 111 if exposure_status != 0 or elisa_render_scene_v1_test_postprocess_matches(2, 0.92) != 1
+            invalid_exposure: i32 = catch RenderScene::set_exposure(8.1):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 112 if invalid_exposure != 1
+            ao_status: i32 = catch RenderScene::set_ambient_occlusion_settings(1.25, 0.78):
+                ok: 0
+                error failure: 1
+            return 113 if ao_status != 0 or elisa_render_scene_v1_test_ambient_occlusion_matches(1.25, 0.78) != 1
+            invalid_ao: i32 = catch RenderScene::set_ambient_occlusion_settings(0.0, 1.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 114 if invalid_ao != 1
+            0
