@@ -59,14 +59,27 @@ also now passes the typed `BackendFallbackProviders` returned by
 different struct with the same-shaped Boolean fields, so the compiler emitted declarations
 without the two function bodies and the native archive could not link.
 
+The affine owner now carries `Runtime::StepClock` state. `advance_simulation()` returns the
+number of due fixed ticks, the scheduled tick count, and the interpolation fraction for the
+game's validated `Executor` plan; shutdown and failed-start rollback reset the clock. The
+session also routes audio decode, play, stop, bus gain, and voice-count operations through the
+provider it activated, preserving Audio errors while returning `AudioUnavailable` or
+`SessionStopped` for invalid ownership. The probe accumulates a 10 ms frame and a 24 ms frame,
+checks the resulting two fixed ticks and interpolation remainder, runs those ticks through
+the session-owned Jolt adapter, and tests audio playback, invalid handles, no-Audio sessions,
+and post-shutdown calls. The game still dispatches its own system plan; the session does not
+yet bind World access or system callbacks into the executor.
+
 Additional validation on 2026-09-21:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/native_gate.elisascript native` passed all stages on macOS 27.0 / Apple M5, including SDL3/Metal startup, failure rollback, cooked assets, deterministic Wicked rendering, live input, and the new service-session probe. The report recorded `hardware_verification=verified`.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed the full portable suite, Godot 4.7.2 probe, and both Elisa Proof suites (17/17 and 6/6 obligations proved and replayed).
 - Source-length policy, module hygiene (87 production modules), dependency manifest (11 libraries, SDL3-only active target), and `git diff --check` passed.
+- Engine implementation commit `6e49ed6` contains the source used for this validation; the report records base revision `e715309` because the gate ran just before that source commit was written. After adding the fixed-step owner and session-routed audio commands, `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/native_gate.elisascript native` passed on macOS 27.0 / Apple M5 with `hardware_verification=verified`. The gate covered sanitizer boundaries, the SDL3/Metal service-session and failure-cleanup smokes, native asset cooking, both Wicked render passes, deterministic image checks, live input, and frame-time limits. `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed, including Godot 4.7.2 and both Elisa Proof suites (17/17 and 6/6 obligations). Source-length and module-hygiene checks passed (88 production modules). Report: [`build/native-gate.json`](../../build/native-gate.json).
 
 The SDL3/Wicked profile still reports Physics and Audio as unavailable native core
 capabilities; the session may activate them only when the caller's requirements explicitly
-declare the matching fallback. Spatial audio, device-loss recovery, gameplay-World scheduler
-integration, Audio operations through the composite session, and non-Physics/Audio providers
+declare the matching fallback. The fixed-step session clock supplies due ticks to the
+game-owned plan, but automatic World/system dispatch and World-to-Physics transform sync are
+still incomplete. Spatial audio, device-loss recovery, and non-Physics/Audio providers also
 remain incomplete.
