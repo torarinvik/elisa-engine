@@ -67,8 +67,19 @@ provider it activated, preserving Audio errors while returning `AudioUnavailable
 `SessionStopped` for invalid ownership. The probe accumulates a 10 ms frame and a 24 ms frame,
 checks the resulting two fixed ticks and interpolation remainder, runs those ticks through
 the session-owned Jolt adapter, and tests audio playback, invalid handles, no-Audio sessions,
-and post-shutdown calls. The game still dispatches its own system plan; the session does not
-yet bind World access or system callbacks into the executor.
+and post-shutdown calls.
+
+`src/runtime/world_physics.elisa` adds an affine `WorldPhysics::Bindings` owner that maps
+checked World entity references to body handles held in a `PhysicsRuntime`-owned opaque
+handle pool. `bind()` creates a Jolt box at the entity's current position. `advance_and_sync()`
+consumes the session clock, steps Physics once for each due tick, and publishes body positions
+back to World after staging every pose; it preserves the entity's existing rotation and scale.
+`unbind()` destroys the Jolt body before removing the mapping, so failed destruction leaves
+cleanup retryable. The native application probe verifies a dynamic body falls from its starting
+position, its World transform is updated, entity scale survives, duplicate links are rejected,
+and unbinding the first of two bodies compacts the mapping without disconnecting the remaining
+body. Generic user system callbacks still run in the game-owned plan, and hierarchy-aware
+physics synchronization remains open.
 
 Additional validation on 2026-09-21:
 
@@ -91,7 +102,12 @@ Validation after the maze-client migration on 2026-09-21:
 
 The SDL3/Wicked profile still reports Physics and Audio as unavailable native core
 capabilities; the session may activate them only when the caller's requirements explicitly
-declare the matching fallback. The fixed-step session clock supplies due ticks to the
-game-owned plan, but automatic World/system dispatch and World-to-Physics transform sync are
-still incomplete. Spatial audio, device-loss recovery, and non-Physics/Audio providers also
-remain incomplete.
+declare the matching fallback. `WorldPhysics::advance_and_sync()` now connects due session
+ticks to checked entity transforms, while automatic dispatch of a general user system plan and
+hierarchy-aware synchronization remain incomplete. Spatial audio, device-loss recovery, and
+non-Physics/Audio providers also remain incomplete.
+
+Validation of the World-to-Physics bridge on 2026-09-21:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh python3 scripts/application_native_smoke.py` passed both SDL3/Metal applications. The session probe attached two dynamic Jolt bodies to checked World entities, verified gravity-driven pose sync and scale preservation, rejected a duplicate binding, removed the first binding, confirmed the second continued syncing after compaction, and cleaned up both bodies.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` passed the portable suite, Godot 4.7.2 probes, both Elisa Proof suites (17/17 and 6/6), runtime scheduler checks, source-length policy, and module-hygiene policy.
