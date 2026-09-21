@@ -27,6 +27,7 @@ module RuntimeServices:
         error RuntimeServicesError:
             PhysicsUnavailable
             AudioUnavailable
+            AudioRecoveryFailed
             SessionStopped
             FrameUnavailable
             ShutdownFailed
@@ -45,6 +46,7 @@ module RuntimeServices:
                 physics: mutable PhysicsRuntime::ServiceState
                 simulation_clock: mutable Runtime::StepClock
                 audio_live: mutable bool
+                audio_provider: mutable Capabilities::BackendFallbackProvider
                 application_live: mutable bool
 
     private:
@@ -69,6 +71,7 @@ module RuntimeServices:
                     ok: true
                     error failure: false
                 session.audio_live <- false if audio_closed
+                session.audio_provider <- Capabilities::BackendFallbackProvider.None if audio_closed
             if PhysicsRuntime::service_is_live(session.physics):
                 physics_closed <- catch PhysicsRuntime::service_shutdown(&session.physics):
                     ok: true
@@ -78,6 +81,7 @@ module RuntimeServices:
                 if application_closed:
                     session.application_live <- false
                     session.audio_live <- false
+                    session.audio_provider <- Capabilities::BackendFallbackProvider.None
                     PhysicsRuntime::service_reset(&session.physics)
                     session.simulation_clock <- Runtime::StepClock()
                     return true
@@ -131,7 +135,9 @@ module RuntimeServices:
                             activate_default_audio(sample_rate, channels)
                         _:
                             ActivationStatus.UnsupportedProvider
-                session.audio_live <- true if status == ActivationStatus.Ready
+                if status == ActivationStatus.Ready:
+                    session.audio_live <- true
+                    session.audio_provider <- decision.fallback_provider
                 return status
             ActivationStatus.UnsupportedProvider
 
@@ -164,6 +170,7 @@ module RuntimeServices:
                 physics: PhysicsRuntime::ServiceState(),
                 simulation_clock: Runtime::StepClock(),
                 audio_live: false,
+                audio_provider: Capabilities::BackendFallbackProvider.None,
                 application_live: false,
             }
 
@@ -174,6 +181,7 @@ module RuntimeServices:
             report <- BackendRequirements::backend_requirements_invalid_report()
             return OpenStatus.SessionAlreadyOpen if session.application_live
             session.audio_live <- false
+            session.audio_provider <- Capabilities::BackendFallbackProvider.None
 
             opened: Application::InitializeStatus = Application::initialize_with_profile_requirements(
                 config, requirements, report)
@@ -216,6 +224,28 @@ module RuntimeServices:
 
         def audio_active(session: Session&) -> bool:
             session.application_live and session.audio_live
+
+        # The provider may change after a default output device is lost. Keep
+        # the active route observable instead of leaving the startup report as
+        # the only description of audio ownership.
+        def audio_provider(session: Session&) -> Capabilities::BackendFallbackProvider:
+            session.audio_provider
+
+        def recover_audio_if_needed(session: mutable Session&) -> bool:
+            return true if not session.audio_live
+            requested: bool = catch AudioRuntime::take_device_recovery_request():
+                value: value
+                error failure: false
+            return true if not requested
+            recovered: bool = catch AudioRuntime::recover_with_silent_device():
+                ok: true
+                error failure: false
+            if recovered:
+                session.audio_provider <- Capabilities::BackendFallbackProvider.MiniaudioSilent
+                return true
+            session.audio_live <- false
+            session.audio_provider <- Capabilities::BackendFallbackProvider.None
+            false
 
         # Advance the fixed-step clock once per rendered frame. The returned
         # batch is the contract between frame pacing and the game's validated
@@ -261,9 +291,11 @@ module RuntimeServices:
         # Keep the native host lifecycle behind the same owner as its
         # provider fallbacks. These wrappers intentionally preserve the
         # Application statuses while rejecting use after session shutdown.
-        def pump(session: Session&) -> Application::PumpStatus error[RuntimeServicesError]:
+        def pump(session: mutable Session&) -> Application::PumpStatus error[RuntimeServicesError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
-            Application::pump()
+            status: Application::PumpStatus = Application::pump()
+            raise RuntimeServicesError.AudioRecoveryFailed if not recover_audio_if_needed(&session)
+            status
 
         def frame_info(session: Session&) -> Application::FrameInfo error[RuntimeServicesError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live

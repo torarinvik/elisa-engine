@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <mutex>
@@ -56,6 +57,7 @@ public:
         if (!initialized_) return false;
         const uint32_t rate = sample_rate_;
         const uint32_t channels = channels_;
+        accept_device_notifications_.store(false, std::memory_order_release);
         ma_device_uninit(&device_);
         ma_context_uninit(&context_);
         {
@@ -63,10 +65,25 @@ public:
             initialized_ = false;
             for (Voice& voice : voices_) voice.live = false;
         }
+        device_recovery_requested_.store(false, std::memory_order_release);
         return initialize_null(rate, channels);
     }
 
+    bool take_device_recovery_request() {
+        return device_recovery_requested_.exchange(false, std::memory_order_acq_rel);
+    }
+
+#if defined(ELISA_AUDIO_TEST_PROBE)
+    void request_device_recovery_for_test() {
+        ma_device_notification notification{};
+        notification.pDevice = &device_;
+        notification.type = ma_device_notification_type_stopped;
+        notification_callback(&notification);
+    }
+#endif
+
     void shutdown() {
+        accept_device_notifications_.store(false, std::memory_order_release);
         if (initialized_) {
             ma_device_uninit(&device_);
             ma_context_uninit(&context_);
@@ -75,6 +92,7 @@ public:
         initialized_ = false;
         sample_rate_ = 0;
         channels_ = 0;
+        device_recovery_requested_.store(false, std::memory_order_release);
         for (Clip& clip : clips_) {
             clip.samples.clear();
             clip.rate = 0;
@@ -273,6 +291,7 @@ private:
     bool initialize(const ma_backend* backends, size_t backend_count,
         uint32_t sample_rate, uint32_t channels) {
         if (initialized_ || sample_rate == 0 || channels == 0 || channels > 2) return false;
+        device_recovery_requested_.store(false, std::memory_order_release);
         const ma_context_config context_config = ma_context_config_init();
         if (ma_context_init(backends, backend_count, &context_config, &context_) != MA_SUCCESS) return false;
         ma_device_config config = ma_device_config_init(ma_device_type_playback);
@@ -280,6 +299,7 @@ private:
         config.playback.channels = channels;
         config.sampleRate = sample_rate;
         config.dataCallback = &Service::data_callback;
+        config.notificationCallback = &Service::notification_callback;
         config.pUserData = this;
         if (ma_device_init(&context_, &config, &device_) != MA_SUCCESS) {
             ma_context_uninit(&context_);
@@ -291,7 +311,9 @@ private:
             channels_ = channels;
             initialized_ = true;
         }
+        accept_device_notifications_.store(true, std::memory_order_release);
         if (ma_device_start(&device_) != MA_SUCCESS) {
+            accept_device_notifications_.store(false, std::memory_order_release);
             ma_device_uninit(&device_);
             ma_context_uninit(&context_);
             std::lock_guard<std::mutex> guard(mutex_);
@@ -427,6 +449,17 @@ private:
         if (service != nullptr) service->mix(static_cast<int16_t*>(output), frames);
     }
 
+    static void notification_callback(const ma_device_notification* notification) {
+        if (notification == nullptr || notification->pDevice == nullptr) return;
+        auto* service = static_cast<Service*>(notification->pDevice->pUserData);
+        if (service == nullptr ||
+            !service->accept_device_notifications_.load(std::memory_order_acquire)) return;
+        if (notification->type == ma_device_notification_type_stopped ||
+            notification->type == ma_device_notification_type_interruption_began) {
+            service->device_recovery_requested_.store(true, std::memory_order_release);
+        }
+    }
+
     ma_context context_{};
     ma_device device_{};
     std::array<Clip, MAX_CLIPS> clips_{};
@@ -434,6 +467,8 @@ private:
     uint32_t sample_rate_ = 0;
     uint32_t channels_ = 0;
     bool initialized_ = false;
+    std::atomic<bool> accept_device_notifications_{false};
+    std::atomic<bool> device_recovery_requested_{false};
     mutable std::mutex mutex_;
     ListenerState listener_{};
     std::array<float, BUS_COUNT> bus_gains_{{1.0f, 1.0f, 1.0f}};

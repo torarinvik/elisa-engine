@@ -46,12 +46,19 @@ module AudioRuntime:
             BUS_MUSIC: i32 = 0
             BUS_SFX: i32 = 1
             BUS_UI: i32 = 2
+            DEVICE_RECOVERY_REQUIRED: i32 = 1
 
         @callconv(c)
         extern elisa_audio_v1_initialize_silent(sample_rate: u32, channels: u32) -> i32
 
         @callconv(c)
         extern elisa_audio_v1_initialize_default(sample_rate: u32, channels: u32) -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_take_device_recovery_request() -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_recover_with_silent_device() -> i32
 
         @callconv(c)
         extern elisa_audio_v1_decode_file(path: cstr, slot: mutable u32&, generation: mutable u32&) -> i32
@@ -120,6 +127,16 @@ module AudioRuntime:
             raise AudioError.InvalidArgument if sample_rate < MIN_SAMPLE_RATE_HZ or sample_rate > MAX_SAMPLE_RATE_HZ
             raise AudioError.InvalidArgument if channels < MIN_CHANNEL_COUNT or channels > MAX_CHANNEL_COUNT
             try check_status(elisa_audio_v1_initialize_default(sample_rate, channels))
+
+        # Device callbacks only publish a bounded recovery request. The owner
+        # thread consumes it and reopens miniaudio on its null fallback.
+        def take_device_recovery_request() -> bool error[AudioError]:
+            status: i32 = elisa_audio_v1_take_device_recovery_request()
+            try check_status(Status::OK if status >= 0 else status)
+            status == Status::DEVICE_RECOVERY_REQUIRED
+
+        def recover_with_silent_device() -> void error[AudioError]:
+            try check_status(elisa_audio_v1_recover_with_silent_device())
 
         def decode_file(path: cstr) -> ClipHandle error[AudioError]:
             slot: mutable u32 = 0
