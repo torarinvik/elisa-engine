@@ -44,3 +44,19 @@ The source-length, module-hygiene, and `git diff --check` gates passed.
 Spatial source/listener submission, streaming decode, device recovery, and live
 profile advertisement remain open work. The current service does not claim
 spatialization or uninterrupted recovery after device loss.
+
+## Elisa-owned optional handle state
+
+`AudioRuntime` now exposes `empty_clip()` and `empty_voice()` sentinels plus
+`clip_is_empty()` and `voice_is_empty()` checks. Elisa state can represent an
+optional clip or voice without depending on zeroed ABI data or exposing slot
+and generation fields. The native application smoke rejects attempts to play
+an empty clip or stop an empty voice with `InvalidHandle`.
+
+Validation on 2026-09-21:
+
+- `DEVELOPER_DIR="$(xcode-select -p)" python3 scripts/application_native_smoke.py` passed on macOS with SDL3, Metal, and Wicked. Both the normal audio/application smoke and injected startup-failure cleanup smoke passed.
+- `python3 scripts/check_source_length.py` and `python3 scripts/check_module_hygiene.py` passed.
+
+This validates handle semantics and the engine playback path. It does not
+measure audible output on physical speakers or a headset.

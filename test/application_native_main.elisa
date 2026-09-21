@@ -30,9 +30,23 @@ def check_native_profile() -> i32:
     0
 
 def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
+    raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::clip_is_empty(AudioRuntime::empty_clip())
+    raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::voice_is_empty(AudioRuntime::empty_voice())
     try AudioRuntime::initialize_silent(8000, 1)
     try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, 0.75)
+    empty_clip_result: i32 = catch AudioRuntime::play(AudioRuntime::empty_clip(),
+        false, AudioRuntime::Bus.Effects, 1.0, 1):
+        value: 0
+        AudioRuntime::AudioError.InvalidHandle: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if empty_clip_result != 1
+    empty_voice_result: i32 = catch AudioRuntime::stop(AudioRuntime::empty_voice()):
+        ok: 0
+        AudioRuntime::AudioError.InvalidHandle: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if empty_voice_result != 1
     clip: AudioRuntime::ClipHandle = try AudioRuntime::decode_file("test/fixtures/audio-smoke.wav")
+    raise AudioRuntime::AudioError.UnknownStatus if AudioRuntime::clip_is_empty(clip)
     voice: AudioRuntime::VoiceHandle = try AudioRuntime::play(
         clip, true, AudioRuntime::Bus.Effects, 1.0, 1)
     count: usize = try AudioRuntime::active_voice_count()
