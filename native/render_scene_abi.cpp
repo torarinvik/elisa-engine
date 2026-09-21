@@ -42,6 +42,12 @@ constexpr int32_t MAX_VIEWPORT = 16384;
 constexpr float MAX_SCENE_MAGNITUDE = 1.0e6f;
 constexpr float MAX_ORTHOGRAPHIC_HEIGHT = 1.0e6f;
 constexpr float MIN_ORTHOGRAPHIC_HEIGHT = 1.0e-3f;
+constexpr float MIN_CAMERA_FOV_RADIANS = 0.01745329252f;
+constexpr float MAX_CAMERA_FOV_RADIANS = 3.124139361f;
+constexpr float MIN_CAMERA_CLIP_DISTANCE = 1.0e-4f;
+constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
+constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
+constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
 constexpr uint32_t PIPELINE_WAIT_ATTEMPTS = 40;
 constexpr float PIPELINE_WAIT_MILLISECONDS = 10.0f;
 
@@ -122,6 +128,10 @@ struct RenderSceneService {
     int32_t width = 0;
     int32_t height = 0;
     float vertical_size = 10.0f;
+    float perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
+    float camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
+    float camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
+    bool perspective_camera = false;
     float eye[3] = {0.0f, 15.0f, 0.0f};
     float target[3] = {0.0f, 0.0f, 0.0f};
     float up[3] = {0.0f, 0.0f, -1.0f};
@@ -357,6 +367,11 @@ void reset_unlocked(RenderSceneService& state) {
     state.owner_thread = std::thread::id{};
     state.width = 0;
     state.height = 0;
+    state.vertical_size = 10.0f;
+    state.perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
+    state.camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
+    state.camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
+    state.perspective_camera = false;
     state.initialized = false;
 }
 
@@ -382,7 +397,13 @@ void on_application_shutdown(void* context) {
 int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height) {
     if (!valid_viewport(width, height)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    state.camera->CreateOrtho(float(width), float(height), 0.01f, 1000.0f, state.vertical_size);
+    if (state.perspective_camera) {
+        state.camera->CreatePerspective(float(width), float(height),
+            state.camera_near_clip, state.camera_far_clip, state.perspective_fov);
+    } else {
+        state.camera->CreateOrtho(float(width), float(height),
+            state.camera_near_clip, state.camera_far_clip, state.vertical_size);
+    }
     apply_camera_look_at(state);
     state.width = width;
     state.height = height;
@@ -411,46 +432,7 @@ extern "C" uint32_t elisa_render_scene_abi_version(void) {
 }
 
 #include "render_scene_initialize_abi.inc"
-
-extern "C" int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height) {
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    return resize_unlocked(state, width, height);
-}
-
-extern "C" int32_t elisa_render_scene_v1_set_camera_orthographic_height(float vertical_size) {
-    if (!finite(vertical_size) || vertical_size < MIN_ORTHOGRAPHIC_HEIGHT ||
-        vertical_size > MAX_ORTHOGRAPHIC_HEIGHT) {
-        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    state.vertical_size = vertical_size;
-    return resize_unlocked(state, state.width, state.height);
-}
-
-extern "C" int32_t elisa_render_scene_v1_set_camera_look_at(
-    float eye_x, float eye_y, float eye_z,
-    float target_x, float target_y, float target_z,
-    float up_x, float up_y, float up_z) {
-    if (!valid_look_at(eye_x, eye_y, eye_z, target_x, target_y, target_z, up_x, up_y, up_z)) {
-        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    state.eye[0] = eye_x; state.eye[1] = eye_y; state.eye[2] = eye_z;
-    state.target[0] = target_x; state.target[1] = target_y; state.target[2] = target_z;
-    state.up[0] = up_x; state.up[1] = up_y; state.up[2] = up_z;
-    apply_camera_look_at(state);
-    return ELISA_RENDER_SCENE_OK;
-}
+#include "render_scene_camera_abi.inc"
 
 extern "C" int64_t elisa_render_scene_v1_create(
     int32_t primitive,
