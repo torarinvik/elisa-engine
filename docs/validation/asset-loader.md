@@ -23,8 +23,13 @@ on 2026-09-19.
 virtual file service and Wicked device phase. The native gate coalesces a
 compressed override read, decodes it into a bounded 1x1 upload payload, creates
 a real shader-resource texture, and reports requested/coalesced/decoded/uploaded
-counts. Cancellation and stale dependency generations fail before upload.
+counts. Resident release destroys the texture and allows generation-safe slot
+reuse; failed and cancelled requests can be retried without returning a stale
+handle. Cancellation after IO completion drains the ready package bytes instead
+of leaving a request slot occupied. Manifest dependency failures and stale
+dependency generations fail before upload.
 `pump_io_async` now schedules the bounded package read on a worker future, and
 `upload_ready` performs decode/upload on the caller's device phase. A
-production texture decoder and full in-flight cancellation remain open; the
-native work stays bounded and does not block an Elisa frame on IO.
+production texture decoder, GPU residency budgeting, and non-blocking in-flight
+cancellation remain open; the native work stays bounded and does not block an
+Elisa frame on IO.

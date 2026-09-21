@@ -254,6 +254,26 @@ inline bool probe_package_bounds(const std::string& valid_package,
         loader_worker_done && loader.upload_ready(1) == 1 &&
         loader.state(asset) == NativeAssetState::Resident &&
         loader.texture(asset) != nullptr && loader.telemetry().coalesced == 1;
+    const bool asset_released = loader.release(asset) &&
+        loader.state(asset) == NativeAssetState::Empty && loader.texture(asset) == nullptr &&
+        loader.telemetry().released == 1;
+    const NativeAssetHandle reused_asset = loader.request("maze.elpk", "mesh");
+    auto reused_worker = loader.pump_io_async(1);
+    const bool asset_slot_reused = reused_asset.slot == asset.slot &&
+        reused_asset.generation != asset.generation && reused_worker.get() == 1 &&
+        loader.upload_ready(1) == 1 && loader.state(reused_asset) == NativeAssetState::Resident;
+    const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
+    const bool asset_cancelled = loader.cancel(cancelled_asset) &&
+        loader.state(cancelled_asset) == NativeAssetState::Cancelled;
+    const NativeAssetHandle retried_cancelled_asset = loader.request("maze.elpk", "missing");
+    const bool cancelled_slot_reused = retried_cancelled_asset.slot == cancelled_asset.slot &&
+        retried_cancelled_asset.generation != cancelled_asset.generation &&
+        loader.cancel(retried_cancelled_asset);
+    const NativeAssetHandle ready_cancel_asset = loader.request("dep.elpk", "mesh");
+    auto ready_cancel_worker = loader.pump_io_async(1);
+    const bool ready_cancelled = ready_cancel_worker.get() == 1 &&
+        loader.state(ready_cancel_asset) == NativeAssetState::Queued &&
+        loader.cancel(ready_cancel_asset) && loader.state(ready_cancel_asset) == NativeAssetState::Cancelled;
     const NativeAssetHandle corrupt_asset = loader.request("corrupt.elpk", "mesh");
     auto corrupt_worker = loader.pump_io_async(1);
     const bool corrupt_worker_done = corrupt_worker.get() == 1;
@@ -263,9 +283,11 @@ inline bool probe_package_bounds(const std::string& valid_package,
         loader.state(corrupt_asset) == NativeAssetState::Failed &&
         loader.texture(corrupt_asset) == nullptr &&
         loader.telemetry().uploaded == uploads_before_corrupt;
-    const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
-    const bool asset_cancelled = loader.cancel(cancelled_asset) &&
-        loader.state(cancelled_asset) == NativeAssetState::Cancelled;
+    const NativeAssetHandle retried_failed_asset = loader.request("corrupt.elpk", "mesh");
+    auto retry_worker = loader.pump_io_async(1);
+    const bool failed_slot_reused = retried_failed_asset.slot == corrupt_asset.slot &&
+        retried_failed_asset.generation != corrupt_asset.generation && retry_worker.get() == 1 &&
+        loader.upload_ready(1) == 0 && loader.state(retried_failed_asset) == NativeAssetState::Failed;
     const NativeAssetHandle stale_asset = loader.request("maze.elpk", "mesh", 8);
     const bool asset_stale = loader.pump(1, 1) == 0 && loader.state(stale_asset) == NativeAssetState::Failed;
     const bool result = check(load_cooked_package(valid_package).loaded, "bounded package load") &&
@@ -305,8 +327,11 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(cancelled_read, "virtual file cancellation") &&
         check(stale_read, "virtual file generation invalidation");
     const bool loader_result = check(asset_loaded, "native loader coalesced upload") &&
+        check(asset_released && asset_slot_reused, "native loader resident release and slot reuse") &&
+        check(asset_cancelled && cancelled_slot_reused, "native loader cancellation and slot reuse") &&
+        check(ready_cancelled, "native loader drains completed read on cancellation") &&
         check(corrupt_asset_rejected, "corrupt section rejected before GPU upload") &&
-        check(asset_cancelled, "native loader cancellation") &&
+        check(failed_slot_reused, "native loader failed slot retry") &&
         check(asset_stale, "native loader dependency generation");
     std::filesystem::remove_all(root);
     return result && loader_result;

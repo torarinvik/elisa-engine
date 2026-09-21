@@ -28,6 +28,7 @@ struct NativeAssetTelemetry {
     uint32_t uploaded = 0;
     uint32_t cancelled = 0;
     uint32_t failed = 0;
+    uint32_t released = 0;
 };
 
 class NativeResourceLoader {
@@ -43,7 +44,8 @@ public:
         uint64_t dependency_generation = 0) {
         for (uint32_t slot = 0; slot < MAX_ASSETS; ++slot) {
             Item& item = items_[slot];
-            if (item.state != NativeAssetState::Empty && item.logical_name == logical_name &&
+            if (item.state != NativeAssetState::Empty && item.state != NativeAssetState::Failed &&
+                item.state != NativeAssetState::Cancelled && item.logical_name == logical_name &&
                 item.section == section && item.dependency_generation == dependency_generation) {
                 ++telemetry_.coalesced;
                 return {slot, item.generation};
@@ -51,7 +53,8 @@ public:
         }
         for (uint32_t slot = 0; slot < MAX_ASSETS; ++slot) {
             Item& item = items_[slot];
-            if (item.state != NativeAssetState::Empty) continue;
+            if (item.state != NativeAssetState::Empty && item.state != NativeAssetState::Failed &&
+                item.state != NativeAssetState::Cancelled) continue;
             const uint32_t previous = item.generation;
             item = {};
             item.generation = previous == UINT32_MAX ? 0 : previous + 1;
@@ -72,8 +75,29 @@ public:
         Item* item = find(handle);
         if (item == nullptr || item->state != NativeAssetState::Queued) return false;
         files_.cancel(item->file);
+        if (files_.state(item->file) == VirtualReadState::Ready) {
+            std::vector<uint8_t> discarded;
+            uint64_t generation = 0;
+            std::string error;
+            files_.take(item->file, discarded, generation, error);
+        }
+        item->bytes.clear();
         item->state = NativeAssetState::Cancelled;
         ++telemetry_.cancelled;
+        return true;
+    }
+
+    bool release(NativeAssetHandle handle) {
+        Item* item = find(handle);
+        if (item == nullptr || item->state != NativeAssetState::Resident) return false;
+        item->texture = {};
+        item->bytes.clear();
+        item->logical_name.clear();
+        item->section.clear();
+        item->file = {};
+        item->dependency_generation = 0;
+        item->state = NativeAssetState::Empty;
+        ++telemetry_.released;
         return true;
     }
 
