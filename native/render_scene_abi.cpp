@@ -73,22 +73,7 @@ struct InstanceSlot {
     bool live = false;
 };
 
-struct SnapshotStageRow {
-    int64_t existing_handle = 0;
-    int64_t gameplay_epoch = 0;
-    int64_t gameplay_id = 0;
-    int64_t render_id = 0;
-    uint64_t mesh_high = 0;
-    uint64_t mesh_low = 0;
-    uint64_t material_high = 0;
-    uint64_t material_low = 0;
-    float position[3] = {};
-    float rotation[4] = {};
-    float scale[3] = {};
-    size_t reserved_slot = MAX_INSTANCES;
-    uint64_t reserved_generation = 0;
-    wi::ecs::Entity created_entity = wi::ecs::INVALID_ENTITY;
-};
+#include "render_scene_snapshot_state.inc"
 
 struct ElectricArcSlot {
     wi::TrailRenderer halo;
@@ -113,6 +98,9 @@ struct RenderSceneService {
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
     std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
+    std::array<SnapshotMeshAssetSlot, MAX_SNAPSHOT_MESH_ASSETS> snapshot_mesh_assets{};
+    std::array<SnapshotMaterialAssetSlot, MAX_SNAPSHOT_MATERIAL_ASSETS> snapshot_material_assets{};
+    size_t snapshot_geometry_bytes = 0;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
 #endif
@@ -336,6 +324,9 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_rows = {};
     state.snapshot_retire_handles = {};
     state.snapshot_results = {};
+    state.snapshot_mesh_assets = {};
+    state.snapshot_material_assets = {};
+    state.snapshot_geometry_bytes = 0;
     state.sun_entity = wi::ecs::INVALID_ENTITY;
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();

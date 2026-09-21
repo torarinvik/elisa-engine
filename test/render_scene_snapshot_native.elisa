@@ -1,0 +1,248 @@
+# Native integration coverage for cooked snapshot assets and transactional
+# reconciliation. Kept separate from the general scene smoke to keep each test
+# focused and its local setup private.
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+include "../src/runtime/render_snapshot_scene.elisa"
+include "../src/runtime/world_rendering.elisa"
+include "../src/world/world.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneSnapshotNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_identity_matches(gameplay_epoch: i64, gameplay_id: i64,
+            render_id: i64, mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_instance_resources(render_id: i64,
+            vertex_count: u64, index_count: u64, red: f32, green: f32, blue: f32, alpha: f32,
+            metallic: f32, roughness: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_object_count() -> u64
+
+        def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&,
+            snapshot: RenderSnapshot::Snapshot&) -> i32:
+            catch RenderSnapshotScene::sync(presenter, snapshot):
+                ok: 0
+                error failure: 1
+
+        def bind_world_render(bindings: mutable WorldRendering::Bindings&,
+            world: mutable World::World&, gameplay: World::EntityRef,
+            render_id: i64, visual: Assets::VisualAsset,
+            local_transform: Geometry::Transform) -> i32:
+            catch WorldRendering::bind(bindings, world, gameplay, render_id, visual, local_transform):
+                ok: 0
+                error failure: 1
+
+        def render_visual(asset_key: u64) -> Assets::VisualAsset:
+            Assets::VisualAsset{
+                mesh: Assets::AssetId{high: 700, low: asset_key},
+                material: Assets::AssetId{high: 800, low: 1},
+                local_bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                    maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                },
+            }
+
+        def extract_world_render(world: World::World&, bindings: mutable WorldRendering::Bindings&,
+            snapshot: mutable RenderSnapshot::Snapshot&) -> i32:
+            catch WorldRendering::extract(world, bindings, snapshot):
+                ok: 0
+                error failure: 1
+
+        def register_test_mesh(asset_key: u64) -> i32:
+            catch RenderScene::register_snapshot_mesh_asset(
+                Assets::AssetId{high: 700, low: asset_key}, "build/cooked/render-scene-triangle.pkg"):
+                ok: 0
+                error failure: 1
+
+        def register_test_snapshot_assets() -> i32:
+            return 1 if register_test_mesh(701) != 0
+            return 2 if register_test_mesh(703) != 0
+            return 3 if register_test_mesh(702) != 0
+            return 4 if register_test_mesh(9701) != 0
+            return 5 if register_test_mesh(704) != 0
+            return 6 if register_test_mesh(705) != 0
+            material: Material::Material = Material::Material{
+                base_color: Assets::AssetId{high: 0, low: 0},
+                normal: Assets::AssetId{high: 0, low: 0},
+                metallic_roughness: Assets::AssetId{high: 0, low: 0},
+                occlusion: Assets::AssetId{high: 0, low: 0},
+                emissive: Assets::AssetId{high: 0, low: 0},
+                base_color_factor: [0.25, 0.5, 0.75, 1.0],
+                metallic_factor: 0.4,
+                roughness_factor: 0.6,
+                emissive_factor: [0.0, 0.0, 0.0],
+                alpha_cutoff: 0.5,
+                alpha_mode: Material::AlphaMode.Opaque,
+                double_sided: false,
+            }
+            material_registration: i32 = catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 1}, &material):
+                ok: 0
+                error failure: 7
+            return material_registration
+            textured_material: Material::Material = Material::Material{
+                base_color: Assets::AssetId{high: 900, low: 1},
+                normal: Assets::AssetId{high: 0, low: 0},
+                metallic_roughness: Assets::AssetId{high: 0, low: 0},
+                occlusion: Assets::AssetId{high: 0, low: 0},
+                emissive: Assets::AssetId{high: 0, low: 0},
+                base_color_factor: [1.0, 1.0, 1.0, 1.0],
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+                emissive_factor: [0.0, 0.0, 0.0],
+                alpha_cutoff: 0.5,
+                alpha_mode: Material::AlphaMode.Opaque,
+                double_sided: false,
+            }
+            textured_registration: i32 = catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 2}, &textured_material):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 8 if textured_registration != 1
+            0
+
+        def unregister_test_snapshot_assets() -> i32:
+            mesh_ids: u64[6] = [701, 703, 702, 9701, 704, 705]
+            for index in 0..<6 |mesh_ids|:
+                removed: bool = catch RenderScene::unregister_snapshot_mesh_asset(
+                    Assets::AssetId{high: 700, low: mesh_ids[index]}):
+                    ok: true
+                    error failure: false
+                return 1 if not removed
+            removed_material: bool = catch RenderScene::unregister_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 1}):
+                ok: true
+                error failure: false
+            return 2 if not removed_material
+            0
+
+    public:
+        def exercise() -> i32:
+            asset_setup: i32 = register_test_snapshot_assets()
+            return 30 + asset_setup if asset_setup != 0
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 40
+            gameplay_a: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 40
+            gameplay_b: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: return 40
+            player_transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            }
+            guard_transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: -1.0, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 0.75, y: 0.75, z: 0.75},
+            }
+            player_status: bool = catch World::world_set_transform(&world, gameplay_a, player_transform):
+                ok: true
+                error failure: false
+            guard_status: bool = catch World::world_set_transform(&world, gameplay_b, guard_transform):
+                ok: true
+                error failure: false
+            return 41 if not player_status or not guard_status
+
+            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+            bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+            local_offset: Geometry::Transform = Geometry::transform_translate(
+                Geometry::transform_identity(), Geometry::Vec3{x: 0.0, y: 0.25, z: 0.0})
+            return 42 if bind_world_render(&bindings, world, gameplay_a, 701,
+                render_visual(701), Geometry::transform_identity()) != 0
+            return 43 if bind_world_render(&bindings, world, gameplay_a, 703,
+                render_visual(703), local_offset) != 0
+            return 44 if bind_world_render(&bindings, world, gameplay_b, 702,
+                render_visual(702), Geometry::transform_identity()) != 0
+            return 45 if extract_world_render(world, &bindings, &snapshot) != 0
+            return 46 if RenderSnapshot::snapshot_count(snapshot) != 3
+            return 47 if sync_snapshot(&presenter, snapshot) != 0
+            return 48 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
+            return 49 if elisa_render_scene_v1_test_snapshot_instance_resources(
+                702, 3, 3, 0.25, 0.5, 0.75, 1.0, 0.4, 0.6) == 0
+            live_mesh_unregister: i32 = catch RenderScene::unregister_snapshot_mesh_asset(
+                Assets::AssetId{high: 700, low: 702}):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 50 if live_mesh_unregister != 1
+            live_material_unregister: i32 = catch RenderScene::unregister_snapshot_material_asset(
+                Assets::AssetId{high: 800, low: 1}):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 51 if live_material_unregister != 1
+            return 52 if extract_world_render(world, &bindings, &snapshot) != 0
+            return 53 if sync_snapshot(&presenter, snapshot) != 0
+            return 54 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
+
+            moved_transform: Geometry::Transform = Geometry::transform_translate(player_transform,
+                Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
+            moved_player: bool = catch World::world_set_transform(&world, gameplay_a, moved_transform):
+                ok: true
+                error failure: false
+            return 55 if not moved_player
+            return 56 if bind_world_render(&bindings, world, gameplay_a, 701,
+                render_visual(9701), Geometry::transform_identity()) != 0
+            return 57 if bind_world_render(&bindings, world, gameplay_a, 704,
+                render_visual(704), local_offset) != 0
+            return 58 if bind_world_render(&bindings, world, gameplay_a, 705,
+                render_visual(705), Geometry::transform_identity()) != 0
+            extracted_rows: i32 = extract_world_render(world, &bindings, &snapshot)
+            return 59 if extracted_rows != 0 or RenderSnapshot::snapshot_count(snapshot) != 5
+            return 60 if elisa_render_scene_v1_test_snapshot_fail_after_creates(1) != 0
+            objects_before_failure: u64 = elisa_render_scene_v1_test_object_count()
+            failed_sync: i32 = sync_snapshot(&presenter, snapshot)
+            batch_rolled_back: bool = failed_sync == 1 and RenderSnapshotScene::binding_count(presenter) == 3 and RenderScene::instance_count() == 6 and elisa_render_scene_v1_test_object_count() == objects_before_failure
+            return 61 if not batch_rolled_back
+            return 62 if elisa_render_scene_v1_test_snapshot_identity_matches(
+                gameplay_a.world_epoch, gameplay_a.id, 701, 700, 701, 800, 1) == 0
+            return 63 if elisa_render_scene_v1_test_snapshot_identity_matches(
+                gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
+            return 64 if sync_snapshot(&presenter, snapshot) != 0
+            return 65 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
+            return 66 if elisa_render_scene_v1_test_object_count() != objects_before_failure + 2
+            return 67 if elisa_render_scene_v1_test_snapshot_identity_matches(
+                gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) == 0
+
+            stable_transform: Geometry::Transform = Geometry::transform_translate(moved_transform,
+                Geometry::Vec3{x: 0.25, y: 0.0, z: 0.0})
+            stable_update: bool = catch World::world_set_transform(&world, gameplay_a, stable_transform):
+                ok: true
+                error failure: false
+            stable_binding: i32 = bind_world_render(&bindings, world, gameplay_a, 701,
+                render_visual(9701), Geometry::transform_identity())
+            stable_extraction: i32 = extract_world_render(world, &bindings, &snapshot)
+            stable_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 68 if not stable_update or stable_binding != 0 or stable_extraction != 0 or stable_sync != 0
+            return 69 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
+            despawn_b: bool = catch World::world_despawn(&world, gameplay_b):
+                ok: true
+                error failure: false
+            after_b_extract: i32 = extract_world_render(world, &bindings, &snapshot)
+            after_b_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 70 if not despawn_b or after_b_extract != 0 or after_b_sync != 0
+            return 71 if RenderSnapshot::snapshot_count(snapshot) != 4 or RenderSnapshotScene::binding_count(presenter) != 4 or RenderScene::instance_count() != 7
+            despawn_a: bool = catch World::world_despawn(&world, gameplay_a):
+                ok: true
+                error failure: false
+            after_a_extract: i32 = extract_world_render(world, &bindings, &snapshot)
+            after_a_sync: i32 = sync_snapshot(&presenter, snapshot)
+            return 72 if not despawn_a or after_a_extract != 0 or after_a_sync != 0
+            return 73 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
+            return 74 if unregister_test_snapshot_assets() != 0
+            return 75 if elisa_render_scene_v1_test_snapshot_identity_matches(
+                gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
+            0

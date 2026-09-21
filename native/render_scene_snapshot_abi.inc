@@ -38,6 +38,10 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_stage(
     row.rotation[0] = qx; row.rotation[1] = qy; row.rotation[2] = qz; row.rotation[3] = qw;
     row.scale[0] = sx; row.scale[1] = sy; row.scale[2] = sz;
     if (!snapshot_assets_valid(row)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (snapshot_mesh_asset_slot(state, mesh_high, mesh_low) == MAX_SNAPSHOT_MESH_ASSETS ||
+        snapshot_material_asset_slot(state, material_high, material_low) == MAX_SNAPSHOT_MATERIAL_ASSETS) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
     for (size_t index = 0; index < state.snapshot_row_count; ++index) {
         if (state.snapshot_rows[index].render_id == render_id ||
             (existing_handle != 0 && state.snapshot_rows[index].existing_handle == existing_handle)) {
@@ -243,4 +247,148 @@ extern "C" int64_t elisa_render_scene_v1_snapshot_result(uint32_t index) {
     if (!state.initialized || !on_owner_thread(state) || state.snapshot_transaction_active ||
         index >= state.snapshot_result_count) return -1;
     return state.snapshot_results[index];
+}
+
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_asset(
+    uint64_t high, uint64_t low, const char* package_path) {
+    if ((high == 0 && low == 0) || package_path == nullptr) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    std::filesystem::path resolved_path;
+    if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    const size_t existing = snapshot_mesh_asset_slot(state, high, low);
+    if (existing < MAX_SNAPSHOT_MESH_ASSETS) {
+        return state.snapshot_mesh_assets[existing].canonical_path == resolved_path
+            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    size_t free_slot = MAX_SNAPSHOT_MESH_ASSETS;
+    for (size_t index = 0; index < MAX_SNAPSHOT_MESH_ASSETS; ++index) {
+        if (!state.snapshot_mesh_assets[index].live) {
+            free_slot = index;
+            break;
+        }
+    }
+    if (free_slot == MAX_SNAPSHOT_MESH_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
+    elisa::assets::CookedGeometry geometry;
+    std::string load_error;
+    try {
+        if (!elisa::assets::load_cooked_geometry(resolved_path.string(), geometry, load_error)) {
+            std::fprintf(stderr, "Elisa snapshot mesh load failed: %s\n", load_error.c_str());
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "Elisa snapshot mesh load exception: %s\n", error.what());
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    size_t bytes = 0;
+    if (!cooked_geometry_bytes(geometry, bytes) || bytes == 0 ||
+        bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_geometry_bytes) {
+        return ELISA_RENDER_SCENE_CAPACITY;
+    }
+    SnapshotMeshAssetSlot& asset = state.snapshot_mesh_assets[free_slot];
+    asset.high = high;
+    asset.low = low;
+    asset.canonical_path = std::move(resolved_path);
+    asset.geometry = std::move(geometry);
+    asset.bytes = bytes;
+    asset.live = true;
+    state.snapshot_geometry_bytes += bytes;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_mesh_asset(uint64_t high, uint64_t low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    const size_t slot = snapshot_mesh_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MESH_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    for (const InstanceSlot& instance : state.instances) {
+        if (instance.live && instance.mesh_high == high && instance.mesh_low == low) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+    }
+    state.snapshot_geometry_bytes -= state.snapshot_mesh_assets[slot].bytes;
+    state.snapshot_mesh_assets[slot] = SnapshotMeshAssetSlot{};
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
+    uint64_t high, uint64_t low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided) {
+    if ((high == 0 && low == 0) || !valid_color(red, green, blue, alpha) ||
+        !finite(metallic) || metallic < 0.0f || metallic > 1.0f ||
+        !finite(roughness) || roughness < 0.0f || roughness > 1.0f ||
+        !bounded(emissive_red, 1.0e4f) || !bounded(emissive_green, 1.0e4f) ||
+        !bounded(emissive_blue, 1.0e4f) || emissive_red < 0.0f || emissive_green < 0.0f ||
+        emissive_blue < 0.0f || !finite(alpha_cutoff) || alpha_cutoff < 0.0f || alpha_cutoff > 1.0f ||
+        alpha_mode < ELISA_RENDER_SCENE_ALPHA_OPAQUE || alpha_mode > ELISA_RENDER_SCENE_ALPHA_BLEND ||
+        (double_sided != 0 && double_sided != 1)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    const size_t existing = snapshot_material_asset_slot(state, high, low);
+    if (existing < MAX_SNAPSHOT_MATERIAL_ASSETS) {
+        const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[existing];
+        return asset.base_color[0] == red && asset.base_color[1] == green &&
+            asset.base_color[2] == blue && asset.base_color[3] == alpha &&
+            asset.metallic == metallic && asset.roughness == roughness &&
+            asset.emissive[0] == emissive_red && asset.emissive[1] == emissive_green &&
+            asset.emissive[2] == emissive_blue && asset.alpha_cutoff == alpha_cutoff &&
+            asset.alpha_mode == alpha_mode && asset.double_sided == (double_sided != 0)
+            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    size_t free_slot = MAX_SNAPSHOT_MATERIAL_ASSETS;
+    for (size_t index = 0; index < MAX_SNAPSHOT_MATERIAL_ASSETS; ++index) {
+        if (!state.snapshot_material_assets[index].live) {
+            free_slot = index;
+            break;
+        }
+    }
+    if (free_slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
+    SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[free_slot];
+    asset.high = high;
+    asset.low = low;
+    asset.base_color[0] = red; asset.base_color[1] = green;
+    asset.base_color[2] = blue; asset.base_color[3] = alpha;
+    asset.metallic = metallic;
+    asset.roughness = roughness;
+    asset.emissive[0] = emissive_red; asset.emissive[1] = emissive_green; asset.emissive[2] = emissive_blue;
+    asset.alpha_cutoff = alpha_cutoff;
+    asset.alpha_mode = alpha_mode;
+    asset.double_sided = double_sided != 0;
+    asset.live = true;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint64_t high, uint64_t low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    for (const InstanceSlot& instance : state.instances) {
+        if (instance.live && instance.material_high == high && instance.material_low == low) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+    }
+    state.snapshot_material_assets[slot] = SnapshotMaterialAssetSlot{};
+    return ELISA_RENDER_SCENE_OK;
 }

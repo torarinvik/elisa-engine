@@ -1,7 +1,13 @@
 # Native R01 integration: the real maze rules produce a checked World snapshot,
 # which the persistent Wicked scene presenter reconciles transactionally.
 include "../examples/maze/presentation.elisa"
+include "../examples/maze/render_assets.elisa"
 include "../examples/maze/trace.elisa"
+
+@callconv(c)
+extern elisa_render_scene_v1_test_snapshot_instance_resources(render_id: i64,
+    vertex_count: u64, index_count: u64, red: f32, green: f32, blue: f32, alpha: f32,
+    metallic: f32, roughness: f32) -> i32
 
 module MazeRenderingNativeTests:
     private:
@@ -25,6 +31,7 @@ module MazeRenderingNativeTests:
 
     public:
         def exercise() -> i32:
+            return 19 if not MazeRenderAssets::register("examples/maze/assets/maze_tile.pkg")
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
                 value: value
@@ -36,6 +43,11 @@ module MazeRenderingNativeTests:
             return 3 if RenderSnapshot::snapshot_count(snapshot) != 40
             return 4 if sync(&presenter, &snapshot) != 0
             return 5 if RenderSnapshotScene::binding_count(presenter) != 40 or RenderScene::instance_count() != 40
+            first_wall: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 0)
+            wall_ids_match: bool = first_wall.visual.mesh.high == 23 and first_wall.visual.mesh.low == 1 and first_wall.visual.material.high == 23 and first_wall.visual.material.low == 2
+            return 20 if not wall_ids_match
+            return 21 if elisa_render_scene_v1_test_snapshot_instance_resources(
+                first_wall.render_id, 24, 36, 0.19, 0.25, 0.32, 1.0, 0.0, 0.82) == 0
             initial_door: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 36)
             return 6 if initial_door.render_id != 2002 or initial_door.visual.material.low != 5
 

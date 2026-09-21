@@ -12,6 +12,18 @@
 
 namespace elisa::rendering {
 
+struct JointEntityRollback {
+    wi::scene::Scene& scene;
+    std::vector<wi::ecs::Entity>& entities;
+    bool committed = false;
+
+    ~JointEntityRollback() {
+        if (!committed) {
+            for (wi::ecs::Entity entity : entities) scene.Entity_Remove(entity);
+        }
+    }
+};
+
 inline void set_transform(wi::scene::TransformComponent& transform,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
@@ -45,7 +57,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     const bool has_skin_rig = !geometry.skin_joints.empty() && !geometry.skin_cluster_joints.empty();
     if (has_skin_rig && (geometry.skin_joints.size() > 64 || geometry.skin_cluster_joints.size() > 64 ||
         geometry.skin_indices.size() != geometry.positions.size() / 3 * 4 ||
-        geometry.skin_weights.size() != geometry.skin_indices.size())) return false;
+        geometry.skin_weights.size() != geometry.skin_indices.size() || out_joint_entities == nullptr)) return false;
 
     mesh->vertex_positions.resize(geometry.positions.size() / 3);
     mesh->vertex_normals.resize(geometry.normals.size() / 3);
@@ -85,6 +97,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         std::swap(mesh->indices[triangle + 1], mesh->indices[triangle + 2]);
     }
     std::vector<wi::ecs::Entity> joint_entities;
+    JointEntityRollback joint_rollback{scene, joint_entities};
     if (has_skin_rig) {
         mesh->vertex_boneindices.resize(mesh->vertex_positions.size());
         mesh->vertex_boneweights.resize(mesh->vertex_positions.size());
@@ -144,6 +157,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     mesh->subsets[0].materialID = entity;
     mesh->CreateRenderData();
     if (out_joint_entities != nullptr) *out_joint_entities = std::move(joint_entities);
+    joint_rollback.committed = true;
     material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
     material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
     material->SetCastShadow(false);

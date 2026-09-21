@@ -42,6 +42,26 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_identity_matches(
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_instance_resources(
+    int64_t render_id, uint64_t vertex_count, uint64_t index_count,
+    float red, float green, float blue, float alpha, float metallic, float roughness) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live || instance.render_id != render_id) continue;
+        const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(instance.entity);
+        const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(instance.entity);
+        if (mesh == nullptr || material == nullptr || mesh->vertex_positions.size() != vertex_count ||
+            mesh->indices.size() != index_count || material->shaderType != wi::scene::MaterialComponent::SHADERTYPE_PBR) return 0;
+        const auto close = [](float left, float right) { return std::abs(left - right) <= 1.0e-5f; };
+        return close(material->baseColor.x, red) && close(material->baseColor.y, green) &&
+            close(material->baseColor.z, blue) && close(material->baseColor.w, alpha) &&
+            close(material->metalness, metallic) && close(material->roughness, roughness) ? 1 : 0;
+    }
+    return 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
