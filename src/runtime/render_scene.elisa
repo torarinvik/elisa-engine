@@ -17,97 +17,73 @@ module RenderScene:
             ASSET_LOAD_FAILED: i32 = -9
             BATCH_ACTIVE: i32 = -10
             ASSET_PENDING: i32 = -11
-
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
             NORMAL: i32 = 1
             SURFACE: i32 = 2
             EMISSIVE: i32 = 3
-
         @callconv(c)
         extern elisa_render_scene_abi_version() -> u32
-
         @callconv(c)
         extern elisa_render_scene_v1_initialize(width: i32, height: i32, vertical_size: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_resize(width: i32, height: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_orthographic_height(vertical_size: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_perspective(vertical_fov_radians: f32,
             near_clip: f32, far_clip: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_look_at(eye_x: f32, eye_y: f32, eye_z: f32,
             target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_create(primitive: i32, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32,
             red: f32, green: f32, blue: f32, alpha: f32) -> i64
-
         @callconv(c)
         extern elisa_render_scene_v1_create_mesh(package_path: cstr,
             px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
             sx: f32, sy: f32, sz: f32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
-
         @callconv(c)
         extern elisa_render_scene_v1_update_transform(handle: i64, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
             gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
             mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
             px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
             sx: f32, sy: f32, sz: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_stage_tint(render_id: i64,
             red: f32, green: f32, blue: f32,
             emissive_red: f32, emissive_green: f32, emissive_blue: f32, emissive_strength: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_commit() -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_abort() -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
-
         @callconv(c)
         extern elisa_render_scene_v1_play_animation(handle: i64, clip_name: cstr,
             loop: i32, speed: f32, blend_seconds: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_stop_animation(handle: i64, blend_seconds: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_advance_animation(handle: i64, delta_seconds: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_lit_material(handle: i64, roughness: f32, metallic: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_texture_uv_transform(handle: i64, scale_u: f32, scale_v: f32, offset_u: f32, offset_v: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_sun_shadows(enabled: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_texture(handle: i64, slot: i32, asset_path: cstr) -> i32
 
@@ -294,7 +270,6 @@ module RenderScene:
             private:
                 handles: mutable ElectricArcHandle[RenderScene::MAX_ELECTRIC_ARCS]
                 count: mutable usize
-
 
         # A compact owner-side collection avoids exposing the representation of
         # opaque handles to projects. It is useful for batches such as maze
