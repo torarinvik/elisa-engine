@@ -19,6 +19,10 @@ inline void put_package_u16(std::vector<uint8_t>& bytes, size_t offset, uint16_t
     bytes[offset + 1] = static_cast<uint8_t>(value >> 8);
 }
 
+inline void put_package_u32(std::vector<uint8_t>& bytes, size_t offset, uint32_t value) {
+    for (size_t index = 0; index < 4; ++index) bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8));
+}
+
 inline void put_package_u64(std::vector<uint8_t>& bytes, size_t offset, uint64_t value) {
     for (size_t index = 0; index < 8; ++index) bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8));
 }
@@ -51,6 +55,8 @@ inline void write_binary_package_fixture(const std::filesystem::path& path, bool
         put_package_u64(bytes, entry + 24, overlap ? 16 : encoded.size());
         put_package_u64(bytes, entry + 32, overlap ? 16 : payload.size());
         bytes[entry + 40] = invalid_compression ? 2 : (compressed ? 1 : 0);
+        put_package_u32(bytes, entry + 44, package_crc32(
+            reinterpret_cast<const uint8_t*>(payload.data()), payload.size()));
         if (index == 0) {
             const size_t copy_size = std::min(encoded.size(), overlap ? size_t(16) : encoded.size());
             std::copy(encoded.begin(), encoded.begin() + copy_size, bytes.begin() + offset);
@@ -89,22 +95,47 @@ inline bool probe_package_bounds(const std::string& valid_package,
     const std::filesystem::path overlap = root / "overlap.elpk";
     const std::filesystem::path compressed = root / "compression.elpk";
     const std::filesystem::path zstd = root / "zstd.elpk";
+    const std::filesystem::path corrupt = root / "corrupt.elpk";
     const std::filesystem::path base_root = root / "base";
     const std::filesystem::path override_root = root / "override";
     std::filesystem::create_directories(base_root);
     std::filesystem::create_directories(override_root);
+    const std::filesystem::path outside_package = root / "outside.elpk";
+    std::ofstream(outside_package) << "outside";
     std::ofstream(base_root / "maze.elpk") << "base";
     std::ofstream(override_root / "maze.elpk") << "override";
     write_binary_package_fixture(binary, false);
     write_binary_package_fixture(overlap, true);
     write_binary_package_fixture(compressed, false, true);
     write_binary_package_fixture(zstd, false, false, true);
+    write_binary_package_fixture(corrupt, false);
+    {
+        std::fstream file(corrupt, std::ios::binary | std::ios::in | std::ios::out);
+        const size_t payload_offset = BinaryPackageIndex::HEADER_BYTES + BinaryPackageIndex::ENTRY_BYTES;
+        file.seekg(static_cast<std::streamoff>(payload_offset));
+        char byte = 0;
+        file.read(&byte, 1);
+        byte ^= 0x01;
+        file.seekp(static_cast<std::streamoff>(payload_offset));
+        file.write(&byte, 1);
+    }
+    std::filesystem::copy_file(corrupt, base_root / "corrupt.elpk",
+        std::filesystem::copy_options::overwrite_existing);
+    std::error_code symlink_error;
+    std::filesystem::remove(override_root / "escape.elpk", symlink_error);
+    symlink_error.clear();
+    std::filesystem::create_symlink(outside_package, override_root / "escape.elpk", symlink_error);
     write_binary_package_fixture(base_root / "maze.elpk", false);
     write_binary_package_fixture(override_root / "maze.elpk", false, false, true);
     write_binary_package_fixture(base_root / "dep.elpk", false);
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
+    const BinaryPackageIndex corrupt_index = read_binary_package_index(corrupt.string());
+    const PackageResolution symlink_escape = resolve_package_path(
+        base_root, {override_root}, "escape.elpk", 7);
     std::vector<uint8_t> section;
     std::string section_error;
+    std::vector<uint8_t> corrupt_section;
+    std::string corrupt_error;
     VirtualFileService vfs;
     const bool mounted = vfs.mount(base_root, {override_root}, 7);
     const VirtualReadHandle first_read = vfs.request("maze.elpk", "mesh");
@@ -146,6 +177,15 @@ inline bool probe_package_bounds(const std::string& valid_package,
         loader_worker_done && loader.upload_ready(1) == 1 &&
         loader.state(asset) == NativeAssetState::Resident &&
         loader.texture(asset) != nullptr && loader.telemetry().coalesced == 1;
+    const NativeAssetHandle corrupt_asset = loader.request("corrupt.elpk", "mesh");
+    auto corrupt_worker = loader.pump_io_async(1);
+    const bool corrupt_worker_done = corrupt_worker.get() == 1;
+    const uint32_t uploads_before_corrupt = loader.telemetry().uploaded;
+    const uint32_t corrupt_uploads = loader.upload_ready(1);
+    const bool corrupt_asset_rejected = corrupt_worker_done && corrupt_uploads == 0 &&
+        loader.state(corrupt_asset) == NativeAssetState::Failed &&
+        loader.texture(corrupt_asset) == nullptr &&
+        loader.telemetry().uploaded == uploads_before_corrupt;
     const NativeAssetHandle cancelled_asset = loader.request("maze.elpk", "missing");
     const bool asset_cancelled = loader.cancel(cancelled_asset) &&
         loader.state(cancelled_asset) == NativeAssetState::Cancelled;
@@ -161,11 +201,16 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(!load_cooked_package(duplicate.string()).loaded, "duplicate package section rejected") &&
         check(!load_cooked_package(traversal.string()).loaded, "package traversal rejected") &&
         check(!load_cooked_package(malformed.string()).loaded, "malformed package rejected") &&
+        check(package_crc32(reinterpret_cast<const uint8_t*>("123456789"), 9) == 0xCBF43926u,
+            "CRC-32 standard check value") &&
         check(read_binary_package_index(binary.string()).valid, "binary package index") &&
         check(!read_binary_package_index(overlap.string()).valid, "binary package overlap rejected") &&
         check(!read_binary_package_index(compressed.string()).valid, "binary package compression rejected") &&
         check(read_binary_package_section(zstd.string(), zstd_index, "mesh", section, section_error) &&
             std::string(section.begin(), section.end()) == "elisa-bundle-section", "zstd binary section read") &&
+        check(corrupt_index.valid && !read_binary_package_section(corrupt.string(), corrupt_index,
+            "mesh", corrupt_section, corrupt_error) && corrupt_section.empty() &&
+            corrupt_error == "binary section checksum mismatch", "corrupt binary section rejected") &&
         check(resolve_package_path(base_root, {override_root}, "maze.elpk", 7).found &&
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).override_used &&
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
@@ -174,11 +219,16 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&
+        check(!safe_package_path("models/./wall.elpk"), "package dot segment rejected") &&
+        check(!symlink_error && !symlink_escape.found &&
+            symlink_escape.error == "package resolves outside mount root",
+            "package symlink escape rejected") &&
         check(!resolve_package_path(base_root, {}, "maze.elpk", 0).found, "package zero generation rejected") &&
         check(virtual_read, "virtual file read coalescing") &&
         check(cancelled_read, "virtual file cancellation") &&
         check(stale_read, "virtual file generation invalidation");
     const bool loader_result = check(asset_loaded, "native loader coalesced upload") &&
+        check(corrupt_asset_rejected, "corrupt section rejected before GPU upload") &&
         check(asset_cancelled, "native loader cancellation") &&
         check(asset_stale, "native loader dependency generation");
     std::filesystem::remove_all(root);

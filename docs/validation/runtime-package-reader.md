@@ -8,7 +8,8 @@ base64 decoding failures return an unloaded package instead of escaping into
 the renderer. The same module now also parses a version-1 `ELPK` binary bundle
 index with fixed entry sizes, 16-byte data alignment, duplicate-name and
 non-overlap checks, supported compression values, and a 64 MiB unpacked-section
-bound.
+bound. Each entry's CRC-32 is checked against decoded section bytes for both raw
+and zstd storage; a mismatch clears the output and fails before device upload.
 
 The SDL3/Metal native gate loads the real cooked maze package through this
 reader twice and runs `native/package_bounds_probe.h` against duplicate,
@@ -25,6 +26,7 @@ supplied pump budget, and a remount invalidates queued work whose captured
 generation is stale. Requests also carry a dependency generation token, which
 is rejected before package allocation when it belongs to an older mount. The
 probe covers override-backed zstd data, cancellation, generation invalidation,
-and stale dependency tokens. `pump_async` runs the same bounded pump on a
+stale dependency tokens, and corruption of a raw section payload. `pump_async`
+runs the same bounded pump on a
 worker future, while dependency-aware requests reject missing, self,
 duplicate, and unsorted logical package dependencies before queueing.
