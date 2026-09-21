@@ -101,6 +101,13 @@ module Application:
             KEY_ARROW_UP: i64 = 2015
             KEY_ARROW_DOWN: i64 = 2016
             KEY_V: i64 = 2017
+            KEY_C: i64 = 2018
+            KEY_X: i64 = 2019
+            KEY_Z: i64 = 2020
+            KEY_TAB: i64 = 2021
+            KEY_DIGIT_1: i64 = 2022
+            KEY_DIGIT_2: i64 = 2023
+            KEY_DIGIT_3: i64 = 2024
 
         @callconv(c)
         extern elisa_application_abi_version() -> u32
@@ -168,6 +175,13 @@ module Application:
             W
             P
             V
+            C
+            X
+            Z
+            Tab
+            Digit1
+            Digit2
+            Digit3
             Space
             Escape
             LeftShift
@@ -299,6 +313,13 @@ module Application:
                 KeyboardKeyCode.W: PortableInputCodes::KEY_W
                 KeyboardKeyCode.P: PortableInputCodes::KEY_P
                 KeyboardKeyCode.V: PortableInputCodes::KEY_V
+                KeyboardKeyCode.C: PortableInputCodes::KEY_C
+                KeyboardKeyCode.X: PortableInputCodes::KEY_X
+                KeyboardKeyCode.Z: PortableInputCodes::KEY_Z
+                KeyboardKeyCode.Tab: PortableInputCodes::KEY_TAB
+                KeyboardKeyCode.Digit1: PortableInputCodes::KEY_DIGIT_1
+                KeyboardKeyCode.Digit2: PortableInputCodes::KEY_DIGIT_2
+                KeyboardKeyCode.Digit3: PortableInputCodes::KEY_DIGIT_3
                 KeyboardKeyCode.Space: PortableInputCodes::KEY_SPACE
                 KeyboardKeyCode.Escape: PortableInputCodes::KEY_ESCAPE
                 KeyboardKeyCode.LeftShift: PortableInputCodes::KEY_LEFT_SHIFT

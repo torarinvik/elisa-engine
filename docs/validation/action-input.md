@@ -80,3 +80,9 @@ the Application queue through the runtime adapter, and
 scripts/check.elisascript` passed the full suite, including Godot and both proof
 suites. A physical controller was not attached, so device delivery remains
 verified through SDL mapping tests rather than hardware input.
+
+The public keyboard set now also covers C, X, Z, Tab, and the 1 to 3 digit
+keys (portable codes 2018 to 2024), so games can bind camera, style, and
+quick-select actions without native code. `test/action_input.elisa` checks
+the Elisa codes and `test/application_gamepad_codes.cpp` checks the SDL
+mapping; both passed after the addition.
