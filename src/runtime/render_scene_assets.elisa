@@ -86,8 +86,16 @@ extend RenderScene:
             package_path: cstr) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_request_snapshot_mesh_asset_with_priority(high: u64, low: u64,
+            package_path: cstr, priority: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
             high: u64, low: u64, bundle_path: cstr, section: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_request_snapshot_bundle_texture_asset_with_priority(
+            high: u64, low: u64, bundle_path: cstr, section: cstr, priority: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_pump_snapshot_assets(budget: u32) -> i32
@@ -263,11 +271,25 @@ extend RenderScene:
             try check_status(elisa_render_scene_v1_request_snapshot_mesh_asset(
                 asset.high, asset.low, package_path))
 
+        # Larger priorities start first while work is queued. Running jobs
+        # finish; requesting a pending ID again updates its queued priority.
+        def request_snapshot_mesh_asset_prioritized(asset: Assets::AssetId,
+            package_path: cstr, priority: i32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_request_snapshot_mesh_asset_with_priority(
+                asset.high, asset.low, package_path, priority))
+
         def request_snapshot_bundle_texture_asset(asset: Assets::AssetId,
             bundle_path: cstr, section: cstr) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
             try check_status(elisa_render_scene_v1_request_snapshot_bundle_texture_asset(
                 asset.high, asset.low, bundle_path, section))
+
+        def request_snapshot_bundle_texture_asset_prioritized(asset: Assets::AssetId,
+            bundle_path: cstr, section: cstr, priority: i32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
+            try check_status(elisa_render_scene_v1_request_snapshot_bundle_texture_asset_with_priority(
+                asset.high, asset.low, bundle_path, section, priority))
 
         # Makes up to `budget` finished loads resident on this thread and
         # returns how many it adopted. Until then a snapshot row naming a

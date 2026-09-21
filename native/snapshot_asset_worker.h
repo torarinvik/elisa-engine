@@ -7,6 +7,7 @@
 // job never starts, a running job's result is discarded when it returns, and
 // a finished result is removed before the owner can take it. A job that is
 // already inside an OS read finishes that read first.
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -32,15 +33,33 @@ public:
     ~SerialJobWorker() { stop(); }
 
     // False for serial 0, a serial already queued, running or finished, or a
-    // full queue. The thread starts on the first accepted job.
+    // full queue. Higher priorities start first; equal priorities stay FIFO.
     bool submit(uint64_t serial, Job job) {
+        return submit(serial, 0, std::move(job));
+    }
+
+    bool submit(uint64_t serial, int32_t priority, Job job) {
         std::lock_guard<std::mutex> guard(mutex_);
         if (serial == 0 || !job || stopping_ || tracked_unlocked(serial) ||
             queue_.size() + done_.size() + (running_ != 0 ? 1 : 0) >= MAX_JOBS) return false;
-        queue_.push_back({serial, std::move(job)});
+        queue_.push_back({serial, priority, std::move(job)});
+        order_queue_unlocked();
         if (!thread_.joinable()) thread_ = std::thread([this] { run(); });
         wake_.notify_all();
         return true;
+    }
+
+    // A queued request can change priority; a running or finished job cannot.
+    bool set_priority(uint64_t serial, int32_t priority) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        for (QueuedJob& job : queue_) {
+            if (job.serial != serial) continue;
+            job.priority = priority;
+            order_queue_unlocked();
+            wake_.notify_all();
+            return true;
+        }
+        return false;
     }
 
     // True when the serial was queued, running or finished and not yet taken.
@@ -52,7 +71,7 @@ public:
             return true;
         }
         for (auto job = queue_.begin(); job != queue_.end(); ++job) {
-            if (job->first == serial) {
+            if (job->serial == serial) {
                 queue_.erase(job);
                 return true;
             }
@@ -140,9 +159,21 @@ public:
     }
 
 private:
+    struct QueuedJob {
+        uint64_t serial = 0;
+        int32_t priority = 0;
+        Job callback;
+    };
+
+    void order_queue_unlocked() {
+        std::stable_sort(queue_.begin(), queue_.end(), [](const QueuedJob& left, const QueuedJob& right) {
+            return left.priority > right.priority;
+        });
+    }
+
     bool tracked_unlocked(uint64_t serial) const {
         if (running_ == serial) return true;
-        for (const auto& job : queue_) if (job.first == serial) return true;
+        for (const auto& job : queue_) if (job.serial == serial) return true;
         for (const auto& result : done_) if (result.first == serial) return true;
         return false;
     }
@@ -152,9 +183,9 @@ private:
         for (;;) {
             wake_.wait(lock, [this] { return stopping_ || (!queue_.empty() && !hold_start_); });
             if (stopping_) return;
-            std::pair<uint64_t, Job> job = std::move(queue_.front());
+            QueuedJob job = std::move(queue_.front());
             queue_.pop_front();
-            running_ = job.first;
+            running_ = job.serial;
             running_cancelled_ = false;
             ++started_;
             progress_.notify_all();
@@ -162,12 +193,12 @@ private:
             // A job that throws posts a default-constructed result.
             Result result{};
             try {
-                result = job.second();
+                result = job.callback();
             } catch (...) {
                 result = Result{};
             }
             lock.lock();
-            if (!running_cancelled_ && !stopping_) done_.emplace_back(job.first, std::move(result));
+            if (!running_cancelled_ && !stopping_) done_.emplace_back(job.serial, std::move(result));
             running_ = 0;
             running_cancelled_ = false;
             ++finished_;
@@ -178,7 +209,7 @@ private:
     std::mutex mutex_;
     std::condition_variable wake_;
     std::condition_variable progress_;
-    std::deque<std::pair<uint64_t, Job>> queue_;
+    std::deque<QueuedJob> queue_;
     std::deque<std::pair<uint64_t, Result>> done_;
     std::thread thread_;
     uint64_t running_ = 0;

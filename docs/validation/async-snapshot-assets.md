@@ -14,13 +14,20 @@ presenting frames under a loading overlay while they load.
 1. **Request.** These return without touching the filesystem:
    - `RenderScene::request_snapshot_mesh_asset(id, path)`
    - `RenderScene::request_snapshot_bundle_texture_asset(id, bundle, section)`
+   - `RenderScene::request_snapshot_mesh_asset_prioritized(id, path, priority)`
+   - `RenderScene::request_snapshot_bundle_texture_asset_prioritized(id, bundle, section, priority)`
 
    A request records the ID, path and section, and queues a job under a new
    serial on `elisa::assets::SerialJobWorker` (`native/snapshot_asset_worker.h`).
    The worker is one thread, started by the first job, with at most 64 jobs
-   queued, running or finished.
-   - Requesting a resident ID again with the same path, or a loading ID with
-     the same path and section, is a no-op.
+   queued, running or finished. The original methods use priority 0. The
+   prioritized methods accept a signed 32-bit priority; larger values start
+   first while jobs are queued. Equal priorities remain FIFO. Repeating a
+   matching request updates its priority if it is still queued; running or
+   finished work is unchanged.
+   - Requesting a resident ID again with the same path is a no-op. A request
+     for the same loading ID and path/section coalesces; the prioritized form
+     updates the queued job's priority.
    - A different path for either one is `InvalidValue`.
    - Requesting a failed ID again retries it.
    - Each kind reserves capacity at request time. Live slots plus live
@@ -97,6 +104,7 @@ timing.
 The worker has its own probe, `native/snapshot_asset_worker_probe.h`. It
 checks:
 - completion order
+- descending priority order, FIFO ties, and reprioritizing queued work
 - the 64-job bound, and rejection of serial 0 and of a serial that is still queued
 - that a cancelled queued job never starts
 - a job cancelled at its checkpoint: it sees the cancellation and its result is dropped
@@ -170,8 +178,9 @@ mutant exited 1 at the named check:
   encoded bytes into a slot. Wicked still decodes a bundle texture when a
   material that names it registers, and a mesh is uploaded when a snapshot
   row first uses it. Both happen on the owner thread.
-- **No priorities or eviction.** Jobs run first in, first out on one thread.
-  Nothing is evicted under budget pressure; the caller unregisters.
+- **Priority and eviction.** Queued jobs use descending signed priorities, with
+  FIFO order for ties; a running job cannot be preempted. Nothing is evicted
+  under budget pressure; the caller unregisters assets explicitly.
 - **Path identity.** A resident or loading ID matches a later request by
   its path string, not its canonical file.
 - **No placeholder.** A row that names a pending asset fails the frame's
@@ -206,6 +215,12 @@ mutant exited 1 at the named check:
 - That binary has no line continuation after `and` or `or`. The first draft of
   the native test wrapped two conditions and failed to parse. The test now
   names each part as a bool.
+- The stage1 seed was rebuilt after the macOS SDK update with
+  `DEVELOPER_DIR=/Library/Developer/CommandLineTools`; it completed successfully.
+  With that toolchain, the SDL3/Metal render smoke passed after adding priority
+  submission. The maze requests its tile mesh at priority 100 and wall texture
+  at priority 50. The worker probe also verifies queued reprioritization and
+  priority ordering.
 
 ## Group code
 
