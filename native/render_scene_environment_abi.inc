@@ -43,16 +43,30 @@ extern "C" int32_t elisa_render_scene_v1_set_environment(
         if (state.sun_entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     wi::scene::LightComponent* sun = state.scene->lights.GetComponent(state.sun_entity);
-    if (sun == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    wi::scene::TransformComponent* sun_transform = state.scene->transforms.GetComponent(state.sun_entity);
+    if (sun == nullptr || sun_transform == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     sun->SetType(wi::scene::LightComponent::DIRECTIONAL);
     sun->color = XMFLOAT3(sun_red, sun_green, sun_blue);
     sun->intensity = 1.0f;
-    XMStoreFloat3(&sun->direction, XMVector3Normalize(sun_direction));
+    const XMVECTOR normalized_direction = XMVector3Normalize(sun_direction);
+    const XMVECTOR local_up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    const XMVECTOR axis = XMVector3Cross(local_up, normalized_direction);
+    const float dot = std::clamp(XMVectorGetX(XMVector3Dot(local_up, normalized_direction)), -1.0f, 1.0f);
+    XMVECTOR rotation = XMQuaternionIdentity();
+    if (dot < -0.999999f) {
+        rotation = XMQuaternionRotationAxis(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), XM_PI);
+    } else if (dot < 0.999999f) {
+        rotation = XMQuaternionRotationAxis(XMVector3Normalize(axis), std::acos(dot));
+    }
+    XMStoreFloat4(&sun_transform->rotation_local, rotation);
+    sun_transform->SetDirty();
+    sun_transform->UpdateTransform();
+    XMStoreFloat3(&sun->direction, normalized_direction);
     sun->SetCastShadow(false);
 
     auto& weather = state.scene->weather;
     weather.sunColor = XMFLOAT3(sun_red, sun_green, sun_blue);
-    XMStoreFloat3(&weather.sunDirection, XMVector3Normalize(sun_direction));
+    XMStoreFloat3(&weather.sunDirection, normalized_direction);
     weather.ambient = XMFLOAT3(ambient_red, ambient_green, ambient_blue);
     weather.skyExposure = sky_exposure;
     weather.horizon = XMFLOAT3(fog_red, fog_green, fog_blue);

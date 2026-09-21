@@ -353,8 +353,8 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_set_emissive(handle.native_value,
                 emission.color.x, emission.color.y, emission.color.z, emission.strength))
 
-        # Configures the current scene's physical sky lighting. Elisa owns the
-        # environment choice; the engine applies it to the active Wicked scene.
+        # Configures the scene's physical sky and directional sunlight. Elisa
+        # owns the environment choice; Wicked entities stay engine-owned.
         def set_environment(environment: Lighting::Environment) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::environment_valid(environment)
             fog_enabled: i32 = 1 if environment.fog_enabled else 0
