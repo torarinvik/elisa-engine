@@ -77,6 +77,18 @@ Additional validation on 2026-09-21:
 - Source-length policy, module hygiene (87 production modules), dependency manifest (11 libraries, SDL3-only active target), and `git diff --check` passed.
 - Engine implementation commit `6e49ed6` contains the source used for this validation; the report records base revision `e715309` because the gate ran just before that source commit was written. After adding the fixed-step owner and session-routed audio commands, `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/native_gate.elisascript native` passed on macOS 27.0 / Apple M5 with `hardware_verification=verified`. The gate covered sanitizer boundaries, the SDL3/Metal service-session and failure-cleanup smokes, native asset cooking, both Wicked render passes, deterministic image checks, live input, and frame-time limits. `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" elisascript scripts/check.elisascript` passed, including Godot 4.7.2 and both Elisa Proof suites (17/17 and 6/6 obligations). Source-length and module-hygiene checks passed (88 production modules). Report: [`build/native-gate.json`](../../build/native-gate.json).
 
+The ordinary `examples/maze/native_client.elisa` now opens and shuts down through
+`RuntimeServices::Session`, and routes its event pump, frame snapshot, and exit request
+through that owner. The frame-info accessor returns a value so callers do not hold a mutable
+borrow into the native host. The service probe verifies that pump, frame, exit, clock, and
+audio calls return `SessionStopped` after shutdown.
+
+Validation after the maze-client migration on 2026-09-21:
+
+- Engine commit `bf592f8` passed `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py`; both SDL3/Metal app runs passed, including session-owned audio, no-Audio fallback rejection, and stopped-session checks.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/elisa_build_run.py run --project examples/maze --main native_smoke_main.elisa --output build/maze-session-smoke` passed the hidden SDL3/Metal maze client, exercising session-owned startup, frame access, event pumping, and ordered shutdown.
+- Source-length policy, module hygiene (88 production modules), and `git diff --check` passed.
+
 The SDL3/Wicked profile still reports Physics and Audio as unavailable native core
 capabilities; the session may activate them only when the caller's requirements explicitly
 declare the matching fallback. The fixed-step session clock supplies due ticks to the
