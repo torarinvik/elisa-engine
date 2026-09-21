@@ -17,13 +17,11 @@ module RenderScene:
             ASSET_LOAD_FAILED: i32 = -9
             BATCH_ACTIVE: i32 = -10
             ASSET_PENDING: i32 = -11
-
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
             NORMAL: i32 = 1
             SURFACE: i32 = 2
             EMISSIVE: i32 = 3
-
         @callconv(c)
         extern elisa_render_scene_abi_version() -> u32
         @callconv(c)
@@ -36,7 +34,6 @@ module RenderScene:
         extern elisa_render_scene_v1_clear_camera_render_target() -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_orthographic_height(vertical_size: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_perspective(vertical_fov_radians: f32,
             near_clip: f32, far_clip: f32) -> i32
@@ -62,7 +59,6 @@ module RenderScene:
             mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
             px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
             sx: f32, sy: f32, sz: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_stage_tint(render_id: i64,
             red: f32, green: f32, blue: f32,
@@ -247,7 +243,6 @@ module RenderScene:
             private:
                 handles: mutable ElectricArcHandle[RenderScene::MAX_ELECTRIC_ARCS]
                 count: mutable usize
-
 
         # A compact owner-side collection avoids exposing the representation of
         # opaque handles to projects. It is useful for batches such as maze
