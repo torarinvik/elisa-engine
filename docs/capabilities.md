@@ -174,7 +174,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Reproducible release archive (mesh + textures + KTX + fixture + C ABI + Godot extension) | Implemented | `scripts/package_release.py`, `release` in validation |
 | Automated platform testing | Partial | `.github/workflows/check.yml`: a Linux/macOS/Windows toolchain-free cook, KTX, source-length, and module-hygiene job plus a macOS job running the GNS, Basis, and ASan/UBSan boundary probes; the full gate still needs the pinned compiler/prover and a graphics session |
 | 600-line source and documentation limit enforced | Implemented | `source_length_policy` covers engine sources, scripts, hosts, docs, and `Elisa_Engine_Architecture_and_Plan.md` |
-| Production module namespace, owner-constructor, named-constructor, and reference-forwarding hygiene enforced | Implemented | `scripts/check_module_hygiene.py`, `module_hygiene_policy` in `build/validation.json` |
+| Production module namespace, owner-constructor, named-constructor, reference-forwarding, and accumulator-result hygiene enforced | Implemented | `scripts/check_module_hygiene.py`, `module_hygiene_policy` in `build/validation.json` |
 | Code-reload quiescence and migration policy | Tested | `src/tooling/reload.elisa`, `test/editor.elisa` |
 | Wicked rendering, Jolt physics | Implemented | `native/wicked_probe.cpp` |
 | cgltf import, meshoptimizer cache optimization | Implemented | `native/asset_import.h`, `native/meshopt_probe.h` |

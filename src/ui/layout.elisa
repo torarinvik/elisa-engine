@@ -60,7 +60,6 @@ module UiLayout:
                 parent: i64 = layout.nodes[index].parent
                 valid <- false if parent < -1 or parent >= index.i64()
                 valid <- false if layout.nodes[index].size < 0
-            true
 
         def node_rect(layout: Layout&, index: usize) -> Rect:
             layout.nodes[index].rect

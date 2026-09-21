@@ -54,7 +54,6 @@ module UiWidgets:
                     for earlier in 0..<index |inner: bool = true| -> inner:
                         inner <- false if surface.widgets[earlier].id == surface.widgets[index].id
                 valid <- valid and unique
-            true
 
         private:
             module WidgetFind:

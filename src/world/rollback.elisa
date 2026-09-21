@@ -82,34 +82,41 @@ module World::Rollback:
             return false if snapshot.live_ids_count > Bounds::MAX_ENTITIES or snapshot.actor_count > Bounds::MAX_ENTITIES or snapshot.enemy_count > Bounds::MAX_ENTITIES or snapshot.static_object_count > Bounds::MAX_ENTITIES
             return false if snapshot.live_ids_count != snapshot.live_count or live_registry_count(snapshot) != snapshot.live_count
             return false if live_actor_count(snapshot) + live_enemy_count(snapshot) + live_static_object_count(snapshot) != snapshot.live_count
-            for index in 0..<snapshot.registry_count |valid: bool = true| -> valid:
-                row: World::RegistryRow = snapshot.registry[index]
-                if row.live:
-                    valid <- false if row.id <= 0 or not storage_matches(row.kind, row.storage)
-                    valid <- false if not Geometry::transform_is_valid(row.transform)
+            registry_rows_valid: bool =
+                for index in 0..<snapshot.registry_count |valid: bool = true| -> valid:
+                    row: World::RegistryRow = snapshot.registry[index]
+                    if row.live:
+                        valid <- false if row.id <= 0 or not storage_matches(row.kind, row.storage)
+                        valid <- false if not Geometry::transform_is_valid(row.transform)
+                        unique: bool =
+                            for earlier in 0..<index |inner: bool = true| -> inner:
+                                inner <- false if snapshot.registry[earlier].live and snapshot.registry[earlier].id == row.id
+                        valid <- valid and unique
+                        valid <- false if registry_matches(snapshot, row.id, row.storage) != 1
+            return false if not registry_rows_valid
+            live_ids_valid: bool =
+                for index in 0..<snapshot.live_ids_count |valid: bool = true| -> valid:
+                    id: i64 = snapshot.live_ids[index]
+                    valid <- false if id <= 0
                     unique: bool =
                         for earlier in 0..<index |inner: bool = true| -> inner:
-                            inner <- false if snapshot.registry[earlier].live and snapshot.registry[earlier].id == row.id
+                            inner <- false if snapshot.live_ids[earlier] == id
                     valid <- valid and unique
-                    valid <- false if registry_matches(snapshot, row.id, row.storage) != 1
-            for index in 0..<snapshot.live_ids_count |valid: bool = true| -> valid:
-                id: i64 = snapshot.live_ids[index]
-                valid <- false if id <= 0
-                unique: bool =
-                    for earlier in 0..<index |inner: bool = true| -> inner:
-                        inner <- false if snapshot.live_ids[earlier] == id
-                valid <- valid and unique
-                actor_matches: usize = registry_matches(snapshot, id, World::StorageKind.Actor)
-                enemy_matches: usize = registry_matches(snapshot, id, World::StorageKind.Enemy)
-                static_matches: usize = registry_matches(snapshot, id, World::StorageKind.StaticObject)
-                valid <- false if actor_matches + enemy_matches + static_matches != 1
-            for index in 0..<snapshot.actor_count |valid: bool = true| -> valid:
-                valid <- false if snapshot.actors[index].live and (snapshot.actors[index].id <= 0 or snapshot.actors[index].health < 0 or registry_matches(snapshot, snapshot.actors[index].id, World::StorageKind.Actor) != 1)
-            for index in 0..<snapshot.enemy_count |valid: bool = true| -> valid:
-                valid <- false if snapshot.enemies[index].live and (snapshot.enemies[index].id <= 0 or snapshot.enemies[index].threat < 0 or registry_matches(snapshot, snapshot.enemies[index].id, World::StorageKind.Enemy) != 1)
+                    actor_matches: usize = registry_matches(snapshot, id, World::StorageKind.Actor)
+                    enemy_matches: usize = registry_matches(snapshot, id, World::StorageKind.Enemy)
+                    static_matches: usize = registry_matches(snapshot, id, World::StorageKind.StaticObject)
+                    valid <- false if actor_matches + enemy_matches + static_matches != 1
+            return false if not live_ids_valid
+            actors_valid: bool =
+                for index in 0..<snapshot.actor_count |valid: bool = true| -> valid:
+                    valid <- false if snapshot.actors[index].live and (snapshot.actors[index].id <= 0 or snapshot.actors[index].health < 0 or registry_matches(snapshot, snapshot.actors[index].id, World::StorageKind.Actor) != 1)
+            return false if not actors_valid
+            enemies_valid: bool =
+                for index in 0..<snapshot.enemy_count |valid: bool = true| -> valid:
+                    valid <- false if snapshot.enemies[index].live and (snapshot.enemies[index].id <= 0 or snapshot.enemies[index].threat < 0 or registry_matches(snapshot, snapshot.enemies[index].id, World::StorageKind.Enemy) != 1)
+            return false if not enemies_valid
             for index in 0..<snapshot.static_object_count |valid: bool = true| -> valid:
                 valid <- false if snapshot.static_objects[index].live and (snapshot.static_objects[index].id <= 0 or registry_matches(snapshot, snapshot.static_objects[index].id, World::StorageKind.StaticObject) != 1)
-            true
 
         def capture(world: World::World&) -> Snapshot error[RollbackError]:
             raise RollbackError.InvalidSnapshot if not World::world_is_valid(world)

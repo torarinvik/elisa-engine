@@ -23,6 +23,43 @@ FUNCTION_START = re.compile(r"^(\s*)def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(")
 REFERENCE_PARAMETER = re.compile(
     r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:mutable\s+)?[A-Za-z_][A-Za-z0-9_:]*(?:\[[^\]]*\])?&"
 )
+ACCUMULATOR_LOOP = re.compile(r"^(\s*)for\s.*\|[^|]*=[^|]*\|\s*->\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*$")
+
+
+def indentation(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def code_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and not stripped.startswith("#")
+
+
+def discarded_accumulator_loops(lines: list[str]) -> list[tuple[int, str]]:
+    """Find accumulator loops whose result is thrown away.
+
+    `for ... |acc: T = init| -> acc:` is an expression. Written as a statement
+    with more statements after it, its value is dropped, so a validator that
+    folds `valid <- false` into the accumulator and then ends in `true` always
+    passes. Make the loop the block's final expression or bind it to a name.
+    """
+    findings: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        loop = ACCUMULATOR_LOOP.match(line)
+        if loop is None:
+            continue
+        previous = next((lines[back] for back in range(index - 1, -1, -1) if code_line(lines[back])), "")
+        if previous.split("#", 1)[0].rstrip().endswith(("=", "<-")):
+            continue
+        indent = len(loop.group(1))
+        following = next(
+            (after for after in range(index + 1, len(lines))
+             if code_line(lines[after]) and indentation(lines[after]) <= indent),
+            None,
+        )
+        if following is not None and indentation(lines[following]) == indent:
+            findings.append((index + 1, loop.group(2)))
+    return findings
 
 
 def rereferenced_parameters(lines: list[str]) -> list[tuple[int, str]]:
@@ -124,6 +161,11 @@ def policy(root: Path) -> dict[str, object]:
         for line_number, name in rereferenced_parameters(lines):
             violations.append(
                 f"{path.relative_to(root)}:{line_number}: pass reference parameter {name} as `{name}`, not `&{name}`"
+            )
+        for line_number, name in discarded_accumulator_loops(lines):
+            violations.append(
+                f"{path.relative_to(root)}:{line_number}: accumulator loop result `{name}` is discarded; "
+                "make the loop the final expression or bind it to a name"
             )
 
     return {

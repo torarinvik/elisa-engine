@@ -8,6 +8,10 @@ game identities. Updates replace a row's transform; removal compacts the table.
 
 `test/render_snapshot.elisa` and the shared ElisaScript gate cover one-to-many
 fan-out, update, removal, capacity bounds, and invalid-reference rejection.
+A render ID belongs to one gameplay identity at a time: `snapshot_bind` rejects
+a second entity claiming a bound render ID, and `snapshot_valid` checks every
+row. Until 2026-09-21 `snapshot_valid` discarded its row loop; see
+[`validator-loops.md`](validator-loops.md).
 The Wicked probe also exercises `native/render_snapshot_bridge.h`: it creates
 two native rows for one logical fanout, updates one independently, rejects an
 unknown removal, and returns the scene object count to its baseline. Vendor

@@ -50,6 +50,9 @@ def asset_browser_test() -> i32:
         BrowserError.DuplicateAsset: 3
         error failure: 4
     return 48 if second_added != 0 or browser_count(&browser) != 2
+    duplicate_row: mutable Browser = browser
+    duplicate_row.rows[1] <- Row{id: id, generation: 0, loaded: false}
+    return 56 if browser_valid(&duplicate_row)
     selected_second: i32 = catch browser_select(&browser, 1):
         ok: 0
         BrowserError.UnknownRow: 1
@@ -90,6 +93,9 @@ def inspector_view_test() -> i32:
         ok: false
         error failure: true
     return 33 if field_count(&model) != 3
+    duplicate_target: mutable Model = model
+    duplicate_target.fields[2] <- inspector_number_field(field_at(&model, 0).target, 1)
+    return 55 if model_valid(&duplicate_target)
     selected: i32 = catch select(&model, 1):
         ok: 0
         FieldError.UnknownTarget: 1
@@ -139,6 +145,10 @@ def layout_test() -> i32:
     row_b: i64 = layout_add(&layout, body, Orientation.Horizontal, 25, 0, 0)
     return 1 if root != 0 or header != 1 or body != 2 or left != 3 or right != 4 or row_a != 5 or row_b != 6
     return 2 if layout_add(&layout, 9, Orientation.Vertical, 1, 0, 0) != -1 or not layout_valid(&layout)
+    # Parents precede children, so a node pointing forward is invalid data.
+    forward_parent: mutable Layout = layout
+    forward_parent.nodes[1] <- Node{parent: 5, orientation: Orientation.Horizontal, size: 30, padding: 2, spacing: 6, rect: layout.nodes[1].rect}
+    return 52 if layout_valid(&forward_parent)
     layout_compute(&layout, 0, 0, 200, 100)
     root_rect: Rect = node_rect(&layout, 0)
     header_rect: Rect = node_rect(&layout, 1)
@@ -168,6 +178,12 @@ def text_test() -> i32:
     return 11 if run.count != 3 or not run_valid(&run) or run_add_word(&run, 0 - 1)
     wrapped: Wrapped = wrap(&run, 6, 1)
     return 12 if wrapped.line_count != 2 or not wrapped_valid(&wrapped)
+    negative_word: mutable Run = run
+    negative_word.words[1] <- Word{width: -1}
+    return 53 if run_valid(&negative_word)
+    unordered_lines: mutable Wrapped = wrapped
+    unordered_lines.line_starts[1] <- 0
+    return 54 if wrapped_valid(&unordered_lines)
     return 13 if line_start(&wrapped, 0) != 0 or line_width(&wrapped, 0) != 6
     return 14 if line_start(&wrapped, 1) != 2 or line_width(&wrapped, 1) != 4
     return 15 if line_width(&wrapped, 2) != -1

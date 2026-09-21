@@ -47,6 +47,9 @@ def widgets_test() -> i32:
         WidgetError.OutOfRange: 3
         error failure: 4
     return 27 if blocked != 2 or not surface_valid(&surface)
+    duplicate_widget: mutable Surface = surface
+    duplicate_widget.widgets[1] <- surface.widgets[0]
+    return 28 if surface_valid(&duplicate_widget)
     0
 
 def sample_visual() -> VisualAsset:

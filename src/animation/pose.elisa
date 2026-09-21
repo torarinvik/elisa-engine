@@ -137,7 +137,6 @@ module Pose:
             for index in 0..<pose.count |finite: bool = true| -> finite:
                 model: Geometry::Transform = pose.models[index]
                 finite <- false if not Geometry::vec3_is_finite(model.position) or not Geometry::vec3_is_finite(model.scale) or not Geometry::quat_is_finite(model.rotation)
-            true
 
         # Two-bone IK correction over a three-joint chain: the root stays put,
         # the middle joint moves to the solved knee, and the end joint lands on

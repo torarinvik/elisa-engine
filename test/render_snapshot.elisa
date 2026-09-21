@@ -33,4 +33,10 @@ def main() -> i32:
     return 8 if RenderSnapshot::snapshot_count(&snapshot) != 1
     invalid: World::EntityRef = World::EntityRef{world_epoch: -1, id: 4}
     return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, visual, transform)
+    other: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+        value: value
+        error failure: return 10
+    return 11 if RenderSnapshot::snapshot_bind(&snapshot, other, 102, visual, transform)
+    return 12 if RenderSnapshot::snapshot_count(&snapshot) != 1 or not RenderSnapshot::snapshot_valid(&snapshot)
+    return 13 if not RenderSnapshot::snapshot_bind(&snapshot, other, 104, visual, transform) or not RenderSnapshot::snapshot_valid(&snapshot)
     WorldRenderingValidation::run()

@@ -506,7 +506,6 @@ module World:
                     for earlier in 0..<index |inner: bool = true| -> inner:
                         inner <- false if world.live_ids[earlier] == id
                 valid <- valid and unique
-            true
 
         def world_is_valid(world: World&) -> bool:
             return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > World::MAX_ENTITIES or world.actor_count > World::MAX_ENTITIES or world.enemy_count > World::MAX_ENTITIES or world.static_object_count > World::MAX_ENTITIES or world.live_count > world.registry_count

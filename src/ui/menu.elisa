@@ -72,7 +72,6 @@ module Ui:
                     for earlier in 0..<index |inner: bool = true| -> inner:
                         inner <- false if menu.items[earlier].action == menu.items[index].action
                 valid <- valid and unique
-            true
 
         def item_action(menu: Menu&, index: usize) -> i64:
             return -1 if index >= menu.count

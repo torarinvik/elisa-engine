@@ -40,7 +40,6 @@ module AssetBrowser:
                     for earlier in 0..<index |inner: bool = true| -> inner:
                         inner <- false if Assets::same_asset_id(browser.rows[earlier].id, row.id)
                 valid <- valid and unique
-            true
 
         private:
             module Find:

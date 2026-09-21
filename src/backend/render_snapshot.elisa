@@ -38,6 +38,8 @@ module RenderSnapshot:
                     snapshot.entries[index].visual <- visual
                     snapshot.entries[index].transform <- transform
                     return true
+                # A render ID belongs to one gameplay identity at a time.
+                return false if snapshot.entries[index].render_id == render_id
             return false if snapshot.count >= RenderSnapshot::MAX_ENTRIES
             snapshot.entries[snapshot.count] <- Entry{gameplay: gameplay, render_id: render_id, visual: visual, transform: transform}
             snapshot.count <- snapshot.count + 1
@@ -63,4 +65,3 @@ module RenderSnapshot:
                 valid <- false if entry.gameplay.world_epoch <= 0 or entry.gameplay.id <= 0 or entry.render_id <= 0 or not Assets::visual_asset_valid(entry.visual)
                 for earlier in 0..<index:
                     valid <- false if snapshot.entries[earlier].render_id == entry.render_id
-            true

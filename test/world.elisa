@@ -216,6 +216,13 @@ module World::Tests:
         return 78 if replacement.id <= structure.id or not world_is_valid(&world)
         0
 
+    def restore_code(world: mutable World&, snapshot: World::Rollback::Snapshot&) -> i32:
+        catch World::Rollback::restore(world, snapshot):
+            ok: 0
+            RollbackError.InvalidSnapshot: 1
+            RollbackError.WrongWorld: 2
+            error failure: 3
+
     def rollback_test() -> i32:
         world: mutable World = catch World():
             value: value
@@ -272,6 +279,24 @@ module World::Tests:
             RollbackError.WrongWorld: 2
             error failure: 3
         return 5 if rejected_snapshot != 1
+        # Each corruption keeps every count consistent and breaks one row, so
+        # only the per-row loops can reject it.
+        bad_registry: mutable World::Rollback::Snapshot = snapshot
+        bad_registry.registry[0] <- RegistryRow{id: snapshot.registry[0].id, kind: snapshot.registry[0].kind, live: true, storage: StorageKind.Enemy, transform: snapshot.registry[0].transform}
+        return 6 if restore_code(&world, &bad_registry) != 1
+        duplicate_live_id: mutable World::Rollback::Snapshot = snapshot
+        duplicate_live_id.live_ids[1] <- snapshot.live_ids[0]
+        return 7 if restore_code(&world, &duplicate_live_id) != 1
+        bad_actor: mutable World::Rollback::Snapshot = snapshot
+        bad_actor.actors[0] <- ActorRecord{id: snapshot.actors[0].id, live: true, health: -1}
+        return 8 if restore_code(&world, &bad_actor) != 1
+        bad_enemy: mutable World::Rollback::Snapshot = snapshot
+        bad_enemy.enemies[0] <- EnemyRecord{id: snapshot.enemies[0].id, live: true, threat: -1}
+        return 9 if restore_code(&world, &bad_enemy) != 1
+        orphan_static: mutable World::Rollback::Snapshot = snapshot
+        orphan_static.static_objects[0] <- StaticObjectRecord{id: snapshot.static_objects[0].id + 1000, live: true}
+        return 10 if restore_code(&world, &orphan_static) != 1
+        return 11 if restore_code(&world, &snapshot) != 0 or not world_is_valid(&world)
         0
 
     def run() -> i32:

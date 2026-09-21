@@ -23,6 +23,9 @@ def ui_scroll_test() -> i32:
     for action in 1..<9 |menu|:
         _ = Ui::menu_add(&menu, action.i64(), true)
     return 76 if not Ui::menu_valid(&menu) or item_count(&menu) != 8
+    duplicate_action: mutable Ui::Menu = menu
+    duplicate_action.items[7] <- Ui::Item{action: 1, enabled: true}
+    return 89 if Ui::menu_valid(&duplicate_action)
     return 77 if not Ui::menu_set_visible(&menu, 3) or Ui::visible_rows(&menu) != 3 or Ui::scroll_offset(&menu) != 0
     Ui::focus_next(&menu)
     Ui::focus_next(&menu)

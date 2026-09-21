@@ -420,7 +420,11 @@ or missing top-level module declarations under `src/`. Tests and examples may
 import modules locally for fixture readability. The same check rejects `&name`
 where `name` is already a reference parameter in `src/`, `examples/`, or `test/`:
 the stage1 compiler accepts that form but binds it to the wrong storage, so a
-reference is always forwarded as `name`.
+reference is always forwarded as `name`. It also rejects an accumulator loop
+(`for ... |valid: bool = true| -> valid:`) written as a statement with more
+statements after it. Such a loop's value is discarded, so a validator must end
+with the loop or bind it to a name
+([`docs/validation/validator-loops.md`](docs/validation/validator-loops.md)).
 
 ## Next milestone
 

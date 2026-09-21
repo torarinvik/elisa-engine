@@ -33,7 +33,6 @@ module UiText:
             return false if run.count > Tune::MAX_WORDS
             for index in 0..<run.count |valid: bool = true| -> valid:
                 valid <- false if run.words[index].width < 0
-            true
 
         def run_add_word(run: mutable Run&, width: i64) -> bool:
             return false if run.count >= Tune::MAX_WORDS or width < 0
@@ -46,7 +45,6 @@ module UiText:
             for index in 0..<wrapped.line_count |ordered: bool = true| -> ordered:
                 ordered <- false if wrapped.line_widths[index] < 0
                 ordered <- false if index > 0 and wrapped.line_starts[index] <= wrapped.line_starts[index - 1]
-            true
 
         def line_start(wrapped: Wrapped&, index: usize) -> usize:
             return Tune::MAX_WORDS if index >= wrapped.line_count

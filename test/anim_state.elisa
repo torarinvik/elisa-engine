@@ -9,6 +9,9 @@ using Sampler
 using Skin
 using Geometry
 
+def quotient(numerator: f32, denominator: f32) -> f32:
+    numerator / denominator
+
 def near(value: f32, expected: f32) -> bool:
     diff: f32 = value - expected
     adjusted: f32 = 0.0 - diff if diff < 0.0 else diff
@@ -69,6 +72,9 @@ def clip_tests() -> i32:
         value: value
         error failure: return 59
     return 60 if not pose_valid(&sampled_pose) or not near(sampled_pose.models[1].position.x, 3.0)
+    non_finite_pose: mutable Pose = sampled_pose
+    non_finite_pose.models[1] <- Geometry::transform_translate(sampled_pose.models[1], Geometry::Vec3{x: quotient(0.0, 0.0), y: 0.0, z: 0.0})
+    return 75 if pose_valid(&non_finite_pose)
     start_pose: Pose = catch Sampler::clip_sample_pose(&clip, 0, &clip_skeleton):
         value: value
         error failure: return 61

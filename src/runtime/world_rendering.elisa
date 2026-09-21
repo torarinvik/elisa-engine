@@ -42,7 +42,6 @@ module WorldRendering:
                 valid <- false if row.gameplay.world_epoch <= 0 or row.gameplay.id <= 0 or row.render_id <= 0 or not Assets::visual_asset_valid(row.visual) or not Geometry::transform_is_valid(row.local_transform)
                 for earlier in 0..<index:
                     valid <- false if bindings.rows[earlier].render_id == row.render_id
-            true
 
         def prune_dead_bindings(world: World::World&, bindings: mutable Bindings&) -> void:
             write: mutable usize = 0
