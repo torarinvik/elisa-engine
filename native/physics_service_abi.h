@@ -34,6 +34,8 @@ int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_secon
     uint64_t* tick);
 int32_t elisa_physics_v1_body_position(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, float* x, float* y, float* z);
+int32_t elisa_physics_v1_set_sleeping(uint64_t world_generation, uint32_t slot,
+    uint64_t body_generation, int32_t sleeping);
 int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, float position_x, float position_y, float position_z,
     float rotation_x, float rotation_y, float rotation_z, float rotation_w);

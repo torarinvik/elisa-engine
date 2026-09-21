@@ -263,6 +263,29 @@ extern "C" int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generati
         ? ELISA_PHYSICS_OK : ELISA_PHYSICS_BACKEND_FAILURE;
 }
 
+extern "C" int32_t elisa_physics_v1_set_sleeping(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, int32_t sleeping) {
+    if (sleeping != 0 && sleeping != 1) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    wi::scene::RigidBodyPhysicsComponent* rigidbody = state.scene->rigidbodies.GetComponent(body->entity);
+    if (rigidbody == nullptr || rigidbody->physicsobject == nullptr || rigidbody->mass <= 0.0f ||
+        rigidbody->IsKinematic()) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    try {
+        wi::physics::SetActivationState(*rigidbody,
+            sleeping != 0 ? wi::physics::ActivationState::Inactive
+                          : wi::physics::ActivationState::Active);
+    } catch (...) {
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+    return ELISA_PHYSICS_OK;
+}
+
 extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation) {
     const int32_t status = require_world(world_generation);
