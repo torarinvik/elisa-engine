@@ -12,6 +12,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import packaged_maze_smoke
+
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORKS = [
     "Foundation", "CoreFoundation", "CoreGraphics", "CoreText", "ImageIO",
@@ -157,6 +159,12 @@ def main() -> int:
             print("Elisa-owned native maze application smoke failed.", file=sys.stderr)
             return maze_status
         print("Elisa-owned maze world rendered through the native SDL3/Metal snapshot presenter.")
+        packaged_status = packaged_maze_smoke.run(
+            build / "maze-native-smoke", ROOT / "examples/maze", wicked_source / "shaders")
+        if packaged_status != 0:
+            print("Packaged maze smoke outside the checkout failed.", file=sys.stderr)
+            return packaged_status
+        print("Packaged maze ran outside the checkout; bad bundles failed asset registration.")
     return status
 
 
