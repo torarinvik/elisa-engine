@@ -42,6 +42,94 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_identity_matches(
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_instance_resources(
+    int64_t render_id, uint64_t vertex_count, uint64_t index_count,
+    float red, float green, float blue, float alpha, float metallic, float roughness) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live || instance.render_id != render_id) continue;
+        const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+        if (object == nullptr) return 0;
+        const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(object->meshID);
+        if (mesh == nullptr || mesh->subsets.empty()) return 0;
+        const wi::scene::MaterialComponent* material =
+            state.scene->materials.GetComponent(mesh->subsets.front().materialID);
+        if (mesh == nullptr || material == nullptr || mesh->vertex_positions.size() != vertex_count ||
+            mesh->indices.size() != index_count || material->shaderType != wi::scene::MaterialComponent::SHADERTYPE_PBR) return 0;
+        const auto close = [](float left, float right) { return std::abs(left - right) <= 1.0e-5f; };
+        return close(material->baseColor.x, red) && close(material->baseColor.y, green) &&
+            close(material->baseColor.z, blue) && close(material->baseColor.w, alpha) &&
+            close(material->metalness, metallic) && close(material->roughness, roughness) ? 1 : 0;
+    }
+    return 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_meshes_shared(
+    int64_t first_render_id, int64_t second_render_id) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    wi::ecs::Entity first_object_entity = wi::ecs::INVALID_ENTITY;
+    wi::ecs::Entity second_object_entity = wi::ecs::INVALID_ENTITY;
+    wi::ecs::Entity first_mesh = wi::ecs::INVALID_ENTITY;
+    wi::ecs::Entity second_mesh = wi::ecs::INVALID_ENTITY;
+    XMFLOAT3 first_translation = XMFLOAT3(0, 0, 0);
+    XMFLOAT3 second_translation = XMFLOAT3(0, 0, 0);
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live) continue;
+        const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+        const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
+        if (object == nullptr || transform == nullptr) continue;
+        if (instance.render_id == first_render_id) {
+            first_object_entity = instance.entity;
+            first_mesh = object->meshID;
+            first_translation = transform->translation_local;
+        }
+        if (instance.render_id == second_render_id) {
+            second_object_entity = instance.entity;
+            second_mesh = object->meshID;
+            second_translation = transform->translation_local;
+        }
+    }
+    const bool transforms_differ = std::abs(first_translation.x - second_translation.x) > 1.0e-5f ||
+        std::abs(first_translation.y - second_translation.y) > 1.0e-5f ||
+        std::abs(first_translation.z - second_translation.z) > 1.0e-5f;
+    return first_object_entity != wi::ecs::INVALID_ENTITY && second_object_entity != wi::ecs::INVALID_ENTITY &&
+        first_object_entity != second_object_entity && first_mesh != wi::ecs::INVALID_ENTITY &&
+        first_mesh == second_mesh && transforms_differ ? 1 : 0;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_shared_mesh_count(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    uint64_t count = 0;
+    for (const SnapshotSharedMesh& mesh : state.snapshot_shared_meshes) count += mesh.live ? 1 : 0;
+    return count;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_last_transaction_api_calls(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    return state.snapshot_test_last_transaction_api_calls;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_position_x(
+    int64_t render_id, float expected_x) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (!instance.live || instance.render_id != render_id) continue;
+        const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
+        return transform != nullptr && std::abs(transform->translation_local.x - expected_x) <= 1.0e-5f ? 1 : 0;
+    }
+    return 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

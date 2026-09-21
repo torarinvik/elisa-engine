@@ -1,0 +1,28 @@
+# Native checks for opt-in art direction controls on Wicked materials.
+module RenderSceneArtMaterialNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_art_material_settings() -> i32
+
+    public:
+        def exercise() -> i32:
+            material: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::transform_identity(), RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 155
+            invalid_material: i32 = catch RenderScene::set_lit_material(material, -0.1, 0.3):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 156 if invalid_material != 1
+            _ = catch RenderScene::set_lit_material(material, 0.65, 0.3):
+                ok: 0
+                error failure: return 157
+            _ = catch RenderScene::set_texture_uv_transform(material, 1.0, -1.0, 0.0, 1.0):
+                ok: 0
+                error failure: return 158
+            return 159 if elisa_render_scene_v1_test_art_material_settings() != 1
+            _ = catch RenderScene::destroy(material):
+                ok: 0
+                error failure: return 160
+            0

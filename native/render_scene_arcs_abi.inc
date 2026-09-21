@@ -244,6 +244,9 @@ extern "C" int32_t elisa_render_scene_v1_set_electric_arc_depth_test(int64_t han
     if (slot == MAX_ELECTRIC_ARCS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     ElectricArcSlot& arc = state.electric_arcs[slot];
     arc.depth_test = enabled != 0;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    state.arc_depth_test_probe_handle = handle;
+#endif
     arc.halo.depth_test_enabled = arc.depth_test;
     arc.core.depth_test_enabled = arc.depth_test;
     arc.branch.depth_test_enabled = arc.depth_test;

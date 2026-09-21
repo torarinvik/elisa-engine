@@ -213,6 +213,32 @@ class BuildRunCliTests(unittest.TestCase):
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), config)
 
+    def test_declared_gltf_cook_uses_runtime_geometry_cooker(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa glTF asset cook ") as temporary_directory:
+            project = Path(temporary_directory) / "Maze project"
+            source = project / "assets" / "tile.gltf"
+            source.parent.mkdir(parents=True)
+            source.write_text("{}", encoding="utf-8")
+            declaration = {
+                "importer": "gltf",
+                "source": "assets/tile.gltf",
+                "asset_path": "assets/tile.gltf",
+                "output": "assets/tile.pkg",
+            }
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [declaration]}), 0)
+            command = run.call_args.args[0]
+            self.assertEqual(command[1], str(SCRIPT.parent / "cook_gltf_asset.py"))
+            self.assertEqual(command[2], str(source.resolve()))
+            self.assertEqual(command[command.index("--output") + 1],
+                str((project / "assets/tile.pkg").resolve()))
+            declaration["source"] = "assets/tile.glb"
+            (project / "assets" / "tile.glb").write_bytes(b"glb")
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), {"asset_cooks": [declaration]})
+
     def test_game_owned_exports_are_rejected_before_native_link(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa ABI audit ") as temporary_directory:
             root = Path(temporary_directory)

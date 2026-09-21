@@ -172,35 +172,13 @@ def normalized_counts(document: dict) -> dict:
 
 
 def normalized_geometry(document: dict, buffer: bytes):
-    # Geometry in the shapes a runtime can upload directly: float32 positions
-    # and uint32 indices. Other component types are converted here, offline,
-    # so the runtime never has to know a source format's encodings.
-    for mesh in document.get("meshes", []):
-        for primitive in mesh.get("primitives", []):
-            attributes = primitive.get("attributes", {})
-            indices_ref = primitive.get("indices")
-            if indices_ref is None or "POSITION" not in attributes:
-                continue
-            position_accessor = document["accessors"][attributes["POSITION"]]
-            if position_accessor["componentType"] != 5126 or position_accessor["type"] != "VEC3":
-                raise ValueError("only float32 VEC3 positions are cooked")
-            positions = accessor_bytes(document, buffer, attributes["POSITION"])
-            index_accessor = document["accessors"][indices_ref]
-            if index_accessor["componentType"] not in (5123, 5125):
-                raise ValueError("only 16- or 32-bit indices are cooked")
-            normals = b""
-            if "NORMAL" in attributes:
-                normal_accessor = document["accessors"][attributes["NORMAL"]]
-                if normal_accessor["componentType"] == 5126 and normal_accessor["type"] == "VEC3":
-                    normals = accessor_bytes(document, buffer, attributes["NORMAL"])
-            raw_indices = accessor_bytes(document, buffer, indices_ref)
-            import struct
-            if index_accessor["componentType"] == 5123:
-                converted = b"".join(struct.pack("<I", value) for (value,) in struct.iter_unpack("<H", raw_indices))
-            else:
-                converted = raw_indices
-            return {"positions": positions, "normals": normals, "indices": converted}
-    raise ValueError("no primitive with positions and indices")
+    from cook_gltf_geometry import normalized_geometry as normalize_geometry
+    return normalize_geometry(document, buffer)
+
+
+def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path) -> tuple[Path, dict]:
+    from cook_gltf_geometry import cook_geometry_package as cook_package
+    return cook_package(source_path, asset_path, output_path)
 
 
 def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> Path:
@@ -372,8 +350,7 @@ def cook(root: Path) -> Path:
     if not asset_rel:
         raise ValueError("scene manifest has no mesh_asset")
     asset_path = root / asset_rel
-    data = asset_path.read_bytes()
-    document = read_gltf(data)
+    document = read_gltf(asset_path.read_bytes())
     counts = normalized_counts(document)
     expected_triangles = int(manifest.get("mesh_triangles", "0"))
     if counts["triangles"] != expected_triangles:
@@ -381,30 +358,13 @@ def cook(root: Path) -> Path:
             f"cooked triangles {counts['triangles']} disagree with the fixture's {expected_triangles}")
     if counts["positions"] <= 0 or counts["bounds"] is None:
         raise ValueError("cooked positions or bounds are missing")
-    digest = hashlib.sha256(data).hexdigest()
-    geometry = normalized_geometry(document, source_bytes(root, document))
-
     package_dir = root / "build/cooked"
     package_dir.mkdir(parents=True, exist_ok=True)
     package = package_dir / (asset_path.stem + ".pkg")
-    lines = [
-        f"format={PACKAGE_FORMAT}",
-        f"source={asset_rel}",
-        f"source_sha256={digest}",
-        f"triangles={counts['triangles']}",
-        f"positions={counts['positions']}",
-        "bounds_min=" + ",".join(str(v) for v in counts["bounds"][0]),
-        "bounds_max=" + ",".join(str(v) for v in counts["bounds"][1]),
-        "position_stride=12",
-        "index_stride=4",
-        "positions_b64=" + base64.b64encode(geometry["positions"]).decode(),
-        "normals_b64=" + base64.b64encode(geometry["normals"]).decode(),
-        "indices_b64=" + base64.b64encode(geometry["indices"]).decode(),
-    ]
-    package.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    database = record_catalogue(root, asset_rel, digest, counts)
+    package, cooked = cook_geometry_package(asset_path, asset_rel, package)
+    database = record_catalogue(root, asset_rel, cooked["source_sha256"], counts)
     texture = write_texture_package(root)
-    print(f"cooked {asset_rel} -> {package} ({counts['triangles']} triangles, sha256 {digest[:12]})")
+    print(f'cooked {asset_rel} -> {package} ({counts["triangles"]} triangles, sha256 {cooked["source_sha256"][:12]})')
     print(f"cooked texture -> {texture}")
     print(f"catalogue -> {database}")
     return package

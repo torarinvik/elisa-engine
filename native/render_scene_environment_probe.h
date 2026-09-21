@@ -51,3 +51,14 @@ extern "C" int32_t elisa_render_scene_v1_test_art_material_settings(void) {
     }
     return 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_sun_shadows_match(int32_t enabled) {
+    if (enabled != 0 && enabled != 1) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    const bool expected = enabled != 0;
+    return sun != nullptr && sun->IsCastingShadow() == expected &&
+        state.path->getShadowsEnabled() == expected ? 1 : 0;
+}

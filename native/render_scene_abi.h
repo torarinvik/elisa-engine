@@ -29,6 +29,12 @@ enum {
     ELISA_RENDER_PRIMITIVE_PLANE = 3,
 };
 
+enum {
+    ELISA_RENDER_SCENE_ALPHA_OPAQUE = 0,
+    ELISA_RENDER_SCENE_ALPHA_MASK = 1,
+    ELISA_RENDER_SCENE_ALPHA_BLEND = 2,
+};
+
 uint32_t elisa_render_scene_abi_version(void);
 int32_t elisa_render_scene_v1_initialize(int32_t width, int32_t height, float vertical_size);
 int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
@@ -64,6 +70,16 @@ int32_t elisa_render_scene_v1_snapshot_retire(int64_t handle);
 int32_t elisa_render_scene_v1_snapshot_commit(void);
 int32_t elisa_render_scene_v1_snapshot_abort(void);
 int64_t elisa_render_scene_v1_snapshot_result(uint32_t index);
+int32_t elisa_render_scene_v1_register_snapshot_mesh_asset(
+    uint64_t high, uint64_t low, const char* package_path);
+int32_t elisa_render_scene_v1_unregister_snapshot_mesh_asset(uint64_t high, uint64_t low);
+int32_t elisa_render_scene_v1_register_snapshot_material_asset(
+    uint64_t high, uint64_t low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided);
+int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);

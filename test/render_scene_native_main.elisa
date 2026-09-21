@@ -7,11 +7,11 @@ include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
 include "./maze_rendering_native.elisa"
+include "./render_scene_snapshot_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
-@callconv(c)
-extern elisa_render_scene_v1_test_art_material_settings() -> i32
+include "./render_scene_arc_depth_native.elisa"
 
 using Maze
 using MazeGame
@@ -29,49 +29,6 @@ extern elisa_render_scene_v1_last_frame_center_patch_hash() -> u64
 @callconv(c)
 extern elisa_render_scene_v1_test_arc_capacity() -> i32
 
-@callconv(c)
-extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
-
-@callconv(c)
-extern elisa_render_scene_v1_test_snapshot_identity_matches(gameplay_epoch: i64, gameplay_id: i64,
-    render_id: i64, mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64) -> i32
-
-@callconv(c)
-extern elisa_render_scene_v1_test_object_count() -> u64
-
-def sync_snapshot(presenter: mutable RenderScene::SnapshotPresenter&, snapshot: RenderSnapshot::Snapshot&) -> i32:
-    catch RenderSnapshotScene::sync(presenter, snapshot):
-        ok: 0
-        error failure: 1
-
-def bind_world_render(bindings: mutable WorldRendering::Bindings&, world: mutable World::World&,
-    gameplay: World::EntityRef, render_id: i64, visual: Assets::VisualAsset,
-    local_transform: Geometry::Transform) -> i32:
-    catch WorldRendering::bind(bindings, world, gameplay, render_id, visual, local_transform):
-        ok: 0
-        error failure: 1
-
-def render_visual(asset_key: u64) -> Assets::VisualAsset:
-    Assets::VisualAsset{
-        mesh: Assets::AssetId{high: 700, low: asset_key},
-        material: Assets::AssetId{high: 800, low: 1},
-        local_bounds: Geometry::Bounds3{
-            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
-            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
-        },
-    }
-
-def extract_world_render(world: World::World&, bindings: mutable WorldRendering::Bindings&,
-    snapshot: mutable RenderSnapshot::Snapshot&) -> i32:
-    catch WorldRendering::extract(world, bindings, snapshot):
-        ok: 0
-        error failure: 1
-
-def hide_render_instance(handle: RenderScene::InstanceHandle) -> i32:
-    catch RenderScene::set_visible(handle, false):
-        ok: 0
-        error failure: 1
-
 def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
     batch: mutable RenderScene::ElectricArcBatch = RenderScene::ElectricArcBatch()
     for index in 0..<RenderScene::MAX_ELECTRIC_ARCS:
@@ -85,6 +42,11 @@ def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
         error failure: 2
     return 0 if overflow == 1 and RenderScene::electric_arc_batch_count(batch) == RenderScene::MAX_ELECTRIC_ARCS
     2
+
+def hide_render_instance(handle: RenderScene::InstanceHandle) -> i32:
+    catch RenderScene::set_visible(handle, false):
+        ok: 0
+        error failure: 1
 
 def exercise_render_scene() -> i32:
     config: Application::Config = Application::Config{
@@ -159,26 +121,8 @@ def exercise_render_scene() -> i32:
     electric_arc: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.06, 0.15, 7):
         value: value
         error failure: return 89
-    depth_enabled: i32 = catch RenderScene::set_electric_arc_depth_test(electric_arc, true):
-        ok: 0
-        error failure: 1
-    return 150 if depth_enabled != 0
-    retired_arc: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.01, 0.01, 9):
-        value: value
-        error failure: return 153
-    retired_status: i32 = catch RenderScene::destroy_electric_arc(retired_arc):
-        ok: 0
-        error failure: 1
-    return 154 if retired_status != 0
-    invalid_depth_handle: i32 = catch RenderScene::set_electric_arc_depth_test(retired_arc, true):
-        ok: 0
-        RenderScene::RenderSceneError.UnknownHandle: 1
-        error failure: 2
-    return 151 if invalid_depth_handle != 1
-    depth_disabled: i32 = catch RenderScene::set_electric_arc_depth_test(electric_arc, false):
-        ok: 0
-        error failure: 1
-    return 152 if depth_disabled != 0
+    arc_depth_test: i32 = RenderSceneArcDepthNativeTests::exercise(electric_arc)
+    return arc_depth_test if arc_depth_test != 0
     degenerate_arc: i32 = catch RenderScene::update_electric_arc(electric_arc,
         Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 0.1, 1.0):
         ok: 0
@@ -199,26 +143,6 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 94 if arc_shown != 0
-
-    material_probe: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box,
-        Geometry::transform_identity(), RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
-        value: value
-        error failure: return 155
-    invalid_material: i32 = catch RenderScene::set_lit_material(material_probe, -0.1, 0.3):
-        ok: 0
-        RenderScene::RenderSceneError.InvalidValue: 1
-        error failure: 2
-    return 156 if invalid_material != 1
-    _ = catch RenderScene::set_lit_material(material_probe, 0.65, 0.3):
-        ok: 0
-        error failure: return 157
-    _ = catch RenderScene::set_texture_uv_transform(material_probe, 1.0, -1.0, 0.0, 1.0):
-        ok: 0
-        error failure: return 158
-    return 159 if elisa_render_scene_v1_test_art_material_settings() != 1
-    _ = catch RenderScene::destroy(material_probe):
-        ok: 0
-        error failure: return 160
 
     hud_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
         "LIVES  3", 16.0, 14.0, 24,
@@ -367,91 +291,8 @@ def exercise_render_scene() -> i32:
         return 78 if Application::pump() != Application::PumpStatus.Running
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
 
-    # Elisa gameplay identities and stable render IDs reconcile into persistent
-    # native handles; repeated submissions update in place and removals retire.
-    world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 40
-    gameplay_a: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
-        value: value
-        error failure: return 40
-    gameplay_b: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
-        value: value
-        error failure: return 40
-    player_transform_status: i32 = catch World::world_set_transform(&world, gameplay_a, box_transform):
-        ok: 0
-        World::WorldError.InvalidValue: 41
-        World::WorldError.InvalidReference: 42
-        error failure: 43
-    guard_transform_status: i32 = catch World::world_set_transform(&world, gameplay_b, sphere_transform):
-        ok: 0
-        World::WorldError.InvalidValue: 44
-        World::WorldError.InvalidReference: 45
-        error failure: 46
-    return player_transform_status if player_transform_status != 0
-    return guard_transform_status if guard_transform_status != 0
-    snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
-    presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
-    render_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
-    local_offset: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 0.0, y: 0.25, z: 0.0})
-    return 115 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(701), Geometry::transform_identity()) != 0
-    return 116 if bind_world_render(&render_bindings, world, gameplay_a, 703, render_visual(703), local_offset) != 0
-    return 117 if bind_world_render(&render_bindings, world, gameplay_b, 702, render_visual(702), Geometry::transform_identity()) != 0
-    return 42 if extract_world_render(world, &render_bindings, &snapshot) != 0
-    return 43 if RenderSnapshot::snapshot_count(snapshot) != 3
-    return 44 if sync_snapshot(&presenter, snapshot) != 0
-    return 45 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
-    return 46 if extract_world_render(world, &render_bindings, &snapshot) != 0
-    return 47 if sync_snapshot(&presenter, snapshot) != 0
-    return 48 if RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6
-
-    moved_transform: Geometry::Transform = Geometry::transform_translate(box_transform,
-        Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
-    moved_player_transform: i32 = catch World::world_set_transform(&world, gameplay_a, moved_transform):
-        ok: 0
-        error failure: 100
-    return 100 if moved_player_transform != 0
-    return 100 if bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701), Geometry::transform_identity()) != 0
-    return 101 if bind_world_render(&render_bindings, world, gameplay_a, 704, render_visual(704), local_offset) != 0
-    return 102 if bind_world_render(&render_bindings, world, gameplay_a, 705, render_visual(705), Geometry::transform_identity()) != 0
-    return 103 if extract_world_render(world, &render_bindings, &snapshot) != 0 or RenderSnapshot::snapshot_count(snapshot) != 5
-    return 104 if elisa_render_scene_v1_test_snapshot_fail_after_creates(1) != 0
-    objects_before_failed_batch: u64 = elisa_render_scene_v1_test_object_count()
-    failed_batch: i32 = sync_snapshot(&presenter, snapshot)
-    return 105 if failed_batch != 1 or RenderSnapshotScene::binding_count(presenter) != 3 or RenderScene::instance_count() != 6 or elisa_render_scene_v1_test_object_count() != objects_before_failed_batch
-    return 112 if elisa_render_scene_v1_test_snapshot_identity_matches(
-        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 701, 800, 1) == 0
-    return 113 if elisa_render_scene_v1_test_snapshot_identity_matches(
-        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
-    return 106 if sync_snapshot(&presenter, snapshot) != 0
-    return 107 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
-    return 114 if elisa_render_scene_v1_test_object_count() != objects_before_failed_batch + 2
-    return 110 if elisa_render_scene_v1_test_snapshot_identity_matches(
-        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) == 0
-    stable_transform: Geometry::Transform = Geometry::transform_translate(moved_transform,
-        Geometry::Vec3{x: 0.25, y: 0.0, z: 0.0})
-    stable_world_update: i32 = catch World::world_set_transform(&world, gameplay_a, stable_transform):
-        ok: 0
-        error failure: 108
-    stable_update: i32 = bind_world_render(&render_bindings, world, gameplay_a, 701, render_visual(9701),
-        Geometry::transform_identity())
-    return 108 if stable_world_update != 0 or stable_update != 0 or extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
-    return 109 if RenderSnapshotScene::binding_count(presenter) != 5 or RenderScene::instance_count() != 8
-    despawn_b: i32 = catch World::world_despawn(&world, gameplay_b):
-        ok: 0
-        error failure: 1
-    return 51 if despawn_b != 0
-    return 52 if extract_world_render(world, &render_bindings, &snapshot) != 0
-    return 53 if sync_snapshot(&presenter, snapshot) != 0
-    return 54 if RenderSnapshot::snapshot_count(snapshot) != 4 or RenderSnapshotScene::binding_count(presenter) != 4 or RenderScene::instance_count() != 7
-    despawn_a: i32 = catch World::world_despawn(&world, gameplay_a):
-        ok: 0
-        error failure: 1
-    return 55 if despawn_a != 0
-    return 56 if extract_world_render(world, &render_bindings, &snapshot) != 0 or sync_snapshot(&presenter, snapshot) != 0
-    return 57 if RenderSnapshotScene::binding_count(presenter) != 0 or RenderScene::instance_count() != 3
-    return 111 if elisa_render_scene_v1_test_snapshot_identity_matches(
-        gameplay_a.world_epoch, gameplay_a.id, 701, 700, 9701, 800, 1) != 0
+    snapshot_test_status: i32 = RenderSceneSnapshotNativeTests::exercise()
+    return snapshot_test_status if snapshot_test_status != 0
 
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},

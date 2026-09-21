@@ -1,0 +1,38 @@
+# Focused native API checks for world-space electric arc depth behavior.
+module RenderSceneArcDepthNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_arc_depth_matches(enabled: i32) -> i32
+
+    public:
+        def exercise(handle: RenderScene::ElectricArcHandle) -> i32:
+            enabled: i32 = catch RenderScene::set_electric_arc_depth_test(handle, true):
+                ok: 0
+                error failure: 1
+            return 150 if enabled != 0
+            return 154 if elisa_render_scene_v1_test_arc_depth_matches(1) != 1
+            updated: i32 = catch RenderScene::update_electric_arc(handle,
+                Geometry::Vec3{x: -1.0, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, 0.25, 1.0):
+                ok: 0
+                error failure: 1
+            return 155 if updated != 0
+            return 156 if elisa_render_scene_v1_test_arc_depth_matches(1) != 1
+            retired: RenderScene::ElectricArcHandle = catch RenderScene::create_electric_arc(0.01, 0.01, 9):
+                value: value
+                error failure: return 153
+            retired_status: i32 = catch RenderScene::destroy_electric_arc(retired):
+                ok: 0
+                error failure: 1
+            return 154 if retired_status != 0
+            invalid_handle: i32 = catch RenderScene::set_electric_arc_depth_test(retired, true):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 151 if invalid_handle != 1
+            disabled: i32 = catch RenderScene::set_electric_arc_depth_test(handle, false):
+                ok: 0
+                error failure: 1
+            return 152 if disabled != 0
+            return 157 if elisa_render_scene_v1_test_arc_depth_matches(0) != 1
+            0

@@ -1,0 +1,35 @@
+# Native snapshot adapter for the maze's authored cooked mesh and Elisa PBR
+# descriptors. Presentation depends only on visual_assets.elisa.
+include "./visual_assets.elisa"
+include "../../src/runtime/render_scene_assets.elisa"
+
+module MazeRenderAssets:
+    private:
+        def register_material(asset: Assets::AssetId, material: Material::Material) -> bool:
+            catch RenderScene::register_snapshot_material_asset(asset, &material):
+                ok: true
+                error failure: false
+
+    public:
+        def register(package_path: cstr) -> bool:
+            mesh_registered: bool = catch RenderScene::register_snapshot_mesh_asset(
+                MazeVisualAssets::tile_mesh_id(), package_path):
+                ok: true
+                error failure: false
+            return false if not mesh_registered
+
+            return false if not register_material(MazeVisualAssets::wall_material_id(),
+                MazeVisualAssets::wall_material())
+            return false if not register_material(MazeVisualAssets::player_material_id(),
+                MazeVisualAssets::player_material())
+            return false if not register_material(MazeVisualAssets::key_material_id(),
+                MazeVisualAssets::key_material())
+            return false if not register_material(MazeVisualAssets::closed_door_material_id(),
+                MazeVisualAssets::closed_door_material())
+            return false if not register_material(MazeVisualAssets::open_door_material_id(),
+                MazeVisualAssets::open_door_material())
+            return false if not register_material(MazeVisualAssets::goal_material_id(),
+                MazeVisualAssets::goal_material())
+            return false if not register_material(MazeVisualAssets::hazard_material_id(),
+                MazeVisualAssets::hazard_material())
+            true

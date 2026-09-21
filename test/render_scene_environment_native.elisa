@@ -1,7 +1,11 @@
+include "./render_scene_art_material_native.elisa"
+
 module RenderSceneEnvironmentNativeTests:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_test_environment_matches() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sun_shadows_match(enabled: i32) -> i32
 
     public:
         def exercise() -> i32:
@@ -33,4 +37,14 @@ module RenderSceneEnvironmentNativeTests:
                 error failure: 1
             return 41 if environment_status != 0
             return 42 if elisa_render_scene_v1_test_environment_matches() != 1
+            _ = catch RenderScene::set_sun_shadows(false):
+                ok: 0
+                error failure: return 43
+            return 44 if elisa_render_scene_v1_test_sun_shadows_match(0) != 1
+            _ = catch RenderScene::set_sun_shadows(true):
+                ok: 0
+                error failure: return 45
+            return 46 if elisa_render_scene_v1_test_sun_shadows_match(1) != 1
+            art_material: i32 = RenderSceneArtMaterialNativeTests::exercise()
+            return art_material if art_material != 0
             0

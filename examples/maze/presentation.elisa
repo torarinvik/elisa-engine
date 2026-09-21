@@ -2,6 +2,7 @@
 # and topology into checked world entities and a bounded render snapshot.
 include "./game.elisa"
 include "./layout.elisa"
+include "./visual_assets.elisa"
 include "../../src/runtime/world_rendering.elisa"
 
 module MazePresentation:
@@ -23,15 +24,6 @@ module MazePresentation:
             GOAL_RENDER_ID: i64 = 2003
             HAZARD_A_RENDER_ID: i64 = 2004
             HAZARD_B_RENDER_ID: i64 = 2005
-            ASSET_NAMESPACE: u64 = 23
-            TILE_MESH_ID: u64 = 1
-            WALL_MATERIAL_ID: u64 = 2
-            PLAYER_MATERIAL_ID: u64 = 3
-            KEY_MATERIAL_ID: u64 = 4
-            DOOR_CLOSED_MATERIAL_ID: u64 = 5
-            DOOR_OPEN_MATERIAL_ID: u64 = 6
-            GOAL_MATERIAL_ID: u64 = 7
-            HAZARD_MATERIAL_ID: u64 = 8
 
         def cell_transform(x: i64, y: i64, height: f32) -> Geometry::Transform:
             identity: Geometry::Transform = Geometry::transform_identity()
@@ -41,16 +33,6 @@ module MazePresentation:
                 z: Tune::GRID_ORIGIN + y.f32() * Tune::CELL_PITCH,
             }
             Geometry::transform_translate(identity, position)
-
-        def tile_visual(material_low: u64) -> Assets::VisualAsset:
-            Assets::VisualAsset{
-                mesh: Assets::AssetId{high: Tune::ASSET_NAMESPACE, low: Tune::TILE_MESH_ID},
-                material: Assets::AssetId{high: Tune::ASSET_NAMESPACE, low: material_low},
-                local_bounds: Geometry::Bounds3{
-                    minimum: Geometry::Vec3{x: -0.3, y: -0.3, z: -0.3},
-                    maximum: Geometry::Vec3{x: 0.3, y: 0.3, z: 0.3},
-                },
-            }
 
         def set_player_cell(scene: mutable MazeScene&, game: MazeGame::MazeGame&) -> void error[MazePresentationError]:
             transform_status: bool = catch World::world_set_transform(&scene.world, scene.player,
@@ -89,7 +71,7 @@ module MazePresentation:
                 raise MazePresentationError.WorldRejected if not positioned
                 bound: bool = catch WorldRendering::bind(&bindings, &world, wall,
                     Tune::WALL_RENDER_BASE + walls.ys[index] * Maze::maze_width().i64() + walls.xs[index],
-                    tile_visual(Tune::WALL_MATERIAL_ID), Geometry::transform_identity()):
+                    MazeVisualAssets::tile_visual(MazeVisualAssets::wall_material_id()), MazeVisualAssets::tile_local_transform()):
                     ok: true
                     error failure: false
                 raise MazePresentationError.BindingRejected if not bound
@@ -104,7 +86,7 @@ module MazePresentation:
                 error failure: false
             raise MazePresentationError.WorldRejected if not player_positioned
             player_bound: bool = catch WorldRendering::bind(&bindings, &world, player,
-                Tune::PLAYER_RENDER_ID, tile_visual(Tune::PLAYER_MATERIAL_ID), Geometry::transform_identity()):
+                Tune::PLAYER_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::player_material_id()), MazeVisualAssets::tile_local_transform()):
                 ok: true
                 error failure: false
             raise MazePresentationError.BindingRejected if not player_bound
@@ -118,7 +100,7 @@ module MazePresentation:
                 error failure: false
             raise MazePresentationError.WorldRejected if not key_positioned
             key_bound: bool = catch WorldRendering::bind(&bindings, &world, key,
-                Tune::KEY_RENDER_ID, tile_visual(Tune::KEY_MATERIAL_ID), Geometry::transform_identity()):
+                Tune::KEY_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::key_material_id()), MazeVisualAssets::tile_local_transform()):
                 ok: true
                 error failure: false
             raise MazePresentationError.BindingRejected if not key_bound
@@ -132,7 +114,7 @@ module MazePresentation:
                 error failure: false
             raise MazePresentationError.WorldRejected if not door_positioned
             door_bound: bool = catch WorldRendering::bind(&bindings, &world, door,
-                Tune::DOOR_RENDER_ID, tile_visual(Tune::DOOR_CLOSED_MATERIAL_ID), Geometry::transform_identity()):
+                Tune::DOOR_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::closed_door_material_id()), MazeVisualAssets::tile_local_transform()):
                 ok: true
                 error failure: false
             raise MazePresentationError.BindingRejected if not door_bound
@@ -146,7 +128,7 @@ module MazePresentation:
                 error failure: false
             raise MazePresentationError.WorldRejected if not goal_positioned
             goal_bound: bool = catch WorldRendering::bind(&bindings, &world, goal,
-                Tune::GOAL_RENDER_ID, tile_visual(Tune::GOAL_MATERIAL_ID), Geometry::transform_identity()):
+                Tune::GOAL_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::goal_material_id()), MazeVisualAssets::tile_local_transform()):
                 ok: true
                 error failure: false
             raise MazePresentationError.BindingRejected if not goal_bound
@@ -160,7 +142,7 @@ module MazePresentation:
                 error failure: false
             raise MazePresentationError.WorldRejected if not hazard_a_positioned
             hazard_a_bound: bool = catch WorldRendering::bind(&bindings, &world, hazard_a,
-                Tune::HAZARD_A_RENDER_ID, tile_visual(Tune::HAZARD_MATERIAL_ID), Geometry::transform_identity()):
+                Tune::HAZARD_A_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::hazard_material_id()), MazeVisualAssets::tile_local_transform()):
                 ok: true
                 error failure: false
             raise MazePresentationError.BindingRejected if not hazard_a_bound
@@ -174,7 +156,7 @@ module MazePresentation:
                 error failure: false
             raise MazePresentationError.WorldRejected if not hazard_b_positioned
             hazard_b_bound: bool = catch WorldRendering::bind(&bindings, &world, hazard_b,
-                Tune::HAZARD_B_RENDER_ID, tile_visual(Tune::HAZARD_MATERIAL_ID), Geometry::transform_identity()):
+                Tune::HAZARD_B_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::hazard_material_id()), MazeVisualAssets::tile_local_transform()):
                 ok: true
                 error failure: false
             raise MazePresentationError.BindingRejected if not hazard_b_bound
@@ -219,7 +201,7 @@ module MazePresentation:
                     error failure: false
                 raise MazePresentationError.WorldRejected if not key_positioned
                 key_bound: bool = catch WorldRendering::bind(&scene.bindings, &scene.world, replacement_key,
-                    Tune::KEY_RENDER_ID, tile_visual(Tune::KEY_MATERIAL_ID), Geometry::transform_identity()):
+                    Tune::KEY_RENDER_ID, MazeVisualAssets::tile_visual(MazeVisualAssets::key_material_id()), MazeVisualAssets::tile_local_transform()):
                     ok: true
                     error failure: false
                 raise MazePresentationError.BindingRejected if not key_bound
@@ -227,11 +209,11 @@ module MazePresentation:
                 scene.key_live <- true
 
             if scene.door_open != game.has_key:
-                material: mutable u64 = Tune::DOOR_CLOSED_MATERIAL_ID
+                material: mutable Assets::AssetId = MazeVisualAssets::closed_door_material_id()
                 if game.has_key:
-                    material <- Tune::DOOR_OPEN_MATERIAL_ID
+                    material <- MazeVisualAssets::open_door_material_id()
                 updated_binding: bool = catch WorldRendering::bind(&scene.bindings, &scene.world, scene.door,
-                    Tune::DOOR_RENDER_ID, tile_visual(material), Geometry::transform_identity()):
+                    Tune::DOOR_RENDER_ID, MazeVisualAssets::tile_visual(material), MazeVisualAssets::tile_local_transform()):
                     ok: true
                     error failure: false
                 raise MazePresentationError.BindingRejected if not updated_binding

@@ -1,0 +1,101 @@
+# Stable authored IDs and visual descriptors shared by the maze presenter and
+# its backend adapter. These IDs never depend on native handles or World rows.
+include "../../src/assets/descriptor.elisa"
+include "../../src/backend/material.elisa"
+include "../../src/math/geometry.elisa"
+
+module MazeVisualAssets:
+    private:
+        const module Identity:
+            ASSET_NAMESPACE: u64 = 23
+            TILE_MESH: u64 = 1
+            WALL_MATERIAL: u64 = 2
+            PLAYER_MATERIAL: u64 = 3
+            KEY_MATERIAL: u64 = 4
+            CLOSED_DOOR_MATERIAL: u64 = 5
+            OPEN_DOOR_MATERIAL: u64 = 6
+            GOAL_MATERIAL: u64 = 7
+            HAZARD_MATERIAL: u64 = 8
+
+        def asset_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Identity::ASSET_NAMESPACE, low: low}
+
+        def pbr_material(red: f32, green: f32, blue: f32,
+            metallic: f32, roughness: f32) -> Material::Material:
+            Material::Material{
+                base_color: Assets::AssetId{high: 0, low: 0},
+                normal: Assets::AssetId{high: 0, low: 0},
+                metallic_roughness: Assets::AssetId{high: 0, low: 0},
+                occlusion: Assets::AssetId{high: 0, low: 0},
+                emissive: Assets::AssetId{high: 0, low: 0},
+                base_color_factor: [red, green, blue, 1.0],
+                metallic_factor: metallic,
+                roughness_factor: roughness,
+                emissive_factor: [0.0, 0.0, 0.0],
+                alpha_cutoff: 0.5,
+                alpha_mode: Material::AlphaMode.Opaque,
+                double_sided: false,
+            }
+
+    public:
+        def tile_mesh_id() -> Assets::AssetId:
+            asset_id(Identity::TILE_MESH)
+
+        def wall_material_id() -> Assets::AssetId:
+            asset_id(Identity::WALL_MATERIAL)
+
+        def player_material_id() -> Assets::AssetId:
+            asset_id(Identity::PLAYER_MATERIAL)
+
+        def key_material_id() -> Assets::AssetId:
+            asset_id(Identity::KEY_MATERIAL)
+
+        def closed_door_material_id() -> Assets::AssetId:
+            asset_id(Identity::CLOSED_DOOR_MATERIAL)
+
+        def open_door_material_id() -> Assets::AssetId:
+            asset_id(Identity::OPEN_DOOR_MATERIAL)
+
+        def goal_material_id() -> Assets::AssetId:
+            asset_id(Identity::GOAL_MATERIAL)
+
+        def hazard_material_id() -> Assets::AssetId:
+            asset_id(Identity::HAZARD_MATERIAL)
+
+        def tile_visual(material: Assets::AssetId) -> Assets::VisualAsset:
+            Assets::VisualAsset{
+                mesh: tile_mesh_id(),
+                material: material,
+                local_bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -0.3, y: -0.3, z: -0.3},
+                    maximum: Geometry::Vec3{x: 0.3, y: 0.3, z: 0.3},
+                },
+            }
+
+        def tile_local_transform() -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 0.3, y: 0.3, z: 0.3},
+            }
+
+        def wall_material() -> Material::Material:
+            pbr_material(0.19, 0.25, 0.32, 0.0, 0.82)
+
+        def player_material() -> Material::Material:
+            pbr_material(0.12, 0.38, 0.92, 0.0, 0.48)
+
+        def key_material() -> Material::Material:
+            pbr_material(1.0, 0.68, 0.08, 0.65, 0.3)
+
+        def closed_door_material() -> Material::Material:
+            pbr_material(0.68, 0.16, 0.12, 0.0, 0.72)
+
+        def open_door_material() -> Material::Material:
+            pbr_material(0.16, 0.62, 0.25, 0.0, 0.72)
+
+        def goal_material() -> Material::Material:
+            pbr_material(0.3, 0.9, 0.38, 0.0, 0.55)
+
+        def hazard_material() -> Material::Material:
+            pbr_material(0.95, 0.1, 0.055, 0.0, 0.45)

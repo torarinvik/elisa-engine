@@ -207,12 +207,20 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
     declarations = config.get("asset_cooks", [])
     if not isinstance(declarations, list) or len(declarations) > 64:
         raise BuildConfigurationError("project 'asset_cooks' must be an array of at most 64 entries")
-    cooker = ENGINE_ROOT / "scripts/cook_fbx_asset.py"
     for index, declaration in enumerate(declarations):
         if not isinstance(declaration, dict):
             raise BuildConfigurationError(f"asset_cooks[{index}] must be an object")
         source = declared_project_path(project, declaration.get("source"), f"asset_cooks[{index}].source", must_exist=True)
         output = declared_project_path(project, declaration.get("output"), f"asset_cooks[{index}].output", must_exist=False)
+        importer = declaration.get("importer", "fbx")
+        if importer == "fbx":
+            cooker = ENGINE_ROOT / "scripts/cook_fbx_asset.py"
+        elif importer == "gltf":
+            if source.suffix.lower() != ".gltf":
+                raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer requires a .gltf source")
+            cooker = ENGINE_ROOT / "scripts/cook_gltf_asset.py"
+        else:
+            raise BuildConfigurationError(f"asset_cooks[{index}].importer must be 'fbx' or 'gltf'")
         asset_path = declaration.get("asset_path")
         if not isinstance(asset_path, str) or not asset_path:
             raise BuildConfigurationError(f"asset_cooks[{index}].asset_path must be a non-empty package identity")
@@ -225,6 +233,8 @@ def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
         if max_triangles is not None and (isinstance(max_triangles, bool) or
             not isinstance(max_triangles, int) or not 1 <= max_triangles <= 1000000):
             raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
+        if importer == "gltf" and max_triangles is not None:
+            raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer does not accept max_triangles")
         print(f"Cooking project asset: {source.relative_to(project)} -> {output.relative_to(project)}", flush=True)
         command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
             "--output", str(output)]

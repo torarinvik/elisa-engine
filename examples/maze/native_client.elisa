@@ -2,6 +2,7 @@
 # never reads the diagnostic scene manifest; it extracts World snapshots.
 include "./game.elisa"
 include "./presentation.elisa"
+include "./render_assets.elisa"
 include "./trace.elisa"
 
 module MazeNativeClient:
@@ -239,6 +240,8 @@ module MazeNativeClient:
                 ok: true
                 error failure: false
             return 6 if not initialized
+            assets_registered: bool = MazeRenderAssets::register("assets/maze_tile.pkg")
+            return 17 if not assets_registered
 
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
