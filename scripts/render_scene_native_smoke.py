@@ -14,6 +14,9 @@ from pathlib import Path
 
 import bundle_dependency_fixtures
 import bundle_texture_fixtures
+import cook_assets
+import cook_gltf_asset
+import cook_gltf_geometry
 import elisa_build_run
 import packaged_maze_smoke
 import test_geometry_subsets
@@ -99,6 +102,15 @@ def main() -> int:
     if subset_status != 0:
         return subset_status
     (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(2, skinned=True))
+    # The cooked-material test also registers a variant whose center slot is
+    # blended, single-sided glass. Its buffer is embedded, so the copy cooks
+    # anywhere.
+    glass = cook_assets.read_gltf((ROOT / "test/fixtures/multi_material_panel.gltf").read_bytes())
+    cook_gltf_asset.make_glass(glass)
+    glass_source = subset_directory / "glass_panel.gltf"
+    glass_source.write_text(json.dumps(glass, indent=2) + "\n", encoding="utf-8")
+    cook_gltf_geometry.cook_geometry_package(
+        glass_source, "build/cooked/subsets/glass_panel.gltf", subset_directory / "glass_panel.pkg")
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")

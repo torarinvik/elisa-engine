@@ -71,6 +71,17 @@ extend RenderScene:
         extern elisa_render_scene_v1_unregister_snapshot_material_set(high: u64, low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_material_count(mesh_high: u64, mesh_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_mesh_material(mesh_high: u64, mesh_low: u64,
+            slot: u32, high: u64, low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_mesh_material_set(mesh_high: u64, mesh_low: u64,
+            set_high: u64, set_low: u64, count: u32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_request_snapshot_mesh_asset(high: u64, low: u64,
             package_path: cstr) -> i32
 
@@ -204,6 +215,42 @@ extend RenderScene:
         def unregister_snapshot_material_set(asset: Assets::AssetId) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
             try check_status(elisa_render_scene_v1_unregister_snapshot_material_set(asset.high, asset.low))
+
+        # A cooked mesh carries the glTF factors authored for its material
+        # slots: base color, metallic, roughness, emissive, opaque or blended
+        # alpha, and sidedness. The count is 0 when its source declared no
+        # materials, so the game supplies each slot's material.
+        def snapshot_mesh_material_count(mesh: Assets::AssetId) -> u32 error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            count: i32 = elisa_render_scene_v1_snapshot_mesh_material_count(mesh.high, mesh.low)
+            if count < 0:
+                try check_status(count)
+            count.u32()
+
+        # Registers the material cooked for one slot of a resident mesh as an
+        # ordinary material, with the usual no-op and conflict rules.
+        def register_snapshot_mesh_material(mesh: Assets::AssetId, slot: u32,
+            material: Assets::AssetId) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(material)
+            try check_status(elisa_render_scene_v1_register_snapshot_mesh_material(
+                mesh.high, mesh.low, slot, material.high, material.low))
+
+        # Registers every cooked slot material of a mesh under the IDs in
+        # `materials`, in slot order, and those IDs as material set `set`.
+        # The set must list one ID per cooked slot. A failure leaves no
+        # material registered that this call created.
+        def register_snapshot_mesh_materials(mesh: Assets::AssetId, materials: SnapshotMaterialSet&,
+            set: Assets::AssetId) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(set)
+            raise RenderSceneError.InvalidValue if materials.count == 0
+            for slot in 0..<materials.count |materials|:
+                material: Assets::AssetId = materials.materials[slot]
+                try check_status(elisa_render_scene_v1_stage_snapshot_material_set_slot(
+                    slot.u32(), material.high, material.low))
+            try check_status(elisa_render_scene_v1_register_snapshot_mesh_material_set(
+                mesh.high, mesh.low, set.high, set.low, materials.count.u32()))
 
         # Asynchronous registration. A request returns without file IO; a
         # worker thread resolves the path, checks the bundle's dependencies

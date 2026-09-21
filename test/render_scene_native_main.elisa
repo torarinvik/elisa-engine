@@ -12,6 +12,7 @@ include "./render_scene_bundle_texture_native.elisa"
 include "./render_scene_bundle_dependency_native.elisa"
 include "./render_scene_material_subset_native.elisa"
 include "./render_scene_async_asset_native.elisa"
+include "./render_scene_cooked_material_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
@@ -341,6 +342,8 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(193, material_subset_status) if material_subset_status != 0
     async_asset_status: i32 = RenderSceneAsyncAssetNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(194, async_asset_status) if async_asset_status != 0
+    cooked_material_status: i32 = RenderSceneCookedMaterialNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(196, cooked_material_status) if cooked_material_status != 0
 
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},

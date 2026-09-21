@@ -439,13 +439,18 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_t
     float metallic, float roughness,
     float emissive_red, float emissive_green, float emissive_blue,
     float alpha_cutoff, int32_t alpha_mode, int32_t double_sided) {
-    if ((high == 0 && low == 0) || !valid_color(red, green, blue, alpha) ||
-        !finite(metallic) || metallic < 0.0f || metallic > 1.0f ||
-        !finite(roughness) || roughness < 0.0f || roughness > 1.0f ||
-        !bounded(emissive_red, 1.0e4f) || !bounded(emissive_green, 1.0e4f) ||
-        !bounded(emissive_blue, 1.0e4f) || emissive_red < 0.0f || emissive_green < 0.0f ||
-        emissive_blue < 0.0f || !finite(alpha_cutoff) || alpha_cutoff < 0.0f || alpha_cutoff > 1.0f ||
-        alpha_mode < ELISA_RENDER_SCENE_ALPHA_OPAQUE || alpha_mode > ELISA_RENDER_SCENE_ALPHA_BLEND ||
+    SnapshotMaterialAssetSlot values;
+    values.base_color[0] = red; values.base_color[1] = green;
+    values.base_color[2] = blue; values.base_color[3] = alpha;
+    values.metallic = metallic;
+    values.roughness = roughness;
+    values.emissive[0] = emissive_red; values.emissive[1] = emissive_green; values.emissive[2] = emissive_blue;
+    values.alpha_cutoff = alpha_cutoff;
+    values.alpha_mode = alpha_mode;
+    values.double_sided = double_sided != 0;
+    values.texture_high = {base_color_high, normal_high, surface_high, emissive_high};
+    values.texture_low = {base_color_low, normal_low, surface_low, emissive_low};
+    if ((high == 0 && low == 0) || !snapshot_material_values_valid(values) ||
         (double_sided != 0 && double_sided != 1)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
@@ -454,88 +459,8 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_t
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
-    if (snapshot_material_set_slot(state, high, low) < MAX_SNAPSHOT_MATERIAL_SETS) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    const std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_high = {
-        base_color_high, normal_high, surface_high, emissive_high};
-    const std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low = {
-        base_color_low, normal_low, surface_low, emissive_low};
-    for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
-        const bool empty = texture_high[texture_slot] == 0 && texture_low[texture_slot] == 0;
-        if (!empty && snapshot_texture_asset_slot(state,
-            texture_high[texture_slot], texture_low[texture_slot]) == MAX_SNAPSHOT_TEXTURE_ASSETS) {
-            return snapshot_missing_asset_status(state, SnapshotAssetKind::Texture,
-                texture_high[texture_slot], texture_low[texture_slot]);
-        }
-    }
-    const size_t existing = snapshot_material_asset_slot(state, high, low);
-    if (existing < MAX_SNAPSHOT_MATERIAL_ASSETS) {
-        const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[existing];
-        return asset.base_color[0] == red && asset.base_color[1] == green &&
-            asset.base_color[2] == blue && asset.base_color[3] == alpha &&
-            asset.metallic == metallic && asset.roughness == roughness &&
-            asset.emissive[0] == emissive_red && asset.emissive[1] == emissive_green &&
-            asset.emissive[2] == emissive_blue && asset.alpha_cutoff == alpha_cutoff &&
-            asset.alpha_mode == alpha_mode && asset.double_sided == (double_sided != 0) &&
-            asset.texture_high == texture_high && asset.texture_low == texture_low
-            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    size_t free_slot = MAX_SNAPSHOT_MATERIAL_ASSETS;
-    for (size_t index = 0; index < MAX_SNAPSHOT_MATERIAL_ASSETS; ++index) {
-        if (!state.snapshot_material_assets[index].live) {
-            free_slot = index;
-            break;
-        }
-    }
-    if (free_slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
-    wi::ecs::Entity material_entity = wi::ecs::INVALID_ENTITY;
-    const std::string name = "elisa_snapshot_material_" + std::to_string(high) + "_" + std::to_string(low);
-    try {
-        material_entity = state.scene->Entity_CreateMaterial(name);
-        wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(material_entity);
-        if (material_entity == wi::ecs::INVALID_ENTITY || material == nullptr) {
-            if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
-            return ELISA_RENDER_SCENE_BACKEND_FAILED;
-        }
-        material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_PBR;
-        material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
-        material->SetRoughness(roughness);
-        material->SetMetalness(metallic);
-        material->SetEmissiveColor(XMFLOAT4(emissive_red, emissive_green,
-            emissive_blue, DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH));
-        material->SetAlphaRef(alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK
-            ? alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF);
-        material->SetDoubleSided(double_sided != 0);
-        material->userBlendMode = alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND
-            ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
-        material->SetCastShadow(alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND);
-        SnapshotMaterialAssetSlot texture_configuration{};
-        texture_configuration.texture_high = texture_high;
-        texture_configuration.texture_low = texture_low;
-        if (!apply_snapshot_material_textures(state, texture_configuration, *material)) {
-            state.scene->Entity_Remove(material_entity);
-            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-        }
-        material->CreateRenderData();
-    } catch (...) {
-        if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
-        return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    }
-    SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[free_slot];
-    asset.high = high;
-    asset.low = low;
-    asset.base_color[0] = red; asset.base_color[1] = green;
-    asset.base_color[2] = blue; asset.base_color[3] = alpha;
-    asset.metallic = metallic;
-    asset.roughness = roughness;
-    asset.emissive[0] = emissive_red; asset.emissive[1] = emissive_green; asset.emissive[2] = emissive_blue;
-    asset.alpha_cutoff = alpha_cutoff;
-    asset.alpha_mode = alpha_mode;
-    asset.texture_high = texture_high;
-    asset.texture_low = texture_low;
-    asset.material_entity = material_entity;
-    asset.double_sided = double_sided != 0;
-    asset.live = true;
-    return ELISA_RENDER_SCENE_OK;
+    bool created = false;
+    return register_snapshot_material_locked(state, high, low, values, created);
 }
 
 extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset(
@@ -561,10 +486,9 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint
     if (snapshot_material_id_in_use(state, high, low) || snapshot_material_listed_by_set(state, high, low)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
-    const wi::ecs::Entity material_entity = state.snapshot_material_assets[slot].material_entity;
-    if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
-    state.snapshot_material_assets[slot] = SnapshotMaterialAssetSlot{};
+    remove_snapshot_material(state, slot);
     return ELISA_RENDER_SCENE_OK;
 }
 
 #include "render_scene_snapshot_material_set_abi.inc"
+#include "render_scene_snapshot_mesh_material_abi.inc"

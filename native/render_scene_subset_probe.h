@@ -100,6 +100,42 @@ extern "C" uint64_t elisa_render_scene_v1_test_snapshot_material_set_count(void)
     return count;
 }
 
+// 1 when registered material `high:low` holds exactly these factors, alpha
+// mode, and sidedness, both as registered and in the Wicked material drawn
+// with it: blending, shadow casting, and alpha reference follow the mode.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_matches(uint64_t high, uint64_t low,
+    float red, float green, float blue, float alpha, float metallic, float roughness,
+    float emissive_red, float emissive_green, float emissive_blue, float alpha_cutoff,
+    int32_t alpha_mode, int32_t double_sided) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    SnapshotMaterialAssetSlot expected;
+    expected.base_color[0] = red; expected.base_color[1] = green;
+    expected.base_color[2] = blue; expected.base_color[3] = alpha;
+    expected.metallic = metallic;
+    expected.roughness = roughness;
+    expected.emissive[0] = emissive_red; expected.emissive[1] = emissive_green; expected.emissive[2] = emissive_blue;
+    expected.alpha_cutoff = alpha_cutoff;
+    expected.alpha_mode = alpha_mode;
+    expected.double_sided = double_sided != 0;
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (!snapshot_material_values_match(asset, expected) || material == nullptr) return 0;
+    const bool blended = alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND;
+    const float alpha_ref = alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK ? alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF;
+    const bool drawn = material->baseColor.x == red && material->baseColor.y == green &&
+        material->baseColor.z == blue && material->baseColor.w == alpha &&
+        material->metalness == metallic && material->roughness == roughness &&
+        material->emissiveColor.x == emissive_red && material->emissiveColor.y == emissive_green &&
+        material->emissiveColor.z == emissive_blue && material->alphaRef == alpha_ref &&
+        material->IsDoubleSided() == (double_sided != 0) && material->IsCastingShadow() == !blended &&
+        material->userBlendMode == (blended ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE);
+    return drawn ? 1 : 0;
+}
+
 // The color channel (0 red, 1 green, 2 blue) that dominates a 5x5 patch of
 // the last 3D frame around (x, y) in thousandths of the frame size: its mean
 // exceeds twice each other channel's. -1 when none dominates, -2 when the

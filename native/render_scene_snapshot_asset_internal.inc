@@ -162,3 +162,5 @@ int32_t adopt_snapshot_asset(RenderSceneService& state, const SnapshotAssetReque
     return install_snapshot_bundle_texture_asset(state, request.high, request.low, request.path,
         std::move(load.canonical_path), request.section, std::move(load.texture));
 }
+
+#include "render_scene_snapshot_material_internal.inc"

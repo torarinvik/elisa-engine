@@ -27,6 +27,36 @@ bool snapshot_material_id_in_use(const RenderSceneService& state, uint64_t high,
     return false;
 }
 
+// Registers the `count` materials of `set` as set `high:low`, or confirms
+// an identical registration. The caller holds the service mutex on the owner
+// thread outside a snapshot transaction.
+int32_t register_snapshot_material_set_locked(RenderSceneService& state,
+        uint64_t high, uint64_t low, SnapshotMaterialSet set, uint32_t count) {
+    if ((high == 0 && low == 0) || count == 0 || count > MAX_SNAPSHOT_MATERIAL_SET_SLOTS ||
+        count != set.count || snapshot_material_asset_slot(state, high, low) < MAX_SNAPSHOT_MATERIAL_ASSETS) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    for (uint32_t slot = 0; slot < count; ++slot) {
+        if (snapshot_material_asset_slot(state, set.material_high[slot], set.material_low[slot]) ==
+            MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    const size_t existing = snapshot_material_set_slot(state, high, low);
+    if (existing < MAX_SNAPSHOT_MATERIAL_SETS) {
+        const SnapshotMaterialSet& live = state.snapshot_material_sets.sets[existing];
+        return live.count == set.count && live.material_high == set.material_high &&
+            live.material_low == set.material_low ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    for (SnapshotMaterialSet& free_set : state.snapshot_material_sets.sets) {
+        if (free_set.live) continue;
+        set.high = high;
+        set.low = low;
+        set.live = true;
+        free_set = set;
+        return ELISA_RENDER_SCENE_OK;
+    }
+    return ELISA_RENDER_SCENE_CAPACITY;
+}
+
 using SnapshotSlotMaterials = std::array<const SnapshotMaterialAssetSlot*, MAX_SNAPSHOT_MATERIAL_SET_SLOTS>;
 
 // Resolves the material for each of a mesh's `slot_count` material slots. A

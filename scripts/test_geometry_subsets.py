@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Check cooked-geometry subset records with the production C++ loader.
+"""Check cooked-geometry subset and slot material records with the production
+C++ loader.
 
 The cooked multi-material panel, the legacy maze tile, and synthetic packages
-must load with exactly the expected subsets. Packages whose subsets leave a
-gap, overlap, split a triangle, name a missing slot, exceed a bound, or appear
-on skinned geometry must be rejected for that reason. The loader runs under
-AddressSanitizer and UndefinedBehaviorSanitizer.
+must load with exactly the expected subsets and slot materials. Packages whose
+subsets leave a gap, overlap, split a triangle, name a missing slot, exceed a
+bound, or appear on skinned geometry must be rejected for that reason, as must
+slot materials that are malformed, miscounted, or out of range. The loader runs
+under AddressSanitizer and UndefinedBehaviorSanitizer.
 """
 
 from __future__ import annotations
@@ -28,6 +30,18 @@ PARTITION = "subsets do not partition the index stream"
 RECORDS = "invalid cooked geometry subset records"
 MISSING_SLOT = "subset names a missing material slot"
 SKINNED = "skinned cooked geometry cannot declare material subsets"
+MATERIAL_RECORDS = "invalid cooked slot material records"
+MATERIAL_RANGE = "cooked slot material is out of range"
+# Base color, metallic, roughness, emissive, alpha cutoff, alpha mode, flags.
+GLASS = (0.0, 0.0, 0.08, 0.5, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 2, 0)
+PAINT = (0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, 0, 1)
+ZEROS = (0.0,) * 10 + (0, 0)
+ONES = (1.0,) * 10 + (2, 1)
+PANEL_MATERIALS = [(0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 1), PAINT]
+
+
+def with_field(record: tuple, index: int, value) -> tuple:
+    return record[:index] + (value,) + record[index + 1:]
 
 
 def encoded(format_string: str, values) -> str:
@@ -36,8 +50,9 @@ def encoded(format_string: str, values) -> str:
 
 def strip_package(triangles: int, subsets=None, slots: int | None = None,
         record_count: int | None = None, stride: str = "12", omit: tuple[str, ...] = (),
-        skinned: bool = False) -> bytes:
-    """A row of `triangles` separate triangles with optional subset records."""
+        skinned: bool = False, materials=None, material_stride: str = "48") -> bytes:
+    """A row of `triangles` separate triangles with optional subset and slot
+    material records."""
     vertices = triangles * 3
     positions = []
     for triangle in range(triangles):
@@ -54,6 +69,13 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
             "subset_stride": f"subset_stride={stride}",
             "subsets_b64": "subsets_b64=" + encoded(f"<{len(subsets) * 3}I",
                 [value for subset in subsets for value in subset]),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
+    if materials is not None:
+        records = {
+            "slot_material_stride": f"slot_material_stride={material_stride}",
+            "slot_materials_b64": "slot_materials_b64=" + base64.b64encode(
+                b"".join(struct.pack("<10f2I", *record) for record in materials)).decode("ascii"),
         }
         lines += [line for key, line in records.items() if key not in omit]
     lines += [
@@ -85,9 +107,10 @@ def cases(directory: Path) -> list[tuple]:
     panel_subsets = [(0, 6, 1), (6, 6, 0), (12, 6, 1)]
     sixteen = [(index * 3, 3, index) for index in range(16)]
     seventeen = [(index * 3, 3, index % 16) for index in range(17)]
+    two = [(0, 3, 0), (3, 3, 1)]
     return [
-        ("accept", "panel.pkg", None, (18, 2, panel_subsets)),
-        ("accept", "panel.elpk", None, (18, 2, panel_subsets)),
+        ("accept", "panel.pkg", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
+        ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
         ("accept", "legacy.pkg", strip_package(2), (6, 1, [(0, 6, 0)])),
         ("accept", "explicit-single.pkg", strip_package(2, [(0, 6, 0)], 1), (6, 1, [(0, 6, 0)])),
@@ -116,7 +139,58 @@ def cases(directory: Path) -> list[tuple]:
         ("reject", "no-records.pkg", strip_package(2, [(0, 6, 0)], 1, omit=("subsets_b64",)), RECORDS),
         ("reject", "skinned-subsets.pkg", strip_package(2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True), SKINNED),
         ("reject", "skinned-single.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True), SKINNED),
+        ("accept", "materials.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT]),
+            (6, 2, two, [GLASS, PAINT])),
+        ("accept", "single-material.pkg", strip_package(2, [(0, 6, 0)], 1, materials=[PAINT]),
+            (6, 1, [(0, 6, 0)], [PAINT])),
+        ("accept", "material-bounds.pkg", strip_package(2, two, 2, materials=[ZEROS, ONES]),
+            (6, 2, two, [ZEROS, ONES])),
+        ("reject", "materials-without-subsets.pkg", strip_package(2, materials=[PAINT]), MATERIAL_RECORDS),
+        ("reject", "skinned-materials.pkg", strip_package(2, skinned=True, materials=[PAINT]), MATERIAL_RECORDS),
+        ("reject", "material-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
+            material_stride="44"), MATERIAL_RECORDS),
+        ("reject", "material-no-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
+            omit=("slot_material_stride",)), MATERIAL_RECORDS),
+        ("reject", "material-no-records.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
+            omit=("slot_materials_b64",)), MATERIAL_RECORDS),
+        ("reject", "material-short.pkg", strip_package(2, two, 2, materials=[GLASS]), MATERIAL_RECORDS),
+        ("reject", "material-long.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT, PAINT]),
+            MATERIAL_RECORDS),
+        ("reject", "material-above-one.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 0, 1.5)]), MATERIAL_RANGE),
+        ("reject", "material-negative.pkg", strip_package(2, two, 2,
+            materials=[with_field(GLASS, 5, -0.25), PAINT]), MATERIAL_RANGE),
+        ("reject", "material-nan.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 4, float("nan"))]), MATERIAL_RANGE),
+        ("reject", "material-infinite.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 8, float("inf"))]), MATERIAL_RANGE),
+        ("reject", "material-cutoff.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 9, 1.5)]), MATERIAL_RANGE),
+        ("reject", "material-mask.pkg", strip_package(2, two, 2,
+            materials=[with_field(GLASS, 10, 1), PAINT]), MATERIAL_RANGE),
+        ("reject", "material-mode.pkg", strip_package(2, two, 2,
+            materials=[with_field(GLASS, 10, 3), PAINT]), MATERIAL_RANGE),
+        ("reject", "material-flags.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 11, 3)]), MATERIAL_RANGE),
     ]
+
+
+def float32_text(value: float) -> str:
+    return repr(struct.unpack("<f", struct.pack("<f", value))[0])
+
+
+def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
+    """One loader-test manifest line; see native/geometry_subset_test.cpp."""
+    fields = [verdict, str(directory / name)]
+    if verdict == "reject":
+        return "\t".join(fields + [expectation])
+    index_count, slots, subsets, *materials = expectation
+    fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
+    if materials:
+        fields.append("materials")
+        for record in materials[0]:
+            fields += [float32_text(value) for value in record[:10]] + [str(value) for value in record[10:]]
+    return "\t".join(fields)
 
 
 def main() -> int:
@@ -130,13 +204,7 @@ def main() -> int:
         for verdict, name, package, expectation in cases(directory):
             if package is not None:
                 (directory / name).write_bytes(package)
-            fields = [verdict, str(directory / name)]
-            if verdict == "accept":
-                index_count, slots, subsets = expectation
-                fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
-            else:
-                fields.append(expectation)
-            manifest.append("\t".join(fields))
+            manifest.append(manifest_line(directory, verdict, name, expectation))
         (directory / "cases.tsv").write_text("\n".join(manifest) + "\n", encoding="utf-8")
         executable = directory / "geometry-subset-test"
         command = [compiler, "-std=c++17", "-O1", "-g", "-fno-omit-frame-pointer",

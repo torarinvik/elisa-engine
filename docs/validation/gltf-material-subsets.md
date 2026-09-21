@@ -205,8 +205,8 @@ per-subset bound rejects it.
 ## Limits
 
 - **No material properties from glTF.** Slots carry only their order. The
-  game registers each slot's material in Elisa. Cooking glTF PBR factors and
-  textures into slot descriptors is the next A05 step.
+  game registers each slot's material in Elisa. Superseded for factors by
+  [`cooked-slot-materials.md`](cooked-slot-materials.md); textures remain.
 - **Static meshes only.** Skinned geometry still draws with one material, so a
   skinned mesh has one slot and rejects subset records.
 - **One mesh node.** Scene hierarchies, node transforms, multiple meshes,

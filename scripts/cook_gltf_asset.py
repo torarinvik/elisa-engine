@@ -76,13 +76,37 @@ def self_test() -> int:
         if subset_status != 0:
             return subset_status
     print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections "
-        "and a three-subset, two-slot panel")
+        "and a three-subset, two-slot panel with authored slot materials")
     return 0
+
+
+# The panel fixture's authored slot materials, packed as the cooker packs them.
+PANEL_SLOT_MATERIALS = (
+    struct.pack("<10f2I", 0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 1) +
+    struct.pack("<10f2I", 0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, 0, 1))
+GLTF_DEFAULT_SLOT_MATERIAL = struct.pack("<10f2I", 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 0)
+GLASS_SLOT_MATERIAL = struct.pack("<10f2I", 0.0, 0.0, 0.08, 0.5, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 2, 0)
+
+
+def make_glass(document: dict) -> None:
+    """Turn the panel's center slot into blended, single-sided glass."""
+    center = document["materials"][0]
+    center["alphaMode"] = "BLEND"
+    center["pbrMetallicRoughness"]["baseColorFactor"][3] = 0.5
+    center["doubleSided"] = False
+
+
+def single_slot(document: dict) -> None:
+    """Keep only the first strip, bound to the only material."""
+    document["meshes"][0]["primitives"] = document["meshes"][0]["primitives"][:1]
+    document["meshes"][0]["primitives"][0]["material"] = 0
+    document["materials"] = document["materials"][:1]
 
 
 def subset_self_test(temporary: Path) -> int:
     """Cook the multi-material panel: three primitives, two material slots,
-    the outer strips sharing one vertex block."""
+    the outer strips sharing one vertex block, each slot with its authored
+    factors."""
     source = ROOT / "test/fixtures/multi_material_panel.gltf"
     cooked = []
     for label in ("first", "second"):
@@ -91,35 +115,88 @@ def subset_self_test(temporary: Path) -> int:
         cooked.append((path.read_bytes(), result))
     sections = dict(line.split("=", 1) for line in cooked[0][0].decode("utf-8").splitlines())
     if (cooked[0] != cooked[1] or cooked[0][1]["positions"] != 12 or cooked[0][1]["indices"] != 18 or
+            cooked[0][1]["slot_materials"] != 2 or
             sections.get("material_slots") != "2" or sections.get("subset_count") != "3" or
             base64.b64decode(sections.get("subsets_b64", "")) !=
-            struct.pack("<9I", 0, 6, 1, 6, 6, 0, 12, 6, 1)):
-        print("glTF cooker self-test failed: the panel's subsets are unstable or wrong", file=sys.stderr)
+            struct.pack("<9I", 0, 6, 1, 6, 6, 0, 12, 6, 1) or
+            sections.get("slot_material_stride") != "48" or
+            base64.b64decode(sections.get("slot_materials_b64", "")) != PANEL_SLOT_MATERIALS):
+        print("glTF cooker self-test failed: the panel's subsets or slot materials are unstable or wrong",
+            file=sys.stderr)
         return 1
     document = cook_assets.read_gltf(source.read_bytes())
     buffer = cook_assets.source_bytes(source.parent, document)
-    variants = {
-        "a primitive without a material beside bound ones":
-            lambda d: d["meshes"][0]["primitives"][1].pop("material"),
-        "a material index outside the document": lambda d: d["meshes"][0]["primitives"][2].update(material=2),
-        "a material with properties": lambda d: d["materials"][0].update(doubleSided=True),
-        "17 materials": lambda d: d["materials"].extend({"name": "extra"} for _ in range(15)),
-        "17 primitives": lambda d: d["meshes"][0]["primitives"].extend(
-            deepcopy(d["meshes"][0]["primitives"][1]) for _ in range(14)),
-        "a line primitive": lambda d: d["meshes"][0]["primitives"][1].update(mode=1),
-        "shared positions with different attributes":
-            lambda d: d["meshes"][0]["primitives"][2]["attributes"].pop("NORMAL"),
-        "attributes that are not an accessor map": lambda d: d["meshes"][0]["primitives"][1].update(attributes=[0]),
-        "an attribute naming an accessor by list": lambda d: d["meshes"][0]["primitives"][1].update(
-            attributes={"POSITION": [3]}),
+    accepted = {
+        "a name-only material cooks the glTF defaults": (lambda d: d["materials"].__setitem__(0, {"name": "center"}),
+            GLTF_DEFAULT_SLOT_MATERIAL + PANEL_SLOT_MATERIALS[48:]),
+        "a blended single-sided slot": (make_glass, GLASS_SLOT_MATERIAL + PANEL_SLOT_MATERIALS[48:]),
+        "one primitive with one material": (single_slot, PANEL_SLOT_MATERIALS[:48]),
     }
-    for label, mutate in variants.items():
+    for label, (mutate, records) in accepted.items():
+        variant = deepcopy(document)
+        mutate(variant)
+        geometry = cook_gltf_geometry.normalized_geometry(variant, buffer)
+        lines = cook_gltf_geometry.subset_lines(geometry)
+        if (geometry["slot_materials"] != records or "slot_material_stride=48" not in lines or
+                "slot_materials_b64=" + base64.b64encode(records).decode("ascii") not in lines):
+            print(f"glTF cooker self-test failed: cooked {label} wrong", file=sys.stderr)
+            return 1
+
+    def material(index: int, **fields):
+        return lambda d: d["materials"][index].update(fields)
+
+    def factors(index: int, **fields):
+        return lambda d: d["materials"][index]["pbrMetallicRoughness"].update(fields)
+
+    textures = "does not cook material textures"
+    unsupported = "unsupported material properties"
+    rejected = {
+        "a primitive without a material beside bound ones":
+            (lambda d: d["meshes"][0]["primitives"][1].pop("material"), "every primitive must bind"),
+        "a material index outside the document":
+            (lambda d: d["meshes"][0]["primitives"][2].update(material=2), "every primitive must bind"),
+        "17 materials": (lambda d: d["materials"].extend({"name": "extra"} for _ in range(15)), "at most 16"),
+        "17 primitives": (lambda d: d["meshes"][0]["primitives"].extend(
+            deepcopy(d["meshes"][0]["primitives"][1]) for _ in range(14)), "1 to 16 primitives"),
+        "a line primitive": (lambda d: d["meshes"][0]["primitives"][1].update(mode=1), "triangle primitives only"),
+        "shared positions with different attributes":
+            (lambda d: d["meshes"][0]["primitives"][2]["attributes"].pop("NORMAL"), "share every vertex attribute"),
+        "attributes that are not an accessor map":
+            (lambda d: d["meshes"][0]["primitives"][1].update(attributes=[0]), "accessors by index"),
+        "an attribute naming an accessor by list": (lambda d: d["meshes"][0]["primitives"][1].update(
+            attributes={"POSITION": [3]}), "accessors by index"),
+        "a base-color texture": (factors(0, baseColorTexture={"index": 0}), textures),
+        "a metallic-roughness texture": (factors(1, metallicRoughnessTexture={"index": 0}), textures),
+        "a normal map": (material(1, normalTexture={"index": 0}), textures),
+        "an occlusion map": (material(0, occlusionTexture={"index": 0}), textures),
+        "an emissive map": (material(0, emissiveTexture={"index": 0}), textures),
+        "an alpha-masked material": (material(1, alphaMode="MASK"), "alpha-mask materials need a base-color texture"),
+        "an unknown alpha mode": (material(1, alphaMode="ADD"), "alphaMode must be OPAQUE, MASK, or BLEND"),
+        "a material extension": (material(0, extensions={"KHR_materials_unlit": {}}), unsupported),
+        "material extras": (material(0, extras={}), unsupported),
+        "an unknown PBR property": (factors(0, specularFactor=1.0), unsupported),
+        "a material that is not an object": (lambda d: d["materials"].__setitem__(0, "center"), "must be an object"),
+        "PBR factors that are not an object": (material(0, pbrMetallicRoughness=[]), "must be an object"),
+        "a base color above 1": (factors(0, baseColorFactor=[1.5, 0.0, 0.0, 1.0]), "baseColorFactor must be a finite"),
+        "a three-channel base color": (factors(0, baseColorFactor=[1.0, 0.0, 0.0]), "baseColorFactor must list 4"),
+        "a negative roughness": (factors(1, roughnessFactor=-0.1), "roughnessFactor must be a finite"),
+        "a non-finite metallic factor": (factors(1, metallicFactor=float("nan")), "metallicFactor must be a finite"),
+        "a boolean metallic factor": (factors(1, metallicFactor=True), "metallicFactor must be a finite"),
+        "a string emissive channel": (material(0, emissiveFactor=["1", 0.0, 0.0]), "emissiveFactor must be a finite"),
+        "a two-channel emissive factor": (material(0, emissiveFactor=[1.0, 0.0]), "emissiveFactor must list 3"),
+        "an alpha cutoff above 1": (material(0, alphaCutoff=2.0), "alphaCutoff must be a finite"),
+        "a string doubleSided": (material(0, doubleSided="yes"), "doubleSided must be a boolean"),
+    }
+    for label, (mutate, reason) in rejected.items():
         variant = deepcopy(document)
         mutate(variant)
         try:
             cook_gltf_geometry.normalized_geometry(variant, buffer)
-        except ValueError:
-            continue
+        except ValueError as error:
+            if reason in str(error):
+                continue
+            print(f"glTF cooker self-test failed: rejected {label} for another reason: {error}", file=sys.stderr)
+            return 1
         print(f"glTF cooker self-test failed: accepted {label}", file=sys.stderr)
         return 1
     return 0

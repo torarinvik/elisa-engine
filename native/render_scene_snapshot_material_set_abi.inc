@@ -30,32 +30,10 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_set(
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    SnapshotMaterialSet set = state.snapshot_material_sets.staged;
+    const SnapshotMaterialSet set = state.snapshot_material_sets.staged;
     state.snapshot_material_sets.staged = SnapshotMaterialSet{};
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
-    if ((high == 0 && low == 0) || count == 0 || count > MAX_SNAPSHOT_MATERIAL_SET_SLOTS ||
-        count != set.count || snapshot_material_asset_slot(state, high, low) < MAX_SNAPSHOT_MATERIAL_ASSETS) {
-        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    for (uint32_t slot = 0; slot < count; ++slot) {
-        if (snapshot_material_asset_slot(state, set.material_high[slot], set.material_low[slot]) ==
-            MAX_SNAPSHOT_MATERIAL_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    }
-    const size_t existing = snapshot_material_set_slot(state, high, low);
-    if (existing < MAX_SNAPSHOT_MATERIAL_SETS) {
-        const SnapshotMaterialSet& live = state.snapshot_material_sets.sets[existing];
-        return live.count == set.count && live.material_high == set.material_high &&
-            live.material_low == set.material_low ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    }
-    for (SnapshotMaterialSet& free_set : state.snapshot_material_sets.sets) {
-        if (free_set.live) continue;
-        set.high = high;
-        set.low = low;
-        set.live = true;
-        free_set = set;
-        return ELISA_RENDER_SCENE_OK;
-    }
-    return ELISA_RENDER_SCENE_CAPACITY;
+    return register_snapshot_material_set_locked(state, high, low, set, count);
 }
 
 // Refused while a live instance or shared mesh draws with the set.

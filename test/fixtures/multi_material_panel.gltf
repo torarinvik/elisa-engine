@@ -19,10 +19,25 @@
   ],
   "materials": [
     {
-      "name": "center"
+      "name": "center",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.0, 0.0, 0.08, 1.0],
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.9
+      },
+      "emissiveFactor": [0.0, 0.0, 1.0],
+      "doubleSided": true
     },
     {
-      "name": "edge"
+      "name": "edge",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.08, 0.0, 0.0, 1.0],
+        "metallicFactor": 0.25,
+        "roughnessFactor": 0.75
+      },
+      "emissiveFactor": [1.0, 0.0, 0.0],
+      "alphaMode": "OPAQUE",
+      "doubleSided": true
     }
   ],
   "meshes": [

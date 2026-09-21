@@ -1,9 +1,11 @@
 // Checks the production cooked-geometry loader against a manifest of packages.
 // Each tab-separated manifest line is either
 //   accept <path> <index count> <material slots> (<start> <count> <slot>)...
+//          [materials (<10 factors> <alpha mode> <double sided>)...]
 //   reject <path> <expected error text>
-// and the loader must accept with exactly those subsets, or reject with an
-// error that contains the expected text.
+// and the loader must accept with exactly those subsets and slot materials
+// (none when the marker is absent), or reject with an error that contains
+// the expected text.
 #include "cooked_geometry_package.h"
 
 #include <cstdio>
@@ -22,11 +24,36 @@ std::vector<std::string> split_tabs(const std::string& line) {
     return fields;
 }
 
+bool check_slot_materials(const std::vector<std::string>& fields, size_t first,
+    const elisa::assets::CookedGeometry& geometry) {
+    if ((fields.size() - first) % 12 != 0 ||
+        geometry.slot_materials.size() != (fields.size() - first) / 12) return false;
+    for (size_t slot = 0; slot < geometry.slot_materials.size(); ++slot) {
+        const auto& actual = geometry.slot_materials[slot];
+        const float factors[10] = {actual.base_color[0], actual.base_color[1], actual.base_color[2],
+            actual.base_color[3], actual.metallic, actual.roughness, actual.emissive[0],
+            actual.emissive[1], actual.emissive[2], actual.alpha_cutoff};
+        const size_t offset = first + slot * 12;
+        for (size_t factor = 0; factor < 10; ++factor) {
+            if (factors[factor] != std::stof(fields[offset + factor])) return false;
+        }
+        if (actual.alpha_mode != std::stoul(fields[offset + 10]) ||
+            actual.double_sided != (std::stoul(fields[offset + 11]) == 1)) return false;
+    }
+    return true;
+}
+
 bool check_accepted(const std::vector<std::string>& fields, const elisa::assets::CookedGeometry& geometry) {
-    if (fields.size() < 4 || (fields.size() - 4) % 3 != 0) return false;
+    size_t end = fields.size();
+    for (size_t field = 4; field < fields.size(); ++field) {
+        if (fields[field] == "materials") end = field;
+    }
+    if (end == fields.size() ? !geometry.slot_materials.empty()
+                             : !check_slot_materials(fields, end + 1, geometry)) return false;
+    if (end < 4 || (end - 4) % 3 != 0) return false;
     if (geometry.indices.size() != std::stoul(fields[2]) ||
         geometry.material_slots != std::stoul(fields[3]) ||
-        geometry.subsets.size() != (fields.size() - 4) / 3) return false;
+        geometry.subsets.size() != (end - 4) / 3) return false;
     for (size_t subset = 0; subset < geometry.subsets.size(); ++subset) {
         const auto& actual = geometry.subsets[subset];
         if (actual.index_start != std::stoul(fields[4 + subset * 3]) ||
