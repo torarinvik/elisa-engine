@@ -150,6 +150,10 @@ module RenderScene:
         extern elisa_render_scene_v1_set_text_position(handle: i64, x: f32, y: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_text_color(handle: i64,
+            red: f32, green: f32, blue: f32, alpha: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_text_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
@@ -500,6 +504,11 @@ module RenderScene:
         def set_overlay_text_position(handle: OverlayTextHandle, x: f32,
             y: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_position(handle.id, x, y))
+
+        def set_overlay_text_color(handle: OverlayTextHandle,
+            color: Color) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text_color(handle.id,
+                color.red, color.green, color.blue, color.alpha))
 
         def set_overlay_text_visible(handle: OverlayTextHandle, visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_visible(
