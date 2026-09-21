@@ -122,6 +122,12 @@ module RenderScene:
         extern elisa_render_scene_v1_set_bloom(enabled: i32, threshold: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_ambient_occlusion(enabled: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_fxaa(enabled: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_visible(handle: i64, visible: i32) -> i32
 
         @callconv(c)
@@ -424,6 +430,17 @@ module RenderScene:
         def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
             try check_status(elisa_render_scene_v1_set_bloom(enabled_value, threshold))
+
+        # Screen-space ambient occlusion adds contact shading around feet,
+        # fence bases, and other nearby surfaces.
+        def set_ambient_occlusion(enabled: bool) -> void error[RenderSceneError]:
+            enabled_value: i32 = 1 if enabled else 0
+            try check_status(elisa_render_scene_v1_set_ambient_occlusion(enabled_value))
+
+        # FXAA smooths thin geometry edges at the current render resolution.
+        def set_fxaa(enabled: bool) -> void error[RenderSceneError]:
+            enabled_value: i32 = 1 if enabled else 0
+            try check_status(elisa_render_scene_v1_set_fxaa(enabled_value))
 
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0

@@ -523,6 +523,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_material_abi.inc"
 #include "render_scene_environment_abi.inc"
 #include "render_scene_visibility_abi.inc"
+#include "render_scene_quality_abi.inc"
 
 #include "render_scene_text_abi.inc"
 
