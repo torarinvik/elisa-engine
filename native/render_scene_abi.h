@@ -75,6 +75,13 @@ int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, 
 int32_t elisa_render_scene_v1_set_texture(int64_t handle, int32_t slot, const char* asset_path);
 int32_t elisa_render_scene_v1_set_emissive(
     int64_t handle, float red, float green, float blue, float strength);
+int32_t elisa_render_scene_v1_set_environment(
+    float sun_direction_x, float sun_direction_y, float sun_direction_z,
+    float sun_red, float sun_green, float sun_blue,
+    float ambient_red, float ambient_green, float ambient_blue,
+    float sky_exposure,
+    float fog_red, float fog_green, float fog_blue,
+    float fog_start, float fog_density, int32_t fog_enabled);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int64_t elisa_render_scene_v1_create_text(const char* text, float x, float y,

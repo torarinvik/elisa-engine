@@ -118,6 +118,7 @@ struct RenderSceneService {
     size_t snapshot_expected_previous_count = 0;
     bool snapshot_transaction_active = false;
     int32_t snapshot_test_fail_after_creates = -1;
+    wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::scene::CameraComponent* camera = nullptr;
     std::thread::id owner_thread{};
@@ -331,6 +332,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_rows = {};
     state.snapshot_retire_handles = {};
     state.snapshot_results = {};
+    state.sun_entity = wi::ecs::INVALID_ENTITY;
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();
         arc.core.Clear();
@@ -529,6 +531,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_animation_abi.inc"
 
 #include "render_scene_material_abi.inc"
+#include "render_scene_environment_abi.inc"
 #include "render_scene_visibility_abi.inc"
 
 #include "render_scene_text_abi.inc"
@@ -587,4 +590,5 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 #include "render_scene_pixel_probe.h"
+#include "render_scene_environment_probe.h"
 #endif

@@ -1,6 +1,7 @@
 # Public Elisa scene-rendering surface. Native handles and Wicked types stay
 # behind the engine-owned scalar ABI.
 include "../math/geometry.elisa"
+include "../backend/lighting.elisa"
 
 module RenderScene:
     private:
@@ -93,6 +94,15 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32,
             blue: f32, strength: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_environment(
+            sun_direction_x: f32, sun_direction_y: f32, sun_direction_z: f32,
+            sun_red: f32, sun_green: f32, sun_blue: f32,
+            ambient_red: f32, ambient_green: f32, ambient_blue: f32,
+            sky_exposure: f32,
+            fog_red: f32, fog_green: f32, fog_blue: f32,
+            fog_start: f32, fog_density: f32, fog_enabled: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_set_bloom(enabled: i32, threshold: f32) -> i32
@@ -342,6 +352,19 @@ module RenderScene:
         def set_emissive(handle: InstanceHandle, emission: Emission) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_emissive(handle.native_value,
                 emission.color.x, emission.color.y, emission.color.z, emission.strength))
+
+        # Configures the current scene's physical sky lighting. Elisa owns the
+        # environment choice; the engine applies it to the active Wicked scene.
+        def set_environment(environment: Lighting::Environment) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Lighting::environment_valid(environment)
+            fog_enabled: i32 = 1 if environment.fog_enabled else 0
+            try check_status(elisa_render_scene_v1_set_environment(
+                environment.sun_direction.x, environment.sun_direction.y, environment.sun_direction.z,
+                environment.sun_color.x, environment.sun_color.y, environment.sun_color.z,
+                environment.ambient.x, environment.ambient.y, environment.ambient.z,
+                environment.sky_exposure,
+                environment.fog_color.x, environment.fog_color.y, environment.fog_color.z,
+                environment.fog_start, environment.fog_density, fog_enabled))
 
         def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
             enabled_value: i32 = 1 if enabled else 0
