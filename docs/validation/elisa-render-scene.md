@@ -98,8 +98,9 @@ escaping the project root are rejected. It also checks invalid dimensions,
 degenerate and out-of-range camera inputs, malformed transforms/colors, stale
 handles across scene replacement, orthographic and perspective camera changes,
 invalid perspective field-of-view and clipping inputs, projection-preserving
-resize and return to orthographic mode, both explicit and application-triggered
-cleanup, real snapshot submission, stable-handle reuse,
+resize, a rendered scene frame with perspective active, and return to
+orthographic mode; both explicit and application-triggered cleanup, real
+snapshot submission, stable-handle reuse,
 transform updates, removed-row retirement, and that the rendered center pixel
 differs from the clear corner. The native pixel probe waits up to 400 ms for
 asynchronous pipeline creation, waits for GPU work, and reads the `RenderPath3D`
