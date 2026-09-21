@@ -16,6 +16,7 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
     try {
         state.scene = std::make_unique<wi::scene::Scene>();
         state.path = std::make_unique<ElisaRenderPath3D>(&state.electric_arcs);
+        state.lighting = std::make_unique<probe::LightingBridge>(*state.scene);
     } catch (...) {
         reset_unlocked(state);
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
