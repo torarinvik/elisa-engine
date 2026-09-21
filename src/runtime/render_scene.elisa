@@ -267,11 +267,10 @@ module RenderScene:
             # pointer. Its integer form stays usable in game-owned state.
             id: i64
 
-        # A checked screen-space rectangle rendered from a shared white
-        # texture. The native slot and Wicked sprite stay private to the engine.
+        # A generation-checked screen-space rectangle handle. Its integer
+        # value is safe to carry in game-owned Elisa state.
         struct OverlayPanelHandle:
-            private:
-                native_value: i64
+            id: i64
 
         struct ElectricArcBatch:
             private:
@@ -517,30 +516,30 @@ module RenderScene:
             if native_value <= 0:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
-            OverlayPanelHandle{native_value: native_value}
+            OverlayPanelHandle{id: native_value}
 
         def set_overlay_panel_position(handle: OverlayPanelHandle, x: f32,
             y: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_position(
-                handle.native_value, x, y))
+                handle.id, x, y))
 
         def set_overlay_panel_size(handle: OverlayPanelHandle,
             width: f32, height: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_size(
-                handle.native_value, width, height))
+                handle.id, width, height))
 
         def set_overlay_panel_color(handle: OverlayPanelHandle,
             color: Color) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_set_overlay_panel_color(handle.native_value,
+            try check_status(elisa_render_scene_v1_set_overlay_panel_color(handle.id,
                 color.red, color.green, color.blue, color.alpha))
 
         def set_overlay_panel_visible(handle: OverlayPanelHandle,
             visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_visible(
-                handle.native_value, 1 if visible else 0))
+                handle.id, 1 if visible else 0))
 
         def destroy_overlay_panel(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.native_value))
+            try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.id))
 
         # Creates a reusable jagged, additive ribbon. Elisa supplies the live
         # connector endpoints and phase each frame; the engine keeps endpoints

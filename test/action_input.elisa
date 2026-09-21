@@ -206,9 +206,27 @@ def checked_binding_tests() -> i32:
     return 43 if ActionInput::bind_checked(&checked_input, first) != ActionInput::BindResult.Bound
     ActionInput::apply(&checked_input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 10, value: 1.0, pressed: true, released: false, chord_down: false})
     return 44 if not ActionInput::action_down(&checked_input, 1) or not ActionInput::action_pressed(&checked_input, 1)
+    return 104 if ActionInput::last_active_device(&checked_input) != ActionInput::Device.Keyboard
     return 45 if ActionInput::bind_checked(&checked_input, test_binding(1, 11, 0.0)) != ActionInput::BindResult.Bound
     return 46 if not ActionInput::action_down(&checked_input, 1) or not ActionInput::action_pressed(&checked_input, 1)
     return 47 if ActionInput::bind_checked(&checked_input, first) != ActionInput::BindResult.DuplicateBinding
+
+    active_device_input: mutable ActionInput::Input = ActionInput::Input()
+    controller_binding: ActionInput::Binding = ActionInput::Binding{
+        action: 2, device: ActionInput::Device.Gamepad, code: 22,
+        chord_code: 0, deadzone: 0.2,
+        context: ActionInput::Context.Gameplay, live: true,
+    }
+    return 105 if ActionInput::last_active_device(&active_device_input) != ActionInput::Device.Keyboard
+    return 106 if ActionInput::bind_checked(&active_device_input, controller_binding) != ActionInput::BindResult.Bound
+    ActionInput::apply(&active_device_input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 22, value: 0.1, pressed: true, released: false, chord_down: false})
+    return 107 if ActionInput::last_active_device(&active_device_input) != ActionInput::Device.Keyboard
+    ActionInput::apply(&active_device_input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 22, value: 0.7, pressed: true, released: false, chord_down: false})
+    return 108 if ActionInput::last_active_device(&active_device_input) != ActionInput::Device.Gamepad
+    ActionInput::apply(&active_device_input, ActionInput::Event{device: ActionInput::Device.Gamepad, code: 22, value: 0.0, pressed: false, released: true, chord_down: false})
+    return 109 if ActionInput::last_active_device(&active_device_input) != ActionInput::Device.Gamepad
+    ActionInput::set_connected(&active_device_input, ActionInput::Device.Gamepad, false)
+    return 110 if ActionInput::last_active_device(&active_device_input) != ActionInput::Device.Keyboard
 
     typed_input: mutable ActionInput::Input = ActionInput::Input()
     typed_action: i32 = catch ActionInput::bind(&typed_input, test_binding(0, 1, 0.0)):
@@ -270,6 +288,7 @@ def main() -> i32:
     return 101 if Application::keyboard_key_code(Application::KeyboardKeyCode.C) != 2018
     return 102 if Application::keyboard_key_code(Application::KeyboardKeyCode.Tab) != 2021
     return 103 if Application::keyboard_key_code(Application::KeyboardKeyCode.Digit3) != 2024
+    return 111 if Application::keyboard_key_code(Application::KeyboardKeyCode.H) != 2025
     return 61 if Application::gamepad_button_code(Application::GamepadButtonCode.South) != 1001
     return 62 if Application::gamepad_button_code(Application::GamepadButtonCode.DpadLeft) != 1014
     return 63 if Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXNegative) != 1101

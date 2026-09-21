@@ -503,6 +503,27 @@ def exercise_render_scene() -> i32:
         error failure: 2
     return 81 if stale_hud_text != 1
 
+    text_capacity_handles: mutable RenderScene::OverlayTextHandle[64] = zeroed
+    for index in 0..<64 |text_capacity_handles|:
+        capacity_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+            "CAPACITY", 4.0, 4.0, 8,
+            RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+            value: value
+            error failure: return 140
+        text_capacity_handles[index] <- capacity_text
+    excess_text: i32 = catch RenderScene::create_overlay_text("OVERFLOW", 4.0, 4.0, 8,
+        RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+        ok: 0
+        RenderScene::RenderSceneError.Capacity: 1
+        error failure: 2
+    return 141 if excess_text != 1
+    for index in 0..<64 |text_capacity_handles|:
+        destroyed_capacity_text: i32 = catch RenderScene::destroy_overlay_text(
+            text_capacity_handles[index]):
+            ok: 0
+            error failure: 1
+        return 142 if destroyed_capacity_text != 0
+
     destroyed_hud_panel: i32 = catch RenderScene::destroy_overlay_panel(hud_panel):
         ok: 0
         error failure: 1

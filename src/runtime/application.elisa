@@ -108,6 +108,7 @@ module Application:
             KEY_DIGIT_1: i64 = 2022
             KEY_DIGIT_2: i64 = 2023
             KEY_DIGIT_3: i64 = 2024
+            KEY_H: i64 = 2025
 
         @callconv(c)
         extern elisa_application_abi_version() -> u32
@@ -182,6 +183,7 @@ module Application:
             Digit1
             Digit2
             Digit3
+            H
             Space
             Escape
             LeftShift
@@ -320,6 +322,7 @@ module Application:
                 KeyboardKeyCode.Digit1: PortableInputCodes::KEY_DIGIT_1
                 KeyboardKeyCode.Digit2: PortableInputCodes::KEY_DIGIT_2
                 KeyboardKeyCode.Digit3: PortableInputCodes::KEY_DIGIT_3
+                KeyboardKeyCode.H: PortableInputCodes::KEY_H
                 KeyboardKeyCode.Space: PortableInputCodes::KEY_SPACE
                 KeyboardKeyCode.Escape: PortableInputCodes::KEY_ESCAPE
                 KeyboardKeyCode.LeftShift: PortableInputCodes::KEY_LEFT_SHIFT

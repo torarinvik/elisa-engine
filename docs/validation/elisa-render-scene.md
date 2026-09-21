@@ -222,8 +222,11 @@ position, size, color and visibility, then destroy it; its generation-checked
 handle rejects stale updates. The native smoke verifies the panel changes
 rendered pixels, disappears and returns when hidden/shown, rejects invalid
 dimensions/colors, and rejects updates after destruction. This is a reusable
-panel primitive; text measurement/layout, font selection, input focus and full
-widget behavior remain separate capabilities.
+panel primitive. Overlay text has a bounded capacity of 64 entries so a game
+can keep its HUD, menu, and help card live at once; the native smoke fills that
+table, verifies the next creation is rejected, and destroys the entries.
+Text measurement/layout, font selection, input focus and full widget behavior
+remain separate capabilities.
 
 ## Exit codes
 
