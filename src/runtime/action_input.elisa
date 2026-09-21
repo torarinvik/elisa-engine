@@ -99,6 +99,7 @@ module ActionInput:
                 binding_count: mutable usize
                 context: mutable Context
                 connected: mutable bool[Limits::DEVICE_COUNT]
+                last_active_device: mutable Device
 
         def Input() -> Input:
             Input{
@@ -112,6 +113,7 @@ module ActionInput:
                 binding_count: 0,
                 context: Context.Gameplay,
                 connected: [true, true, true],
+                last_active_device: Device.Keyboard,
             }
 
         def bind_checked(input: mutable Input&, binding: Binding) -> BindResult:
@@ -162,6 +164,7 @@ module ActionInput:
         def set_connected(input: mutable Input&, device: Device, connected: bool) -> void:
             input.connected[device_index(device)] <- connected
             if not connected:
+                input.last_active_device <- Device.Keyboard if input.last_active_device == device
                 for index in 0..<input.binding_count |input, device|:
                     if input.bindings[index].device == device:
                         input.binding_down[index] <- false
@@ -198,6 +201,8 @@ module ActionInput:
                 if binding.live and binding.context == input.context and binding.device == event.device:
                     if binding.code == event.code:
                         magnitude: f32 = event.value if ElisaMath::fabsf(event.value) >= binding.deadzone else 0.0
+                        if event.pressed and not event.released and ElisaMath::fabsf(magnitude) > 0.0:
+                            input.last_active_device <- event.device
                         input.source_values[index] <- magnitude if not event.released else 0.0
                         input.source_down[index] <- event.pressed and not event.released and ElisaMath::fabsf(magnitude) > 0.0
                     if binding.chord_code != 0 and binding.chord_code == event.code:
@@ -226,3 +231,8 @@ module ActionInput:
             slot: usize = state_slot(input, action)
             return 0.0 if slot >= Limits::MAX_ACTIONS
             input.states[slot].value
+
+        # The most recent bound input source that crossed its dead zone.
+        # Elisa games can use this to show prompts for the active device.
+        def last_active_device(input: Input&) -> Device:
+            input.last_active_device

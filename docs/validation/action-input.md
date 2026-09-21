@@ -6,6 +6,13 @@ SDL3-backed `Application` queue. Device codes stay at the boundary; consumers
 read stable action IDs through `action_down`, `action_pressed`,
 `action_released`, and `action_value`.
 
+`last_active_device` reports the most recent bound press that crossed its
+binding dead zone. It defaults to keyboard, ignores sub-deadzone analog noise
+and releases, and returns to keyboard if the active device disconnects. Elisa
+clients can use it to keep on-screen control prompts aligned with keyboard or
+gamepad input. The public keyboard enum and SDL translation also include H
+(portable code 2025), used by the maze's replayable help panel.
+
 The module validates action and device codes, dead zones, duplicate bindings,
 and bounded binding/state capacity. Bindings carry a context and an optional
 chord code. `begin_frame` clears edge state, `set_context` isolates gameplay
