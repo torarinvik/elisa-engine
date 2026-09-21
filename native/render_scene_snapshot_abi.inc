@@ -265,6 +265,8 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         object->color = XMFLOAT4(row.tint_color[0], row.tint_color[1], row.tint_color[2], 1.0f);
         object->emissiveColor = XMFLOAT4(row.tint_emissive[0], row.tint_emissive[1],
             row.tint_emissive[2], row.tint_emissive[3]);
+        touch_snapshot_mesh_asset(state, snapshot_mesh_asset_slot(state, row.mesh_high, row.mesh_low));
+        touch_snapshot_material_textures(state, row.material_high, row.material_low);
         state.snapshot_results[index] = int64_t(encode_handle(slot, generation));
     }
 
@@ -312,19 +314,14 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_asset(
     }
     const size_t existing = snapshot_mesh_asset_slot(state, high, low);
     if (existing < MAX_SNAPSHOT_MESH_ASSETS) {
-        return state.snapshot_mesh_assets[existing].canonical_path == resolved_path
-            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        if (state.snapshot_mesh_assets[existing].canonical_path != resolved_path) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+        touch_snapshot_mesh_asset(state, existing);
+        return ELISA_RENDER_SCENE_OK;
     }
     const int32_t claim = claim_snapshot_asset_id(state, SnapshotAssetKind::Mesh, high, low);
     if (claim != ELISA_RENDER_SCENE_OK) return claim;
-    size_t free_slot = MAX_SNAPSHOT_MESH_ASSETS;
-    for (size_t index = 0; index < MAX_SNAPSHOT_MESH_ASSETS; ++index) {
-        if (!state.snapshot_mesh_assets[index].live) {
-            free_slot = index;
-            break;
-        }
-    }
-    if (free_slot == MAX_SNAPSHOT_MESH_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
     elisa::assets::CookedGeometry geometry;
     std::string load_error;
     try {
@@ -387,23 +384,21 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_texture_asset(
     const size_t existing = snapshot_texture_asset_slot(state, high, low);
     if (existing < MAX_SNAPSHOT_TEXTURE_ASSETS) {
         const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[existing];
-        return asset.canonical_path == resolved_path && asset.section.empty()
-            ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        if (asset.canonical_path != resolved_path || !asset.section.empty()) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+        touch_snapshot_texture_asset(state, existing);
+        return ELISA_RENDER_SCENE_OK;
     }
     const int32_t claim = claim_snapshot_asset_id(state, SnapshotAssetKind::Texture, high, low);
     if (claim != ELISA_RENDER_SCENE_OK) return claim;
     size_t free_slot = MAX_SNAPSHOT_TEXTURE_ASSETS;
-    for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
-        if (!state.snapshot_texture_assets[index].live) {
-            free_slot = index;
-            break;
-        }
-    }
-    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return ELISA_RENDER_SCENE_CAPACITY;
+    if (!make_snapshot_texture_capacity(state, 0, 0, free_slot)) return ELISA_RENDER_SCENE_CAPACITY;
     SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[free_slot];
     asset.high = high;
     asset.low = low;
     asset.canonical_path = std::move(resolved_path);
+    asset.last_used = next_snapshot_texture_use_stamp(state);
     asset.live = true;
     return ELISA_RENDER_SCENE_OK;
 }

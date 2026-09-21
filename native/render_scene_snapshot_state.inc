@@ -48,6 +48,7 @@ struct SnapshotMeshAssetSlot {
     std::filesystem::path canonical_path;
     elisa::assets::CookedGeometry geometry;
     size_t bytes = 0;
+    uint64_t last_used = 0;
     bool live = false;
 };
 
@@ -83,6 +84,7 @@ struct SnapshotTextureAssetSlot {
     std::array<wi::Resource, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> resources{};
     size_t source_bytes = 0;
     const char* extension = nullptr;
+    uint64_t last_used = 0;
     bool decoded_on_worker = false;
     bool live = false;
 };

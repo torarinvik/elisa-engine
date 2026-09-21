@@ -63,20 +63,203 @@ int32_t cancel_snapshot_asset_request(RenderSceneService& state, SnapshotAssetKi
     return ELISA_RENDER_SCENE_OK;
 }
 
+bool snapshot_mesh_asset_in_use(const RenderSceneService& state, size_t slot) {
+    if (slot >= MAX_SNAPSHOT_MESH_ASSETS || !state.snapshot_mesh_assets[slot].live) return false;
+    const SnapshotMeshAssetSlot& asset = state.snapshot_mesh_assets[slot];
+    for (const InstanceSlot& instance : state.instances) {
+        if (instance.live && instance.mesh_high == asset.high && instance.mesh_low == asset.low) return true;
+    }
+    for (const SnapshotSharedMesh& shared : state.snapshot_shared_meshes) {
+        if (shared.live && shared.mesh_high == asset.high && shared.mesh_low == asset.low) return true;
+    }
+    return false;
+}
+
+uint64_t next_snapshot_mesh_use_stamp(RenderSceneService& state) {
+    if (state.snapshot_asset_use_clock == std::numeric_limits<uint64_t>::max()) {
+        std::array<size_t, MAX_SNAPSHOT_MESH_ASSETS> live_slots{};
+        size_t live_count = 0;
+        for (size_t index = 0; index < MAX_SNAPSHOT_MESH_ASSETS; ++index) {
+            if (state.snapshot_mesh_assets[index].live) live_slots[live_count++] = index;
+        }
+        std::sort(live_slots.begin(), live_slots.begin() + live_count,
+            [&state](size_t left, size_t right) {
+                const uint64_t left_use = state.snapshot_mesh_assets[left].last_used;
+                const uint64_t right_use = state.snapshot_mesh_assets[right].last_used;
+                return left_use == right_use ? left < right : left_use < right_use;
+            });
+        for (size_t rank = 0; rank < live_count; ++rank) {
+            state.snapshot_mesh_assets[live_slots[rank]].last_used = rank + 1;
+        }
+        state.snapshot_asset_use_clock = live_count;
+    }
+    return ++state.snapshot_asset_use_clock;
+}
+
+void touch_snapshot_mesh_asset(RenderSceneService& state, size_t slot) {
+    if (slot < MAX_SNAPSHOT_MESH_ASSETS && state.snapshot_mesh_assets[slot].live) {
+        state.snapshot_mesh_assets[slot].last_used = next_snapshot_mesh_use_stamp(state);
+    }
+}
+
+bool snapshot_texture_asset_in_use(const RenderSceneService& state, size_t slot) {
+    if (slot >= MAX_SNAPSHOT_TEXTURE_ASSETS || !state.snapshot_texture_assets[slot].live) return false;
+    const SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[slot];
+    for (const SnapshotMaterialAssetSlot& material : state.snapshot_material_assets) {
+        if (!material.live) continue;
+        for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
+            if (material.texture_high[texture_slot] == texture.high &&
+                material.texture_low[texture_slot] == texture.low) return true;
+        }
+    }
+    return false;
+}
+
+uint64_t next_snapshot_texture_use_stamp(RenderSceneService& state) {
+    if (state.snapshot_texture_use_clock == std::numeric_limits<uint64_t>::max()) {
+        std::array<size_t, MAX_SNAPSHOT_TEXTURE_ASSETS> live_slots{};
+        size_t live_count = 0;
+        for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
+            if (state.snapshot_texture_assets[index].live) live_slots[live_count++] = index;
+        }
+        std::sort(live_slots.begin(), live_slots.begin() + live_count,
+            [&state](size_t left, size_t right) {
+                const uint64_t left_use = state.snapshot_texture_assets[left].last_used;
+                const uint64_t right_use = state.snapshot_texture_assets[right].last_used;
+                return left_use == right_use ? left < right : left_use < right_use;
+            });
+        for (size_t rank = 0; rank < live_count; ++rank) {
+            state.snapshot_texture_assets[live_slots[rank]].last_used = rank + 1;
+        }
+        state.snapshot_texture_use_clock = live_count;
+    }
+    return ++state.snapshot_texture_use_clock;
+}
+
+void touch_snapshot_texture_asset(RenderSceneService& state, size_t slot) {
+    if (slot < MAX_SNAPSHOT_TEXTURE_ASSETS && state.snapshot_texture_assets[slot].live) {
+        state.snapshot_texture_assets[slot].last_used = next_snapshot_texture_use_stamp(state);
+    }
+}
+
+void touch_snapshot_material_textures(RenderSceneService& state, uint64_t high, uint64_t low) {
+    const size_t material_slot = snapshot_material_asset_slot(state, high, low);
+    if (material_slot < MAX_SNAPSHOT_MATERIAL_ASSETS) {
+        const SnapshotMaterialAssetSlot& material = state.snapshot_material_assets[material_slot];
+        for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
+            touch_snapshot_texture_asset(state,
+                snapshot_texture_asset_slot(state, material.texture_high[texture_slot],
+                    material.texture_low[texture_slot]));
+        }
+        return;
+    }
+    const size_t set_slot = snapshot_material_set_slot(state, high, low);
+    if (set_slot == MAX_SNAPSHOT_MATERIAL_SETS) return;
+    const SnapshotMaterialSet& set = state.snapshot_material_sets.sets[set_slot];
+    for (uint32_t index = 0; index < set.count; ++index) {
+        touch_snapshot_material_textures(state, set.material_high[index], set.material_low[index]);
+    }
+}
+
+bool make_snapshot_texture_capacity(RenderSceneService& state, size_t source_bytes,
+        size_t decoded_bytes, size_t& free_slot) {
+    if (source_bytes > state.snapshot_bundle_texture_source_budget ||
+        decoded_bytes > state.snapshot_decoded_texture_budget ||
+        state.snapshot_bundle_texture_source_budget > MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES ||
+        state.snapshot_decoded_texture_budget > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES) return false;
+    free_slot = MAX_SNAPSHOT_TEXTURE_ASSETS;
+    std::array<size_t, MAX_SNAPSHOT_TEXTURE_ASSETS> candidates{};
+    size_t candidate_count = 0;
+    for (size_t index = 0; index < MAX_SNAPSHOT_TEXTURE_ASSETS; ++index) {
+        if (!state.snapshot_texture_assets[index].live) {
+            if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) free_slot = index;
+            continue;
+        }
+        if (!snapshot_texture_asset_in_use(state, index)) candidates[candidate_count++] = index;
+    }
+    std::sort(candidates.begin(), candidates.begin() + candidate_count,
+        [&state](size_t left, size_t right) {
+            const uint64_t left_use = state.snapshot_texture_assets[left].last_used;
+            const uint64_t right_use = state.snapshot_texture_assets[right].last_used;
+            return left_use == right_use ? left < right : left_use < right_use;
+        });
+    const size_t source_limit = state.snapshot_bundle_texture_source_budget - source_bytes;
+    const size_t decoded_limit = state.snapshot_decoded_texture_budget - decoded_bytes;
+    const size_t source_reclaim = state.snapshot_bundle_texture_source_bytes > source_limit
+        ? state.snapshot_bundle_texture_source_bytes - source_limit : 0;
+    const size_t decoded_reclaim = state.snapshot_decoded_texture_bytes > decoded_limit
+        ? state.snapshot_decoded_texture_bytes - decoded_limit : 0;
+    size_t source_reclaimed = 0;
+    size_t decoded_reclaimed = 0;
+    size_t victim_count = 0;
+    while (victim_count < candidate_count &&
+        (source_reclaimed < source_reclaim || decoded_reclaimed < decoded_reclaim ||
+            (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS && victim_count == 0))) {
+        const SnapshotTextureAssetSlot& victim = state.snapshot_texture_assets[candidates[victim_count++]];
+        source_reclaimed += victim.source_bytes;
+        decoded_reclaimed += victim.decoded.pixels.size();
+    }
+    if (source_reclaimed < source_reclaim || decoded_reclaimed < decoded_reclaim ||
+        (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS && victim_count == 0)) return false;
+    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) free_slot = candidates[0];
+    for (size_t index = 0; index < victim_count; ++index) {
+        SnapshotTextureAssetSlot& victim = state.snapshot_texture_assets[candidates[index]];
+        state.snapshot_bundle_texture_source_bytes -= victim.source_bytes;
+        state.snapshot_decoded_texture_bytes -= victim.decoded.pixels.size();
+        victim = SnapshotTextureAssetSlot{};
+    }
+    return true;
+}
+
+// Preflight the whole eviction before releasing anything. If live scene rows
+// pin too much geometry, installation fails without changing residency.
+bool make_snapshot_mesh_capacity(RenderSceneService& state, size_t bytes, size_t& free_slot) {
+    if (bytes == 0 || bytes > state.snapshot_geometry_budget ||
+        state.snapshot_geometry_budget > MAX_SNAPSHOT_GEOMETRY_BYTES) return false;
+
+    free_slot = MAX_SNAPSHOT_MESH_ASSETS;
+    std::array<size_t, MAX_SNAPSHOT_MESH_ASSETS> candidates{};
+    size_t candidate_count = 0;
+    for (size_t index = 0; index < MAX_SNAPSHOT_MESH_ASSETS; ++index) {
+        if (!state.snapshot_mesh_assets[index].live) {
+            if (free_slot == MAX_SNAPSHOT_MESH_ASSETS) free_slot = index;
+            continue;
+        }
+        if (!snapshot_mesh_asset_in_use(state, index)) candidates[candidate_count++] = index;
+    }
+    std::sort(candidates.begin(), candidates.begin() + candidate_count,
+        [&state](size_t left, size_t right) {
+            const uint64_t left_use = state.snapshot_mesh_assets[left].last_used;
+            const uint64_t right_use = state.snapshot_mesh_assets[right].last_used;
+            return left_use == right_use ? left < right : left_use < right_use;
+        });
+
+    const size_t retained_budget = state.snapshot_geometry_budget - bytes;
+    const size_t required_reclaim = state.snapshot_geometry_bytes > retained_budget
+        ? state.snapshot_geometry_bytes - retained_budget : 0;
+    size_t reclaimed = 0;
+    size_t victim_count = 0;
+    while (victim_count < candidate_count &&
+        (reclaimed < required_reclaim || (free_slot == MAX_SNAPSHOT_MESH_ASSETS && victim_count == 0))) {
+        reclaimed += state.snapshot_mesh_assets[candidates[victim_count++]].bytes;
+    }
+    if (reclaimed < required_reclaim ||
+        (free_slot == MAX_SNAPSHOT_MESH_ASSETS && victim_count == 0)) return false;
+    if (free_slot == MAX_SNAPSHOT_MESH_ASSETS) free_slot = candidates[0];
+
+    for (size_t index = 0; index < victim_count; ++index) {
+        SnapshotMeshAssetSlot& victim = state.snapshot_mesh_assets[candidates[index]];
+        state.snapshot_geometry_bytes -= victim.bytes;
+        victim = SnapshotMeshAssetSlot{};
+    }
+    return true;
+}
+
 int32_t install_snapshot_mesh_asset(RenderSceneService& state, uint64_t high, uint64_t low,
         std::string requested_path, std::filesystem::path canonical_path,
         elisa::assets::CookedGeometry geometry, size_t bytes) {
     size_t free_slot = MAX_SNAPSHOT_MESH_ASSETS;
-    for (size_t index = 0; index < MAX_SNAPSHOT_MESH_ASSETS; ++index) {
-        if (!state.snapshot_mesh_assets[index].live) {
-            free_slot = index;
-            break;
-        }
-    }
-    if (free_slot == MAX_SNAPSHOT_MESH_ASSETS || bytes == 0 ||
-        bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_geometry_bytes) {
-        return ELISA_RENDER_SCENE_CAPACITY;
-    }
+    if (!make_snapshot_mesh_capacity(state, bytes, free_slot)) return ELISA_RENDER_SCENE_CAPACITY;
     SnapshotMeshAssetSlot& asset = state.snapshot_mesh_assets[free_slot];
     asset.high = high;
     asset.low = low;
@@ -84,6 +267,7 @@ int32_t install_snapshot_mesh_asset(RenderSceneService& state, uint64_t high, ui
     asset.canonical_path = std::move(canonical_path);
     asset.geometry = std::move(geometry);
     asset.bytes = bytes;
+    asset.last_used = next_snapshot_mesh_use_stamp(state);
     asset.live = true;
     state.snapshot_geometry_bytes += bytes;
     return ELISA_RENDER_SCENE_OK;
@@ -102,9 +286,7 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
     }
     const size_t source_bytes = texture.encoded.size();
     const size_t decoded_bytes = decoded.pixels.size();
-    if (free_slot == MAX_SNAPSHOT_TEXTURE_ASSETS || source_bytes == 0 || decoded_bytes == 0 ||
-        source_bytes > MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES - state.snapshot_bundle_texture_source_bytes ||
-        decoded_bytes > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES - state.snapshot_decoded_texture_bytes) {
+    if (source_bytes == 0 || decoded_bytes == 0) {
         return ELISA_RENDER_SCENE_CAPACITY;
     }
     const size_t pixel_count = static_cast<size_t>(decoded.width) * decoded.height;
@@ -114,6 +296,9 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
         decoded.source_channels < 1 || decoded.source_channels > 4 ||
         pixel_count > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES / stored_channels ||
         decoded_bytes != pixel_count * stored_channels) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    if (!make_snapshot_texture_capacity(state, source_bytes, decoded_bytes, free_slot)) {
+        return ELISA_RENDER_SCENE_CAPACITY;
+    }
     char checksum[9] = {};
     std::snprintf(checksum, sizeof(checksum), "%08x", texture.checksum);
     SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[free_slot];
@@ -126,6 +311,7 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
     asset.canonical_path = std::move(canonical_path);
     asset.decoded = std::move(decoded);
     asset.source_bytes = source_bytes;
+    asset.last_used = next_snapshot_texture_use_stamp(state);
     asset.live = true;
     asset.decoded_on_worker = decoded_on_worker;
     state.snapshot_bundle_texture_source_bytes += source_bytes;

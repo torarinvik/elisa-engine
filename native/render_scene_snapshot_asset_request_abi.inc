@@ -50,15 +50,21 @@ int32_t request_snapshot_asset(SnapshotAssetKind kind, uint64_t high, uint64_t l
     if (kind == SnapshotAssetKind::Mesh) {
         const size_t existing = snapshot_mesh_asset_slot(state, high, low);
         if (existing < MAX_SNAPSHOT_MESH_ASSETS) {
-            return state.snapshot_mesh_assets[existing].requested_path == requested_path
-                ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            if (state.snapshot_mesh_assets[existing].requested_path != requested_path) {
+                return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            }
+            touch_snapshot_mesh_asset(state, existing);
+            return ELISA_RENDER_SCENE_OK;
         }
     } else {
         const size_t existing = snapshot_texture_asset_slot(state, high, low);
         if (existing < MAX_SNAPSHOT_TEXTURE_ASSETS) {
             const SnapshotTextureAssetSlot& asset = state.snapshot_texture_assets[existing];
-            return asset.requested_path == requested_path && asset.section == requested_section
-                ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            if (asset.requested_path != requested_path || asset.section != requested_section) {
+                return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            }
+            touch_snapshot_texture_asset(state, existing);
+            return ELISA_RENDER_SCENE_OK;
         }
     }
     // A loading request with the same path coalesces; a failed one retries.
@@ -242,5 +248,44 @@ extern "C" uint64_t elisa_render_scene_v1_test_snapshot_geometry_bytes(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     return state.snapshot_geometry_bytes;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_set_snapshot_geometry_budget(uint64_t bytes) {
+    if (bytes == 0 || bytes > MAX_SNAPSHOT_GEOMETRY_BYTES) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    state.snapshot_geometry_budget = static_cast<size_t>(bytes);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_geometry_budget(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    return state.snapshot_geometry_budget;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_set_snapshot_texture_budgets(
+        uint64_t source_bytes, uint64_t decoded_bytes) {
+    if (source_bytes == 0 || source_bytes > MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES ||
+        decoded_bytes == 0 || decoded_bytes > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    state.snapshot_bundle_texture_source_budget = static_cast<size_t>(source_bytes);
+    state.snapshot_decoded_texture_budget = static_cast<size_t>(decoded_bytes);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_bundle_texture_decoded_bytes(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    return state.snapshot_decoded_texture_bytes;
 }
 #endif

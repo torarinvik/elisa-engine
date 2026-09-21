@@ -31,7 +31,19 @@ module RenderSceneAsyncAssetNativeTests:
         extern elisa_render_scene_v1_test_snapshot_geometry_bytes() -> u64
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_set_snapshot_geometry_budget(bytes: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_geometry_budget() -> u64
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_decoded_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_set_snapshot_texture_budgets(source_bytes: u64, decoded_bytes: u64) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_texture_decoded_on_worker(high: u64, low: u64) -> i32
@@ -48,6 +60,15 @@ module RenderSceneAsyncAssetNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
 
         const module Ids:
             MESHES: u64 = 930
@@ -71,6 +92,8 @@ module RenderSceneAsyncAssetNativeTests:
             FAILED_CAPACITY: i32 = 11
 
         const MAX_SNAPSHOT_MESH_ASSETS: u64 = 32
+        const MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES: u64 = 256 * 1024 * 1024
+        const MAX_SNAPSHOT_DECODED_TEXTURE_BYTES: u64 = 256 * 1024 * 1024
         const NATIVE_ASSET_PENDING: i32 = -11
         const NATIVE_ASSET_LOAD_FAILED: i32 = -9
 
@@ -113,6 +136,9 @@ module RenderSceneAsyncAssetNativeTests:
         def geometry_bytes() -> u64:
             elisa_render_scene_v1_test_snapshot_geometry_bytes()
 
+        def texture_decoded_bytes() -> u64:
+            elisa_render_scene_v1_test_snapshot_bundle_texture_decoded_bytes()
+
         def request_mesh(low: u64, path: cstr) -> i32:
             catch RenderScene::request_snapshot_mesh_asset(mesh_id(low), path):
                 ok: Code::OK
@@ -137,6 +163,7 @@ module RenderSceneAsyncAssetNativeTests:
         def unregister_mesh(low: u64) -> i32:
             catch RenderScene::unregister_snapshot_mesh_asset(mesh_id(low)):
                 ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
                 RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
                 error failure: Code::OTHER
 
@@ -195,6 +222,24 @@ module RenderSceneAsyncAssetNativeTests:
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
             return -101 if elisa_render_scene_v1_snapshot_abort() != 0
             staged
+
+        def commit_mesh_row(mesh_low: u64, render_id: i64) -> i64:
+            return -100 if elisa_render_scene_v1_snapshot_begin(0) != 0
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(0, 1, render_id, render_id,
+                Ids::MESHES, mesh_low, Ids::MATERIALS, 1,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+            if staged != 0:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return -101
+            return -102 if elisa_render_scene_v1_snapshot_commit() != 0
+            elisa_render_scene_v1_snapshot_result(0)
+
+        def retire_mesh_row(handle: i64) -> bool:
+            return false if elisa_render_scene_v1_snapshot_begin(1) != 0
+            if elisa_render_scene_v1_snapshot_retire(handle) != 0:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            elisa_render_scene_v1_snapshot_commit() == 0
 
         # Frames keep running while the worker is parked mid-job.
         def frames_while_loading() -> bool:
@@ -294,6 +339,59 @@ module RenderSceneAsyncAssetNativeTests:
             released: bool = unregister_mesh(10) == Code::OK and unregister_texture(3) == Code::OK
             queued and reused and adopted and resident and released
 
+        # Budget pressure evicts the least-recently-used unreferenced mesh.
+        # A committed scene row pins its mesh until that row is retired.
+        def resident_eviction(base: u64, done: u64,
+            baseline_bytes: u64, loaded_bytes: u64,
+            baseline_texture_source: u64, baseline_texture_decoded: u64) -> i32:
+            mesh_bytes: u64 = loaded_bytes - baseline_bytes
+            prior_budget: u64 = elisa_render_scene_v1_test_snapshot_geometry_budget()
+            target_budget: u64 = loaded_bytes + mesh_bytes
+            return 41 if mesh_bytes == 0 or elisa_render_scene_v1_test_set_snapshot_geometry_budget(target_budget) != Code::OK
+            return 42 if request_mesh(11, mesh_path()) != Code::OK
+            return 43 if not wait_for(base + 12, done + 12) or pump_assets() != 1
+            return 44 if mesh_state(11) != Code::RESIDENT or geometry_bytes() > target_budget
+
+            pinned: i64 = commit_mesh_row(11, 9391)
+            return 45 if pinned <= 0 or unregister_mesh(11) != Code::INVALID
+            return 46 if request_mesh(12, mesh_path()) != Code::OK
+            return 47 if not wait_for(base + 13, done + 13) or pump_assets() != 1
+            return 48 if mesh_state(1) != Code::ABSENT or mesh_state(11) != Code::RESIDENT or mesh_state(12) != Code::RESIDENT
+            return 49 if geometry_bytes() > target_budget or not retire_mesh_row(pinned)
+
+            # Touch 12 after 11 becomes unreferenced; loading 13 must evict 11.
+            return 50 if request_mesh(12, mesh_path()) != Code::OK or started() != base + 13
+            return 51 if request_mesh(13, mesh_path()) != Code::OK
+            return 52 if not wait_for(base + 14, done + 14) or pump_assets() != 1
+            return 53 if mesh_state(11) != Code::ABSENT or mesh_state(12) != Code::RESIDENT or mesh_state(13) != Code::RESIDENT
+            return 54 if geometry_bytes() > target_budget
+            return 55 if unregister_mesh(12) != Code::OK or unregister_mesh(13) != Code::OK
+            return 56 if geometry_bytes() != baseline_bytes
+            return 57 if elisa_render_scene_v1_test_set_snapshot_geometry_budget(prior_budget) != Code::OK
+
+            texture_source: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
+            texture_decoded: u64 = texture_decoded_bytes()
+            texture_source_unit: u64 = texture_source - baseline_texture_source
+            texture_decoded_unit: u64 = texture_decoded - baseline_texture_decoded
+            return 58 if texture_source_unit == 0 or texture_decoded_unit == 0
+            texture_source_budget: u64 = texture_source + texture_source_unit * 2
+            texture_decoded_budget: u64 = texture_decoded + texture_decoded_unit * 2
+            return 59 if elisa_render_scene_v1_test_set_snapshot_texture_budgets(
+                texture_source_budget, texture_decoded_budget) != Code::OK
+            return 60 if request_texture(4, texture_path()) != Code::OK
+            return 61 if not wait_for(base + 15, done + 15) or pump_assets() != 1
+            return 62 if texture_state(4) != Code::RESIDENT
+            return 63 if request_texture(5, texture_path()) != Code::OK
+            return 64 if not wait_for(base + 16, done + 16) or pump_assets() != 1
+            return 65 if texture_state(4) != Code::RESIDENT or texture_state(5) != Code::RESIDENT
+            return 66 if request_texture(6, texture_path()) != Code::OK
+            return 67 if not wait_for(base + 17, done + 17) or pump_assets() != 1
+            return 68 if texture_state(4) != Code::ABSENT or texture_state(5) != Code::RESIDENT or texture_state(6) != Code::RESIDENT
+            return 69 if elisa_render_scene_v1_test_set_snapshot_texture_budgets(
+                MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES, MAX_SNAPSHOT_DECODED_TEXTURE_BYTES) != Code::OK
+            return 70 if unregister_texture(5) != Code::OK or unregister_texture(6) != Code::OK
+            0
+
     public:
         def exercise() -> i32:
             base: u64 = started()
@@ -301,6 +399,7 @@ module RenderSceneAsyncAssetNativeTests:
             baseline_bytes: u64 = geometry_bytes()
             baseline_meshes: u64 = elisa_render_scene_v1_test_snapshot_mesh_assets()
             baseline_textures: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
+            baseline_decoded_textures: u64 = texture_decoded_bytes()
             return 37 if requests() != 0 or register_material(1, 0) != Code::OK
 
             loading: i32 = loading_then_resident(base, done, baseline_bytes)
@@ -321,8 +420,12 @@ module RenderSceneAsyncAssetNativeTests:
             hold(0, 0)
             return 39 if accepted != free_meshes or started() != base + 11
 
+            eviction_status: i32 = resident_eviction(base, done, baseline_bytes, loaded,
+                baseline_textures, baseline_decoded_textures)
+            return eviction_status if eviction_status != 0
+
             materials_cleaned: bool = unregister_material(2) == Code::OK and unregister_material(1) == Code::OK
-            assets_cleaned: bool = unregister_texture(1) == Code::OK and unregister_mesh(1) == Code::OK
+            assets_cleaned: bool = unregister_texture(1) == Code::OK and mesh_state(1) == Code::ABSENT
             meshes: u64 = elisa_render_scene_v1_test_snapshot_mesh_assets()
             texture_bytes: u64 = elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
             restored: bool = meshes == baseline_meshes and texture_bytes == baseline_textures
@@ -332,5 +435,5 @@ module RenderSceneAsyncAssetNativeTests:
             # Leave one job parked mid-read. Application shutdown must
             # release it, drop its result and join the worker.
             hold(0, 1)
-            return 5 if request_mesh(8, mesh_path()) != Code::OK or not wait_for(base + 12, done + 11)
+            return 5 if request_mesh(8, mesh_path()) != Code::OK or not wait_for(base + 18, done + 17)
             0

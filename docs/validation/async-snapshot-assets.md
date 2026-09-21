@@ -101,7 +101,10 @@ timing.
 | 20–28 | Cancellation at each point: parked at the checkpoint, finished but not adopted, and still queued. Each leaves bytes unchanged and adopts nothing. The worker's started count shows the cancelled queued job never ran. |
 | 29–36 | A bundle texture request: a material naming it is `AssetPending` while it loads; the worker decodes it, pump adopts it, and owner-thread material registration creates the GPU resource. Source and decoded-byte accounting grows. A texture whose dependency is missing fails, and a material naming it is `AssetLoadFailure`. |
 | 33 | A mesh and a texture finish in one pump. The mesh request reuses the request slot that a cancelled request freed, so a pump that matched results by slot order instead of serial would adopt the texture into the mesh request. Both become resident. |
-| 37–39 | 40 requests with the worker held stop at exactly the free mesh slots, then cancel without starting. Unregistering everything returns geometry bytes, mesh slots and texture bytes to their baselines with no live request or worker job left. |
+| 37–39 | 40 requests with the worker held stop at exactly the free mesh slots, then cancel without starting. |
+| 41–57 | Geometry pressure keeps a mesh referenced by a committed row resident, evicts the older unreferenced mesh, reloads it, and then evicts the least-recently-used unreferenced mesh. Bytes remain within the configured budget and temporary rows and assets are released. |
+| 58–70 | Source and decoded texture pressure keeps a material-referenced texture resident, admits two unreferenced textures, then evicts the least-recently-used one. Both byte counters remain within their configured budgets. |
+| 71+ | Unregistering everything returns geometry bytes, mesh slots and texture bytes to their baselines with no live request or worker job left. |
 | 5 | The test ends with a mesh job parked mid-load. Application shutdown must release it and join the worker. |
 
 The worker has its own probe, `native/snapshot_asset_worker_probe.h`. It
@@ -185,8 +188,12 @@ mutant exited 1 at the named check:
   when a snapshot row first uses it. Synchronous compatibility registration
   still reads and decodes bundle textures on its calling owner thread.
 - **Priority and eviction.** Queued jobs use descending signed priorities, with
-  FIFO order for ties; a running job cannot be preempted. Nothing is evicted
-  under budget pressure; the caller unregisters assets explicitly.
+  FIFO order for ties; a running job cannot be preempted. Resident meshes and
+  bundle textures use deterministic LRU eviction under their byte and slot
+  budgets, but live scene rows and material registrations pin their assets.
+  If the unreferenced set cannot satisfy an installation, adoption reports
+  `Capacity` without partially evicting the resident set. The caller still
+  unregisters assets explicitly when it knows they are no longer needed.
 - **Path identity.** A resident or loading ID matches a later request by
   its path string, not its canonical file.
 - **No placeholder.** A row that names a pending asset fails the frame's
@@ -211,6 +218,9 @@ mutant exited 1 at the named check:
 - The production asset-worker check pauses after the first 64 KiB read of a
   32 MiB bundle texture, cancels the job, and verifies no encoded texture is
   returned and the worker releases the job.
+- The render-scene asset check lowers geometry and both bundle-texture budgets,
+  verifies pinned rows/materials survive, and verifies least-recently-used
+  unreferenced meshes and textures are evicted before adoption completes.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON_BIN=/opt/homebrew/bin/python3 ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ elisascript scripts/wicked_probe.elisascript build` passed the native build and application/render smokes. The matching `frame` phase passed the new package cancellation probe and SDL3/Metal render checks.
 - `scripts/run_boundary_sanitized.py` passed. The boundary harness reported
   `worker=1` under ASan/UBSan, and the ThreadSanitizer worker harness reported
