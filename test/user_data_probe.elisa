@@ -1,0 +1,68 @@
+# Exercises the public, Elisa-owned user-data API from the native app smoke.
+def exercise_user_data() -> i32:
+    values: i64[8] = [7, 9, 11, 0, 0, 0, 0, 0]
+    blob: mutable Save::Blob = catch Save::save_write(values, 3):
+        value: value
+        error failure: return 1
+    return 24 if not Save::blob_valid(&blob)
+    before_init: i32 = catch UserData::write_blob("preferences", &blob):
+        value: 0
+        UserData::UserDataError.NotInitialized: 1
+        error failure: 2
+    return 3 if before_init != 1
+
+    initialized: i32 = catch UserData::initialize("org.elisa.smoke"):
+        value: 0
+        error failure: 4
+    return 5 if initialized != 0
+
+    invalid_key: i32 = catch UserData::write_blob("../outside", &blob):
+        value: 0
+        UserData::UserDataError.InvalidKey: 1
+        error failure: 2
+    return 6 if invalid_key != 1
+
+    absent: mutable Save::Blob = Save::Blob(0)
+    missing: i32 = catch UserData::read_blob("missing", &absent):
+        value: 0
+        UserData::UserDataError.NotFound: 1
+        error failure: 2
+    return 7 if missing != 1
+
+    _ = catch UserData::write_blob("preferences", &blob):
+        value: 0
+        error failure: return 8
+    loaded: mutable Save::Blob = Save::Blob(0)
+    _ = catch UserData::read_blob("preferences", &loaded):
+        value: 0
+        error failure: return 9
+    return 10 if not Save::blob_valid(&loaded) or loaded.count != 4
+    return 11 if loaded.fields[1] != 7 or loaded.fields[2] != 9 or loaded.fields[3] != 11
+
+    replacement_values: i64[8] = [31, 0, 0, 0, 0, 0, 0, 0]
+    replacement: mutable Save::Blob = catch Save::save_write(replacement_values, 1):
+        value: value
+        error failure: return 12
+    replacement.version <- 2
+    _ = catch UserData::write_blob("preferences", &replacement):
+        value: 0
+        error failure: return 13
+    _ = catch UserData::read_blob("preferences", &loaded):
+        value: 0
+        error failure: return 14
+    return 15 if loaded.version != 2 or loaded.count != 2 or loaded.fields[1] != 31
+
+    unchanged: i32 = catch UserData::read_blob("missing", &loaded):
+        value: 0
+        UserData::UserDataError.NotFound: 1
+        error failure: 2
+    return 16 if unchanged != 1 or loaded.version != 2 or loaded.fields[1] != 31
+    _ = catch UserData::remove_blob("preferences"):
+        value: 0
+        error failure: return 17
+    removed: i32 = catch UserData::remove_blob("preferences"):
+        value: 0
+        UserData::UserDataError.NotFound: 1
+        error failure: 2
+    return 18 if removed != 1
+    0

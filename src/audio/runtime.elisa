@@ -97,6 +97,20 @@ module AudioRuntime:
         const MIN_CHANNEL_COUNT: u32 = Limits::MIN_CHANNEL_COUNT
         const MAX_CHANNEL_COUNT: u32 = Limits::MAX_CHANNEL_COUNT
 
+        # Invalid sentinels let Elisa-owned state store optional audio handles
+        # without exposing their generation fields or relying on zeroed ABI data.
+        def empty_clip() -> ClipHandle:
+            ClipHandle{slot: 0, generation: 0}
+
+        def empty_voice() -> VoiceHandle:
+            VoiceHandle{slot: 0, generation: 0}
+
+        def clip_is_empty(clip: ClipHandle) -> bool:
+            clip.slot == 0 and clip.generation == 0
+
+        def voice_is_empty(voice: VoiceHandle) -> bool:
+            voice.slot == 0 and voice.generation == 0
+
         def initialize_silent(sample_rate: u32, channels: u32) -> void error[AudioError]:
             raise AudioError.InvalidArgument if sample_rate < MIN_SAMPLE_RATE_HZ or sample_rate > MAX_SAMPLE_RATE_HZ
             raise AudioError.InvalidArgument if channels < MIN_CHANNEL_COUNT or channels > MAX_CHANNEL_COUNT

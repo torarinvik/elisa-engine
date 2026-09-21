@@ -64,6 +64,22 @@ extern "C" int32_t elisa_render_scene_v1_set_text_i64(int64_t handle,
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_text_position(
+    int64_t handle, float x, float y) {
+    if (!bounded(x, float(MAX_VIEWPORT)) || !bounded(y, float(MAX_VIEWPORT))) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    state.overlay_texts[slot].font.params.position.x = x;
+    state.overlay_texts[slot].font.params.position.y = y;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_text_visible(int64_t handle, int32_t visible) {
     if (visible != 0 && visible != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();

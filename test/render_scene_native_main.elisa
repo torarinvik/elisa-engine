@@ -7,6 +7,8 @@ include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
 include "./maze_rendering_native.elisa"
+include "./render_scene_text_native.elisa"
+include "./render_scene_camera_native.elisa"
 using Maze
 using MazeGame
 using MazeTrace
@@ -134,6 +136,9 @@ def exercise_render_scene() -> i32:
         error failure: 1
     return 33 if valid_camera != 0
 
+    camera_test: i32 = RenderSceneCameraNativeTests::exercise()
+    return camera_test if camera_test != 0
+
     invalid_arc_width: i32 = catch RenderScene::create_electric_arc(0.0, 0.1, 7):
         value: 0
         RenderScene::RenderSceneError.InvalidValue: 1
@@ -179,22 +184,8 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.InvalidValue: 1
         error failure: 2
     return 77 if invalid_hud_text != 1
-    text_update: i32 = catch RenderScene::set_overlay_text(hud_text, "LIVES  2"):
-        ok: 0
-        error failure: 2
-    return 83 if text_update != 0
-    text_hidden: i32 = catch RenderScene::set_overlay_text_visible(hud_text, false):
-        ok: 0
-        error failure: 2
-    return 84 if text_hidden != 0
-    text_shown: i32 = catch RenderScene::set_overlay_text_visible(hud_text, true):
-        ok: 0
-        error failure: 2
-    return 85 if text_shown != 0
-    text_number_update: i32 = catch RenderScene::set_overlay_text_i64(hud_text, "LIVES  ", 2):
-        ok: 0
-        error failure: 2
-    return 86 if text_number_update != 0
+    text_updates: i32 = RenderSceneTextNativeTests::exercise(hud_text)
+    return text_updates if text_updates != 0
 
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},

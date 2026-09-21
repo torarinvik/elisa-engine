@@ -32,6 +32,9 @@ module RenderScene:
         extern elisa_render_scene_v1_resize(width: i32, height: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_camera_orthographic_height(vertical_size: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_camera_look_at(eye_x: f32, eye_y: f32, eye_z: f32,
             target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
 
@@ -106,6 +109,9 @@ module RenderScene:
 
         @callconv(c)
         extern elisa_render_scene_v1_set_text_i64(handle: i64, prefix: cstr, value: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_text_position(handle: i64, x: f32, y: f32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_set_text_visible(handle: i64, visible: i32) -> i32
@@ -260,6 +266,9 @@ module RenderScene:
         def resize(width: i32, height: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_resize(width, height))
 
+        def set_camera_orthographic_height(vertical_size: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_camera_orthographic_height(vertical_size))
+
         def set_camera_look_at(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_look_at(
                 eye.x, eye.y, eye.z, target.x, target.y, target.z, up.x, up.y, up.z))
@@ -357,6 +366,10 @@ module RenderScene:
         def set_overlay_text_i64(handle: OverlayTextHandle, prefix: cstr,
             value: i64) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_i64(handle.id, prefix, value))
+
+        def set_overlay_text_position(handle: OverlayTextHandle, x: f32,
+            y: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text_position(handle.id, x, y))
 
         def set_overlay_text_visible(handle: OverlayTextHandle, visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_visible(

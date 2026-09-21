@@ -1,0 +1,98 @@
+# Persistent application-owned files. The native layer owns only safe paths and
+# checked bytes; games retain their serialization schema in Elisa code.
+include "./save.elisa"
+
+module UserData:
+    public:
+        error UserDataError:
+            NotInitialized
+            InvalidKey
+            InvalidArgument
+            NotFound
+            Capacity
+            WrongVersion
+            Corrupt
+            IoFailure
+            ApiMismatch
+            InvalidPayload
+
+    private:
+        const module Status:
+            OK: i32 = 0
+            NOT_INITIALIZED: i32 = 1
+            INVALID_KEY: i32 = 2
+            INVALID_ARGUMENT: i32 = 3
+            NOT_FOUND: i32 = 4
+            CAPACITY: i32 = 5
+            WRONG_VERSION: i32 = 6
+            CORRUPT: i32 = 7
+            IO_FAILURE: i32 = 8
+            ABI_VERSION: u32 = 1
+
+        @callconv(c)
+        extern elisa_user_data_abi_version() -> u32
+
+        @callconv(c)
+        extern elisa_user_data_v1_initialize(application_id: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_user_data_v1_directory() -> cstr
+
+        @callconv(c)
+        extern elisa_user_data_v1_write_blob(key: cstr, version: i64,
+            fields: mutable i64&, count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_user_data_v1_read_blob(key: cstr, version: mutable i64&,
+            fields: mutable i64&, capacity: u32, count: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_user_data_v1_remove_blob(key: cstr) -> i32
+
+        def check_status(status: i32) -> void error[UserDataError]:
+            raise UserDataError.NotInitialized if status == Status::NOT_INITIALIZED
+            raise UserDataError.InvalidKey if status == Status::INVALID_KEY
+            raise UserDataError.InvalidArgument if status == Status::INVALID_ARGUMENT
+            raise UserDataError.NotFound if status == Status::NOT_FOUND
+            raise UserDataError.Capacity if status == Status::CAPACITY
+            raise UserDataError.WrongVersion if status == Status::WRONG_VERSION
+            raise UserDataError.Corrupt if status == Status::CORRUPT
+            raise UserDataError.IoFailure if status == Status::IO_FAILURE
+            raise UserDataError.IoFailure if status != Status::OK
+
+    public:
+        const MAX_FIELDS: usize = Save::MAX_FIELDS
+
+        # Uses ELISA_USER_DATA_DIR when set (useful for sandboxed apps and
+        # tests); otherwise the native layer selects the platform user-data path.
+        def initialize(application_id: cstr) -> void error[UserDataError]:
+            raise UserDataError.ApiMismatch if elisa_user_data_abi_version() != Status::ABI_VERSION
+            try check_status(elisa_user_data_v1_initialize(application_id))
+
+        # The returned path remains owned by the runtime and is valid until the
+        # next initialize call. Call initialize before requesting it.
+        def directory_path() -> cstr:
+            elisa_user_data_v1_directory()
+
+        # Writes a checked, versioned Save blob to a named application file.
+        def write_blob(key: cstr, blob: Save::Blob&) -> void error[UserDataError]:
+            raise UserDataError.InvalidPayload if blob.version <= 0 or blob.count == 0 or blob.count > MAX_FIELDS
+            raise UserDataError.InvalidPayload if blob.fields[0] != Save::MAGIC
+            try check_status(elisa_user_data_v1_write_blob(key, blob.version,
+                &blob.fields[0], blob.count.u32()))
+
+        # Reads into temporary Elisa storage first, so an error leaves the
+        # caller's existing blob untouched.
+        def read_blob(key: cstr, blob: mutable Save::Blob&) -> void error[UserDataError]:
+            version: mutable i64 = 0
+            count: mutable u32 = 0
+            staged: mutable Save::Blob = Save::Blob(0)
+            try check_status(elisa_user_data_v1_read_blob(key, &version,
+                &staged.fields[0], MAX_FIELDS.u32(), &count))
+            staged.version <- version
+            staged.count <- count.usize()
+            raise UserDataError.InvalidPayload if not Save::blob_valid(&staged)
+            blob <- staged
+
+        def remove_blob(key: cstr) -> void error[UserDataError]:
+            try check_status(elisa_user_data_v1_remove_blob(key))

@@ -13,6 +13,9 @@ module Save:
             MAX_FIELDS: usize = 8
 
     public:
+        const MAGIC: i64 = Tune::MAGIC
+        const MAX_FIELDS: usize = Tune::MAX_FIELDS
+
         error SaveError:
             Capacity
             WrongVersion

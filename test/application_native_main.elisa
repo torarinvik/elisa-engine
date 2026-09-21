@@ -4,6 +4,7 @@
 # entry point, so this smoke exercises the same import surface as a game.
 include "./physics_app_probe.elisa"
 include "./runtime_services_probe.elisa"
+include "./user_data_probe.elisa"
 using Capabilities
 
 module NativeApplicationTestProbe:
@@ -31,9 +32,23 @@ def check_native_profile() -> i32:
     0
 
 def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
+    raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::clip_is_empty(AudioRuntime::empty_clip())
+    raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::voice_is_empty(AudioRuntime::empty_voice())
     try AudioRuntime::initialize_silent(8000, 1)
     try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, 0.75)
+    empty_clip_result: i32 = catch AudioRuntime::play(AudioRuntime::empty_clip(),
+        false, AudioRuntime::Bus.Effects, 1.0, 1):
+        value: 0
+        AudioRuntime::AudioError.InvalidHandle: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if empty_clip_result != 1
+    empty_voice_result: i32 = catch AudioRuntime::stop(AudioRuntime::empty_voice()):
+        ok: 0
+        AudioRuntime::AudioError.InvalidHandle: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if empty_voice_result != 1
     clip: AudioRuntime::ClipHandle = try AudioRuntime::decode_file("test/fixtures/audio-smoke.wav")
+    raise AudioRuntime::AudioError.UnknownStatus if AudioRuntime::clip_is_empty(clip)
     voice: AudioRuntime::VoiceHandle = try AudioRuntime::play(
         clip, true, AudioRuntime::Bus.Effects, 1.0, 1)
     count: usize = try AudioRuntime::active_voice_count()
@@ -429,6 +444,8 @@ def exercise_application() -> i32:
 # This mirrors the host contract: returning early from game code still closes
 # runtime services before the native process exits.
 def main() -> i32:
+    storage_result: i32 = exercise_user_data()
+    return 104 + storage_result if storage_result != 0
     result: i32 = exercise_application()
     shutdown_ok: bool = Application::shutdown()
     return 103 if not shutdown_ok
