@@ -233,6 +233,36 @@ extern "C" int32_t elisa_physics_v1_body_position(uint64_t world_generation,
     return ELISA_PHYSICS_OK;
 }
 
+extern "C" int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation,
+    float position_x, float position_y, float position_z,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w) {
+    if (!std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
+        std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
+        std::fabs(position_z) > MAX_POSITION || !std::isfinite(rotation_x) ||
+        !std::isfinite(rotation_y) || !std::isfinite(rotation_z) || !std::isfinite(rotation_w)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const double rotation_length = std::sqrt(double(rotation_x) * rotation_x +
+        double(rotation_y) * rotation_y + double(rotation_z) * rotation_z + double(rotation_w) * rotation_w);
+    if (!std::isfinite(rotation_length) || rotation_length <= 1.0e-6) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    wi::scene::RigidBodyPhysicsComponent* rigidbody = state.scene->rigidbodies.GetComponent(body->entity);
+    wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(body->entity);
+    if (rigidbody == nullptr || transform == nullptr || !rigidbody->IsKinematic()) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    const ElisaTransformPayload authored{{position_x, position_y, position_z},
+        {rotation_x, rotation_y, rotation_z, rotation_w}, {1.0f, 1.0f, 1.0f}};
+    return probe::submit_elisa_transform(&profile, &authored, transform)
+        ? ELISA_PHYSICS_OK : ELISA_PHYSICS_BACKEND_FAILURE;
+}
+
 extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation) {
     const int32_t status = require_world(world_generation);

@@ -82,6 +82,19 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
             mass: 0.0,
         })
     stage <- 4
+    target: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 3.0, y: 4.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::vec3_one(),
+    }
+    try PhysicsRuntime::body_set_kinematic_target(world, disposable, target)
+    target_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, disposable)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if target_position.y < 3.9
+    invalid_target: i32 = catch PhysicsRuntime::body_set_kinematic_target(world, falling, target):
+        value: 1
+        PhysicsRuntime::PhysicsError.InvalidArgument: 0
+        error failure: 2
+    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_target != 0
     try PhysicsRuntime::body_destroy(world, disposable)
     stage <- 5
     stale_body_status: i32 = catch PhysicsRuntime::body_position(world, disposable):
