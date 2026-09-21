@@ -239,6 +239,44 @@ class BuildRunCliTests(unittest.TestCase):
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), {"asset_cooks": [declaration]})
 
+    def test_declared_glb_cook_forwards_rig_clips_and_texture_output(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa GLB asset cook ") as temporary_directory:
+            project = Path(temporary_directory) / "Maze project"
+            source = project / "assets" / "cyborg.glb"
+            animation = project / "assets" / "locomotion.fbx"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"glb")
+            animation.write_bytes(b"fbx")
+            declaration = {
+                "importer": "glb",
+                "source": "assets/cyborg.glb",
+                "asset_path": "assets/cyborg.glb",
+                "output": "build/cooked/cyborg.pkg",
+                "animation_source": "assets/locomotion.fbx",
+                "texture_output": "build/cooked/cyborg-basecolor.png",
+            }
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [declaration]}), 0)
+            command = run.call_args.args[0]
+            self.assertEqual(command[1], str(SCRIPT.parent / "cook_glb_asset.py"))
+            self.assertEqual(command[2], str(source.resolve()))
+            self.assertEqual(command[command.index("--animation-source") + 1], str(animation.resolve()))
+            self.assertEqual(command[command.index("--texture-output") + 1],
+                str((project / "build/cooked/cyborg-basecolor.png").resolve()))
+            for changes in (
+                {"source": "assets/cyborg.gltf"},
+                {"animation_source": "../outside.fbx"},
+                {"animation_source": "assets/cyborg.glb"},
+                {"texture_output": "../outside.png"},
+                {"texture_output": "assets/cyborg.glb"},
+                {"max_triangles": 1000},
+            ):
+                with self.subTest(changes=changes), self.assertRaises(runner.BuildConfigurationError):
+                    runner.cook_declared_assets(project.resolve(), {
+                        "asset_cooks": [{**declaration, **changes}]})
+
     def test_declared_gltf_textures_become_bundle_sections(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa glTF textures ") as temporary_directory:
             project = Path(temporary_directory) / "Maze project"
