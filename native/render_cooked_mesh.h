@@ -167,10 +167,17 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         }
         mesh->armatureID = entity;
     }
-    if (mesh->subsets.empty()) return false;
-    mesh->subsets[0].indexOffset = 0;
-    mesh->subsets[0].indexCount = uint32_t(mesh->indices.size());
-    mesh->subsets[0].materialID = entity;
+    if (geometry.subsets.empty()) return false;
+    mesh->subsets.clear();
+    for (const auto& cooked : geometry.subsets) {
+        if (cooked.index_start > mesh->indices.size() ||
+            cooked.index_count > mesh->indices.size() - cooked.index_start ||
+            cooked.index_count == 0) return false;
+        wi::scene::MeshComponent::MeshSubset& subset = mesh->subsets.emplace_back();
+        subset.indexOffset = cooked.index_start;
+        subset.indexCount = cooked.index_count;
+        subset.materialID = entity;
+    }
     mesh->CreateRenderData();
     if (out_joint_entities != nullptr) *out_joint_entities = std::move(joint_entities);
     joint_rollback.committed = true;

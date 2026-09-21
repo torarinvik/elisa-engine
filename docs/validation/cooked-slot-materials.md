@@ -118,7 +118,7 @@ must load no slot materials.
     double-sided
 - Rejected:
   - records without subset records
-  - records on a skinned mesh
+  - records with malformed or incomplete subset metadata
   - stride 44
   - a stride without records, and records without a stride
   - one record too few or too many
@@ -186,7 +186,7 @@ The control passed all 44 cases, and each mutant failed the listed cases:
 | mask mode allowed | mask |
 | flags unchecked | flags |
 | one key alone reads as no records | no stride, no records |
-| records allowed without `material_slots` | without subsets, skinned |
+| records allowed without `material_slots` | without subsets |
 | any stride | stride 44 |
 | cutoff not read | material bounds |
 | emissive read one factor early | the panel `.pkg` and `.elpk`, two records, single material |
@@ -222,8 +222,9 @@ The control passed.
 - **Unit emission.** glTF `emissiveFactor` is at most 1, and
   `KHR_materials_emissive_strength` is an extension, which fails. Cooked
   emission uses the runtime's default strength.
-- **Static meshes only.** Slot materials need subset records, which skinned
-  geometry can't have.
+- **Runtime package, not cooker.** Slot records and subset bindings are valid
+  on skinned runtime packages; the glTF cooker still needs its complete
+  multi-material skinned scene path.
 - **IDs come from the game.** A cooked slot has no stable asset ID of its
   own. The game picks the material and set IDs, and registering a whole mesh
   twice under different IDs creates duplicate Wicked materials.

@@ -350,7 +350,7 @@ module RenderSceneMaterialSubsetNativeTests:
             return 1 if stage_status(Mesh::PANEL, set_id(Set::SINGLE)) != NATIVE_INVALID
             return 2 if stage_status(Mesh::PANEL, set_id(Set::TRIPLE)) != NATIVE_INVALID
             return 3 if stage_status(Mesh::TILE, set_id(Set::BLUE_CENTER)) != NATIVE_INVALID
-            return 4 if stage_status(Mesh::SKINNED, set_id(Set::BLUE_CENTER)) != NATIVE_INVALID
+            return 4 if stage_status(Mesh::SKINNED, set_id(Set::BLUE_CENTER)) != NATIVE_OK
             return 5 if stage_status(Mesh::PANEL, set_id(Set::ABSENT)) != NATIVE_LOAD_FAILED
             return 6 if stage_status(Mesh::PANEL, set_id(Set::BROKEN)) != NATIVE_LOAD_FAILED
             return 7 if stage_status(Mesh::TILE, set_id(Set::SINGLE)) != NATIVE_OK
@@ -379,13 +379,14 @@ module RenderSceneMaterialSubsetNativeTests:
             0
 
         # Blended subsets cast no shadow; one opaque subset makes the object
-        # cast. A skinned mesh has one slot, so a one-material set draws it.
+        # cast. Skinned subsets use the same slot bindings while retaining a
+        # per-instance armature.
         def committed_rows() -> i32:
             return 1 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
             glass: i32 = stage(Row::GLASS, Mesh::PANEL, set_id(Set::GLASS), HIDDEN_Y)
             mixed: i32 = stage(Row::MIXED, Mesh::PANEL, set_id(Set::MIXED), HIDDEN_Y)
             single: i32 = stage(Row::SINGLE, Mesh::PANEL, material_id(Paint::BLUE), HIDDEN_Y)
-            skinned: i32 = stage(Row::SKINNED, Mesh::SKINNED, set_id(Set::SINGLE), HIDDEN_Y)
+            skinned: i32 = stage(Row::SKINNED, Mesh::SKINNED, set_id(Set::BLUE_CENTER), HIDDEN_Y)
             panels_staged: bool = glass == NATIVE_OK and mixed == NATIVE_OK and single == NATIVE_OK
             if not panels_staged or skinned != NATIVE_OK:
                 _ = elisa_render_scene_v1_snapshot_abort()
@@ -397,11 +398,13 @@ module RenderSceneMaterialSubsetNativeTests:
             return 5 if not panel_draws(Row::GLASS, Paint::GLASS_BLUE, Paint::GLASS_RED)
             return 6 if not panel_draws(Row::MIXED, Paint::GLASS_BLUE, Paint::RED)
             return 7 if not panel_draws(Row::SINGLE, Paint::BLUE, Paint::BLUE)
-            return 8 if elisa_render_scene_v1_test_snapshot_subset_count(Row::SKINNED) != 1
-            return 9 if unregister_set(set_id(Set::MIXED)) != Code::INVALID
+            return 8 if elisa_render_scene_v1_test_snapshot_subset_count(Row::SKINNED) != 2
+            return 9 if not subset_is(Row::SKINNED, 0, 0, 3, Paint::BLUE)
+            return 10 if not subset_is(Row::SKINNED, 1, 3, 3, Paint::RED)
+            return 11 if unregister_set(set_id(Set::MIXED)) != Code::INVALID
             for index in 0..<4 |handles|:
-                return 10 if handles[index] <= 0 or not retire(handles[index])
-            return 11 if unregister_set(set_id(Set::MIXED)) != Code::OK
+                return 12 if handles[index] <= 0 or not retire(handles[index])
+            return 13 if unregister_set(set_id(Set::MIXED)) != Code::OK
             0
 
         # Sets can't change while a snapshot transaction is open, and staging

@@ -35,8 +35,9 @@ registered material per slot, and each subset draws with its slot's material.
      previous one ended, holds a nonzero multiple of 3 indices, stays inside
      the stream, and the last one ends at its end.
    - Each subset's slot must be below `material_slots`.
-   - Skinned geometry can't declare subsets, because the skinned path draws
-     one material.
+   - Skinned geometry uses the same subset partition. Its armature and joint
+     hierarchy remain owned by each instance, while every subset resolves to
+     the registered material for its slot.
 
    The field decoders moved to `native/cooked_package_fields.h` to keep the
    loader under the source-length limit.
@@ -99,13 +100,13 @@ which must be accepted with exactly the expected subsets or rejected with the
 expected error:
 - accepted: the cooked panel as `.pkg` and `.elpk`, the maze tile, a legacy
   package with no records, an explicit single subset, a mesh with an unused
-  slot, 16 subsets in 16 slots, and a skinned mesh without records
+  slot, 16 subsets in 16 slots, and skinned meshes with no records, one
+  subset, or multiple subsets and slot materials
 - rejected: a gap, an overlap, a subset that splits a triangle, an empty
   subset, a missing slot, a short total, an overrun, a count that wraps
   `uint32`, four subsets whose wraps land back on an exact partition, 17
   subsets, 17 slots, 0 slots, a count that disagrees with the
-  records, stride 16, a missing `material_slots`, missing records, and a
-  skinned mesh with either two subsets or one
+  records, stride 16, a missing `material_slots`, and missing records
 
 The render smoke runs it, and so does the Wicked probe's build phase.
 
@@ -113,8 +114,8 @@ The render smoke runs it, and so does the Wicked probe's build phase.
 SDL3/Metal smoke before the asynchronous asset test. The render smoke has run
 out of distinct exit codes, so this group exits 193 and logs its failing case
 through `elisa_render_scene_v1_test_failed_case`. The smoke cooks the panel to
-`build/cooked/subsets/panel.elpk` and writes a two-triangle skinned strip to
-`build/cooked/subsets/skinned.pkg`. The test registers emissive, double-sided
+`build/cooked/subsets/panel.elpk` and writes a two-triangle skinned strip with
+two material subsets to `build/cooked/subsets/skinned.pkg`. The test registers emissive, double-sided
 red and blue paints, plus alpha-blended glass versions of each. Test hooks
 built only into the smoke host read back:
 - each instance's Wicked subsets and their material entities
@@ -132,9 +133,9 @@ The group logs its first failing case. The cases are:
 | 11–24 | Six sets register and count 6. Registering the same materials again is a no-op; different materials or a different count conflict. A set listing a missing material is `AssetLoadFailure`. A set can't reuse a material's ID, nor a material a set's |
 | 31–45 | The raw ABI refuses an out-of-order slot, a slot after a rejection, a count that disagrees with the staging, a zero material, a zero count and slot 16. A full 16-slot set registers, registering consumes the staging, and a second unregister is `AssetLoadFailure` |
 | 51–57 | The Elisa builder refuses an empty set, a zero ID and a seventeenth material; a 16-material set registers |
-| 61–68 | Staging a panel row with a one- or three-material set, or a tile or skinned row with a two-material set, is `InvalidValue`. An unknown set and a set whose material was never registered are `AssetLoadFailure`. A one-material set on the tile and a plain material on the panel stage |
+| 61–68 | Staging a panel row with a one- or three-material set, or a tile row with a two-material set, is `InvalidValue`. The two-material set stages on the two-subset skinned row. An unknown set and a set whose material was never registered are `AssetLoadFailure`. A one-material set on the tile and a plain material on the panel stage |
 | 71–82 | A panel row with `[blue, red]` draws subsets (0, 6, red), (6, 6, blue), (12, 6, red) and casts a shadow. The frame shows a blue center strip between red ones. The set in use and a material a set lists can't be unregistered. Replacing the row with `[red, blue]` swaps the frame's colors, and the replaced set can then be unregistered and registered again |
-| 91–101 | One commit creates a glass panel, a mixed panel, a single-material panel and a skinned strip. Shadows are off only for the all-glass panel; every panel draws its expected subsets, and the skinned strip draws one. The mixed set can be unregistered only after its row is retired |
+| 91–101 | One commit creates a glass panel, a mixed panel, a single-material panel and a skinned strip. Shadows are off only for the all-glass panel; every panel and both skinned subsets draw with their expected materials. The mixed set can be unregistered only after its row is retired |
 | 111–115 | During a transaction, registering, unregistering, staging a slot and registering staged slots are all `BatchActive`, and they leave no staging behind |
 | 121–122 | The table accepts sets up to 32 and refuses the next with `Capacity` |
 | 131–140 | Every set, paint and mesh unregisters, and the shared-mesh and instance counts return to where they started |
@@ -172,7 +173,6 @@ The control passed all 26 cases. Each mutant failed the listed cases:
 | no per-subset bound against the index stream | triple wrap |
 | no check that the last subset ends at the stream's end | short total |
 | no slot bound | missing slot |
-| skinned meshes may declare subsets | skinned with two subsets, skinned with one |
 | partial records read as a legacy package | missing `material_slots`, missing records |
 | 17 subsets allowed | 17 subsets |
 | any stride allowed | stride 16 |
@@ -207,8 +207,10 @@ per-subset bound rejects it.
 - **No material properties from glTF.** Slots carry only their order. The
   game registers each slot's material in Elisa. Superseded for factors by
   [`cooked-slot-materials.md`](cooked-slot-materials.md); textures remain.
-- **Static meshes only.** Skinned geometry still draws with one material, so a
-  skinned mesh has one slot and rejects subset records.
+- **Runtime package, not cooker.** The package reader and snapshot renderer
+  support skinned subsets, but the runtime glTF cooker still emits only the
+  single-material skinned shape until the remaining A05 scene import work is
+  complete.
 - **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
   cameras and lights still fail in the runtime cooker. The normalized scene
   contract and `native/asset_import.h` cover them only in the Wicked probe.

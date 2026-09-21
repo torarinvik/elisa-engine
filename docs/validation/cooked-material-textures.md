@@ -283,8 +283,9 @@ loose packages, package lines and section clashes.
   still can't turn occlusion on. `Material.occlusion` passes its texture as
   the surface image, but never enables Wicked occlusion. Cooked slots are
   the only way to get it.
-- **Static meshes only.** Slot records still need subset records, which
-  skinned geometry can't have.
+- **Runtime package, not cooker.** Slot texture records and subset bindings are
+  valid on skinned runtime packages; the glTF cooker still needs its complete
+  multi-material skinned scene path.
 - **IDs come from the game.** As with cooked factors, the game picks every
   texture, material and set ID.
 
