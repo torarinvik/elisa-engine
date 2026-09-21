@@ -28,6 +28,7 @@ module RuntimeServices:
             PhysicsUnavailable
             AudioUnavailable
             SessionStopped
+            FrameUnavailable
             ShutdownFailed
 
         # A frame contributes elapsed time to the fixed simulation clock.
@@ -252,6 +253,23 @@ module RuntimeServices:
         def audio_active_voice_count(session: Session&) -> usize error[RuntimeServicesError, AudioRuntime::AudioError]:
             try require_audio(session)
             try AudioRuntime::active_voice_count()
+
+        # Keep the native host lifecycle behind the same owner as its
+        # provider fallbacks. These wrappers intentionally preserve the
+        # Application statuses while rejecting use after session shutdown.
+        def pump(session: Session&) -> Application::PumpStatus error[RuntimeServicesError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            Application::pump()
+
+        def frame_info(session: Session&) -> Application::FrameInfo error[RuntimeServicesError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            info: mutable Application::FrameInfo = zeroed
+            raise RuntimeServicesError.FrameUnavailable if not Application::frame_info(&info)
+            info
+
+        def request_exit(session: Session&) -> bool error[RuntimeServicesError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            Application::request_exit()
 
         def physics_fixed_step(session: mutable Session&, delta_seconds: f32) -> u64 error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
