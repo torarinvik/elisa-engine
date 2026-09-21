@@ -34,6 +34,12 @@ module RenderScene:
         extern elisa_render_scene_v1_resize(width: i32, height: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_set_camera_render_target(width: i32, height: i32, update_interval: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_camera_render_target() -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_set_camera_orthographic_height(vertical_size: f32) -> i32
 
         @callconv(c)
@@ -72,26 +78,19 @@ module RenderScene:
         extern elisa_render_scene_v1_snapshot_stage_tint(render_id: i64,
             red: f32, green: f32, blue: f32,
             emissive_red: f32, emissive_green: f32, emissive_blue: f32, emissive_strength: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_commit() -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_abort() -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
-
         @callconv(c)
         extern elisa_render_scene_v1_play_animation(handle: i64, clip_name: cstr,
             loop: i32, speed: f32, blend_seconds: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_stop_animation(handle: i64, blend_seconds: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_advance_animation(handle: i64, delta_seconds: f32) -> i32
 
@@ -101,16 +100,12 @@ module RenderScene:
         extern elisa_render_scene_v1_set_texture_uv_transform(handle: i64, scale_u: f32, scale_v: f32, offset_u: f32, offset_v: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_sun_shadows(enabled: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_texture(handle: i64, slot: i32, asset_path: cstr) -> i32
-
         @callconv(c)
         extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32,
             blue: f32, strength: f32) -> i32
@@ -345,6 +340,12 @@ module RenderScene:
 
         def resize(width: i32, height: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_resize(width, height))
+
+        def set_camera_render_target(width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_camera_render_target(width, height, update_interval))
+
+        def clear_camera_render_target() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_camera_render_target())
 
         def set_camera_orthographic_height(vertical_size: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_orthographic_height(vertical_size))

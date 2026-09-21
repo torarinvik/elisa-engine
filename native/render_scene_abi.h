@@ -53,6 +53,9 @@ enum {
 uint32_t elisa_render_scene_abi_version(void);
 int32_t elisa_render_scene_v1_initialize(int32_t width, int32_t height, float vertical_size);
 int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
+int32_t elisa_render_scene_v1_set_camera_render_target(
+    int32_t width, int32_t height, float update_interval);
+int32_t elisa_render_scene_v1_clear_camera_render_target(void);
 int32_t elisa_render_scene_v1_set_camera_orthographic_height(float vertical_size);
 int32_t elisa_render_scene_v1_set_camera_perspective(
     float vertical_fov_radians, float near_clip, float far_clip);

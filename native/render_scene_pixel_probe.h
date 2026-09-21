@@ -316,6 +316,18 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_view_matches(
         close(right, expected_right) ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_camera_render_target_matches(
+    int32_t width, int32_t height, int32_t expected_live) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.camera == nullptr) return 0;
+    const auto& target = state.camera->render_to_texture;
+    const bool live = target.resolution.x == uint32_t(width) &&
+        target.resolution.y == uint32_t(height) &&
+        (target.rendertarget_render.IsValid() || target.rendertarget_display.IsValid());
+    return live == (expected_live != 0) ? 1 : 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
