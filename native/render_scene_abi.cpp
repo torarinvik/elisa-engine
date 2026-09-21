@@ -153,6 +153,7 @@ struct RenderSceneService {
     float camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
     float camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
     bool perspective_camera = false;
+    int32_t shadow_quality = 1;
     float eye[3] = {0.0f, 15.0f, 0.0f};
     float target[3] = {0.0f, 0.0f, 0.0f};
     float up[3] = {0.0f, 0.0f, -1.0f};
@@ -380,6 +381,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
     state.camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
     state.perspective_camera = false;
+    state.shadow_quality = 1;
     state.initialized = false;
 }
 void on_application_shutdown(void* context) {

@@ -55,6 +55,19 @@ extern "C" int32_t elisa_render_scene_v1_set_exposure(float exposure) {
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_shadow_quality(int32_t quality) {
+    if (!elisa::render_scene_effects::valid_shadow_quality(quality)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    elisa::render_scene_effects::apply_shadow_quality(quality);
+    state.shadow_quality = quality;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 extern "C" int32_t elisa_render_scene_v1_test_quality_matches(int32_t ambient_occlusion, int32_t fxaa) {
     RenderSceneService& state = service();
@@ -91,5 +104,12 @@ extern "C" int32_t elisa_render_scene_v1_test_postprocess_matches(
     const wi::renderer::Tonemap expected = tonemap == 0 ? wi::renderer::Tonemap::Reinhard :
         tonemap == 1 ? wi::renderer::Tonemap::ACES : wi::renderer::Tonemap::Uchimura;
     return state.path->getTonemap() == expected && state.path->getExposure() == exposure ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_shadow_quality_matches(int32_t quality) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    return state.shadow_quality == quality ? 1 : 0;
 }
 #endif

@@ -7,6 +7,9 @@ module RenderSceneQualitySettingsNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_ambient_occlusion_matches(range: f32, power: f32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_shadow_quality_matches(quality: i32) -> i32
+
     public:
         def exercise() -> i32:
             tonemap_status: i32 = catch RenderScene::set_tonemap(RenderScene::Tonemap.Uchimura):
@@ -31,4 +34,8 @@ module RenderSceneQualitySettingsNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 114 if invalid_ao != 1
+            shadow_status: i32 = catch RenderScene::set_shadow_quality(RenderScene::ShadowQuality.High):
+                ok: 0
+                error failure: 1
+            return 115 if shadow_status != 0 or elisa_render_scene_v1_test_shadow_quality_matches(2) != 1
             0
