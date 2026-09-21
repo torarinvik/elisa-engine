@@ -1,6 +1,7 @@
 # Own the Application host and activate engine-owned service fallbacks selected
 # by the validated startup report. Provider-specific handles stay encapsulated.
 include "./application.elisa"
+include "./clock.elisa"
 include "../backend/requirements.elisa"
 include "../physics/runtime.elisa"
 include "../audio/runtime.elisa"
@@ -29,10 +30,19 @@ module RuntimeServices:
             SessionStopped
             ShutdownFailed
 
+        # A frame contributes elapsed time to the fixed simulation clock.
+        # Callers execute their validated system plan `steps` times, then use
+        # `interpolation` for presentation between committed ticks.
+        struct SimulationFrame:
+            steps: usize
+            tick_count: i64
+            interpolation: f32
+
         # Provider and host ownership stay inside this affine public value.
         affine struct Session:
             private:
                 physics: mutable PhysicsRuntime::ServiceState
+                simulation_clock: mutable Runtime::StepClock
                 audio_live: mutable bool
                 application_live: mutable bool
 
@@ -68,6 +78,7 @@ module RuntimeServices:
                     session.application_live <- false
                     session.audio_live <- false
                     PhysicsRuntime::service_reset(&session.physics)
+                    session.simulation_clock <- Runtime::StepClock()
                     return true
             audio_closed and physics_closed and application_closed
 
@@ -136,12 +147,17 @@ module RuntimeServices:
                 ActivationStatus.UnsupportedProvider:
                     OpenStatus.UnsupportedProvider
 
+        def require_audio(session: Session&) -> void error[RuntimeServicesError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.AudioUnavailable if not session.audio_live
+
     public:
         # The inert affine value owns no native resources. `open` performs all
         # fallible startup work explicitly, avoiding a fallible affine return.
         def Session() -> Session:
             Session{
                 physics: PhysicsRuntime::ServiceState(),
+                simulation_clock: Runtime::StepClock(),
                 audio_live: false,
                 application_live: false,
             }
@@ -168,6 +184,7 @@ module RuntimeServices:
                 return OpenStatus.ApplicationInitializationFailed
             return OpenStatus.ApplicationInitializationFailed if opened != Application::InitializeStatus.Ready and opened != Application::InitializeStatus.FallbackRequired
             session.application_live <- true
+            session.simulation_clock <- Runtime::StepClock()
 
             provider_failure: mutable OpenStatus = OpenStatus.Ready
             for index in 0..<report.services.decision_count |session, audio_sample_rate, audio_channels, provider_failure|:
@@ -194,6 +211,47 @@ module RuntimeServices:
 
         def audio_active(session: Session&) -> bool:
             session.application_live and session.audio_live
+
+        # Advance the fixed-step clock once per rendered frame. The returned
+        # batch is the contract between frame pacing and the game's validated
+        # Executor plan: run that plan once for each due tick, then present
+        # using the fractional remainder.
+        def advance_simulation(session: mutable Session&,
+            elapsed_micros: i64) -> SimulationFrame error[RuntimeServicesError, Runtime::ClockError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            steps: usize = try Runtime::advance(&session.simulation_clock, elapsed_micros)
+            SimulationFrame{
+                steps: steps,
+                tick_count: session.simulation_clock.tick_count,
+                interpolation: Runtime::interpolation_fraction(session.simulation_clock),
+            }
+
+        # Route game audio operations through the owner that selected and
+        # activated the startup provider. Handles remain opaque values;
+        # provider cleanup still occurs before Application shutdown.
+        def audio_decode_file(session: Session&, path: cstr) -> AudioRuntime::ClipHandle error[RuntimeServicesError, AudioRuntime::AudioError]:
+            try require_audio(session)
+            try AudioRuntime::decode_file(path)
+
+        def audio_play(session: Session&, clip: AudioRuntime::ClipHandle,
+            looped: bool, bus: AudioRuntime::Bus, gain: f32,
+            priority: u32) -> AudioRuntime::VoiceHandle error[RuntimeServicesError, AudioRuntime::AudioError]:
+            try require_audio(session)
+            try AudioRuntime::play(clip, looped, bus, gain, priority)
+
+        def audio_stop(session: Session&,
+            voice: AudioRuntime::VoiceHandle) -> void error[RuntimeServicesError, AudioRuntime::AudioError]:
+            try require_audio(session)
+            try AudioRuntime::stop(voice)
+
+        def audio_set_bus_gain(session: Session&, bus: AudioRuntime::Bus,
+            gain: f32) -> void error[RuntimeServicesError, AudioRuntime::AudioError]:
+            try require_audio(session)
+            try AudioRuntime::set_bus_gain(bus, gain)
+
+        def audio_active_voice_count(session: Session&) -> usize error[RuntimeServicesError, AudioRuntime::AudioError]:
+            try require_audio(session)
+            try AudioRuntime::active_voice_count()
 
         def physics_fixed_step(session: mutable Session&, delta_seconds: f32) -> u64 error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live

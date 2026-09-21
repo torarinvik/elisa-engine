@@ -74,10 +74,50 @@ module RuntimeServicesProbe:
                 AudioRuntime::MIN_CHANNEL_COUNT, &occupied_report)
             return 49 if occupied != RuntimeServices::OpenStatus.SessionAlreadyOpen
             return 50 if not RuntimeServices::physics_active(session) or not RuntimeServices::audio_active(session)
-            voices: usize = catch AudioRuntime::active_voice_count():
+
+            gain_status: i32 = catch RuntimeServices::audio_set_bus_gain(session,
+                AudioRuntime::Bus.Effects, 0.75):
+                ok: 0
+                error failure: 1
+            return 51 if gain_status != 0
+            invalid_play: i32 = catch RuntimeServices::audio_play(session,
+                AudioRuntime::empty_clip(), false, AudioRuntime::Bus.Effects, 1.0, 1):
+                value: 0
+                AudioRuntime::AudioError.InvalidHandle: 1
+                error failure: 2
+            return 52 if invalid_play != 1
+            clip: AudioRuntime::ClipHandle = catch RuntimeServices::audio_decode_file(session,
+                "test/fixtures/audio-smoke.wav"):
+                value: value
+                error failure: return 53
+            voice: AudioRuntime::VoiceHandle = catch RuntimeServices::audio_play(session,
+                clip, true, AudioRuntime::Bus.Effects, 1.0, 1):
+                value: value
+                error failure: return 54
+            voices: usize = catch RuntimeServices::audio_active_voice_count(session):
                 value: value
                 error failure: return 35
-            return 36 if voices != 0
+            return 36 if voices != 1
+            stopped_voice: i32 = catch RuntimeServices::audio_stop(session, voice):
+                ok: 0
+                error failure: 1
+            return 55 if stopped_voice != 0
+            quiet_voices: usize = catch RuntimeServices::audio_active_voice_count(session):
+                value: value
+                error failure: return 56
+            return 57 if quiet_voices != 0
+
+            partial_frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
+                session, 10000):
+                value: value
+                error failure: return 58
+            return 59 if partial_frame.steps != 0 or partial_frame.tick_count != 0
+            return 60 if partial_frame.interpolation <= 0.0
+            due_frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
+                &session, 24000):
+                value: value
+                error failure: return 61
+            return 62 if due_frame.steps != 2 or due_frame.tick_count != 2
 
             body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(session,
                 PhysicsRuntime::BodyDesc{
@@ -88,10 +128,13 @@ module RuntimeServicesProbe:
                 }):
                 value: value
                 error failure: return 37
-            tick: u64 = catch RuntimeServices::physics_fixed_step(session, 1.0 / 60.0):
-                value: value
-                error failure: return 38
-            return 39 if tick != 1
+            physics_tick: mutable u64 = 0
+            for index in 0..<due_frame.steps |session, due_frame, physics_tick|:
+                physics_tick <- catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: value
+                    error failure: return 38
+            return 39 if physics_tick != due_frame.tick_count.u64()
             _ = catch RuntimeServices::physics_body_position(session, body):
                 value: value
                 error failure: return 40
@@ -107,4 +150,27 @@ module RuntimeServicesProbe:
                 AudioRuntime::AudioError.ApplicationUnavailable: 0
                 error failure: 2
             return 43 if audio_closed != 0
+            session_audio_closed: i32 = catch RuntimeServices::audio_active_voice_count(session):
+                value: 1
+                RuntimeServices::RuntimeServicesError.SessionStopped: 0
+                error failure: 2
+            return 63 if session_audio_closed != 0
+            stopped_clock: i32 = catch RuntimeServices::advance_simulation(session, 1):
+                value: 1
+                RuntimeServices::RuntimeServicesError.SessionStopped: 0
+                error failure: 2
+            return 64 if stopped_clock != 0
+
+            requirements.service_count <- 4
+            without_audio_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            without_audio: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &without_audio_report)
+            return 65 if without_audio != RuntimeServices::OpenStatus.FallbackRequired
+            unavailable_audio: i32 = catch RuntimeServices::audio_active_voice_count(session):
+                value: 0
+                RuntimeServices::RuntimeServicesError.AudioUnavailable: 1
+                error failure: 2
+            return 66 if unavailable_audio != 1
+            return 67 if not RuntimeServices::shutdown(&session)
             0
