@@ -9,12 +9,14 @@
 #include "package_manifest.h"
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <exception>
 #include <filesystem>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
@@ -24,6 +26,11 @@
 namespace probe {
 
 enum class VirtualReadState : uint8_t { Empty, Queued, Reading, Ready, Failed, Cancelled };
+
+struct VirtualReadCancellation {
+    std::atomic_bool requested{false};
+    std::atomic_size_t bytes_read{0};
+};
 
 struct VirtualReadHandle {
     static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
@@ -115,7 +122,8 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         Request* item = find(handle);
         if (item == nullptr || (item->state != VirtualReadState::Queued &&
-                item->state != VirtualReadState::Reading)) return false;
+                item->state != VirtualReadState::Reading) || !item->cancellation) return false;
+        item->cancellation->requested.store(true, std::memory_order_relaxed);
         item->state = VirtualReadState::Cancelled;
         return true;
     }
@@ -151,6 +159,7 @@ public:
                     work.mount_generation = item.mount_generation;
                     work.mount_epoch = item.mount_epoch;
                     work.validate_dependency_order = item.validate_dependency_order;
+                    work.cancellation = item.cancellation;
                     work.base_root = base_root_;
                     work.overrides = overrides_;
                     claimed = true;
@@ -165,6 +174,10 @@ public:
 
             std::vector<uint8_t> bytes;
             std::string error;
+            if (work.cancellation && work.cancellation->requested.load(std::memory_order_relaxed)) {
+                ++completed;
+                continue;
+            }
             const PackageResolution resolved = resolve_package_path(
                 work.base_root, work.overrides, work.logical_name, work.mount_generation);
             bool succeeded = false;
@@ -177,10 +190,19 @@ public:
                         MAX_DEPENDENCIES, dependency_order, dependency_error) ||
                     (work.validate_dependency_order && dependency_order != work.expected_dependency_order)) {
                     error = dependency_error.empty() ? "package dependency order mismatch" : dependency_error;
+                } else if (work.cancellation &&
+                    work.cancellation->requested.load(std::memory_order_relaxed)) {
+                    ++completed;
+                    continue;
                 } else {
                     const BinaryPackageIndex index = read_binary_package_index(resolved.path);
                     succeeded = index.valid && read_binary_package_section(
-                        resolved.path, index, work.section, bytes, error);
+                        resolved.path, index, work.section, bytes, error,
+                        [cancellation = work.cancellation](size_t bytes_read, size_t) {
+                            if (!cancellation) return false;
+                            cancellation->bytes_read.store(bytes_read, std::memory_order_relaxed);
+                            return cancellation->requested.load(std::memory_order_relaxed);
+                        });
                     if (!succeeded && error.empty()) error = index.error;
                 }
             }
@@ -217,6 +239,13 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         const Request* item = find(handle);
         return item == nullptr ? VirtualReadState::Empty : item->state;
+    }
+
+    size_t bytes_read(VirtualReadHandle handle) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const Request* item = find(handle);
+        return item == nullptr || !item->cancellation ? 0 :
+            item->cancellation->bytes_read.load(std::memory_order_relaxed);
     }
 
     bool take(VirtualReadHandle handle, std::vector<uint8_t>& output, uint64_t& generation,
@@ -260,6 +289,12 @@ private:
             Request& item = requests_[slot];
             if (item.state == VirtualReadState::Queued || item.state == VirtualReadState::Reading ||
                 item.state == VirtualReadState::Ready) continue;
+            std::shared_ptr<VirtualReadCancellation> cancellation;
+            try {
+                cancellation = std::make_shared<VirtualReadCancellation>();
+            } catch (...) {
+                return {};
+            }
             const uint32_t previous_generation = item.generation;
             item = {};
             item.logical_name = logical_name;
@@ -271,6 +306,7 @@ private:
             item.mount_generation = generation_;
             item.mount_epoch = mount_epoch_;
             item.dependency_generation = dependency_generation;
+            item.cancellation = std::move(cancellation);
             item.generation = previous_generation == UINT32_MAX ? 0 : previous_generation + 1;
             if (item.generation == 0) { item.state = VirtualReadState::Failed; return {}; }
             item.state = VirtualReadState::Queued;
@@ -295,6 +331,7 @@ private:
         std::string logical_name;
         std::string section;
         std::vector<std::string> expected_dependency_order;
+        std::shared_ptr<VirtualReadCancellation> cancellation;
         std::filesystem::path base_root;
         std::vector<std::filesystem::path> overrides;
         uint64_t mount_generation = 0;
@@ -313,6 +350,7 @@ private:
         uint32_t generation = 0;
         VirtualReadState state = VirtualReadState::Empty;
         bool validate_dependency_order = false;
+        std::shared_ptr<VirtualReadCancellation> cancellation;
     };
 
     struct AsyncPump {

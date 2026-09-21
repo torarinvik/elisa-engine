@@ -168,10 +168,12 @@ mutant exited 1 at the named check:
 
 ## Limits
 
-- **Cancellation granularity.** A job checks for cancellation once, between
-  its dependency check and its section read. A cancelled read or decompression
-  that has already started runs to completion, and its result is then
-  discarded.
+- **Cancellation granularity.** `VirtualFileService` now reads ELPK sections
+  in 64 KiB chunks and stops at the next chunk boundary after cancellation;
+  the currently blocking chunk completes. One-shot zstd decompression remains
+  uninterruptible. The production RenderScene snapshot worker still checks only
+  before its section read, so an in-progress read/decode finishes and its result
+  is discarded.
 - **Adoption can still fail.** Requests count against the slot limits at
   request time, but synchronous registration of another ID doesn't count
   pending requests and can take the last slot first. The budgets (256 MiB of
@@ -203,6 +205,11 @@ mutant exited 1 at the named check:
   on a non-owner worker thread; its material creates and samples the texture
   on the owner thread. The truncated-image registration test now fails before
   retaining a texture slot.
+- `VirtualFileService` cancellation validation observes 64 KiB of a 32 MiB
+  section read, cancels before EOF, and verifies the result remains unpublished.
+  A direct package-reader check cancels at the same boundary and confirms no
+  partial section reaches its caller.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON_BIN=/opt/homebrew/bin/python3 ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ elisascript scripts/wicked_probe.elisascript build` passed the native build and application/render smokes. The matching `frame` phase passed the new package cancellation probe and SDL3/Metal render checks.
 - `elisascript scripts/wicked_probe.elisascript build` rebuilt the probe with
   the worker check and passed its application and render smokes. The `frame`
   phase then passed.

@@ -309,21 +309,41 @@ inline bool probe_package_bounds(const std::string& valid_package,
         worker_vfs.request_with_dependencies("maze.elpk", "mesh", {"maze.elpk"}, 10).generation == 0 &&
         worker_vfs.pump(1) == 1 && worker_vfs.state(missing_dependency_read) == VirtualReadState::Failed &&
         worker_vfs.error(missing_dependency_read) == "package dependency is missing";
+    constexpr size_t IN_FLIGHT_PAYLOAD_BYTES = size_t(32) * 1024 * 1024;
     const std::filesystem::path in_flight_path = base_root / "in-flight.elpk";
-    write_large_binary_package_fixture(in_flight_path, 32 * 1024 * 1024);
+    write_large_binary_package_fixture(in_flight_path, IN_FLIGHT_PAYLOAD_BYTES);
+    const BinaryPackageIndex in_flight_index = read_binary_package_index(in_flight_path.string());
+    std::vector<uint8_t> cancelled_section_bytes;
+    std::string cancelled_section_error;
+    size_t cancelled_section_progress = 0;
+    const bool section_read_cancelled_at_chunk = in_flight_index.valid &&
+        !read_binary_package_section(in_flight_path.string(), in_flight_index, "payload",
+            cancelled_section_bytes, cancelled_section_error,
+            [&cancelled_section_progress](size_t bytes_read, size_t) {
+                cancelled_section_progress = bytes_read;
+                return bytes_read >= BINARY_PACKAGE_READ_CHUNK_BYTES;
+            }) && cancelled_section_progress == BINARY_PACKAGE_READ_CHUNK_BYTES &&
+        cancelled_section_bytes.empty() && cancelled_section_error == "binary section read cancelled";
     VirtualFileService in_flight_vfs;
     const bool in_flight_mounted = in_flight_vfs.mount(base_root, {}, 12);
     const VirtualReadHandle in_flight_read = in_flight_vfs.request("in-flight.elpk", "payload");
     auto in_flight_worker = in_flight_vfs.pump_async(1);
     const auto in_flight_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     VirtualReadState observed_in_flight_state = VirtualReadState::Queued;
+    size_t observed_in_flight_bytes = 0;
     while (std::chrono::steady_clock::now() < in_flight_deadline) {
         observed_in_flight_state = in_flight_vfs.state(in_flight_read);
-        if (observed_in_flight_state != VirtualReadState::Queued) break;
+        observed_in_flight_bytes = in_flight_vfs.bytes_read(in_flight_read);
+        if (observed_in_flight_state == VirtualReadState::Reading &&
+            observed_in_flight_bytes >= BINARY_PACKAGE_READ_CHUNK_BYTES) break;
+        if (observed_in_flight_state != VirtualReadState::Queued &&
+            observed_in_flight_state != VirtualReadState::Reading) break;
         std::this_thread::yield();
     }
     const bool saw_in_flight_read = in_flight_mounted &&
-        observed_in_flight_state == VirtualReadState::Reading;
+        observed_in_flight_state == VirtualReadState::Reading &&
+        observed_in_flight_bytes >= BINARY_PACKAGE_READ_CHUNK_BYTES &&
+        observed_in_flight_bytes < IN_FLIGHT_PAYLOAD_BYTES;
     const bool cancelled_in_flight = saw_in_flight_read && in_flight_vfs.cancel(in_flight_read) &&
         in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled &&
         in_flight_worker.get() == 1 && in_flight_vfs.state(in_flight_read) == VirtualReadState::Cancelled;
@@ -444,13 +464,14 @@ inline bool probe_package_bounds(const std::string& valid_package,
             resolve_package_path(base_root, {override_root}, "maze.elpk", 7).generation == 7, "package override resolution") &&
         check(worker_read_ok, "virtual file worker scheduling") &&
         check(dependency_rejections, "virtual file worker dependency validation") &&
-        check(cancelled_in_flight, "virtual file in-flight cancellation does not block publication") &&
+        check(cancelled_in_flight, "virtual file cancellation stops an in-progress chunked read") &&
         check(worker_shutdown_waits, "virtual file worker lifetime joined on service destruction") &&
         check(remount_epoch_invalidates, "virtual file remount epoch invalidation") &&
         check(dependency_graph, "package manifest dependency DAG order and cycle rejection") &&
         check(chain_of_sixteen && chain_of_seventeen_rejected, "package dependency chain bounded at 16") &&
         check(nested_names_resolve, "package dependency names relative to their package") &&
         check(bombs_rejected, "zstd decompression bombs rejected by declared size") &&
+        check(section_read_cancelled_at_chunk, "binary section read cancels at a chunk boundary") &&
         check(resolve_package_path(base_root, {}, "maze.elpk", 8).found &&
             !resolve_package_path(base_root, {}, "maze.elpk", 8).override_used, "package base resolution") &&
         check(!resolve_package_path(base_root, {}, "../maze.elpk", 8).found, "package override traversal rejected") &&

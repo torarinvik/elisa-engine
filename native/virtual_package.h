@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <fstream>
 #include <filesystem>
 #include <map>
@@ -13,6 +14,9 @@
 #include <zstd.h>
 
 namespace probe {
+
+inline constexpr size_t BINARY_PACKAGE_READ_CHUNK_BYTES = size_t(64) * 1024;
+using BinaryPackageReadCancellationCheck = std::function<bool(size_t, size_t)>;
 
 struct PackageIndex {
     static constexpr size_t MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
@@ -270,7 +274,8 @@ inline BinaryPackageIndex read_binary_package_index(const std::string& path) {
 }
 
 inline bool read_binary_package_section(const std::string& path, const BinaryPackageIndex& index,
-    const std::string& name, std::vector<uint8_t>& output, std::string& error) {
+    const std::string& name, std::vector<uint8_t>& output, std::string& error,
+    BinaryPackageReadCancellationCheck cancellation_check = {}) {
     output.clear();
     if (!index.valid) { error = "binary package index is invalid"; return false; }
     const auto section_it = std::find_if(index.sections.begin(), index.sections.end(),
@@ -286,8 +291,26 @@ inline bool read_binary_package_section(const std::string& path, const BinaryPac
     }
     std::vector<uint8_t> compressed(static_cast<size_t>(section_it->size));
     input.seekg(static_cast<std::streamoff>(section_it->offset));
-    input.read(reinterpret_cast<char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
-    if (!input && !compressed.empty()) { error = "binary section read failed"; return false; }
+    size_t bytes_read = 0;
+    while (bytes_read < compressed.size()) {
+        if (cancellation_check && cancellation_check(bytes_read, compressed.size())) {
+            error = "binary section read cancelled";
+            return false;
+        }
+        const size_t chunk = std::min(BINARY_PACKAGE_READ_CHUNK_BYTES,
+            compressed.size() - bytes_read);
+        input.read(reinterpret_cast<char*>(compressed.data() + bytes_read),
+            static_cast<std::streamsize>(chunk));
+        if (input.gcount() != static_cast<std::streamsize>(chunk)) {
+            error = "binary section read failed";
+            return false;
+        }
+        bytes_read += chunk;
+    }
+    if (cancellation_check && cancellation_check(bytes_read, compressed.size())) {
+        error = "binary section read cancelled";
+        return false;
+    }
     if (section_it->compression == 0) {
         if (section_it->size != section_it->unpacked_size) { error = "raw section size mismatch"; return false; }
         output = std::move(compressed);

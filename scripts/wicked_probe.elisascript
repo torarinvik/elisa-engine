@@ -69,7 +69,7 @@ def main(arguments: darray[sview]) -> i64:
         return cook_status
 
     _ = create_directories(root.joinpath("build"))
-    cxx: sview = get_environment_or("CXX", "c++")
+    cxx: sview = get_environment_or("CXX", "clang++")
     # The C ABI archive makes the embedded game linkable; the live section
     # needs it before the probe is compiled.
     compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
@@ -178,7 +178,8 @@ def main(arguments: darray[sview]) -> i64:
             eprint("Missing meshoptimizer; run python3 scripts/fetch_dependencies.py first.")
             return 2
     compile_arguments: darray[sview] = [
-        "-std=c++17", "-O0", "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
+        "-std=c++17", "-O0", "-include", "filesystem",
+        "-DWI_UNORDERED_MAP_TYPE=2", "-DWICKED_CMAKE_BUILD",
         "-I", str(dependencies), "-I", str(root.joinpath("build")), "-I", str(meshopt), "-I", str(ozz.joinpath("include")),
         "-I", str(recast_include), "-I", str(detour_include), "-I", str(miniaudio),
         "-I", str(basis.joinpath("transcoder")),
