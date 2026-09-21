@@ -73,6 +73,7 @@ void populate_arc_trail(wi::TrailRenderer& trail, const ElectricArcSlot& arc,
     trail.Clear();
     trail.subdivision = ArcTuning::TRAIL_SUBDIVISION;
     trail.blendMode = wi::enums::BLENDMODE_ADDITIVE;
+    trail.depth_test_enabled = false;
     trail.color = XMFLOAT4(1, 1, 1, 1);
     trail.width = ArcTuning::TRAIL_WIDTH;
     trail.depth_soften = ArcTuning::TRAIL_DEPTH_SOFTEN;
@@ -185,6 +186,7 @@ extern "C" int32_t elisa_render_scene_v1_update_electric_arc(
         const float direction = (arc.seed & 1u) == 0u ? 1.0f : -1.0f;
         arc.branch.subdivision = ArcTuning::BRANCH_SUBDIVISION;
         arc.branch.blendMode = wi::enums::BLENDMODE_ADDITIVE;
+        arc.branch.depth_test_enabled = false;
         arc.branch.color = XMFLOAT4(1, 1, 1, 1);
         arc.branch.width = ArcTuning::TRAIL_WIDTH;
         const XMFLOAT4 branch_color(ArcTuning::BRANCH_RED * intensity,
