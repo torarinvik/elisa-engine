@@ -292,6 +292,32 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_text(void) {
     return 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_panel(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult2D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.format != wi::graphics::Format::R8G8B8A8_UNORM ||
+        desc.width == 0 || desc.height == 0 ||
+        !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * RGBA8_CHANNEL_COUNT) return 0;
+    const uint32_t min_x = desc.width * 3 / 5;
+    const uint32_t max_x = desc.width * 19 / 20;
+    const uint32_t min_y = desc.height * 2 / 5;
+    const uint32_t max_y = desc.height * 4 / 5;
+    for (uint32_t y = min_y; y < max_y; ++y) {
+        for (uint32_t x = min_x; x < max_x; ++x) {
+            const size_t index = (size_t(y) * desc.width + x) * RGBA8_CHANNEL_COUNT;
+            if (pixels[index + 3] > 160 && pixels[index] > pixels[index + 1] + 80 &&
+                pixels[index] > pixels[index + 2] + 80) return 1;
+        }
+    }
+    return 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_last_frame_center_patch_hash(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

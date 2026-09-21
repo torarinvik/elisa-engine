@@ -1,0 +1,41 @@
+module RenderScenePanelNativeTests:
+    public:
+        def exercise(handle: RenderScene::OverlayPanelHandle) -> i32:
+            position_status: i32 = catch RenderScene::set_overlay_panel_position(handle, 200.0, 80.0):
+                ok: 0
+                error failure: 1
+            return 123 if position_status != 0
+            size_status: i32 = catch RenderScene::set_overlay_panel_size(handle, 100.0, 80.0):
+                ok: 0
+                error failure: 1
+            return 124 if size_status != 0
+            color_status: i32 = catch RenderScene::set_overlay_panel_color(handle,
+                RenderScene::Color{red: 0.95, green: 0.05, blue: 0.05, alpha: 0.76}):
+                ok: 0
+                error failure: 1
+            return 125 if color_status != 0
+            hidden: i32 = catch RenderScene::set_overlay_panel_visible(handle, false):
+                ok: 0
+                error failure: 1
+            return 126 if hidden != 0
+            shown: i32 = catch RenderScene::set_overlay_panel_visible(handle, true):
+                ok: 0
+                error failure: 1
+            return 127 if shown != 0
+            invalid_position: i32 = catch RenderScene::set_overlay_panel_position(handle, 20000.0, 80.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 128 if invalid_position != 1
+            invalid_size: i32 = catch RenderScene::set_overlay_panel_size(handle, 0.0, 80.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 129 if invalid_size != 1
+            invalid_color: i32 = catch RenderScene::set_overlay_panel_color(handle,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.2}):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 130 if invalid_color != 1
+            0

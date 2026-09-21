@@ -156,6 +156,26 @@ module RenderScene:
         extern elisa_render_scene_v1_destroy_text(handle: i64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_create_overlay_panel(x: f32, y: f32,
+            width: f32, height: f32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_panel_position(handle: i64, x: f32, y: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_panel_size(handle: i64, width: f32, height: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_panel_color(handle: i64,
+            red: f32, green: f32, blue: f32, alpha: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_panel_visible(handle: i64, visible: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_overlay_panel(handle: i64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_create_electric_arc(width: f32, amplitude: f32, seed: u32) -> i64
 
         @callconv(c)
@@ -244,6 +264,11 @@ module RenderScene:
         struct OverlayTextHandle:
             # A generation-checked engine identifier, never a vendor object or
             # pointer. Its integer form stays usable in game-owned state.
+            id: i64
+
+        # A generation-safe solid-color screen-space panel owned by the
+        # engine's 2D render path. Coordinates use the logical canvas origin.
+        struct OverlayPanelHandle:
             id: i64
 
         struct ElectricArcBatch:
@@ -481,6 +506,36 @@ module RenderScene:
 
         def destroy_overlay_text(handle: OverlayTextHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_text(handle.id))
+
+        def create_overlay_panel(x: f32, y: f32, width: f32, height: f32,
+            color: Color) -> OverlayPanelHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_overlay_panel(x, y, width, height,
+                color.red, color.green, color.blue, color.alpha)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            OverlayPanelHandle{id: native_value}
+
+        def set_overlay_panel_position(handle: OverlayPanelHandle, x: f32,
+            y: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_panel_position(handle.id, x, y))
+
+        def set_overlay_panel_size(handle: OverlayPanelHandle, width: f32,
+            height: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_panel_size(handle.id, width, height))
+
+        def set_overlay_panel_color(handle: OverlayPanelHandle,
+            color: Color) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_panel_color(handle.id,
+                color.red, color.green, color.blue, color.alpha))
+
+        def set_overlay_panel_visible(handle: OverlayPanelHandle,
+            visible: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_panel_visible(
+                handle.id, 1 if visible else 0))
+
+        def destroy_overlay_panel(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.id))
 
         # Creates a reusable jagged, additive ribbon. Elisa supplies the live
         # connector endpoints and phase each frame; the engine keeps endpoints

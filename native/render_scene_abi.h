@@ -176,6 +176,14 @@ int32_t elisa_render_scene_v1_set_text_i64(int64_t handle, const char* prefix, i
 int32_t elisa_render_scene_v1_set_text_position(int64_t handle, float x, float y);
 int32_t elisa_render_scene_v1_set_text_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_text(int64_t handle);
+int64_t elisa_render_scene_v1_create_overlay_panel(float x, float y,
+    float width, float height, float red, float green, float blue, float alpha);
+int32_t elisa_render_scene_v1_set_overlay_panel_position(int64_t handle, float x, float y);
+int32_t elisa_render_scene_v1_set_overlay_panel_size(int64_t handle, float width, float height);
+int32_t elisa_render_scene_v1_set_overlay_panel_color(
+    int64_t handle, float red, float green, float blue, float alpha);
+int32_t elisa_render_scene_v1_set_overlay_panel_visible(int64_t handle, int32_t visible);
+int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle);
 int64_t elisa_render_scene_v1_create_electric_arc(float width, float amplitude, uint32_t seed);
 int32_t elisa_render_scene_v1_update_electric_arc(int64_t handle,
     float start_x, float start_y, float start_z,

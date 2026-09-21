@@ -16,6 +16,7 @@ include "./render_scene_async_asset_native.elisa"
 include "./render_scene_cooked_material_native.elisa"
 include "./render_scene_node_hierarchy_native.elisa"
 include "./render_scene_text_native.elisa"
+include "./render_scene_panel_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
 include "./render_scene_arc_depth_native.elisa"
@@ -35,6 +36,9 @@ extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i
 
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
+
+@callconv(c)
+extern elisa_render_scene_v1_last_frame_has_overlay_panel() -> i32
 
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_patch_hash() -> u64
@@ -176,6 +180,20 @@ def exercise_render_scene() -> i32:
     return 77 if invalid_hud_text != 1
     text_updates: i32 = RenderSceneTextNativeTests::exercise(hud_text)
     return elisa_render_scene_v1_test_failed_case(199, text_updates) if text_updates != 0
+
+    hud_panel: RenderScene::OverlayPanelHandle = catch RenderScene::create_overlay_panel(
+        200.0, 80.0, 100.0, 80.0,
+        RenderScene::Color{red: 0.95, green: 0.05, blue: 0.05, alpha: 0.76}):
+        value: value
+        error failure: return 47
+    invalid_hud_panel: i32 = catch RenderScene::create_overlay_panel(0.0, 0.0, 0.0, 80.0,
+        RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+        value: 0
+        RenderScene::RenderSceneError.InvalidValue: 1
+        error failure: 2
+    return 48 if invalid_hud_panel != 1
+    panel_updates: i32 = RenderScenePanelNativeTests::exercise(hud_panel)
+    return elisa_render_scene_v1_test_failed_case(229, panel_updates) if panel_updates != 0
 
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
@@ -334,6 +352,21 @@ def exercise_render_scene() -> i32:
     for attempt in 0..<4:
         return 78 if Application::pump() != Application::PumpStatus.Running
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
+    return 49 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
+    hidden_panel: i32 = catch RenderScene::set_overlay_panel_visible(hud_panel, false):
+        ok: 0
+        error failure: 1
+    return 50 if hidden_panel != 0
+    for attempt in 0..<3:
+        return 51 if Application::pump() != Application::PumpStatus.Running
+    return 52 if elisa_render_scene_v1_last_frame_has_overlay_panel() != 0
+    shown_panel: i32 = catch RenderScene::set_overlay_panel_visible(hud_panel, true):
+        ok: 0
+        error failure: 1
+    return 53 if shown_panel != 0
+    for attempt in 0..<3:
+        return 54 if Application::pump() != Application::PumpStatus.Running
+    return 55 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
 
     snapshot_test_status: i32 = RenderSceneSnapshotNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(227, snapshot_test_status) if snapshot_test_status != 0
@@ -474,6 +507,16 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 81 if stale_hud_text != 1
+
+    destroyed_hud_panel: i32 = catch RenderScene::destroy_overlay_panel(hud_panel):
+        ok: 0
+        error failure: 1
+    return 56 if destroyed_hud_panel != 0
+    stale_hud_panel: i32 = catch RenderScene::set_overlay_panel_visible(hud_panel, true):
+        ok: 0
+        RenderScene::RenderSceneError.UnknownHandle: 1
+        error failure: 2
+    return 57 if stale_hud_panel != 1
 
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0

@@ -8,7 +8,9 @@
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
 #include "wiScene.h"
+#include "wiSprite.h"
 #include "wiSpriteFont.h"
+#include "wiTextureHelper.h"
 #include "wiTrailRenderer.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
@@ -53,7 +55,7 @@ constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
 constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
 constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
 
-#include "render_scene_text_internal.inc"
+#include "render_scene_overlay_internal.inc"
 
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -104,6 +106,7 @@ struct RenderSceneService {
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
+    std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
     std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
@@ -194,7 +197,7 @@ bool valid_color(float red, float green, float blue, float alpha) {
         blue >= 0.0f && blue <= 1.0f && alpha >= 0.0f && alpha <= 1.0f;
 }
 
-#include "render_scene_text_helpers.inc"
+#include "render_scene_overlay_helpers.inc"
 
 bool on_owner_thread(const RenderSceneService& state) {
     return state.owner_thread == std::this_thread::get_id();
@@ -372,6 +375,10 @@ void reset_unlocked(RenderSceneService& state) {
         try { text.font.SetText(""); } catch (...) {}
         text.live = false;
     }
+    for (OverlayPanelSlot& panel : state.overlay_panels) {
+        panel.sprite.SetHidden(true);
+        panel.live = false;
+    }
     state.camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;
     state.owner_thread = std::thread::id{};
@@ -538,7 +545,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_visibility_abi.inc"
 #include "render_scene_quality_abi.inc"
 
-#include "render_scene_text_abi.inc"
+#include "render_scene_overlay_abi.inc"
 
 extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     RenderSceneService& state = service();
