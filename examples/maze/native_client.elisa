@@ -21,6 +21,22 @@ module MazeNativeClient:
             CAMERA_VERTICAL_SIZE: f32 = 10.0
             FONT_SIZE: i32 = 18
 
+        const module Overlay:
+            LOADING_TEXT_X: f32 = 12.0
+            LOADING_TEXT_Y: f32 = 12.0
+            LOADING_PANEL_X: f32 = 8.0
+            LOADING_PANEL_Y: f32 = 8.0
+            LOADING_PANEL_WIDTH: f32 = 240.0
+            LOADING_PANEL_HEIGHT: f32 = 40.0
+            PANEL_RED: f32 = 0.03
+            PANEL_GREEN: f32 = 0.04
+            PANEL_BLUE: f32 = 0.06
+            PANEL_ALPHA: f32 = 0.82
+            TEXT_RED: f32 = 1.0
+            TEXT_GREEN: f32 = 0.9
+            TEXT_BLUE: f32 = 0.65
+            TEXT_ALPHA: f32 = 1.0
+
         def startup_requirements() -> BackendRequirements::BackendStartupRequirements:
             requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
             requirements.services[0] <- Capabilities::BackendFeature.Input
@@ -144,7 +160,7 @@ module MazeNativeClient:
             0
 
         def interactive_loop(session: mutable RuntimeServices::Session&,
-            game: mutable MazeGame::MazeGame,
+            game: mutable MazeGame::MazeGame&,
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
             presenter: mutable RenderScene::SnapshotPresenter&,
@@ -236,9 +252,18 @@ module MazeNativeClient:
         # fails.
         def load_assets(session: mutable RuntimeServices::Session&) -> i32:
             return 17 if not MazeRenderAssets::request("assets/maze_tile.elpk", "assets/maze_textures.elpk")
+            loading_panel: RenderScene::OverlayPanelHandle = catch RenderScene::create_overlay_panel(
+                Overlay::LOADING_PANEL_X, Overlay::LOADING_PANEL_Y,
+                Overlay::LOADING_PANEL_WIDTH, Overlay::LOADING_PANEL_HEIGHT,
+                RenderScene::Color{red: Overlay::PANEL_RED, green: Overlay::PANEL_GREEN,
+                    blue: Overlay::PANEL_BLUE, alpha: Overlay::PANEL_ALPHA}):
+                value: value
+                error failure: return 18
+            # Add the panel first so the loading label is drawn above it.
             loading_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
-                "Loading maze assets", 12.0, 12.0, Actions::FONT_SIZE,
-                RenderScene::Color{red: 1.0, green: 0.9, blue: 0.65, alpha: 1.0}):
+                "Loading maze assets", Overlay::LOADING_TEXT_X, Overlay::LOADING_TEXT_Y, Actions::FONT_SIZE,
+                RenderScene::Color{red: Overlay::TEXT_RED, green: Overlay::TEXT_GREEN,
+                    blue: Overlay::TEXT_BLUE, alpha: Overlay::TEXT_ALPHA}):
                 value: value
                 error failure: return 18
             start: Application::FrameInfo = catch RuntimeServices::frame_info(session):
@@ -264,9 +289,12 @@ module MazeNativeClient:
             hidden: bool = catch RenderScene::destroy_overlay_text(loading_text):
                 ok: true
                 error failure: false
+            hidden_panel: bool = catch RenderScene::destroy_overlay_panel(loading_panel):
+                ok: true
+                error failure: false
             return status if status != 0
             return 17 if progress != MazeRenderAssets::Progress.Ready
-            return 18 if not hidden
+            return 18 if not hidden or not hidden_panel
             0
 
         def run_after_host(session: mutable RuntimeServices::Session&,
@@ -296,8 +324,9 @@ module MazeNativeClient:
             presented: bool = extract_and_present(&scene, &snapshot, &presenter)
             return 9 if not presented
             status_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
-                status_message(game), 12.0, 12.0, Actions::FONT_SIZE,
-                RenderScene::Color{red: 1.0, green: 0.9, blue: 0.65, alpha: 1.0}):
+                status_message(game), Overlay::LOADING_TEXT_X, Overlay::LOADING_TEXT_Y, Actions::FONT_SIZE,
+                RenderScene::Color{red: Overlay::TEXT_RED, green: Overlay::TEXT_GREEN,
+                    blue: Overlay::TEXT_BLUE, alpha: Overlay::TEXT_ALPHA}):
                 value: value
                 error failure: return 10
             first_frame: Application::PumpStatus = catch RuntimeServices::pump(session):

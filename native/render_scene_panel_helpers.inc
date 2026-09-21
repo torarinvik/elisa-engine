@@ -23,12 +23,15 @@ size_t decode_panel_handle(const RenderSceneService& state, int64_t handle) {
     return generation != 0 && panel.live && panel.generation == generation ? slot : MAX_OVERLAY_PANELS;
 }
 
-void apply_overlay_panel(wi::Sprite& sprite, float x, float y,
+bool apply_overlay_panel(wi::Sprite& sprite, float x, float y,
     float width, float height, float red, float green, float blue, float alpha) {
-    sprite.textureResource.SetTexture(*wi::texturehelper::getWhite());
+    const wi::graphics::Texture* white = wi::texturehelper::getWhite();
+    if (white == nullptr || !white->IsValid()) return false;
+    sprite.textureResource.SetTexture(*white);
     sprite.params.pos = XMFLOAT3(x, y, 0.0f);
     sprite.params.siz = XMFLOAT2(width, height);
     sprite.params.color = XMFLOAT4(red, green, blue, alpha);
     sprite.params.opacity = 1.0f;
     sprite.SetHidden(false);
+    return true;
 }

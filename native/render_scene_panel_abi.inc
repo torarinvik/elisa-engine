@@ -12,10 +12,10 @@ extern "C" int64_t elisa_render_scene_v1_create_overlay_panel(float x, float y,
     if (slot == MAX_OVERLAY_PANELS) return ELISA_RENDER_SCENE_CAPACITY;
     OverlayPanelSlot& entry = state.overlay_panels[slot];
     if (entry.generation >= MAX_PANEL_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
-    const wi::graphics::Texture* white = wi::texturehelper::getWhite();
-    if (white == nullptr || !white->IsValid()) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     try {
-        apply_overlay_panel(entry.sprite, x, y, width, height, red, green, blue, alpha);
+        if (!apply_overlay_panel(entry.sprite, x, y, width, height, red, green, blue, alpha)) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
         state.path->AddSprite(&entry.sprite);
     } catch (...) {
         state.path->RemoveSprite(&entry.sprite);

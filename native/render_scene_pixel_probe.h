@@ -9,6 +9,10 @@ constexpr uint32_t OVERLAY_TEXT_PROBE_WIDTH = 240;
 constexpr uint32_t OVERLAY_TEXT_PROBE_HEIGHT = 80;
 constexpr uint8_t OVERLAY_TEXT_ALPHA_THRESHOLD = 16;
 constexpr uint8_t OVERLAY_TEXT_BRIGHTNESS_THRESHOLD = 80;
+constexpr float OVERLAY_PANEL_PROBE_LOGICAL_X = 240.0f;
+constexpr float OVERLAY_PANEL_PROBE_LOGICAL_Y = 120.0f;
+constexpr uint8_t OVERLAY_PANEL_ALPHA_THRESHOLD = 200;
+constexpr uint8_t OVERLAY_PANEL_COLOR_SEPARATION = 80;
 constexpr size_t RGBA8_COLOR_CHANNEL_COUNT = 3;
 constexpr size_t RGBA8_CHANNEL_COUNT = 4;
 constexpr size_t RGBA8_ALPHA_INDEX = 3;
@@ -299,23 +303,18 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_panel(void) {
     if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
     const wi::graphics::Texture& frame = state.path->GetRenderResult2D();
     const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const uint32_t sample_x = state.path->LogicalToPhysical(OVERLAY_PANEL_PROBE_LOGICAL_X);
+    const uint32_t sample_y = state.path->LogicalToPhysical(OVERLAY_PANEL_PROBE_LOGICAL_Y);
     wi::vector<uint8_t> pixels;
     if (!frame.IsValid() || desc.format != wi::graphics::Format::R8G8B8A8_UNORM ||
-        desc.width == 0 || desc.height == 0 ||
+        desc.width <= sample_x || desc.height <= sample_y ||
         !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
         pixels.size() < size_t(desc.width) * desc.height * RGBA8_CHANNEL_COUNT) return 0;
-    const uint32_t min_x = desc.width * 3 / 5;
-    const uint32_t max_x = desc.width * 19 / 20;
-    const uint32_t min_y = desc.height * 2 / 5;
-    const uint32_t max_y = desc.height * 4 / 5;
-    for (uint32_t y = min_y; y < max_y; ++y) {
-        for (uint32_t x = min_x; x < max_x; ++x) {
-            const size_t index = (size_t(y) * desc.width + x) * RGBA8_CHANNEL_COUNT;
-            if (pixels[index + 3] > 160 && pixels[index] > pixels[index + 1] + 80 &&
-                pixels[index] > pixels[index + 2] + 80) return 1;
-        }
-    }
-    return 0;
+    const size_t index =
+        (size_t(sample_y) * desc.width + sample_x) * RGBA8_CHANNEL_COUNT;
+    return pixels[index + RGBA8_ALPHA_INDEX] > OVERLAY_PANEL_ALPHA_THRESHOLD &&
+        pixels[index] > pixels[index + 1] + OVERLAY_PANEL_COLOR_SEPARATION &&
+        pixels[index] > pixels[index + 2] + OVERLAY_PANEL_COLOR_SEPARATION ? 1 : 0;
 }
 
 extern "C" uint64_t elisa_render_scene_v1_last_frame_center_patch_hash(void) {

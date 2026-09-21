@@ -55,7 +55,8 @@ constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
 constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
 constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
 
-#include "render_scene_overlay_internal.inc"
+#include "render_scene_text_internal.inc"
+#include "render_scene_panel_internal.inc"
 
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -197,7 +198,9 @@ bool valid_color(float red, float green, float blue, float alpha) {
         blue >= 0.0f && blue <= 1.0f && alpha >= 0.0f && alpha <= 1.0f;
 }
 
-#include "render_scene_overlay_helpers.inc"
+#include "render_scene_text_helpers.inc"
+#include "render_scene_panel_helpers.inc"
+#include "render_scene_overlay_reset.inc"
 
 bool on_owner_thread(const RenderSceneService& state) {
     return state.owner_thread == std::this_thread::get_id();
@@ -370,15 +373,7 @@ void reset_unlocked(RenderSceneService& state) {
         arc.visible = false;
         arc.live = false;
     }
-    for (OverlayTextSlot& text : state.overlay_texts) {
-        text.font.SetHidden(true);
-        try { text.font.SetText(""); } catch (...) {}
-        text.live = false;
-    }
-    for (OverlayPanelSlot& panel : state.overlay_panels) {
-        panel.sprite.SetHidden(true);
-        panel.live = false;
-    }
+    reset_overlay_slots(state);
     state.camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;
     state.owner_thread = std::thread::id{};
@@ -545,7 +540,8 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_visibility_abi.inc"
 #include "render_scene_quality_abi.inc"
 
-#include "render_scene_overlay_abi.inc"
+#include "render_scene_text_abi.inc"
+#include "render_scene_panel_abi.inc"
 
 extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     RenderSceneService& state = service();
