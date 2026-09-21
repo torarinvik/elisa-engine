@@ -91,9 +91,10 @@ The existing source inventory is the starting point, not a reason to rewrite wor
 | M4 — scale and network | Measured crowd/streaming scene and two-process multiplayer game; soak tests and native CI evidence | W07–W10, N05–N06, T01–T08, Q05–Q09 |
 | M5 — breadth | Tested opt-in advanced systems, each exercised by a shipped example | Remaining P2/P3 tasks |
 
-**Next foundation work: finish F08**, then follow the native backend sequence below.
-Do not restart completed identity or field-privacy work. Milestones are outcome gates;
-individual feature tasks may advance as soon as their explicit dependencies are ready.
+**F08 is complete for the supported provider set.** Continue with A04, then the
+native backend sequence below. Do not restart completed identity, field-privacy,
+render extraction, or mesh/material API work. Milestones are outcome gates; individual
+feature tasks may advance as soon as their explicit dependencies are ready.
 
 ## Current execution queue
 
@@ -101,71 +102,44 @@ Select the first ready item below unless new test evidence changes the order. Ea
 points to the full acceptance criteria in its task entry; keep work vertical and leave
 the public API connected to a real Elisa client.
 
-1. **F08 — finish runtime service selection and ownership.** Keep the live native
-   profile honest, return a typed provider with each fallback route, reject mismatched
-   provider/service pairs, and apply a route only after its adapter initializes. An
-   affine `RuntimeServices::Session` now owns the host and activates selected Jolt and
-   miniaudio fallbacks with rollback and ordered shutdown. The session owns its fixed-step
-   clock and routes audio commands through the selected provider; it returns due ticks and
-   interpolation for the caller's validated system plan. `WorldPhysics` now binds checked
-   World entities to session-owned Jolt bodies and publishes their poses after each due tick.
-   The native integration probe now builds an automatic Physics -> WorldSync plan, executes
-   it for each due fixed tick, and checks both the executor trace and gravity-driven World
-   updates. `WorldPhysics` also binds checked entities into the transform hierarchy and
-   stages every solver pose before parent-first publication. The native SDL3/Metal probe
-   binds a child before its parent with an unbound hierarchy node between them, advances
-   multiple times through the shared fixed-step clock, and verifies recomposition preserves
-   both solver poses and intermediary interpolation history. `Executor` now has typed
-   one- and two-context dispatch APIs with portable order/state tests. The native probe
-   routes each due tick through `Executor::plan_execute_with_contexts`. Elisa-compiler now
-   resolves module-private function values and preserves the owner of a qualified fallible
-   generic through specialization, including affine runtime contexts. A stage0/stage1
-   regression and the real SDL3/Metal application smoke cover this path. Device-loss
-   recovery now switches miniaudio to its silent fallback on the owner thread and is
-   covered by the application smoke. `WorldAudio` now binds World entities to
-   session-owned voices and applies Elisa spatial gain and Doppler pitch in the native
-   mixer. F08 remains partial: other provider routes and live profile advertisement are
-   open.
-   Keep other routes unavailable until real adapters exist.
-   See [`service rollback validation`](docs/validation/runtime-service-rollback.md).
-2. **R01/R02 — make an Elisa World render authored resources.** Finish the transactional
-   snapshot path with stable entity/asset identity, cooked mesh and material resolution,
-   shared mesh/material lifetime, and create/update/despawn rollback. Replace gameplay
-   placeholder boxes with authored maze assets and keep the ordinary application as the
-   client; the diagnostic manifest remains test input only.
-3. **A03–A07 — make cooked content loadable in a packaged game.** Complete bounded
-   indexed package/VFS reads, asynchronous decode/upload, cancellation and unload, then
-   connect glTF scene/material/texture import, BasisU format selection, and meshoptimizer
-   output to actual Wicked resources. Verify capacities, stale generations, cache
-   invalidation, and operation outside the source checkout.
-4. **R03–R07/R13/R15 — finish the core Wicked renderer service.** Connect camera and
+1. **A04 — complete the asynchronous resource loader.** The production path already
+   coalesces and prioritizes requests, decodes away from the owner thread, uploads on
+   the device thread, and cancels queued or in-flight work after its current OS call.
+   Finish budget-based resident eviction and cancellation of an OS read already in
+   progress; cover both with bounded-memory and adversarial lifecycle tests. Keep the
+   synchronous compatibility APIs clearly separate from the production async path.
+   See [`async snapshot asset validation`](docs/validation/async-snapshot-assets.md).
+2. **A05–A07 — complete cooked content import.** Connect glTF scene/material import,
+   BasisU format selection, and meshoptimizer output to actual Wicked resources.
+   Verify capacities, stale generations, cache invalidation, and packaged operation.
+3. **R03–R07/R13/R15 — finish the core Wicked renderer service.** Connect camera and
    viewport lifetime, PBR material slots, lights/environment, quality negotiation,
    packaged shader permutations, and dependent render passes. Exercise resize,
    suspension, unsupported-feature fallbacks, and visual references in one authored
    scene; measure cold startup separately from steady-state frames.
-5. **P01–P06 — make Jolt the gameplay physics service.** Elisa owns body and shape
+4. **P01–P06 — make Jolt the gameplay physics service.** Elisa owns body and shape
    identity, fixed-step scheduling, interpolation, filtered queries, contact delivery,
    and character control. Prove one physics step per committed tick, no render-driven
    simulation, rollback on creation failure, and a playable obstacle-course sample.
-6. **S01–S03/S05 — finish miniaudio as a game audio service.** Add generation-safe clips,
+5. **S01–S03/S05 — finish miniaudio as a game audio service.** Add generation-safe clips,
    streaming, buses, voice budgets, world attachment, spatial playback, and device-loss
    recovery. Test exhaustion, cancellation, fallback selection, and ordered shutdown in
    an ordinary game session.
-7. **C01–C05/N01–N04 — turn ozz and Recast/Detour into gameplay services.** Cook
+6. **C01–C05/N01–N04 — turn ozz and Recast/Detour into gameplay services.** Cook
    skeleton/clip and multi-tile navigation assets, add bounded generation-checked runtime
    handles, then connect animation, IK, agent movement, and replanning to Elisa World.
    Demonstrate both in a controllable character sample with unload/reload coverage.
-8. **I01–I07 — complete SDL3 input and Wicked UI/text services.** Use action maps for
+7. **I01–I07 — complete SDL3 input and Wicked UI/text services.** Use action maps for
    keyboard, mouse, and controller input; render interactive Elisa-owned UI; connect
    FreeType/HarfBuzz font shaping and IME text entry with focus/accessibility behavior.
    Validate high-DPI resize, device removal, and deterministic input delivery.
-9. **W04/W05, R10/R11, and A10/A11 — scale the same backend vertically.** Stream scene
+8. **W04/W05, R10/R11, and A10/A11 — scale the same backend vertically.** Stream scene
    cells and resource generations, preserve references through hot reload, and add
    visibility/LOD plus terrain/vegetation only with measured scene and memory budgets.
-10. **Q01–Q04/Q07 — prove the engine can ship.** Add representative backend regression
-    scenes, reproducible native CI/toolchain setup, useful crash diagnostics, a Release
-    package that runs outside the checkout, and a second authored game using the public
-    services. Move the editor shell E01–E09 forward after these runtime contracts exist.
+9. **Q01–Q04/Q07 — prove the engine can ship.** Add representative backend regression
+   scenes, reproducible native CI/toolchain setup, useful crash diagnostics, a Release
+   package that runs outside the checkout, and a second authored game using the public
+   services. Move the editor shell E01–E09 forward after these runtime contracts exist.
 
 Once this P1 native runtime lane is demonstrated in a packaged second game, advance the
 P2 scale/network work and P3 specialists (including Box2D, ACL, Steam Audio, and XR)
@@ -199,13 +173,13 @@ according to their dependencies and measured consumers.
   Generalize generation and submission-lifetime contracts to real mesh, material, texture, body, and voice handles; separate logical destruction from fence-delayed release. Done: stale and cross-world handles, generation exhaustion, failed creation, bounded-capacity rejection, and destroy-while-in-flight are exercised against real resources. Evidence: [`docs/validation/native-resource-retirement.md`](docs/validation/native-resource-retirement.md); the two-pass Wicked native gate passed pool saturation, queue saturation/recovery, voice cleanup on generation exhaustion, deferred texture/voice release, stale-handle rejection, and object-baseline checks. Production imported-mesh upload and material binding remain tracked under A05, R02, and R04.
 - [x] **F07 · P0 · Coordinate and numeric conventions** — After: F04.
   Centralize units, handedness, matrix order, quaternion layout, depth, winding, tangent parity, and camera conversion instead of probe-local sign flips. Done: round trips and an asymmetric scene validate render, physics, skinning, ray picking, and negative/nonuniform scale conventions. `native/coordinate_abi.h` v2 validates/converts column-major affine matrices, normalized XYZW quaternions, and signed tangent-frame parity; `native/coordinate_transform_bridge.h` submits TRS/matrix payloads to Wicked with explicit units and row-vector conversion, rejecting shear. Elisa and native tests apply the same basis-reflection and negative-scale rule. Wicked commit `a149914` stores world-transform orientation in existing `ShaderMeshInstance` padding and applies it to raster and ray-tracing tangent frames; the normal-mapped asymmetric signed-scale render compares exact rerun pixels against [`backends/coordinate_reference.png`](backends/coordinate_reference.png). Picking verifies a center hit and a miss beyond a negatively/nonuniformly scaled cube. A dynamic signed-scale box is stepped and queried against Jolt; Wicked commit `bf8945b` uses scale magnitudes for primitive collision dimensions. The skin fixture uploads Elisa-deformed vertices, applies a signed nonuniform transform, uses shared winding parity, and checks all four resulting Wicked world positions. Evidence: [`docs/validation/coordinate-conventions.md`](docs/validation/coordinate-conventions.md); `scripts/check.elisascript` and the two-pass `scripts/wicked_probe.elisascript` passed. Follow-up: the render-scene service now crosses the same boundary for transforms, the camera, cooked vertices and tangents, poses, the sun and arcs, so its frames show +X on the right, as Godot's do. Evidence: [`docs/validation/render-scene-handedness.md`](docs/validation/render-scene-handedness.md).
-- [ ] **F08 · P0 · Runtime capability negotiation** — After: F04.
+- [x] **F08 · P0 · Runtime capability negotiation** — After: F04.
   Replace coarse profile assumptions with queried service/format/limit/feature support and explicit fallback policy. Done: unavailable renderer features and missing optional libraries yield actionable errors or tested fallbacks; a dependency's advertised feature cannot automatically mark the engine capability supported. Progress: Elisa resolves bounded feature and limit requirements into `Ready`, `Fallback`, `Unavailable`, or `Invalid`; `negotiate_limit` includes remaining memory, and typed texture negotiation matches the native BC1/normal-map/alpha fallback rules. `negotiate_requirements` takes a typed provider map, reports the selected fallback identity for each request, distinguishes `FallbackDisallowed` from a missing provider, and rejects provider/service mismatches. `test/capabilities.elisa` covers all eight routes, mixed results, provider identity, mismatch rejection, and native routes with no spurious fallback provider. ABI v2 in `native/capability_abi.h` carries optional graphics bits, queried RGBA8/BC1/R16F support, memory budget/usage, and actual Wicked high-priority/streaming worker counts. `maze_backend_configure` maps the validated SDL3/Wicked host report to the live Elisa profile before game startup; removing Input rejects start, and malformed reconfiguration preserves the last valid profile. Unknown resource capacities remain zero and cannot satisfy requirements. Typed C queries validate individual features, formats, and viewport/worker/memory limits; unknown bits and inconsistent profiles are rejected. Evidence: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md), the full Elisa suite, and the two-pass native gate. Startup now probes Jolt and miniaudio adapters through temporary initialization and teardown; a failed probe reports `ProviderUnavailable` and rolls back startup. The live profile still does not advertise Physics or Audio as core services; the owning RuntimeServices session activates explicitly requested fallbacks. Only Physics and Audio adapters exist today.
   Progress: `Application::backend_profile()` exposes the shared validated SDL3/Wicked startup report to ordinary Elisa applications, with an error union for stopped hosts, wrong-thread calls, and unavailable or invalid reports. `Application::initialize_with_requirements()` negotiates bounded required-service sets before gameplay; it reports declared fallbacks explicitly and rolls back startup on invalid or unavailable requirements. Both the maze host and normal applications use one native device-query helper. The live profile still reports Physics and Audio as unavailable. `src/backend/requirements.elisa` aggregates service, optional-feature, limit, and texture requirements under fixed capacities; it returns selected limit values and per-texture encoding decisions, and combines results with Invalid > Unavailable > Fallback > Ready precedence. `Application::initialize_with_profile_requirements()` validates that contract before gameplay and rolls the host back on invalid/unavailable requests. The portable suite covers mixed outcomes, unknown limits, explicit optional/texture fallbacks, malformed ranges, and capacity overflow. `src/audio/runtime.elisa` provides an opt-in miniaudio adapter for callers that negotiate Audio fallback: initialize a silent or default device, decode a WAV, play/stop generation-checked voices, set bus gain, and shut down with the application. Opaque handles and a generated-WAV smoke verify decode, playback state, and shutdown. `src/physics/runtime.elisa` provides an opt-in Jolt-backed Physics fallback in a separate scene; the ordinary hidden SDL3/Metal application smoke verifies body creation/destruction, that a destroyed handle maps to `InvalidHandle`, eight fixed steps and falling motion, committed ticks, host-shutdown invalidation, and the Audio fallback across repeated host startup/shutdown. Stage1 previously resolved sibling nested `Status` modules by the first matching short owner; the correction and stage0/stage1 regression are in Elisa-compiler. `WorldPhysics` binds checked gameplay entities to session-owned bodies and dispatches the validated Physics -> WorldSync system plan through the generic executor for every due fixed tick, including affine runtime contexts. The compiler regression and native SDL3/Metal application smoke pass. Spatial audio integration remains. Evidence: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md) and [`docs/validation/audio-runtime.md`](docs/validation/audio-runtime.md).
   Progress: the SDL3/Metal application smoke also requests BC1 for a normal map and verifies `FallbackRequired`, an RGBA8 texture decision, and that the host remains initialized until the caller applies the fallback and shuts down. Native smoke and full report: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md).
   Progress: service requirement reports now return ordered, bounded decisions for every requested feature (`Native`, `DeclaredFallback`, `ProviderUnavailable`, or `Unavailable`), so mixed requests identify exactly which handlers the caller must run. Portable tests cover all eight features and mixed outcomes; engine commit `cbb5f39` passed the post-commit SDL3/Metal application smoke for Physics and Audio decisions and fallback lifecycles. Evidence: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md). Provider selection remains caller-owned; only Physics and Audio have adapters today.
   Progress: `test/physics_app_probe.elisa` is now called by the native application smoke. It runs two fallible Jolt fixed steps and returns `committed_tick` as the function's last expression through an error union; the full SDL3/Metal application and failure-cleanup smoke passed.
-  Progress: startup probes Jolt scene creation and miniaudio silent/default device initialization, then tears each temporary adapter down before reporting its route as available. A failed probe changes that decision to `ProviderUnavailable`, recalculates ordered report counts, and rolls back service-only and aggregate profile startup. Fault injection verifies Physics scene and miniaudio device partial-init cleanup, rejected startup, and successful retries; synchronous upload and asset-loading fallbacks remain unavailable. Evidence: [`docs/validation/runtime-service-rollback.md`](docs/validation/runtime-service-rollback.md); the full Elisa suite and SDL3/Metal smoke passed on macOS 27.0 / Apple M5.
+  Progress: startup probes Jolt scene creation and miniaudio silent/default device initialization, then tears each temporary adapter down before reporting its route as available. A failed probe changes that decision to `ProviderUnavailable`, recalculates ordered report counts, and rolls back service-only and aggregate profile startup. Fault injection verifies Physics scene and miniaudio device partial-init cleanup, rejected startup, and successful retries; synchronous upload and asset-loading fallbacks remain unavailable. Completion evidence: [`docs/validation/capability-negotiation.md`](docs/validation/capability-negotiation.md) records the 2026-09-21 provider matrix, full Elisa/Elisa Proof suite, SDL3/Metal lifecycle and rollback smokes, module/source/dependency policies, and unavailable-provider limits.
   Progress: `src/runtime/world_physics.elisa` exposes a bounded affine entity/body binding set in the public runtime bundle. It creates Jolt boxes at checked `World` transforms, advances each due fixed tick through the owning session, stages every body pose before publishing a synchronization pass, preserves entity rotation/scale, and supports retry-safe explicit unbinding. `WorldPhysics` also binds validated entities to current hierarchy poses and stages hierarchy synchronization parent-first, independent of binding order; `advance_and_sync_hierarchy` shares the owning session clock and runs the complete path per due tick. `test/runtime_services_probe.elisa` exercises duplicate-link rejection, gravity-driven flat and hierarchy pose publication, scale preservation, recomposition with an unbound intermediary, per-tick interpolation history, parent/child world-pose stability, handle-table compaction after removing one of two bodies, and cleanup through the native SDL3/Metal application smoke. The same probe builds an automatic Physics -> WorldSync plan, dispatches it on every due tick, and verifies execution order and transform updates. `Executor::plan_execute_with_context` and `plan_execute_with_contexts` provide allocation-free typed callback dispatch, covered by portable order/state tests. The native probe now uses `plan_execute_with_contexts` for affine `TickContext` callbacks. Elisa-compiler first resolves module-owned function values, then preserves the exact module owner for qualified fallible generic specialization; the regression covers two affine contexts, private callback dispatch, the schedule loop, and the fallible qualified call. The focused stage0/stage1 compiler regression and the real SDL3/Metal application smoke passed. Additional provider routes and spatial audio remain open.
   Progress: the SDL3/Metal application smoke injects failures after Jolt scene allocation and miniaudio device startup, proving cleanup, honest reports, and successful typed-provider retries. The hooks compile only under `--native-test-probes`; Audio sample-rate and channel bounds are named in Elisa and the native ABI. `src/runtime/services.elisa` adds an affine `RuntimeServices::Session` that owns Application plus report-selected Jolt/miniaudio fallbacks, activates adapters after host initialization, rolls back a partial Physics+Audio startup, rejects a repeated open without disturbing the live session, exposes owner-checked Physics operations, and shuts down Audio, Physics, then Application. Its native smoke covers failure rollback, retry, a two-tick fixed-step batch through Jolt, body query, session-routed audio playback and stop, missing-Audio behavior, and shutdown. Engine commit `6e49ed6` passed the real SDL3/Metal native gate and full `scripts/check.elisascript` suite on macOS 27.0 / Apple M5; details are in [`service rollback validation`](docs/validation/runtime-service-rollback.md). The live profile still advertises Physics and Audio only as declared fallbacks, not native core services. Device recovery/spatial audio and additional provider routes remain partial.
   Progress: the ordinary maze client now opens and shuts down through `RuntimeServices::Session`, and routes pump, frame snapshots, and exit requests through that owner. Engine commit `bf592f8` passed the SDL3/Metal application-service probe and hidden maze smoke; the probe also verifies these host calls reject use after shutdown. Native generic plan dispatch is now covered by the affine-context compiler regression and application smoke; hierarchy-aware physics synchronization is covered by the F08 integration probe.

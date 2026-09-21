@@ -198,3 +198,15 @@ counts, and available Jolt remains a declared fallback. SDL3/Metal smoke fault
 injection verifies failed Jolt-scene and miniaudio-device preflights roll back
 startup, then successfully renegotiates both routes. The full Elisa suite and
 native application smoke passed on macOS 27.0 / Apple M5.
+
+F08 acceptance validation, 2026-09-21:
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/check.elisascript` passed the portable suite, Godot 4.7.2 compatibility probes, both Elisa Proof files (17/17 and 6/6 obligations), and all 23 certificate replays.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" PYTHON_BIN=/opt/homebrew/bin/python3 /opt/homebrew/bin/python3 scripts/application_native_smoke.py` passed the native user-data test, SDL3/Metal application lifecycle, Jolt and miniaudio fallback startup, injected partial-initialization rollback, retry, and startup-failure cleanup smokes.
+- `test/capabilities.elisa` compiled and ran; module hygiene (91 production modules), the 600-line source policy, the SDL3-only dependency manifest, and `git diff --check` passed.
+
+F08 is complete for the supported adapter set. Live profiles advertise only
+queried native services; Jolt and miniaudio are typed, preflighted fallbacks
+owned by `RuntimeServices::Session`. Synchronous upload and synchronous asset
+loading remain `ProviderUnavailable`, and Physics/Audio are not reported as
+native core services. They must remain unavailable until real adapters exist.
