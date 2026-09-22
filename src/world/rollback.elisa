@@ -1,6 +1,6 @@
 # Reversible world state for prediction and replay. The snapshot contains
-# gameplay/storage columns only; the allocator high-water mark remains owned by
-# World and is never restored backwards.
+# gameplay/storage columns plus the checked transform hierarchy; the allocator
+# high-water mark remains owned by World and is never restored backwards.
 include "./world.elisa"
 
 module World::Rollback:
@@ -26,6 +26,7 @@ module World::Rollback:
             enemy_count: mutable usize
             static_objects: World::StaticObjectRecord[Bounds::MAX_ENTITIES]
             static_object_count: mutable usize
+            hierarchy: mutable WorldHierarchy::Snapshot
 
         def Snapshot() -> Snapshot:
             Snapshot{
@@ -41,9 +42,13 @@ module World::Rollback:
                 enemy_count: 0,
                 static_objects: zeroed,
                 static_object_count: 0,
+                hierarchy: WorldHierarchy::Snapshot(),
             }
 
         private:
+            def transform_equal(left: Geometry::Transform, right: Geometry::Transform) -> bool:
+                left.position.x == right.position.x and left.position.y == right.position.y and left.position.z == right.position.z and left.rotation.x == right.rotation.x and left.rotation.y == right.rotation.y and left.rotation.z == right.rotation.z and left.rotation.w == right.rotation.w and left.scale.x == right.scale.x and left.scale.y == right.scale.y and left.scale.z == right.scale.z
+
             def storage_matches(kind: World::Entity, storage: World::StorageKind) -> bool:
                 match kind:
                     World::Actor.Player:
@@ -80,6 +85,7 @@ module World::Rollback:
             return false if snapshot.epoch <= 0
             return false if snapshot.registry_count > Bounds::MAX_ENTITIES or snapshot.live_count > snapshot.registry_count
             return false if snapshot.live_ids_count > Bounds::MAX_ENTITIES or snapshot.actor_count > Bounds::MAX_ENTITIES or snapshot.enemy_count > Bounds::MAX_ENTITIES or snapshot.static_object_count > Bounds::MAX_ENTITIES
+            return false if not WorldHierarchy::hierarchy_snapshot_valid(snapshot.hierarchy) or snapshot.hierarchy.count != snapshot.live_count
             return false if snapshot.live_ids_count != snapshot.live_count or live_registry_count(snapshot) != snapshot.live_count
             return false if live_actor_count(snapshot) + live_enemy_count(snapshot) + live_static_object_count(snapshot) != snapshot.live_count
             registry_rows_valid: bool =
@@ -88,6 +94,8 @@ module World::Rollback:
                     if row.live:
                         valid <- false if row.id <= 0 or not storage_matches(row.kind, row.storage)
                         valid <- false if not Geometry::transform_is_valid(row.transform)
+                        hierarchy_pose: mutable Geometry::Transform = Geometry::transform_identity()
+                        valid <- false if not WorldHierarchy::hierarchy_snapshot_world(snapshot.hierarchy, row.id, &hierarchy_pose) or not transform_equal(row.transform, hierarchy_pose)
                         unique: bool =
                             for earlier in 0..<index |inner: bool = true| -> inner:
                                 inner <- false if snapshot.registry[earlier].live and snapshot.registry[earlier].id == row.id
@@ -129,6 +137,7 @@ module World::Rollback:
             snapshot.actor_count <- world.actor_count
             snapshot.enemy_count <- world.enemy_count
             snapshot.static_object_count <- world.static_object_count
+            snapshot.hierarchy <- WorldHierarchy::hierarchy_snapshot(&world.hierarchy)
             for index in 0..<Bounds::MAX_ENTITIES |snapshot, world|:
                 snapshot.registry[index] <- world.registry[index]
                 snapshot.live_ids[index] <- world.live_ids[index]
@@ -146,6 +155,8 @@ module World::Rollback:
                 world.actors[index] <- snapshot.actors[index]
                 world.enemies[index] <- snapshot.enemies[index]
                 world.static_objects[index] <- snapshot.static_objects[index]
+            restored_hierarchy: bool = WorldHierarchy::hierarchy_restore(&world.hierarchy, snapshot.hierarchy)
+            raise RollbackError.InvalidSnapshot if not restored_hierarchy
             world.registry_count <- snapshot.registry_count
             world.live_count <- snapshot.live_count
             world.live_ids_count <- snapshot.live_ids_count

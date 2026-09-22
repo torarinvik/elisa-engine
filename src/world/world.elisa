@@ -4,6 +4,7 @@
 
 include "../entity_id.elisa"
 include "./reference.elisa"
+include "./hierarchy.elisa"
 include "../math/geometry.elisa"
 
 module World:
@@ -130,6 +131,25 @@ module World:
         def static_object_slot(world: World&, id: i64) -> usize:
             for index in 0..<world.static_object_count |slot: usize = Sentinel::WORLD_INVALID_SLOT| -> slot:
                 break index if world.static_objects[index].live and world.static_objects[index].id == id
+
+        def transform_equal(left: Geometry::Transform, right: Geometry::Transform) -> bool:
+            left.position.x == right.position.x and left.position.y == right.position.y and left.position.z == right.position.z and left.rotation.x == right.rotation.x and left.rotation.y == right.rotation.y and left.rotation.z == right.rotation.z and left.rotation.w == right.rotation.w and left.scale.x == right.scale.x and left.scale.y == right.scale.y and left.scale.z == right.scale.z
+
+        def sync_registry_from_hierarchy(world: mutable World&) -> bool:
+            return false if WorldHierarchy::hierarchy_count(&world.hierarchy) != world.live_count or not WorldHierarchy::hierarchy_valid(&world.hierarchy)
+            for index in 0..<world.registry_count |world|:
+                if world.registry[index].live:
+                    pose: mutable Geometry::Transform = Geometry::transform_identity()
+                    return false if not WorldHierarchy::hierarchy_try_world(&world.hierarchy, world.registry[index].id, &pose)
+                    world.registry[index].transform <- pose
+            true
+
+        def hierarchy_matches_registry(world: World&) -> bool:
+            return false if WorldHierarchy::hierarchy_count(&world.hierarchy) != world.live_count or not WorldHierarchy::hierarchy_valid(&world.hierarchy)
+            for index in 0..<world.registry_count |valid: bool = true| -> valid:
+                if world.registry[index].live:
+                    pose: mutable Geometry::Transform = Geometry::transform_identity()
+                    valid <- false if not WorldHierarchy::hierarchy_try_world(&world.hierarchy, world.registry[index].id, &pose) or not transform_equal(pose, world.registry[index].transform)
 
         def mark_actor_dead(world: mutable World&, id: i64) -> bool:
             for index in 0..<world.actor_count |condition=false, world| -> condition:
@@ -284,6 +304,7 @@ module World:
                 enemy_count: mutable usize
                 static_objects: mutable StaticObjectRecord[World::MAX_ENTITIES]
                 static_object_count: mutable usize
+                hierarchy: mutable WorldHierarchy::Hierarchy
 
         def World() -> World error[WorldError]:
             epoch: i64 = try next_epoch()
@@ -301,12 +322,14 @@ module World:
                 enemy_count: 0,
                 static_objects: zeroed,
                 static_object_count: 0,
+                hierarchy: WorldHierarchy::Hierarchy(),
             }
 
         def world_spawn(world: mutable World&, kind: Entity) -> EntityRef error[WorldError]:
             raise WorldError.InvalidKind if not entity_kind_is_spawnable(kind)
             registry_index: usize = free_registry_slot(world)
             raise WorldError.Capacity if registry_index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.Capacity if WorldHierarchy::hierarchy_count(&world.hierarchy) >= WorldHierarchy::MAX_NODES
             storage: StorageKind = entity_storage_kind(kind)
             storage_index: mutable usize = free_static_object_slot(world)
             if storage == StorageKind.Actor:
@@ -322,6 +345,7 @@ module World:
             raise WorldError.IdentityInvalid if allocation_status == 1
             raise WorldError.IdentityExhausted if allocation_status == 2
             id: i64 = EntityId::entity_id_last_issued(&world.allocator)
+            raise WorldError.Capacity if not WorldHierarchy::hierarchy_spawn(&world.hierarchy, id, Geometry::transform_identity())
             world.registry[registry_index] <- RegistryRow{
                 id: id,
                 kind: kind,
@@ -342,6 +366,8 @@ module World:
             world.live_count <- world.live_count + 1
             world.live_ids[world.live_ids_count] <- id
             world.live_ids_count <- world.live_ids_count + 1
+            WorldHierarchy::hierarchy_update(&world.hierarchy)
+            raise WorldError.InvalidReference if not sync_registry_from_hierarchy(world)
             EntityRef{world_epoch: world.epoch, id: id}
 
         def world_last_issued(world: World&) -> i64:
@@ -368,6 +394,7 @@ module World:
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.InvalidReference if not WorldHierarchy::hierarchy_remove(&world.hierarchy, reference.id)
             storage: StorageKind = world.registry[index].storage
             removed: mutable bool = false
             if storage == StorageKind.Actor:
@@ -381,6 +408,8 @@ module World:
             world.registry[index].transform <- zeroed
             world.live_count <- world.live_count - 1
             remove_live_id(world, reference.id)
+            WorldHierarchy::hierarchy_update(&world.hierarchy)
+            raise WorldError.InvalidReference if not sync_registry_from_hierarchy(world)
 
         def world_try_transform(world: World&, reference: EntityRef,
             transform: mutable Geometry::Transform&) -> bool:
@@ -394,7 +423,39 @@ module World:
             raise WorldError.InvalidValue if not Geometry::transform_is_valid(transform)
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
-            world.registry[index].transform <- transform
+            raise WorldError.InvalidReference if not WorldHierarchy::hierarchy_apply_physics(
+                &world.hierarchy, reference.id, transform, false)
+            WorldHierarchy::hierarchy_update(&world.hierarchy)
+            raise WorldError.InvalidReference if not sync_registry_from_hierarchy(world)
+
+        def world_hierarchy_update(world: mutable World&) -> bool:
+            WorldHierarchy::hierarchy_update(&world.hierarchy)
+            sync_registry_from_hierarchy(world)
+
+        def world_hierarchy_count(world: World&) -> usize:
+            WorldHierarchy::hierarchy_count(&world.hierarchy)
+
+        def world_root_reference(world: World&) -> EntityRef:
+            EntityRef{world_epoch: world.epoch, id: WorldHierarchy::ROOT}
+
+        def world_reparent(world: mutable World&, child: EntityRef, parent: EntityRef,
+            keep_world: bool) -> void error[WorldError]:
+            child_index: usize = registry_slot(world, child)
+            raise WorldError.InvalidReference if child_index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.InvalidReference if not WorldReference::epoch_matches(world.epoch, parent.world_epoch)
+            parent_is_root: bool = parent.id == WorldHierarchy::ROOT
+            if not parent_is_root:
+                raise WorldError.InvalidReference if registry_slot(world, parent) == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.InvalidReference if not WorldHierarchy::hierarchy_set_parent(
+                &world.hierarchy, child.id, parent.id, keep_world)
+            WorldHierarchy::hierarchy_update(&world.hierarchy)
+            raise WorldError.InvalidReference if not sync_registry_from_hierarchy(world)
+
+        def world_hierarchy_sample(world: World&, reference: EntityRef,
+            alpha: f32, transform: mutable Geometry::Transform&) -> bool:
+            return false if registry_slot(world, reference) == Sentinel::WORLD_INVALID_SLOT
+            transform <- WorldHierarchy::hierarchy_sample(&world.hierarchy, reference.id, alpha)
+            true
 
         def world_lookup(world: World&, reference: EntityRef) -> EntityLookup error[WorldError]:
             index: usize = registry_slot(world, reference)
@@ -509,6 +570,7 @@ module World:
 
         def world_is_valid(world: World&) -> bool:
             return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > World::MAX_ENTITIES or world.actor_count > World::MAX_ENTITIES or world.enemy_count > World::MAX_ENTITIES or world.static_object_count > World::MAX_ENTITIES or world.live_count > world.registry_count
+            return false if not hierarchy_matches_registry(world)
             registry: RegistryCheck = registry_check(world)
             return false if not registry.valid
             live_actors: usize =

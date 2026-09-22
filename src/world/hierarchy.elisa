@@ -5,7 +5,7 @@ include "../physics/interpolation.elisa"
 # module owns parent links and derived world transforms for render/physics reads.
 module WorldHierarchy:
     public:
-        const MAX_NODES: usize = 128
+        const MAX_NODES: usize = 256
         const ROOT: i64 = 0
 
         struct Node:
@@ -44,22 +44,69 @@ module WorldHierarchy:
             return move snapshot
 
         def hierarchy_restore(hierarchy: mutable Hierarchy&, snapshot: Snapshot) -> bool:
-            return false if snapshot.count > WorldHierarchy::MAX_NODES or snapshot.tick < 0
+            return false if not hierarchy_snapshot_valid(snapshot)
             for index in 0..<WorldHierarchy::MAX_NODES |hierarchy, snapshot|:
                 hierarchy.nodes[index] <- snapshot.nodes[index]
             hierarchy.count <- snapshot.count
             hierarchy.tick <- snapshot.tick
             true
 
+        def hierarchy_snapshot_slot(snapshot: Snapshot, id: i64) -> usize:
+            for index in 0..<snapshot.count |slot: usize = WorldHierarchy::MAX_NODES| -> slot:
+                break index if snapshot.nodes[index].id == id
+
+        def hierarchy_snapshot_would_cycle(snapshot: Snapshot, child: i64, parent: i64) -> bool:
+            cursor: mutable i64 = parent
+            for _ in 0..<WorldHierarchy::MAX_NODES |cursor|:
+                return true if cursor == child
+                return false if cursor == WorldHierarchy::ROOT
+                slot: usize = hierarchy_snapshot_slot(snapshot, cursor)
+                return false if slot == WorldHierarchy::MAX_NODES
+                cursor <- snapshot.nodes[slot].parent
+            true
+
+        def hierarchy_snapshot_valid(snapshot: Snapshot) -> bool:
+            return false if snapshot.count > WorldHierarchy::MAX_NODES or snapshot.tick < 0
+            for index in 0..<snapshot.count |valid: bool = true| -> valid:
+                node: Node = snapshot.nodes[index]
+                valid <- false if node.id <= 0 or not Geometry::transform_is_valid(node.local) or not Geometry::transform_is_valid(node.world) or not Geometry::transform_is_valid(node.previous_world)
+                valid <- false if node.parent < WorldHierarchy::ROOT
+                if node.parent != WorldHierarchy::ROOT:
+                    parent_found: bool =
+                        for parent_index in 0..<snapshot.count |found: bool = false| -> found:
+                            break true if snapshot.nodes[parent_index].id == node.parent
+                    valid <- valid and parent_found
+                    valid <- false if hierarchy_snapshot_would_cycle(snapshot, node.id, node.parent)
+                for earlier in 0..<index:
+                    valid <- false if snapshot.nodes[earlier].id == node.id
+        def hierarchy_snapshot_world(snapshot: Snapshot, id: i64,
+            transform: mutable Geometry::Transform&) -> bool:
+            for index in 0..<snapshot.count:
+                if snapshot.nodes[index].id == id:
+                    transform <- snapshot.nodes[index].world
+                    return true
+            false
+
         def hierarchy_count(hierarchy: Hierarchy&) -> usize:
             hierarchy.count
 
-        def slot_of(hierarchy: Hierarchy&, id: i64) -> usize:
+        def hierarchy_valid(hierarchy: Hierarchy&) -> bool:
+            return false if hierarchy.count > WorldHierarchy::MAX_NODES or hierarchy.tick < 0
+            for index in 0..<hierarchy.count |valid: bool = true| -> valid:
+                node: Node = hierarchy.nodes[index]
+                valid <- false if node.id <= 0 or not Geometry::transform_is_valid(node.local) or not Geometry::transform_is_valid(node.world) or not Geometry::transform_is_valid(node.previous_world)
+                valid <- false if node.parent < WorldHierarchy::ROOT
+                valid <- false if node.parent != WorldHierarchy::ROOT and hierarchy_slot_of(hierarchy, node.parent) == WorldHierarchy::MAX_NODES
+                valid <- false if node.parent != WorldHierarchy::ROOT and would_cycle(hierarchy, node.id, node.parent)
+                for earlier in 0..<index:
+                    valid <- false if hierarchy.nodes[earlier].id == node.id
+
+        def hierarchy_slot_of(hierarchy: Hierarchy&, id: i64) -> usize:
             for index in 0..<hierarchy.count |slot: usize = WorldHierarchy::MAX_NODES| -> slot:
                 break index if hierarchy.nodes[index].id == id
 
         def hierarchy_spawn(hierarchy: mutable Hierarchy&, id: i64, local: Geometry::Transform) -> bool:
-            return false if id <= 0 or slot_of(hierarchy, id) != WorldHierarchy::MAX_NODES or hierarchy.count >= WorldHierarchy::MAX_NODES
+            return false if id <= 0 or hierarchy_slot_of(hierarchy, id) != WorldHierarchy::MAX_NODES or hierarchy.count >= WorldHierarchy::MAX_NODES
             hierarchy.nodes[hierarchy.count] <- Node{
                 id: id,
                 parent: WorldHierarchy::ROOT,
@@ -77,7 +124,7 @@ module WorldHierarchy:
         # interpolation for the next published world pose.
         def hierarchy_set_local(hierarchy: mutable Hierarchy&, id: i64,
             local: Geometry::Transform, teleport: bool) -> bool:
-            slot: usize = slot_of(hierarchy, id)
+            slot: usize = hierarchy_slot_of(hierarchy, id)
             return false if slot == WorldHierarchy::MAX_NODES
             hierarchy.nodes[slot].local <- local
             hierarchy.nodes[slot].teleport_pending <- teleport
@@ -89,15 +136,15 @@ module WorldHierarchy:
             for _ in 0..<WorldHierarchy::MAX_NODES:
                 return true if cursor == child
                 return false if cursor == WorldHierarchy::ROOT
-                slot: usize = slot_of(hierarchy, cursor)
+                slot: usize = hierarchy_slot_of(hierarchy, cursor)
                 return false if slot == WorldHierarchy::MAX_NODES
                 cursor <- hierarchy.nodes[slot].parent
             true
 
         def hierarchy_set_parent(hierarchy: mutable Hierarchy&, child: i64, parent: i64,
             keep_world: bool) -> bool:
-            child_slot: usize = slot_of(hierarchy, child)
-            return false if child_slot == WorldHierarchy::MAX_NODES or (parent != WorldHierarchy::ROOT and slot_of(hierarchy, parent) == WorldHierarchy::MAX_NODES)
+            child_slot: usize = hierarchy_slot_of(hierarchy, child)
+            return false if child_slot == WorldHierarchy::MAX_NODES or (parent != WorldHierarchy::ROOT and hierarchy_slot_of(hierarchy, parent) == WorldHierarchy::MAX_NODES)
             return false if would_cycle(hierarchy, child, parent)
             old_world: Geometry::Transform = hierarchy.nodes[child_slot].world
             hierarchy.nodes[child_slot].parent <- parent
@@ -105,7 +152,7 @@ module WorldHierarchy:
                 if parent == WorldHierarchy::ROOT:
                     hierarchy.nodes[child_slot].local <- old_world
                 else:
-                    parent_slot: usize = slot_of(hierarchy, parent)
+                    parent_slot: usize = hierarchy_slot_of(hierarchy, parent)
                     hierarchy.nodes[child_slot].local <- Geometry::transform_apply_inverse(hierarchy.nodes[parent_slot].world, old_world)
             hierarchy.nodes[child_slot].dirty <- true
             true
@@ -117,7 +164,7 @@ module WorldHierarchy:
         # before a simulated descendant derives its new local pose.
         def hierarchy_apply_physics(hierarchy: mutable Hierarchy&, id: i64,
             world: Geometry::Transform, teleport: bool) -> bool:
-            slot: usize = slot_of(hierarchy, id)
+            slot: usize = hierarchy_slot_of(hierarchy, id)
             return false if slot == WorldHierarchy::MAX_NODES
             parent: i64 = hierarchy.nodes[slot].parent
             if parent == WorldHierarchy::ROOT:
@@ -128,7 +175,7 @@ module WorldHierarchy:
                 cursor: mutable i64 = parent
                 for _ in 0..<WorldHierarchy::MAX_NODES |hierarchy, ancestor_slots, ancestor_count, cursor|:
                     break if cursor == WorldHierarchy::ROOT
-                    ancestor_slot: usize = slot_of(hierarchy, cursor)
+                    ancestor_slot: usize = hierarchy_slot_of(hierarchy, cursor)
                     return false if ancestor_slot == WorldHierarchy::MAX_NODES or ancestor_count >= WorldHierarchy::MAX_NODES
                     ancestor_slots[ancestor_count] <- ancestor_slot
                     ancestor_count <- ancestor_count + 1
@@ -143,7 +190,7 @@ module WorldHierarchy:
                         if ancestor_parent == WorldHierarchy::ROOT:
                             hierarchy.nodes[ancestor_slot].world <- hierarchy.nodes[ancestor_slot].local
                         else:
-                            ancestor_parent_slot: usize = slot_of(hierarchy, ancestor_parent)
+                            ancestor_parent_slot: usize = hierarchy_slot_of(hierarchy, ancestor_parent)
                             return false if ancestor_parent_slot == WorldHierarchy::MAX_NODES
                             hierarchy.nodes[ancestor_slot].world <- Geometry::transform_compose(
                                 hierarchy.nodes[ancestor_parent_slot].world,
@@ -155,7 +202,7 @@ module WorldHierarchy:
                         ancestor_id: i64 = hierarchy.nodes[ancestor_slot].id
                         for child in 0..<hierarchy.count |hierarchy, ancestor_id|:
                             hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == ancestor_id
-                parent_slot: usize = slot_of(hierarchy, parent)
+                parent_slot: usize = hierarchy_slot_of(hierarchy, parent)
                 return false if parent_slot == WorldHierarchy::MAX_NODES
                 hierarchy.nodes[slot].local <- Geometry::transform_apply_inverse(hierarchy.nodes[parent_slot].world, world)
             old_world: Geometry::Transform = hierarchy.nodes[slot].world
@@ -186,7 +233,7 @@ module WorldHierarchy:
                                 hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == hierarchy.nodes[index].id
                             changed <- true
                         else:
-                            parent_slot: usize = slot_of(hierarchy, parent)
+                            parent_slot: usize = hierarchy_slot_of(hierarchy, parent)
                             if parent_slot != WorldHierarchy::MAX_NODES and not hierarchy.nodes[parent_slot].dirty:
                                 old_world: Geometry::Transform = hierarchy.nodes[index].world
                                 hierarchy.nodes[index].world <- Geometry::transform_compose(hierarchy.nodes[parent_slot].world, hierarchy.nodes[index].local)
@@ -200,7 +247,7 @@ module WorldHierarchy:
                 break if not changed
 
         def hierarchy_world(hierarchy: Hierarchy&, id: i64) -> Geometry::Transform:
-            slot: usize = slot_of(hierarchy, id)
+            slot: usize = hierarchy_slot_of(hierarchy, id)
             return Geometry::transform_identity() if slot == WorldHierarchy::MAX_NODES
             hierarchy.nodes[slot].world
 
@@ -208,7 +255,7 @@ module WorldHierarchy:
         # A dirty node has valid storage but its world-space pose is stale.
         def hierarchy_try_world(hierarchy: Hierarchy&, id: i64,
             transform: mutable Geometry::Transform&) -> bool:
-            slot: usize = slot_of(hierarchy, id)
+            slot: usize = hierarchy_slot_of(hierarchy, id)
             depth: usize = hierarchy_depth(hierarchy, id)
             return false if slot == WorldHierarchy::MAX_NODES or depth >= WorldHierarchy::MAX_NODES
             return false if not Geometry::transform_is_valid(hierarchy.nodes[slot].world)
@@ -221,7 +268,7 @@ module WorldHierarchy:
             cursor: mutable i64 = id
             depth: mutable usize = 0
             for _ in 0..<WorldHierarchy::MAX_NODES |cursor, depth, hierarchy|:
-                slot: usize = slot_of(hierarchy, cursor)
+                slot: usize = hierarchy_slot_of(hierarchy, cursor)
                 return WorldHierarchy::MAX_NODES if slot == WorldHierarchy::MAX_NODES or hierarchy.nodes[slot].dirty
                 parent: i64 = hierarchy.nodes[slot].parent
                 return depth if parent == WorldHierarchy::ROOT
@@ -230,7 +277,7 @@ module WorldHierarchy:
             WorldHierarchy::MAX_NODES
 
         def hierarchy_sample(hierarchy: Hierarchy&, id: i64, alpha: f32) -> Geometry::Transform:
-            slot: usize = slot_of(hierarchy, id)
+            slot: usize = hierarchy_slot_of(hierarchy, id)
             return Geometry::transform_identity() if slot == WorldHierarchy::MAX_NODES
             PhysicsInterpolation::sample_pair(
                 hierarchy.nodes[slot].previous_world,
@@ -239,7 +286,7 @@ module WorldHierarchy:
                 alpha)
 
         def hierarchy_remove(hierarchy: mutable Hierarchy&, id: i64) -> bool:
-            slot: usize = slot_of(hierarchy, id)
+            slot: usize = hierarchy_slot_of(hierarchy, id)
             return false if slot == WorldHierarchy::MAX_NODES
             old_world: Geometry::Transform = hierarchy.nodes[slot].world
             for index in 0..<hierarchy.count:

@@ -1,0 +1,25 @@
+include "../src/world/hierarchy.elisa"
+
+# A deterministic large-tree workload for the hierarchy's dirty propagation and
+# interpolation path. Each round builds a full bounded chain, updates it, then
+# moves the root through several fixed-step passes.
+def main() -> i32:
+    for round in 0..<16:
+        hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+        local: Geometry::Transform = Geometry::transform_translate(
+            Geometry::transform_identity(), Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})
+        for index in 0..<WorldHierarchy::MAX_NODES:
+            id: i64 = index.i64() + 1
+            return 1 if not WorldHierarchy::hierarchy_spawn(&hierarchy, id, local)
+            if index > 0:
+                return 2 if not WorldHierarchy::hierarchy_set_parent(&hierarchy, id, index.i64(), false)
+        WorldHierarchy::hierarchy_update(&hierarchy)
+        return 3 if WorldHierarchy::hierarchy_world(&hierarchy, WorldHierarchy::MAX_NODES.i64()).position.x != 256.0
+        for sweep in 0..<8:
+            root_local: Geometry::Transform = Geometry::transform_translate(
+                Geometry::transform_identity(), Geometry::Vec3{x: (sweep + round).f32(), y: 0.0, z: 0.0})
+            return 4 if not WorldHierarchy::hierarchy_set_local(&hierarchy, 1, root_local, false)
+            WorldHierarchy::hierarchy_update(&hierarchy)
+            expected: f32 = 255.0 + (sweep + round).f32()
+            return 5 if WorldHierarchy::hierarchy_world(&hierarchy, WorldHierarchy::MAX_NODES.i64()).position.x != expected
+    0

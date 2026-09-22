@@ -40,6 +40,7 @@ module World::Tests:
             enemy_count: 0,
             static_objects: zeroed,
             static_object_count: 0,
+            hierarchy: WorldHierarchy::Hierarchy(),
         }
 
     def invalid_reference() -> EntityRef:
@@ -238,7 +239,7 @@ module World::Tests:
             error failure: invalid_reference()
         snapshot: World::Rollback::Snapshot = catch World::Rollback::capture(&world):
             value: value
-            error failure: World::Rollback::Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0}
+            error failure: World::Rollback::Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0, hierarchy: WorldHierarchy::Snapshot()}
         allocator_before: i64 = world_last_issued(&world)
         _ = catch world_despawn(&world, actor):
             ok: true
@@ -272,7 +273,7 @@ module World::Tests:
             RollbackError.WrongWorld: 2
             error failure: 3
         return 4 if wrong_world != 2
-        invalid_snapshot: World::Rollback::Snapshot = World::Rollback::Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0}
+        invalid_snapshot: World::Rollback::Snapshot = World::Rollback::Snapshot{epoch: 0, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0, hierarchy: WorldHierarchy::Snapshot()}
         rejected_snapshot: i32 = catch World::Rollback::restore(&world, &invalid_snapshot):
             ok: 0
             RollbackError.InvalidSnapshot: 1
@@ -296,6 +297,10 @@ module World::Tests:
         orphan_static: mutable World::Rollback::Snapshot = snapshot
         orphan_static.static_objects[0] <- StaticObjectRecord{id: snapshot.static_objects[0].id + 1000, live: true}
         return 10 if restore_code(&world, &orphan_static) != 1
+        bad_hierarchy: mutable World::Rollback::Snapshot = snapshot
+        bad_hierarchy.hierarchy.nodes[0].parent <- snapshot.hierarchy.nodes[1].id
+        bad_hierarchy.hierarchy.nodes[1].parent <- snapshot.hierarchy.nodes[0].id
+        return 12 if restore_code(&world, &bad_hierarchy) != 1
         return 11 if restore_code(&world, &snapshot) != 0 or not world_is_valid(&world)
         0
 
@@ -317,6 +322,35 @@ module World::Tests:
         return 1 if first.id != 1 or second.id != 2 or first.world_epoch == 0 or first.world_epoch != second.world_epoch
         return 2 if not world_is_live(&world, first) or not world_is_live(&world, second)
         return 3 if not world_is_valid(&world)
+
+        parent_pose: Geometry::Transform = Geometry::transform_translate(
+            Geometry::transform_identity(), Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0})
+        child_pose: Geometry::Transform = Geometry::transform_translate(
+            Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0})
+        parent_status: i32 = catch world_set_transform(&world, first, parent_pose):
+            ok: 0
+            error failure: 1
+        child_status: i32 = catch world_set_transform(&world, second, child_pose):
+            ok: 0
+            error failure: 1
+        reparent_status: i32 = catch world_reparent(&world, second, first, false):
+            ok: 0
+            WorldError.InvalidReference: 1
+            error failure: 2
+        reparented_pose: mutable Geometry::Transform = Geometry::transform_identity()
+        return 35 if parent_status != 0 or child_status != 0 or reparent_status != 0
+        return 36 if not world_try_transform(&world, second, &reparented_pose) or reparented_pose.position.x != 7.0
+        return 37 if world_hierarchy_count(&world) != world_live_count(&world) or not world_is_valid(&world)
+        root_reparent_status: i32 = catch world_reparent(&world, second, world_root_reference(&world), true):
+            ok: 0
+            WorldError.InvalidReference: 1
+            error failure: 2
+        return 38 if root_reparent_status != 0 or not world_is_valid(&world)
+        wrong_root_status: i32 = catch world_reparent(&world, second, EntityRef{world_epoch: first.world_epoch + 1, id: WorldHierarchy::ROOT}, false):
+            ok: 0
+            WorldError.InvalidReference: 1
+            error failure: 2
+        return 39 if wrong_root_status != 1 or not world_is_valid(&world)
 
         bindings: mutable Table = Table()
         bound: i32 = catch bind(&bindings, &world, 7001, first):
