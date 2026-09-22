@@ -127,6 +127,19 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     stage <- 7
     tick <- try PhysicsAppProbe::fixed_step_pair(world)
     raise PhysicsRuntime::PhysicsError.BackendFailure if tick != PhysicsAppProbe::PAIR_TICK_COUNT
+    ray: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+        PhysicsRuntime::ALL_LAYERS)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if not ray.hit or ray.entity == 0 or ray.distance <= 0.0
+    invalid_ray: i32 = catch PhysicsRuntime::raycast(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 10.0,
+        PhysicsRuntime::ALL_LAYERS):
+        value: 1
+        PhysicsRuntime::PhysicsError.InvalidArgument: 0
+        error failure: 2
+    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_ray != 0
     stage <- 8
     tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 9

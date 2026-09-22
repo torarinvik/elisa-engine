@@ -57,6 +57,13 @@ int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_seconds,
     uint64_t* tick);
+int32_t elisa_physics_v1_raycast(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, uint32_t layer_mask,
+    uint64_t* entity, float* position_x, float* position_y, float* position_z,
+    float* normal_x, float* normal_y, float* normal_z, float* distance,
+    int32_t* hit);
 int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
     ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,
     uint32_t* dropped);

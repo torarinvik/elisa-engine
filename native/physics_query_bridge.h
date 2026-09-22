@@ -235,6 +235,28 @@ public:
         return true;
     }
 
+    bool raycast_physics(PhysicsQueryToken token, const XMFLOAT3& origin,
+        const XMFLOAT3& direction, float max_distance, uint32_t layer_mask,
+        PhysicsQueryHit& hit) const {
+        if (!valid(token) || layer_mask == 0 || !finite_vector(origin) ||
+            !finite_vector(direction) || !std::isfinite(max_distance) ||
+            max_distance <= 0.0f || length_squared(direction) <= 0.000001f) return false;
+        const float inverse_length = 1.0f / std::sqrt(length_squared(direction));
+        const XMFLOAT3 unit_direction = XMFLOAT3(
+            direction.x * inverse_length, direction.y * inverse_length,
+            direction.z * inverse_length);
+        const wi::physics::RayIntersectionResult result = wi::physics::Intersects(
+            scene_, wi::primitive::Ray(origin, direction, 0.0f, max_distance));
+        if (!result.IsValid()) return false;
+        const XMFLOAT3 offset = XMFLOAT3(result.position.x - origin.x,
+            result.position.y - origin.y, result.position.z - origin.z);
+        const float distance = offset.x * unit_direction.x +
+            offset.y * unit_direction.y + offset.z * unit_direction.z;
+        if (!std::isfinite(distance) || distance < 0.0f || distance > max_distance) return false;
+        hit = {result.entity, result.position, result.normal, distance, 0.0f};
+        return true;
+    }
+
     size_t raycast_all(PhysicsQueryToken token, const XMFLOAT3& origin,
         const XMFLOAT3& direction, float max_distance, uint32_t layer_mask,
         Hits& hits, uint32_t filter_mask = wi::enums::FILTER_COLLIDER |

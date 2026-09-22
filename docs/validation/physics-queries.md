@@ -36,6 +36,9 @@ returns copied `PhysicsQueryHit` values to the host.
 - `PhysicsRuntime::BodyDesc.sensor` creates a checked Jolt trigger volume; its
   events remain contacts with `trigger = true`, while sensor bodies do not
   contribute collision response.
+- `PhysicsRuntime::raycast` exposes a nearest hit with copied entity, position,
+  normal, and distance data. Invalid direction or distance inputs fail with
+  `PhysicsError.InvalidArgument`, while a valid miss returns `hit = false`.
 - Destroying a scene participant and rebuilding the scene removes it from the
   next query. Invalidating the token rejects every later query, including
   foreign-owner tokens.
@@ -65,7 +68,8 @@ from worker callbacks. A caller must unregister its listener before destroying
 the scene or listener object.
 
 The Elisa application smoke creates static and dynamic bodies plus a static
-sensor volume, advances the fixed-step world, and polls
+sensor volume, advances the fixed-step world, verifies a public physics ray hit
+and invalid zero-direction rejection, and polls
 `PhysicsRuntime::ContactBuffer`. It requires real non-trigger and trigger
 `ContactKind.Added` events, then destroys the sensor and requires a trigger
 `ContactKind.Removed` event, with zero dropped events. This proves the public
