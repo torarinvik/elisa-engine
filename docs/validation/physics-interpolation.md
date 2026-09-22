@@ -15,5 +15,6 @@ and `test/world_rendering.elisa` verify parent-aware publication and a midpoint
 render sample while the authoritative transform remains at the latest tick.
 `native/physics_interpolation_probe.h` mirrors the bounded publication contract
 at the Wicked boundary and the native gate verifies fractional interpolation,
-duplicate rejection, and teleport bypass. Native Jolt pose wiring, sleeping,
-and render-rate equivalence remain.
+duplicate rejection, and teleport bypass. The adjacent real-Jolt body gate also
+verifies kinematic target publication plus dynamic sleep and wake stability.
+Render-rate equivalence across independently paced presentation loops remains.

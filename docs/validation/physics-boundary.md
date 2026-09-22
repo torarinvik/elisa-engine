@@ -11,9 +11,10 @@ determinism runs. The generation-checked service also accepts a finite,
 normalized target for a kinematic body, applies it through Wicked's transform
 boundary, and rejects a dynamic body target; the application smoke covers both
 paths against the real Jolt scene. The same service can explicitly request
-deactivation or reactivation of a generation-checked dynamic body; a dedicated
-sleep-state gate remains before this becomes a complete stability claim. The portable policy now also exposes an
-Elisa-owned `StepClock`; `test/physics_policy.elisa` proves that a tick can be
-active only once and commits must be contiguous. Sleeping, interpolation
-interpolation equivalence across render rates, and competing-simulation
-rejection remain P01 work.
+deactivation or reactivation of a generation-checked dynamic body. The native
+body gate also publishes a real kinematic target through Wicked's scene-transform
+owner path, rejects dynamic targets, holds a dynamic pose while sleeping for a
+tick, and verifies gravity resumes after wake. The portable policy now also
+exposes an Elisa-owned `StepClock`; `test/physics_policy.elisa` proves that a
+tick can be active only once and commits must be contiguous. Render-rate
+equivalence and competing-simulation rejection remain P01 work.

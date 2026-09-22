@@ -64,6 +64,30 @@ public:
         return live(handle) ? slots_[handle.slot].entity : wi::ecs::INVALID_ENTITY;
     }
 
+    bool set_kinematic_target(PhysicsBodyHandle handle, const XMFLOAT3& position,
+        const XMFLOAT4& rotation) {
+        if (!live(handle) || slots_[handle.slot].kind != PhysicsBodyKind::Kinematic) return false;
+        auto* transform = scene_.transforms.GetComponent(slots_[handle.slot].entity);
+        if (transform == nullptr) return false;
+        // Wicked feeds kinematic targets from the scene transform during its
+        // pre-simulation pass. Publishing only this owner-side transform
+        // avoids teleporting the body and lets Jolt compute target velocity.
+        transform->translation_local = position;
+        transform->rotation_local = rotation;
+        transform->SetDirty();
+        return true;
+    }
+
+    bool set_sleeping(PhysicsBodyHandle handle, bool sleeping) {
+        if (!live(handle) || slots_[handle.slot].kind != PhysicsBodyKind::Dynamic) return false;
+        auto* body = scene_.rigidbodies.GetComponent(slots_[handle.slot].entity);
+        if (body == nullptr) return false;
+        wi::physics::SetActivationState(*body, sleeping
+            ? wi::physics::ActivationState::Inactive
+            : wi::physics::ActivationState::Active);
+        return true;
+    }
+
     bool destroy(PhysicsBodyHandle handle) {
         if (!live(handle)) return false;
         scene_.Entity_Remove(slots_[handle.slot].entity);
@@ -145,6 +169,42 @@ inline bool probe_physics_body_bridge(wi::scene::Scene& scene) {
         !check(hit.entity == bridge.resolve(stepped), "Jolt ray hits signed-scale physics shape") ||
         !check(miss.entity != bridge.resolve(stepped), "Jolt ray respects nonuniform physics extent")) return false;
     if (!check(bridge.destroy(stepped), "physics bridge fixed-step unload")) return false;
+
+    const PhysicsBodyHandle target = bridge.create(PhysicsBodyKind::Kinematic, 1.0f, 5);
+    if (!check(target.slot != UINT32_MAX, "physics bridge creates kinematic target") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge initializes kinematic target")) return false;
+    const XMFLOAT4 identity_rotation(0, 0, 0, 1);
+    if (!check(bridge.set_kinematic_target(target, XMFLOAT3(3.0f, 2.0f, 0.0f), identity_rotation),
+        "physics bridge accepts kinematic target") ||
+        !check(!bridge.set_kinematic_target(dynamic, XMFLOAT3(3.0f, 2.0f, 0.0f), identity_rotation),
+            "physics bridge rejects dynamic kinematic target") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge commits kinematic target")) return false;
+    auto* target_transform = scene.transforms.GetComponent(bridge.resolve(target));
+    if (!check(target_transform != nullptr &&
+        std::fabs(target_transform->GetPosition().x - 3.0f) < 0.01f &&
+        std::fabs(target_transform->GetPosition().y - 2.0f) < 0.01f,
+        "physics bridge publishes kinematic target pose")) return false;
+
+    const PhysicsBodyHandle sleeping = bridge.create(PhysicsBodyKind::Dynamic, 1.0f, 6);
+    if (!check(sleeping.slot != UINT32_MAX, "physics bridge creates sleepable body") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge initializes sleepable body")) return false;
+    auto* sleeping_transform = scene.transforms.GetComponent(bridge.resolve(sleeping));
+    if (!check(sleeping_transform != nullptr, "physics bridge sleep transform")) return false;
+    const float sleeping_y = sleeping_transform->GetPosition().y;
+    if (!check(bridge.set_sleeping(sleeping, true), "physics bridge deactivates dynamic body") ||
+        !check(!bridge.set_sleeping(target, true), "physics bridge rejects sleeping kinematic body") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge advances sleeping body")) return false;
+    const float held_y = sleeping_transform->GetPosition().y;
+    if (!check(std::fabs(held_y - sleeping_y) < 0.001f, "physics bridge keeps sleeping pose") ||
+        !check(bridge.set_sleeping(sleeping, false), "physics bridge wakes dynamic body") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge advances woken body") ||
+        !check(bridge.step_fixed(FIXED_DT), "physics bridge advances woken body twice") ||
+        !check(sleeping_transform->GetPosition().y < held_y, "physics bridge wakes into simulation")) {
+        std::fprintf(stdout, "sleeping body poses: %.4f -> %.4f -> %.4f\n",
+            sleeping_y, held_y, sleeping_transform->GetPosition().y);
+        return false;
+    }
+    if (!check(bridge.destroy(target) && bridge.destroy(sleeping), "physics bridge unloads motion bodies")) return false;
     return true;
 }
 
