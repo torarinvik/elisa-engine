@@ -120,6 +120,21 @@ def fallback_matrix_valid() -> bool:
     return false if unavailable_sync.state != RequirementState.Unavailable
     return false if unavailable_sync.decisions[0].resolution != BackendFeatureResolution.ProviderUnavailable
 
+    default_audio_fallback: BackendFallbackProviders = BackendFallbackProviders{input: BackendFallbackProvider.None, rendering: BackendFallbackProvider.None, physics: BackendFallbackProvider.None, audio: BackendFallbackProvider.MiniaudioDefault, native_window: BackendFallbackProvider.None, async_upload: BackendFallbackProvider.None, callbacks: BackendFallbackProvider.None, asset_loading: BackendFallbackProvider.None}
+    silent_only: BackendProviderAvailability = BackendProviderAvailability{
+        jolt_physics: false,
+        miniaudio_silent: true,
+        miniaudio_default: false,
+        synchronous_upload: false,
+        synchronous_asset_loading: false,
+    }
+    degraded_audio: BackendRequirementReport = backend_requirement_apply_provider_availability(
+        backend_requirement_report(profile, one_feature(BackendFeature.Audio), 1,
+            default_audio_fallback, true), silent_only)
+    return false if degraded_audio.state != RequirementState.Fallback or degraded_audio.fallback_count != 1 or degraded_audio.missing_count != 0
+    return false if degraded_audio.decisions[0].resolution != BackendFeatureResolution.DeclaredFallback
+    return false if degraded_audio.decisions[0].fallback_provider != BackendFallbackProvider.MiniaudioSilent
+
     wrong_provider: BackendFallbackProviders = BackendFallbackProviders{
         input: BackendFallbackProvider.None,
         rendering: BackendFallbackProvider.None,

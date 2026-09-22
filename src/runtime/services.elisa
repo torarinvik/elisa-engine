@@ -128,7 +128,7 @@ module RuntimeServices:
                 return initialized
             if decision.feature == Capabilities::BackendFeature.Audio:
                 return ActivationStatus.AudioConfigurationInvalid if sample_rate < AudioRuntime::MIN_SAMPLE_RATE_HZ
-                status: ActivationStatus =
+                requested: ActivationStatus =
                     match decision.fallback_provider:
                         Capabilities::BackendFallbackProvider.MiniaudioSilent:
                             activate_silent_audio(sample_rate, channels)
@@ -136,9 +136,16 @@ module RuntimeServices:
                             activate_default_audio(sample_rate, channels)
                         _:
                             ActivationStatus.UnsupportedProvider
+                # A missing default output device is not a reason to tear the
+                # host down and reinitialize it: keep the session live on the
+                # silent device, as runtime device loss already does, and
+                # record that route so callers and reports can see it.
+                default_requested: bool = decision.fallback_provider == Capabilities::BackendFallbackProvider.MiniaudioDefault
+                silent_route: bool = default_requested and requested == ActivationStatus.AudioDeviceUnavailable
+                status: ActivationStatus = activate_silent_audio(sample_rate, channels) if silent_route else requested
                 if status == ActivationStatus.Ready:
                     session.audio_live <- true
-                    session.audio_provider <- decision.fallback_provider
+                    session.audio_provider <- Capabilities::BackendFallbackProvider.MiniaudioSilent if silent_route else decision.fallback_provider
                 return status
             ActivationStatus.UnsupportedProvider
 

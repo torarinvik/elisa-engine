@@ -59,6 +59,24 @@ also now passes the typed `BackendFallbackProviders` returned by
 different struct with the same-shaped Boolean fields, so the compiler emitted declarations
 without the two function bodies and the native archive could not link.
 
+When the requested provider is `MiniaudioDefault` and the default output device is
+unavailable, the start degrades to the silent miniaudio device instead of rejecting the
+requirements. The host's provider-availability pass probes the silent provider whenever
+the default probe fails, and `backend_requirement_apply_provider_availability` rewrites
+the audio decision to a `DeclaredFallback` on `MiniaudioSilent`, so `open` reports
+`FallbackRequired` rather than `RequirementsUnavailable`. If the device probe passes but
+the real open still fails, `open` activates the silent device in place and records
+`MiniaudioSilent` as the session's audio provider instead of rolling the host back. Both
+routes match the runtime device-loss recovery. It was added after the Amazing Labyrinth
+bundle, launched with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`, rolled its host back,
+reinitialised SDL3/Wicked/Metal in the same process and then hung forever in the Metal
+frame-fence wait on the first rendered frames. That second-initialisation hang is a
+separate open defect of the host lifecycle under a full scene; the lifecycle probe's
+empty-scene cycles do not reproduce it. `test/runtime_services_audio_probe.elisa`, run by
+the native application smoke, opens a session with the default provider while the
+test-only failure flag makes the device open fail, and checks the session is live on the
+silent route with no voices and shuts down cleanly.
+
 The affine owner now carries `Runtime::StepClock` state. `advance_simulation()` returns the
 number of due fixed ticks, the scheduled tick count, and the interpolation fraction for the
 game's validated `Executor` plan; shutdown and failed-start rollback reset the clock. The
