@@ -7,6 +7,8 @@ extends SceneTree
 # exits. The Elisa world stays authoritative; this is a host-side
 # representation only.
 
+const CookedMesh = preload("res://cooked_mesh.gd")
+
 func _initialize() -> void:
     call_deferred("_run_capture")
 
@@ -183,23 +185,10 @@ func _run_capture() -> void:
         # Build a renderable mesh from the cooked geometry, so the authored
         # asset reaches the screen through the pipeline rather than from a
         # source format.
-        var position_floats := Marshalls.base64_to_raw(package["positions_b64"]).to_float32_array()
-        var normal_floats := Marshalls.base64_to_raw(package["normals_b64"]).to_float32_array()
-        var index_ints := Marshalls.base64_to_raw(package["indices_b64"]).to_int32_array()
-        var vertices := PackedVector3Array()
-        for index in range(position_floats.size() / 3):
-            vertices.append(Vector3(position_floats[index * 3], position_floats[index * 3 + 1], position_floats[index * 3 + 2]))
-        var normals := PackedVector3Array()
-        for index in range(normal_floats.size() / 3):
-            normals.append(Vector3(normal_floats[index * 3], normal_floats[index * 3 + 1], normal_floats[index * 3 + 2]))
-        var arrays := []
-        arrays.resize(Mesh.ARRAY_MAX)
-        arrays[Mesh.ARRAY_VERTEX] = vertices
-        arrays[Mesh.ARRAY_NORMAL] = normals
-        arrays[Mesh.ARRAY_INDEX] = index_ints
+        var arrays := CookedMesh.surface_arrays(package)
         cooked_goal_mesh = ArrayMesh.new()
         cooked_goal_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-        print("cooked package: mesh vertices=%d indices=%d" % [vertices.size(), index_ints.size()])
+        print("cooked package: mesh vertices=%d indices=%d" % [arrays[Mesh.ARRAY_VERTEX].size(), arrays[Mesh.ARRAY_INDEX].size()])
         # Cooked texture: turn the RGBA package into a Godot texture so the
         # goal material samples it, the same texture the native host uploads.
         var texture_path: String = package_path.get_base_dir().path_join(asset_path.get_file().get_basename() + "_tex.rgba")

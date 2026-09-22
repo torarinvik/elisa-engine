@@ -74,6 +74,17 @@ def main(arguments: darray[sview]) -> i64:
             return cook_status
         cook_status
 
+    # Each cooked triangle, uploaded through the host's winding boundary, must
+    # draw from its glTF front only. probe.gd checks the same headless through
+    # front-face normals; this is the rendered check it stands in for.
+    _ =
+        status: i64 = run_visible(godot, ["--path", project, "--script", "res://winding_capture.gd", "--", manifest])
+        if status != 0:
+            return status
+        status
+
+    println("Godot draws cooked triangles from their glTF front only.")
+
     # Build the embedded game into this project so the rendered capture host
     # can drive gameplay with live input, not only replay the fixture route.
     _ =
