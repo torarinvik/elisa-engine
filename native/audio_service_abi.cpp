@@ -5,6 +5,7 @@
 #include "miniaudio_service.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -29,6 +30,14 @@ int32_t require_application_owner() {
     return ELISA_AUDIO_INVALID_STATE;
 }
 
+// `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` makes the default output device
+// fail to open so a packaged launch can prove its silent fallback route
+// without unplugging hardware; sandboxes cannot make CoreAudio fail.
+bool default_device_forced_unavailable() {
+    const char* value = std::getenv("ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE");
+    return value != nullptr && value[0] != '\0' && value[0] != '0';
+}
+
 int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
     const int32_t owner_status = require_application_owner();
     if (owner_status != ELISA_AUDIO_OK) return owner_status;
@@ -39,6 +48,7 @@ int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
     }
     AudioService& state = audio_service();
     if (state.initialized) return ELISA_AUDIO_INVALID_STATE;
+    if (!silent && default_device_forced_unavailable()) return ELISA_AUDIO_DEVICE_UNAVAILABLE;
     const bool initialized = silent
         ? state.service.initialize_null(sample_rate, channels)
         : state.service.initialize_default(sample_rate, channels);
@@ -84,6 +94,9 @@ extern "C" int32_t elisa_audio_v1_probe_provider(int32_t provider) {
     }
     AudioService& state = audio_service();
     if (state.initialized) return ELISA_AUDIO_INVALID_STATE;
+    if (provider == ELISA_AUDIO_PROVIDER_DEFAULT && default_device_forced_unavailable()) {
+        return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+    }
 
     probe::audio::Service candidate;
     bool available = false;
