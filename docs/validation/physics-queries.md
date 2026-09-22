@@ -23,8 +23,11 @@ returns copied `PhysicsQueryHit` values to the host.
 - The physics service installs that queue listener for every initialized Jolt
   world. `PhysicsRuntime::poll_contacts` copies the bounded event batch into a
   public Elisa `ContactBuffer` with no native handles or retained pointers;
-  polling also returns the explicit overflow count. Unpolled batches accumulate
-  up to the fixed 64-event boundary and are cleared only by a successful poll.
+  polling also returns the explicit overflow count. The C ABI uses scalar
+  `contact_count`, `contact_at`, and `clear_contacts` accessors so the public
+  boundary does not depend on aggregate C struct calling conventions. Unpolled
+  batches accumulate up to the fixed 64-event boundary and are cleared only by
+  a successful poll.
 - Sphere and capsule overlaps return the nearest Wicked result with copied
   position, normal, and penetration depth. Their all-hit variants copy at most
   `MAX_HITS` unique entities, even when Wicked reports several intersected
