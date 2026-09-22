@@ -22,7 +22,7 @@ SDL3/Metal render-scene smoke enables both, checks their Wicked `RenderPath3D`
 state, disables both and checks the restored state, then verifies malformed
 integer flags are rejected at the C ABI boundary. Validation passed:
 
-`RenderScene::apply_quality_profile` now carries the validated `Quality::Profile`
+`RenderScene::apply_quality_profile` now carries the validated Elisa `Quality::Profile`
 contract through the public Elisa runtime. It applies tonemap, render scale,
 bloom threshold/toggle, FXAA, SSAO, SSR, height fog and depth effects in one
 checked call; an unsupported FSR request keeps the rest of the profile and
