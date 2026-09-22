@@ -36,7 +36,7 @@
 #include <thread>
 #include <vector>
 namespace {
-constexpr size_t MAX_INSTANCES = 256;
+constexpr size_t MAX_INSTANCES = 512;
 // An instance or snapshot row without a shared snapshot mesh.
 constexpr size_t NO_SHARED_MESH = std::numeric_limits<size_t>::max();
 constexpr size_t MAX_ELECTRIC_ARCS = 1024;

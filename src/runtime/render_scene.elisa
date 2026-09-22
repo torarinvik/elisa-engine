@@ -208,6 +208,7 @@ module RenderScene:
             raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
     public:
+        const MAX_INSTANCES: usize = 512
         const MAX_ELECTRIC_ARCS: usize = 1024
         const MAX_SNAPSHOT_ENTRIES: usize = 256
         const MAX_OVERLAY_PANELS: usize = 64
@@ -269,7 +270,7 @@ module RenderScene:
         # tiles that are created once and shown or hidden as topology changes.
         struct InstanceBatch:
             private:
-                handles: mutable InstanceHandle[256]
+                handles: mutable InstanceHandle[RenderScene::MAX_INSTANCES]
                 count: mutable usize
         error RenderSceneError:
             InvalidValue
@@ -290,7 +291,7 @@ module RenderScene:
         def InstanceBatch() -> InstanceBatch:
             InstanceBatch{handles: zeroed, count: 0}
         def batch_append(batch: mutable InstanceBatch&, handle: InstanceHandle) -> void error[RenderSceneError]:
-            raise RenderSceneError.Capacity if batch.count >= 256
+            raise RenderSceneError.Capacity if batch.count >= MAX_INSTANCES
             batch.handles[batch.count] <- handle
             batch.count <- batch.count + 1
         def batch_get(batch: InstanceBatch&, index: usize) -> InstanceHandle error[RenderSceneError]:

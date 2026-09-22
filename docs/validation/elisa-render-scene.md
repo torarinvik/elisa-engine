@@ -8,7 +8,7 @@ box, sphere, and plane primitives with a `Geometry::Transform` and per-instance
 RGBA color, then updates full position/rotation/scale, color, or visibility and
 destroys them using opaque generation-checked handles.
 
-The service accepts at most 256 live instances. Position and quaternion
+The service accepts at most 512 live instances. Position and quaternion
 components, camera vectors, and positive scales are limited to a magnitude of
 1,000,000 world units; orthographic height ranges from 0.001 to 1,000,000.
 Quaternions must be non-zero and are normalized; colors must be finite within
