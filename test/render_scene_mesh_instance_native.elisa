@@ -4,6 +4,7 @@
 # last clone goes.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene_instancing.elisa"
+include "../src/runtime/render_scene_shadow.elisa"
 
 module RenderSceneMeshInstanceNativeTests:
     private:
@@ -15,7 +16,7 @@ module RenderSceneMeshInstanceNativeTests:
         extern elisa_render_scene_v1_test_mesh_count() -> u64
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_instance_casts_shadow(render_id: i64) -> i32
+        extern elisa_render_scene_v1_test_instance_casts_shadow(render_id: RenderScene::InstanceHandle) -> i32
 
         def placement(x: f32) -> Geometry::Transform:
             Geometry::Transform{
@@ -34,14 +35,19 @@ module RenderSceneMeshInstanceNativeTests:
                 error failure: return 1
             meshes_with_source: u64 = elisa_render_scene_v1_test_mesh_count()
             return 2 if meshes_with_source != meshes_before + 1
-            return 17 if elisa_render_scene_v1_test_instance_casts_shadow(source.native_value) != 1
-            return 18 if catch RenderScene::set_cast_shadow(source, false):
+            return 17 if elisa_render_scene_v1_test_instance_casts_shadow(source) != 0
+            return 18 if catch RenderScene::set_cast_shadow(source, true):
                 ok: 0
                 error failure: 1
-            return 19 if elisa_render_scene_v1_test_instance_casts_shadow(source.native_value) != 0
-            return 20 if catch RenderScene::set_cast_shadow(source, true):
+            return 19 if elisa_render_scene_v1_test_instance_casts_shadow(source) != 1
+            return 20 if catch RenderScene::set_cast_shadow(source, false):
                 ok: 0
                 error failure: 1
+            return 21 if elisa_render_scene_v1_test_instance_casts_shadow(source) != 0
+            return 22 if catch RenderScene::set_cast_shadow(source, true):
+                ok: 0
+                error failure: 1
+            return 23 if elisa_render_scene_v1_test_instance_casts_shadow(source) != 1
             clone: RenderScene::InstanceHandle = catch RenderScene::create_mesh_instance(
                 source, placement(2.0),
                 RenderScene::Color{red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0}):

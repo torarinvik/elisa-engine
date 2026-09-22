@@ -24,4 +24,38 @@ def main() -> i32:
     orthographic: Geometry::Ray3 = Camera::ray(&camera, 320.0, 240.0)
     return 12 if orthographic.origin.x != 2.0 or orthographic.origin.y != 3.0 or orthographic.origin.z != 4.0
     return 13 if orthographic.direction.z >= -0.99
+    visible: Geometry::Bounds3 = Geometry::Bounds3{
+        minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -5.0},
+        maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: -3.0},
+    }
+    return 19 if not Camera::bounds_visible(&camera, visible)
+    outside: Geometry::Bounds3 = Geometry::Bounds3{
+        minimum: Geometry::Vec3{x: 100.0, y: -1.0, z: -5.0},
+        maximum: Geometry::Vec3{x: 101.0, y: 1.0, z: -3.0},
+    }
+    return 20 if Camera::bounds_visible(&camera, outside)
+    moved_visible: Geometry::Bounds3 = Geometry::Bounds3{
+        minimum: Geometry::Vec3{x: 1.0, y: 2.0, z: -1.0},
+        maximum: Geometry::Vec3{x: 3.0, y: 4.0, z: 1.0},
+    }
+    return 21 if not Camera::bounds_visible(&camera, moved_visible)
+    return 22 if Camera::bounds_visible(&camera, Geometry::Bounds3{
+        minimum: Geometry::Vec3{x: 2.0, y: 3.0, z: 100.0},
+        maximum: Geometry::Vec3{x: 3.0, y: 4.0, z: 101.0},
+    })
+    return 23 if not Camera::set_perspective(&camera, 1.0, 0.1, 500.0)
+    rotated: Geometry::Transform = Geometry::Transform{
+        position: Geometry::vec3_zero(),
+        rotation: Geometry::Quat{x: 0.0, y: 0.70710677, z: 0.0, w: 0.70710677},
+        scale: Geometry::Vec3{x: 2.0, y: 1.0, z: 0.5},
+    }
+    return 24 if not Camera::set_transform(&camera, rotated)
+    return 25 if not Camera::bounds_visible(&camera, Geometry::Bounds3{
+        minimum: Geometry::Vec3{x: -6.0, y: -1.0, z: -1.0},
+        maximum: Geometry::Vec3{x: -4.0, y: 1.0, z: 1.0},
+    })
+    return 26 if Camera::bounds_visible(&camera, Geometry::Bounds3{
+        minimum: Geometry::Vec3{x: 4.0, y: -1.0, z: -1.0},
+        maximum: Geometry::Vec3{x: 6.0, y: 1.0, z: 1.0},
+    })
     0

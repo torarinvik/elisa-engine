@@ -7,7 +7,7 @@ include "./render_scene.elisa"
 
 module SnapshotAssetCapabilities:
     # Snapshot materials support registered textures and one packed Wicked
-    # surface map; separate occlusion and metallic-roughness maps need cooking.
+    # surface map; cooked glTF materials may additionally bind OCCLUSIONMAP.
     public:
         const MATERIAL_TEXTURES_SUPPORTED: bool = true
 
@@ -207,9 +207,9 @@ extend RenderScene:
             try check_status(elisa_render_scene_v1_unregister_snapshot_texture_asset(asset.high, asset.low))
 
         # An occlusion texture turns on Wicked's ambient occlusion from the
-        # surface map's red channel. It must be the metallic-roughness
-        # texture, or stand alone as the surface map. Occlusion is part of the
-        # registration, so the same material without it conflicts.
+        # packed surface map's red channel. It must be the metallic-roughness
+        # texture, or stand alone as the surface map. Cooked glTF materials
+        # can additionally retain a dedicated occlusion map.
         def register_snapshot_material_asset(asset: Assets::AssetId,
             material: Material::Material&) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)

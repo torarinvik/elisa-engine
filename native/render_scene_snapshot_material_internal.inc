@@ -2,17 +2,19 @@
 // mesh-material ABI. Callers hold the service mutex on the owner thread,
 // outside a snapshot transaction.
 
-// Occlusion reads the surface texture's red channel, so it needs one.
+// Occlusion reads either the packed surface texture or a dedicated texture.
 bool snapshot_material_values_valid(const SnapshotMaterialAssetSlot& values) {
     const auto unit = [](float value) { return finite(value) && value >= 0.0f && value <= 1.0f; };
     const auto emission = [](float value) { return bounded(value, 1.0e4f) && value >= 0.0f; };
     const size_t surface = static_cast<size_t>(elisa::rendering::textures::Slot::Surface);
+    const size_t occlusion = static_cast<size_t>(elisa::rendering::textures::Slot::Occlusion);
     const bool surfaced = values.texture_high[surface] != 0 || values.texture_low[surface] != 0;
+    const bool separately_occluded = values.texture_high[occlusion] != 0 || values.texture_low[occlusion] != 0;
     return valid_color(values.base_color[0], values.base_color[1], values.base_color[2], values.base_color[3]) &&
         unit(values.metallic) && unit(values.roughness) &&
         std::all_of(std::begin(values.emissive), std::end(values.emissive), emission) &&
         unit(values.alpha_cutoff) && values.alpha_mode >= ELISA_RENDER_SCENE_ALPHA_OPAQUE &&
-        values.alpha_mode <= ELISA_RENDER_SCENE_ALPHA_BLEND && (!values.occlusion || surfaced);
+        values.alpha_mode <= ELISA_RENDER_SCENE_ALPHA_BLEND && (!values.occlusion || surfaced || separately_occluded);
 }
 
 bool snapshot_material_values_match(const SnapshotMaterialAssetSlot& asset,
@@ -136,6 +138,12 @@ int32_t cooked_slot_material_values(const RenderSceneService& state, const Snaps
     for (size_t texture_slot = 0; texture_slot < SNAPSHOT_MATERIAL_TEXTURE_SLOTS; ++texture_slot) {
         const uint32_t reference = cooked.textures[texture_slot];
         if (reference == 0) continue;
+        // A glTF occlusion map that aliases the packed surface image is
+        // already represented by SURFACEMAP. Keep the runtime registration
+        // canonical so hand-registered materials with the same surface map
+        // compare equal and do not upload the same resource twice.
+        if (texture_slot == static_cast<size_t>(elisa::rendering::textures::Slot::Occlusion) &&
+            reference == cooked.textures[static_cast<size_t>(elisa::rendering::textures::Slot::Surface)]) continue;
         size_t found = MAX_SNAPSHOT_TEXTURE_ASSETS;
         const int32_t status = bundle_image_texture(state, mesh.canonical_path,
             mesh.geometry.texture_sections[reference - 1], found);

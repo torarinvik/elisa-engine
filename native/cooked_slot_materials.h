@@ -15,7 +15,9 @@
 namespace elisa::assets {
 
 inline constexpr uint32_t MAX_GEOMETRY_TEXTURES = 64;
-inline constexpr size_t SLOT_MATERIAL_TEXTURES = 4;
+inline constexpr size_t SLOT_MATERIAL_TEXTURES = 5;
+inline constexpr size_t SLOT_MATERIAL_SURFACE = 2;
+inline constexpr size_t SLOT_MATERIAL_OCCLUSION_TEXTURE = 4;
 inline constexpr uint32_t SLOT_MATERIAL_DOUBLE_SIDED = 1;
 inline constexpr uint32_t SLOT_MATERIAL_OCCLUSION = 2;
 inline constexpr uint32_t SLOT_ALPHA_MASK = 1;
@@ -32,8 +34,8 @@ struct CookedSlotMaterial {
     bool double_sided = false;
     // The surface image's red channel is ambient occlusion.
     bool occlusion = false;
-    // The base color, normal, surface (occlusion, roughness, metalness) and
-    // emissive images: 0 for none, otherwise one more than the image's index
+    // The base color, normal, surface (roughness, metalness), emissive and
+    // occlusion images: 0 for none, otherwise one more than the image's index
     // in the mesh's texture sections.
     std::array<uint32_t, SLOT_MATERIAL_TEXTURES> textures{};
 };
@@ -88,8 +90,9 @@ inline bool texture_section_name_valid(const std::string& name) {
 
 // Slot texture records are all present or all absent and need slot material
 // records. The names list the bundle image sections the slots sample, each
-// at least once; each 16-byte slot record names its four images. Masking
-// needs a base color image and occlusion a surface image.
+// at least once; each 20-byte slot record names its five images. Masking
+// needs a base color image and occlusion needs either a surface or an
+// occlusion image.
 inline bool parse_slot_textures(const probe::PackageIndex& package, std::vector<CookedSlotMaterial>& materials,
     std::vector<std::string>& sections, std::string& error) {
     size_t present = 0;
@@ -101,7 +104,7 @@ inline bool parse_slot_textures(const probe::PackageIndex& package, std::vector<
         std::vector<uint8_t> names;
         std::vector<uint32_t> words;
         if (present != 4 || materials.empty() || !parse_count(package, "texture_count", count) ||
-            count == 0 || count > MAX_GEOMETRY_TEXTURES || package.sections.at("slot_texture_stride") != "16" ||
+            count == 0 || count > MAX_GEOMETRY_TEXTURES || package.sections.at("slot_texture_stride") != "20" ||
             !decode_base64(package.sections.at("texture_names_b64"), names) ||
             !decode_names(names, size_t(count), sections) ||
             !decode_u32(package, "slot_textures_b64", materials.size() * SLOT_MATERIAL_TEXTURES, words)) {
@@ -134,7 +137,8 @@ inline bool parse_slot_textures(const probe::PackageIndex& package, std::vector<
     }
     for (const CookedSlotMaterial& material : materials) {
         if ((material.alpha_mode == SLOT_ALPHA_MASK && material.textures[0] == 0) ||
-            (material.occlusion && material.textures[2] == 0)) {
+            (material.occlusion && material.textures[SLOT_MATERIAL_SURFACE] == 0 &&
+                material.textures[SLOT_MATERIAL_OCCLUSION_TEXTURE] == 0)) {
             error = "cooked slot material lacks the texture it needs";
             return false;
         }

@@ -7,5 +7,9 @@ selection can be reused. Invalid and stale selections return no hit.
 
 Evidence: the SDL3/Wicked gate creates a real cube, performs a filtered ray pick,
 checks the returned gameplay reference and distance, rejects a foreign bridge and
-layer, unbinds the selection, and removes the native target. Selection outlines
-and editor end-to-end overlays remain open R06 work.
+layer, unbinds the selection, and removes the native target. The public
+`RenderSceneSelection` extension adds the same checked path to ordinary Elisa
+code. Render-scene group 232 binds a gameplay reference to a transformed sphere,
+checks a hit, miss, and invalid ray, then enables and clears a real Wicked
+material outline. Editor camera tools and end-to-end overlay composition remain
+open R06 work.

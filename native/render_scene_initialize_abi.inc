@@ -15,7 +15,9 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
 
     try {
         state.scene = std::make_unique<wi::scene::Scene>();
-        state.path = std::make_unique<ElisaRenderPath3D>(&state.electric_arcs);
+        state.path = std::make_unique<ElisaRenderPath3D>(&state.electric_arcs, &state.debug_draw);
+        state.picking = std::make_unique<probe::PickingBridge>(*state.scene);
+        state.selection = std::make_unique<probe::SelectionOutlineBridge>(*state.scene, *state.path);
         state.lighting = std::make_unique<probe::LightingBridge>(*state.scene);
         state.visibility_lod = std::make_unique<probe::VisibilityLodBridge>(*state.scene, *state.path);
         state.animation_submission = std::make_unique<probe::AnimationSubmissionBridge>(*state.scene);

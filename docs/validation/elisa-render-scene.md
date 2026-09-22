@@ -270,6 +270,25 @@ input glyphs, for example) as a screen-space sprite on the same 2D path, with
 position, size, normalized sub-rectangle UV, color/opacity and visibility
 setters. See [`overlay-image.md`](overlay-image.md).
 
+`RenderScene::debug_box`, `debug_line`, and `debug_text` submit scoped 3D
+commands through the private native debug bridge. Bounds, positions, colors,
+depth flags, owner-thread access, and queue capacity are checked before a
+command is accepted; text is copied at the boundary. `debug_flush` gives an
+explicit count and `debug_clear` discards the current scope. The owned
+`RenderPath3D` also flushes pending commands immediately before its Wicked draw,
+so ordinary Elisa callers do not need to retain a native queue or call a hidden
+engine hook. Render smoke group 231 covers valid and invalid inputs, copied
+text, depth variants, clear-after-flush, and the automatic render-path boundary.
+
+`RenderScene::set_pick_identity` associates a positive gameplay epoch and entity
+ID with an instance without exposing its Wicked entity. `RenderScene::pick`
+accepts an authored ray and layer mask and returns the checked gameplay reference
+and distance; invalid rays and misses are separate errors. `select` and
+`clear_selection` toggle Wicked's actual material-outline path and clear it on
+instance destruction or scene reset. Group 232 exercises this against a
+transformed sphere after an owner-frame update, including miss and outline-clear
+cases.
+
 `RenderScene::create_light` accepts the validated backend-neutral directional,
 point, and spot descriptors from `Lighting`. It returns an opaque,
 generation-checked `LightHandle`; `update_light` changes the descriptor in place
@@ -304,6 +323,34 @@ Wicked mesh and names the source's mesh, that cloning a clone and an invalid
 color fail with `InvalidValue`, that `set_color` on the clone fails with
 `BackendFailure`, that the mesh survives destroying the source first, and that
 destroying the last clone restores the mesh and instance counts.
+
+## Imported scene handles and per-instance shadows (2026-09-22)
+
+`RenderScene::imported_scene` reports the mesh, camera and light resources
+authored in a cooked scene. `imported_camera` returns an opaque child handle;
+`activate_imported_camera` selects that camera while retaining the root
+generation for stale-handle rejection. The API keeps Wicked entity IDs and
+light generations private to the native boundary. The imported-scene cases use
+the four-placement hierarchy and scene-metadata fixtures, activate the second
+authored camera, reject an out-of-range index, and verify that destroying the
+root invalidates the child handle.
+
+`RenderScene::imported_mesh` addresses the root placement at index zero and
+each authored child in depth-first order. `set_imported_mesh_visible` and
+`update_imported_mesh_transform` edit the child object through that opaque
+handle; group 79 hides and restores a child, updates its Elisa-space local
+translation, rejects an out-of-range index, and then destroys the root.
+
+`RenderScene::imported_light` returns an opaque handle for an authored light.
+`set_imported_light_cast_shadow` toggles that light's Wicked shadow flag while
+keeping the entity and light generation private; group 79 verifies both
+transitions and stale-handle rejection after root destruction.
+
+`RenderScene::set_cast_shadow` controls the Wicked material and object shadow
+flags for a direct scene instance. It accepts only a checked instance handle,
+marks the material dirty, and can toggle a source before it is cloned. Group
+250 verifies the initial unlit shadow state, both transitions, and the native
+object probe.
 
 ## Animation transitions (2026-09-22)
 
@@ -342,6 +389,8 @@ group G failed at case N` to stderr, then exits G.
 | 228 | `render_scene_node_hierarchy_native.elisa` | logged |
 | 229 | `render_scene_panel_native.elisa`, including `render_scene_image_native.elisa` | logged |
 | 230 | `render_scene_cooked_texture_native.elisa` | logged |
+| 231 | `render_scene_debug_native.elisa` | logged |
+| 232 | `render_scene_selection_native.elisa` | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
 codes also belonged to other groups:

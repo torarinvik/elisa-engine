@@ -229,7 +229,7 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
             release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
         }
-        clear_snapshot_instance(state.instances[slot]);
+        clear_snapshot_instance(state, state.instances[slot]);
     }
 
     for (size_t index = 0; index < state.snapshot_row_count; ++index) {
@@ -243,7 +243,7 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
             slot = row.reserved_slot;
             generation = row.reserved_generation;
             InstanceSlot& instance = state.instances[slot];
-            clear_snapshot_instance(instance);
+            clear_snapshot_instance(state, instance);
             instance.generation = generation;
             instance.entity = row.created_entity;
             row.created_entity = wi::ecs::INVALID_ENTITY;
@@ -446,8 +446,8 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_o
     values.alpha_mode = alpha_mode;
     values.double_sided = double_sided != 0;
     values.occlusion = occlusion != 0;
-    values.texture_high = {base_color_high, normal_high, surface_high, emissive_high};
-    values.texture_low = {base_color_low, normal_low, surface_low, emissive_low};
+    values.texture_high = {base_color_high, normal_high, surface_high, emissive_high, 0};
+    values.texture_low = {base_color_low, normal_low, surface_low, emissive_low, 0};
     if ((high == 0 && low == 0) || !snapshot_material_values_valid(values) ||
         (double_sided != 0 && double_sided != 1) || (occlusion != 0 && occlusion != 1)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;

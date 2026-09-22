@@ -195,7 +195,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh_instance(
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
     if (instance.generation >= MAX_GENERATION) return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
-    clear_snapshot_instance(instance);
+    clear_snapshot_instance(state, instance);
     const uint64_t generation = instance.generation + 1;
     const std::string name = "elisa_mesh_instance_" + std::to_string(slot) + "_" + std::to_string(generation);
 

@@ -1,0 +1,77 @@
+include "../src/runtime/render_scene_debug.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneDebugNativeTests:
+    public:
+        def exercise() -> i32:
+            cleared: i32 = catch RenderScene::debug_clear():
+                ok: 0
+                error failure: 1
+            return 1 if cleared != 0
+            box_status: i32 = catch RenderScene::debug_box(
+                Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                    maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                }, RenderScene::Color{
+                    red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0,
+                }, true):
+                ok: 0
+                error failure: 1
+            return 2 if box_status != 0
+            line_status: i32 = catch RenderScene::debug_line(
+                Geometry::Vec3{x: -2.0, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}, RenderScene::Color{
+                    red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0,
+                }, false):
+                ok: 0
+                error failure: 1
+            return 3 if line_status != 0
+            text_status: i32 = catch RenderScene::debug_text(
+                "debug", Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, RenderScene::Color{
+                    red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0,
+                }, true):
+                ok: 0
+                error failure: 1
+            return 4 if text_status != 0
+            invalid_box: i32 = catch RenderScene::debug_box(
+                Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                    maximum: Geometry::Vec3{x: -1.0, y: 1.0, z: 1.0},
+                }, RenderScene::Color{
+                    red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0,
+                }, true):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 5 if invalid_box != 1
+            invalid_position: i32 = catch RenderScene::debug_line(
+                Geometry::Vec3{x: 1.0e30, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, RenderScene::Color{
+                    red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0,
+                }, false):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 6 if invalid_position != 1
+            flushed: usize = catch RenderScene::debug_flush():
+                value: value
+                error failure: return 7
+            return 8 if flushed != 3
+            auto_line_status: i32 = catch RenderScene::debug_line(
+                Geometry::Vec3{x: -1.0, y: 0.0, z: 1.0},
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 1.0}, RenderScene::Color{
+                    red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0,
+                }, true):
+                ok: 0
+                error failure: 1
+            return 9 if auto_line_status != 0
+            return 10 if Application::pump() != Application::PumpStatus.Running
+            auto_flushed: usize = catch RenderScene::debug_flush():
+                value: value
+                error failure: return 11
+            return 12 if auto_flushed != 0
+            cleared_after_flush: i32 = catch RenderScene::debug_clear():
+                ok: 0
+                error failure: 1
+            return 13 if cleared_after_flush != 0
+            0

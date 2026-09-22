@@ -9,9 +9,11 @@ from pathlib import Path
 import struct
 
 import cook_assets
+import cook_gltf_animation
 import cook_gltf_nodes
 import cook_gltf_scene
 import cook_gltf_skin
+import gltf_tangent_frames
 import cook_gltf_textures
 
 # The native loader enforces the same bounds.
@@ -47,8 +49,8 @@ def unit_factors(value, count: int, label: str) -> list[float]:
 def slot_material(document: dict, material) -> tuple[bytes, list]:
     """Pack one glTF material's factors, with glTF defaults for absent ones,
     into a 48-byte slot record: base color, metallic, roughness, emissive,
-    alpha cutoff, alpha mode, and flags (bit 0: double-sided, bit 1: the
-    surface image carries occlusion). Also return the image each runtime
+    alpha cutoff, alpha mode, and flags (bit 0: double-sided, bit 1: occlusion
+    enabled). Also return the image each runtime
     texture slot samples, or None."""
     if not isinstance(material, dict):
         raise ValueError("every glTF material must be an object")
@@ -129,8 +131,10 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
             attributes = primitive.get("attributes", {})
             if not isinstance(attributes, dict) or any(type(value) is not int for value in attributes.values()):
                 raise ValueError("primitive attributes must name accessors by index")
-            if set(attributes) - {"POSITION", "NORMAL", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0"}:
+            if set(attributes) - {"POSITION", "NORMAL", "TANGENT", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0"}:
                 raise ValueError("runtime geometry cooker encountered an unsupported vertex attribute")
+            if "TANGENT" in attributes and "NORMAL" not in attributes:
+                raise ValueError("a TANGENT attribute needs NORMAL")
             has_joints = "JOINTS_0" in attributes
             if has_joints != ("WEIGHTS_0" in attributes) or has_joints != (skin is not None):
                 raise ValueError("skinned primitives must consistently provide JOINTS_0 and WEIGHTS_0")
@@ -202,13 +206,16 @@ def read_vertices(document: dict, buffer: bytes, attributes: dict, targets: list
     normals = None
     if "NORMAL" in attributes:
         normals = float_stream(document, buffer, attributes["NORMAL"], "VEC3", vertex_count, "normals")
+    tangents = None
+    if "TANGENT" in attributes:
+        tangents = float_stream(document, buffer, attributes["TANGENT"], "VEC4", vertex_count, "tangents")
     uvs = bytes(vertex_count * 8)
     if "TEXCOORD_0" in attributes:
         uvs = float_stream(document, buffer, attributes["TEXCOORD_0"], "VEC2", vertex_count, "UVs")
     skin_indices = skin_weights = None
     if "JOINTS_0" in attributes:
         skin_indices, skin_weights = cook_gltf_skin.read_influences(document, buffer, attributes, vertex_count)
-    return {"positions": positions, "normals": normals, "uvs": uvs,
+    return {"positions": positions, "normals": normals, "tangents": tangents, "uvs": uvs,
         "skin_indices": skin_indices, "skin_weights": skin_weights,
         "morph_targets": read_morph_targets(document, buffer, targets, vertex_count),
         "count": vertex_count, "triangles": []}
@@ -301,7 +308,7 @@ def normalized_geometry(document: dict, buffer: bytes):
             blocks[block]["triangles"].extend(values)
             placed.append((placement, block, values, primitive.get("material", 0)))
 
-    positions, normals, uvs = bytearray(), bytearray(), bytearray()
+    positions, normals, tangents, uvs = bytearray(), bytearray(), bytearray(), bytearray()
     morph_positions = [bytearray() for _ in range(morph_count)]
     morph_normals = [bytearray() for _ in range(morph_count)]
     skin_indices: list[int] = []
@@ -317,9 +324,13 @@ def normalized_geometry(document: dict, buffer: bytes):
         placement_ranges[placement]["vertex_count"] += source["count"]
         world = cook_gltf_nodes.transform_points(source["positions"], matrix)
         positions += world
-        normals += cook_gltf_nodes.transform_normals(source["normals"], matrix) \
+        transformed_normals = cook_gltf_nodes.transform_normals(source["normals"], matrix) \
             if source["normals"] is not None else \
             generated_normals(world, source["count"], block["triangles"])
+        normals += transformed_normals
+        tangents += gltf_tangent_frames.transformed(source["tangents"], transformed_normals, matrix) \
+            if source["tangents"] is not None else \
+            gltf_tangent_frames.generated(world, transformed_normals, source["uvs"], source["count"], block["triangles"])
         uvs += source["uvs"]
         for morph_index, target in enumerate(source["morph_targets"]):
             morph_positions[morph_index] += cook_gltf_nodes.transform_vectors(target["positions"], matrix)
@@ -360,7 +371,7 @@ def normalized_geometry(document: dict, buffer: bytes):
     if any(target["normals"] is not None for target in morph_targets) and any(
             target["normals"] is None for target in morph_targets):
         raise ValueError("all morph targets must provide normals or none may provide them")
-    return {"positions": bytes(positions), "normals": bytes(normals), "uvs": bytes(uvs),
+    return {"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
@@ -413,6 +424,13 @@ def subset_lines(geometry: dict) -> list[str]:
     return lines + cook_gltf_textures.texture_lines(geometry["slot_textures"], geometry["images"])
 
 
+def tangent_lines(geometry: dict) -> list[str]:
+    if not geometry["tangents"]:
+        return []
+    return ["tangent_stride=16",
+        "tangents_b64=" + base64.b64encode(geometry["tangents"]).decode("ascii")]
+
+
 def _name_bytes(names: list[str]) -> bytes:
     packed = bytearray()
     for name in names:
@@ -435,7 +453,7 @@ def skin_lines(geometry: dict) -> list[str]:
     clips = skin.get("animation_clips", [])
     if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
             len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS or
-            len(clips) > 8):
+            len(clips) > cook_gltf_animation.MAX_CLIPS):
         raise ValueError("normalized skin streams do not match the mesh")
     parents = [joint["parent"] for joint in joints]
     rests = [component for joint in joints for component in joint["rest"]]
@@ -528,6 +546,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         "uv_stride=8",
         "index_stride=4",
         *subset_lines(geometry),
+        *tangent_lines(geometry),
         *skin_lines(geometry),
         *morph_lines(geometry),
         *scene_lines(geometry),

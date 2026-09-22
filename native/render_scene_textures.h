@@ -23,7 +23,8 @@ enum class Slot : int32_t {
     Normal = 1,
     Surface = 2,
     Emissive = 3,
-    Count = 4,
+    Occlusion = 4,
+    Count = 5,
 };
 
 inline constexpr int32_t SLOT_COUNT = static_cast<int32_t>(Slot::Count);
@@ -32,6 +33,7 @@ inline constexpr std::array<uint32_t, SLOT_COUNT> MATERIAL_SLOTS = {
     wi::scene::MaterialComponent::NORMALMAP,
     wi::scene::MaterialComponent::SURFACEMAP,
     wi::scene::MaterialComponent::EMISSIVEMAP,
+    wi::scene::MaterialComponent::OCCLUSIONMAP,
 };
 
 inline constexpr size_t MAX_DECODED_IMAGE_BYTES = 256u * 1024u * 1024u;
@@ -226,6 +228,7 @@ inline bool assign_decoded_texture(wi::scene::MaterialComponent& material, int32
     if (!valid_slot(slot_code) || resource_stem.empty() || extension == nullptr) return false;
     std::string resource_name = resource_stem;
     if (slot_code == static_cast<int32_t>(Slot::Normal)) resource_name += ".normal";
+    if (slot_code == static_cast<int32_t>(Slot::Occlusion)) resource_name += ".occlusion";
     resource_name += ".";
     resource_name += extension;
     if (!cached_resource.IsValid()) {

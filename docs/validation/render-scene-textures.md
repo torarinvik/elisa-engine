@@ -49,5 +49,11 @@ and `python3 scripts/check_module_hygiene.py`. The game compiled through
 
 The cooked mesh format retains UVs and validated tangent frames generated from
 the final simplified geometry, so Elisa can bind normal maps for Wicked's PBR
-materials. FBX material discovery, independent roughness/metallic map packing, authored
-channel/color captures, and asynchronous texture residency remain open work.
+materials. The glTF cooker now emits the same float4 stream: authored
+`TANGENT` accessors are transformed with node handedness correction, and
+missing tangents are generated deterministically from the final indexed
+positions, normals, and `TEXCOORD_0`. The sanitized geometry loader and the
+SDL3/Metal textured-panel smoke validate those frames. MikkTSpace seam
+equivalence, FBX material discovery, independent roughness/metallic map
+packing, authored channel/color captures, and asynchronous texture residency
+remain open work.

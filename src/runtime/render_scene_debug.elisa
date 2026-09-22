@@ -1,0 +1,67 @@
+# Scoped debug primitives are submitted to the active RenderScene path.
+include "./render_scene.elisa"
+include "../math/geometry.elisa"
+
+module RenderSceneDebug:
+    public:
+        const API_VERSION: i32 = 1
+        const MAX_COMMANDS: usize = 128
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_box(
+            min_x: f32, min_y: f32, min_z: f32,
+            max_x: f32, max_y: f32, max_z: f32,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            depth_tested: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_line(
+            start_x: f32, start_y: f32, start_z: f32,
+            end_x: f32, end_y: f32, end_z: f32,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            depth_tested: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_text(
+            text: cstr, x: f32, y: f32, z: f32,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            depth_tested: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_flush() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_clear() -> i32
+
+        def depth_value(depth_tested: bool) -> i32:
+            1 if depth_tested else 0
+
+    public:
+        def debug_box(bounds: Geometry::Bounds3, color: Color,
+            depth_tested: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_debug_box(
+                bounds.minimum.x, bounds.minimum.y, bounds.minimum.z,
+                bounds.maximum.x, bounds.maximum.y, bounds.maximum.z,
+                color.red, color.green, color.blue, color.alpha,
+                depth_value(depth_tested)))
+
+        def debug_line(start: Geometry::Vec3, end: Geometry::Vec3, color: Color,
+            depth_tested: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_debug_line(
+                start.x, start.y, start.z, end.x, end.y, end.z,
+                color.red, color.green, color.blue, color.alpha,
+                depth_value(depth_tested)))
+
+        def debug_text(text: cstr, position: Geometry::Vec3, color: Color,
+            depth_tested: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_debug_text(text,
+                position.x, position.y, position.z,
+                color.red, color.green, color.blue, color.alpha,
+                depth_value(depth_tested)))
+
+        def debug_flush() -> usize error[RenderSceneError]:
+            flushed: i32 = elisa_render_scene_v1_debug_flush()
+            if flushed < 0:
+                try check_status(flushed)
+            flushed.usize()
+
+        def debug_clear() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_debug_clear())

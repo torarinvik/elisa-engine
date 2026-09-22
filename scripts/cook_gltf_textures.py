@@ -1,9 +1,9 @@
 """Resolve static glTF material textures into runtime slots and bundle images.
 
 The render scene samples every material texture with one trilinear, repeating
-sampler through the first UV set and reads occlusion from the red channel of
-the metallic-roughness image. A texture those rules can't reproduce is
-rejected rather than drawn differently.
+sampler through the first UV set. Metallic and roughness remain packed in the
+surface image, while occlusion may use that image or its own image and native
+Wicked material slot.
 """
 
 from __future__ import annotations
@@ -15,10 +15,11 @@ import struct
 from elisa_package import MAX_SECTION_BYTES, encoded_image_dimensions
 
 # Runtime texture slots, in the order a slot texture record lists them.
-SLOT_TEXTURES = ("baseColorTexture", "normalTexture", "metallicRoughnessTexture", "emissiveTexture")
+SLOT_TEXTURES = ("baseColorTexture", "normalTexture", "metallicRoughnessTexture", "emissiveTexture",
+    "occlusionTexture")
 PBR_TEXTURES = {"baseColorTexture", "metallicRoughnessTexture"}
 SURFACE = 2
-SLOT_TEXTURE_STRIDE = 16
+SLOT_TEXTURE_STRIDE = 20
 LINEAR = 9729
 LINEAR_MIPMAP_LINEAR = 9987
 REPEAT = 10497
@@ -66,18 +67,17 @@ def texture_image(document: dict, info, label: str, factor: str | None = None) -
 
 
 def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool]:
-    """Return the image each runtime texture slot of a material samples, or
-    None, and whether the surface image carries occlusion."""
+    """Return each runtime texture slot's image, or None, and whether
+    occlusion is enabled."""
     images = []
-    for key in SLOT_TEXTURES:
+    for key in SLOT_TEXTURES[:4]:
         info = (pbr if key in PBR_TEXTURES else material).get(key)
         images.append(None if info is None else
             texture_image(document, info, key, "scale" if key == "normalTexture" else None))
     if "occlusionTexture" not in material:
+        images.append(None)
         return images, False
-    if texture_image(document, material["occlusionTexture"], "occlusionTexture", "strength") != images[SURFACE]:
-        raise ValueError("material occlusionTexture must share the metallic-roughness image, "
-            "whose red channel the runtime reads as occlusion")
+    images.append(texture_image(document, material["occlusionTexture"], "occlusionTexture", "strength"))
     return images, True
 
 
@@ -143,7 +143,7 @@ def texture_infos(material: dict) -> list:
 
 
 def cooked_textures(document: dict, buffer: bytes, slot_images: list) -> tuple[bytes, list]:
-    """Pack each slot's four image references, 0 for none or one more than
+    """Pack each slot's five image references, 0 for none or one more than
     the image's position among the sampled images, and return the records
     with each sampled image's (section name, bytes). Every declared texture,
     sampler and image must be sampled."""
@@ -165,7 +165,7 @@ def cooked_textures(document: dict, buffer: bytes, slot_images: list) -> tuple[b
     if len(sampled) != len(declared["images"]):
         raise ValueError("glTF declares an image no cooked material samples")
     reference = {image: position + 1 for position, image in enumerate(sampled)}
-    records = b"".join(struct.pack("<4I", *(0 if image is None else reference[image] for image in images))
+    records = b"".join(struct.pack("<5I", *(0 if image is None else reference[image] for image in images))
         for images in slot_images)
     return records, [(section_name(image), image_bytes(document, buffer, image)) for image in sampled]
 

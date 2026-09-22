@@ -1,7 +1,7 @@
 // Checks the production cooked-geometry loader against a manifest of packages.
 // Each tab-separated manifest line is either
 //   accept <path> <index count> <material slots> (<start> <count> <slot>)...
-//          [materials (<10 factors> <alpha mode> <flags> <4 image references>)...]
+//          [materials (<10 factors> <alpha mode> <flags> <5 image references>)...]
 //          [sections (<name> <checksum>)...]
 //   reject <path> <expected error text>
 // and the loader must accept with exactly those subsets, slot materials and
@@ -18,7 +18,7 @@
 
 namespace {
 
-constexpr size_t MATERIAL_FIELDS = 16;
+constexpr size_t MATERIAL_FIELDS = 17;
 
 std::vector<std::string> split_tabs(const std::string& line) {
     std::vector<std::string> fields;

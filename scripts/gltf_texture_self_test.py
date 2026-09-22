@@ -70,7 +70,11 @@ SLOT_MATERIALS = (
     struct.pack("<10f2I", 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 2) +
     struct.pack("<10f2I", 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0, 0) +
     struct.pack("<10f2I", 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.5, 0, 0))
-SLOT_TEXTURES = struct.pack("<16I", 4, 0, 0, 0, 1, 2, 3, 0, 0, 0, 0, 1, 0, 0, 0, 0)
+SLOT_TEXTURES = struct.pack("<20I", 4, 0, 0, 0, 0, 1, 2, 3, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
+SEPARATE_OCCLUSION_TEXTURES = struct.pack(
+    "<20I", 4, 0, 0, 0, 0, 1, 2, 3, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
+NO_SURFACE_TEXTURES = struct.pack(
+    "<20I", 4, 0, 0, 0, 0, 1, 2, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
 SECTIONS = [(f"image_{index}", data) for index, data in enumerate(IMAGES)]
 SUBSETS = [(0, 6, 0), (6, 6, 1), (12, 6, 2), (18, 6, 3)]
 
@@ -184,13 +188,17 @@ def emissive_painted(document: dict) -> None:
 
 ACCEPTED = {
     "a base-color image sampled for emission too": (emissive_painted,
-        SLOT_TEXTURES[:28] + struct.pack("<I", 1) + SLOT_TEXTURES[32:], SECTIONS),
+        SLOT_TEXTURES[:32] + struct.pack("<I", 1) + SLOT_TEXTURES[36:], SECTIONS),
     "a data URI naming its mimeType": (entry("images", 3, mimeType="image/png"), SLOT_TEXTURES, SECTIONS),
     "a sampler with only a name": (lambda d: d["samplers"].__setitem__(0, {"name": "default"}),
         SLOT_TEXTURES, SECTIONS),
     "default textureInfo factors": (lambda d: [d["materials"][1]["normalTexture"].pop("scale"),
         d["materials"][1]["occlusionTexture"].pop("strength")], SLOT_TEXTURES, SECTIONS),
     "an explicit TEXCOORD_0": (info(0, "baseColorTexture", texCoord=0), SLOT_TEXTURES, SECTIONS),
+    "an occlusion map from another image": (info(1, "occlusionTexture", index=1),
+        SEPARATE_OCCLUSION_TEXTURES, SECTIONS),
+    "an occlusion map without a surface image": (lambda d: d["materials"][1]["pbrMetallicRoughness"].pop(
+        "metallicRoughnessTexture"), NO_SURFACE_TEXTURES, SECTIONS),
 }
 
 REJECTED = {
@@ -203,9 +211,6 @@ REJECTED = {
     "a string normal scale": (info(1, "normalTexture", scale="1"), "normalTexture scale must be 1"),
     "a boolean normal scale": (info(1, "normalTexture", scale=True), "normalTexture scale must be 1"),
     "an occlusion strength of 0.5": (info(1, "occlusionTexture", strength=0.5), "strength must be 1"),
-    "occlusion from another image": (info(1, "occlusionTexture", index=1), "must share the metallic-roughness"),
-    "occlusion without a surface image": (lambda d: d["materials"][1]["pbrMetallicRoughness"].pop(
-        "metallicRoughnessTexture"), "must share the metallic-roughness"),
     "a texture index out of range": (info(1, "baseColorTexture", index=5), "names a missing texture"),
     "a string texture index": (info(1, "baseColorTexture", index="0"), "names a missing texture"),
     "a negative texture index": (info(1, "baseColorTexture", index=-1), "names a missing texture"),
@@ -248,6 +253,8 @@ REJECTED = {
     "textures that are not a list": (lambda d: d.update(textures={}), "names a missing texture"),
     "a textured strip without UVs": (lambda d: d["meshes"][0]["primitives"][1]["attributes"].pop("TEXCOORD_0"),
         "a primitive with a textured material needs TEXCOORD_0"),
+    "a malformed tangent stream": (lambda d: d["meshes"][0]["primitives"][0]["attributes"].update(TANGENT=1),
+        "tangents must be float32 VEC4 values"),
     "a mask without a base-color image": (lambda d: d["materials"][0]["pbrMetallicRoughness"].pop(
         "baseColorTexture"), "alpha-mask materials need a base-color texture"),
 }
@@ -270,12 +277,17 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     geometry = cook_gltf_geometry.normalized_geometry(document, buffer)
     if (geometry["slot_materials"] != SLOT_MATERIALS or geometry["slot_textures"] != SLOT_TEXTURES or
             geometry["images"] != SECTIONS or geometry["vertex_count"] != 16 or
-            geometry["subsets"] != SUBSETS):
+            geometry["subsets"] != SUBSETS or len(geometry["tangents"]) != 16 * 16):
         return fail("the textured panel cooked the wrong slot records, images or subsets")
+    tangent_values = list(struct.iter_unpack("<4f", geometry["tangents"]))
+    if any(abs(tangent[0] - 1.0) > 1.0e-5 or abs(tangent[1]) > 1.0e-5 or
+            abs(tangent[2]) > 1.0e-5 or abs(abs(tangent[3]) - 1.0) > 1.0e-5
+            for tangent in tangent_values):
+        return fail("the textured panel did not receive deterministic tangent frames")
     names = b"".join(struct.pack("<I", 7) + name.encode("ascii") for name, _ in SECTIONS)
     lines = cook_gltf_geometry.subset_lines(geometry)
     expected_lines = ["texture_count=4", "texture_names_b64=" + base64.b64encode(names).decode("ascii"),
-        "slot_texture_stride=16", "slot_textures_b64=" + base64.b64encode(SLOT_TEXTURES).decode("ascii")]
+        "slot_texture_stride=20", "slot_textures_b64=" + base64.b64encode(SLOT_TEXTURES).decode("ascii")]
     if lines[-4:] != expected_lines:
         return fail("the textured panel's slot texture lines are wrong")
 

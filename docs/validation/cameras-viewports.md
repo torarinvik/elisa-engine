@@ -13,15 +13,19 @@ projection math never divides by zero. `test/camera.elisa` covers centered
 perspective rays, camera movement, resize scale, suspension/resume,
 orthographic origins, forward direction, and a right-half split viewport whose
 global pixel coordinates map to the viewport center. Invalid rectangles that
-extend beyond the framebuffer are rejected. Render-to-texture and multi-camera
-render scheduling remain native R03 work.
+extend beyond the framebuffer are rejected. `Camera::bounds_visible` also tests
+a world-space AABB against the transformed perspective or orthographic frustum;
+it builds a conservative camera-space box so camera rotation and nonuniform
+scale cannot cull visible geometry. The portable test covers near/far and
+side-plane cases. Render-to-texture and multi-camera render scheduling remain
+native R03 work.
 
 The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
 orthographic camera components, applies a 2x viewport scale, resizes a
 perspective view, switches an actual `RenderPath3D` between the two cameras,
 rejects a missing camera without disturbing the active view, and removes both
 temporary views without retaining native camera entities. Render targets and
-frustum scheduling remain higher-level work. The project-facing
+native frustum scheduling remain higher-level work. The project-facing
 `RenderScene::camera_ray` ABI unprojects the active Wicked camera in reverse-Z
 space, reflects the result back into Elisa's right-handed coordinates, returns
 camera origins for perspective and near-plane origins for orthographic views,

@@ -10,6 +10,7 @@ module Camera:
             MIN_FOV: f32 = 0.01
             MAX_FOV: f32 = 3.13
             MIN_CLIP: f32 = 0.0001
+            FRUSTUM_EPSILON: f32 = 0.00001
 
     public:
         enum Projection:
@@ -117,6 +118,62 @@ module Camera:
                 origin: Geometry::transform_apply_point(state.transform, local_origin),
                 direction: Geometry::quat_rotate(state.transform.rotation, local_direction),
             }
+
+        private def plane_intersects(bounds: Geometry::Bounds3, normal_x: f32,
+                normal_y: f32, normal_z: f32, offset: f32) -> bool:
+            support_x: f32 = bounds.maximum.x if normal_x >= 0.0 else bounds.minimum.x
+            support_y: f32 = bounds.maximum.y if normal_y >= 0.0 else bounds.minimum.y
+            support_z: f32 = bounds.maximum.z if normal_z >= 0.0 else bounds.minimum.z
+            normal_x * support_x + normal_y * support_y + normal_z * support_z + offset >= -Limits::FRUSTUM_EPSILON
+
+        # Transform the world AABB into camera space, then test its enclosing
+        # camera-space AABB against every projection plane. The enclosing box
+        # keeps the result conservative after camera rotation or nonuniform
+        # scale: visible geometry is never culled by this policy.
+        public def bounds_visible(state: State&, bounds: Geometry::Bounds3) -> bool:
+            return false if not state_valid(state) or not Geometry::bounds3_valid(bounds)
+            corners: Geometry::Vec3[8] = [
+                Geometry::Vec3{x: bounds.minimum.x, y: bounds.minimum.y, z: bounds.minimum.z},
+                Geometry::Vec3{x: bounds.maximum.x, y: bounds.minimum.y, z: bounds.minimum.z},
+                Geometry::Vec3{x: bounds.minimum.x, y: bounds.maximum.y, z: bounds.minimum.z},
+                Geometry::Vec3{x: bounds.maximum.x, y: bounds.maximum.y, z: bounds.minimum.z},
+                Geometry::Vec3{x: bounds.minimum.x, y: bounds.minimum.y, z: bounds.maximum.z},
+                Geometry::Vec3{x: bounds.maximum.x, y: bounds.minimum.y, z: bounds.maximum.z},
+                Geometry::Vec3{x: bounds.minimum.x, y: bounds.maximum.y, z: bounds.maximum.z},
+                Geometry::Vec3{x: bounds.maximum.x, y: bounds.maximum.y, z: bounds.maximum.z},
+            ]
+            local_min: mutable Geometry::Vec3 = Geometry::transform_apply_inverse_point(state.transform, corners[0])
+            local_max: mutable Geometry::Vec3 = local_min
+            for index in 1..<8 |local_min, local_max|:
+                point: Geometry::Vec3 = Geometry::transform_apply_inverse_point(state.transform, corners[index])
+                local_min <- Geometry::Vec3{
+                    x: point.x if point.x < local_min.x else local_min.x,
+                    y: point.y if point.y < local_min.y else local_min.y,
+                    z: point.z if point.z < local_min.z else local_min.z,
+                }
+                local_max <- Geometry::Vec3{
+                    x: point.x if point.x > local_max.x else local_max.x,
+                    y: point.y if point.y > local_max.y else local_max.y,
+                    z: point.z if point.z > local_max.z else local_max.z,
+                }
+            local_bounds: Geometry::Bounds3 = Geometry::Bounds3{minimum: local_min, maximum: local_max}
+            return false if not plane_intersects(local_bounds, 0.0, 0.0, -1.0, -state.near_clip)
+            return false if not plane_intersects(local_bounds, 0.0, 0.0, 1.0, state.far_clip)
+            if state.projection == Projection.Perspective:
+                half_height: f32 = ElisaMath::tanf(state.fov_radians * 0.5)
+                half_width: f32 = half_height * state.viewport.width.f32() / state.viewport.height.f32()
+                return false if not plane_intersects(local_bounds, 1.0, 0.0, -half_width, 0.0)
+                return false if not plane_intersects(local_bounds, -1.0, 0.0, -half_width, 0.0)
+                return false if not plane_intersects(local_bounds, 0.0, 1.0, -half_height, 0.0)
+                return false if not plane_intersects(local_bounds, 0.0, -1.0, -half_height, 0.0)
+            else:
+                half_height: f32 = state.ortho_height * 0.5
+                half_width: f32 = half_height * state.viewport.width.f32() / state.viewport.height.f32()
+                return false if not plane_intersects(local_bounds, 1.0, 0.0, 0.0, half_width)
+                return false if not plane_intersects(local_bounds, -1.0, 0.0, 0.0, half_width)
+                return false if not plane_intersects(local_bounds, 0.0, 1.0, 0.0, half_height)
+                return false if not plane_intersects(local_bounds, 0.0, -1.0, 0.0, half_height)
+            true
 
         def projection(state: State&) -> Projection:
             state.projection

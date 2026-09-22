@@ -18,6 +18,9 @@
 #include "visibility_lod_bridge.h"
 #include "animation_submission_bridge.h"
 #include "effect_bridge.h"
+#include "debug_draw_bridge.h"
+#include "picking_bridge.h"
+#include "selection_outline_bridge.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
@@ -79,6 +82,7 @@ struct InstanceSlot {
     std::vector<wi::ecs::Entity> imported_mesh_entities;
     std::vector<wi::ecs::Entity> imported_camera_entities;
     std::vector<probe::NativeLightHandle> imported_light_handles;
+    std::vector<probe::PickBinding> pick_bindings;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
     probe::NativeAnimationHandle animation_submission{};
@@ -127,7 +131,7 @@ struct RenderSceneService {
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
-    std::array<OverlayImageSlot, MAX_OVERLAY_IMAGES> overlay_images{};
+    std::array<OverlayImageSlot, MAX_OVERLAY_IMAGES> overlay_images{}; probe::DebugDrawBridge debug_draw;
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
     std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
@@ -158,6 +162,8 @@ struct RenderSceneService {
     std::unique_ptr<probe::VisibilityLodBridge> visibility_lod;
     std::unique_ptr<probe::AnimationSubmissionBridge> animation_submission;
     std::unique_ptr<probe::EffectBridge> effects;
+    std::unique_ptr<probe::PickingBridge> picking;
+    std::unique_ptr<probe::SelectionOutlineBridge> selection;
     wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity primary_camera_entity = wi::ecs::INVALID_ENTITY;
@@ -177,25 +183,7 @@ struct RenderSceneService {
     bool initialized = false;
     bool shutdown_hook_registered = false;
 };
-class ElisaRenderPath3D final : public wi::RenderPath3D {
-public:
-    explicit ElisaRenderPath3D(const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs)
-        : arcs_(arcs) {}
-    void Render() const override {
-        if (arcs_ != nullptr) {
-            for (const ElectricArcSlot& arc : *arcs_) {
-                if (arc.live && arc.visible) {
-                    wi::renderer::DrawTrailRuntime(&arc.halo);
-                    wi::renderer::DrawTrailRuntime(&arc.core);
-                    if (arc.branch.points.size() >= 2) wi::renderer::DrawTrailRuntime(&arc.branch);
-                }
-            }
-        }
-        wi::RenderPath3D::Render();
-    }
-private:
-    const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs_;
-};
+#include "render_scene_path.inc"
 RenderSceneService& service() {
     // NativeApplication owns a static host and runs registered hooks while
     // that host is being destroyed. Keep the callback context alive until
@@ -318,6 +306,7 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
 }
 #include "render_scene_imported_scene_internal.inc"
 #include "render_scene_animation_internal.inc"
+#include "render_scene_selection_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
         if (!state.instances[index].live) return index;
@@ -330,12 +319,16 @@ size_t find_free_arc_slot(const RenderSceneService& state) {
     }
     return MAX_ELECTRIC_ARCS;
 }
-void clear_snapshot_instance(InstanceSlot& instance);
+void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance);
 void reset_unlocked(RenderSceneService& state) {
     if (state.initialized) {
         wi::jobsystem::WaitForAllJobs();
         if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
     }
+    if (state.selection != nullptr) state.selection->clear();
+    for (InstanceSlot& instance : state.instances) clear_instance_pick_bindings(state, instance);
+    state.selection.reset();
+    state.picking.reset();
     if (state.path != nullptr) {
         state.path->ClearFonts();
         state.path->scene = nullptr;
@@ -355,14 +348,14 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lights = {};
     state.cameras = {};
-    for (InstanceSlot& instance : state.instances) clear_snapshot_instance(instance);
+    for (InstanceSlot& instance : state.instances) clear_snapshot_instance(state, instance);
     state.snapshot_row_count = 0;
     state.snapshot_retire_count = 0;
     state.snapshot_result_count = 0;
     state.snapshot_expected_previous_count = 0;
     state.snapshot_transaction_active = false;
     state.snapshot_test_fail_after_creates = -1;
-    state.snapshot_asset_requests.reset();
+    state.snapshot_asset_requests.reset(); state.debug_draw.clear();
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     state.snapshot_test_transaction_api_calls = 0;
     state.snapshot_test_last_transaction_api_calls = 0;
@@ -521,6 +514,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     return int64_t(encode_handle(slot, generation));
 }
 #include "render_scene_mesh_abi.inc"
+#include "render_scene_imported_scene_abi.inc"
 #include "render_scene_arcs_abi.inc"
 extern "C" int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,
@@ -550,6 +544,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_quality_abi.inc"
 #include "render_scene_text_abi.inc"
 #include "render_scene_panel_abi.inc"
+#include "render_scene_selection_abi.inc"
 extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -557,6 +552,10 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    if (state.selection != nullptr && state.selection->selected(state.instances[slot].entity)) {
+        state.selection->clear();
+    }
+    clear_instance_pick_bindings(state, state.instances[slot]);
     release_animation_submission(state, state.instances[slot]);
     release_imported_scene(state, state.instances[slot]);
     remove_instance_entity(state, slot);
@@ -564,7 +563,7 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
         release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
     }
-    clear_snapshot_instance(state.instances[slot]);
+    clear_snapshot_instance(state, state.instances[slot]);
     return ELISA_RENDER_SCENE_OK;
 }
 extern "C" int32_t elisa_render_scene_v1_shutdown(void) {
