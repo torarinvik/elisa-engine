@@ -39,6 +39,12 @@ returns copied `PhysicsQueryHit` values to the host.
 - `PhysicsRuntime::raycast` exposes a nearest hit with copied entity, position,
   normal, and distance data. Invalid direction or distance inputs fail with
   `PhysicsError.InvalidArgument`, while a valid miss returns `hit = false`.
+- `PhysicsRuntime::raycast_all` exposes the same copied hit record through a
+  fixed 16-hit `RayHitBuffer`. Results are sorted by distance, include the
+  nearest physics-body hit when it is not already present in the scene query,
+  and return an explicit capacity error only inside the native fixed bound.
+  `RuntimeServices::physics_raycast_all` routes this buffer through an affine
+  session without exposing native storage.
 - Destroying a scene participant and rebuilding the scene removes it from the
   next query. Invalidating the token rejects every later query, including
   foreign-owner tokens.
@@ -68,8 +74,9 @@ from worker callbacks. A caller must unregister its listener before destroying
 the scene or listener object.
 
 The Elisa application smoke creates static and dynamic bodies plus a static
-sensor volume, advances the fixed-step world, verifies a public physics ray hit
-and invalid zero-direction rejection, and polls
+sensor volume, advances the fixed-step world, verifies public nearest and
+all-hit physics rays, checks nearest-hit ordering, rejects invalid zero
+directions, and polls
 `PhysicsRuntime::ContactBuffer`. It requires real non-trigger and trigger
 `ContactKind.Added` events, then destroys the sensor and requires a trigger
 `ContactKind.Removed` event, with zero dropped events. This proves the public

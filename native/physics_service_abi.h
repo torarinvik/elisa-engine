@@ -29,7 +29,24 @@ enum {
     ELISA_PHYSICS_CONTACT_PERSISTED = 1,
     ELISA_PHYSICS_CONTACT_REMOVED = 2,
     ELISA_PHYSICS_MAX_CONTACT_EVENTS = 64,
+    ELISA_PHYSICS_MAX_QUERY_HITS = 16,
 };
+
+typedef struct ElisaPhysicsRayHit {
+    uint64_t entity;
+    float position_x;
+    float position_y;
+    float position_z;
+    float normal_x;
+    float normal_y;
+    float normal_z;
+    float distance;
+} ElisaPhysicsRayHit;
+
+typedef struct ElisaPhysicsRayHitBuffer {
+    ElisaPhysicsRayHit hits[ELISA_PHYSICS_MAX_QUERY_HITS];
+    uint32_t count;
+} ElisaPhysicsRayHitBuffer;
 
 // This is a deliberately flat copy type. It contains no Wicked or Jolt
 // pointers, so the Elisa side can retain events until the next poll call.
@@ -64,6 +81,11 @@ int32_t elisa_physics_v1_raycast(uint64_t world_generation,
     uint64_t* entity, float* position_x, float* position_y, float* position_z,
     float* normal_x, float* normal_y, float* normal_z, float* distance,
     int32_t* hit);
+int32_t elisa_physics_v1_raycast_all(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, uint32_t layer_mask,
+    ElisaPhysicsRayHitBuffer* buffer);
 int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
     ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,
     uint32_t* dropped);

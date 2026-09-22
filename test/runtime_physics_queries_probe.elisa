@@ -9,6 +9,14 @@ module RuntimePhysicsQueriesProbe:
                 value: value
                 error failure: return 121
             return 121 if query_hit.hit or query_hit.entity != 0
+            query_hits: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+            query_hit_count: usize = catch RuntimeServices::physics_raycast_all(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 1.0,
+                PhysicsRuntime::ALL_LAYERS, &query_hits):
+                value: 0
+                error failure: return 124
+            return 125 if query_hit_count != 0 or query_hits.count != 0
             query_contacts: mutable PhysicsRuntime::ContactBuffer = PhysicsRuntime::ContactBuffer()
             query_dropped: mutable u32 = 0
             query_count: usize = catch RuntimeServices::physics_poll_contacts(session,

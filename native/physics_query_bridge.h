@@ -274,6 +274,15 @@ public:
             hits.values[hits.count++] = {
                 result.entity, result.position, result.normal, result.distance, 0.0f};
         }
+        PhysicsQueryHit physics_hit;
+        if (hits.count < MAX_HITS && raycast_physics(token, origin, direction,
+                max_distance, layer_mask, physics_hit) && !contains_entity(hits, physics_hit.entity)) {
+            hits.values[hits.count++] = physics_hit;
+        }
+        std::sort(hits.values.begin(), hits.values.begin() + hits.count,
+            [](const PhysicsQueryHit& left, const PhysicsQueryHit& right) {
+                return left.distance < right.distance;
+            });
         return hits.count;
     }
 
