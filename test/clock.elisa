@@ -1,5 +1,17 @@
 include "../src/runtime/clock.elisa"
+include "../src/physics/interpolation.elisa"
 using Runtime
+
+def publish_due(clock: Runtime::StepClock,
+    buffer: mutable PhysicsInterpolation::Buffer&, committed: mutable i64&) -> bool:
+    end_tick: i64 = clock.tick_count + 1
+    for tick in committed + 1..<end_tick:
+        pose: Geometry::Transform = Geometry::transform_translate(
+            Geometry::transform_identity(),
+            Geometry::Vec3{x: tick.f32(), y: 0.0, z: 0.0})
+        return false if not PhysicsInterpolation::commit(buffer, pose, tick, false)
+        committed <- tick
+    committed == clock.tick_count
 
 def main() -> i32:
     clock: mutable StepClock = StepClock()
@@ -45,4 +57,32 @@ def main() -> i32:
         ClockError.InvalidState: 0
         error failure: 2
     return 8 if corrupt != 0 or clock.accumulated_micros != -1
+
+    slow_clock: mutable Runtime::StepClock = Runtime::StepClock()
+    fast_clock: mutable Runtime::StepClock = Runtime::StepClock()
+    slow_pose: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(
+        Geometry::transform_identity())
+    fast_pose: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(
+        Geometry::transform_identity())
+    slow_committed: mutable i64 = 0
+    fast_committed: mutable i64 = 0
+    for frame in 0..<30 |slow_clock, slow_pose, slow_committed|:
+        elapsed: i64 = 33333 if frame < 29 else 33343
+        _ = catch advance(&slow_clock, elapsed):
+            value: value
+            error failure: return 9
+        return 10 if not publish_due(slow_clock, &slow_pose, &slow_committed)
+    for frame in 0..<120 |fast_clock, fast_pose, fast_committed|:
+        elapsed: i64 = 8333 if frame < 119 else 8373
+        _ = catch advance(&fast_clock, elapsed):
+            value: value
+            error failure: return 11
+        return 12 if not publish_due(fast_clock, &fast_pose, &fast_committed)
+    return 13 if slow_clock.tick_count != fast_clock.tick_count or slow_clock.accumulated_micros != fast_clock.accumulated_micros
+    return 14 if slow_committed != fast_committed or slow_committed != slow_clock.tick_count
+    slow_render: Geometry::Transform = PhysicsInterpolation::sample(&slow_pose,
+        interpolation_fraction(&slow_clock))
+    fast_render: Geometry::Transform = PhysicsInterpolation::sample(&fast_pose,
+        interpolation_fraction(&fast_clock))
+    return 15 if ElisaMath::fabsf(slow_render.position.x - fast_render.position.x) > 0.001
     0
