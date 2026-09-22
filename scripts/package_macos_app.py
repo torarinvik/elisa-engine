@@ -20,6 +20,7 @@ import hashlib
 import json
 import plistlib
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -65,6 +66,23 @@ def manifest_application(manifest: dict[str, object], project: Path) -> tuple[st
         slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "application"
         bundle_id = f"org.elisa.{slug}"
     return name, bundle_id, executable.resolve()
+
+
+def manifest_window(manifest: dict[str, object], project: Path) -> tuple[str, int, int]:
+    """Return the project window title and size the launcher must pass on."""
+    application = manifest.get("application", {})
+    if not isinstance(application, dict):
+        raise PackageError("project application settings must be an object")
+    title = application.get("title", manifest.get("name", project.name))
+    if not isinstance(title, str) or not title.strip():
+        raise PackageError("project application title must be a non-empty string")
+    size = []
+    for key, default in (("width", 1280), ("height", 720)):
+        value = application.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= 16384:
+            raise PackageError(f"project application {key} must be an integer from 1 to 16384")
+        size.append(value)
+    return title, size[0], size[1]
 
 
 def safe_bundle_name(value: str) -> str:
@@ -241,11 +259,21 @@ def bundle_dynamic_libraries(binary: Path, frameworks: Path) -> list[str]:
     return sorted(staged)
 
 
-def write_launcher(path: Path, binary_name: str) -> None:
+def write_launcher(path: Path, binary_name: str,
+    window: tuple[str, int, int] = ("Elisa Engine", 1280, 720)) -> None:
+    # The runtime reads its window settings from the environment, which the
+    # build runner sets from elisa.project.json. A double-clicked bundle has
+    # no runner, so the launcher supplies the same defaults while still
+    # letting an explicitly exported value win.
+    title, width, height = window
     script = f"""#!/bin/sh
 set -eu
 resources=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")/../Resources\" && pwd)\"
 cd \"$resources\"
+: \"${{ELISA_PROJECT_TITLE:={shlex.quote(title)}}}\"
+: \"${{ELISA_PROJECT_WIDTH:={width}}}\"
+: \"${{ELISA_PROJECT_HEIGHT:={height}}}\"
+export ELISA_PROJECT_TITLE ELISA_PROJECT_WIDTH ELISA_PROJECT_HEIGHT
 if [ -d \"$resources/shaders\" ]; then
     ELISA_ENGINE_SHADER_PATH=\"$resources/shaders\"
     export ELISA_ENGINE_SHADER_PATH
@@ -262,7 +290,8 @@ exec \"$resources/{binary_name}\" \"$@\"
 
 def package_app(project: Path, executable: Path, output: Path, name: str,
     bundle_id: str, version: str, icon: Path | None = None,
-    resource_paths: list[Path] | None = None) -> Path:
+    resource_paths: list[Path] | None = None,
+    window: tuple[str, int, int] | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -293,7 +322,7 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     shutil.copy2(executable, resources / binary_name)
     if is_mach_o(resources / binary_name):
         bundle_dynamic_libraries(resources / binary_name, contents / "Frameworks")
-    write_launcher(macos / bundle_name, binary_name)
+    write_launcher(macos / bundle_name, binary_name, window or (name, 1280, 720))
 
     # Runtime paths in the game are deliberately project-relative. Stage the
     # declared runtime resources (or, without a declaration, the whole assets
@@ -366,7 +395,8 @@ def main() -> int:
             candidate = project / "resources" / "AppIcon.icns"
             icon = candidate if candidate.is_file() else None
         app = package_app(project, executable, output, name, bundle_id,
-            options.version, icon, manifest_resources(manifest, project))
+            options.version, icon, manifest_resources(manifest, project),
+            manifest_window(manifest, project))
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
