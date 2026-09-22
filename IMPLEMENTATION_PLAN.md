@@ -1,6 +1,6 @@
 # Elisa Engine — native implementation backlog
 
-**Updated:** 2026-09-21. **Focus:** reusable Wicked + SDL3 backend services and their library integrations.
+**Updated:** 2026-09-22. **Focus:** reusable Wicked + SDL3 backend services and their library integrations.
 **Baseline:** inspect the current tree and linked validation notes before starting work.
 This is the active execution plan. [Architecture](Elisa_Engine_Architecture_and_Plan.md)
 defines the ownership model; [capabilities](docs/capabilities.md) records evidence.
