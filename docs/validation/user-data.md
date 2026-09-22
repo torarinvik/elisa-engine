@@ -14,7 +14,7 @@ separators and dot-only components are rejected. The directory accessor returns
 a runtime-owned UTF-8 path valid until the next initialization.
 
 Each file has a native format version, a positive Elisa record version, one to
-eight signed 64-bit fields, and a checksum. Writes go to a same-directory
+up to sixteen signed 64-bit fields, and a checksum. Writes go to a same-directory
 temporary file and atomically replace the prior record. Reads reject invalid
 headers, unsupported native formats, malformed lengths, checksums, symlinks,
 and undersized output buffers. Elisa reads stage into a temporary blob, so any

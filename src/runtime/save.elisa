@@ -1,7 +1,7 @@
 # Portable save blobs. The plan keeps serialization layouts explicit and warns
 # never to persist runtime pointers, backend handles, or compiler-assigned enum
 # ordinals as durable data. This module stores a magic marker, a format version,
-# a field count, and up to eight plain i64 fields, and a reader rejects a blob
+# a field count, and up to sixteen plain i64 fields, and a reader rejects a blob
 # whose magic, version, or length disagrees. A caller owns the field meaning;
 # the container only guarantees that a decoded blob is the one this version
 # wrote.
@@ -10,7 +10,7 @@ module Save:
         const module Tune:
             MAGIC: i64 = 297638561601
             VERSION: i64 = 1
-            MAX_FIELDS: usize = 8
+            MAX_FIELDS: usize = 16
 
     public:
         const MAGIC: i64 = Tune::MAGIC

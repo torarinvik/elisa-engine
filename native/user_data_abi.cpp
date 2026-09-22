@@ -30,7 +30,7 @@ namespace {
 constexpr uint32_t ABI_VERSION = 1;
 constexpr uint32_t FILE_MAGIC = 0x44554C45; // ELUD, encoded little-endian.
 constexpr uint32_t FILE_VERSION = 1;
-constexpr uint32_t MAX_FIELDS = 8;
+constexpr uint32_t MAX_FIELDS = ELISA_USER_DATA_MAX_FIELDS;
 constexpr size_t MAX_FILE_BYTES = 4 + 4 + 8 + 4 + 4 + MAX_FIELDS * 8 + 8;
 constexpr uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr uint64_t FNV_PRIME = 1099511628211ULL;

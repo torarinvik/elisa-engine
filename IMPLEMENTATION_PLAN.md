@@ -436,6 +436,13 @@ according to their dependencies and measured consumers.
   Capacity update: the screen-space text table now holds 64 generation-checked labels so a game can keep HUD, menu and help text live together. The RenderScene native smoke fills the table, checks capacity rejection and releases every handle. Full UI layout, clipping, focus/navigation and shaped fonts remain open.
 - [ ] **I03 · P1 · Platform services and settings** — After: F09, W06.
   Add user-data paths, clipboard, display/audio-device selection, graphics/input settings, and platform permission results. Done: saved settings apply safely on restart and reset/fallback behavior works when devices or displays disappear.
+  Progress: the public user-data blob now supports up to 16 signed 64-bit fields
+  while retaining the version-1 file format and accepting existing smaller
+  records. The C ABI exports `ELISA_USER_DATA_MAX_FIELDS`, Elisa `Save` and
+  `UserData` share the same bound, and native/application smoke coverage proves
+  maximum-size round-trips, atomic replacement, corruption rejection and
+  staged-read preservation. Display/audio-device selection and richer settings
+  remain open.
 - [ ] **I04 · P1 · Unicode text and font assets** — After: I02, A04.
   Integrate FreeType/HarfBuzz with fallback fonts, glyph atlases, shaping caches, and justified ICU segmentation/bidi support. Done: mixed-direction, ligature, combining-mark, and fallback-font fixtures render and hit-test correctly without treating code units as glyph indices.
 - [ ] **I05 · P1 · Editable text and IME** — After: I04, I01.
