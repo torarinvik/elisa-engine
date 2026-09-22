@@ -106,9 +106,9 @@ instance, and reports `UnknownHandle` for a retired instance. The SDL3/Metal
 smoke checks idle and stale-handle behavior; gameplay can use the value to
 synchronize authored cues without duplicating clip-duration state.
 
-`RenderScene::play_animation_blended` (from `render_scene_animation_blend.elisa`)
-adds an `AnimationTransition`: `eased` fades with a smoothstep instead of a
-straight line, `phase_matched` starts the next looping clip at the old clip's
+`RenderScene::play_animation_blended` adds an `AnimationTransition`: `eased`
+fades with a smoothstep instead of a straight line, `phase_matched` starts the
+next looping clip at the old clip's
 normalized time so cycles stay in step, and `continue_same_clip` keeps a
 re-requested clip running with only its speed and looping updated.
 `RenderScene::set_animation_speed` retimes the active clip without restarting it
@@ -302,8 +302,7 @@ remain open under R05.
 
 ## Shared-mesh instances (2026-09-22)
 
-`RenderScene::create_mesh_instance(source, transform, color)` (from
-`src/runtime/render_scene_instancing.elisa`, in the public bundle) draws the
+`RenderScene::create_mesh_instance(source, transform, color)` draws the
 source's mesh and material again at another transform. Natively the clone is a
 Wicked `ObjectComponent` whose `meshID` names the source entity, so a scene of
 repeated props loads and uploads each cooked package once; the color multiplies
@@ -315,6 +314,14 @@ Skinned, animated, morphing and cloned sources are rejected with
 `InvalidValue`. Destroying a source before its clones removes only its object
 and transform; the mesh and material stay until the last clone is destroyed,
 and that clone's destruction frees the source entity.
+
+`RenderScene::empty_instance_handle()` supplies an opaque sentinel for an
+optional placement that has not been created yet. Passing the sentinel to a
+scene operation returns `UnknownHandle`. Animation, visibility and
+shared-mesh operations that accept `InstanceHandle` live inside the core
+`RenderScene` module, so clients never need to access its private native value.
+`VisibilityPolicy` keeps draw distance, LOD bias, layer mask and renderability
+together for `RenderScene::set_visibility`.
 
 `test/render_scene_mesh_instance_native.elisa` (case group 250) checks with the
 test-only `elisa_render_scene_v1_test_mesh_count` and

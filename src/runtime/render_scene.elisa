@@ -20,6 +20,9 @@ module RenderScene:
             NORMAL: i32 = 1
             SURFACE: i32 = 2
             EMISSIVE: i32 = 3
+        const BLEND_EASED: i32 = 1
+        const BLEND_PHASE_MATCHED: i32 = 2
+        const BLEND_CONTINUE_SAME_CLIP: i32 = 4
         @callconv(c)
         extern elisa_render_scene_abi_version() -> u32
         @callconv(c)
@@ -63,6 +66,12 @@ module RenderScene:
             px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
             sx: f32, sy: f32, sz: f32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
         @callconv(c)
+        extern elisa_render_scene_v1_create_mesh_instance(source: i64,
+            px: f32, py: f32, pz: f32,
+            qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32,
+            red: f32, green: f32, blue: f32, alpha: f32) -> i64
+        @callconv(c)
         extern elisa_render_scene_v1_update_transform(handle: i64, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32) -> i32
         @callconv(c)
@@ -88,6 +97,16 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_play_animation(handle: i64, clip_name: cstr,
             loop: i32, speed: f32, blend_seconds: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_play_animation_blended(handle: i64, clip_name: cstr,
+            loop: i32, speed: f32, blend_seconds: f32, flags: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_animation_speed(handle: i64, speed: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_visibility_policy(handle: i64,
+            draw_distance: f32, lod_bias: f32, layer_mask: u32, renderable: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_occlusion_culling(enabled: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_stop_animation(handle: i64, blend_seconds: f32) -> i32
         @callconv(c)
@@ -248,6 +267,19 @@ module RenderScene:
         struct Emission:
             color: Geometry::Vec3
             strength: f32
+        # How a clip switch hands over. `eased` fades with smoothstep,
+        # `phase_matched` starts a looping clip at the previous normalized
+        # time, and `continue_same_clip` keeps a re-requested clip running.
+        struct AnimationTransition:
+            eased: bool
+            phase_matched: bool
+            continue_same_clip: bool
+        struct VisibilityPolicy:
+            private:
+                draw_distance: f32
+                lod_bias: f32
+                layer_mask: u32
+                renderable: bool
         struct InstanceHandle:
             private:
                 native_value: i64
@@ -363,6 +395,10 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_activate_default_camera())
         def destroy_camera(handle: CameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_camera(handle.native_value))
+        # An opaque sentinel for optional scene placements that have not been
+        # created yet. Passing it to a scene operation returns UnknownHandle.
+        def empty_instance_handle() -> InstanceHandle:
+            InstanceHandle{native_value: 0}
         def create(primitive: Primitive, transform: Geometry::Transform, color: Color) -> InstanceHandle error[RenderSceneError]:
             primitive_code: i32 = 1 if primitive == Primitive.Box else (2 if primitive == Primitive.Sphere else (3 if primitive == Primitive.Plane else 0))
             native_value: i64 = elisa_render_scene_v1_create(primitive_code,
@@ -385,6 +421,22 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             InstanceHandle{native_value: native_value}
+        # Draw a source's mesh and material again at another transform. The
+        # clone shares the source's loaded asset and GPU mesh, supports its own
+        # transform, visibility and tint, and has no independent material API.
+        # The source can be destroyed before its clones. Animated, morphed or
+        # cloned sources are rejected. The native handle remains private here.
+        def create_mesh_instance(source: InstanceHandle, transform: Geometry::Transform,
+            color: Color) -> InstanceHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_mesh_instance(source.native_value,
+                transform.position.x, transform.position.y, transform.position.z,
+                transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
+                transform.scale.x, transform.scale.y, transform.scale.z,
+                color.red, color.green, color.blue, color.alpha)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            InstanceHandle{native_value: native_value}
         def update_transform(handle: InstanceHandle, transform: Geometry::Transform) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_update_transform(handle.native_value,
                 transform.position.x, transform.position.y, transform.position.z,
@@ -395,6 +447,32 @@ module RenderScene:
             loop_value: i32 = 1 if loop else 0
             try check_status(elisa_render_scene_v1_play_animation(handle.native_value,
                 clip_name, loop_value, speed, blend_seconds))
+        def locomotion_transition() -> AnimationTransition:
+            AnimationTransition{eased: true, phase_matched: true, continue_same_clip: true}
+        def play_animation_blended(handle: InstanceHandle, clip_name: cstr, loop: bool,
+            speed: f32, blend_seconds: f32,
+            transition: AnimationTransition) -> void error[RenderSceneError]:
+            loop_value: i32 = 1 if loop else 0
+            eased: i32 = BLEND_EASED if transition.eased else 0
+            phase: i32 = BLEND_PHASE_MATCHED if transition.phase_matched else 0
+            same: i32 = BLEND_CONTINUE_SAME_CLIP if transition.continue_same_clip else 0
+            try check_status(elisa_render_scene_v1_play_animation_blended(handle.native_value,
+                clip_name, loop_value, speed, blend_seconds, eased + phase + same))
+        # Retime the active clip without restarting it or starting a fade.
+        def set_animation_speed(handle: InstanceHandle, speed: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_animation_speed(handle.native_value, speed))
+        def VisibilityPolicy(draw_distance: f32, lod_bias: f32,
+            layer_mask: u32, renderable: bool) -> VisibilityPolicy:
+            VisibilityPolicy{draw_distance: draw_distance, lod_bias: lod_bias,
+                layer_mask: layer_mask, renderable: renderable}
+        def set_visibility(handle: InstanceHandle,
+            policy: VisibilityPolicy) -> void error[RenderSceneError]:
+            renderable_value: i32 = 1 if policy.renderable else 0
+            try check_status(elisa_render_scene_v1_set_visibility_policy(handle.native_value,
+                policy.draw_distance, policy.lod_bias, policy.layer_mask, renderable_value))
+        def set_occlusion_culling(enabled: bool) -> void error[RenderSceneError]:
+            enabled_value: i32 = 1 if enabled else 0
+            try check_status(elisa_render_scene_v1_set_occlusion_culling(enabled_value))
         def stop_animation(handle: InstanceHandle, blend_seconds: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_stop_animation(handle.native_value, blend_seconds))
         def advance_animation(handle: InstanceHandle, delta_seconds: f32) -> void error[RenderSceneError]:
