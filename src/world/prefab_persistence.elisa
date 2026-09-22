@@ -1,0 +1,65 @@
+# Stable prefab persistence carries authoring IDs and plain transforms only.
+# Runtime World references never cross this boundary; a reloaded instance binds
+# the records back to freshly spawned entities.
+include "./prefab_world.elisa"
+
+module PrefabPersistence:
+    public:
+        const MAX_OVERRIDES: usize = PrefabWorld::MAX_NODES
+
+        error PersistenceError:
+            InvalidSnapshot
+            WrongInstance
+            DuplicateAuthoringId
+            MissingAuthoringId
+            InvalidTransform
+
+        struct OverrideRecord:
+            authoring_id: i64
+            local: Geometry::Transform
+
+        struct Snapshot:
+            prefab_id: mutable i64
+            instance_id: mutable i64
+            records: mutable OverrideRecord[PrefabPersistence::MAX_OVERRIDES]
+            count: mutable usize
+
+        def Snapshot() -> Snapshot:
+            Snapshot{prefab_id: 0, instance_id: 0, records: zeroed, count: 0}
+
+        def snapshot_valid(snapshot: Snapshot&) -> bool:
+            return false if snapshot.prefab_id <= 0 or snapshot.instance_id <= 0 or snapshot.count == 0 or snapshot.count > PrefabPersistence::MAX_OVERRIDES
+            for index in 0..<snapshot.count |valid: bool = true| -> valid:
+                row: OverrideRecord = snapshot.records[index]
+                valid <- false if row.authoring_id <= 0 or not Geometry::transform_is_valid(row.local)
+                unique: bool =
+                    for earlier in 0..<index |inner: bool = true| -> inner:
+                        inner <- false if snapshot.records[earlier].authoring_id == row.authoring_id
+                valid <- valid and unique
+
+        public:
+            def capture(instance: PrefabWorld::Instance&) -> Snapshot:
+                count: usize = PrefabWorld::instance_binding_count(instance)
+                return Snapshot() if count == 0 or count > PrefabPersistence::MAX_OVERRIDES
+                snapshot: mutable Snapshot = Snapshot()
+                snapshot.prefab_id <- PrefabWorld::instance_prefab_id(instance)
+                snapshot.instance_id <- PrefabWorld::instance_id(instance)
+                snapshot.count <- count
+                for index in 0..<count |snapshot|:
+                    authoring_id: i64 = PrefabWorld::instance_authoring_id_at(instance, index)
+                    local: Geometry::Transform = PrefabWorld::instance_local_at(instance, index)
+                    return Snapshot() if authoring_id <= 0 or not Geometry::transform_is_valid(local)
+                    snapshot.records[index] <- OverrideRecord{authoring_id: authoring_id, local: local}
+                snapshot
+
+            def restore(instance: mutable PrefabWorld::Instance&, world: mutable World::World&,
+                snapshot: Snapshot) -> bool:
+                return false if not snapshot_valid(&snapshot)
+                return false if snapshot.prefab_id != PrefabWorld::instance_prefab_id(instance) or snapshot.instance_id != PrefabWorld::instance_id(instance)
+                return false if snapshot.count != PrefabWorld::instance_binding_count(instance)
+                for index in 0..<snapshot.count |instance, world, snapshot|:
+                    authoring_id: i64 = snapshot.records[index].authoring_id
+                    return false if PrefabWorld::instance_authoring_slot(instance, authoring_id) == PrefabWorld::MAX_NODES
+                    applied: bool = PrefabWorld::override_local(instance, world, authoring_id, snapshot.records[index].local)
+                    return false if not applied
+                true

@@ -20,16 +20,13 @@ def godot_path() -> sview:
         if configured != "":
             return configured
         configured
-
     directories: darray[sview] =
         search_path: sview = get_environment_or("PATH", "")
         split(search_path, ":")
-
     for directory in directories:
         candidate: sview =
             base: sview = "." if directory == "" else directory
             f"{base}/godot"
-
         if is_file(path(candidate)) and is_executable(path(candidate)):
             return candidate
     ""
@@ -39,7 +36,6 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     result: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(program), arguments, empty_input)
-
     _ = write_stdout(result.stdout)
     _ = write_stderr(result.stderr)
     result.exit_status
@@ -62,7 +58,6 @@ def rejects_owner_violation(compiler: sview, source: sview, output: sview, priva
             break
     eprint("The negative owner fixture failed for another reason.")
     false
-
 def main(arguments: darray[sview]) -> i64:
     if arguments.count != 0:
         eprint("usage: elisascript scripts/check.elisascript")
@@ -74,15 +69,12 @@ def main(arguments: darray[sview]) -> i64:
             eprint("Put elisac-stage1 on PATH or set ELISA_COMPILER_BIN to its executable path.")
             return 2
         candidate
-
     prover: sview =
         configured_prover: sview = get_environment_or("ELISA_PROOF_BIN", "")
         str(root.joinpath("../elisa-proof/build/elisa-proof")) if configured_prover == "" else configured_prover
-
     if not is_file(path(prover)) or not is_executable(path(prover)):
         eprint("Build elisa-proof or set ELISA_PROOF_BIN to its executable path.")
         return 2
-
     _ = create_directories(root.joinpath("build"))
     # A failed later step must not leave an older success report looking current.
     _ = root.joinpath("build/entity-id-proof.json").unlink()
@@ -99,9 +91,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Entity identity runtime tests passed.")
-
     world_test_binary: sview = str(root.joinpath("build/world-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", world_test_binary, str(root.joinpath("test/world.elisa"))])
@@ -131,9 +121,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Geometry value tests passed.")
-
     asset_test_binary: sview = str(root.joinpath("build/assets-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_test_binary, str(root.joinpath("test/assets.elisa"))])
@@ -310,6 +298,18 @@ def main(arguments: darray[sview]) -> i64:
     prefab_status <- run_visible(prefab_binary, [])
     return prefab_status if prefab_status != 0
     println("Prefab instance tests passed.")
+    prefab_world_binary: sview = str(root.joinpath("build/prefab-world-test"))
+    prefab_world_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", prefab_world_binary, str(root.joinpath("test/prefab_world.elisa"))])
+    return prefab_world_status if prefab_world_status != 0
+    prefab_world_status <- run_visible(prefab_world_binary, [])
+    return prefab_world_status if prefab_world_status != 0
+    println("Primary-world prefab instance tests passed.")
+    prefab_scene_binary: sview = str(root.joinpath("build/prefab-scene-test"))
+    prefab_scene_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", prefab_scene_binary, str(root.joinpath("test/prefab_scene.elisa"))])
+    return prefab_scene_status if prefab_scene_status != 0
+    prefab_scene_status <- run_visible(prefab_scene_binary, [])
+    return prefab_scene_status if prefab_scene_status != 0
+    println("Nested prefab scene tests passed.")
     cell_stream_binary: sview = str(root.joinpath("build/cell-stream-test"))
     cell_stream_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", cell_stream_binary, str(root.joinpath("test/cell_streaming.elisa"))])
     return cell_stream_status if cell_stream_status != 0

@@ -1,0 +1,161 @@
+# A bounded scene graph composes prefab definitions into nested runtime
+# instances. Authoring IDs remain local to each definition; scene links own the
+# parent relationship and placement between instances.
+include "./prefab.elisa"
+include "./prefab_world.elisa"
+
+module PrefabScene:
+    public:
+        const MAX_DEFINITIONS: usize = 8
+        const MAX_LINKS: usize = 8
+        const ROOT: i64 = -1
+
+        struct DefinitionEntry:
+            prefab_id: i64
+            definition: Prefab::Definition
+
+        struct Link:
+            link_id: i64
+            prefab_id: i64
+            instance_id: i64
+            root_authoring_id: i64
+            parent_link_id: i64
+            parent_authoring_id: i64
+            local: Geometry::Transform
+
+        affine struct Scene:
+            private:
+                definitions: mutable DefinitionEntry[PrefabScene::MAX_DEFINITIONS]
+                definition_count: mutable usize
+                links: mutable Link[PrefabScene::MAX_LINKS]
+                link_count: mutable usize
+
+        def Scene() -> Scene:
+            Scene{definitions: zeroed, definition_count: 0, links: zeroed, link_count: 0}
+
+        affine struct Instance:
+            private:
+                scene_id: mutable i64
+                group: mutable PrefabWorld::Group
+
+        def Instance() -> Instance:
+            Instance{scene_id: 0, group: PrefabWorld::Group()}
+
+        private:
+            def definition_slot(scene: Scene&, prefab_id: i64) -> usize:
+                for index in 0..<scene.definition_count |slot: usize = PrefabScene::MAX_DEFINITIONS| -> slot:
+                    break index if scene.definitions[index].prefab_id == prefab_id
+
+            def link_slot(scene: Scene&, link_id: i64) -> usize:
+                for index in 0..<scene.link_count |slot: usize = PrefabScene::MAX_LINKS| -> slot:
+                    break index if scene.links[index].link_id == link_id
+
+            def link_would_cycle(scene: Scene&, link_id: i64, parent_link_id: i64) -> bool:
+                cursor: mutable i64 = parent_link_id
+                for _ in 0..<PrefabScene::MAX_LINKS:
+                    return true if cursor == link_id
+                    return false if cursor == PrefabScene::ROOT
+                    parent_slot: usize = link_slot(scene, cursor)
+                    return false if parent_slot == PrefabScene::MAX_LINKS
+                    cursor <- scene.links[parent_slot].parent_link_id
+                true
+
+            def definition_root_exists(definition: Prefab::Definition&, authoring_id: i64) -> bool:
+                return false if authoring_id <= 0
+                Prefab::node_slot(definition, authoring_id) != Prefab::MAX_NODES
+
+            def destroy_spawned(instance: mutable Instance&, world: mutable World::World&) -> void:
+                _ = PrefabWorld::group_destroy(instance.group, world)
+                instance.scene_id <- 0
+
+        public:
+            def definition_count(scene: Scene&) -> usize:
+                scene.definition_count
+
+            def link_count(scene: Scene&) -> usize:
+                scene.link_count
+
+            def add_definition(scene: mutable Scene&, prefab_id: i64,
+                definition: Prefab::Definition) -> bool:
+                return false if prefab_id <= 0 or scene.definition_count >= PrefabScene::MAX_DEFINITIONS
+                return false if not Prefab::definition_valid(definition) or definition_slot(scene, prefab_id) != PrefabScene::MAX_DEFINITIONS
+                scene.definitions[scene.definition_count] <- DefinitionEntry{prefab_id: prefab_id, definition: definition}
+                scene.definition_count <- scene.definition_count + 1
+                true
+
+            def add_link(scene: mutable Scene&, link: Link) -> bool:
+                return false if scene.link_count >= PrefabScene::MAX_LINKS or link.link_id <= 0 or link.prefab_id <= 0 or link.instance_id <= 0
+                return false if link.parent_link_id < PrefabScene::ROOT or not Geometry::transform_is_valid(link.local)
+                return false if link_slot(scene, link.link_id) != PrefabScene::MAX_LINKS
+                scene.links[scene.link_count] <- link
+                scene.link_count <- scene.link_count + 1
+                true
+
+            def scene_valid(scene: Scene&) -> bool:
+                return false if scene.definition_count == 0 or scene.definition_count > PrefabScene::MAX_DEFINITIONS or scene.link_count == 0 or scene.link_count > PrefabScene::MAX_LINKS
+                for index in 0..<scene.definition_count:
+                    return false if scene.definitions[index].prefab_id <= 0 or not Prefab::definition_valid(scene.definitions[index].definition)
+                    for earlier in 0..<index:
+                        return false if scene.definitions[earlier].prefab_id == scene.definitions[index].prefab_id
+                for index in 0..<scene.link_count:
+                    link: Link = scene.links[index]
+                    return false if link.link_id <= 0 or link.prefab_id <= 0 or link.instance_id <= 0 or link.root_authoring_id <= 0 or not Geometry::transform_is_valid(link.local)
+                    return false if definition_slot(scene, link.prefab_id) == PrefabScene::MAX_DEFINITIONS
+                    return false if link.parent_link_id < PrefabScene::ROOT or link_would_cycle(scene, link.link_id, link.parent_link_id)
+                    if link.parent_link_id != PrefabScene::ROOT:
+                        parent_slot: usize = link_slot(scene, link.parent_link_id)
+                        return false if parent_slot == PrefabScene::MAX_LINKS or parent_slot >= index
+                    definition: Prefab::Definition = scene.definitions[definition_slot(scene, link.prefab_id)].definition
+                    return false if not definition_root_exists(definition, link.root_authoring_id)
+                    if link.parent_link_id != PrefabScene::ROOT:
+                        parent_link_slot: usize = link_slot(scene, link.parent_link_id)
+                        parent_definition: Prefab::Definition = scene.definitions[definition_slot(scene, scene.links[parent_link_slot].prefab_id)].definition
+                        return false if not definition_root_exists(parent_definition, link.parent_authoring_id)
+                    for earlier in 0..<index:
+                        return false if scene.links[earlier].link_id == link.link_id or scene.links[earlier].instance_id == link.instance_id
+                true
+
+            def instance_link_count(instance: Instance&) -> usize:
+                PrefabWorld::group_count(instance.group)
+
+            def instance_reference(instance: Instance&, scene: Scene&, link_id: i64, authoring_id: i64) -> World::EntityRef:
+                return World::EntityRef{world_epoch: -1, id: -1} if link_id <= 0
+                for index in 0..<PrefabWorld::group_count(instance.group):
+                    if scene.links[index].link_id == link_id:
+                        return PrefabWorld::group_reference(instance.group, index, authoring_id)
+                World::EntityRef{world_epoch: -1, id: -1}
+
+            def spawn(instance: mutable Instance&, world: mutable World::World&, scene: Scene&, scene_id: i64) -> bool:
+                return false if PrefabWorld::group_count(instance.group) != 0 or scene_id <= 0 or not scene_valid(scene)
+                instance.scene_id <- scene_id
+                for index in 0..<scene.link_count |instance, world, scene|:
+                    link: Link = scene.links[index]
+                    definition_slot_value: usize = definition_slot(scene, link.prefab_id)
+                    definition: Prefab::Definition = scene.definitions[definition_slot_value].definition
+                    if not PrefabWorld::group_spawn_at(instance.group, index, world, definition, link.prefab_id, link.instance_id):
+                        destroy_spawned(instance, world)
+                        return false
+                    # The group keeps instances private; all edits go through
+                    # its checked reference boundary.
+                    if not PrefabWorld::group_override_local(instance.group, index, world, link.root_authoring_id, link.local):
+                        destroy_spawned(instance, world)
+                        return false
+                    if link.parent_link_id != PrefabScene::ROOT:
+                        parent_slot: usize = link_slot(scene, link.parent_link_id)
+                        parent: World::EntityRef = PrefabWorld::group_reference(instance.group, parent_slot, link.parent_authoring_id)
+                        child: World::EntityRef = PrefabWorld::group_reference(instance.group, index, link.root_authoring_id)
+                        linked: bool = catch World::world_reparent(world, child, parent, false):
+                            ok: true
+                            error failure: false
+                        if not linked:
+                            destroy_spawned(instance, world)
+                            return false
+                true
+
+            def valid(instance: Instance&, world: World::World&) -> bool:
+                instance.scene_id > 0 and PrefabWorld::group_valid(instance.group, world)
+
+            def destroy(instance: mutable Instance&, world: mutable World::World&) -> bool:
+                return false if not valid(instance, world)
+                destroy_spawned(instance, world)
+                true

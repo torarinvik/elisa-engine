@@ -157,7 +157,7 @@ module WorldCommands:
                 match command.kind:
                     Kind.Spawn:
                         spawned: World::EntityRef = catch World::world_spawn(world, command.spawn_kind):
-                            value: World::EntityRef{world_epoch: -1, id: -1}
+                            value: value
                             error failure: World::EntityRef{world_epoch: -1, id: -1}
                         spawned.id > 0
                     Kind.Despawn:

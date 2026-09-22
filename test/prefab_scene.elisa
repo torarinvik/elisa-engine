@@ -1,0 +1,59 @@
+include "../src/world/prefab_scene.elisa"
+
+def main() -> i32:
+    definition: mutable Prefab::Definition = Prefab::Definition()
+    identity: Geometry::Transform = Geometry::transform_identity()
+    root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0, local: identity}
+    child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10,
+        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0})}
+    return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
+
+    scene: mutable PrefabScene::Scene = PrefabScene::Scene()
+    return 2 if not PrefabScene::add_definition(&scene, 7, definition)
+    root_link: PrefabScene::Link = PrefabScene::Link{
+        link_id: 100,
+        prefab_id: 7,
+        instance_id: 1000,
+        root_authoring_id: 10,
+        parent_link_id: PrefabScene::ROOT,
+        parent_authoring_id: 0,
+        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}),
+    }
+    child_link: PrefabScene::Link = PrefabScene::Link{
+        link_id: 200,
+        prefab_id: 7,
+        instance_id: 2000,
+        root_authoring_id: 10,
+        parent_link_id: 100,
+        parent_authoring_id: 10,
+        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 10.0, y: 0.0, z: 0.0}),
+    }
+    return 3 if not PrefabScene::add_link(&scene, root_link) or not PrefabScene::add_link(&scene, child_link)
+    return 4 if not PrefabScene::scene_valid(&scene)
+
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 5
+    instance: mutable PrefabScene::Instance = PrefabScene::Instance()
+    return 6 if not PrefabScene::spawn(&instance, &world, scene, 55)
+    return 7 if not PrefabScene::valid(&instance, &world) or World::world_live_count(&world) != 4
+    parent: World::EntityRef = PrefabScene::instance_reference(&instance, scene, 100, 10)
+    nested: World::EntityRef = PrefabScene::instance_reference(&instance, scene, 200, 10)
+    parent_pose: mutable Geometry::Transform = Geometry::transform_identity()
+    nested_pose: mutable Geometry::Transform = Geometry::transform_identity()
+    return 8 if not World::world_try_transform(&world, parent, &parent_pose) or parent_pose.position.x != 5.0
+    return 9 if not World::world_try_transform(&world, nested, &nested_pose) or nested_pose.position.x != 15.0
+    return 10 if parent.id == nested.id
+
+    cycle_scene: mutable PrefabScene::Scene = PrefabScene::Scene()
+    return 11 if not PrefabScene::add_definition(&cycle_scene, 7, definition)
+    return 12 if not PrefabScene::add_link(&cycle_scene, PrefabScene::Link{
+        link_id: 1, prefab_id: 7, instance_id: 1, root_authoring_id: 10,
+        parent_link_id: 2, parent_authoring_id: 10, local: identity})
+    return 13 if not PrefabScene::add_link(&cycle_scene, PrefabScene::Link{
+        link_id: 2, prefab_id: 7, instance_id: 2, root_authoring_id: 10,
+        parent_link_id: 1, parent_authoring_id: 10, local: identity})
+    return 14 if PrefabScene::scene_valid(&cycle_scene)
+    return 15 if not PrefabScene::destroy(&instance, &world)
+    return 16 if World::world_live_count(&world) != 0
+    0
