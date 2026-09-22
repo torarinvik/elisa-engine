@@ -155,7 +155,68 @@ def parse_arguments():
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--animation-source", type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--max-triangles", type=int,
+        help="coarsely reduce static meshes before bounded FBX conversion")
     return parser.parse_args(argv)
+
+
+def triangle_count(mesh):
+    return sum(max(polygon.loop_total - 2, 0) for polygon in mesh.polygons)
+
+
+def stage_static_reduction(meshes, max_triangles):
+    if max_triangles is None:
+        return
+    if not 1 <= max_triangles <= 1000000:
+        raise RuntimeError("max-triangles must be in [1, 1000000]")
+    source_triangles = sum(triangle_count(mesh.data) for mesh in meshes)
+    staged_limit = max(1, int(max_triangles * 0.90))
+    if source_triangles <= staged_limit:
+        return
+    ratio = staged_limit / source_triangles
+    for mesh in meshes:
+        bpy.ops.object.select_all(action="DESELECT")
+        mesh.select_set(True)
+        bpy.context.view_layer.objects.active = mesh
+        modifier = mesh.modifiers.new(name="Elisa bounded GLB staging", type="DECIMATE")
+        modifier.decimate_type = "COLLAPSE"
+        modifier.ratio = ratio
+        modifier.use_collapse_triangulate = True
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
+    staged_triangles = sum(triangle_count(mesh.data) for mesh in meshes)
+    attempts = 0
+    while staged_triangles > max_triangles and attempts < 3:
+        previous_triangles = staged_triangles
+        ratio = max_triangles * 0.90 / staged_triangles
+        for mesh in meshes:
+            bpy.ops.object.select_all(action="DESELECT")
+            mesh.select_set(True)
+            bpy.context.view_layer.objects.active = mesh
+            modifier = mesh.modifiers.new(name="Elisa bounded GLB staging", type="DECIMATE")
+            modifier.decimate_type = "COLLAPSE"
+            modifier.ratio = ratio
+            modifier.use_collapse_triangulate = True
+            bpy.ops.object.modifier_apply(modifier=modifier.name)
+        staged_triangles = sum(triangle_count(mesh.data) for mesh in meshes)
+        attempts += 1
+        if staged_triangles >= previous_triangles:
+            break
+    if staged_triangles > max_triangles:
+        raise RuntimeError("Blender could not reduce the static GLB to its triangle budget")
+    print(f"Reduced static GLB for bounded conversion: {source_triangles} -> {staged_triangles} triangles")
+
+
+def recalculate_static_normals(meshes):
+    for mesh in meshes:
+        bpy.ops.object.select_all(action="DESELECT")
+        mesh.select_set(True)
+        bpy.context.view_layer.objects.active = mesh
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        mesh.data.validate(verbose=False, clean_customdata=True)
+        mesh.data.update()
 
 
 def main():
@@ -169,6 +230,9 @@ def main():
         meshes = [item for item in glb_objects if item.type == "MESH"]
         if not meshes:
             raise RuntimeError("static GLB has no mesh")
+        stage_static_reduction(meshes, options.max_triangles)
+        if options.max_triangles is not None:
+            recalculate_static_normals(meshes)
         # Carry each node's scene transform into its FBX object transform
         # before dropping camera, light and empty helper nodes.
         for mesh in meshes:
@@ -197,6 +261,8 @@ def main():
         return
     if len(armatures) != 1:
         raise RuntimeError(f"GLB must contain at most one armature; found {len(armatures)}")
+    if options.max_triangles is not None:
+        raise RuntimeError("max-triangles is not supported for skinned GLB meshes")
     armature = armatures[0]
     bones = {bone.name for bone in armature.data.bones}
     meshes = [item for item in glb_objects if item.type == "MESH" and item.parent == armature and

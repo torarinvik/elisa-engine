@@ -18,6 +18,7 @@ inline bool generate_tangent_frames(const std::vector<float>& positions,
     using Vector = std::array<double, 3>;
     std::vector<Vector> tangent_sum(vertex_count, Vector{});
     std::vector<Vector> bitangent_sum(vertex_count, Vector{});
+    std::vector<Vector> geometric_normal_sum(vertex_count, Vector{});
     const auto subtract = [](const float* a, const float* b) -> Vector {
         return {double(a[0]) - b[0], double(a[1]) - b[1], double(a[2]) - b[2]};
     };
@@ -28,6 +29,18 @@ inline bool generate_tangent_frames(const std::vector<float>& positions,
         if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count) return false;
         const Vector edge1 = subtract(&positions[size_t(i1) * 3], &positions[size_t(i0) * 3]);
         const Vector edge2 = subtract(&positions[size_t(i2) * 3], &positions[size_t(i0) * 3]);
+        const Vector face_normal = {edge1[1] * edge2[2] - edge1[2] * edge2[1],
+            edge1[2] * edge2[0] - edge1[0] * edge2[2],
+            edge1[0] * edge2[1] - edge1[1] * edge2[0]};
+        const double face_length = std::sqrt(face_normal[0] * face_normal[0] +
+            face_normal[1] * face_normal[1] + face_normal[2] * face_normal[2]);
+        if (face_length > 1.0e-20 && std::isfinite(face_length)) {
+            for (uint32_t vertex : {i0, i1, i2}) {
+                for (size_t axis = 0; axis < 3; ++axis) {
+                    geometric_normal_sum[vertex][axis] += face_normal[axis];
+                }
+            }
+        }
         const double du1 = double(uvs[size_t(i1) * 2]) - uvs[size_t(i0) * 2];
         const double dv1 = double(uvs[size_t(i1) * 2 + 1]) - uvs[size_t(i0) * 2 + 1];
         const double du2 = double(uvs[size_t(i2) * 2]) - uvs[size_t(i0) * 2];
@@ -54,9 +67,15 @@ inline bool generate_tangent_frames(const std::vector<float>& positions,
         const double nx = normals[vertex * 3];
         const double ny = normals[vertex * 3 + 1];
         const double nz = normals[vertex * 3 + 2];
-        const double normal_length = std::sqrt(nx * nx + ny * ny + nz * nz);
+        double normal_length = std::sqrt(nx * nx + ny * ny + nz * nz);
+        Vector normal = {nx, ny, nz};
+        if (!(normal_length > 1.0e-20) || !std::isfinite(normal_length)) {
+            normal = geometric_normal_sum[vertex];
+            normal_length = std::sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
+                normal[2] * normal[2]);
+        }
         if (!(normal_length > 1.0e-20) || !std::isfinite(normal_length)) return false;
-        const Vector normal = {nx / normal_length, ny / normal_length, nz / normal_length};
+        for (double& component : normal) component /= normal_length;
         const double projection = normal[0] * tangent_sum[vertex][0] +
             normal[1] * tangent_sum[vertex][1] + normal[2] * tangent_sum[vertex][2];
         Vector tangent = {tangent_sum[vertex][0] - normal[0] * projection,

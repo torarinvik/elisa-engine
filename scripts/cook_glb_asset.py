@@ -241,6 +241,8 @@ def main(arguments: list[str]) -> int:
                 "--output", str(converted)]
             if animation_source is not None:
                 command.extend(["--animation-source", str(animation_source)])
+            if options.max_triangles is not None:
+                command.extend(["--max-triangles", str(options.max_triangles)])
             print("+", " ".join(repr(argument) for argument in command), flush=True)
             subprocess.run(command, cwd=ROOT, check=True)
             if not converted.is_file() or converted.stat().st_size == 0:
