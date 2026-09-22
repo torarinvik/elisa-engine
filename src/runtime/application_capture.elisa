@@ -1,0 +1,28 @@
+# Review and capture controls extend the public application surface without
+# making the core lifecycle module carry optional automation policy.
+include "./application.elisa"
+
+module ApplicationCapture:
+    public:
+        const API_VERSION: i32 = 1
+
+extend Application:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_environment_value(name: cstr) -> cstr
+
+        @callconv(c)
+        extern elisa_application_v1_environment_integer(name: cstr, fallback: i64) -> i64
+
+        @callconv(c)
+        extern elisa_application_v1_save_screenshot(path: cstr) -> i32
+
+    public:
+        def environment_value(name: cstr) -> cstr:
+            elisa_application_v1_environment_value(name)
+
+        def environment_integer(name: cstr, fallback: i64) -> i64:
+            elisa_application_v1_environment_integer(name, fallback)
+
+        def save_screenshot(path: cstr) -> bool:
+            elisa_application_v1_save_screenshot(path) == Application::NativeStatus::OK

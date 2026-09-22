@@ -59,6 +59,15 @@ initialization and returns zero while the host is stopped. Games can sample it
 around scene construction to report startup/load cost without a native timer
 shim or wall-clock assumptions.
 
+Review and automation code can read validated `ELISA_*` environment names with
+`Application::environment_value` and parse whole decimal values with
+`Application::environment_integer`, which returns a caller-provided fallback
+for missing, malformed, or unsafe names. After a successful frame,
+`Application::save_screenshot` waits for the owner-thread GPU boundary and
+encodes the most recently presented Wicked back buffer as an RGBA PNG. Empty,
+overlong, wrong-thread, pre-frame, and failed-encode cases return a typed false
+or status rather than touching the filesystem arbitrarily.
+
 The lifecycle layer queues ordered keyboard, mouse-button, gamepad-button,
 gamepad-axis, and gamepad connect/disconnect events for Elisa through
 `Application::next_input_event`. Supported keyboard and gamepad controls use
@@ -92,6 +101,10 @@ and consume a close-request edge, and shut down without game-owned C exports.
 The application fixture also asserts that uptime is nonzero after initialization.
 Its native failure-cleanup client also proves that a returned assertion failure
 does not leave the application host active.
+The same smoke sets `ELISA_PROJECT_WIDTH=320`, exercises malformed and missing
+environment fallbacks, rejects an empty screenshot path, and writes a PNG from
+the hidden Metal window after the first frame. The generated PNG header is
+checked by `scripts/application_native_smoke.py`.
 `test/action_input.elisa` checks public codes and event-to-action behavior, while
 `test/application_gamepad_codes.cpp` checks SDL to
 portable key/button mappings, signed axis normalization, and digital/analog

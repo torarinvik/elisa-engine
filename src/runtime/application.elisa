@@ -160,15 +160,6 @@ module Application:
         @callconv(c)
         extern elisa_application_v1_uptime_nanos() -> u64
 
-        @callconv(c)
-        extern elisa_application_v1_environment_value(name: cstr) -> cstr
-
-        @callconv(c)
-        extern elisa_application_v1_environment_integer(name: cstr, fallback: i64) -> i64
-
-        @callconv(c)
-        extern elisa_application_v1_save_screenshot(path: cstr) -> i32
-
     public:
         enum InputEventKind:
             Key
@@ -600,20 +591,6 @@ module Application:
 
         def frame_count() -> u64:
             elisa_application_v1_frame_count()
-
-        # Review and automation flags come from the process environment so a
-        # capture script can drive a packaged build without touching saves.
-        # A missing variable reads as an empty string or the fallback.
-        def environment_value(name: cstr) -> cstr:
-            elisa_application_v1_environment_value(name)
-
-        def environment_integer(name: cstr, fallback: i64) -> i64:
-            elisa_application_v1_environment_integer(name, fallback)
-
-        # Writes the last presented frame as a PNG. False when no frame has
-        # been presented yet, the path is empty, or the encode fails.
-        def save_screenshot(path: cstr) -> bool:
-            elisa_application_v1_save_screenshot(path) == NativeStatus::OK
 
         # Monotonic host uptime is useful for bounded startup/load telemetry;
         # it is zero before initialization and after shutdown.
