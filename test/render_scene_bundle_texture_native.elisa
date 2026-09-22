@@ -11,6 +11,18 @@ module RenderSceneBundleTextureNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() -> u64
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_bundle_texture_decoded_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_asset_worker_started() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_asset_worker_finished() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_wait_snapshot_asset_worker(started: u64, finished: u64) -> i32
+
         const module Ids:
             TEXTURES: u64 = 910
             MATERIALS: u64 = 911
@@ -49,6 +61,33 @@ module RenderSceneBundleTextureNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 4
 
+        def request_texture(low: u64, bundle: cstr, section: cstr) -> i32:
+            catch RenderScene::request_snapshot_bundle_texture_asset(texture_id(low), bundle, section):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.Capacity: 2
+                error failure: 3
+
+        def worker_started_count() -> u64:
+            elisa_render_scene_v1_test_snapshot_asset_worker_started()
+
+        def worker_finished_count() -> u64:
+            elisa_render_scene_v1_test_snapshot_asset_worker_finished()
+
+        def wait_for_worker(started: u64, finished: u64) -> bool:
+            elisa_render_scene_v1_test_wait_snapshot_asset_worker(started, finished) == 1
+
+        def pump_assets(budget: u32) -> i32:
+            catch RenderScene::pump_snapshot_assets(budget):
+                value: value.i32()
+                error failure: -1
+
+        def texture_resident(low: u64) -> bool:
+            catch RenderScene::snapshot_asset_state(
+                RenderScene::SnapshotAssetKind.Texture, texture_id(low)):
+                value: value == RenderScene::SnapshotAssetState.Resident
+                error failure: false
+
         def base_color_size(material_low: u64, width: u32, height: u32) -> bool:
             elisa_render_scene_v1_test_snapshot_material_texture_size(
                 Ids::MATERIALS, material_low, 0, width, height) == 1
@@ -57,7 +96,6 @@ module RenderSceneBundleTextureNativeTests:
         def rejected_registrations() -> i32:
             bundle: cstr = "build/cooked/render-scene-textures.elpk"
             return 20 if register(3, bundle, "missing") != 2
-            return 21 if register(3, bundle, "ktx") != 2
             return 22 if register(3, bundle, "huge") != 2
             return 23 if register(3, "build/cooked/render-scene-textures-corrupt.elpk", "albedo") != 2
             return 24 if register(3, "../build/cooked/render-scene-textures.elpk", "albedo") != 2
@@ -115,4 +153,17 @@ module RenderSceneBundleTextureNativeTests:
             return 33 if ktx2_registration != 0
             return 34 if register_material(3, 5) != 0 or not base_color_size(3, 4, 4)
             return 35 if unregister_material(3) != 0 or unregister_texture(5) != 0
+            return 36 if register(6, bundle, "ktx") != 0
+            return 37 if register_material(4, 6) != 0 or not base_color_size(4, 4, 4)
+            return 38 if unregister_material(4) != 0 or unregister_texture(6) != 0
+            worker_started: u64 = worker_started_count()
+            worker_finished: u64 = worker_finished_count()
+            return 39 if request_texture(7, bundle, "ktx") != 0
+            return 40 if not wait_for_worker(worker_started + 1, worker_finished + 1)
+            return 41 if pump_assets(1) != 1
+            return 42 if not texture_resident(7)
+            return 43 if elisa_render_scene_v1_test_snapshot_bundle_texture_decoded_bytes() != 0
+            return 44 if register_material(5, 7) != 0 or not base_color_size(5, 4, 4)
+            return 45 if unregister_material(5) != 0 or unregister_texture(7) != 0
+            return 46 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != 0
             0

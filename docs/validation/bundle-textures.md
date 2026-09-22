@@ -1,9 +1,9 @@
 # Bundle-backed textures
 
 A03 needs textures to load from cooked bundles, not only from loose image
-files. This slice stores PNG and JPEG images as extra sections of an ELPK
-bundle and registers them as snapshot texture assets. The native maze's wall
-material now takes its base color from a 32×32 brick image in its tile bundle.
+files. PNG and JPEG images, plus bounded 2D Basis KTX2 sections, register as
+snapshot texture assets. The native maze's wall material now takes its base
+color from a 32×32 brick image in its tile bundle.
 
 ## Path
 
@@ -30,19 +30,20 @@ material now takes its base color from a 32×32 brick image in its tile bundle.
    - reads the ELPK index, finds the section, and bounds its unpacked size
      (64 MiB) before reading it
    - decompresses the section if needed and checks its CRC-32
-   - reads the image header again and applies the same format and 1–8192
-     dimension checks
-   - decodes the checked PNG or JPEG to CPU pixels and accounts for at most
-     256 MiB of source sections and 256 MiB of decoded pixels across resident
-     bundle textures (`Capacity` beyond either budget)
-4. **Upload.** A material registration creates a Wicked texture from the
-   decoded pixels on the owner thread, creates its mip chain, and schedules
-   Wicked's block-compression work. Resources are cached per texture asset
-   and material role, so normal-map BC5 settings do not collide with color
-   texture formats. Async requests perform the decode on their worker before
-   pump adopts the pixels; the synchronous compatibility method decodes while
-   registering on the owner thread. Failed decode returns `AssetLoadFailure`
-   before it installs a texture slot.
+   - reads the image header again and applies format-specific shape checks:
+     PNG/JPEG dimensions are 1–8192; KTX2 must be a bounded 2D texture up to
+     4096×4096 with at most 16 mips
+   - decodes PNG/JPEG to CPU pixels, but keeps KTX2 encoded until material
+     upload; encoded source and decoded pixels each have a 256 MiB resident
+     budget (`Capacity` beyond either budget)
+4. **Upload.** PNG/JPEG material registration creates a Wicked texture from
+   decoded pixels, creates its mip chain, and schedules block compression.
+   KTX2 is transcoded on the owner thread to a queried native format when its
+   material first uses it. Resources are cached per texture asset and material
+   role, so normal-data and color formats do not collide. Async requests decode
+   PNG/JPEG on their worker; KTX2 is read and checksummed there, then transcoded
+   when the owner thread adopts it into a material. Failed image decode or
+   KTX2 upload returns `AssetLoadFailure` without installing a material.
 
 Registering the same ID again with the same bundle and section succeeds and
 changes nothing. The same ID with a different bundle or section, or as a loose
@@ -54,8 +55,8 @@ unregistered.
 `test/render_scene_bundle_texture_native.elisa` runs inside the SDL3/Metal
 native smoke. `scripts/bundle_texture_fixtures.py` writes its fixtures to
 `build/cooked` first. The main fixture bundle holds a 16×8 PNG `albedo`, a
-24×12 JPEG `photo` made by `sips`, and three bad sections: `huge`, `truncated`
-and `ktx`.
+24×12 JPEG `photo` made by `sips`, the 4×4 Basis KTX2 section `ktx`, and two
+bad sections: `huge` and `truncated`.
 
 | Case | Expected |
 | --- | --- |
@@ -66,7 +67,7 @@ and `ktx`.
 | register `photo` under a second ID | OK |
 | a material using each texture | Wicked texture is 16×8 and 24×12 |
 | a section the bundle doesn't have | `AssetLoadFailure` |
-| a KTX2 section (`ktx`) | `AssetLoadFailure`, not a PNG or JPEG |
+| a KTX2 section (`ktx`) used by a material | OK; Wicked texture is 4×4 |
 | a PNG header claiming 65535×65535 (`huge`) | `AssetLoadFailure`, before any decode |
 | a bundle copy with one byte of `albedo` flipped | `AssetLoadFailure`, CRC mismatch |
 | a `..` path, an absolute path, a symlink to a valid copy outside the root | `AssetLoadFailure` |
@@ -107,19 +108,20 @@ and the source was restored.
 
 ## Limits
 
-- **Formats.** Only PNG and JPEG sections load. KTX2, Basis and DDS sections
-  are rejected. Separately registered loose KTX2 assets use the runtime Basis
-  transcoder; bundle sections still need an encoded-texture worker result and
-  owner-thread GPU upload path (A06).
-- **Decode timing.** Async bundle requests decode on the A04 worker. The
-  synchronous compatibility entrypoint decodes on the owner thread. GPU
-  texture creation and mip/compression scheduling stay on the owner thread.
-- **Memory.** Encoded section data is released after validation and decode.
-  Decoded pixels stay with the texture asset so later materials can create
-  role-specific resources. Source and decoded-pixel budgets are each 256 MiB;
-  their exact upper bounds aren't exercised by the smoke.
-- **Header bound.** A valid header may still claim 8192×8192, so the decoder
-  can allocate about 256 MiB of RGBA pixels.
+- **Formats.** The runtime accepts PNG, JPEG, and 2D Basis KTX2 sections.
+  Basis KTX2 is capped at 4096×4096 and 16 mip levels. The glTF cooker still
+  accepts embedded PNG and JPEG images only; DDS remains unsupported.
+- **Decode timing.** Async PNG/JPEG requests decode on the A04 worker. KTX2
+  section IO, header validation and CRC checking run there; Basis transcode and
+  GPU creation run on the owner thread when a material first uses it. The
+  synchronous compatibility entrypoint decodes PNG/JPEG on the owner thread.
+- **Memory.** KTX2 encoded bytes and PNG/JPEG decoded pixels remain with the
+  texture asset for later role-specific resource creation. Source and decoded
+  pixel budgets are each 256 MiB; their exact upper bounds aren't exercised by
+  the smoke.
+- **Header bound.** A PNG/JPEG header may claim 8192×8192, so its decoder can
+  allocate about 256 MiB of RGBA pixels. KTX2 output is separately capped at
+  64 MiB during Basis upload.
 - **Checksum identity.** The checksum and section form the native texture
   resource label; asset-ID conflicts and rewritten-bundle checks cover the
   identity rules. ResourceManager name caching is not used for bundle images.

@@ -193,9 +193,8 @@ extend RenderScene:
             try check_status(elisa_render_scene_v1_register_snapshot_texture_asset(
                 asset.high, asset.low, asset_path))
 
-        # A PNG or JPEG section of a cooked ELPK bundle. This synchronous
-        # compatibility call checks and decodes it during registration. Use
-        # request_snapshot_bundle_texture_asset for worker-thread decode.
+        # A PNG, JPEG, or 2D Basis KTX2 section of an ELPK bundle. PNG/JPEG
+        # decode during registration; KTX2 stays encoded until material upload.
         def register_snapshot_bundle_texture_asset(asset: Assets::AssetId,
             bundle_path: cstr, section: cstr) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)

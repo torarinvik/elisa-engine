@@ -1,6 +1,6 @@
 """Write the ELPK bundles the native bundle-texture test registers.
 
-`render-scene-textures.elpk` holds one valid PNG and one valid JPEG, plus
+`render-scene-textures.elpk` holds valid PNG, JPEG, and KTX2 images, plus
 sections the runtime must reject or fail to decode. A second copy has one byte
 of its PNG section flipped. A third copy lives outside the project root and is
 reached through a symlink inside it.
@@ -20,10 +20,6 @@ from png_image import encode_png
 BUNDLE = "render-scene-textures.elpk"
 CORRUPTED_BUNDLE = "render-scene-textures-corrupt.elpk"
 ESCAPE_LINK = "render-scene-textures-link.elpk"
-# KTX2's file identifier. Wicked has no KTX decoder, so the runtime must refuse it.
-KTX2_IDENTIFIER = b"\xabKTX 20\xbb\r\n\x1a\n"
-
-
 def checker(width: int, height: int) -> bytes:
     pixels = bytearray()
     for row in range(height):
@@ -43,7 +39,7 @@ def jpeg_from_png(png: bytes) -> bytes:
         return output.read_bytes()
 
 
-def write_fixtures(cooked: Path, outside: Path) -> Path:
+def write_fixtures(cooked: Path, outside: Path, ktx2: Path) -> Path:
     """Write every fixture and return the escape link, which the caller removes."""
     albedo = encode_png(16, 8, checker(16, 8))
     # A well-formed IHDR that claims 65535 x 65535 pixels; no decoder may see it.
@@ -54,7 +50,7 @@ def write_fixtures(cooked: Path, outside: Path) -> Path:
         "huge": huge,
         # The signature and IHDR pass inspection; the image data is cut short.
         "truncated": albedo[:40],
-        "ktx": KTX2_IDENTIFIER + bytes(68),
+        "ktx": ktx2.read_bytes(),
     }
     bundle = cooked / BUNDLE
     write_package(bundle, sections)

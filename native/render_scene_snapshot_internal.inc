@@ -38,8 +38,11 @@ bool apply_snapshot_material_textures(RenderSceneService& state,
             const bool assigned = texture.section.empty()
                 ? elisa::rendering::textures::assign_resolved_texture(material, slot_code,
                     texture.canonical_path, &texture.resources[slot])
-                : elisa::rendering::textures::assign_decoded_texture(material, slot_code,
-                    texture.resources[slot], texture.resource_stem, texture.extension, texture.decoded);
+                : texture.format == elisa::assets::EncodedImageFormat::Ktx2
+                    ? elisa::rendering::textures::assign_encoded_ktx2_texture(material, slot_code,
+                        texture.resources[slot], texture.encoded_ktx2)
+                    : elisa::rendering::textures::assign_decoded_texture(material, slot_code,
+                        texture.resources[slot], texture.resource_stem, texture.extension, texture.decoded);
             if (!assigned) return false;
         }
     } catch (...) {

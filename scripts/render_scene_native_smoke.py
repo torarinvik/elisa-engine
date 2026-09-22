@@ -213,7 +213,8 @@ def main() -> int:
         escape_link = build / "cooked/render-scene-outside-link.pkg"
         escape_link.unlink(missing_ok=True)
         escape_link.symlink_to(outside_package)
-        texture_link = bundle_texture_fixtures.write_fixtures(build / "cooked", Path(outside_directory))
+        texture_link = bundle_texture_fixtures.write_fixtures(build / "cooked", Path(outside_directory),
+            build / "cooked/maze_tile_tex.ktx2")
         dependency_link = bundle_dependency_fixtures.write_fixtures(build / "cooked", Path(outside_directory))
         try:
             status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
