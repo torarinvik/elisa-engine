@@ -26,6 +26,8 @@ morph weights before and after pose completion.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
 The importer still accepts one glTF skin and requires identity transforms on
-skinned mesh nodes. Multiple rigs in one scene and skinned placement imports in
-snapshot registration remain unsupported; snapshot rows continue to use the
-flattened mesh path. This change does not claim performance measurements.
+skinned mesh nodes. Multiple rigs in one scene and per-placement skinned or
+morphed snapshot uploads remain unsupported. Static snapshot placement uploads
+are covered separately in
+[`snapshot-mesh-placements.md`](snapshot-mesh-placements.md). This change does
+not claim performance measurements.
