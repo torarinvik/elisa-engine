@@ -204,7 +204,8 @@ def cases(directory: Path) -> list[tuple]:
             (6, 3, [(0, 3, 2), (3, 3, 0)])),
         ("accept", "sixteen.pkg", strip_package(16, sixteen, 16), (48, 16, sixteen)),
         ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
-        ("accept", "skinned-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS)),
+        ("accept", "skinned-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
+            "animations", 1)),
         ("reject", "gap.pkg", strip_package(3, [(0, 3, 0), (6, 3, 0)], 1), PARTITION),
         ("reject", "overlap.pkg", strip_package(3, [(0, 6, 0), (3, 6, 1)], 2), PARTITION),
         ("reject", "split-triangle.pkg", strip_package(2, [(0, 4, 0), (4, 2, 1)], 2), PARTITION),
@@ -316,6 +317,10 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     if verdict == "reject":
         return "\t".join(fields + [expectation])
     index_count, slots, subsets, *records = expectation
+    animation_count = None
+    if len(records) >= 2 and records[-2] == "animations":
+        animation_count = records[-1]
+        records = records[:-2]
     fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
     if records:
         fields.append("materials")
@@ -326,6 +331,8 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         fields.append("sections")
         for name, checksum in records[1]:
             fields += [name, str(checksum)]
+    if animation_count is not None:
+        fields += ["animations", str(animation_count)]
     return "\t".join(fields)
 
 

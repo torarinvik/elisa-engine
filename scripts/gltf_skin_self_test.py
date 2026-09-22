@@ -59,6 +59,9 @@ def generated_document() -> dict:
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0)
     inverse_bind = _append(document, buffer, struct.pack("<32f", *(identity * 2)), 5126, "MAT4", 2)
+    input_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 5126, "SCALAR", 2)
+    output_accessor = _append(document, buffer, struct.pack("<6f", 0.0, 1.0, 0.0, 0.0, 2.0, 0.0),
+        5126, "VEC3", 2)
     document["buffers"][0]["byteLength"] = len(buffer)
     document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
     document["nodes"][0].update({"children": [1], "skin": 0})
@@ -66,6 +69,9 @@ def generated_document() -> dict:
         {"name": "tip", "translation": [0.0, 1.0, 0.0]}]
     document["skins"] = [{"name": "panel_rig", "joints": [1, 2], "skeleton": 1,
         "inverseBindMatrices": inverse_bind}]
+    document["animations"] = [{"name": "lift", "samplers": [{"input": input_accessor,
+        "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
+        "target": {"node": 2, "path": "translation"}}]}]
     return document
 
 
@@ -82,12 +88,14 @@ def self_test(temporary: Path) -> int:
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
     required = {
         "format": "elisa-cooked-v3", "material_slots": "2", "subset_count": "3",
-        "skin_bones": "2", "skin_joints": "2", "animation_clips": "0",
+        "skin_bones": "2", "skin_joints": "2", "animation_clips": "1",
     }
     if (result != second_result or first.read_bytes() != second.read_bytes() or
             any(sections.get(key) != value for key, value in required.items()) or
             len(base64.b64decode(sections["skin_indices_b64"])) != 12 * 16 or
-            len(base64.b64decode(sections["skin_joint_rest_b64"])) != 2 * 40):
+            len(base64.b64decode(sections["skin_joint_rest_b64"])) != 2 * 40 or
+            sections.get("animation_0_sample_rate") != "30" or
+            sections.get("animation_0_frames") != "31"):
         print("glTF skin self-test failed: package is unstable or incomplete", file=sys.stderr)
         return 1
     document = generated_document()
@@ -114,6 +122,16 @@ def self_test(temporary: Path) -> int:
     duplicate_skin = deepcopy(document)
     duplicate_skin["skins"].append(deepcopy(duplicate_skin["skins"][0]))
     rejected.append(("multiple skins", duplicate_skin))
+    cubic = deepcopy(document)
+    cubic["animations"][0]["samplers"][0]["interpolation"] = "CUBICSPLINE"
+    rejected.append(("cubic-spline animation", cubic))
+    morph_channel = deepcopy(document)
+    morph_channel["animations"][0]["channels"][0]["target"]["path"] = "weights"
+    rejected.append(("morph animation", morph_channel))
+    duplicate_track = deepcopy(document)
+    duplicate_track["animations"][0]["channels"].append(deepcopy(
+        duplicate_track["animations"][0]["channels"][0]))
+    rejected.append(("duplicate animation track", duplicate_track))
     for label, unsupported in rejected:
         try:
             cook_gltf_geometry.normalized_geometry(unsupported, buffer)

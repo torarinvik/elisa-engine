@@ -51,9 +51,9 @@ bool check_slot_materials(const std::vector<std::string>& fields, size_t first, 
     return true;
 }
 
-bool check_sections(const std::vector<std::string>& fields, size_t first,
+bool check_sections(const std::vector<std::string>& fields, size_t first, size_t end,
     const elisa::assets::CookedGeometry& geometry) {
-    if ((fields.size() - first) % 2 != 0 || geometry.texture_sections.size() != (fields.size() - first) / 2 ||
+    if ((end - first) % 2 != 0 || geometry.texture_sections.size() != (end - first) / 2 ||
         geometry.texture_checksums.size() != geometry.texture_sections.size()) return false;
     for (size_t section = 0; section < geometry.texture_sections.size(); ++section) {
         if (geometry.texture_sections[section] != fields[first + section * 2] ||
@@ -69,11 +69,16 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     };
     const size_t materials = marker("materials");
     const size_t sections = marker("sections");
-    const size_t end = std::min(materials, sections);
+    const size_t animations = marker("animations");
+    const size_t end = std::min({materials, sections, animations});
+    const size_t material_end = std::min(sections, animations);
+    const size_t section_end = animations;
     if (materials == fields.size() ? !geometry.slot_materials.empty()
-                                   : !check_slot_materials(fields, materials + 1, sections, geometry)) return false;
+                                   : !check_slot_materials(fields, materials + 1, material_end, geometry)) return false;
     if (sections == fields.size() ? !geometry.texture_sections.empty() || !geometry.texture_checksums.empty()
-                                  : !check_sections(fields, sections + 1, geometry)) return false;
+                                  : !check_sections(fields, sections + 1, section_end, geometry)) return false;
+    if (animations == fields.size() ? !geometry.animation_clips.empty()
+                                    : geometry.animation_clips.size() != std::stoul(fields[animations + 1])) return false;
     if (end < 4 || (end - 4) % 3 != 0) return false;
     if (geometry.indices.size() != std::stoul(fields[2]) ||
         geometry.material_slots != std::stoul(fields[3]) ||
