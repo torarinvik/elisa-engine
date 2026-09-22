@@ -34,8 +34,11 @@ returns copied `PhysicsQueryHit` values to the host.
 The native Wicked gate creates a layered cube, updates its scene BVH, verifies a
 nearest ray hit, sphere/capsule casts, layer misses, nearest and all-hit
 sphere/capsule overlaps, bounded all-hit storage, contact queue overflow and
-worker handoff, destroyed-participant rejection, stale-token rejection, and
-target unload back to the object baseline. Run:
+worker handoff, then creates overlapping static and dynamic Jolt bodies. The
+real Jolt listener path verifies worker-thread `Added` delivery, sensor-state
+classification for ordinary bodies, cached `Removed` delivery after a
+participant is destroyed, deterministic owner-thread draining, stale-token
+rejection, and target unload back to the object baseline. Run:
 
 ```text
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
@@ -43,6 +46,9 @@ ELISA_ALLOW_STALE_STAGE1=1 \
 ~/.local/bin/elisascript scripts/wicked_probe.elisascript
 ```
 
-Jolt listener registration and trigger classification are still follow-up P03
-integration work; this adapter establishes the bounded queue and query
-ownership/filtering boundaries those services use.
+`wi::physics::SetContactEventListener` keeps the callback pointer atomic and
+clears it before the physics scene destroys its fixed removal cache. Jolt body
+and sub-shape identity stays inside Wicked; the Elisa-facing listener receives
+only copied values, and queue overflow remains explicit rather than allocating
+from worker callbacks. A caller must unregister its listener before destroying
+the scene or listener object.
