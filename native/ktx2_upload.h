@@ -12,12 +12,29 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
-#include <iterator>
 #include <mutex>
 #include <string>
 #include <vector>
 
 namespace probe {
+
+constexpr uint64_t MAX_KTX2_CONTAINER_BYTES = 64ull * 1024ull * 1024ull;
+
+inline bool read_bounded_ktx2_container(const std::string& texture_path, std::vector<uint8_t>& bytes) {
+    bytes.clear();
+    std::ifstream input(texture_path, std::ios::binary | std::ios::ate);
+    if (!input.good()) return false;
+    const std::streamoff file_size = input.tellg();
+    if (file_size <= 0 || static_cast<uint64_t>(file_size) > MAX_KTX2_CONTAINER_BYTES) return false;
+    input.seekg(0, std::ios::beg);
+    bytes.resize(static_cast<size_t>(file_size));
+    if (!input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())).good() ||
+        input.gcount() != static_cast<std::streamsize>(bytes.size())) {
+        bytes.clear();
+        return false;
+    }
+    return true;
+}
 
 struct KTX2FormatSupportCache {
     wi::graphics::GraphicsDevice* device = nullptr;
@@ -92,15 +109,8 @@ inline uint32_t ktx2_block_bytes(KTX2UploadEncoding encoding) {
 inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
     KTX2TextureUsage usage = KTX2TextureUsage::Color) {
     wi::Resource resource;
-    constexpr size_t MAX_CONTAINER_BYTES = 64u * 1024u * 1024u;
-    std::ifstream input(texture_path, std::ios::binary | std::ios::ate);
-    const std::streamoff file_size = input.tellg();
-    if (!check(input.good() && file_size > 0 &&
-        static_cast<uint64_t>(file_size) <= MAX_CONTAINER_BYTES, "KTX2 upload bounded container")) return resource;
-    input.seekg(0, std::ios::beg);
-    std::vector<uint8_t> bytes(static_cast<size_t>(file_size));
-    if (!check(input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())).good(),
-        "KTX2 upload reads complete container")) return resource;
+    std::vector<uint8_t> bytes;
+    if (!check(read_bounded_ktx2_container(texture_path, bytes), "KTX2 upload reads bounded complete container")) return resource;
     basist::basisu_transcoder_init();
     basist::ktx2_transcoder transcoder;
     if (!check(transcoder.init(bytes.data(), static_cast<uint32_t>(bytes.size())), "KTX2 upload parses")) return resource;

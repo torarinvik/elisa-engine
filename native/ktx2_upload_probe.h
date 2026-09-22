@@ -3,8 +3,36 @@
 #include "ktx2_upload.h"
 
 #include <filesystem>
+#include <fstream>
 
 namespace probe {
+
+inline bool check_ktx2_bounded_reader(const std::filesystem::path& directory) {
+    const std::filesystem::path fixture = directory / "ktx2-reader-probe.tmp";
+    std::error_code error;
+    std::filesystem::remove(fixture, error);
+    {
+        std::ofstream output(fixture, std::ios::binary | std::ios::trunc);
+        const char sample[] = { '\x13', '\x27', '\x39', '\x4B' };
+        output.write(sample, sizeof(sample));
+    }
+    std::vector<uint8_t> bytes;
+    const bool exact_file_read = read_bounded_ktx2_container(fixture.string(), bytes) &&
+        bytes.size() == 4 && bytes[0] == 0x13 && bytes[3] == 0x4B;
+    {
+        std::ofstream output(fixture, std::ios::binary | std::ios::trunc);
+    }
+    const bool empty_file_rejected = !read_bounded_ktx2_container(fixture.string(), bytes) && bytes.empty();
+    error.clear();
+    std::filesystem::resize_file(fixture, MAX_KTX2_CONTAINER_BYTES + 1, error);
+    const bool oversized_file_rejected = !error &&
+        !read_bounded_ktx2_container(fixture.string(), bytes) && bytes.empty();
+    error.clear();
+    std::filesystem::remove(fixture, error);
+    return check(exact_file_read, "KTX2 reader accepts an exact small file") &&
+        check(empty_file_rejected, "KTX2 reader rejects empty files") &&
+        check(oversized_file_rejected, "KTX2 reader rejects oversized files before allocation");
+}
 
 inline bool check_ktx2_format_policy() {
     const KTX2UploadFormats all{true, true, true, true};
@@ -68,7 +96,7 @@ inline bool check_ktx2_normal_data_upload(const std::filesystem::path& path) {
 }
 
 inline bool check_ktx2_upload_fixtures(const std::filesystem::path& cooked_directory) {
-    return check_ktx2_format_policy() &&
+    return check_ktx2_bounded_reader(cooked_directory) && check_ktx2_format_policy() &&
         check_ktx2_color_upload(cooked_directory / "maze_tile_tex.ktx2") &&
         check_ktx2_normal_data_upload(cooked_directory / "maze_tile_tex.ktx2") &&
         check_ktx2_cubemap_upload(cooked_directory / "maze_tile_cube.ktx2") &&

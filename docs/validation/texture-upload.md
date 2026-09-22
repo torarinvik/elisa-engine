@@ -18,8 +18,9 @@ material. Normal-data usage stays on channel-preserving linear RGBA8 until a
 suitable two-channel GPU format is implemented. The opaque color fixture is
 linear; the alpha fixture is sRGB, so both transfer paths are covered.
 
-Container and upload-payload memory are capped at 64 MiB; each mip dimension
-and every face is validated before GPU allocation. Six-face textures use
+Container and upload-payload memory are capped at 64 MiB; empty and oversized
+files are rejected before allocation, and each mip dimension and face is
+validated before GPU allocation. Six-face textures use
 Wicked's cube resource flag and slice-major subresource order, while Basis
 transcodes every face at one mip before advancing to the next. The CPU probe
 checks opaque BC1 and alpha BC7/BC3 Basis targets, verifies alpha and sRGB
