@@ -1,25 +1,21 @@
 #include "physics_service_abi.h"
 
-#include "application_abi.h"
 #include "coordinate_transform_bridge.h"
-#include "physics_query_bridge.h"
-#include "wiPhysics.h"
+#include "physics_service_internal.h"
 
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 
 namespace {
 
-constexpr uint32_t MAX_BODIES = 64;
 constexpr float MAX_POSITION = 1.0e6f;
 constexpr float MAX_HALF_EXTENT = 1.0e4f;
 constexpr float MAX_MASS = 1.0e8f;
 constexpr float MAX_FIXED_DELTA = 1.0f / 30.0f;
-constexpr size_t MAX_CONTACT_EVENTS = ELISA_PHYSICS_MAX_CONTACT_EVENTS;
+using namespace elisa_physics_internal;
 
 static_assert(sizeof(ElisaPhysicsContactEvent) == 64,
     "Elisa contact event ABI must match the fixed Elisa ContactEvent layout");
@@ -31,59 +27,6 @@ static_assert(offsetof(ElisaPhysicsRayHit, distance) == 32,
     "Elisa ray hit distance offset changed");
 static_assert(offsetof(ElisaPhysicsRayHitBuffer, count) == 640,
     "Elisa ray hit buffer count offset changed");
-
-struct BodySlot {
-    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
-    uint64_t generation = 0;
-    bool live = false;
-};
-
-struct PhysicsService {
-    std::unique_ptr<wi::scene::Scene> scene;
-    std::unique_ptr<probe::PhysicsQueryBridge> query_bridge;
-    std::unique_ptr<probe::PhysicsContactQueueListener> contact_listener;
-    std::array<BodySlot, MAX_BODIES> bodies{};
-    std::array<probe::PhysicsContactEvent, MAX_CONTACT_EVENTS> pending_contacts{};
-    probe::PhysicsContactQueue contact_queue;
-    size_t pending_contact_count = 0;
-    size_t pending_contact_dropped = 0;
-    uint64_t world_generation = 0;
-    uint64_t tick = 0;
-    bool initialized = false;
-    bool simulation_before = true;
-    bool interpolation_before = true;
-#if defined(ELISA_PHYSICS_TEST_PROBE)
-    bool fail_next_initialize_after_scene = false;
-#endif
-};
-
-PhysicsService& physics_service() {
-    static PhysicsService* value = new PhysicsService();
-    return *value;
-}
-
-int32_t require_application_owner() {
-    const int32_t status = elisa_application_v1_validate_owner_thread();
-    if (status == ELISA_APPLICATION_OK) return ELISA_PHYSICS_OK;
-    if (status == ELISA_APPLICATION_WRONG_THREAD) return ELISA_PHYSICS_WRONG_THREAD;
-    return ELISA_PHYSICS_INVALID_STATE;
-}
-
-int32_t require_world(uint64_t generation) {
-    const int32_t owner_status = require_application_owner();
-    if (owner_status != ELISA_PHYSICS_OK) return owner_status;
-    const PhysicsService& state = physics_service();
-    if (!state.initialized || state.scene == nullptr) return ELISA_PHYSICS_INVALID_STATE;
-    if (generation != state.world_generation) return ELISA_PHYSICS_STALE_WORLD;
-    return ELISA_PHYSICS_OK;
-}
-
-BodySlot* resolve_body(PhysicsService& state, uint32_t slot, uint64_t generation) {
-    if (slot >= MAX_BODIES) return nullptr;
-    BodySlot& body = state.bodies[slot];
-    return body.live && body.generation == generation ? &body : nullptr;
-}
-
 void shutdown_world() {
     PhysicsService& state = physics_service();
     if (!state.initialized) return;
@@ -210,7 +153,9 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     try {
-        entity = state.scene->Entity_CreateTransform("elisa_physics_body_" + std::to_string(free_slot));
+        // Keep managed boxes represented in Wicked's scene query BVH as well as
+        // in Jolt, so public ray/shape queries see the same entity.
+        entity = state.scene->Entity_CreateCube("elisa_physics_body_" + std::to_string(free_slot));
         if (entity == wi::ecs::INVALID_ENTITY) return ELISA_PHYSICS_BACKEND_FAILURE;
         wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
         if (transform == nullptr) {
@@ -219,7 +164,7 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
         }
         const ElisaCoordinateProfile profile = elisa_coordinate_profile();
         const ElisaTransformPayload authored{{position_x, position_y, position_z},
-            {0.0f, 0.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}};
+            {0.0f, 0.0f, 0.0f, 1.0f}, {half_x, half_y, half_z}};
         if (!probe::submit_elisa_transform(&profile, &authored, transform)) {
             state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_INVALID_ARGUMENT;

@@ -411,6 +411,10 @@ module PhysicsRuntime:
         def service_is_live(state: ServiceState&) -> bool:
             state.live
 
+        def service_generation(state: ServiceState&) -> u64 error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            state.generation
+
         def fixed_step(world: mutable World&, delta_seconds: f32) -> u64 error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             tick: mutable u64 = 0
@@ -505,6 +509,10 @@ module PhysicsRuntime:
 
         def committed_tick(world: World&) -> u64:
             world.tick
+
+        def world_generation(world: World&) -> u64 error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            world.generation
 
         def body_create(world: World&, description: BodyDesc) -> BodyHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live

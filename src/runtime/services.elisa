@@ -4,6 +4,7 @@ include "./application.elisa"
 include "./clock.elisa"
 include "../backend/requirements.elisa"
 include "../physics/runtime.elisa"
+include "../physics/queries.elisa"
 include "../audio/runtime.elisa"
 
 module RuntimeServices:
@@ -331,6 +332,49 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_raycast_all(session.physics, origin, direction,
                 max_distance, layer_mask, buffer)
+
+        def physics_sphere_cast(session: Session&, center: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, radius: f32,
+            layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_sphere_cast(session.physics, center, direction,
+                max_distance, radius, layer_mask)
+
+        def physics_capsule_cast(session: Session&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
+            radius: f32, layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_capsule_cast(session.physics, base, tip, direction,
+                max_distance, radius, layer_mask)
+
+        def physics_overlap_sphere(session: Session&, center: Geometry::Vec3,
+            radius: f32, layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_sphere(session.physics, center, radius, layer_mask)
+
+        def physics_overlap_sphere_all(session: Session&, center: Geometry::Vec3,
+            radius: f32, layer_mask: u32, buffer: mutable PhysicsQueries::ShapeHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_sphere_all(session.physics, center, radius,
+                layer_mask, buffer)
+
+        def physics_overlap_capsule(session: Session&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, radius: f32, layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_capsule(session.physics, base, tip, radius, layer_mask)
+
+        def physics_overlap_capsule_all(session: Session&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            buffer: mutable PhysicsQueries::ShapeHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_capsule_all(session.physics, base, tip, radius,
+                layer_mask, buffer)
 
         def physics_poll_contacts(session: Session&, buffer: PhysicsRuntime::ContactBuffer&,
             dropped: mutable u32&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:

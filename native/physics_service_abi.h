@@ -48,6 +48,23 @@ typedef struct ElisaPhysicsRayHitBuffer {
     uint32_t count;
 } ElisaPhysicsRayHitBuffer;
 
+typedef struct ElisaPhysicsShapeHit {
+    uint64_t entity;
+    float position_x;
+    float position_y;
+    float position_z;
+    float normal_x;
+    float normal_y;
+    float normal_z;
+    float distance;
+    float penetration_depth;
+} ElisaPhysicsShapeHit;
+
+typedef struct ElisaPhysicsShapeHitBuffer {
+    ElisaPhysicsShapeHit hits[ELISA_PHYSICS_MAX_QUERY_HITS];
+    uint32_t count;
+} ElisaPhysicsShapeHitBuffer;
+
 // This is a deliberately flat copy type. It contains no Wicked or Jolt
 // pointers, so the Elisa side can retain events until the next poll call.
 typedef struct ElisaPhysicsContactEvent {
@@ -86,6 +103,31 @@ int32_t elisa_physics_v1_raycast_all(uint64_t world_generation,
     float direction_x, float direction_y, float direction_z,
     float max_distance, uint32_t layer_mask,
     ElisaPhysicsRayHitBuffer* buffer);
+int32_t elisa_physics_v1_sphere_cast(uint64_t world_generation,
+    float center_x, float center_y, float center_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, float radius, uint32_t layer_mask,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_capsule_cast(uint64_t world_generation,
+    float base_x, float base_y, float base_z,
+    float tip_x, float tip_y, float tip_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, float radius, uint32_t layer_mask,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_overlap_sphere(uint64_t world_generation,
+    float center_x, float center_y, float center_z, float radius, uint32_t layer_mask,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_overlap_sphere_all(uint64_t world_generation,
+    float center_x, float center_y, float center_z, float radius, uint32_t layer_mask,
+    ElisaPhysicsShapeHitBuffer* buffer);
+int32_t elisa_physics_v1_overlap_capsule(uint64_t world_generation,
+    float base_x, float base_y, float base_z,
+    float tip_x, float tip_y, float tip_z, float radius, uint32_t layer_mask,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_overlap_capsule_all(uint64_t world_generation,
+    float base_x, float base_y, float base_z,
+    float tip_x, float tip_y, float tip_z, float radius, uint32_t layer_mask,
+    ElisaPhysicsShapeHitBuffer* buffer);
 int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
     ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,
     uint32_t* dropped);
