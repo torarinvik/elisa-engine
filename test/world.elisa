@@ -302,6 +302,21 @@ module World::Tests:
         bad_hierarchy.hierarchy.nodes[1].parent <- snapshot.hierarchy.nodes[0].id
         return 12 if restore_code(&world, &bad_hierarchy) != 1
         return 11 if restore_code(&world, &snapshot) != 0 or not world_is_valid(&world)
+        _ = catch world_actor_set_health(&world, actor, 55):
+            ok: true
+            error failure: return 13
+        replacement: mutable World::Rollback::Snapshot = snapshot
+        replacement.hierarchy.count <- WorldHierarchy::MAX_NODES + 1
+        return 14 if World::Rollback::replace(&world, &replacement)
+        preserved_actor: World::ActorRecord = catch World::world_actor_record(&world, actor):
+            value: value
+            error failure: return 15
+        return 16 if preserved_actor.health != 55
+        return 17 if not World::Rollback::replace(&world, &snapshot)
+        restored_actor: World::ActorRecord = catch World::world_actor_record(&world, actor):
+            value: value
+            error failure: return 18
+        return 19 if restored_actor.health != 100
         0
 
     def run() -> i32:
