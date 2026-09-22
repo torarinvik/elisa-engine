@@ -136,7 +136,6 @@ def same_slot(document: dict) -> None:
 
 
 REJECTED = {
-    "a node with a camera": (node(4, camera=0), "unsupported node properties"),
     "a node with an undeclared skin": (node(2, skin=0), "mesh node skin requires"),
     "node morph weights": (node(2, weights=[0.5]), "unsupported node properties"),
     "node extras": (node(1, extras={}), "unsupported node properties"),
@@ -177,7 +176,7 @@ REJECTED = {
     "a boolean mesh index": (node(3, mesh=True), "mesh index out of range"),
     "257 nodes": (lambda d: d["nodes"].extend({} for _ in range(251)), "1 to 256 nodes"),
     "257 meshes": (lambda d: d["meshes"].extend(deepcopy(d["meshes"][0]) for _ in range(254)), "1 to 256 meshes"),
-    "a camera list": (lambda d: d.update(cameras=[{"type": "orthographic"}]), "without cameras"),
+    "a node with an invalid camera": (lambda d: d["nodes"][0].update(camera=0), "camera index is out of range"),
     "an animation list": (lambda d: d.update(animations=[{}]), "require a skinned mesh"),
     "seventeen alternating subsets": (alternating(16), "more than 16 material subsets"),
     "mesh extras": (lambda d: d["meshes"][1].update(extras={}), "unsupported mesh properties"),

@@ -300,6 +300,17 @@ color fail with `InvalidValue`, that `set_color` on the clone fails with
 `BackendFailure`, that the mesh survives destroying the source first, and that
 destroying the last clone restores the mesh and instance counts.
 
+## Animation transitions (2026-09-22)
+
+`RenderScene::play_animation_blended` adds explicit transition flags for eased
+smoothstep fades, normalized phase matching, and continuing a re-requested
+clip. `RenderScene::set_animation_speed` retimes the active clip in place, so
+changing cadence does not restart its phase or create an unintended crossfade.
+The native case-270 smoke switches the cooked lift clip through those modes,
+checks the eased weight at a quarter fade, verifies phase preservation and
+speed-only retiming, and rejects invalid speeds on both skinned and unskinned
+instances.
+
 ## Exit codes
 
 `scripts/render_scene_native_smoke.py` passes through the exit status of

@@ -21,6 +21,7 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 import gltf_texture_self_test
 import gltf_skin_self_test
+import gltf_scene_self_test
 import packaged_maze_smoke
 import test_geometry_subsets
 
@@ -107,6 +108,7 @@ def main() -> int:
     (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
         2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
     gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg")
+    gltf_scene_self_test.write_package(subset_directory / "scene-metadata.pkg")
     # The cooked-material test also registers a variant whose center slot is
     # blended, single-sided glass. Its buffer is embedded, so the copy cooks
     # anywhere.

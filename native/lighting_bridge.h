@@ -113,6 +113,10 @@ public:
             lights_[handle.slot].generation == handle.generation;
     }
 
+    wi::ecs::Entity entity(NativeLightHandle handle) const {
+        return live(handle) ? lights_[handle.slot].entity : wi::ecs::INVALID_ENTITY;
+    }
+
     NativeEnvironmentHandle create_environment(uint32_t resolution, float view_distance, bool realtime) {
         if (!valid_resolution(resolution) || !std::isfinite(view_distance) || view_distance == 0.0f) return {};
         const uint32_t slot = free_environment();

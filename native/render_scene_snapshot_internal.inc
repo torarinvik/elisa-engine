@@ -79,6 +79,8 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
         if (!add_geometry_bytes(target.positions.size(), sizeof(float), total) ||
             !add_geometry_bytes(target.normals.size(), sizeof(float), total)) return false;
     }
+    if (!add_geometry_bytes(geometry.cameras.size(), sizeof(elisa::assets::CookedGeometry::Camera), total) ||
+        !add_geometry_bytes(geometry.lights.size(), sizeof(elisa::assets::CookedGeometry::Light), total)) return false;
     bytes = total;
     return true;
 }
@@ -233,6 +235,8 @@ void clear_snapshot_instance(InstanceSlot& instance) {
     instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.shared_source = wi::ecs::INVALID_ENTITY;
     instance.joint_entities.clear();
+    instance.imported_camera_entities.clear();
+    instance.imported_light_handles.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
     instance.animation_submission = {};

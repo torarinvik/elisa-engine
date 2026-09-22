@@ -55,6 +55,27 @@ struct CookedGeometry {
         std::vector<float> normals;
     };
     std::vector<MorphTarget> morph_targets;
+    struct Camera {
+        uint32_t node = 0;
+        uint32_t projection = 0;
+        float x = 0.0f;
+        float y = 0.0f;
+        float near_clip = 0.0f;
+        float far_clip = 0.0f;
+        std::array<float, 12> transform{};
+    };
+    struct Light {
+        uint32_t node = 0;
+        uint32_t kind = 0;
+        float intensity = 0.0f;
+        float range = 0.0f;
+        float inner_cone = 0.0f;
+        float outer_cone = 0.0f;
+        std::array<float, 3> color{};
+        std::array<float, 12> transform{};
+    };
+    std::vector<Camera> cameras;
+    std::vector<Light> lights;
     struct Subset {
         uint32_t index_start = 0;
         uint32_t index_count = 0;
@@ -111,6 +132,8 @@ namespace detail {
 
 inline bool parse_geometry_morphs(const probe::PackageIndex& package, CookedGeometry& geometry,
     uint64_t vertex_count, std::string& error);
+inline bool parse_geometry_scene(const probe::PackageIndex& package, CookedGeometry& geometry,
+    std::string& error);
 
 // Subset records are all present or all absent. Static and skinned geometry
 // use the same ordered index partition; only the armature remains per entity.
@@ -310,6 +333,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         return false;
     }
     if (!detail::parse_geometry_morphs(package, geometry, vertices, error)) return false;
+    if (!detail::parse_geometry_scene(package, geometry, error)) return false;
 
     const auto joint_count_section = package.sections.find("skin_joints");
     const auto parents_stride = package.sections.find("skin_joint_parent_stride");
@@ -524,3 +548,4 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
 } // namespace elisa::assets
 
 #include "cooked_geometry_morphs.h"
+#include "cooked_geometry_scene.h"

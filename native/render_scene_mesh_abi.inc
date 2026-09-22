@@ -23,6 +23,8 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.material_high = 0;
     instance.material_low = 0;
     instance.shared_mesh_slot = NO_SHARED_MESH;
+    instance.shared_source = wi::ecs::INVALID_ENTITY;
+    instance.imported_camera_entities.clear(); instance.imported_light_handles.clear();
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
@@ -62,7 +64,29 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
             state.scene->Entity_Remove(entity);
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
+        elisa::rendering::CookedSceneResources imported;
+        if (state.lighting == nullptr || !elisa::rendering::install_cooked_scene(*state.scene,
+            *state.lighting, geometry, state.width, state.height, entity, imported)) {
+            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
+            state.scene->Entity_Remove(entity);
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        instance.imported_camera_entities = std::move(imported.cameras);
+        instance.imported_light_handles = std::move(imported.lights);
+        if (!instance.imported_camera_entities.empty() && state.camera_entity == state.primary_camera_entity) {
+            state.camera_entity = instance.imported_camera_entities.front();
+            state.camera = state.scene->cameras.GetComponent(state.camera_entity);
+            if (state.camera == nullptr || state.path == nullptr) throw 1;
+            state.path->camera = state.camera;
+            state.perspective_camera = !state.camera->IsOrtho();
+            state.perspective_fov = state.camera->fov;
+            state.camera_near_clip = state.camera->zNearP;
+            state.camera_far_clip = state.camera->zFarP;
+            state.vertical_size = state.camera->ortho_vertical_size;
+        }
     } catch (...) {
+        release_imported_scene(state, instance);
+        for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
         if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }

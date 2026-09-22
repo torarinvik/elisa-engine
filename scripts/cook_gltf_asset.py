@@ -16,6 +16,7 @@ import cook_gltf_geometry
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
 from gltf_morph_self_test import self_test as morph_self_test
+from gltf_scene_self_test import self_test as scene_self_test
 from gltf_skin_self_test import self_test as skin_self_test
 from gltf_texture_self_test import material_texture_self_test
 from png_image import encode_png
@@ -87,6 +88,9 @@ def self_test() -> int:
         morph_status = morph_self_test(Path(temporary))
         if morph_status != 0:
             return morph_status
+        scene_status = scene_self_test(Path(temporary))
+        if scene_status != 0:
+            return scene_status
         material_texture_status = material_texture_self_test(Path(temporary), main)
         if material_texture_status != 0:
             return material_texture_status

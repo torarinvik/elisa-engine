@@ -188,6 +188,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | Live input driving the native rendered host | Tested + Implemented | `native/live_game_probe.h`, `scripts/wicked_probe.elisascript` (live frame non-blank after an SDL key drives the game) |
 | Live input driving the Godot rendered capture | Tested + Implemented | `scripts/build_godot_extension.py`, `backends/godot/capture.gd` (synthetic key → `maze_step` → live marker → verified live frame) |
 | Skinned-mesh submission to the hosts | Tested + Implemented | `examples/maze/pose.elisa`, fixture `skin_quad`, `backends/godot/probe.gd`, `native/skin_probe.h` |
+| Runtime animation crossfades and retiming | Tested + Implemented | `src/runtime/render_scene_animation_blend.elisa`, `native/render_scene_animation_abi.inc`, `test/render_scene_animation_blend_native.elisa`; blended clip switches support eased smoothstep fades, normalized phase matching, same-clip continuation, and speed retiming without restarting the active cycle |
 | UI menu model (layout, focus, scrolling, hit test, activation) | Tested | `src/ui/menu.elisa`, `examples/maze/menu.elisa`, `test/maze_game.elisa` |
 | UI box layout (orientation, padding, spacing) | Tested | `src/ui/layout.elisa`, `test/editor.elisa` |
 | Native screen-space solid-color overlay panels | Tested + Implemented | `RenderScene::create_overlay_panel`, bounded generation-checked panel handles, and SDL3/Metal color/hide/show/lifetime checks in `scripts/render_scene_native_smoke.py`; text layout and focusable widgets remain separate work |

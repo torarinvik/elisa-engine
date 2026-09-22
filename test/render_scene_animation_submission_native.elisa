@@ -122,3 +122,25 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             8 if destroyed != 0 else 0
+
+module RenderSceneImportedSceneNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_imported_scene(expected_cameras: i32, expected_lights: i32) -> i32
+
+    public:
+        def exercise() -> i32:
+            imported_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/scene-metadata.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 1
+            return 2 if RenderScene::instance_count() != 5 or elisa_render_scene_v1_test_imported_scene(2, 2) != 1
+            _ = catch RenderScene::activate_default_camera():
+                ok: 0
+                error failure: return 3
+            destroyed: i32 = catch RenderScene::destroy(imported_mesh):
+                ok: 0
+                error failure: 4
+            return 5 if destroyed != 0 or RenderScene::instance_count() != 4 or elisa_render_scene_v1_test_imported_scene(0, 0) != 1
+            0

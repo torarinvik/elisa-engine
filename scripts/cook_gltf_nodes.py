@@ -11,7 +11,7 @@ import struct
 
 
 MAX_NODES = 256
-NODE_KEYS = {"name", "mesh", "skin", "children", "matrix", "translation", "rotation", "scale"}
+NODE_KEYS = {"name", "mesh", "skin", "children", "matrix", "translation", "rotation", "scale", "camera", "extensions"}
 IDENTITY = (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 FLOAT_MAX = 3.4028234663852886e38
 # glTF requires unit rotations; exporters round them.

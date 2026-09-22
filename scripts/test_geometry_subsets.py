@@ -32,6 +32,7 @@ import cook_gltf_geometry
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
 import gltf_morph_self_test
+import gltf_scene_self_test
 import gltf_skin_self_test
 import gltf_texture_self_test
 
@@ -158,6 +159,8 @@ def cases(directory: Path) -> list[tuple]:
         hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
     gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
     gltf_morph_self_test.write_package(directory / "morphed-panel.pkg")
+    gltf_scene_self_test.write_package(directory / "scene-metadata.pkg")
+    scene_metadata = (directory / "scene-metadata.pkg").read_bytes()
     morph = (directory / "morphed-panel.pkg").read_bytes()
     # Fifteen placements alternating red and green, then blue: the most
     # subsets a baked hierarchy may need.
@@ -193,6 +196,11 @@ def cases(directory: Path) -> list[tuple]:
             raise RuntimeError("morph fixture mutation did not find its field")
         return morph.replace(old, new, 1)
 
+    def scene_variant(old: bytes, new: bytes) -> bytes:
+        if old not in scene_metadata:
+            raise RuntimeError("scene fixture mutation did not find its field")
+        return scene_metadata.replace(old, new, 1)
+
     def textured_strip(names, references, **fields):
         return strip_package(2, two, 2, materials=fields.pop("materials", plain),
             textures=(names, references), **fields)
@@ -216,6 +224,14 @@ def cases(directory: Path) -> list[tuple]:
             "animations", 1, "morphs", 1)),
         ("accept", "morphed-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
             "morphs", 1)),
+        ("accept", "scene-metadata.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
+            "cameras", 2, "lights", 2)),
+        ("reject", "scene-camera-projection.pkg", scene_variant(
+            b"camera_0_projection=0", b"camera_0_projection=2"), "camera metadata"),
+        ("reject", "scene-light-kind.pkg", scene_variant(
+            b"light_0_kind=0", b"light_0_kind=3"), "light metadata"),
+        ("reject", "scene-camera-transform.pkg", scene_variant(
+            b"camera_0_transform_b64=", b"camera_0_transform="), "camera metadata"),
         ("reject", "morph-missing-position.pkg", morph_variant(
             b"morph_0_positions_b64=", b"morph_0_position_b64="), "morph position stream"),
         ("reject", "morph-stride.pkg", morph_variant(
@@ -335,12 +351,19 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     index_count, slots, subsets, *records = expectation
     animation_count = None
     morph_count = None
-    while len(records) >= 2 and records[-2] in ("animations", "morphs"):
+    camera_count = None
+    light_count = None
+    while len(records) >= 2 and records[-2] in ("animations", "morphs", "cameras", "lights"):
         marker, count = records[-2:]
         if marker == "animations":
             animation_count = count
         else:
-            morph_count = count
+            if marker == "morphs":
+                morph_count = count
+            elif marker == "cameras":
+                camera_count = count
+            else:
+                light_count = count
         records = records[:-2]
     fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
     if records:
@@ -356,6 +379,10 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         fields += ["animations", str(animation_count)]
     if morph_count is not None:
         fields += ["morphs", str(morph_count)]
+    if camera_count is not None:
+        fields += ["cameras", str(camera_count)]
+    if light_count is not None:
+        fields += ["lights", str(light_count)]
     return "\t".join(fields)
 
 

@@ -203,7 +203,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.InvalidValue: 1
         error failure: 2
     return 35 if huge_transform_create != 1
-
     box_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -1.1, y: 0.0, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -213,7 +212,6 @@ def exercise_render_scene() -> i32:
         RenderScene::Color{red: 0.1, green: 0.45, blue: 1.0, alpha: 1.0}):
         value: value
         error failure: return 6
-
     sphere_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 1.1, y: 0.0, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -223,7 +221,6 @@ def exercise_render_scene() -> i32:
         RenderScene::Color{red: 0.1, green: 1.0, blue: 0.35, alpha: 1.0}):
         value: value
         error failure: return 7
-
     floor_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -410,6 +407,7 @@ def exercise_render_scene() -> i32:
         value: value
         error failure: return 61
     return 62 if RenderScene::instance_count() != 4
+    return 79 if RenderSceneImportedSceneNativeTests::exercise() != 0
     initial_animation_progress: f32 = catch RenderScene::animation_progress(cooked_mesh):
         value: value
         error failure: return 76
@@ -598,6 +596,5 @@ def exercise_render_scene() -> i32:
 
 def main() -> i32:
     result: i32 = exercise_render_scene()
-    shutdown_ok: bool = Application::shutdown()
-    return 103 if not shutdown_ok
+    return 103 if not Application::shutdown()
     result
