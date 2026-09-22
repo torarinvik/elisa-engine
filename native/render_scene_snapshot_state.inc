@@ -34,7 +34,9 @@ struct SnapshotStageRow {
     size_t reserved_slot = MAX_INSTANCES;
     uint64_t reserved_generation = 0;
     size_t shared_mesh_slot = NO_SHARED_MESH;
+    std::vector<size_t> created_additional_shared_mesh_slots;
     wi::ecs::Entity created_entity = wi::ecs::INVALID_ENTITY;
+    std::vector<wi::ecs::Entity> created_placement_entities;
     std::vector<wi::ecs::Entity> created_joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> created_skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> created_animation_clips;
@@ -96,6 +98,7 @@ struct SnapshotSharedMesh {
     uint64_t mesh_low = 0;
     uint64_t material_high = 0;
     uint64_t material_low = 0;
+    uint32_t placement_index = 0;
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     size_t references = 0;
     size_t bytes = 0;

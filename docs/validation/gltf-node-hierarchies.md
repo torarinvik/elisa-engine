@@ -267,10 +267,14 @@ sign only changes lighting, and the emissive color still dominates.
   one skinned instance share one armature; skinned node transforms remain
   identity, and multiple skins per scene remain unsupported. See
   [`skinned-mesh-placements.md`](skinned-mesh-placements.md).
-- **Snapshot rows remain flattened.** Snapshot material registration and row
-  commits still use the compatibility mesh. Direct `create_mesh` imports expose
-  placement entities through the root instance lifetime; their transforms are
-  baked into each vertex range, so no extra per-placement matrix is required.
+- **Snapshot placement support is static-only.** Snapshot registration now
+  expands every static cooked placement into an attached Wicked mesh object,
+  using that placement's vertex, index and subset ranges. The root instance
+  transform drives all children, and each placement retains its material
+  slots. Snapshot registration for skinned or morphed packages still uses the
+  flattened compatibility mesh. Direct `create_mesh` imports support
+  per-placement skin and morph data as described in
+  [`skinned-mesh-placements.md`](skinned-mesh-placements.md).
 - **Bounds.** 256 nodes, 256 meshes, 16 primitives per mesh, 16 material
   slots and 16 subsets after merging. The existing vertex and index bounds
   apply to the baked totals.
@@ -298,3 +302,14 @@ because other sessions shared the main working tree.
   `git diff --check` passed.
 - The sibling compiler checkout had uncommitted changes from other work.
   `ELISA_ALLOW_STALE_STAGE1=1` used its existing stage1 binary.
+
+## Static snapshot placement validation on 2026-09-23
+
+The isolated engine's `scripts/render_scene_native_smoke.py` passed after
+adding static placement expansion. Its four-placement hierarchy fixture checks
+that each placement owns a local mesh slice with the expected material,
+renders the baked strips in the expected positions and orientations, accounts
+for the four shared mesh resources, and returns the shared-resource count to
+baseline after retirement. The same smoke passed the SDL3/Metal imported-scene
+and packaged-maze sandbox runs. The sanitized geometry loader passed 95 cases;
+module hygiene, the 600-line source policy and `git diff --check` passed.
