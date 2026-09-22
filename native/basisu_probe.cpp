@@ -12,8 +12,8 @@
 #include <vector>
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2>\n");
+    if (argc != 2 && argc != 3) {
+        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2]\n");
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -50,5 +50,39 @@ int main(int argc, char** argv) {
     std::fprintf(stdout, "basisu transcode: %ux%u uastc=%d rgba_bytes=%u first=%u,%u,%u\n",
         width, height, transcoder.is_uastc() ? 1 : 0, (unsigned)rgba.size(),
         (unsigned)rgba[0], (unsigned)rgba[1], (unsigned)rgba[2]);
+    if (argc == 3) {
+        std::ifstream cube_input(argv[2], std::ios::binary);
+        if (!probe::check(cube_input.good(), "KTX2 cubemap file readable")) return 1;
+        const std::vector<uint8_t> cube_bytes(
+            (std::istreambuf_iterator<char>(cube_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder cube;
+        if (!probe::check(cube.init(cube_bytes.data(), (uint32_t)cube_bytes.size()),
+            "KTX2 cubemap parses")) return 1;
+        if (!probe::check(cube.get_width() == 4 && cube.get_height() == 4 &&
+            cube.get_layers() <= 1 && cube.get_faces() == 6, "KTX2 has six square cube faces")) return 1;
+        if (!probe::check(cube.start_transcoding(), "KTX2 cubemap starts transcoding")) return 1;
+        const uint8_t expected[6][3] = {
+            {245, 35, 35}, {30, 240, 45}, {35, 50, 245},
+            {240, 230, 25}, {235, 35, 230}, {25, 225, 225},
+        };
+        for (uint32_t face = 0; face < 6; ++face) {
+            basist::ktx2_image_level_info face_info{};
+            if (!probe::check(cube.get_image_level_info(face_info, 0, 0, face) &&
+                face_info.m_orig_width == 4 && face_info.m_orig_height == 4,
+                "KTX2 cubemap face metadata")) return 1;
+            std::vector<uint8_t> face_rgba(4 * 4 * 4);
+            if (!probe::check(cube.transcode_image_level(
+                0, 0, face, face_rgba.data(), 4 * 4,
+                basist::transcoder_texture_format::cTFRGBA32, 0, 4, 4),
+                "KTX2 cubemap face transcodes")) return 1;
+            const uint8_t* pixel = face_rgba.data();
+            for (uint32_t channel = 0; channel < 3; ++channel) {
+                if (!probe::check(pixel[channel] > expected[face][channel] - 55 &&
+                    pixel[channel] < expected[face][channel] + 55,
+                    "KTX2 cubemap face color preserved")) return 1;
+            }
+        }
+        std::fprintf(stdout, "basisu cubemap transcode: faces=6\n");
+    }
     return 0;
 }

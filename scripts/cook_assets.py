@@ -352,6 +352,39 @@ def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
         )
     if result.returncode != 0 or not output.is_file():
         raise ValueError(f"Basis encoding failed: {result.stderr.strip() or result.stdout.strip()}")
+    write_basisu_ktx2_cubemap(root, package_dir, size)
+    return output
+
+
+def write_basisu_ktx2_cubemap(root: Path, package_dir: Path, size: int):
+    basisu = os.environ.get("BASISU_BIN", "")
+    if not basisu:
+        candidate = root / "dependencies/basisu/bin/basisu"
+        if candidate.is_file():
+            basisu = str(candidate)
+    if not basisu or shutil.which(basisu) is None:
+        return None
+    # Basis expects cubemap sources in +X, -X, +Y, -Y, +Z, -Z order.
+    face_colors = [
+        (245, 35, 35, 255), (30, 240, 45, 255),
+        (35, 50, 245, 255), (240, 230, 25, 255),
+        (235, 35, 230, 255), (25, 225, 225, 255),
+    ]
+    output = package_dir / "maze_tile_cube.ktx2"
+    with tempfile.TemporaryDirectory(prefix="elisa-basisu-cube-") as workdir:
+        work = Path(workdir)
+        sources = []
+        for face, color in enumerate(face_colors):
+            source = work / f"face-{face}.png"
+            source.write_bytes(write_png(size, size, bytes(color) * (size * size)))
+            sources.append(str(source))
+        result = subprocess.run(
+            [basisu, "-ktx2", "-uastc", "-linear", "-cubemap", *sources,
+             "-output_file", str(output)],
+            capture_output=True, text=True, check=False,
+        )
+    if result.returncode != 0 or not output.is_file():
+        raise ValueError(f"Basis cubemap encoding failed: {result.stderr.strip() or result.stdout.strip()}")
     return output
 
 

@@ -30,6 +30,7 @@
 #include "texture_probe.h"
 #include "texture_upload.h"
 #include "ktx2_upload.h"
+#include "ktx2_cube_probe.h"
 #include "gui_probe.h"
 #include "tracy_probe.h"
 #include "audio_probe.h"
@@ -312,6 +313,8 @@ int main(int argc, char** argv) {
                 ktx2_texture_path.lexically_normal().string());
             if (!check(ktx2_resource.IsValid() && ktx2_resource.GetTexture().IsValid(),
                 "KTX2 texture uploaded to Wicked GPU")) return 1;
+            const std::filesystem::path ktx2_cube_path = package_path.parent_path() / "maze_tile_cube.ktx2";
+            if (!check_ktx2_cubemap_upload(ktx2_cube_path)) return 1;
             goal_texture = ktx2_resource;
             const std::filesystem::path ktx_bc1_texture_path =
                 package_path.parent_path() / (asset_path.stem().string() + "_tex_bc1.ktx");
