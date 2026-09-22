@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -19,6 +20,11 @@ constexpr float MAX_HALF_EXTENT = 1.0e4f;
 constexpr float MAX_MASS = 1.0e8f;
 constexpr float MAX_FIXED_DELTA = 1.0f / 30.0f;
 constexpr size_t MAX_CONTACT_EVENTS = ELISA_PHYSICS_MAX_CONTACT_EVENTS;
+
+static_assert(sizeof(ElisaPhysicsContactEvent) == 64,
+    "Elisa contact event ABI must match the fixed Elisa ContactEvent layout");
+static_assert(offsetof(ElisaPhysicsContactEvent, sequence) == 56,
+    "Elisa contact event sequence offset changed");
 
 struct BodySlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;

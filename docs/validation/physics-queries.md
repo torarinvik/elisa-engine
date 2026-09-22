@@ -20,6 +20,11 @@ returns copied `PhysicsQueryHit` values to the host.
   slots, reports overflow, normalizes entity pairs, and sorts delivery by pair
   and contact kind on the owner thread. Reentrant drains and non-owner drains
   are rejected, and each accepted event is delivered once.
+- The physics service installs that queue listener for every initialized Jolt
+  world. `PhysicsRuntime::poll_contacts` copies the bounded event batch into a
+  public Elisa `ContactBuffer` with no native handles or retained pointers;
+  polling also returns the explicit overflow count. Unpolled batches accumulate
+  up to the fixed 64-event boundary and are cleared only by a successful poll.
 - Sphere and capsule overlaps return the nearest Wicked result with copied
   position, normal, and penetration depth. Their all-hit variants copy at most
   `MAX_HITS` unique entities, even when Wicked reports several intersected
@@ -52,3 +57,8 @@ and sub-shape identity stays inside Wicked; the Elisa-facing listener receives
 only copied values, and queue overflow remains explicit rather than allocating
 from worker callbacks. A caller must unregister its listener before destroying
 the scene or listener object.
+
+The Elisa application smoke creates static and dynamic bodies, advances the
+fixed-step world, and polls `PhysicsRuntime::ContactBuffer`. It requires a real
+non-trigger `ContactKind.Added` event and zero dropped events, proving the
+public binding reaches the same Jolt callback queue used by the native gate.
