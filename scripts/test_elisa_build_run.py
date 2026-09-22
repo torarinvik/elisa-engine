@@ -149,6 +149,19 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertIn(str(SCRIPT.parent.parent / "native/render_scene_abi.cpp"), linker_args)
             self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
 
+    def test_native_link_optimizes_only_on_request(self) -> None:
+        runner = __import__("elisa_build_run")
+        paths = {key: Path("/opt/fake") for key in (
+            "wicked_source", "libraries", "sdl_include", "sdl_library", "brew_include",
+            "brew_library", "miniaudio_include")}
+        arguments = (Path("/tmp/entry.a"), Path("/tmp/application"), Path("/tmp/build"), paths)
+        default = runner.native_link_command("clang++", *arguments)
+        optimized = runner.native_link_command("clang++", *arguments, optimize=True)
+        self.assertIn("-O0", default)
+        self.assertNotIn("-O2", default)
+        self.assertIn("-O2", optimized)
+        self.assertNotIn("-O0", optimized)
+
     def test_command_line_paths_override_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa manifest overrides ") as temporary_directory:
             project = Path(temporary_directory) / "project"

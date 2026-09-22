@@ -156,6 +156,8 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         command.add_argument("--cxx", help="native C++ compiler (or CXX)")
         command.add_argument("--native-test-probes", action="store_true",
             help="compile test-only native adapter fault-injection probes")
+        command.add_argument("--optimize", action="store_true",
+            help="compile the native runtime with -O2 (or set ELISA_NATIVE_OPTIMIZE=1)")
     return parser.parse_args(argv)
 
 
@@ -460,7 +462,8 @@ def audit_archive(archive: Path) -> None:
 
 
 def native_link_command(cxx: str, archive: Path, staged_output: Path,
-    build_dir: Path, paths: dict[str, Path], native_test_probes: bool = False) -> list[str]:
+    build_dir: Path, paths: dict[str, Path], native_test_probes: bool = False,
+    optimize: bool = False) -> list[str]:
     wicked_source = paths["wicked_source"]
     libraries = paths["libraries"]
     utility = libraries / "Utility"
@@ -470,7 +473,8 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
     brew_include = paths["brew_include"]
     brew_library = paths["brew_library"]
     command = [
-        cxx, "-std=c++17", "-O0", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
+        cxx, "-std=c++17", "-O2" if optimize else "-O0", "-include", "filesystem",
+        "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(build_dir), "-I", str(ENGINE_ROOT / "native"), "-I", str(wicked_source),
         "-I", str(utility_source), "-I", str(utility_source / "metal"),
@@ -529,7 +533,7 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return status, None, None
         audit_archive(archive)
         command = native_link_command(cxx, archive, staged_output, build_dir, paths,
-            args.native_test_probes)
+            args.native_test_probes, args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1")
         status = run_command(command, cwd=project)
         if status != 0:
             return status, None, None
