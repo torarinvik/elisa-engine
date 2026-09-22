@@ -1,8 +1,7 @@
-# Native integration smoke: ordinary Elisa main builds and drives a Wicked
-# scene through the public engine module. The one evidence import is test-only.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
 include "../src/runtime/render_scene_visibility.elisa"
+include "../src/runtime/render_scene_animation_submission.elisa"
 include "../src/runtime/render_scene_text.elisa"
 include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
@@ -26,6 +25,7 @@ include "./render_scene_lighting_native.elisa"
 include "./render_scene_arc_depth_native.elisa"
 include "./render_scene_quality_settings_native.elisa"
 include "./render_scene_visibility_native.elisa"
+include "./render_scene_animation_submission_native.elisa"
 using Maze
 using MazeGame
 using MazeTrace
@@ -70,7 +70,6 @@ def exercise_render_scene() -> i32:
         hidden: true,
     }
     return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
-
     bad_init: i32 = catch RenderScene::initialize(0, 200, 10.0):
         ok: 0
         RenderScene::RenderSceneError.InvalidValue: 1
@@ -91,7 +90,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.InvalidValue: 1
         error failure: 2
     return 34 if bad_camera_range != 1
-
     degenerate_camera: i32 = catch RenderScene::set_camera_look_at(
         Geometry::Vec3{x: 0.0, y: 10.0, z: 0.0},
         Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
@@ -115,6 +113,9 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 33 if valid_camera != 0
+
+    animation_submission_status: i32 = RenderSceneAnimationSubmissionNativeTests::exercise()
+    return 79 + animation_submission_status if animation_submission_status != 0
 
     environment_test_status: i32 = RenderSceneEnvironmentNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(197, environment_test_status) if environment_test_status != 0

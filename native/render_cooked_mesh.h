@@ -147,8 +147,18 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
                 local[5], local[6], local[7], local[8], local[9]);
             const wi::ecs::Entity parent = joint.parent_index < 0 ? entity : joint_entities[size_t(joint.parent_index)];
             scene.Component_Attach(joint_entity, parent, true);
+            const wi::scene::TransformComponent* parent_transform = scene.transforms.GetComponent(parent);
+            if (parent_transform == nullptr) return false;
+            joint_transform->UpdateTransform_Parented(*parent_transform);
             joint_entities.push_back(joint_entity);
         }
+        // Creating joint entities may reallocate Wicked's component stores;
+        // reacquire the root pointers before deriving inverse bind matrices.
+        transform = scene.transforms.GetComponent(entity);
+        material = scene.materials.GetComponent(entity);
+        object = scene.objects.GetComponent(entity);
+        mesh = scene.meshes.GetComponent(entity);
+        if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr) return false;
         const XMMATRIX armature_inverse = XMMatrixInverse(nullptr, XMLoadFloat4x4(&transform->world));
         for (uint32_t joint_index : geometry.skin_cluster_joints) {
             if (joint_index >= joint_entities.size()) return false;

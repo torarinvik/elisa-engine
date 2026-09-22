@@ -223,6 +223,7 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
     for (size_t index = 0; index < state.snapshot_retire_count; ++index) {
         size_t slot = MAX_INSTANCES;
         valid_handle(state, state.snapshot_retire_handles[index], slot);
+        release_animation_submission(state, state.instances[slot]);
         state.scene->Entity_Remove(state.instances[slot].entity);
         for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
         if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {

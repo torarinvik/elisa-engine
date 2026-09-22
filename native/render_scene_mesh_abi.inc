@@ -26,6 +26,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
+    instance.animation_submission = {};
     clear_animation_state(instance);
     std::filesystem::path resolved_path;
     elisa::assets::CookedGeometry geometry;

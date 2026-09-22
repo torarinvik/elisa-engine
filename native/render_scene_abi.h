@@ -183,6 +183,20 @@ int32_t elisa_render_scene_v1_play_animation(
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
 float elisa_render_scene_v1_animation_progress(int64_t handle);
+enum {
+    ELISA_RENDER_SCENE_MAX_ANIMATION_BONES = 64u,
+    ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS = 32u,
+    ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS = 16u,
+};
+typedef struct ElisaRenderSceneAnimationSubmission {
+    float bones[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS];
+    float morphs[ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS];
+    uint32_t bone_count;
+    uint32_t morph_count;
+} ElisaRenderSceneAnimationSubmission;
+int32_t elisa_render_scene_v1_submit_animation_pose(
+    int64_t handle, const ElisaRenderSceneAnimationSubmission* submission);
+int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle);
 int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
 int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float scale_u, float scale_v, float offset_u, float offset_v);
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);
