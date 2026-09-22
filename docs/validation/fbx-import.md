@@ -74,10 +74,18 @@ are generated from the final simplified geometry and checked for unit length,
 normal orthogonality, and handedness. The native reader accepts older cooked
 packages without the optional tangent stream and validates it when present.
 
+Before tangent generation, the cooker also tries meshoptimizer's vertex-cache
+index reorder and compares a 16-entry cache ACMR. It keeps the candidate only
+when that measured miss ratio improves, so the 128-triangle simplified grid
+retains its existing order when the candidate is worse. The unsimplified grid
+improves from ACMR 1.0625 to 0.6543. Both paths cook deterministically.
+
 `python3 scripts/cook_fbx_asset.py --self-test` passed with a generated
 512-triangle planar grid simplified to 128 triangles and 97 vertices at 0.00003
 relative error; tangent frames passed unit-length and orthogonality checks, and
-repeated output was byte-identical. Previous cooks reduced the sibling game's
+repeated output was byte-identical. The same fixture measures cache ACMR on the
+original 512-triangle grid and requires an improvement before accepting the
+reorder. Previous cooks reduced the sibling game's
 3,077,694-triangle Arc Gate to 12,000 triangles and 10,009 vertices (619,538
 bytes without tangents; 833,098 bytes with tangents) at 0.00124 relative error.
 A fresh full game build on 2026-09-20 first exposed an index-memory failure:

@@ -10,6 +10,7 @@ import hashlib
 import math
 import os
 from pathlib import Path, PurePosixPath
+import re
 import struct
 import subprocess
 import sys
@@ -27,6 +28,17 @@ MAX_FILE_BYTES = 512 * 1024 * 1024
 def run(command: list[str]) -> None:
     print("+", " ".join(repr(argument) for argument in command), flush=True)
     subprocess.run(command, cwd=ROOT, check=True)
+
+
+def run_capture(command: list[str]) -> str:
+    """Run one cook while retaining its deterministic optimization report."""
+    print("+", " ".join(repr(argument) for argument in command), flush=True)
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
+    return result.stdout
 
 
 def source_hash(path: Path) -> str:
@@ -249,15 +261,18 @@ def build_cooker(build_dir: Path) -> Path:
     if not source.is_file() or not header.is_file():
         raise ValueError("missing pinned ufbx files; run python3 scripts/fetch_dependencies.py")
     simplifier = meshoptimizer / "simplifier.cpp"
-    if not (meshoptimizer / "meshoptimizer.h").is_file() or not simplifier.is_file():
-        raise ValueError("missing pinned meshoptimizer simplifier; run python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier")
+    vcache = meshoptimizer / "vcacheoptimizer.cpp"
+    analyzer = meshoptimizer / "indexanalyzer.cpp"
+    if not all(path.is_file() for path in (meshoptimizer / "meshoptimizer.h", simplifier, vcache, analyzer)):
+        raise ValueError("missing pinned meshoptimizer stages; run python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier")
     cc = os.environ.get("CC", "cc")
     cxx = os.environ.get("CXX", "c++")
     object_file = build_dir / "ufbx.o"
     executable = build_dir / "fbx-asset-cooker"
     run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(object_file)])
     run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer), "-I", str(ROOT / "native"),
-        str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(object_file), "-o", str(executable)])
+        str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(vcache), str(analyzer),
+        str(meshoptimizer / "allocator.cpp"), str(object_file), "-o", str(executable)])
     return executable
 
 
@@ -312,7 +327,7 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
 
 
 def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
-    max_triangles: int | None = None) -> dict[str, str]:
+    max_triangles: int | None = None, report: list[str] | None = None) -> dict[str, str]:
     source = source.expanduser().resolve(strict=True)
     if not source.is_file():
         raise ValueError("FBX source must be a regular file")
@@ -328,7 +343,9 @@ def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
         if isinstance(max_triangles, bool) or not 1 <= max_triangles <= 1000000:
             raise ValueError("max triangles must be an integer in [1, 1000000]")
         command.extend(["--max-triangles", str(max_triangles)])
-    run(command)
+    output_text = run_capture(command)
+    if report is not None:
+        report.append(output_text)
     return parse_package(output, key, digest)
 
 
@@ -362,15 +379,24 @@ def main(arguments: list[str]) -> int:
                 if int(fields["triangles"]) != 1 or int(fields["positions"]) != 3:
                     raise ValueError("triangle fixture package counts do not match")
                 grid_source = directory / "grid.fbx"
+                cache_output = directory / "grid-cache.pkg"
                 grid_output = directory / "grid.pkg"
                 repeat_output = directory / "grid-repeat.pkg"
                 cells_per_side = 16
                 triangle_budget = 128
                 write_grid_fixture(grid_source, cells_per_side)
                 grid_key = "self-test/grid.fbx"
+                cache_reports: list[str] = []
+                cache_fields = cook_one(cooker, grid_source, grid_key, cache_output, report=cache_reports)
                 grid_fields = cook_one(cooker, grid_source, grid_key, grid_output, triangle_budget)
                 repeat_fields = cook_one(cooker, grid_source, grid_key, repeat_output, triangle_budget)
                 original_triangles = cells_per_side * cells_per_side * 2
+                if int(cache_fields["triangles"]) != original_triangles:
+                    raise ValueError("cache optimization changed the triangle count")
+                cache_report = re.search(r"meshoptimizer vertex cache: ACMR ([0-9.]+) -> ([0-9.]+)",
+                    cache_reports[0])
+                if cache_report is None or float(cache_report.group(2)) >= float(cache_report.group(1)):
+                    raise ValueError("grid fixture did not improve its measured vertex-cache miss ratio")
                 grid_triangles = int(grid_fields["triangles"])
                 if not 0 < grid_triangles <= triangle_budget or grid_triangles >= original_triangles:
                     raise ValueError("grid fixture was not reduced to the requested triangle budget")
@@ -384,7 +410,8 @@ def main(arguments: list[str]) -> int:
                 if grid_fields != repeat_fields or grid_output.read_bytes() != repeat_output.read_bytes():
                     raise ValueError("simplified grid package output is not deterministic")
                 print(f"FBX cooker self-test passed: triangle package plus {original_triangles} -> "
-                    f"{grid_triangles} deterministic simplified grid triangles")
+                    f"{grid_triangles} deterministic simplified grid triangles; vertex-cache ACMR "
+                    f"{cache_report.group(1)} -> {cache_report.group(2)}")
             else:
                 package_output = options.output
                 geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output
