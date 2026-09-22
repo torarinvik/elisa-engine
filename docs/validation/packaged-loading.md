@@ -87,6 +87,12 @@ Missing, incomplete, overlong, or non-directory roots return
 and the caller can report the configuration error cleanly. An unset or empty
 variable keeps Wicked's default shader path behavior.
 
+If `ELISA_ENGINE_SHADER_MANIFEST` is set, it must resolve to a regular
+`elisa.shader-manifest.json`-format file directly inside that shader root. The
+startup result is `Application::InitializeStatus.ShaderManifestInvalid` when
+the manifest is missing, outside the root, oversized, or lacks the generated
+schema, file list, or 64-character fingerprint fields.
+
 The native application smoke calls a test-only probe with a missing root and
 requires this status. It also runs the normal startup and failure-cleanup
 cases to prove that valid configured roots still initialize and shut down.
@@ -145,6 +151,8 @@ pipeline cache is reused.
   native application cases. The test-only probe rejected a missing shader root
   before Wicked initialization, and valid startup plus failure cleanup still
   passed on SDL3/Metal.
+- The same native smoke also rejected a missing shader manifest before
+  initialization while accepting the valid configured shader root.
 - `PYTHONPATH=scripts /opt/homebrew/bin/python3
   scripts/test_package_macos_app.py` passed all six packaging tests, including
   deterministic and content-sensitive shader manifest fingerprints and

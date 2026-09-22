@@ -13,6 +13,7 @@ module Application:
             WRONG_THREAD: i32 = -4
             PROFILE_UNAVAILABLE: i32 = -6
             SHADER_PATH_INVALID: i32 = -7
+            SHADER_MANIFEST_INVALID: i32 = -8
             EMPTY_PROFILE_VALUE: i64 = 0
 
         const module FallbackProviderCode:
@@ -267,6 +268,7 @@ module Application:
             UnsupportedAbi
             BackendUnavailable
             ShaderPathInvalid
+            ShaderManifestInvalid
             ShutdownFailed
 
         enum PumpStatus:
@@ -358,6 +360,7 @@ module Application:
             return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
             return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
             return InitializeStatus.ShaderPathInvalid if result == NativeStatus::SHADER_PATH_INVALID
+            return InitializeStatus.ShaderManifestInvalid if result == NativeStatus::SHADER_MANIFEST_INVALID
             InitializeStatus.BackendUnavailable
 
         def shutdown_after_rejection(status: InitializeStatus) -> InitializeStatus:

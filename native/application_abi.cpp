@@ -178,7 +178,12 @@ extern "C" int32_t elisa_application_v1_initialize(
         (hidden != 0 && hidden != 1)) {
         return ELISA_APPLICATION_INVALID_ARGUMENT;
     }
-    if (!elisa::shader::root_is_valid(std::getenv("ELISA_ENGINE_SHADER_PATH"))) {
+    const char* shader_path = std::getenv("ELISA_ENGINE_SHADER_PATH");
+    const char* shader_manifest = std::getenv("ELISA_ENGINE_SHADER_MANIFEST");
+    if (elisa::shader::manifest_status_is_invalid(shader_path, shader_manifest)) {
+        return ELISA_APPLICATION_SHADER_MANIFEST_INVALID;
+    }
+    if (!elisa::shader::root_is_valid(shader_path, shader_manifest)) {
         return ELISA_APPLICATION_SHADER_PATH_INVALID;
     }
     ApplicationService& service = application_service();
