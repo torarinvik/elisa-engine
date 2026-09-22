@@ -23,6 +23,7 @@ enum {
     ELISA_RENDER_SCENE_BATCH_ACTIVE = -10,
     // An asset named by a snapshot row or material is still loading.
     ELISA_RENDER_SCENE_ASSET_PENDING = -11,
+    ELISA_RENDER_SCENE_NO_HIT = -12,
 };
 
 // elisa_render_scene_v1_snapshot_asset_state results; a failed request
@@ -106,6 +107,15 @@ int32_t elisa_render_scene_v1_update_transform(
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
+int32_t elisa_render_scene_v1_set_pick_identity(
+    int64_t handle, int64_t gameplay_epoch, int64_t gameplay_id);
+int32_t elisa_render_scene_v1_pick(
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    uint32_t layer_mask, int64_t* gameplay_epoch, int64_t* gameplay_id,
+    float* distance);
+int32_t elisa_render_scene_v1_select(int64_t handle);
+int32_t elisa_render_scene_v1_clear_selection(void);
 int32_t elisa_render_scene_v1_snapshot_begin(uint32_t previous_count);
 // A row with a nonzero existing_handle retains that instance and must name its
 // gameplay epoch/ID, render ID, mesh ID, and material or material-set ID, or

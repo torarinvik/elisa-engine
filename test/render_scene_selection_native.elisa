@@ -1,0 +1,50 @@
+include "../src/runtime/render_scene_selection.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneSelectionNativeTests:
+    private:
+        const ALL_LAYERS: u32 = 4294967295
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_selection_state(handle: RenderScene::InstanceHandle) -> i32
+
+    public:
+        def exercise(handle: RenderScene::InstanceHandle) -> i32:
+            identity_status: i32 = catch RenderScene::set_pick_identity(handle, 7, 42):
+                ok: 0
+                error failure: 1
+            return 1 if identity_status != 0
+            return 2 if Application::pump() != Application::PumpStatus.Running
+            ray: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: 1.1, y: 10.0, z: 8.0},
+                direction: Geometry::vec3_normalize(Geometry::Vec3{x: 0.0, y: -10.0, z: -8.0}),
+            }
+            hit: RenderScene::PickResult = catch RenderScene::pick(ray, ALL_LAYERS):
+                value: value
+                error failure: return 2
+            return 3 if hit.gameplay_epoch != 7 or hit.gameplay_id != 42 or hit.distance <= 0.0
+            miss: i32 = catch RenderScene::pick(Geometry::Ray3{
+                origin: Geometry::Vec3{x: -5.0, y: 10.0, z: 8.0},
+                direction: Geometry::vec3_normalize(Geometry::Vec3{x: 0.0, y: -10.0, z: -8.0}),
+            }, ALL_LAYERS):
+                value: 0
+                RenderScene::RenderSceneError.NoHit: 1
+                error failure: 2
+            return 4 if miss != 1
+            invalid_ray: i32 = catch RenderScene::pick(Geometry::Ray3{
+                origin: Geometry::Vec3{x: 1.1, y: 10.0, z: 8.0},
+                direction: Geometry::vec3_zero(),
+            }, ALL_LAYERS):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 5 if invalid_ray != 1
+            selected: i32 = catch RenderScene::select(handle):
+                ok: 0
+                error failure: 1
+            return 6 if selected != 0 or elisa_render_scene_v1_test_selection_state(handle) != 1
+            cleared: i32 = catch RenderScene::clear_selection():
+                ok: 0
+                error failure: 1
+            return 7 if cleared != 0 or elisa_render_scene_v1_test_selection_state(handle) != 0
+            0

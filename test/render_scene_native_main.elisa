@@ -22,6 +22,7 @@ include "./render_scene_cooked_texture_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_image_native.elisa"
 include "./render_scene_debug_native.elisa"
+include "./render_scene_selection_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
 include "./render_scene_lighting_native.elisa"
@@ -224,6 +225,8 @@ def exercise_render_scene() -> i32:
         RenderScene::Color{red: 0.1, green: 1.0, blue: 0.35, alpha: 1.0}):
         value: value
         error failure: return 7
+    selection_updates: i32 = RenderSceneSelectionNativeTests::exercise(sphere)
+    return elisa_render_scene_v1_test_failed_case(232, selection_updates) if selection_updates != 0
     floor_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -234,7 +237,6 @@ def exercise_render_scene() -> i32:
         value: value
         error failure: return 36
     return 8 if RenderScene::instance_count() != 3
-
     rotated: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -0.8, y: 0.0, z: 0.2},
         rotation: Geometry::Quat{x: 0.0, y: 0.38268343, z: 0.0, w: 0.9238795},
@@ -313,7 +315,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.InvalidValue: 1
         error failure: 2
     return 15 if bad_color != 1
-
     resized: i32 = catch RenderScene::resize(640, 400):
         ok: 0
         error failure: 1
@@ -327,7 +328,6 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 103 if perspective_render != 0
-
     return 18 if Application::pump() != Application::PumpStatus.Running
     rendered_geometry: mutable i32 = 0
     for attempt in 0..<8 |rendered_geometry|:

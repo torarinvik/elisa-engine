@@ -1,0 +1,54 @@
+# Entity picking and selection outlines stay behind the RenderScene boundary.
+include "./render_scene.elisa"
+include "../math/geometry.elisa"
+
+module RenderSceneSelection:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_set_pick_identity(
+            handle: i64, gameplay_epoch: i64, gameplay_id: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_pick(
+            origin_x: f32, origin_y: f32, origin_z: f32,
+            direction_x: f32, direction_y: f32, direction_z: f32,
+            layer_mask: u32, gameplay_epoch: mutable i64&, gameplay_id: mutable i64&,
+            distance: mutable f32&) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_select(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_selection() -> i32
+
+    public:
+        struct PickResult:
+            gameplay_epoch: i64
+            gameplay_id: i64
+            distance: f32
+
+        def set_pick_identity(handle: InstanceHandle,
+            gameplay_epoch: i64, gameplay_id: i64) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_pick_identity(
+                handle.native_value, gameplay_epoch, gameplay_id))
+
+        def pick(ray: Geometry::Ray3, layer_mask: u32) -> PickResult error[RenderSceneError]:
+            gameplay_epoch: mutable i64 = 0
+            gameplay_id: mutable i64 = 0
+            distance: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_pick(
+                ray.origin.x, ray.origin.y, ray.origin.z,
+                ray.direction.x, ray.direction.y, ray.direction.z,
+                layer_mask, &gameplay_epoch, &gameplay_id, &distance))
+            PickResult{
+                gameplay_epoch: gameplay_epoch,
+                gameplay_id: gameplay_id,
+                distance: distance,
+            }
+
+        def select(handle: InstanceHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_select(handle.native_value))
+
+        def clear_selection() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_selection())

@@ -223,7 +223,8 @@ void discard_unreferenced_shared_snapshot_meshes(RenderSceneService& state) {
     }
 }
 
-void clear_snapshot_instance(InstanceSlot& instance) {
+void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance) {
+    clear_instance_pick_bindings(state, instance);
     instance.entity = wi::ecs::INVALID_ENTITY;
     instance.gameplay_epoch = 0;
     instance.gameplay_id = 0;

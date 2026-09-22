@@ -280,6 +280,15 @@ so ordinary Elisa callers do not need to retain a native queue or call a hidden
 engine hook. Render smoke group 231 covers valid and invalid inputs, copied
 text, depth variants, clear-after-flush, and the automatic render-path boundary.
 
+`RenderScene::set_pick_identity` associates a positive gameplay epoch and entity
+ID with an instance without exposing its Wicked entity. `RenderScene::pick`
+accepts an authored ray and layer mask and returns the checked gameplay reference
+and distance; invalid rays and misses are separate errors. `select` and
+`clear_selection` toggle Wicked's actual material-outline path and clear it on
+instance destruction or scene reset. Group 232 exercises this against a
+transformed sphere after an owner-frame update, including miss and outline-clear
+cases.
+
 `RenderScene::create_light` accepts the validated backend-neutral directional,
 point, and spot descriptors from `Lighting`. It returns an opaque,
 generation-checked `LightHandle`; `update_light` changes the descriptor in place
@@ -353,6 +362,7 @@ group G failed at case N` to stderr, then exits G.
 | 229 | `render_scene_panel_native.elisa`, including `render_scene_image_native.elisa` | logged |
 | 230 | `render_scene_cooked_texture_native.elisa` | logged |
 | 231 | `render_scene_debug_native.elisa` | logged |
+| 232 | `render_scene_selection_native.elisa` | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
 codes also belonged to other groups:

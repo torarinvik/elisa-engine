@@ -229,7 +229,7 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
             release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
         }
-        clear_snapshot_instance(state.instances[slot]);
+        clear_snapshot_instance(state, state.instances[slot]);
     }
 
     for (size_t index = 0; index < state.snapshot_row_count; ++index) {
@@ -243,7 +243,7 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
             slot = row.reserved_slot;
             generation = row.reserved_generation;
             InstanceSlot& instance = state.instances[slot];
-            clear_snapshot_instance(instance);
+            clear_snapshot_instance(state, instance);
             instance.generation = generation;
             instance.entity = row.created_entity;
             row.created_entity = wi::ecs::INVALID_ENTITY;

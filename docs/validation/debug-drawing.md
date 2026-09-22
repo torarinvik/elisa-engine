@@ -19,6 +19,17 @@ the existing frame and resource invariants.
 
 The native SDL3/Wicked gate exercises queueing, validation, renderer submission,
 and scope clearing after the captured frame. Debug commands therefore cannot
-change frame-determinism or topology evidence for the gameplay render. Picking
-continues to use the generation-checked physics query bridge; selection outlines
-and end-to-end picking overlays remain open work.
+change frame-determinism or topology evidence for the gameplay render.
+
+The public selection extension keeps the same boundary for editor-facing use:
+`RenderScene::set_pick_identity` binds a positive gameplay epoch/ID to an
+instance, `pick` returns that reference and hit distance from an authored ray,
+and `select`/`clear_selection` toggle the real Wicked material outline. Native
+entity IDs never cross into Elisa. Bindings are bounded and are explicitly
+removed on instance destruction or scene reset.
+
+`test/render_scene_selection_native.elisa` is wired into render-scene smoke group
+232. It checks a transformed sphere hit after an owner-frame update, an off-target
+miss, a zero-direction rejection, a real material outline enable, and an explicit
+outline clear. Editor camera tools and composing a picked result into a retained
+world selection overlay remain separate work.
