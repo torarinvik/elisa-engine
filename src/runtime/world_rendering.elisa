@@ -2,6 +2,7 @@
 # snapshot remains a value owned by Elisa; no vendor identity crosses this API.
 include "../backend/render_snapshot.elisa"
 include "../world/world.elisa"
+include "../world/hierarchy.elisa"
 include "../math/geometry.elisa"
 include "../assets/descriptor.elisa"
 
@@ -135,5 +136,33 @@ module WorldRendering:
                     inserted: bool = RenderSnapshot::snapshot_bind_tinted(snapshot,
                         row.gameplay, row.render_id, row.visual,
                         Geometry::transform_compose(transform, row.local_transform), row.tint)
+                    raise WorldRenderingError.SnapshotRejected if not inserted
+            prune_dead_bindings(world, bindings)
+
+        # Presentation reads the hierarchy's committed interpolation snapshot;
+        # it never writes the authoritative World transform or advances the
+        # simulation. A dirty or missing hierarchy node is rejected so a
+        # render pass cannot publish a mixed-frame pose.
+        def extract_hierarchy(world: World::World&, hierarchy: WorldHierarchy::Hierarchy&,
+            bindings: mutable Bindings&, alpha: f32,
+            snapshot: mutable RenderSnapshot::Snapshot&) -> void error[WorldRenderingError]:
+            raise WorldRenderingError.InvalidBindings if not bindings_valid(bindings)
+            live_count: mutable usize = 0
+            for index in 0..<bindings.count |live_count, world, bindings|:
+                live_count <- live_count + 1 if World::world_is_live(world, bindings.rows[index].gameplay)
+            raise WorldRenderingError.Capacity if live_count > RenderSnapshot::MAX_ENTRIES
+            RenderSnapshot::snapshot_clear(snapshot)
+            for index in 0..<bindings.count |world, hierarchy, bindings, snapshot|:
+                row: BindingRow = bindings.rows[index]
+                if World::world_is_live(world, row.gameplay):
+                    authoritative: mutable Geometry::Transform = Geometry::transform_identity()
+                    raise WorldRenderingError.InvalidReference if not WorldHierarchy::hierarchy_try_world(
+                        hierarchy, row.gameplay.id, &authoritative)
+                    sampled: Geometry::Transform = WorldHierarchy::hierarchy_sample(
+                        hierarchy, row.gameplay.id, alpha)
+                    raise WorldRenderingError.InvalidReference if not Geometry::transform_is_valid(sampled)
+                    inserted: bool = RenderSnapshot::snapshot_bind_tinted(snapshot,
+                        row.gameplay, row.render_id, row.visual,
+                        Geometry::transform_compose(sampled, row.local_transform), row.tint)
                     raise WorldRenderingError.SnapshotRejected if not inserted
             prune_dead_bindings(world, bindings)
