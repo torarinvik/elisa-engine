@@ -14,7 +14,10 @@ Usage:
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+import cook_assets
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 BASISU = ENGINE_ROOT / "dependencies/basisu"
@@ -47,6 +50,24 @@ def main() -> int:
         print("basisu probe: the cooker produced no KTX2", file=sys.stderr)
         return cook.returncode if cook.returncode != 0 else 1
 
+    normal = ENGINE_ROOT / "build/cooked/maze_tile_normal.ktx2"
+    basisu = cook_assets.basisu_executable(ENGINE_ROOT)
+    if basisu is None:
+        print("basisu probe: the pinned Basis encoder is unavailable", file=sys.stderr)
+        return 2
+    normal_pixels = bytes((96, 192, 232, 255)) * 16
+    with tempfile.TemporaryDirectory(prefix="elisa-basisu-normal-") as workdir:
+        source = Path(workdir) / "normal.png"
+        source.write_bytes(cook_assets.write_png(4, 4, normal_pixels))
+        normal_result = subprocess.run([
+            basisu, "-ktx2", "-uastc", "-normal_map", "-separate_rg_to_color_alpha",
+            "-linear", str(source), "-output_file", str(normal),
+        ], capture_output=True, text=True, check=False)
+    relay(normal_result)
+    if normal_result.returncode != 0 or not normal.is_file():
+        print("basisu probe: could not cook the two-channel normal-map fixture", file=sys.stderr)
+        return normal_result.returncode if normal_result.returncode != 0 else 1
+
     build = ENGINE_ROOT / "build"
     zstd_object = build / "basisu-zstd.o"
     cxx = "c++"
@@ -73,7 +94,8 @@ def main() -> int:
         print("basisu probe: compile failed", file=sys.stderr)
         return compile_result.returncode if compile_result.returncode != 0 else 1
 
-    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha)], capture_output=True, text=True, check=False)
+    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha), str(normal)],
+        capture_output=True, text=True, check=False)
     relay(run)
     if run.returncode != 0 or MARKER not in run.stdout:
         print("basisu probe failed; the log identifies the step.", file=sys.stderr)
@@ -84,7 +106,10 @@ def main() -> int:
     if "basisu alpha transcode:" not in run.stdout:
         print("basisu probe: alpha did not survive transcoding", file=sys.stderr)
         return 1
-    print("Basis Universal validated the 2D color, cubemap, and alpha fixtures.")
+    if "basisu normal BC5 transcode:" not in run.stdout:
+        print("basisu probe: BC5 did not preserve both normal-map channels", file=sys.stderr)
+        return 1
+    print("Basis Universal validated color, cubemap, alpha, and two-channel normal-map fixtures.")
     return 0
 
 

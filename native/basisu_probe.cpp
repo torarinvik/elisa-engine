@@ -11,8 +11,8 @@
 #include <vector>
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 4) {
-        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2]]\n");
+    if (argc < 2 || argc > 5) {
+        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2]]]\n");
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
         }
         std::fprintf(stdout, "basisu cubemap transcode: faces=6\n");
     }
-    if (argc == 4) {
+    if (argc >= 4) {
         std::ifstream alpha_input(argv[3], std::ios::binary);
         if (!probe::check(alpha_input.good(), "KTX2 alpha file readable")) return 1;
         const std::vector<uint8_t> alpha_bytes(
@@ -115,6 +115,30 @@ int main(int argc, char** argv) {
             0, 0, 0, bc3_block, 1, basist::transcoder_texture_format::cTFBC3_RGBA, 0, 1),
             "alpha KTX2 transcodes to one BC3 block")) return 1;
         std::fprintf(stdout, "basisu alpha transcode: first_alpha=%u\n", (unsigned)alpha_rgba[3]);
+    }
+    if (argc == 5) {
+        std::ifstream normal_input(argv[4], std::ios::binary);
+        if (!probe::check(normal_input.good(), "KTX2 normal-map file readable")) return 1;
+        const std::vector<uint8_t> normal_bytes(
+            (std::istreambuf_iterator<char>(normal_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder normal;
+        if (!probe::check(normal.init(normal_bytes.data(), (uint32_t)normal_bytes.size()),
+            "KTX2 normal map parses")) return 1;
+        if (!probe::check(normal.get_width() == 4 && normal.get_height() == 4 &&
+            !normal.is_srgb() && normal.get_has_alpha() != 0,
+            "KTX2 normal map carries linear RG through color and alpha")) return 1;
+        if (!probe::check(normal.start_transcoding(), "KTX2 normal map starts transcoding")) return 1;
+        uint8_t bc5_block[16] = {};
+        if (!probe::check(normal.transcode_image_level(
+            0, 0, 0, bc5_block, 1, basist::transcoder_texture_format::cTFBC5_RG, 0, 1),
+            "KTX2 normal map transcodes to BC5")) return 1;
+        basist::color_rgba bc5_pixels[16];
+        basist::bcu::unpack_bc5(bc5_block, bc5_pixels);
+        if (!probe::check(bc5_pixels[0].r >= 65 && bc5_pixels[0].r <= 125 &&
+            bc5_pixels[0].g >= 155 && bc5_pixels[0].g <= 225,
+            "BC5 retains authored normal-map X and Y channels")) return 1;
+        std::fprintf(stdout, "basisu normal BC5 transcode: xy=%u,%u\n",
+            (unsigned)bc5_pixels[0].r, (unsigned)bc5_pixels[0].g);
     }
     return 0;
 }
