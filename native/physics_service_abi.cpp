@@ -171,9 +171,11 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z,
     float half_x, float half_y, float half_z, float mass,
+    int32_t sensor,
     uint32_t* slot, uint64_t* body_generation) {
     if (slot == nullptr || body_generation == nullptr ||
         kind < ELISA_PHYSICS_BODY_STATIC || kind > ELISA_PHYSICS_BODY_DYNAMIC ||
+        (sensor != 0 && sensor != 1) ||
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
         std::fabs(position_z) > MAX_POSITION || !std::isfinite(half_x) ||
@@ -216,6 +218,7 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
         rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? 0.0f : mass;
         rigidbody.box.halfextents = XMFLOAT3(half_x, half_y, half_z);
         rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
+        rigidbody.SetSensor(sensor != 0);
         body_slot.entity = entity;
         ++body_slot.generation;
         body_slot.live = true;
