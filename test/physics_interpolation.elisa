@@ -13,4 +13,18 @@ def main() -> i32:
     return 5 if teleported.position.x != 0.0
     PhysicsInterpolation::clear_teleport(&buffer)
     return 6 if PhysicsInterpolation::last_tick(&buffer) != 2 or not PhysicsInterpolation::interpolation_valid(&buffer)
+
+    slow: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(identity)
+    fast: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(identity)
+    for tick in 3..<6 |slow, fast, tick|:
+        pose: Geometry::Transform = Geometry::transform_translate(identity,
+            Geometry::Vec3{x: tick.f32(), y: 0.0, z: 0.0})
+        return 7 if not PhysicsInterpolation::commit(&slow, pose, tick.i64(), false)
+        return 8 if not PhysicsInterpolation::commit(&fast, pose, tick.i64(), false)
+        for frame in 0..<30 |slow, frame|:
+            _ = PhysicsInterpolation::sample(&slow, (frame % 10).f32() / 10.0)
+        for frame in 0..<120 |fast, frame|:
+            _ = PhysicsInterpolation::sample(&fast, (frame % 20).f32() / 20.0)
+    return 9 if PhysicsInterpolation::last_tick(&slow) != 5 or PhysicsInterpolation::last_tick(&fast) != 5
+    return 10 if PhysicsInterpolation::sample(&slow, 1.0).position.x != PhysicsInterpolation::sample(&fast, 1.0).position.x
     0
