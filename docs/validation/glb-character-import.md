@@ -3,7 +3,9 @@
 `scripts/cook_glb_asset.py` adds a project-level `glb` asset cooker for static
 and skinned models. It imports a GLB through Blender and writes geometry
 through the existing bounded FBX cooker. Static GLB meshes can use
-`max_triangles` to simplify dense geometry with meshoptimizer. Skinned meshes
+`max_triangles` to reduce dense Blender geometry below the FBX parser's memory
+ceiling and configured triangle budget before conversion; meshoptimizer still
+handles safe residual simplification in the FBX cooker. Skinned meshes
 can transfer clips from an FBX animation source when that source contains
 every target joint name. Each source clip becomes an independent NLA take in
 the cooked Elisa package.
