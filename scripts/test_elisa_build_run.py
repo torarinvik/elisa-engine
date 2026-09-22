@@ -149,6 +149,19 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertIn(str(SCRIPT.parent.parent / "native/render_scene_abi.cpp"), linker_args)
             self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
 
+    def test_native_link_optimizes_only_on_request(self) -> None:
+        runner = __import__("elisa_build_run")
+        paths = {key: Path("/opt/fake") for key in (
+            "wicked_source", "libraries", "sdl_include", "sdl_library", "brew_include",
+            "brew_library", "miniaudio_include")}
+        arguments = (Path("/tmp/entry.a"), Path("/tmp/application"), Path("/tmp/build"), paths)
+        default = runner.native_link_command("clang++", *arguments)
+        optimized = runner.native_link_command("clang++", *arguments, optimize=True)
+        self.assertIn("-O0", default)
+        self.assertNotIn("-O2", default)
+        self.assertIn("-O2", optimized)
+        self.assertNotIn("-O0", optimized)
+
     def test_command_line_paths_override_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa manifest overrides ") as temporary_directory:
             project = Path(temporary_directory) / "project"
@@ -263,6 +276,19 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertEqual(command[1], str(SCRIPT.parent / "cook_glb_asset.py"))
             self.assertEqual(command[2], str(source.resolve()))
             self.assertEqual(command[command.index("--animation-source") + 1], str(animation.resolve()))
+            declaration["texture_max_size"] = 2048
+            with mock.patch.object(runner, "run_command", return_value=0) as bounded:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [declaration]}), 0)
+            bounded_command = bounded.call_args.args[0]
+            self.assertEqual(bounded_command[bounded_command.index("--texture-max-size") + 1], "2048")
+            for broken in ({"texture_max_size": 0}, {"texture_max_size": "big"}):
+                with self.assertRaises(runner.BuildConfigurationError):
+                    runner.cook_declared_assets(project.resolve(), {"asset_cooks": [{**declaration, **broken}]})
+            unbounded = {key: value for key, value in declaration.items() if key != "texture_output"}
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), {"asset_cooks": [unbounded]})
+            del declaration["texture_max_size"]
             self.assertEqual(command[command.index("--texture-output") + 1],
                 str((project / "build/cooked/cyborg-basecolor.png").resolve()))
             for changes in (
@@ -276,6 +302,33 @@ class BuildRunCliTests(unittest.TestCase):
                 with self.subTest(changes=changes), self.assertRaises(runner.BuildConfigurationError):
                     runner.cook_declared_assets(project.resolve(), {
                         "asset_cooks": [{**declaration, **changes}]})
+
+    def test_declared_image_cook_bounds_a_texture(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa image asset cook ") as temporary_directory:
+            project = Path(temporary_directory) / "Maze project"
+            source = project / "assets" / "crate.png"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"png")
+            declaration = {"importer": "image", "source": "assets/crate.png",
+                "output": "build/cooked/textures/crate.png", "max_size": 2048}
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [declaration]}), 0)
+            command = run.call_args.args[0]
+            self.assertEqual(command[1], str(SCRIPT.parent / "cook_image_asset.py"))
+            self.assertEqual(command[2], str(source.resolve()))
+            self.assertEqual(command[command.index("--output") + 1],
+                str((project / "build/cooked/textures/crate.png").resolve()))
+            self.assertEqual(command[command.index("--max-size") + 1], "2048")
+            for broken in ({"max_size": 0}, {"max_size": True}, {"max_size": 9000},
+                    {"output": "build/cooked/crate.jpg"}, {"asset_path": "assets/crate.png"},
+                    {"textures": {"albedo": "assets/crate.png"}}, {"output": "assets/crate.png"}):
+                with self.assertRaises(runner.BuildConfigurationError):
+                    runner.cook_declared_assets(project.resolve(), {"asset_cooks": [{**declaration, **broken}]})
+            del declaration["max_size"]
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), {"asset_cooks": [declaration]})
 
     def test_declared_gltf_textures_become_bundle_sections(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa glTF textures ") as temporary_directory:

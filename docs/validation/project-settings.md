@@ -24,6 +24,10 @@ omitted, the runner writes `build/<name>` (using the project directory name if
 `name` is omitted). The application section defaults to title `Elisa Engine`,
 1280 by 720 pixels, and a visible window. Titles must be 1–255 UTF-8 bytes;
 dimensions must be integers from 1 to 16384; `hidden` must be a boolean.
+The native runtime compiles at `-O0` for debuggability; `--optimize` (or
+`ELISA_NATIVE_OPTIMIZE=1`) compiles it at `-O2` for measurement and release
+builds. A Release WickedEngine build, configured with the x86 SIMD options
+off on Apple silicon, pairs with it through `--wicked-build`.
 
 For `run`, the runner passes validated settings as private process environment
 values. `Application::default_config()` reads those values through versioned,
