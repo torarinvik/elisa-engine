@@ -12,6 +12,8 @@ constexpr uint8_t OVERLAY_TEXT_BRIGHTNESS_THRESHOLD = 80;
 constexpr float OVERLAY_PANEL_PROBE_LOGICAL_X = 240.0f;
 constexpr float OVERLAY_PANEL_PROBE_LOGICAL_Y = 120.0f;
 constexpr uint8_t OVERLAY_PANEL_ALPHA_THRESHOLD = 200;
+constexpr float OVERLAY_IMAGE_PROBE_LOGICAL_X = 60.0f;
+constexpr float OVERLAY_IMAGE_PROBE_LOGICAL_Y = 150.0f;
 constexpr uint8_t OVERLAY_PANEL_COLOR_SEPARATION = 80;
 constexpr size_t RGBA8_COLOR_CHANNEL_COUNT = 3;
 constexpr size_t RGBA8_CHANNEL_COUNT = 4;
@@ -439,6 +441,28 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_panel(void) {
     return pixels[index + RGBA8_ALPHA_INDEX] > OVERLAY_PANEL_ALPHA_THRESHOLD &&
         pixels[index] > pixels[index + 1] + OVERLAY_PANEL_COLOR_SEPARATION &&
         pixels[index] > pixels[index + 2] + OVERLAY_PANEL_COLOR_SEPARATION ? 1 : 0;
+}
+
+// The image smoke draws the fixture atlas's blue probe swatch at the sample point.
+extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_image(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult2D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const uint32_t sample_x = state.path->LogicalToPhysical(OVERLAY_IMAGE_PROBE_LOGICAL_X);
+    const uint32_t sample_y = state.path->LogicalToPhysical(OVERLAY_IMAGE_PROBE_LOGICAL_Y);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.format != wi::graphics::Format::R8G8B8A8_UNORM ||
+        desc.width <= sample_x || desc.height <= sample_y ||
+        !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * RGBA8_CHANNEL_COUNT) return 0;
+    const size_t index =
+        (size_t(sample_y) * desc.width + sample_x) * RGBA8_CHANNEL_COUNT;
+    return pixels[index + RGBA8_ALPHA_INDEX] > OVERLAY_PANEL_ALPHA_THRESHOLD &&
+        pixels[index + 2] > pixels[index] + OVERLAY_PANEL_COLOR_SEPARATION &&
+        pixels[index + 2] > pixels[index + 1] + OVERLAY_PANEL_COLOR_SEPARATION ? 1 : 0;
 }
 
 extern "C" uint64_t elisa_render_scene_v1_last_frame_center_patch_hash(void) {

@@ -322,6 +322,16 @@ int32_t elisa_render_scene_v1_set_overlay_panel_color(
     int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_overlay_panel_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle);
+int64_t elisa_render_scene_v1_create_overlay_image(const char* asset_path,
+    float x, float y, float width, float height);
+int32_t elisa_render_scene_v1_set_overlay_image_position(int64_t handle, float x, float y);
+int32_t elisa_render_scene_v1_set_overlay_image_size(int64_t handle, float width, float height);
+int32_t elisa_render_scene_v1_set_overlay_image_uv(int64_t handle,
+    float u0, float v0, float u1, float v1);
+int32_t elisa_render_scene_v1_set_overlay_image_color(
+    int64_t handle, float red, float green, float blue, float alpha);
+int32_t elisa_render_scene_v1_set_overlay_image_visible(int64_t handle, int32_t visible);
+int32_t elisa_render_scene_v1_destroy_overlay_image(int64_t handle);
 int64_t elisa_render_scene_v1_create_electric_arc(float width, float amplitude, uint32_t seed);
 int32_t elisa_render_scene_v1_update_electric_arc(int64_t handle,
     float start_x, float start_y, float start_z,

@@ -35,3 +35,4 @@ bool apply_overlay_panel(wi::Sprite& sprite, float x, float y,
     sprite.SetHidden(false);
     return true;
 }
+#include "render_scene_image_helpers.inc"

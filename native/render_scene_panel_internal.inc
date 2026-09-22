@@ -9,3 +9,4 @@ struct OverlayPanelSlot {
     uint64_t generation = 0;
     bool live = false;
 };
+#include "render_scene_image_internal.inc"

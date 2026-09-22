@@ -20,7 +20,7 @@ include "./render_scene_cooked_material_native.elisa"
 include "./render_scene_node_hierarchy_native.elisa"
 include "./render_scene_cooked_texture_native.elisa"
 include "./render_scene_text_native.elisa"
-include "./render_scene_panel_native.elisa"
+include "./render_scene_image_native.elisa"
 include "./render_scene_camera_native.elisa"
 include "./render_scene_environment_native.elisa"
 include "./render_scene_lighting_native.elisa"
@@ -179,8 +179,8 @@ def exercise_render_scene() -> i32:
     hud_panel: RenderScene::OverlayPanelHandle = catch RenderScenePanelNativeTests::create():
         value: value
         error failure: return 123
-    panel_updates: i32 = RenderScenePanelNativeTests::exercise(hud_panel)
-    return elisa_render_scene_v1_test_failed_case(229, panel_updates) if panel_updates != 0
+    overlay_updates: i32 = RenderSceneImageNativeTests::exercise_overlays(hud_panel)
+    return elisa_render_scene_v1_test_failed_case(229, overlay_updates) if overlay_updates != 0
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
         rotation: Geometry::quat_identity(),
