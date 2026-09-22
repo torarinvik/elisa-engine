@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "test/fixtures/multi_material_panel.gltf"
 ASSET_PATH = "test/generated/multi_material_skinned_panel.gltf"
 
-IDENTITY_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
+ROOT_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
     -2.0, 0.0, 0.0, 1.0)
@@ -27,7 +27,12 @@ TIP_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
     -2.0, -1.0, 0.0, 1.0)
-INVERSE_BIND_MATRICES = IDENTITY_INVERSE_BIND + TIP_INVERSE_BIND
+INVERSE_BIND_MATRICES = ROOT_INVERSE_BIND + TIP_INVERSE_BIND
+GLTF_IDENTITY_MATRIX = (1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0)
+DEFAULT_INVERSE_BIND_MATRICES = GLTF_IDENTITY_MATRIX * 2
 
 
 def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
@@ -44,7 +49,7 @@ def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
     return len(document["accessors"]) - 1
 
 
-def generated_document() -> dict:
+def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES) -> dict:
     document = cook_assets.read_gltf(SOURCE.read_bytes())
     buffer = bytearray(cook_assets.source_bytes(SOURCE.parent, document))
     primitive_counts = [8, 4, 8]
@@ -72,7 +77,13 @@ def generated_document() -> dict:
             morph_accessors[count] = _append(document, buffer,
                 struct.pack(f"<{count * 3}f", *deltas), 5126, "VEC3", count)
         primitive["targets"] = [{"POSITION": morph_accessors[count]}]
-    inverse_bind = _append(document, buffer, struct.pack("<32f", *INVERSE_BIND_MATRICES), 5126, "MAT4", 2)
+    inverse_bind = None
+    if inverse_bind_matrices is not None:
+        if len(inverse_bind_matrices) % 16 != 0:
+            raise ValueError("inverse bind fixture needs whole MAT4 values")
+        joint_count = len(inverse_bind_matrices) // 16
+        inverse_bind = _append(document, buffer,
+            struct.pack(f"<{len(inverse_bind_matrices)}f", *inverse_bind_matrices), 5126, "MAT4", joint_count)
     input_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 5126, "SCALAR", 2)
     output_accessor = _append(document, buffer, struct.pack("<6f", 0.0, 1.0, 0.0, 0.0, 2.0, 0.0),
         5126, "VEC3", 2)
@@ -83,19 +94,46 @@ def generated_document() -> dict:
         {"name": "tip", "translation": [0.0, 1.0, 0.0]}]
     document["nodes"].append({"name": "second_panel_placement", "mesh": 0, "skin": 0})
     document["scenes"][document["scene"]]["nodes"].append(3)
-    document["skins"] = [{"name": "panel_rig", "joints": [1, 2], "skeleton": 1,
-        "inverseBindMatrices": inverse_bind}]
+    skin = {"name": "panel_rig", "joints": [1, 2], "skeleton": 1}
+    if inverse_bind is not None:
+        skin["inverseBindMatrices"] = inverse_bind
+    document["skins"] = [skin]
     document["animations"] = [{"name": "lift", "samplers": [{"input": input_accessor,
         "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
         "target": {"node": 2, "path": "translation"}}]}]
     return document
 
 
-def write_package(output: Path) -> tuple[Path, dict]:
+def write_package(output: Path,
+        inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-skin-") as temporary:
         source = Path(temporary) / "multi_material_skinned_panel.gltf"
-        source.write_text(json.dumps(generated_document(), separators=(",", ":")), encoding="utf-8")
+        source.write_text(json.dumps(generated_document(inverse_bind_matrices), separators=(",", ":")),
+            encoding="utf-8")
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+
+
+def inverse_bind_defaults_self_test(temporary: Path) -> int:
+    """Keep glTF's omitted-matrix default explicit at the cooker boundary."""
+    package, _ = write_package(temporary / "default-inverse-bind.pkg", None)
+    fields = dict(line.split("=", 1) for line in package.read_text(encoding="utf-8").splitlines())
+    expected = struct.pack("<32f", *DEFAULT_INVERSE_BIND_MATRICES)
+    if (fields.get("skin_inverse_bind_stride") != "64" or
+            base64.b64decode(fields.get("skin_inverse_bind_matrices_b64", "")) != expected):
+        print("glTF skin self-test failed: omitted inverseBindMatrices did not become identity matrices",
+            file=sys.stderr)
+        return 1
+
+    extra = INVERSE_BIND_MATRICES + GLTF_IDENTITY_MATRIX
+    document = generated_document(extra)
+    buffer = cook_assets.source_bytes(temporary, cook_assets.read_gltf(
+        json.dumps(document, separators=(",", ":")).encode("utf-8")))
+    normalized = cook_gltf_geometry.normalized_geometry(document, buffer)
+    if normalized["skin"]["inverse_bind_matrices"] != list(INVERSE_BIND_MATRICES):
+        print("glTF skin self-test failed: surplus inverse bind entries changed palette order",
+            file=sys.stderr)
+        return 1
+    return 0
 
 
 def animation_limit_self_test(temporary: Path) -> int:
@@ -129,6 +167,8 @@ def animation_limit_self_test(temporary: Path) -> int:
 
 def self_test(temporary: Path) -> int:
     if animation_limit_self_test(temporary) != 0:
+        return 1
+    if inverse_bind_defaults_self_test(temporary) != 0:
         return 1
     first, result = write_package(temporary / "first.pkg")
     second, second_result = write_package(temporary / "second.pkg")

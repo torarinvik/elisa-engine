@@ -1,8 +1,8 @@
 """Normalize the bounded skin portion of a glTF runtime mesh package.
 
 The runtime package stores four influences per vertex and a parent-ordered rig.
-The native uploader derives inverse bind matrices from these rest transforms, so
-the importer validates (but does not retain) glTF inverse-bind matrices.
+Authored inverse-bind matrices stay in the source skin palette order; when the
+optional glTF accessor is absent, the spec's identity matrices are made explicit.
 """
 
 from __future__ import annotations
@@ -15,6 +15,12 @@ import cook_gltf_animation
 import cook_gltf_nodes
 
 MAX_JOINTS = 64
+GLTF_IDENTITY_MATRIX = (
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0,
+)
 
 
 def _accessor(document: dict, index: int, type_name: str, label: str) -> dict:
@@ -41,18 +47,20 @@ def _rest_transform(node: dict, label: str) -> tuple[float, ...]:
     return (*translation, *(value / length for value in rotation), *scale)
 
 
-def _read_inverse_bind(document: dict, buffer: bytes, skin: dict, joint_count: int) -> list[float] | None:
+def _read_inverse_bind(document: dict, buffer: bytes, skin: dict, joint_count: int) -> list[float]:
     reference = skin.get("inverseBindMatrices")
     if reference is None:
-        return None
+        return list(GLTF_IDENTITY_MATRIX) * joint_count
     accessor = _accessor(document, reference, "MAT4", "inverseBindMatrices")
-    if accessor.get("componentType") != 5126 or accessor.get("count") != joint_count:
-        raise ValueError("inverseBindMatrices must contain one float32 MAT4 per joint")
+    accessor_count = accessor.get("count")
+    if (accessor.get("componentType") != 5126 or type(accessor_count) is not int or
+            accessor_count < joint_count):
+        raise ValueError("inverseBindMatrices must contain at least one float32 MAT4 per joint")
     data = cook_assets.accessor_bytes(document, buffer, reference)
-    if len(data) != joint_count * 64:
+    if len(data) < joint_count * 64:
         raise ValueError("inverseBindMatrices byte length does not match its joint count")
     matrices = [struct.unpack_from("<16f", data, offset)
-        for offset in range(0, len(data), 64)]
+        for offset in range(0, joint_count * 64, 64)]
     for matrix in matrices:
         if not all(math.isfinite(value) for value in matrix):
             raise ValueError("inverseBindMatrices contain non-finite values")
