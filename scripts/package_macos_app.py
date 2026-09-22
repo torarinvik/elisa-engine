@@ -45,7 +45,7 @@ exec \"$resources/{binary_name}\" \"$@\"
 
 
 def package_app(project: Path, executable: Path, output: Path, name: str,
-    bundle_id: str, version: str) -> Path:
+    bundle_id: str, version: str, icon: Path | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -53,6 +53,10 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
         raise PackageError(f"project directory does not exist: {project}")
     if not executable.is_file():
         raise PackageError(f"built executable does not exist: {executable}")
+    if icon is not None:
+        icon = icon.expanduser().resolve()
+        if not icon.is_file() or icon.suffix.lower() != ".icns":
+            raise PackageError("app icon must be an existing .icns file")
     if not bundle_id or any(character.isspace() for character in bundle_id):
         raise PackageError("bundle identifier must be a non-empty token")
     bundle_name = safe_bundle_name(name)
@@ -95,6 +99,9 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
         "NSHighResolutionCapable": True,
     }
     with (contents / "Info.plist").open("wb") as stream:
+        if icon is not None:
+            shutil.copy2(icon, resources / "AppIcon.icns")
+            info["CFBundleIconFile"] = "AppIcon.icns"
         plistlib.dump(info, stream, sort_keys=False)
     return app
 
@@ -113,6 +120,8 @@ def parse_arguments() -> argparse.Namespace:
         help="CFBundleIdentifier")
     parser.add_argument("--version", default="0.1.0",
         help="CFBundleShortVersionString and CFBundleVersion")
+    parser.add_argument("--icon", type=Path,
+        help="optional .icns file copied into the bundle")
     return parser.parse_args()
 
 
@@ -124,7 +133,7 @@ def main() -> int:
         executable = options.executable or project / "build" / "amazing-labyrinth"
         output = options.output or project / "build" / f"{name}.app"
         app = package_app(project, executable, output, name, options.bundle_id,
-            options.version)
+            options.version, options.icon)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
