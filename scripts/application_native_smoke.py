@@ -67,7 +67,14 @@ def main() -> int:
                 "--native-test-probes"]
             environment = dict(os.environ)
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
+            screenshot = project / f"{name}-frame.png"
+            environment["ELISA_SMOKE_SCREENSHOT_PATH"] = str(screenshot)
             status = subprocess.run(command, env=environment, check=False).returncode
+            if status == 0 and name == "application-native-smoke":
+                header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
+                if header != b"\x89PNG\r\n\x1a\n":
+                    print("Native application smoke did not write a PNG screenshot.", file=sys.stderr)
+                    return 1
             if status != 0:
                 print(f"Native application smoke {name} failed with status {status}.", file=sys.stderr)
                 return status

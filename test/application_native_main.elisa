@@ -538,6 +538,15 @@ def exercise_application() -> i32:
     return 2 if first_frame != Application::PumpStatus.Running
     return 3 if Application::frame_count() != 1
     return 17 if Application::uptime_nanos() == 0
+    # Environment reads: the runner sets the project width; an unset name
+    # and a non-numeric value fall back; an empty string is never NULL.
+    return 182 if Application::environment_integer("ELISA_PROJECT_WIDTH", -1) != 320
+    return 183 if Application::environment_integer("ELISA_SMOKE_UNSET_FLAG", 7) != 7
+    return 184 if Application::environment_integer("ELISA_PROJECT_TITLE", 9) != 9
+    return 185 if Application::environment_integer("not a name", 3) != 3
+    # Screenshot: an empty path is rejected; a real path lands after a frame.
+    return 186 if Application::save_screenshot("")
+    return 187 if not Application::save_screenshot(Application::environment_value("ELISA_SMOKE_SCREENSHOT_PATH"))
     actions: mutable ActionInput::Input = ActionInput::Input()
     escape: ActionInput::Binding = ActionInput::Binding{
         action: 1,

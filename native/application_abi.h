@@ -100,6 +100,14 @@ uint64_t elisa_application_v1_frame_count(void);
 // Monotonic nanoseconds since the current application host initialized.
 // Returns zero while the host is stopped.
 uint64_t elisa_application_v1_uptime_nanos(void);
+// Process environment reads for review and automation flags. A missing or
+// empty variable yields "" (never NULL); the integer form yields `fallback`
+// when the variable is missing or not a whole decimal number.
+const char* elisa_application_v1_environment_value(const char* name);
+int64_t elisa_application_v1_environment_integer(const char* name, int64_t fallback);
+// Encodes the most recently presented back buffer as an RGBA PNG at `path`.
+// Runs on the owner thread after the host has presented at least one frame.
+int32_t elisa_application_v1_save_screenshot(const char* path);
 int32_t elisa_application_v1_activate_render_path(void* render_path);
 int32_t elisa_application_v1_register_shutdown_hook(
     void* context, elisa_application_shutdown_fn function);
