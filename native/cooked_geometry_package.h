@@ -34,6 +34,9 @@ struct CookedGeometry {
     std::vector<std::string> skin_bone_names;
     std::vector<uint32_t> skin_indices;
     std::vector<float> skin_weights;
+    // Optional authored glTF inverse-bind matrices in skin palette order,
+    // stored as the source MAT4 column-major float stream.
+    std::vector<float> skin_inverse_bind_matrices;
     struct SkinJoint {
         std::string name;
         int32_t parent_index = -1;
@@ -142,6 +145,19 @@ inline bool resolve_project_asset_path(const char* asset_path, std::filesystem::
 }
 
 namespace detail {
+
+inline bool valid_inverse_bind_matrix(const float* matrix) {
+    for (size_t component = 0; component < 16; ++component) {
+        if (!std::isfinite(matrix[component])) return false;
+    }
+    if (std::abs(matrix[3]) > 1.0e-5f || std::abs(matrix[7]) > 1.0e-5f ||
+        std::abs(matrix[11]) > 1.0e-5f || std::abs(matrix[15] - 1.0f) > 1.0e-5f) return false;
+    const double a = matrix[0], b = matrix[4], c = matrix[8];
+    const double d = matrix[1], e = matrix[5], f = matrix[9];
+    const double g = matrix[2], h = matrix[6], i = matrix[10];
+    const double determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    return std::isfinite(determinant) && determinant != 0.0;
+}
 
 inline bool parse_geometry_morphs(const probe::PackageIndex& package, CookedGeometry& geometry,
     uint64_t vertex_count, std::string& error);
@@ -298,12 +314,17 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     const auto skin_indices = package.sections.find("skin_indices_b64");
     const auto skin_weights = package.sections.find("skin_weights_b64");
     const auto skin_names = package.sections.find("skin_names_b64");
+    const auto inverse_bind_stride = package.sections.find("skin_inverse_bind_stride");
+    const auto inverse_bind_data = package.sections.find("skin_inverse_bind_matrices_b64");
     const bool has_skin = skin_bones != package.sections.end();
+    const bool has_inverse_bind = inverse_bind_stride != package.sections.end();
     if ((skin_index_stride != package.sections.end()) != has_skin ||
         (skin_weight_stride != package.sections.end()) != has_skin ||
         (skin_indices != package.sections.end()) != has_skin ||
         (skin_weights != package.sections.end()) != has_skin ||
-        (skin_names != package.sections.end()) != has_skin) {
+        (skin_names != package.sections.end()) != has_skin ||
+        (inverse_bind_data != package.sections.end()) != has_inverse_bind ||
+        (has_inverse_bind && !has_skin)) {
         error = "incomplete cooked geometry skin stream";
         return false;
     }
@@ -322,6 +343,20 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             !detail::decode_names(name_bytes, size_t(bone_count), geometry.skin_bone_names)) {
             error = "invalid cooked geometry bone-name stream";
             return false;
+        }
+        if (has_inverse_bind) {
+            if (inverse_bind_stride->second != "64" ||
+                !detail::decode_floats(package, "skin_inverse_bind_matrices_b64",
+                    size_t(bone_count) * 16, geometry.skin_inverse_bind_matrices)) {
+                error = "invalid cooked geometry inverse bind matrix stream";
+                return false;
+            }
+            for (size_t bone = 0; bone < size_t(bone_count); ++bone) {
+                if (!detail::valid_inverse_bind_matrix(geometry.skin_inverse_bind_matrices.data() + bone * 16)) {
+                    error = "invalid cooked geometry inverse bind matrix";
+                    return false;
+                }
+            }
         }
         for (size_t vertex = 0; vertex < size_t(vertices); ++vertex) {
             float total_weight = 0.0f;
@@ -365,7 +400,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         (joint_names_data != package.sections.end()) != has_rig ||
         (cluster_map_stride != package.sections.end()) != has_rig ||
         (cluster_map_data != package.sections.end()) != has_rig ||
-        (has_rig && !has_skin)) {
+        (has_rig && !has_skin) || (has_inverse_bind && !has_rig)) {
         error = "incomplete cooked geometry rig hierarchy";
         return false;
     }

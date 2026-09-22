@@ -53,6 +53,33 @@ inline XMFLOAT4 to_wicked_tangent(float x, float y, float z, float w) {
     return XMFLOAT4(-x, y, z, w);
 }
 
+// A glTF MAT4 is column-major and acts on column vectors. Copying its element
+// order into XMFLOAT4X4 yields the equivalent DirectX row-vector matrix. Skin
+// bind matrices live in mesh/joint space, so reflect both sides of the map.
+inline XMFLOAT4X4 gltf_inverse_bind_to_wicked(const float* matrix) {
+    const float reflection[4] = {-1.0f, 1.0f, 1.0f, 1.0f};
+    XMFLOAT4X4 result{};
+    for (size_t row = 0; row < 4; ++row) {
+        for (size_t column = 0; column < 4; ++column) {
+            result.m[row][column] = matrix[row * 4 + column] * reflection[row] * reflection[column];
+        }
+    }
+    return result;
+}
+
+// Elisa pose matrices use DirectX-style row vectors. Change their basis with
+// the same X reflection used by TRS submission and imported inverse binds.
+inline XMFLOAT4X4 elisa_row_matrix_to_wicked(const XMFLOAT4X4& matrix) {
+    const float reflection[4] = {-1.0f, 1.0f, 1.0f, 1.0f};
+    XMFLOAT4X4 result{};
+    for (size_t row = 0; row < 4; ++row) {
+        for (size_t column = 0; column < 4; ++column) {
+            result.m[row][column] = matrix.m[row][column] * reflection[row] * reflection[column];
+        }
+    }
+    return result;
+}
+
 inline XMFLOAT3 scaled(const XMFLOAT3& value, const XMFLOAT3& scale) {
     return XMFLOAT3(value.x * scale.x, value.y * scale.y, value.z * scale.z);
 }

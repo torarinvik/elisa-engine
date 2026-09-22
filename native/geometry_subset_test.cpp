@@ -73,9 +73,10 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     const size_t morphs = marker("morphs");
     const size_t cameras = marker("cameras");
     const size_t lights = marker("lights");
-    const size_t end = std::min({materials, sections, animations, morphs, cameras, lights});
-    const size_t material_end = std::min({sections, animations, morphs, cameras, lights});
-    const size_t section_end = std::min({animations, morphs, cameras, lights});
+    const size_t inverse_binds = marker("inverse_binds");
+    const size_t end = std::min({materials, sections, animations, morphs, cameras, lights, inverse_binds});
+    const size_t material_end = std::min({sections, animations, morphs, cameras, lights, inverse_binds});
+    const size_t section_end = std::min({animations, morphs, cameras, lights, inverse_binds});
     if (materials == fields.size() ? !geometry.slot_materials.empty()
                                    : !check_slot_materials(fields, materials + 1, material_end, geometry)) return false;
     if (sections == fields.size() ? !geometry.texture_sections.empty() || !geometry.texture_checksums.empty()
@@ -87,7 +88,17 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     if (cameras == fields.size() ? !geometry.cameras.empty()
                                  : geometry.cameras.size() != std::stoul(fields[cameras + 1])) return false;
     if (lights == fields.size() ? !geometry.lights.empty()
-                                : geometry.lights.size() != std::stoul(fields[lights + 1])) return false;
+                                 : geometry.lights.size() != std::stoul(fields[lights + 1])) return false;
+    if (inverse_binds == fields.size()) {
+        if (!geometry.skin_inverse_bind_matrices.empty()) return false;
+    } else {
+        if (geometry.skin_inverse_bind_matrices.size() != fields.size() - inverse_binds - 1) return false;
+        for (size_t component = 0; component < geometry.skin_inverse_bind_matrices.size(); ++component) {
+            if (geometry.skin_inverse_bind_matrices[component] != std::stof(fields[inverse_binds + 1 + component])) {
+                return false;
+            }
+        }
+    }
     if (end < 4 || (end - 4) % 3 != 0) return false;
     if (geometry.indices.size() != std::stoul(fields[2]) ||
         geometry.material_slots != std::stoul(fields[3]) ||

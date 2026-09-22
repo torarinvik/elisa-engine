@@ -41,16 +41,33 @@ def _rest_transform(node: dict, label: str) -> tuple[float, ...]:
     return (*translation, *(value / length for value in rotation), *scale)
 
 
-def _validate_inverse_bind(document: dict, buffer: bytes, skin: dict, joint_count: int) -> None:
+def _read_inverse_bind(document: dict, buffer: bytes, skin: dict, joint_count: int) -> list[float] | None:
     reference = skin.get("inverseBindMatrices")
     if reference is None:
-        return
+        return None
     accessor = _accessor(document, reference, "MAT4", "inverseBindMatrices")
     if accessor.get("componentType") != 5126 or accessor.get("count") != joint_count:
         raise ValueError("inverseBindMatrices must contain one float32 MAT4 per joint")
     data = cook_assets.accessor_bytes(document, buffer, reference)
-    if len(data) != joint_count * 64 or not all(math.isfinite(value) for (value,) in struct.iter_unpack("<f", data)):
-        raise ValueError("inverseBindMatrices contain non-finite values")
+    if len(data) != joint_count * 64:
+        raise ValueError("inverseBindMatrices byte length does not match its joint count")
+    matrices = [struct.unpack_from("<16f", data, offset)
+        for offset in range(0, len(data), 64)]
+    for matrix in matrices:
+        if not all(math.isfinite(value) for value in matrix):
+            raise ValueError("inverseBindMatrices contain non-finite values")
+        # glTF node transforms and inverse bind transforms are affine. Reject
+        # perspective rows and singular linear transforms rather than silently
+        # producing a broken armature palette.
+        if any(abs(matrix[index]) > 1.0e-6 for index in (3, 7, 11)) or abs(matrix[15] - 1.0) > 1.0e-6:
+            raise ValueError("inverseBindMatrices must contain affine transforms")
+        a, b, c = matrix[0], matrix[4], matrix[8]
+        d, e, f = matrix[1], matrix[5], matrix[9]
+        g, h, i = matrix[2], matrix[6], matrix[10]
+        determinant = (a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g))
+        if not math.isfinite(determinant) or determinant == 0.0:
+            raise ValueError("inverseBindMatrices must be invertible")
+    return [value for matrix in matrices for value in matrix]
 
 
 def read_influences(document: dict, buffer: bytes, attributes: dict,
@@ -121,7 +138,7 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
     skeleton = skin.get("skeleton")
     if skeleton is not None and (type(skeleton) is not int or skeleton not in joint_set):
         raise ValueError("skin skeleton must name one of its joints")
-    _validate_inverse_bind(document, buffer, skin, len(joints))
+    inverse_bind_matrices = _read_inverse_bind(document, buffer, skin, len(joints))
 
     parents: dict[int, int | None] = {node: None for node in joints}
     parent_seen = {node: False for node in joints}
@@ -168,4 +185,5 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
     animation_clips = cook_gltf_animation.normalize(document, buffer, ordered_index,
         [joint["rest"] for joint in rig_joints])
     return {"bone_names": [rig_joints[ordered_index[node]]["name"] for node in joints],
-        "joints": rig_joints, "cluster_joints": cluster_joints, "animation_clips": animation_clips}
+        "joints": rig_joints, "cluster_joints": cluster_joints,
+        "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips}

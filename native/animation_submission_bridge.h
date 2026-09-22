@@ -1,6 +1,7 @@
 #pragma once
 
 #include "probe_core.h"
+#include "coordinate_conventions.h"
 #include "wiScene.h"
 
 #include <algorithm>
@@ -87,7 +88,8 @@ public:
         std::memcpy(buffer.bones.data(), bones, sizeof(XMFLOAT4X4) * bone_count);
         if (morph_count > 0) std::memcpy(buffer.morphs.data(), morphs, sizeof(float) * morph_count);
         for (uint32_t index = 0; index < bone_count; ++index) {
-            transforms[index]->MatrixTransform(buffer.bones[index]);
+            transforms[index]->ClearTransform();
+            transforms[index]->MatrixTransform(coordinates::elisa_row_matrix_to_wicked(buffer.bones[index]));
         }
         for (uint32_t mesh_index = 0; mesh_index < entry->mesh_count; ++mesh_index)
             for (uint32_t index = 0; index < morph_count; ++index)
@@ -184,7 +186,7 @@ inline bool probe_animation_submission(wi::scene::Scene& scene) {
     const float weight = 0.75f;
     if (!check(bridge.submit(first, &pose, 1, &weight, 1) && bridge.pending(first),
         "animation submits an owned pose") ||
-        !check(scene.transforms.GetComponent(bone)->translation_local.x == 2.0f &&
+        !check(scene.transforms.GetComponent(bone)->translation_local.x == -2.0f &&
             target->morph_targets[0].weight == weight, "animation applies bone and morph state") ||
         !check(!bridge.submit(first, &pose, 1, &weight, 1) || bridge.pending(first),
             "animation keeps the in-flight buffer alive")) return false;

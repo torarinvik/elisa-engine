@@ -116,6 +116,8 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     if (has_skin_rig && (geometry.skin_joints.size() > 64 || geometry.skin_cluster_joints.size() > 64 ||
         geometry.skin_indices.size() != geometry.positions.size() / 3 * 4 ||
         geometry.skin_weights.size() != geometry.skin_indices.size() ||
+        (!geometry.skin_inverse_bind_matrices.empty() &&
+            geometry.skin_inverse_bind_matrices.size() != geometry.skin_cluster_joints.size() * 16) ||
         (shared_armature == wi::ecs::INVALID_ENTITY && out_joint_entities == nullptr))) return false;
 
     mesh->vertex_positions.resize(vertex_count);
@@ -223,14 +225,21 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
             mesh = scene.meshes.GetComponent(entity);
             if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr) return false;
             const XMMATRIX armature_inverse = XMMatrixInverse(nullptr, XMLoadFloat4x4(&transform->world));
-            for (uint32_t joint_index : geometry.skin_cluster_joints) {
+            for (size_t cluster_index = 0; cluster_index < geometry.skin_cluster_joints.size(); ++cluster_index) {
+                const uint32_t joint_index = geometry.skin_cluster_joints[cluster_index];
                 if (joint_index >= joint_entities.size()) return false;
                 const wi::ecs::Entity bone_entity = joint_entities[joint_index];
-                const wi::scene::TransformComponent* bone_transform = scene.transforms.GetComponent(bone_entity);
-                if (bone_transform == nullptr) return false;
-                const XMMATRIX bone_local = XMMatrixMultiply(XMLoadFloat4x4(&bone_transform->world), armature_inverse);
                 XMFLOAT4X4 inverse_bind;
-                XMStoreFloat4x4(&inverse_bind, XMMatrixInverse(nullptr, bone_local));
+                if (!geometry.skin_inverse_bind_matrices.empty()) {
+                    inverse_bind = probe::coordinates::gltf_inverse_bind_to_wicked(
+                        geometry.skin_inverse_bind_matrices.data() + cluster_index * 16);
+                } else {
+                    const wi::scene::TransformComponent* bone_transform = scene.transforms.GetComponent(bone_entity);
+                    if (bone_transform == nullptr) return false;
+                    const XMMATRIX bone_local = XMMatrixMultiply(
+                        XMLoadFloat4x4(&bone_transform->world), armature_inverse);
+                    XMStoreFloat4x4(&inverse_bind, XMMatrixInverse(nullptr, bone_local));
+                }
                 const float* matrix_values = &inverse_bind.m[0][0];
                 for (size_t component = 0; component < 16; ++component) {
                     if (!std::isfinite(matrix_values[component])) return false;

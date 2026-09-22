@@ -52,6 +52,12 @@ extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle)
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 constexpr float ANIMATION_BONE_BOUND_RADIUS = 1.0f;
+enum AnimationStateProbeMatch : int32_t {
+    ANIMATION_BONE_MATCH = 1 << 0,
+    ANIMATION_MORPH_MATCH = 1 << 1,
+    ANIMATION_PLACEMENT_MATCH = 1 << 2,
+    ANIMATION_PENDING_MATCH = 1 << 3,
+};
 
 extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     int64_t handle, float expected_x, float expected_morph, int32_t expected_pending) {
@@ -70,7 +76,8 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
         mesh->indices.size() != 18 || mesh->subsets.size() != 3 || mesh->vertex_boneindices.size() != 12) return 0;
     const wi::scene::TransformComponent* bone = state.scene->transforms.GetComponent(armature->boneCollection[0]);
     if (bone == nullptr) return 0;
-    const bool bone_match = std::abs(bone->translation_local.x - expected_x) < 1.0e-5f;
+    const float expected_wicked_x = -expected_x;
+    const bool bone_match = std::abs(bone->translation_local.x - expected_wicked_x) < 1.0e-5f;
     const bool morph_match = mesh->morph_targets.empty()
         ? std::abs(expected_morph) < 1.0e-5f
         : std::abs(mesh->morph_targets[0].weight - expected_morph) < 1.0e-5f;
@@ -84,7 +91,8 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
             std::abs(placement->morph_targets[0].weight - expected_morph) < 1.0e-5f);
     const bool pending_match = state.animation_submission->pending(instance.animation_submission) ==
         (expected_pending != 0);
-    return bone_match && morph_match && placement_match && pending_match ? 1 : 0;
+    return (bone_match ? ANIMATION_BONE_MATCH : 0) | (morph_match ? ANIMATION_MORPH_MATCH : 0) |
+        (placement_match ? ANIMATION_PLACEMENT_MATCH : 0) | (pending_match ? ANIMATION_PENDING_MATCH : 0);
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
@@ -107,15 +115,30 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
         const wi::scene::TransformComponent* bone =
             state.scene->transforms.GetComponent(armature->boneCollection[0]);
         if (bone == nullptr) return false;
-        const bool bone_match = std::abs(bone->translation_local.x - expected_x) < 1.0e-5f;
+        const float expected_wicked_x = -expected_x;
+        const bool bone_match = std::abs(bone->translation_local.x - expected_wicked_x) < 1.0e-5f;
         const bool bounds_match = std::abs(armature->aabb._min.x -
-                (expected_x - ANIMATION_BONE_BOUND_RADIUS)) < 1.0e-5f &&
+                (expected_wicked_x - ANIMATION_BONE_BOUND_RADIUS)) < 1.0e-5f &&
             std::abs(armature->aabb._max.x -
-                (expected_x + ANIMATION_BONE_BOUND_RADIUS)) < 1.0e-5f;
+                (expected_wicked_x + ANIMATION_BONE_BOUND_RADIUS)) < 1.0e-5f;
         const bool pending_match = state.animation_submission->pending(instance.animation_submission) ==
             (expected_pending != 0);
         return bone_match && bounds_match && pending_match;
     };
     return matches(first_slot, first_x) && matches(second_slot, second_x) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_inverse_bind(
+    int64_t handle, uint32_t cluster, uint32_t row, uint32_t column, float expected) {
+    if (row >= 4 || column >= 4 || !std::isfinite(expected)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const wi::scene::ArmatureComponent* armature = state.scene->armatures.GetComponent(state.instances[slot].entity);
+    if (armature == nullptr || cluster >= armature->inverseBindMatrices.size()) return 0;
+    const XMFLOAT4X4& matrix = armature->inverseBindMatrices[cluster];
+    return std::abs(matrix.m[row][column] - expected) < 1.0e-5f ? 1 : 0;
 }
 #endif

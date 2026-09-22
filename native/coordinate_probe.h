@@ -110,6 +110,29 @@ inline bool probe_coordinate_conventions(wi::scene::Scene& scene) {
             std::abs(source_result[2] - backend_result[2]) < 0.0001f &&
             std::abs(source_result[3] - backend_result[3]) < 0.0001f,
             "matrix conversion preserves asymmetric point transform")) return false;
+    const float inverse_bind[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        -2.0f, -1.0f, 0.0f, 1.0f,
+    };
+    const XMFLOAT4X4 wicked_inverse_bind = coordinates::gltf_inverse_bind_to_wicked(inverse_bind);
+    if (!check(std::abs(wicked_inverse_bind.m[3][0] - 2.0f) < 0.0001f &&
+            std::abs(wicked_inverse_bind.m[3][1] + 1.0f) < 0.0001f &&
+            wicked_inverse_bind.m[0][0] == 1.0f && wicked_inverse_bind.m[3][3] == 1.0f,
+            "glTF inverse-bind matrix converts to Wicked row space")) return false;
+    XMFLOAT4X4 authored_pose{};
+    authored_pose.m[0][0] = 1.0f;
+    authored_pose.m[1][1] = 1.0f;
+    authored_pose.m[2][2] = 1.0f;
+    authored_pose.m[3][0] = 2.0f;
+    authored_pose.m[3][1] = -1.0f;
+    authored_pose.m[3][3] = 1.0f;
+    const XMFLOAT4X4 wicked_pose = coordinates::elisa_row_matrix_to_wicked(authored_pose);
+    if (!check(std::abs(wicked_pose.m[3][0] + 2.0f) < 0.0001f &&
+            std::abs(wicked_pose.m[3][1] + 1.0f) < 0.0001f &&
+            wicked_pose.m[0][0] == 1.0f && wicked_pose.m[3][3] == 1.0f,
+            "animation pose matrix reflects into Wicked row space")) return false;
     for (size_t index = 0; index < 16; ++index) {
         if (!check(std::abs(matrix_round_trip.values_column_major[index] - matrix.values_column_major[index]) < 0.0001f,
                 "matrix basis round trip")) return false;
