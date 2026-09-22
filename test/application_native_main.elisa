@@ -151,6 +151,8 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     raise PhysicsRuntime::PhysicsError.BackendFailure if all_ray_count == 0 or all_rays.count != all_ray_count
     raise PhysicsRuntime::PhysicsError.BackendFailure if not all_rays.hits[0].hit or all_rays.hits[0].entity == 0
     raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[0].distance > ray.distance + 0.001
+    for index in 1..<all_ray_count:
+        raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[index].distance + 0.001 < all_rays.hits[index - 1].distance
     invalid_all_status: i32 = catch PhysicsRuntime::raycast_all(world,
         Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
         10.0, PhysicsRuntime::ALL_LAYERS, &all_rays):
