@@ -128,8 +128,21 @@ module RenderSceneImportedSceneNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_imported_scene(expected_cameras: i32, expected_lights: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_imported_mesh_count() -> i32
+
     public:
         def exercise() -> i32:
+            hierarchy_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/hierarchy.elpk", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.2, blue: 0.1, alpha: 1.0}):
+                value: value
+                error failure: return 6
+            return 7 if elisa_render_scene_v1_test_imported_mesh_count() != 8
+            hierarchy_destroyed: i32 = catch RenderScene::destroy(hierarchy_mesh):
+                ok: 0
+                error failure: 8
+            return 9 if hierarchy_destroyed != 0 or elisa_render_scene_v1_test_imported_mesh_count() != 4
             imported_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
                 "build/cooked/subsets/scene-metadata.pkg", Geometry::transform_identity(),
                 RenderScene::Color{red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0}):

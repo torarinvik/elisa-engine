@@ -79,6 +79,12 @@ struct CookedGeometry {
     struct MeshPlacement {
         uint32_t mesh = 0;
         uint32_t node = 0;
+        uint32_t vertex_start = 0;
+        uint32_t vertex_count = 0;
+        uint32_t index_start = 0;
+        uint32_t index_count = 0;
+        uint32_t subset_start = 0;
+        uint32_t subset_count = 0;
         std::array<float, 12> transform{};
     };
     uint32_t mesh_count = 0;

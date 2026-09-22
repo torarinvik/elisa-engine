@@ -248,6 +248,14 @@ def hierarchy_self_test(temporary: Path) -> int:
         if not same_baked_geometry(cook_gltf_geometry.normalized_geometry(variant, tile_buffer), plain):
             return fail("an identity hierarchy changed the maze tile's bytes")
 
+    placements = geometry["scene"]["mesh_placements"]
+    expected_ranges = [(0, 4, 0, 6, 0, 1), (4, 4, 6, 6, 0, 1),
+        (8, 4, 12, 6, 1, 1), (12, 4, 18, 6, 2, 1)]
+    if [(placement["vertex_start"], placement["vertex_count"], placement["index_start"],
+            placement["index_count"], placement["subset_start"], placement["subset_count"])
+            for placement in placements] != expected_ranges:
+        return fail("mesh placement stream ranges were not retained")
+
     # Adjacent placements on one slot share a subset, and sixteen subsets fit.
     variant = deepcopy(document)
     same_slot(variant)

@@ -19,3 +19,14 @@ extern "C" int32_t elisa_render_scene_v1_test_imported_scene(
     return cameras == size_t(expected_cameras) && lights == size_t(expected_lights) &&
         (expected_cameras == 0 || (camera != nullptr && state.camera_entity == first_camera)) ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_imported_mesh_count(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return -1;
+    int32_t count = 0;
+    for (const InstanceSlot& instance : state.instances) {
+        if (instance.live) count += int32_t(1 + instance.imported_mesh_entities.size());
+    }
+    return count;
+}

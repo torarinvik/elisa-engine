@@ -268,6 +268,9 @@ def normalized_geometry(document: dict, buffer: bytes):
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
     placed = []
+    placement_ranges = [{"vertex_start": None, "vertex_count": 0,
+        "index_start": None, "index_count": 0, "subset_start": None, "subset_count": 0}
+        for _ in placements]
     vertex_total = index_total = 0
     for placement, (mesh, matrix) in enumerate(placements):
         block_for_position: dict = {}
@@ -296,7 +299,7 @@ def normalized_geometry(document: dict, buffer: bytes):
                 raise ValueError("index count is not a bounded triangle list")
             values = cook_gltf_nodes.placed_indices(values, matrix)
             blocks[block]["triangles"].extend(values)
-            placed.append((block, values, primitive.get("material", 0)))
+            placed.append((placement, block, values, primitive.get("material", 0)))
 
     positions, normals, uvs = bytearray(), bytearray(), bytearray()
     morph_positions = [bytearray() for _ in range(morph_count)]
@@ -307,6 +310,11 @@ def normalized_geometry(document: dict, buffer: bytes):
     for key, block in blocks.items():
         source, matrix = block["source"], block["matrix"]
         base_vertex[key] = len(positions) // 12
+        placement = key[0]
+        placement_ranges[placement]["vertex_start"] = (
+            base_vertex[key] if placement_ranges[placement]["vertex_start"] is None else
+            placement_ranges[placement]["vertex_start"])
+        placement_ranges[placement]["vertex_count"] += source["count"]
         world = cook_gltf_nodes.transform_points(source["positions"], matrix)
         positions += world
         normals += cook_gltf_nodes.transform_normals(source["normals"], matrix) \
@@ -323,13 +331,26 @@ def normalized_geometry(document: dict, buffer: bytes):
 
     indices = bytearray()
     subsets = []
-    for block, values, slot in placed:
+    for placement, block, values, slot in placed:
         start = len(indices) // 4
+        placement_range = placement_ranges[placement]
+        if placement_range["index_start"] is None:
+            placement_range["index_start"] = start
         indices += struct.pack(f"<{len(values)}I", *(value + base_vertex[block] for value in values))
         if subsets and subsets[-1][2] == slot:
             subsets[-1] = (subsets[-1][0], subsets[-1][1] + len(values), slot)
         else:
             subsets.append((start, len(values), slot))
+        placement_range["index_count"] += len(values)
+    for placement_range in placement_ranges:
+        first = placement_range["index_start"]
+        last = first + placement_range["index_count"]
+        overlaps = [index for index, (start, count, _) in enumerate(subsets)
+            if start < last and start + count > first]
+        if not overlaps:
+            raise ValueError("mesh placement produced no subset range")
+        placement_range["subset_start"] = overlaps[0]
+        placement_range["subset_count"] = len(overlaps)
     if len(subsets) > MAX_SUBSETS:
         raise ValueError(f"placed primitives need more than {MAX_SUBSETS} material subsets")
     slot_textures, images = cook_gltf_textures.cooked_textures(document, buffer, slot_images)
@@ -344,7 +365,9 @@ def normalized_geometry(document: dict, buffer: bytes):
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
         "skin": skin, "skin_indices": skin_indices, "skin_weights": skin_weights,
-        "morph_targets": morph_targets, "scene": scene}
+        "morph_targets": morph_targets, "scene": {**scene, "mesh_placements": [
+            {**placement, **placement_ranges[index]}
+            for index, placement in enumerate(scene["mesh_placements"])]}}
 
 
 def placed_counts(document: dict) -> dict:

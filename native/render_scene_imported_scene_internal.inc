@@ -1,5 +1,6 @@
 void release_imported_scene(RenderSceneService& state, InstanceSlot& instance) {
     if (state.scene == nullptr) {
+        instance.imported_mesh_entities.clear();
         instance.imported_camera_entities.clear();
         instance.imported_light_handles.clear();
         return;
@@ -10,6 +11,8 @@ void release_imported_scene(RenderSceneService& state, InstanceSlot& instance) {
         if (state.lighting != nullptr) state.lighting->destroy_light(light);
     }
     for (wi::ecs::Entity camera : instance.imported_camera_entities) state.scene->Entity_Remove(camera);
+    for (wi::ecs::Entity mesh : instance.imported_mesh_entities) state.scene->Entity_Remove(mesh);
+    instance.imported_mesh_entities.clear();
     instance.imported_camera_entities.clear();
     instance.imported_light_handles.clear();
     if (active_imported && state.primary_camera_entity != wi::ecs::INVALID_ENTITY) {

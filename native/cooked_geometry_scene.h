@@ -23,14 +23,14 @@ inline bool parse_geometry_scene(const probe::PackageIndex& package, CookedGeome
         if (!parse_count(package, "mesh_count", mesh_count) || mesh_count == 0 || mesh_count > 256 ||
             !parse_count(package, "mesh_placement_count", placement_count) ||
             placement_count < mesh_count || placement_count > 256 || stride == package.sections.end() ||
-            stride->second != "56") {
+            stride->second != "80") {
             error = "invalid cooked geometry mesh placement metadata";
             return false;
         }
         const auto encoded = package.sections.find("mesh_placements_b64");
         std::vector<uint8_t> bytes;
         if (encoded == package.sections.end() || !decode_base64(encoded->second, bytes) ||
-            bytes.size() != size_t(placement_count) * 56u) {
+            bytes.size() != size_t(placement_count) * 80u) {
             error = "invalid cooked geometry mesh placement records";
             return false;
         }
@@ -40,16 +40,28 @@ inline bool parse_geometry_scene(const probe::PackageIndex& package, CookedGeome
         };
         geometry.mesh_count = uint32_t(mesh_count);
         for (size_t index = 0; index < size_t(placement_count); ++index) {
-            const size_t offset = index * 56u;
+            const size_t offset = index * 80u;
             CookedGeometry::MeshPlacement placement;
             placement.mesh = read_u32(offset);
             placement.node = read_u32(offset + 4);
-            if (placement.mesh >= geometry.mesh_count || placement.node >= 256) {
+            placement.vertex_start = read_u32(offset + 8);
+            placement.vertex_count = read_u32(offset + 12);
+            placement.index_start = read_u32(offset + 16);
+            placement.index_count = read_u32(offset + 20);
+            placement.subset_start = read_u32(offset + 24);
+            placement.subset_count = read_u32(offset + 28);
+            if (placement.mesh >= geometry.mesh_count || placement.node >= 256 ||
+                placement.vertex_count == 0 ||
+                uint64_t(placement.vertex_start) + placement.vertex_count > geometry.positions.size() / 3 ||
+                placement.index_count == 0 || placement.index_count % 3 != 0 ||
+                uint64_t(placement.index_start) + placement.index_count > geometry.indices.size() ||
+                placement.subset_count == 0 ||
+                uint64_t(placement.subset_start) + placement.subset_count > geometry.subsets.size()) {
                 error = "cooked geometry mesh placement index is out of range";
                 return false;
             }
             for (size_t component = 0; component < placement.transform.size(); ++component) {
-                const uint32_t bits = read_u32(offset + 8 + component * 4);
+                const uint32_t bits = read_u32(offset + 32 + component * 4);
                 std::memcpy(&placement.transform[component], &bits, sizeof(bits));
                 if (!std::isfinite(placement.transform[component])) {
                     error = "cooked geometry mesh placement transform is not finite";
@@ -62,6 +74,20 @@ inline bool parse_geometry_scene(const probe::PackageIndex& package, CookedGeome
         for (const auto& placement : geometry.mesh_placements) seen[placement.mesh] = true;
         if (std::find(seen.begin(), seen.end(), false) != seen.end()) {
             error = "cooked geometry mesh placement leaves a mesh unplaced";
+            return false;
+        }
+        uint32_t next_vertex = 0;
+        uint32_t next_index = 0;
+        for (const auto& placement : geometry.mesh_placements) {
+            if (placement.vertex_start != next_vertex || placement.index_start != next_index) {
+                error = "cooked geometry mesh placement ranges do not partition the streams";
+                return false;
+            }
+            next_vertex += placement.vertex_count;
+            next_index += placement.index_count;
+        }
+        if (next_vertex != geometry.positions.size() / 3 || next_index != geometry.indices.size()) {
+            error = "cooked geometry mesh placement ranges do not cover the streams";
             return false;
         }
     }

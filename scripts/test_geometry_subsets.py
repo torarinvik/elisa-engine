@@ -207,6 +207,18 @@ def cases(directory: Path) -> list[tuple]:
             raise RuntimeError("hierarchy metadata mutation did not find its field")
         return hierarchy_metadata.replace(old, new, 1)
 
+    def hierarchy_record_variant(field_offset: int, value: int) -> bytes:
+        marker = b"mesh_placements_b64="
+        lines = hierarchy_metadata.splitlines(keepends=True)
+        for index, line in enumerate(lines):
+            if line.startswith(marker):
+                encoded = line[len(marker):].strip()
+                records = bytearray(base64.b64decode(encoded))
+                struct.pack_into("<I", records, field_offset, value)
+                lines[index] = marker + base64.b64encode(records) + b"\n"
+                return b"".join(lines)
+        raise RuntimeError("hierarchy metadata mutation did not find its records")
+
     def textured_strip(names, references, **fields):
         return strip_package(2, two, 2, materials=fields.pop("materials", plain),
             textures=(names, references), **fields)
@@ -239,9 +251,13 @@ def cases(directory: Path) -> list[tuple]:
         ("reject", "scene-camera-transform.pkg", scene_variant(
             b"camera_0_transform_b64=", b"camera_0_transform="), "camera metadata"),
         ("reject", "hierarchy-mesh-stride.pkg", hierarchy_variant(
-            b"mesh_placement_stride=56", b"mesh_placement_stride=52"), "mesh placement metadata"),
+            b"mesh_placement_stride=80", b"mesh_placement_stride=72"), "mesh placement metadata"),
         ("reject", "hierarchy-mesh-count.pkg", hierarchy_variant(
             b"mesh_count=3", b"mesh_count=4"), "leaves a mesh unplaced"),
+        ("reject", "hierarchy-placement-range.pkg", hierarchy_record_variant(12, 0),
+            "index is out of range"),
+        ("reject", "hierarchy-placement-partition.pkg", hierarchy_record_variant(16, 6),
+            "do not partition the streams"),
         ("reject", "morph-missing-position.pkg", morph_variant(
             b"morph_0_positions_b64=", b"morph_0_position_b64="), "morph position stream"),
         ("reject", "morph-stride.pkg", morph_variant(

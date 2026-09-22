@@ -218,4 +218,87 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     return true;
 }
 
+// A static placement is a view into the flattened cooked streams. The cooker
+// records exact vertex/index ranges, so each placement can become its own
+// Wicked mesh without allocating or decoding a second geometry buffer.
+inline bool configure_cooked_mesh_placement(wi::scene::Scene& scene, wi::ecs::Entity entity,
+    const elisa::assets::CookedGeometry& geometry, size_t placement_index,
+    float px, float py, float pz, float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz, float red, float green, float blue, float alpha) {
+    if (placement_index >= geometry.mesh_placements.size() || !geometry.skin_joints.empty() ||
+        !geometry.skin_cluster_joints.empty() || !geometry.morph_targets.empty()) return false;
+    const auto& placement = geometry.mesh_placements[placement_index];
+    const size_t vertex_total = geometry.positions.size() / 3;
+    const size_t index_total = geometry.indices.size();
+    if (geometry.positions.size() % 3 != 0 || geometry.normals.size() != geometry.positions.size() ||
+        geometry.uvs.size() != vertex_total * 2 || geometry.indices.empty() || geometry.indices.size() % 3 != 0 ||
+        placement.vertex_count == 0 || placement.index_count == 0 ||
+        size_t(placement.vertex_start) + placement.vertex_count > vertex_total ||
+        size_t(placement.index_start) + placement.index_count > index_total ||
+        placement.index_count % 3 != 0 ||
+        (!geometry.tangents.empty() && geometry.tangents.size() != vertex_total * 4)) return false;
+    wi::scene::TransformComponent* transform = scene.transforms.GetComponent(entity);
+    wi::scene::MaterialComponent* material = scene.materials.GetComponent(entity);
+    wi::scene::ObjectComponent* object = scene.objects.GetComponent(entity);
+    wi::scene::MeshComponent* mesh = scene.meshes.GetComponent(entity);
+    if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr) return false;
+
+    mesh->vertex_positions.resize(placement.vertex_count);
+    mesh->vertex_normals.resize(placement.vertex_count);
+    mesh->vertex_uvset_0.resize(placement.vertex_count);
+    mesh->vertex_tangents.clear();
+    mesh->vertex_uvset_1.clear();
+    mesh->vertex_boneindices.clear();
+    mesh->vertex_boneweights.clear();
+    mesh->vertex_boneindices2.clear();
+    mesh->vertex_boneweights2.clear();
+    mesh->vertex_atlas.clear();
+    mesh->vertex_colors.clear();
+    mesh->vertex_windweights.clear();
+    mesh->morph_targets.clear();
+    for (uint32_t vertex = 0; vertex < placement.vertex_count; ++vertex) {
+        const size_t source = size_t(placement.vertex_start) + vertex;
+        mesh->vertex_positions[vertex] = cooked_vector(geometry.positions, source);
+        mesh->vertex_normals[vertex] = cooked_vector(geometry.normals, source);
+        mesh->vertex_uvset_0[vertex] = XMFLOAT2(geometry.uvs[source * 2], geometry.uvs[source * 2 + 1]);
+    }
+    if (!geometry.tangents.empty()) {
+        mesh->vertex_tangents.resize(placement.vertex_count);
+        for (uint32_t vertex = 0; vertex < placement.vertex_count; ++vertex)
+            mesh->vertex_tangents[vertex] = cooked_tangent(geometry.tangents,
+                size_t(placement.vertex_start) + vertex);
+    }
+    std::vector<uint32_t> local_indices;
+    local_indices.reserve(placement.index_count);
+    for (uint32_t offset = 0; offset < placement.index_count; ++offset) {
+        const uint32_t source = geometry.indices[size_t(placement.index_start) + offset];
+        if (source < placement.vertex_start || source >= placement.vertex_start + placement.vertex_count) return false;
+        local_indices.push_back(source - placement.vertex_start);
+    }
+    assign_cooked_indices(*mesh, local_indices);
+    mesh->subsets.clear();
+    const uint32_t placement_begin = placement.index_start;
+    const uint32_t placement_end = placement_begin + placement.index_count;
+    if (placement.subset_count == 0 || size_t(placement.subset_start) + placement.subset_count > geometry.subsets.size()) return false;
+    for (uint32_t subset_index = 0; subset_index < placement.subset_count; ++subset_index) {
+        const auto& cooked = geometry.subsets[size_t(placement.subset_start) + subset_index];
+        const uint32_t begin = std::max(cooked.index_start, placement_begin);
+        const uint32_t end = std::min(cooked.index_start + cooked.index_count, placement_end);
+        if (begin >= end || (begin - placement_begin) % 3 != 0 || (end - begin) % 3 != 0) return false;
+        auto& subset = mesh->subsets.emplace_back();
+        subset.indexOffset = begin - placement_begin;
+        subset.indexCount = end - begin;
+        subset.materialID = entity;
+    }
+    if (mesh->subsets.empty()) return false;
+    set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
+    mesh->CreateRenderData();
+    material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+    material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
+    material->SetCastShadow(false);
+    material->userBlendMode = alpha < 0.999f ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
+    object->SetCastShadow(false);
+    return true;
+}
+
 } // namespace elisa::rendering

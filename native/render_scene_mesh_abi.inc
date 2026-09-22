@@ -24,6 +24,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.material_low = 0;
     instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.shared_source = wi::ecs::INVALID_ENTITY;
+    instance.imported_mesh_entities.clear();
     instance.imported_camera_entities.clear(); instance.imported_light_handles.clear();
     instance.joint_entities.clear();
     instance.skin_joints.clear();
@@ -53,16 +54,45 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     std::vector<wi::ecs::Entity> joint_entities;
+    std::vector<wi::ecs::Entity> placement_entities;
     try {
         // The cube helper creates the complete Wicked object/mesh/material
         // relationship; replace its small starter geometry with cooked data.
         entity = state.scene->Entity_CreateCube(name);
         if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-        if (!elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
-            px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha,
-            &joint_entities)) {
+        const bool has_placement_metadata = !geometry.mesh_placements.empty() &&
+            geometry.skin_joints.empty() && geometry.skin_cluster_joints.empty() &&
+            geometry.morph_targets.empty();
+        const bool configured = has_placement_metadata ?
+            elisa::rendering::configure_cooked_mesh_placement(*state.scene, entity, geometry, 0,
+                px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha) :
+            elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
+                px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha,
+                &joint_entities);
+        if (!configured) {
             state.scene->Entity_Remove(entity);
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        if (has_placement_metadata) {
+            placement_entities.reserve(geometry.mesh_placements.size() - 1);
+            for (size_t placement = 1; placement < geometry.mesh_placements.size(); ++placement) {
+                const std::string child_name = name + "_placement_" + std::to_string(placement);
+                const wi::ecs::Entity child = state.scene->Entity_CreateCube(child_name);
+                if (child == wi::ecs::INVALID_ENTITY ||
+                    !elisa::rendering::configure_cooked_mesh_placement(*state.scene, child, geometry, placement,
+                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                        1.0f, 1.0f, 1.0f, red, green, blue, alpha)) {
+                    if (child != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(child);
+                    throw 1;
+                }
+                state.scene->Component_Attach(child, entity, true);
+                const auto* parent_transform = state.scene->transforms.GetComponent(entity);
+                auto* child_transform = state.scene->transforms.GetComponent(child);
+                if (parent_transform == nullptr || child_transform == nullptr) throw 1;
+                child_transform->UpdateTransform_Parented(*parent_transform);
+                placement_entities.push_back(child);
+            }
+            instance.imported_mesh_entities = std::move(placement_entities);
         }
         elisa::rendering::CookedSceneResources imported;
         if (state.lighting == nullptr || !elisa::rendering::install_cooked_scene(*state.scene,
@@ -86,6 +116,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
         }
     } catch (...) {
         release_imported_scene(state, instance);
+        for (wi::ecs::Entity mesh : placement_entities) state.scene->Entity_Remove(mesh);
         for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
         if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
@@ -106,7 +137,8 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
 // skins, clips and morph targets animate per entity.
 bool shared_source_static(const RenderSceneService& state, const InstanceSlot& source) {
     if (source.shared_source != wi::ecs::INVALID_ENTITY || !source.skin_joints.empty() ||
-        !source.animation_clips.empty() || !source.joint_entities.empty()) return false;
+        !source.animation_clips.empty() || !source.joint_entities.empty() ||
+        !source.imported_mesh_entities.empty()) return false;
     const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(source.entity);
     return mesh != nullptr && mesh->morph_targets.empty() &&
         state.scene->objects.GetComponent(source.entity) != nullptr;

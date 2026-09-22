@@ -165,8 +165,11 @@ def lines(metadata: dict) -> list[str]:
     placements = metadata.get("mesh_placements", [])
     cameras, lights = metadata["cameras"], metadata["lights"]
     result = [f"mesh_count={meshes}", f"mesh_placement_count={len(placements)}",
-        "mesh_placement_stride=56"]
-    packed_placements = b"".join(struct.pack("<2I12f", placement["mesh"], placement["node"],
+        "mesh_placement_stride=80"]
+    packed_placements = b"".join(struct.pack("<8I12f", placement["mesh"], placement["node"],
+        placement.get("vertex_start", 0), placement.get("vertex_count", 0),
+        placement.get("index_start", 0), placement.get("index_count", 0),
+        placement.get("subset_start", 0), placement.get("subset_count", 0),
         *placement["transform"]) for placement in placements)
     result.append("mesh_placements_b64=" + base64.b64encode(packed_placements).decode("ascii"))
     result.append(f"camera_count={len(cameras)}")

@@ -74,6 +74,9 @@ struct InstanceSlot {
     // Set on a clone: the instance whose mesh and material it draws.
     wi::ecs::Entity shared_source = wi::ecs::INVALID_ENTITY;
     std::vector<wi::ecs::Entity> joint_entities;
+    // Additional mesh entities for a cooked scene with multiple placements;
+    // `entity` remains the root placement and owns the gameplay transform.
+    std::vector<wi::ecs::Entity> imported_mesh_entities;
     std::vector<wi::ecs::Entity> imported_camera_entities;
     std::vector<probe::NativeLightHandle> imported_light_handles;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
@@ -480,6 +483,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.material_low = 0;
     instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.joint_entities.clear();
+    instance.imported_mesh_entities.clear();
     instance.imported_camera_entities.clear();
     instance.imported_light_handles.clear();
     instance.skin_joints.clear();

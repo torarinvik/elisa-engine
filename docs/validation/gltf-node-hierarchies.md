@@ -7,6 +7,9 @@ That covers matrix and TRS nodes, nested groups, several meshes, one mesh
 placed more than once, and mirroring scales. The flattened render payload is
 still an ordinary cooked mesh with material subsets, while the package now
 also carries bounded source mesh/node placement metadata for scene clients.
+`RenderScene::create_mesh` uses those ranges to create one Wicked mesh entity
+per static placement under the root; the root keeps the public instance handle
+and game transform.
 
 ## Path
 
@@ -61,16 +64,18 @@ also carries bounded source mesh/node placement metadata for scene clients.
    every mesh draw from one slot list.
 5. **Retain source placement identities.** `mesh_count` and the
    `mesh_placements_b64` records preserve each source mesh index, node index,
-   and world transform in depth-first order. The native package reader checks
-   the fixed 56-byte record stride, bounds, finite transforms, and that every
-   source mesh is represented before exposing the records to runtime clients.
+   and world transform in depth-first order. Each fixed 80-byte record also
+   stores contiguous vertex and index ranges plus the overlapping subset range.
+   The native package reader checks those ranges, finite transforms, and that
+   every source mesh is represented before exposing the records to runtime
+   clients.
 
    The public runtime query is `RenderScene::snapshot_mesh_placement_count`
    followed by `RenderScene::snapshot_mesh_placement`. It returns the source
    mesh index, node index, and row-major affine 3x4 world transform without
-   re-reading the bundle. The existing flattened mesh upload remains the
-   compatibility path until independently addressable imported placements are
-   added.
+   re-reading the bundle. Snapshot rows retain the flattened compatibility
+   upload, while direct imported meshes now keep independently addressable
+   static placement entities.
 
 ## Evidence
 
@@ -148,7 +153,9 @@ second scene instead.
 
 **Loader.** `scripts/test_geometry_subsets.py` now runs 85 sanitized cases.
 The two new ones load the cooked fixture with its three subsets and three
-authored slot records, and the 16-subset alternating cook.
+authored slot records, and the 16-subset alternating cook. The imported-scene
+smoke also creates the four-placement fixture, checks four Wicked mesh entities
+under one public handle, and verifies cleanup after destruction.
 
 **Native.** `test/render_scene_node_hierarchy_native.elisa` runs in the
 SDL3/Metal smoke after the cooked-material test, as group 228. The row sits at
@@ -238,13 +245,14 @@ sign only changes lighting, and the emissive color still dominates.
 
 ## Limits
 
-- **Static scenes only.** Skins, animation, morph weights, cameras and
-  extensions such as `KHR_lights_punctual` still fail visibly. Cameras,
-  lights, animation and multi-material skinned meshes remain A05.
-- **Flattened render payload.** The hierarchy still bakes into one mesh, so
-  node names and per-node runtime handles are not yet exposed and a mesh
-  placed twice is two vertex copies, not GPU instances. Source mesh/node
-  indices and world transforms are retained for the next imported-scene API.
+- **Placement ranges are static.** Skinned and morphed packages continue to
+  use the single cooked mesh path, and skinned node transforms remain identity.
+  Cameras, lights and animation metadata are imported, but independent
+  placement entities currently apply only to static, non-morphed geometry.
+- **Snapshot rows remain flattened.** Snapshot material registration and row
+  commits still use the compatibility mesh. Direct `create_mesh` imports expose
+  placement entities through the root instance lifetime; their transforms are
+  baked into each vertex range, so no extra per-placement matrix is required.
 - **Bounds.** 256 nodes, 256 meshes, 16 primitives per mesh, 16 material
   slots and 16 subsets after merging. The existing vertex and index bounds
   apply to the baked totals.
