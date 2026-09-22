@@ -10,14 +10,17 @@ The native gate uploads the same KTX produced by the cooker and assigns the
 result to the authored goal material. The existing raw package, RGB565, BC1,
 and KTX structural probes remain alongside this GPU upload check.
 
-The gate also loads the cooked KTX2 artifact through the pinned Basis
-transcoder in `native/ktx2_upload.h`, transcodes every bounded 2D mip level to
-RGBA8, preserves the KTX2 transfer function in Wicked's UNORM/SRGB format,
-and assigns that real GPU texture to the authored goal material. The current
-cooked fixture is explicitly linear so Godot can retain its compressed KTX2
-path; an sRGB fixture remains a separate compatibility case. The
-container and decoded GPU payload are both bounded, and malformed input fails
-before allocation. The queried format policy now rejects BC1 for authored alpha
-and forces normal maps through RGBA8, even when a scalar format was requested;
-cubemap upload and broader GPU-native format selection remain follow-up A06
-work.
+The gate loads the cooked KTX2 2D artifact through the pinned Basis transcoder
+in `native/ktx2_upload.h`, transcodes every bounded mip level to RGBA8, preserves
+the KTX2 transfer function in Wicked's UNORM/SRGB format, and assigns that GPU
+texture to the authored goal material. The current cooked fixture is explicitly
+linear so Godot can retain its compressed KTX2 path; an sRGB fixture remains a
+separate compatibility case. The
+container and decoded GPU payload are both bounded, each mip dimension is
+validated, and malformed input fails before GPU allocation. Six-face textures
+use Wicked's cube resource flag and slice-major subresource order. The Basis
+probe cooks distinct colors for each cube face and checks them after CPU
+transcoding; the Wicked gate uploads that fixture and verifies its descriptor.
+The queried format policy rejects BC1 for authored alpha and forces normal maps
+through RGBA8, even when a scalar format was requested; broader GPU-native
+format selection remains follow-up A06 work.
