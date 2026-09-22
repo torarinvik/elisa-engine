@@ -79,7 +79,31 @@ inline bool probe_physics_interpolation() {
     if (!check(buffer.commit(identity, 2, true), "native pose teleport commit") ||
         !check(buffer.sample(0.5f).position.x == 0.0f, "native pose teleport bypass") ) return false;
     buffer.clear_teleport();
-    return check(buffer.tick() == 2, "native pose tick publication");
+    if (!check(buffer.tick() == 2, "native pose tick publication")) return false;
+
+    // Presentation cadence is independent of the authoritative fixed ticks:
+    // two render loops sample the same committed history at different rates,
+    // while neither loop can advance or fork the published tick.
+    NativePoseBuffer thirty_hz(identity);
+    NativePoseBuffer one_twenty_hz(identity);
+    for (uint64_t tick = 1; tick <= 3; ++tick) {
+        NativePose pose = identity;
+        pose.position.x = static_cast<float>(tick) * 2.0f;
+        if (!check(thirty_hz.commit(pose, tick, false), "thirty hertz pose commit") ||
+            !check(one_twenty_hz.commit(pose, tick, false), "one hundred twenty hertz pose commit")) return false;
+        for (int frame = 0; frame < 30; ++frame) {
+            (void)thirty_hz.sample(static_cast<float>(frame % 10) / 10.0f);
+        }
+        for (int frame = 0; frame < 120; ++frame) {
+            (void)one_twenty_hz.sample(static_cast<float>(frame % 20) / 20.0f);
+        }
+    }
+    if (!check(thirty_hz.tick() == 3 && one_twenty_hz.tick() == 3,
+        "render cadence preserves fixed tick") ||
+        !check(std::fabs(thirty_hz.sample(1.0f).position.x -
+            one_twenty_hz.sample(1.0f).position.x) < 0.001f,
+            "render cadence converges to fixed pose")) return false;
+    return true;
 }
 
 } // namespace probe
