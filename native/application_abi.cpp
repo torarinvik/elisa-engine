@@ -44,6 +44,7 @@ struct ApplicationService {
     std::mutex mutex;
     probe::NativeApplication host;
     std::thread::id owner_thread{};
+    std::chrono::steady_clock::time_point initialized_at{};
     std::chrono::steady_clock::time_point previous_pump{};
     uint64_t frame_count = 0;
     uint64_t elapsed_nanos = 0;
@@ -192,6 +193,7 @@ extern "C" int32_t elisa_application_v1_initialize(
     service.backend_profile_valid = probe::query_live_backend_profile(service.backend_profile);
 
     service.owner_thread = std::this_thread::get_id();
+    service.initialized_at = std::chrono::steady_clock::now();
     service.previous_pump = std::chrono::steady_clock::now();
     service.frame_count = 0;
     service.elapsed_nanos = 0;
@@ -503,6 +505,7 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     service.backend_profile = {};
     service.backend_profile_valid = false;
     service.owner_thread = std::thread::id{};
+    service.initialized_at = std::chrono::steady_clock::time_point{};
     service.pending_events = 0;
     service.elapsed_nanos = 0;
     return ELISA_APPLICATION_OK;
@@ -512,6 +515,15 @@ extern "C" uint64_t elisa_application_v1_frame_count(void) {
     ApplicationService& service = application_service();
     std::lock_guard<std::mutex> guard(service.mutex);
     return service.frame_count;
+}
+
+extern "C" uint64_t elisa_application_v1_uptime_nanos(void) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return 0;
+    const auto elapsed = std::chrono::steady_clock::now() - service.initialized_at;
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
 }
 
 extern "C" int32_t elisa_application_v1_validate_owner_thread(void) {
