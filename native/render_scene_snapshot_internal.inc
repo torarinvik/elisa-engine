@@ -36,7 +36,8 @@ bool apply_snapshot_material_textures(RenderSceneService& state,
             SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[texture_slot];
             const int32_t slot_code = static_cast<int32_t>(slot);
             const bool assigned = texture.section.empty()
-                ? elisa::rendering::textures::assign_resolved_texture(material, slot_code, texture.canonical_path)
+                ? elisa::rendering::textures::assign_resolved_texture(material, slot_code,
+                    texture.canonical_path, &texture.resources[slot])
                 : elisa::rendering::textures::assign_decoded_texture(material, slot_code,
                     texture.resources[slot], texture.resource_stem, texture.extension, texture.decoded);
             if (!assigned) return false;

@@ -10,8 +10,9 @@ The native gate uploads the same KTX produced by the cooker and assigns the
 result to the authored goal material. The existing raw package, RGB565, BC1,
 and KTX structural probes remain alongside this GPU upload check.
 
-The gate loads the cooked KTX2 2D artifact through the pinned Basis transcoder
-in `native/ktx2_upload.h`, transcodes bounded mip chains to queried BC1 (opaque),
+Loose KTX2 project texture assets registered through RenderScene load through
+the pinned Basis transcoder in `native/ktx2_upload.h`. It transcodes bounded
+mip chains to queried BC1 (opaque),
 BC7/BC3 (alpha), or RGBA8 formats, preserves the KTX2 transfer function in
 Wicked's UNORM/SRGB formats, and assigns the color texture to the authored goal
 material. Normal-data usage stays on channel-preserving linear RGBA8 until a
@@ -26,4 +27,6 @@ transcodes every face at one mip before advancing to the next. The CPU probe
 checks opaque BC1 and alpha BC7/BC3 Basis targets, verifies alpha and sRGB
 metadata, and checks distinct colors on all cube faces. The Wicked `texture`
 phase runs a focused upload smoke that verifies queried format selection,
-normal-data preservation, alpha safety, and cube shape.
+normal-data preservation, alpha safety, and cube shape. The render-scene smoke
+also registers a loose KTX2 asset and samples it from an Elisa material. KTX2
+sections inside ELPK bundles remain unsupported.

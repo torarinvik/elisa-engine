@@ -7,6 +7,16 @@
 
 namespace probe {
 
+using elisa::rendering::textures::KTX2TextureUsage;
+using elisa::rendering::textures::KTX2UploadEncoding;
+using elisa::rendering::textures::KTX2UploadFormats;
+using elisa::rendering::textures::MAX_KTX2_CONTAINER_BYTES;
+using elisa::rendering::textures::choose_ktx2_upload_encoding;
+using elisa::rendering::textures::ktx2_wicked_format;
+using elisa::rendering::textures::load_ktx2_texture_resource;
+using elisa::rendering::textures::query_ktx2_upload_formats;
+using elisa::rendering::textures::read_bounded_ktx2_container;
+
 inline bool check_ktx2_bounded_reader(const std::filesystem::path& directory) {
     const std::filesystem::path fixture = directory / "ktx2-reader-probe.tmp";
     std::error_code error;

@@ -2,9 +2,9 @@
 
 The plan names KTX/Basis for asset cooking and runtime loading/transcoding.
 This builds the `basisu` CLI, which the cooker runs to produce a UASTC KTX2
-from the cooked pixels; the Basis transcoder is compiled into
-native/basisu_probe.cpp directly from the same checkout, so the runtime side
-has no external binary dependency.
+from cooked pixels. Native application hosts and probes link the pinned Basis
+transcoder directly from the same checkout, so runtime has no external binary
+dependency.
 
 Usage:
   python3 scripts/fetch_basisu.py

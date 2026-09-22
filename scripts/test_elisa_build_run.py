@@ -146,14 +146,15 @@ class BuildRunCliTests(unittest.TestCase):
             output_index = linker_args.index("-o") + 1
             self.assertIn(" ", linker_args[output_index])
             self.assertIn(" ", str(output))
-            self.assertIn(str(SCRIPT.parent.parent / "native/render_scene_abi.cpp"), linker_args)
-            self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
+        self.assertIn(str(SCRIPT.parent.parent / "native/render_scene_abi.cpp"), linker_args)
+        self.assertIn(str(SCRIPT.parent.parent / "dependencies/basisu/transcoder/basisu_transcoder.cpp"), linker_args)
+        self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
 
     def test_native_link_optimizes_only_on_request(self) -> None:
         runner = __import__("elisa_build_run")
         paths = {key: Path("/opt/fake") for key in (
             "wicked_source", "libraries", "sdl_include", "sdl_library", "brew_include",
-            "brew_library", "miniaudio_include")}
+            "brew_library", "miniaudio_include", "basisu_transcoder")}
         arguments = (Path("/tmp/entry.a"), Path("/tmp/application"), Path("/tmp/build"), paths)
         default = runner.native_link_command("clang++", *arguments)
         optimized = runner.native_link_command("clang++", *arguments, optimize=True)

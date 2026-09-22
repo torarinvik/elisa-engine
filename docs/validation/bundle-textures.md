@@ -108,8 +108,9 @@ and the source was restored.
 ## Limits
 
 - **Formats.** Only PNG and JPEG sections load. KTX2, Basis and DDS sections
-  are rejected. KTX2 upload exists in `native/ktx2_upload.h`, but it isn't
-  connected to bundle sections. That is A06.
+  are rejected. Separately registered loose KTX2 assets use the runtime Basis
+  transcoder; bundle sections still need an encoded-texture worker result and
+  owner-thread GPU upload path (A06).
 - **Decode timing.** Async bundle requests decode on the A04 worker. The
   synchronous compatibility entrypoint decodes on the owner thread. GPU
   texture creation and mip/compression scheduling stay on the owner thread.
