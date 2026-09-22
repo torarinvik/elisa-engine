@@ -5,6 +5,7 @@
 // only copied hit data and a generation-checked query token.
 #include "probe_core.h"
 #include "wiScene.h"
+#include "wiPhysics.h"
 
 #include <algorithm>
 #include <array>
@@ -154,6 +155,28 @@ private:
     size_t delivered_ = 0;
     bool active_ = false;
     bool dispatching_ = false;
+};
+
+class PhysicsContactQueueListener final : public wi::physics::ContactEventListener {
+public:
+    explicit PhysicsContactQueueListener(PhysicsContactQueue& queue) : queue_(queue) {}
+
+    void OnContact(const wi::physics::ContactEvent& event) override {
+        queue_.publish({event.entity_a, event.entity_b, event.position, event.normal,
+            event.penetration_depth, kind(event.type), event.sensor, 0});
+    }
+
+private:
+    static PhysicsContactKind kind(wi::physics::ContactEventType type) {
+        switch (type) {
+        case wi::physics::ContactEventType::Persisted: return PhysicsContactKind::Persisted;
+        case wi::physics::ContactEventType::Removed: return PhysicsContactKind::Removed;
+        case wi::physics::ContactEventType::Added: break;
+        }
+        return PhysicsContactKind::Added;
+    }
+
+    PhysicsContactQueue& queue_;
 };
 
 template <size_t Capacity>
