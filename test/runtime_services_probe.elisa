@@ -1,6 +1,7 @@
 # End-to-end activation and cleanup checks for report-selected providers.
 include "../src/runtime/executor.elisa"
 include "./world_audio_probe.elisa"
+include "./runtime_physics_queries_probe.elisa"
 
 @callconv(c)
 extern elisa_audio_v1_test_request_device_recovery() -> i32
@@ -320,6 +321,8 @@ module RuntimeServicesProbe:
                         WorldHierarchy::hierarchy_update(&hierarchy)
                         child_after_two: Geometry::Transform = WorldHierarchy::hierarchy_world(hierarchy, child.id)
                         test_status <- 120 if test_status == 0 and ElisaMath::fabsf(child_after_two.position.y - child_tick_two.position.y) > 0.001
+                    if test_status == 0:
+                        test_status <- RuntimePhysicsQueriesProbe::run(session)
 
             child_cleanup: i32 = catch WorldPhysics::unbind(session, &bindings, child):
                 ok: 0

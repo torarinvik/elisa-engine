@@ -317,6 +317,19 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_fixed_step(&session.physics, delta_seconds)
 
+        def physics_raycast(session: Session&, origin: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, layer_mask: u32) -> PhysicsRuntime::RayHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_raycast(session.physics, origin, direction,
+                max_distance, layer_mask)
+
+        def physics_poll_contacts(session: Session&, buffer: PhysicsRuntime::ContactBuffer&,
+            dropped: mutable u32&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_poll_contacts(session.physics, buffer, dropped)
+
         def physics_body_create(session: Session&, description: PhysicsRuntime::BodyDesc) -> PhysicsRuntime::BodyHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
