@@ -531,6 +531,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
     return update_transform_unlocked(state, slot, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
 }
 #include "render_scene_snapshot_abi.inc"
+#include "render_scene_snapshot_mesh_scene_abi.inc"
 #include "render_scene_snapshot_tint_abi.inc"
 #include "render_scene_snapshot_bundle_texture_abi.inc"
 #include "render_scene_snapshot_asset_request_abi.inc"

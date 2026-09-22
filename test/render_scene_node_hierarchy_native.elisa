@@ -85,6 +85,9 @@ module RenderSceneNodeHierarchyNativeTests:
             GREEN: i32 = 1
             BLUE: i32 = 2
 
+        const module Placement:
+            X_TRANSLATION: usize = 3
+
         # An off-axis panel pose turned about all three axes. The quaternion
         # need not be unit length; the render service normalizes it.
         const module Pose:
@@ -145,6 +148,26 @@ module RenderSceneNodeHierarchyNativeTests:
             catch RenderScene::snapshot_mesh_material_count(mesh_id()):
                 value: value.i32()
                 error failure: -1
+
+        def placement_metadata() -> i32:
+            count: u32 = catch RenderScene::snapshot_mesh_placement_count(mesh_id()):
+                value: value
+                error failure: return 1
+            return 2 if count != 4
+            first: mutable RenderScene::SnapshotMeshPlacement = RenderScene::SnapshotMeshPlacement()
+            first_status: i32 = catch RenderScene::snapshot_mesh_placement(mesh_id(), 0, &first):
+                ok: 0
+                error failure: return 3
+            return 3 if first_status != 0
+            return 4 if first.mesh_index != 0 or first.node_index != 2
+            translation: f32 = first.transform[Placement::X_TRANSLATION]
+            return 5 if translation < -0.67 or translation > -0.66
+            invalid: i32 = catch RenderScene::snapshot_mesh_placement(mesh_id(), count, &first):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 6 if invalid != 1
+            0
 
         def append(materials: mutable RenderScene::SnapshotMaterialSet&, paint: u64) -> i32:
             catch RenderScene::snapshot_material_set_append(materials, material_id(paint)):
@@ -256,6 +279,8 @@ module RenderSceneNodeHierarchyNativeTests:
         def registered() -> i32:
             return 1 if register_mesh() != Code::OK
             return 2 if material_count() != 3
+            metadata: i32 = placement_metadata()
+            return 40 + metadata if metadata != 0
             return 3 if register_cooked(Set::STRIPS, Paint::RED, Paint::GREEN, Paint::BLUE) != Code::OK
             return 4 if not is_strip(Paint::RED, 1.0, 0.0, 0.0) or not is_strip(Paint::GREEN, 0.0, 1.0, 0.0)
             return 5 if not is_strip(Paint::BLUE, 0.0, 0.0, 1.0)

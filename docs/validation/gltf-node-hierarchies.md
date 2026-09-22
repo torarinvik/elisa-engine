@@ -65,6 +65,13 @@ also carries bounded source mesh/node placement metadata for scene clients.
    the fixed 56-byte record stride, bounds, finite transforms, and that every
    source mesh is represented before exposing the records to runtime clients.
 
+   The public runtime query is `RenderScene::snapshot_mesh_placement_count`
+   followed by `RenderScene::snapshot_mesh_placement`. It returns the source
+   mesh index, node index, and row-major affine 3x4 world transform without
+   re-reading the bundle. The existing flattened mesh upload remains the
+   compatibility path until independently addressable imported placements are
+   added.
+
 ## Evidence
 
 `test/fixtures/node_hierarchy_panel.gltf` has three single-sided materials,

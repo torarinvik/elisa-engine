@@ -75,6 +75,19 @@ extend RenderScene:
         extern elisa_render_scene_v1_snapshot_mesh_material_count(mesh_high: u64, mesh_low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_placement_count(
+            mesh_high: u64, mesh_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_placement(
+            mesh_high: u64, mesh_low: u64, index: u32,
+            mesh_index: mutable u32&, node_index: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_placement_component(
+            mesh_high: u64, mesh_low: u64, index: u32, component: u32) -> f32
+
+        @callconv(c)
         extern elisa_render_scene_v1_register_snapshot_mesh_material(mesh_high: u64, mesh_low: u64,
             slot: u32, high: u64, low: u64) -> i32
 
@@ -120,6 +133,7 @@ extend RenderScene:
     public:
         # A cooked mesh has at most this many material slots.
         const MAX_SNAPSHOT_MATERIAL_SLOTS: usize = 16
+        const SNAPSHOT_MESH_PLACEMENT_COMPONENTS: usize = 12
 
         # One registered material for each material slot of a multi-material
         # mesh, in slot order.
@@ -130,6 +144,16 @@ extend RenderScene:
 
         def SnapshotMaterialSet() -> SnapshotMaterialSet:
             SnapshotMaterialSet{materials: zeroed, count: 0}
+
+        # Source mesh/node placement metadata retained by the glTF cooker.
+        # The renderer still consumes the flattened geometry payload.
+        struct SnapshotMeshPlacement:
+            mesh_index: mutable u32
+            node_index: mutable u32
+            transform: mutable f32[RenderScene::SNAPSHOT_MESH_PLACEMENT_COMPONENTS]
+
+        def SnapshotMeshPlacement() -> SnapshotMeshPlacement:
+            SnapshotMeshPlacement{mesh_index: 0, node_index: 0, transform: zeroed}
 
         def snapshot_material_set_append(set: mutable SnapshotMaterialSet&,
             material: Assets::AssetId) -> void error[RenderSceneError]:
@@ -248,6 +272,28 @@ extend RenderScene:
             if count < 0:
                 try check_status(count)
             count.u32()
+
+        # The number of source mesh/node placements retained by a resident
+        # cooked mesh. A legacy flattened package reports zero.
+        def snapshot_mesh_placement_count(mesh: Assets::AssetId) -> u32 error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            count: i32 = elisa_render_scene_v1_snapshot_mesh_placement_count(mesh.high, mesh.low)
+            if count < 0:
+                try check_status(count)
+            count.u32()
+
+        # Reads one source placement in cooker order. Its transform is the
+        # affine world transform baked into the flattened vertex payload.
+        def snapshot_mesh_placement(mesh: Assets::AssetId, index: u32,
+            placement: mutable SnapshotMeshPlacement&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            status: i32 = elisa_render_scene_v1_snapshot_mesh_placement(
+                mesh.high, mesh.low, index, placement.mesh_index, placement.node_index)
+            if status < 0:
+                try check_status(status)
+            for component in 0..<RenderScene::SNAPSHOT_MESH_PLACEMENT_COMPONENTS |placement|:
+                placement.transform[component] <- elisa_render_scene_v1_snapshot_mesh_placement_component(
+                    mesh.high, mesh.low, index, component.u32())
 
         # The number of images a cooked mesh's slot materials sample.
         def snapshot_mesh_texture_count(mesh: Assets::AssetId) -> u32 error[RenderSceneError]:
