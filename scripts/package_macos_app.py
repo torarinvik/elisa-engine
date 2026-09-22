@@ -22,6 +22,7 @@ import plistlib
 import re
 import shutil
 import stat
+import subprocess
 from pathlib import Path
 
 
@@ -163,6 +164,83 @@ def stage_resource(project: Path, resources: Path, relative: Path) -> None:
         raise PackageError(f"manifest resource is missing from the project: {relative}")
 
 
+MACH_O_MAGICS = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
+SYSTEM_LIBRARY_PREFIXES = ("/usr/lib/", "/System/")
+MAX_BUNDLED_LIBRARIES = 64
+
+
+def is_mach_o(path: Path) -> bool:
+    with path.open("rb") as stream:
+        return stream.read(4) in MACH_O_MAGICS
+
+
+def run_tool(*command: str) -> str:
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise PackageError(f"{command[0]} failed: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout
+
+
+def linked_libraries(file: Path) -> list[str]:
+    """Return the install names `file` loads, excluding its own identity."""
+    names: list[str] = []
+    for line in run_tool("otool", "-L", str(file)).splitlines()[1:]:
+        entry = line.strip().split(" (compatibility", 1)[0]
+        if entry and Path(entry).name != file.name:
+            names.append(entry)
+    return names
+
+
+def existing_rpaths(file: Path) -> set[str]:
+    paths: set[str] = set()
+    lines = run_tool("otool", "-l", str(file)).splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() == "cmd LC_RPATH" and index + 2 < len(lines):
+            paths.add(lines[index + 2].strip().split(" ", 2)[1])
+    return paths
+
+
+def bundle_dynamic_libraries(binary: Path, frameworks: Path) -> list[str]:
+    """Copy every non-system dynamic library `binary` loads, transitively,
+    into `frameworks`, point each load command at @rpath, and re-sign.
+
+    Development builds link Homebrew libraries by absolute path. A bundle
+    must not depend on that prefix, so the closure is staged beside the
+    executable and found through a loader-relative run path instead.
+    """
+    binary.chmod(binary.stat().st_mode | stat.S_IWUSR)
+    staged: dict[str, Path] = {}
+    pending = [binary]
+    while pending:
+        file = pending.pop()
+        for install_name in linked_libraries(file):
+            if install_name.startswith(SYSTEM_LIBRARY_PREFIXES) or install_name.startswith("@"):
+                continue
+            name = Path(install_name).name
+            if name not in staged:
+                if len(staged) >= MAX_BUNDLED_LIBRARIES:
+                    raise PackageError(f"more than {MAX_BUNDLED_LIBRARIES} dynamic libraries to bundle")
+                source = Path(install_name)
+                if not source.is_file():
+                    raise PackageError(f"linked library is missing: {install_name}")
+                frameworks.mkdir(parents=True, exist_ok=True)
+                destination = frameworks / name
+                shutil.copy2(source, destination, follow_symlinks=True)
+                destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
+                run_tool("install_name_tool", "-id", f"@rpath/{name}", str(destination))
+                staged[name] = destination
+                pending.append(destination)
+            run_tool("install_name_tool", "-change", install_name, f"@rpath/{name}", str(file))
+    for file, rpath in [(binary, "@loader_path/../Frameworks")] + [
+            (library, "@loader_path") for library in staged.values()]:
+        if staged and rpath not in existing_rpaths(file):
+            run_tool("install_name_tool", "-add_rpath", rpath, str(file))
+        # Editing load commands invalidates the signature; an ad-hoc one keeps
+        # the loader happy on Apple silicon until a release identity signs.
+        run_tool("codesign", "--force", "--sign", "-", str(file))
+    return sorted(staged)
+
+
 def write_launcher(path: Path, binary_name: str) -> None:
     script = f"""#!/bin/sh
 set -eu
@@ -213,6 +291,8 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
 
     binary_name = f"{bundle_name}.bin"
     shutil.copy2(executable, resources / binary_name)
+    if is_mach_o(resources / binary_name):
+        bundle_dynamic_libraries(resources / binary_name, contents / "Frameworks")
     write_launcher(macos / bundle_name, binary_name)
 
     # Runtime paths in the game are deliberately project-relative. Stage the
