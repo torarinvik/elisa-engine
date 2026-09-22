@@ -4,6 +4,7 @@
 #include "backend_capability_query.h"
 #include "native_application.h"
 #include "physics_service_abi.h"
+#include "shader_path_validation.h"
 #include "wiHelper.h"
 #include "wiRenderer.h"
 
@@ -24,7 +25,6 @@ namespace {
 
 constexpr size_t INPUT_EVENT_CAPACITY = 512;
 constexpr size_t GAMEPAD_CAPACITY = 4;
-
 struct QueuedInputEvent {
     int32_t kind = 0;
     int32_t device = 0;
@@ -132,7 +132,7 @@ bool on_owner_thread(const ApplicationService& service) {
 
 void configure_shader_root() {
     const char* configured = std::getenv("ELISA_ENGINE_SHADER_PATH");
-    if (configured == nullptr || configured[0] == '\0' || std::strlen(configured) > 4096) return;
+    if (configured == nullptr || configured[0] == '\0') return;
     std::string path(configured);
     if (path.back() != '/') path.push_back('/');
     wi::renderer::SetShaderPath(path);
@@ -177,6 +177,14 @@ extern "C" int32_t elisa_application_v1_initialize(
     if (!valid_title(title) || width <= 0 || height <= 0 || width > 16384 || height > 16384 ||
         (hidden != 0 && hidden != 1)) {
         return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    const char* shader_path = std::getenv("ELISA_ENGINE_SHADER_PATH");
+    const char* shader_manifest = std::getenv("ELISA_ENGINE_SHADER_MANIFEST");
+    if (elisa::shader::manifest_status_is_invalid(shader_path, shader_manifest)) {
+        return ELISA_APPLICATION_SHADER_MANIFEST_INVALID;
+    }
+    if (!elisa::shader::root_is_valid(shader_path, shader_manifest)) {
+        return ELISA_APPLICATION_SHADER_PATH_INVALID;
     }
     ApplicationService& service = application_service();
     std::lock_guard<std::mutex> guard(service.mutex);

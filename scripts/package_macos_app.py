@@ -16,6 +16,7 @@ control and editor litter.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import plistlib
 import re
@@ -78,6 +79,9 @@ MAX_RESOURCE_ENTRIES = 256
 
 
 SHADER_METADATA_SUFFIX = ".wishadermeta"
+SHADER_MANIFEST_NAME = "elisa.shader-manifest.json"
+SHADER_MANIFEST_SCHEMA = 1
+SHADER_BINARY_SUFFIXES = frozenset({".cso", ".spv"})
 
 
 def ignore_litter(_directory: str, names: list[str]) -> set[str]:
@@ -90,6 +94,25 @@ def ignore_shader_metadata(directory: str, names: list[str]) -> set[str]:
     # which is exactly what a relocated bundle without the source tree needs.
     return ignore_litter(directory, names) | {
         name for name in names if name.endswith(SHADER_METADATA_SUFFIX)}
+
+
+def shader_manifest(shader_root: Path) -> dict[str, object]:
+    """Describe compiled shader inputs with a stable content fingerprint."""
+    files: list[dict[str, object]] = []
+    for path in sorted(shader_root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in SHADER_BINARY_SUFFIXES:
+            continue
+        files.append({
+            "path": path.relative_to(shader_root).as_posix(),
+            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        })
+    if not files:
+        raise PackageError(f"shader directory has no compiled shader binaries: {shader_root}")
+    payload: dict[str, object] = {"schema": SHADER_MANIFEST_SCHEMA, "files": files}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload["fingerprint"] = hashlib.sha256(canonical).hexdigest()
+    return payload
 
 
 def copy_directory(source: Path, destination: Path, ignore=ignore_litter) -> None:
@@ -148,6 +171,10 @@ cd \"$resources\"
 if [ -d \"$resources/shaders\" ]; then
     ELISA_ENGINE_SHADER_PATH=\"$resources/shaders\"
     export ELISA_ENGINE_SHADER_PATH
+    if [ -f \"$resources/shaders/{SHADER_MANIFEST_NAME}\" ]; then
+        ELISA_ENGINE_SHADER_MANIFEST=\"$resources/shaders/{SHADER_MANIFEST_NAME}\"
+        export ELISA_ENGINE_SHADER_MANIFEST
+    fi
 fi
 exec \"$resources/{binary_name}\" \"$@\"
 """
@@ -201,6 +228,9 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     shaders = project / "shaders"
     if shaders.is_dir():
         copy_directory(shaders, resources / "shaders", ignore_shader_metadata)
+        manifest = shader_manifest(shaders)
+        (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     info = {
         "CFBundleDevelopmentRegion": "en",

@@ -6,12 +6,13 @@ module RenderSceneAnimationSubmissionNativeTests:
         const ZERO_MORPH: f32 = 0.0
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_animation_submission(handle: i64,
+        extern elisa_render_scene_v1_test_animation_submission(handle: RenderScene::InstanceHandle,
             expected_x: f32, expected_morph: f32, expected_pending: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_instances(
-            first_handle: i64, first_x: f32, second_handle: i64, second_x: f32,
+            first_handle: RenderScene::InstanceHandle, first_x: f32,
+            second_handle: RenderScene::InstanceHandle, second_x: f32,
             expected_pending: i32) -> i32
 
     public:

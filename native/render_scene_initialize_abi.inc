@@ -19,6 +19,7 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
         state.lighting = std::make_unique<probe::LightingBridge>(*state.scene);
         state.visibility_lod = std::make_unique<probe::VisibilityLodBridge>(*state.scene, *state.path);
         state.animation_submission = std::make_unique<probe::AnimationSubmissionBridge>(*state.scene);
+        state.effects = std::make_unique<probe::EffectBridge>(*state.scene);
     } catch (...) {
         reset_unlocked(state);
         return ELISA_RENDER_SCENE_BACKEND_FAILED;

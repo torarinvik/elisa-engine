@@ -17,6 +17,7 @@
 #include "lighting_bridge.h"
 #include "visibility_lod_bridge.h"
 #include "animation_submission_bridge.h"
+#include "effect_bridge.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
@@ -147,6 +148,7 @@ struct RenderSceneService {
     std::unique_ptr<probe::LightingBridge> lighting;
     std::unique_ptr<probe::VisibilityLodBridge> visibility_lod;
     std::unique_ptr<probe::AnimationSubmissionBridge> animation_submission;
+    std::unique_ptr<probe::EffectBridge> effects;
     wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity primary_camera_entity = wi::ecs::INVALID_ENTITY;
@@ -330,6 +332,7 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lighting.reset();
     state.visibility_lod.reset();
+    state.effects.reset();
     for (InstanceSlot& instance : state.instances) {
         release_animation_submission(state, instance);
     }
@@ -539,6 +542,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_snapshot_asset_request_abi.inc"
 #include "render_scene_animation_abi.inc"
 #include "render_scene_animation_submission_abi.inc"
+#include "render_scene_effects_abi.inc"
 #include "render_scene_material_abi.inc"
 #include "render_scene_environment_abi.inc"
 #include "render_scene_lighting_abi.inc"

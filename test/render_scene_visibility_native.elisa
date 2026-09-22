@@ -6,7 +6,7 @@ module RenderSceneVisibilityNativeTests:
         const LAYER_MASK: u32 = 64
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_visibility_policy(handle: i64,
+        extern elisa_render_scene_v1_test_visibility_policy(handle: RenderScene::InstanceHandle,
             draw_distance: f32, lod_bias: f32, layer_mask: u32,
             renderable: i32, occlusion_culling: i32) -> i32
 

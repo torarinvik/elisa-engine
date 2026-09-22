@@ -480,6 +480,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-I", str(brew_include / "harfbuzz"),
         "-I", str(paths["miniaudio_include"]),
         str(ENGINE_ROOT / "native/application_abi.cpp"),
+        str(ENGINE_ROOT / "native/application_test_probe.cpp"),
         str(ENGINE_ROOT / "native/render_scene_abi.cpp"),
         str(ENGINE_ROOT / "native/elisa_native_fallbacks.cpp"),
         str(ENGINE_ROOT / "native/audio_service_abi.cpp"),
@@ -496,7 +497,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-Wl,-rpath," + str(wicked_source),
     ]
     if native_test_probes:
-        command.extend(["-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1"])
+        command.extend(["-DELISA_APPLICATION_TEST_PROBE=1", "-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1"])
     for framework in FRAMEWORKS:
         command.extend(["-framework", framework])
     command.extend(["-o", str(staged_output)])
