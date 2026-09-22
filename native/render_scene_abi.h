@@ -63,6 +63,10 @@ int32_t elisa_render_scene_v1_set_camera_look_at(
     float eye_x, float eye_y, float eye_z,
     float target_x, float target_y, float target_z,
     float up_x, float up_y, float up_z);
+int32_t elisa_render_scene_v1_camera_ray(
+    float screen_x, float screen_y,
+    float* origin_x, float* origin_y, float* origin_z,
+    float* direction_x, float* direction_y, float* direction_z);
 int64_t elisa_render_scene_v1_create_camera(
     int32_t projection, int32_t width, int32_t height,
     float projection_value, float near_clip, float far_clip);

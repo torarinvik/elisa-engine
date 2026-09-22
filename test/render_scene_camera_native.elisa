@@ -102,6 +102,16 @@ module RenderSceneCameraNativeTests:
             restored: bool = looks_along(Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
                 Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
             return 131 if not restored
+            center_ray: Geometry::Ray3 = catch RenderScene::camera_ray(160.0, 100.0):
+                value: value
+                error failure: return 144
+            return 145 if center_ray.origin.x < -0.001 or center_ray.origin.x > 0.001
+            return 146 if center_ray.direction.y > -0.5 or center_ray.direction.z > -0.5
+            invalid_ray: i32 = catch RenderScene::camera_ray(-1.0, 100.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 147 if invalid_ray != 1
 
             invalid_view: i32 = catch RenderScene::create_camera(RenderScene::CameraProjection.Perspective,
                 320, 200, 0.0, 0.1, 300.0):

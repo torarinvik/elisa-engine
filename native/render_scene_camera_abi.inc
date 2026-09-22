@@ -89,3 +89,55 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_look_at(
     apply_camera_look_at(state);
     return ELISA_RENDER_SCENE_OK;
 }
+
+extern "C" int32_t elisa_render_scene_v1_camera_ray(
+    float screen_x, float screen_y,
+    float* origin_x, float* origin_y, float* origin_z,
+    float* direction_x, float* direction_y, float* direction_z) {
+    if (origin_x == nullptr || origin_y == nullptr || origin_z == nullptr ||
+        direction_x == nullptr || direction_y == nullptr || direction_z == nullptr ||
+        !finite(screen_x) || !finite(screen_y)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.camera == nullptr || state.width <= 0 || state.height <= 0) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    if (screen_x < 0.0f || screen_y < 0.0f ||
+        screen_x > float(state.width) || screen_y > float(state.height)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    const float ndc_x = (screen_x / float(state.width)) * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - (screen_y / float(state.height)) * 2.0f;
+    const XMMATRIX inverse_view_projection = state.camera->GetInvViewProjection();
+    const XMVECTOR near_point = XMVector3TransformCoord(
+        XMVectorSet(ndc_x, ndc_y, 1.0f, 1.0f), inverse_view_projection);
+    const XMVECTOR far_point = XMVector3TransformCoord(
+        XMVectorSet(ndc_x, ndc_y, 0.0f, 1.0f), inverse_view_projection);
+    const XMVECTOR direction = XMVector3Normalize(XMVectorSubtract(far_point, near_point));
+    XMFLOAT3 wicked_origin;
+    XMFLOAT3 wicked_direction;
+    if (state.camera->IsOrtho()) {
+        XMStoreFloat3(&wicked_origin, near_point);
+    } else {
+        wicked_origin = state.camera->Eye;
+    }
+    XMStoreFloat3(&wicked_direction, direction);
+    const XMFLOAT3 authored_origin = probe::coordinates::from_wicked(wicked_origin);
+    const XMFLOAT3 authored_direction = probe::coordinates::from_wicked_direction(wicked_direction);
+    if (!bounded(authored_origin.x) || !bounded(authored_origin.y) || !bounded(authored_origin.z) ||
+        !bounded(authored_direction.x) || !bounded(authored_direction.y) ||
+        !bounded(authored_direction.z)) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    *origin_x = authored_origin.x;
+    *origin_y = authored_origin.y;
+    *origin_z = authored_origin.z;
+    *direction_x = authored_direction.x;
+    *direction_y = authored_direction.y;
+    *direction_z = authored_direction.z;
+    return ELISA_RENDER_SCENE_OK;
+}
