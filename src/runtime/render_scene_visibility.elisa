@@ -1,43 +1,8 @@
-# Visibility and LOD controls are an extension so primitive scene clients do
-# not pay for policy descriptors they do not use.
+# Visibility policies are part of the core RenderScene API. Instance handles
+# stay opaque while visibility and occlusion settings remain reusable by every
+# Elisa project.
 include "./render_scene.elisa"
 
 module RenderSceneVisibility:
     public:
         const API_VERSION: i32 = 1
-
-extend RenderScene:
-    private:
-        @callconv(c)
-        extern elisa_render_scene_v1_set_visibility_policy(handle: i64,
-            draw_distance: f32, lod_bias: f32, layer_mask: u32, renderable: i32) -> i32
-
-        @callconv(c)
-        extern elisa_render_scene_v1_set_occlusion_culling(enabled: i32) -> i32
-
-    public:
-        struct VisibilityPolicy:
-            private:
-                draw_distance: f32
-                lod_bias: f32
-                layer_mask: u32
-                renderable: bool
-
-        def VisibilityPolicy(draw_distance: f32, lod_bias: f32,
-            layer_mask: u32, renderable: bool) -> VisibilityPolicy:
-            VisibilityPolicy{
-                draw_distance: draw_distance,
-                lod_bias: lod_bias,
-                layer_mask: layer_mask,
-                renderable: renderable,
-            }
-
-        def set_visibility(handle: InstanceHandle,
-            policy: VisibilityPolicy) -> void error[RenderSceneError]:
-            renderable_value: i32 = 1 if policy.renderable else 0
-            try check_status(elisa_render_scene_v1_set_visibility_policy(handle.native_value,
-                policy.draw_distance, policy.lod_bias, policy.layer_mask, renderable_value))
-
-        def set_occlusion_culling(enabled: bool) -> void error[RenderSceneError]:
-            enabled_value: i32 = 1 if enabled else 0
-            try check_status(elisa_render_scene_v1_set_occlusion_culling(enabled_value))

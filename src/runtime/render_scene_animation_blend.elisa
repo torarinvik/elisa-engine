@@ -1,50 +1,7 @@
-# Smoother clip transitions are an extension so primitive scene clients do
-# not pay for the locomotion path they do not use.
+# Smoother clip transitions are part of the core RenderScene API so handle
+# internals remain private while all scene clients share one animation surface.
 include "./render_scene.elisa"
 
 module RenderSceneAnimationBlend:
     public:
         const API_VERSION: i32 = 1
-
-extend RenderScene:
-    private:
-        const BLEND_EASED: i32 = 1
-        const BLEND_PHASE_MATCHED: i32 = 2
-        const BLEND_CONTINUE_SAME_CLIP: i32 = 4
-
-        @callconv(c)
-        extern elisa_render_scene_v1_play_animation_blended(handle: i64, clip_name: cstr,
-            loop: i32, speed: f32, blend_seconds: f32, flags: i32) -> i32
-        @callconv(c)
-        extern elisa_render_scene_v1_set_animation_speed(handle: i64, speed: f32) -> i32
-
-        def transition_flags(transition: AnimationTransition) -> i32:
-            eased: i32 = BLEND_EASED if transition.eased else 0
-            phase: i32 = BLEND_PHASE_MATCHED if transition.phase_matched else 0
-            same: i32 = BLEND_CONTINUE_SAME_CLIP if transition.continue_same_clip else 0
-            eased + phase + same
-
-    public:
-        # How a clip switch hands over. `eased` fades the crossfade with a
-        # smoothstep instead of a straight line, `phase_matched` starts the
-        # new looping clip at the old clip's normalized time so cycles stay
-        # in step, and `continue_same_clip` keeps a re-requested clip running
-        # and only retimes it.
-        struct AnimationTransition:
-            eased: bool
-            phase_matched: bool
-            continue_same_clip: bool
-
-        def locomotion_transition() -> AnimationTransition:
-            AnimationTransition{eased: true, phase_matched: true, continue_same_clip: true}
-
-        def play_animation_blended(handle: InstanceHandle, clip_name: cstr, loop: bool,
-            speed: f32, blend_seconds: f32,
-            transition: AnimationTransition) -> void error[RenderSceneError]:
-            loop_value: i32 = 1 if loop else 0
-            try check_status(elisa_render_scene_v1_play_animation_blended(handle.native_value,
-                clip_name, loop_value, speed, blend_seconds, transition_flags(transition)))
-
-        # Retime the active clip without restarting it or starting a fade.
-        def set_animation_speed(handle: InstanceHandle, speed: f32) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_set_animation_speed(handle.native_value, speed))
