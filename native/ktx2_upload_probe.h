@@ -45,7 +45,7 @@ inline bool check_ktx2_bounded_reader(const std::filesystem::path& directory) {
 }
 
 inline bool check_ktx2_format_policy() {
-    const KTX2UploadFormats all{true, true, true, true};
+    const KTX2UploadFormats all{true, true, true, true, true};
     return check(choose_ktx2_upload_encoding(false, all) == KTX2UploadEncoding::Bc1,
             "opaque KTX2 prefers BC1") &&
         check(choose_ktx2_upload_encoding(true, all) == KTX2UploadEncoding::Bc7,
@@ -56,8 +56,14 @@ inline bool check_ktx2_format_policy() {
             "alpha KTX2 avoids BC1") &&
         check(choose_ktx2_upload_encoding(false, {false, false, false, true}) == KTX2UploadEncoding::Bc7,
             "opaque KTX2 falls back to BC7") &&
-        check(choose_ktx2_upload_encoding(false, all, KTX2TextureUsage::NormalData) == KTX2UploadEncoding::Rgba8,
-            "normal data stays in channel-preserving RGBA8") &&
+        check(choose_ktx2_upload_encoding(false, all, KTX2TextureUsage::NormalData) == KTX2UploadEncoding::Bc5,
+            "normal data prefers two-channel BC5") &&
+        check(choose_ktx2_upload_encoding(false, {true, false, false, false, false},
+                KTX2TextureUsage::NormalData) == KTX2UploadEncoding::Rgba8,
+            "normal data falls back to channel-preserving RGBA8") &&
+        check(choose_ktx2_upload_encoding(false, {false, false, false, false, false},
+                KTX2TextureUsage::NormalData) == KTX2UploadEncoding::Unsupported,
+            "normal data rejects missing safe formats") &&
         check(choose_ktx2_upload_encoding(true, {}) == KTX2UploadEncoding::Unsupported,
             "KTX2 rejects missing safe fallback");
 }
@@ -100,15 +106,18 @@ inline bool check_ktx2_color_upload(const std::filesystem::path& path) {
 inline bool check_ktx2_normal_data_upload(const std::filesystem::path& path) {
     const wi::Resource resource = load_ktx2_texture_resource(
         path.lexically_normal().string(), KTX2TextureUsage::NormalData);
+    const KTX2UploadFormats supported = query_ktx2_upload_formats(wi::graphics::GetDevice(), false);
+    const KTX2UploadEncoding expected = choose_ktx2_upload_encoding(
+        false, supported, KTX2TextureUsage::NormalData);
     return check(resource.IsValid() && resource.GetTexture().IsValid() &&
-        resource.GetTexture().GetDesc().format == wi::graphics::Format::R8G8B8A8_UNORM,
-        "KTX2 normal data retains uncompressed linear channels");
+        resource.GetTexture().GetDesc().format == ktx2_wicked_format(expected, false),
+        "KTX2 normal data uses a two-channel BC5 or four-channel RGBA format");
 }
 
 inline bool check_ktx2_upload_fixtures(const std::filesystem::path& cooked_directory) {
     return check_ktx2_bounded_reader(cooked_directory) && check_ktx2_format_policy() &&
         check_ktx2_color_upload(cooked_directory / "maze_tile_tex.ktx2") &&
-        check_ktx2_normal_data_upload(cooked_directory / "maze_tile_tex.ktx2") &&
+        check_ktx2_normal_data_upload(cooked_directory / "maze_tile_normal.ktx2") &&
         check_ktx2_cubemap_upload(cooked_directory / "maze_tile_cube.ktx2") &&
         check_ktx2_alpha_upload(cooked_directory / "maze_tile_alpha.ktx2");
 }

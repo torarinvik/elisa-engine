@@ -21,7 +21,10 @@ MAX_MANIFEST_BYTES = 16 * 1024
 MAX_DEPENDENCIES = 16
 ALIGNMENT_BYTES = 16
 MAX_IMAGE_DIMENSION = 8192
+MAX_KTX2_DIMENSION = 4096
+MAX_KTX2_LEVELS = 16
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+KTX2_IDENTIFIER = b"\xabKTX 20\xbb\r\n\x1a\n"
 MANIFEST_HEADER = "ELISA-PACKAGE-MANIFEST-1"
 
 
@@ -187,8 +190,26 @@ def _jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
     return None
 
 
+def _ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
+    """Check a bounded 2D KTX2 header and its level index before packaging."""
+    if len(data) < 80 or data[:12] != KTX2_IDENTIFIER:
+        return None
+    width, height, depth, layers, faces, levels = struct.unpack_from("<6I", data, 20)
+    if (not 1 <= width <= MAX_KTX2_DIMENSION or not 1 <= height <= MAX_KTX2_DIMENSION or
+            depth != 0 or layers > 1 or faces != 1 or not 1 <= levels <= MAX_KTX2_LEVELS):
+        return None
+    level_index_end = 80 + levels * 24
+    if level_index_end > len(data):
+        return None
+    for level in range(levels):
+        offset, length, _ = struct.unpack_from("<QQQ", data, 80 + level * 24)
+        if offset < level_index_end or length == 0 or offset > len(data) or length > len(data) - offset:
+            return None
+    return width, height
+
+
 def encoded_image_dimensions(data: bytes) -> tuple[int, int]:
-    """Return a PNG or JPEG image's header dimensions, bounded like the runtime reader."""
+    """Return dimensions for bounded PNG, JPEG or 2D KTX2 image data."""
     if not data or len(data) > MAX_SECTION_BYTES:
         raise ValueError("image size rejected")
     dimensions = None
@@ -196,8 +217,13 @@ def encoded_image_dimensions(data: bytes) -> tuple[int, int]:
         dimensions = struct.unpack(">II", data[16:24])
     elif len(data) >= 4 and data[:2] == b"\xff\xd8":
         dimensions = _jpeg_dimensions(data)
+    elif len(data) >= 12 and data[:12] == KTX2_IDENTIFIER:
+        if len(data) >= 48 and (struct.unpack_from("<I", data, 12)[0] != 0 or
+                struct.unpack_from("<I", data, 44)[0] not in (0, 1, 2)):
+            raise ValueError("KTX2 image must use a Basis Universal KTX2 payload")
+        dimensions = _ktx2_dimensions(data)
     if dimensions is None:
-        raise ValueError("image is not a PNG or JPEG file")
+        raise ValueError("image is not a bounded PNG, JPEG or 2D KTX2 file")
     width, height = dimensions
     if not (1 <= width <= MAX_IMAGE_DIMENSION and 1 <= height <= MAX_IMAGE_DIMENSION):
         raise ValueError(f"image dimensions {width}x{height} exceed {MAX_IMAGE_DIMENSION}")
@@ -240,7 +266,7 @@ def write_geometry_package(path: Path, geometry_package: bytes,
 
 def write_image_bundle(path: Path, images: Mapping[str, bytes],
     dependencies: Sequence[str] = ()) -> None:
-    """Write an ELPK bundle holding only PNG and JPEG image sections."""
+    """Write an ELPK bundle holding PNG, JPEG or bounded 2D KTX2 sections."""
     if not images:
         raise ValueError("an image bundle needs at least one image section")
     write_package(path, _image_sections(images, ("mesh", "manifest")), dependencies)

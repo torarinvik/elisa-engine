@@ -19,22 +19,27 @@ to exactly those images.
      - `scale` and `strength` must be 1.
      - Anything else fails as an unsupported property, including
        `KHR_texture_transform`.
-   - **Textures.** A texture may name only `source`, `sampler` and `name`.
+   - **Textures.** A texture may name `source`, `sampler`, `name`, and the
+     `KHR_texture_basisu` extension. Other texture extensions fail.
    - **Samplers.** A sampler must filter trilinearly and repeat on both axes.
      That is how the render scene samples every texture. It may omit any of
      those keys, but a string or a float fails.
    - **Occlusion.** `occlusionTexture` may reuse the metallic-roughness image
      or name a separate image. The latter is bound to Wicked's native
      `OCCLUSIONMAP` slot. The slot then sets flag bit 1, occlusion.
-   - **Images.** Each image must be an embedded PNG or JPEG, either from a
-     packed bufferView of the embedded buffer or from a base64 data URI.
+   - **Images.** PNG/JPEG and Basis KTX2 images must be embedded in a packed
+     bufferView or a base64 data URI. KTX2 must be selected by
+     `KHR_texture_basisu`; a PNG/JPEG core `source` fallback is omitted from
+     the runtime bundle. KTX2 without a fallback requires the extension in
+     both `extensionsUsed` and `extensionsRequired`.
      - Its bytes must match its `mimeType`, and its dimensions must decode.
      - A file URI or a remote URI fails.
      - A data URI that contradicts its `mimeType` fails.
      - A strided view, a view in another buffer, and a view past the buffer
        fail.
-   - **Nothing unused.** Every declared texture, sampler and image must be
-     sampled by some material.
+   - **Nothing unused.** Every declared texture and sampler must be used by a
+     material. Every image must be sampled or serve as a KTX2 texture's
+     PNG/JPEG fallback.
    - **Masks and UVs.** `MASK` is now allowed, but only with a base-color
      texture. A primitive whose material is textured needs `TEXCOORD_0`.
 2. **Package.** Beside the slot material records, a textured mesh holds:
@@ -322,10 +327,10 @@ catches that mutation.
   the bundle on the calling thread. A texture requested asynchronously from
   the same section doesn't satisfy a slot until it is resident, and a slot
   never waits for it: an unresolved image is `AssetLoadFailure`.
-- **Embedded images only.** External image files, KTX2 or Basis images,
-  `KHR_texture_transform`, second UV sets, normal scales, occlusion
-  strengths remain bounded. Images stay PNG or
-  JPEG in the bundle, without cooked mip chains or GPU formats (A06).
+- **Embedded images only.** External image files, unsupported texture
+  extensions such as `KHR_texture_transform`, second UV sets, non-unit normal
+  scales and non-unit occlusion strengths fail. Bundles retain PNG, JPEG or
+  bounded 2D Basis KTX2 data; mip data stays in the KTX2 source.
 - **Separate occlusion channel policy.** A separate glTF occlusion image is
   retained as a dedicated Wicked `OCCLUSIONMAP`; it is not packed into the
   metallic-roughness surface image. An occlusion texture named alone leaves

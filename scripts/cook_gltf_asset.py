@@ -96,7 +96,7 @@ def self_test() -> int:
             return material_texture_status
     print("glTF cooker self-test passed: deterministic 12-triangle runtime package with image sections, "
         "a three-subset, two-slot panel with authored slot materials, a baked node hierarchy, "
-        "and a bundled panel with masked, lit and emissive material textures")
+        "and bundled PNG/KTX2 material textures")
     return 0
 
 
@@ -280,7 +280,7 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--asset-path", help="safe project-relative source identity")
     parser.add_argument("--output", type=Path, help="destination runtime package")
     parser.add_argument("--texture", action="append", default=[], metavar="SECTION=PATH",
-        help="add a PNG or JPEG image as a named section of an .elpk bundle")
+        help="add a PNG, JPEG or bounded 2D KTX2 image as a named .elpk section")
     parser.add_argument("--dependency", action="append", default=[], metavar="BUNDLE",
         help="name a bundle this .elpk needs, relative to the output's directory")
     parser.add_argument("--self-test", action="store_true", help="cook the authored maze mesh twice")

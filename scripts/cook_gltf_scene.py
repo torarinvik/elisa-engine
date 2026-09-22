@@ -12,6 +12,7 @@ import cook_gltf_nodes
 MAX_CAMERAS = 16
 MAX_LIGHTS = 32
 LIGHT_EXTENSION = "KHR_lights_punctual"
+BASIS_TEXTURE_EXTENSION = "KHR_texture_basisu"
 CAMERA_KEYS = {"name", "type", "perspective", "orthographic"}
 PERSPECTIVE_KEYS = {"aspectRatio", "yfov", "znear", "zfar"}
 ORTHOGRAPHIC_KEYS = {"xmag", "ymag", "znear", "zfar"}
@@ -111,7 +112,8 @@ def world_matrices(document: dict) -> list[tuple]:
 def normalize(document: dict, buffer: bytes, mesh_placements: list[tuple] | None = None) -> dict:
     used = set(document.get("extensionsUsed", []))
     required = set(document.get("extensionsRequired", []))
-    if used - {LIGHT_EXTENSION} or required - {LIGHT_EXTENSION} or not required <= used:
+    if used - {LIGHT_EXTENSION, BASIS_TEXTURE_EXTENSION} or \
+            required - {LIGHT_EXTENSION, BASIS_TEXTURE_EXTENSION} or not required <= used:
         raise ValueError("runtime scene importer encountered an unsupported extension")
     cameras = document.get("cameras", [])
     if not isinstance(cameras, list) or len(cameras) > MAX_CAMERAS:

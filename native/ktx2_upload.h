@@ -74,12 +74,14 @@ inline KTX2UploadFormats query_ktx2_upload_formats(wi::graphics::GraphicsDevice*
             ktx2_format_supported(device, wi::graphics::Format::BC1_UNORM),
             ktx2_format_supported(device, wi::graphics::Format::BC3_UNORM),
             ktx2_format_supported(device, wi::graphics::Format::BC7_UNORM),
+            ktx2_format_supported(device, wi::graphics::Format::BC5_UNORM),
         };
         cache.srgb = {
             ktx2_format_supported(device, wi::graphics::Format::R8G8B8A8_UNORM_SRGB),
             ktx2_format_supported(device, wi::graphics::Format::BC1_UNORM_SRGB),
             ktx2_format_supported(device, wi::graphics::Format::BC3_UNORM_SRGB),
             ktx2_format_supported(device, wi::graphics::Format::BC7_UNORM_SRGB),
+            ktx2_format_supported(device, wi::graphics::Format::BC5_UNORM),
         };
     }
     return srgb ? cache.srgb : cache.linear;
@@ -89,6 +91,7 @@ inline basist::transcoder_texture_format ktx2_basis_format(KTX2UploadEncoding en
     switch (encoding) {
     case KTX2UploadEncoding::Bc1: return basist::transcoder_texture_format::cTFBC1_RGB;
     case KTX2UploadEncoding::Bc3: return basist::transcoder_texture_format::cTFBC3_RGBA;
+    case KTX2UploadEncoding::Bc5: return basist::transcoder_texture_format::cTFBC5_RG;
     case KTX2UploadEncoding::Bc7: return basist::transcoder_texture_format::cTFBC7_RGBA;
     default: return basist::transcoder_texture_format::cTFRGBA32;
     }
@@ -100,6 +103,8 @@ inline wi::graphics::Format ktx2_wicked_format(KTX2UploadEncoding encoding, bool
         return srgb ? wi::graphics::Format::BC1_UNORM_SRGB : wi::graphics::Format::BC1_UNORM;
     case KTX2UploadEncoding::Bc3:
         return srgb ? wi::graphics::Format::BC3_UNORM_SRGB : wi::graphics::Format::BC3_UNORM;
+    case KTX2UploadEncoding::Bc5:
+        return wi::graphics::Format::BC5_UNORM;
     case KTX2UploadEncoding::Bc7:
         return srgb ? wi::graphics::Format::BC7_UNORM_SRGB : wi::graphics::Format::BC7_UNORM;
     default:

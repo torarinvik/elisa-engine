@@ -110,7 +110,9 @@ and the source was restored.
 
 - **Formats.** The runtime accepts PNG, JPEG, and 2D Basis KTX2 sections.
   Basis KTX2 is capped at 4096×4096 and 16 mip levels. The glTF cooker still
-  accepts embedded PNG and JPEG images only; DDS remains unsupported.
+  accepts embedded PNG/JPEG and KTX2 images selected through
+  `KHR_texture_basisu`; its PNG/JPEG fallback is omitted from the bundle. DDS
+  remains unsupported.
 - **Decode timing.** Async PNG/JPEG requests decode on the A04 worker. KTX2
   section IO, header validation and CRC checking run there; Basis transcode and
   GPU creation run on the owner thread when a material first uses it. The
