@@ -10,6 +10,12 @@ module RenderSceneQualitySettingsNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_shadow_quality_matches(quality: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_quality_profile_matches(
+            tonemap: i32, render_scale: f32, bloom_threshold: f32,
+            bloom: i32, fxaa: i32, ambient_occlusion: i32,
+            screen_space_reflections: i32, fog: i32, depth_effects: i32) -> i32
+
     public:
         def exercise() -> i32:
             tonemap_status: i32 = catch RenderScene::set_tonemap(RenderScene::Tonemap.Uchimura):
@@ -38,4 +44,26 @@ module RenderSceneQualitySettingsNativeTests:
                 ok: 0
                 error failure: 1
             return 115 if shadow_status != 0 or elisa_render_scene_v1_test_shadow_quality_matches(2) != 1
+            profile: mutable Quality::Profile = Quality::Profile()
+            profile.tonemap <- Quality::Tonemap.Uchimura
+            profile.upscaler <- Quality::Upscaler.Fsr2
+            profile.render_scale <- 0.75
+            profile.bloom_threshold <- 1.4
+            profile.bloom <- true
+            profile.fxaa <- true
+            profile.ambient_occlusion <- true
+            profile.screen_space_reflections <- true
+            profile.fog <- false
+            profile.depth_effects <- false
+            profile_status: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                error failure: 1
+            return 116 if profile_status != 0 or elisa_render_scene_v1_test_quality_profile_matches(
+                2, 0.75, 1.4, 1, 1, 1, 1, 0, 0) != 1
+            profile.render_scale <- 1.1
+            invalid_profile: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 117 if invalid_profile != 1
             0

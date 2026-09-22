@@ -22,6 +22,14 @@ SDL3/Metal render-scene smoke enables both, checks their Wicked `RenderPath3D`
 state, disables both and checks the restored state, then verifies malformed
 integer flags are rejected at the C ABI boundary. Validation passed:
 
+`RenderScene::apply_quality_profile` now carries the validated `Quality::Profile`
+contract through the public Elisa runtime. It applies tonemap, render scale,
+bloom threshold/toggle, FXAA, SSAO, SSR, height fog and depth effects in one
+checked call; an unsupported FSR request keeps the rest of the profile and
+returns the documented fallback as success. The native quality fixture checks
+the applied Wicked state and rejects an out-of-range render scale before any
+native call.
+
 `RenderScene::set_shadow_quality` adds a checked Low/Medium/High preset for
 Wicked's shadow atlas. The presets select 512/1024/2048-pixel 2D maps and a
 quarter-resolution cube map; the native quality fixture checks the High state
@@ -32,6 +40,6 @@ quality in Elisa while retaining a predictable renderer-side budget.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` — full shared suite exited 0; both Elisa Proof suites proved all 23 obligations with certificate replay.
 - `/opt/homebrew/bin/python3 scripts/check_source_length.py`, `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-This verifies setting changes reach Wicked's runtime state; it does not yet
-provide an image-difference reference or a quality-profile policy for toggling
-these effects. Those remain R07 work.
+This verifies setting changes reach Wicked's runtime state; image-difference
+references, history-resource transition validation and measured GPU/VRAM costs
+remain R07 work.

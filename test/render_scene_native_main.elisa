@@ -3,6 +3,7 @@
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
 include "../src/runtime/render_scene_visibility.elisa"
+include "../src/runtime/render_scene_quality_profile.elisa"
 include "../src/runtime/render_scene_text.elisa"
 include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
