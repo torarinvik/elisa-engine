@@ -4,6 +4,13 @@
 The generated launcher changes into the bundle's Resources directory before
 starting the native executable. Elisa projects can therefore keep their
 project-relative asset paths while a user launches the app from Finder.
+
+The manifest's optional ``package.resources`` list names the project-relative
+files and directories the built game reads at runtime. When it is present only
+those paths, the cooked packages and the shader directory are staged, so source
+art, authoring files and the assets repository's own history stay out of the
+bundle. Without the list the whole ``assets`` directory is staged, minus version
+control and editor litter.
 """
 
 from __future__ import annotations
@@ -65,10 +72,72 @@ def safe_bundle_name(value: str) -> str:
     return cleaned
 
 
-def copy_directory(source: Path, destination: Path) -> None:
+IGNORED_NAMES = frozenset({".git", ".gitattributes", ".gitignore", ".DS_Store",
+    "__pycache__", "Thumbs.db"})
+MAX_RESOURCE_ENTRIES = 256
+
+
+SHADER_METADATA_SUFFIX = ".wishadermeta"
+
+
+def ignore_litter(_directory: str, names: list[str]) -> set[str]:
+    return {name for name in names if name in IGNORED_NAMES}
+
+
+def ignore_shader_metadata(directory: str, names: list[str]) -> set[str]:
+    # Shader metadata records absolute source dependency paths from the build
+    # machine. Wicked treats a compiled shader without metadata as up to date,
+    # which is exactly what a relocated bundle without the source tree needs.
+    return ignore_litter(directory, names) | {
+        name for name in names if name.endswith(SHADER_METADATA_SUFFIX)}
+
+
+def copy_directory(source: Path, destination: Path, ignore=ignore_litter) -> None:
     if not source.is_dir():
         raise PackageError(f"required project directory is missing: {source}")
-    shutil.copytree(source, destination, symlinks=False)
+    shutil.copytree(source, destination, symlinks=False, ignore=ignore)
+
+
+def manifest_resources(manifest: dict[str, object], project: Path) -> list[Path] | None:
+    """Return the manifest's runtime resource paths, or None to stage all assets."""
+    package = manifest.get("package")
+    if package is None:
+        return None
+    if not isinstance(package, dict):
+        raise PackageError("manifest 'package' must be a JSON object")
+    raw = package.get("resources")
+    if raw is None:
+        return None
+    if not isinstance(raw, list) or not raw:
+        raise PackageError("manifest 'package.resources' must be a non-empty list")
+    if len(raw) > MAX_RESOURCE_ENTRIES:
+        raise PackageError(f"manifest 'package.resources' lists more than {MAX_RESOURCE_ENTRIES} entries")
+    resources: list[Path] = []
+    for entry in raw:
+        if not isinstance(entry, str) or not entry.strip():
+            raise PackageError("manifest 'package.resources' entries must be non-empty strings")
+        relative = Path(entry)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise PackageError(f"manifest resource must stay inside the project: {entry}")
+        if any(part in IGNORED_NAMES for part in relative.parts):
+            raise PackageError(f"manifest resource names version-control or editor litter: {entry}")
+        if relative not in resources:
+            resources.append(relative)
+    return resources
+
+
+def stage_resource(project: Path, resources: Path, relative: Path) -> None:
+    source = project / relative
+    destination = resources / relative
+    if source.is_symlink():
+        raise PackageError(f"manifest resource must not be a symbolic link: {relative}")
+    if source.is_dir():
+        copy_directory(source, destination)
+    elif source.is_file():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    else:
+        raise PackageError(f"manifest resource is missing from the project: {relative}")
 
 
 def write_launcher(path: Path, binary_name: str) -> None:
@@ -76,6 +145,10 @@ def write_launcher(path: Path, binary_name: str) -> None:
 set -eu
 resources=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")/../Resources\" && pwd)\"
 cd \"$resources\"
+if [ -d \"$resources/shaders\" ]; then
+    ELISA_ENGINE_SHADER_PATH=\"$resources/shaders\"
+    export ELISA_ENGINE_SHADER_PATH
+fi
 exec \"$resources/{binary_name}\" \"$@\"
 """
     path.write_text(script, encoding="utf-8")
@@ -83,7 +156,8 @@ exec \"$resources/{binary_name}\" \"$@\"
 
 
 def package_app(project: Path, executable: Path, output: Path, name: str,
-    bundle_id: str, version: str, icon: Path | None = None) -> Path:
+    bundle_id: str, version: str, icon: Path | None = None,
+    resource_paths: list[Path] | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -114,14 +188,19 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     shutil.copy2(executable, resources / binary_name)
     write_launcher(macos / bundle_name, binary_name)
 
-    # Runtime paths in the game are deliberately project-relative. Keep the
-    # source art and cooked packages together so the same bundle works without
-    # the checkout, while source authoring files remain outside the executable.
-    copy_directory(project / "assets", resources / "assets")
+    # Runtime paths in the game are deliberately project-relative. Stage the
+    # declared runtime resources (or, without a declaration, the whole assets
+    # directory) next to the cooked packages so the bundle works without the
+    # checkout, while authoring files and repository history stay outside it.
+    if resource_paths is None:
+        copy_directory(project / "assets", resources / "assets")
+    else:
+        for relative in resource_paths:
+            stage_resource(project, resources, relative)
     copy_directory(project / "build" / "cooked", resources / "build" / "cooked")
     shaders = project / "shaders"
     if shaders.is_dir():
-        copy_directory(shaders, resources / "shaders")
+        copy_directory(shaders, resources / "shaders", ignore_shader_metadata)
 
     info = {
         "CFBundleDevelopmentRegion": "en",
@@ -177,7 +256,7 @@ def main() -> int:
             candidate = project / "resources" / "AppIcon.icns"
             icon = candidate if candidate.is_file() else None
         app = package_app(project, executable, output, name, bundle_id,
-            options.version, icon)
+            options.version, icon, manifest_resources(manifest, project))
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
