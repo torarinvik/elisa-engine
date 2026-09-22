@@ -42,6 +42,7 @@ static bool contains_entity(const PhysicsQueryHits<Capacity>& hits, wi::ecs::Ent
 class PhysicsQueryBridge {
 public:
     static constexpr size_t MAX_HITS = 16;
+    static constexpr size_t MAX_CAST_STEPS = 128;
     using Hits = PhysicsQueryHits<MAX_HITS>;
 
     explicit PhysicsQueryBridge(wi::scene::Scene& scene)
@@ -91,6 +92,40 @@ public:
                 result.entity, result.position, result.normal, result.distance, 0.0f};
         }
         return hits.count;
+    }
+
+    bool sphere_cast(PhysicsQueryToken token, const XMFLOAT3& center,
+        const XMFLOAT3& direction, float max_distance, float radius,
+        uint32_t layer_mask, PhysicsQueryHit& hit,
+        uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
+            wi::enums::FILTER_OBJECT_ALL) const {
+        if (!finite_vector(center) || !std::isfinite(radius) || radius <= 0.0f) {
+            return false;
+        }
+        return cast_shape(token, direction, max_distance, hit,
+            [this, token, center, radius, layer_mask, filter_mask](const XMFLOAT3& offset,
+                PhysicsQueryHit& candidate) {
+                return overlap_sphere(token,
+                    XMFLOAT3(center.x + offset.x, center.y + offset.y, center.z + offset.z),
+                    radius, layer_mask, candidate, filter_mask);
+            });
+    }
+
+    bool capsule_cast(PhysicsQueryToken token, const XMFLOAT3& base,
+        const XMFLOAT3& tip, const XMFLOAT3& direction, float max_distance,
+        float radius, uint32_t layer_mask, PhysicsQueryHit& hit,
+        uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
+            wi::enums::FILTER_OBJECT_ALL) const {
+        if (!finite_vector(base) || !finite_vector(tip) || !std::isfinite(radius) ||
+            radius <= 0.0f) return false;
+        return cast_shape(token, direction, max_distance, hit,
+            [this, token, base, tip, radius, layer_mask, filter_mask](const XMFLOAT3& offset,
+                PhysicsQueryHit& candidate) {
+                return overlap_capsule(token,
+                    XMFLOAT3(base.x + offset.x, base.y + offset.y, base.z + offset.z),
+                    XMFLOAT3(tip.x + offset.x, tip.y + offset.y, tip.z + offset.z),
+                    radius, layer_mask, candidate, filter_mask);
+            });
     }
 
     bool overlap_sphere(PhysicsQueryToken token, const XMFLOAT3& center,
@@ -167,6 +202,49 @@ private:
         return value.x * value.x + value.y * value.y + value.z * value.z;
     }
 
+    template <typename Probe>
+    bool cast_shape(PhysicsQueryToken token, const XMFLOAT3& direction,
+        float max_distance, PhysicsQueryHit& hit, Probe&& probe) const {
+        if (!valid(token) || !finite_vector(direction) || !std::isfinite(max_distance) ||
+            max_distance <= 0.0f || length_squared(direction) <= 0.000001f) return false;
+        const float inverse_length = 1.0f / std::sqrt(length_squared(direction));
+        const XMFLOAT3 unit_direction = XMFLOAT3(
+            direction.x * inverse_length, direction.y * inverse_length, direction.z * inverse_length);
+        PhysicsQueryHit candidate;
+        if (probe(XMFLOAT3(0, 0, 0), candidate)) {
+            hit = candidate;
+            hit.distance = 0.0f;
+            return true;
+        }
+        float previous_distance = 0.0f;
+        for (size_t step = 1; step <= MAX_CAST_STEPS; ++step) {
+            const float distance = max_distance * static_cast<float>(step) /
+                static_cast<float>(MAX_CAST_STEPS);
+            const XMFLOAT3 offset = XMFLOAT3(
+                unit_direction.x * distance, unit_direction.y * distance, unit_direction.z * distance);
+            if (!probe(offset, candidate)) {
+                previous_distance = distance;
+                continue;
+            }
+            float lower = previous_distance;
+            float upper = distance;
+            for (size_t refinement = 0; refinement < 8; ++refinement) {
+                const float middle = (lower + upper) * 0.5f;
+                const XMFLOAT3 middle_offset = XMFLOAT3(
+                    unit_direction.x * middle, unit_direction.y * middle, unit_direction.z * middle);
+                if (probe(middle_offset, candidate)) {
+                    upper = middle;
+                } else {
+                    lower = middle;
+                }
+            }
+            hit = candidate;
+            hit.distance = upper;
+            return true;
+        }
+        return false;
+    }
+
     wi::scene::Scene& scene_;
     uintptr_t owner_;
     uint32_t generation_ = 1;
@@ -203,8 +281,18 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
         !check(bridge.raycast(token, XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 10.0f,
             1u << 3, hit) && hit.entity == target && hit.distance > 0.0f,
             "query raycast hit") ||
+        !check(bridge.sphere_cast(token, XMFLOAT3(0, 0, -5), XMFLOAT3(0, 0, 1),
+            10.0f, 0.25f, 1u << 3, hit) && hit.entity == target && hit.distance > 0.0f,
+            "query sphere cast hit") ||
+        !check(bridge.capsule_cast(token, XMFLOAT3(0, 0, -5), XMFLOAT3(0, 0, -4),
+            XMFLOAT3(0, 0, 1), 10.0f, 0.25f, 1u << 3, hit) && hit.entity == target,
+            "query capsule cast hit") ||
         !check(!bridge.raycast(token, XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 10.0f,
             1u << 1, hit), "query layer filter") ||
+        !check(!bridge.sphere_cast(token, XMFLOAT3(0, 0, -5), XMFLOAT3(0, 0, 1),
+            10.0f, 0.25f, 1u << 1, hit), "query cast layer filter") ||
+        !check(!bridge.sphere_cast(token, XMFLOAT3(0, 0, -5), XMFLOAT3(0, 0, 0),
+            10.0f, 0.25f, 1u << 3, hit), "query rejects zero cast direction") ||
         !check(bridge.overlap_sphere(token, XMFLOAT3(0, 0, -1.5f), 1.0f, 1u << 3, hit) &&
             hit.entity == target && hit.depth >= 0.0f, "query sphere overlap") ||
         !check(bridge.overlap_sphere_all(token, XMFLOAT3(0, 0, 1.5f), 2.0f, 1u << 3, hits) == 2 &&
