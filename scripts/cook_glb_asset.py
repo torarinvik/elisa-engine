@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import cook_image_asset
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -176,6 +177,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--output", type=Path, help="destination .pkg or .elpk file")
     parser.add_argument("--animation-source", type=Path, help="optional FBX whose clips match GLB bone names")
     parser.add_argument("--texture-output", type=Path, help="destination for the first material's base-color image")
+    parser.add_argument("--texture-max-size", type=int,
+        help="bound the extracted image to this many pixels per side (needs Pillow)")
     parser.add_argument("--blender", help="Blender executable (or set BLENDER)")
     parser.add_argument("--self-test", action="store_true", help="validate the bounded GLB image reader")
     options = parser.parse_args(arguments)
@@ -215,6 +218,8 @@ def main(arguments: list[str]) -> int:
                 raise GlbError("texture output must have a .png, .jpg, or .jpeg suffix")
         else:
             texture_output = None
+        if options.texture_max_size is not None and texture_output is None:
+            raise GlbError("--texture-max-size requires --texture-output")
 
         document, binary = read_glb_document(source)
         extracted = base_color_image(source, document, binary) if texture_output is not None else None
@@ -243,6 +248,13 @@ def main(arguments: list[str]) -> int:
             payload, extension = extracted
             if (extension == ".png") != (texture_output.suffix.lower() == ".png"):
                 raise GlbError("texture output suffix does not match the GLB image type")
+            if options.texture_max_size is not None:
+                try:
+                    payload, width, height = cook_image_asset.resample_image_bytes(
+                        payload, extension, options.texture_max_size)
+                except cook_image_asset.ImageCookError as error:
+                    raise GlbError(f"texture output could not be bounded: {error}") from error
+                print(f"Bounded GLB base-color texture to {width}x{height}")
             texture_output.parent.mkdir(parents=True, exist_ok=True)
             texture_output.write_bytes(payload)
             print(f"Extracted GLB base-color texture: {texture_output} ({len(payload)} bytes)")
