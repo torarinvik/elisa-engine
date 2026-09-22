@@ -24,7 +24,7 @@ module MazePersist:
             Field::COUNT
 
         def game_save(game: MazeGame::MazeGame&) -> Blob error[SaveError]:
-            values: mutable i64[8] = zeroed
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
             values[Field::SETTINGS] <- MazeGame::settings_code(game.settings)
             values[Field::STATUS] <- MazeGame::game_status_code(game.status)
             values[Field::PLAYER_X] <- game.grid.player_x
