@@ -13,6 +13,9 @@ returns copied `PhysicsQueryHit` values to the host.
 - `raycast_all` copies at most `MAX_HITS` (16) results into fixed storage. The
   native scene may collect more internally, but the Elisa-facing result is
   bounded.
+- Sphere and capsule casts use a fixed bounded sweep with refinement and return
+  the first copied hit distance. They share the same finite-input, layer, and
+  filter validation as overlaps.
 - Sphere and capsule overlaps return the nearest Wicked result with copied
   position, normal, and penetration depth. Their all-hit variants copy at most
   `MAX_HITS` unique entities, even when Wicked reports several intersected
@@ -25,9 +28,10 @@ returns copied `PhysicsQueryHit` values to the host.
 ## Evidence
 
 The native Wicked gate creates a layered cube, updates its scene BVH, verifies a
-nearest ray hit, a layer miss, nearest and all-hit sphere/capsule overlaps,
-bounded all-hit storage, destroyed-participant rejection, stale-token
-rejection, and target unload back to the object baseline. Run:
+nearest ray hit, sphere/capsule casts, layer misses, nearest and all-hit
+sphere/capsule overlaps, bounded all-hit storage, destroyed-participant
+rejection, stale-token rejection, and target unload back to the object baseline.
+Run:
 
 ```text
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
