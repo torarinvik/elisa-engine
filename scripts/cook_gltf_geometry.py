@@ -9,6 +9,7 @@ from pathlib import Path
 import struct
 
 import cook_assets
+import cook_gltf_animation
 import cook_gltf_nodes
 import cook_gltf_scene
 import cook_gltf_skin
@@ -452,7 +453,7 @@ def skin_lines(geometry: dict) -> list[str]:
     clips = skin.get("animation_clips", [])
     if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
             len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS or
-            len(clips) > 8):
+            len(clips) > cook_gltf_animation.MAX_CLIPS):
         raise ValueError("normalized skin streams do not match the mesh")
     parents = [joint["parent"] for joint in joints]
     rests = [component for joint in joints for component in joint["rest"]]

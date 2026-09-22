@@ -11,6 +11,7 @@ import sys
 import tempfile
 
 import cook_assets
+import cook_gltf_animation
 import cook_gltf_geometry
 
 
@@ -89,7 +90,38 @@ def write_package(output: Path) -> tuple[Path, dict]:
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 
+def animation_limit_self_test(temporary: Path) -> int:
+    """Keep the glTF normalizer, package writer, and native limit aligned."""
+    document = generated_document()
+    template = document["animations"][0]
+    document["animations"] = [dict(template, name=f"clip_{index}")
+        for index in range(cook_gltf_animation.MAX_CLIPS)]
+    source = temporary / "sixteen_clips.gltf"
+    source.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+    try:
+        package, _ = cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH,
+            temporary / "sixteen_clips.pkg")
+    except (ValueError, KeyError, IndexError, TypeError) as error:
+        print(f"glTF skin self-test failed: sixteen clips were rejected: {error}", file=sys.stderr)
+        return 1
+    fields = dict(line.split("=", 1) for line in package.read_text(encoding="utf-8").splitlines())
+    if fields.get("animation_clips") != str(cook_gltf_animation.MAX_CLIPS):
+        print("glTF skin self-test failed: sixteen clips were not retained", file=sys.stderr)
+        return 1
+    document["animations"].append(dict(template, name="clip_overflow"))
+    overflow_buffer = cook_assets.source_bytes(temporary, cook_assets.read_gltf(
+        json.dumps(document, separators=(",", ":")).encode("utf-8")))
+    try:
+        cook_gltf_geometry.normalized_geometry(document, overflow_buffer)
+    except ValueError:
+        return 0
+    print("glTF skin self-test failed: accepted a seventeenth animation clip", file=sys.stderr)
+    return 1
+
+
 def self_test(temporary: Path) -> int:
+    if animation_limit_self_test(temporary) != 0:
+        return 1
     first, result = write_package(temporary / "first.pkg")
     second, second_result = write_package(temporary / "second.pkg")
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
