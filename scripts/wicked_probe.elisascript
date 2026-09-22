@@ -14,10 +14,10 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 1:
-        eprint("usage: elisascript scripts/wicked_probe.elisascript [build|frame|rerun|verify]")
+        eprint("usage: elisascript scripts/wicked_probe.elisascript [build|texture|frame|rerun|verify]")
         return 2
     phase: sview = "all" if arguments.count == 0 else arguments[0]
-    return 2 if phase != "all" and phase != "build" and phase != "frame" and phase != "rerun" and phase != "verify"
+    return 2 if phase != "all" and phase != "build" and phase != "texture" and phase != "frame" and phase != "rerun" and phase != "verify"
 
     root: Path = Script::source_path().parent().parent()
     dependency_status: i64 = run_visible(
@@ -39,6 +39,10 @@ def main(arguments: darray[sview]) -> i64:
     helper: Path = wicked_source.joinpath("wiAppleHelper.mm")
     input_helper: Path = wicked_source.joinpath("wiInput_Apple.mm")
     output: Path = root.joinpath("build/wicked-native-probe")
+    embed_archive: sview = str(root.joinpath("build/libmaze.a"))
+    if phase == "texture" and not is_file(path(embed_archive)):
+        eprint("Missing build/libmaze.a; run the wicked probe build first.")
+        return 2
 
     if not is_file(path(str(source))):
         eprint("Missing Wicked probe source")
@@ -73,7 +77,6 @@ def main(arguments: darray[sview]) -> i64:
     # The C ABI archive makes the embedded game linkable; the live section
     # needs it before the probe is compiled.
     compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
-    embed_archive: sview = str(root.joinpath("build/libmaze.a"))
     if phase == "all" or phase == "build":
         fbx_import_status: i64 = run_visible(
             get_environment_or("PYTHON_BIN", "python3"),
@@ -213,7 +216,7 @@ def main(arguments: darray[sview]) -> i64:
         "-framework", "CoreAudio", "-framework", "AVFoundation", "-framework", "VideoToolbox",
         "-framework", "Cocoa", "-o", str(output)
     ]
-    if phase == "all" or phase == "build":
+    if phase == "all" or phase == "build" or phase == "texture":
         compile_result: ProcessCapture =
             empty_input: sview = ""
             capture_process_result(executable(cxx), compile_arguments, empty_input)
@@ -221,6 +224,11 @@ def main(arguments: darray[sview]) -> i64:
         _ = write_stderr(compile_result.stderr)
         if compile_result.exit_status != 0:
             return compile_result.exit_status
+        ktx2_upload_status: i64 = run_visible(str(output), [str(wicked_source), str(manifest), str(root.joinpath("build/wicked-ktx2-upload.png")), "ktx2only"])
+        if ktx2_upload_status != 0:
+            return ktx2_upload_status
+        if phase == "texture":
+            return 0
         runner_test_status: i64 = run_visible(
             get_environment_or("PYTHON_BIN", "python3"),
             [str(root.joinpath("scripts/test_elisa_build_run.py"))])

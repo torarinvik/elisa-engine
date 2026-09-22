@@ -335,12 +335,8 @@ def write_png(width: int, height: int, rgba: bytes) -> bytes:
 
 
 def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
-    basisu = os.environ.get("BASISU_BIN", "")
-    if not basisu:
-        candidate = root / "dependencies/basisu/bin/basisu"
-        if candidate.is_file():
-            basisu = str(candidate)
-    if not basisu or shutil.which(basisu) is None:
+    basisu = basisu_executable(root)
+    if basisu is None:
         return None
     output = package_dir / "maze_tile_tex.ktx2"
     with tempfile.TemporaryDirectory(prefix="elisa-basisu-") as workdir:
@@ -353,16 +349,22 @@ def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
     if result.returncode != 0 or not output.is_file():
         raise ValueError(f"Basis encoding failed: {result.stderr.strip() or result.stdout.strip()}")
     write_basisu_ktx2_cubemap(root, package_dir, size)
+    write_basisu_ktx2_alpha(root, package_dir, size)
     return output
 
 
-def write_basisu_ktx2_cubemap(root: Path, package_dir: Path, size: int):
+def basisu_executable(root: Path):
     basisu = os.environ.get("BASISU_BIN", "")
     if not basisu:
         candidate = root / "dependencies/basisu/bin/basisu"
         if candidate.is_file():
             basisu = str(candidate)
-    if not basisu or shutil.which(basisu) is None:
+    return basisu if basisu and shutil.which(basisu) is not None else None
+
+
+def write_basisu_ktx2_cubemap(root: Path, package_dir: Path, size: int):
+    basisu = basisu_executable(root)
+    if basisu is None:
         return None
     # Basis expects cubemap sources in +X, -X, +Y, -Y, +Z, -Z order.
     face_colors = [
@@ -385,6 +387,24 @@ def write_basisu_ktx2_cubemap(root: Path, package_dir: Path, size: int):
         )
     if result.returncode != 0 or not output.is_file():
         raise ValueError(f"Basis cubemap encoding failed: {result.stderr.strip() or result.stdout.strip()}")
+    return output
+
+
+def write_basisu_ktx2_alpha(root: Path, package_dir: Path, size: int):
+    basisu = basisu_executable(root)
+    if basisu is None:
+        return None
+    output = package_dir / "maze_tile_alpha.ktx2"
+    pixels = bytes((26, 229, 51, 128)) * (size * size)
+    with tempfile.TemporaryDirectory(prefix="elisa-basisu-alpha-") as workdir:
+        source = Path(workdir) / "alpha.png"
+        source.write_bytes(write_png(size, size, pixels))
+        result = subprocess.run(
+            [basisu, "-ktx2", "-uastc", "-srgb", str(source), "-output_file", str(output)],
+            capture_output=True, text=True, check=False,
+        )
+    if result.returncode != 0 or not output.is_file():
+        raise ValueError(f"Basis alpha encoding failed: {result.stderr.strip() or result.stdout.strip()}")
     return output
 
 

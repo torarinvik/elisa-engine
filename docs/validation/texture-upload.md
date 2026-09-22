@@ -11,16 +11,18 @@ result to the authored goal material. The existing raw package, RGB565, BC1,
 and KTX structural probes remain alongside this GPU upload check.
 
 The gate loads the cooked KTX2 2D artifact through the pinned Basis transcoder
-in `native/ktx2_upload.h`, transcodes every bounded mip level to RGBA8, preserves
-the KTX2 transfer function in Wicked's UNORM/SRGB format, and assigns that GPU
-texture to the authored goal material. The current cooked fixture is explicitly
-linear so Godot can retain its compressed KTX2 path; an sRGB fixture remains a
-separate compatibility case. The
-container and decoded GPU payload are both bounded, each mip dimension is
-validated, and malformed input fails before GPU allocation. Six-face textures
-use Wicked's cube resource flag and slice-major subresource order. The Basis
-probe cooks distinct colors for each cube face and checks them after CPU
-transcoding; the Wicked gate uploads that fixture and verifies its descriptor.
-The queried format policy rejects BC1 for authored alpha and forces normal maps
-through RGBA8, even when a scalar format was requested; broader GPU-native
-format selection remains follow-up A06 work.
+in `native/ktx2_upload.h`, transcodes bounded mip chains to queried BC1 (opaque),
+BC7/BC3 (alpha), or RGBA8 formats, preserves the KTX2 transfer function in
+Wicked's UNORM/SRGB formats, and assigns the color texture to the authored goal
+material. Normal-data usage stays on channel-preserving linear RGBA8 until a
+suitable two-channel GPU format is implemented. The opaque color fixture is
+linear; the alpha fixture is sRGB, so both transfer paths are covered.
+
+Container and upload-payload memory are capped at 64 MiB; each mip dimension
+and every face is validated before GPU allocation. Six-face textures use
+Wicked's cube resource flag and slice-major subresource order, while Basis
+transcodes every face at one mip before advancing to the next. The CPU probe
+checks opaque BC1 and alpha BC7/BC3 Basis targets, verifies alpha and sRGB
+metadata, and checks distinct colors on all cube faces. The Wicked `texture`
+phase runs a focused upload smoke that verifies queried format selection,
+normal-data preservation, alpha safety, and cube shape.

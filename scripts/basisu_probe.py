@@ -42,7 +42,8 @@ def main() -> int:
     relay(cook)
     ktx2 = ENGINE_ROOT / "build/cooked/maze_tile_tex.ktx2"
     cube = ENGINE_ROOT / "build/cooked/maze_tile_cube.ktx2"
-    if cook.returncode != 0 or not ktx2.is_file() or not cube.is_file():
+    alpha = ENGINE_ROOT / "build/cooked/maze_tile_alpha.ktx2"
+    if cook.returncode != 0 or not ktx2.is_file() or not cube.is_file() or not alpha.is_file():
         print("basisu probe: the cooker produced no KTX2", file=sys.stderr)
         return cook.returncode if cook.returncode != 0 else 1
 
@@ -72,7 +73,7 @@ def main() -> int:
         print("basisu probe: compile failed", file=sys.stderr)
         return compile_result.returncode if compile_result.returncode != 0 else 1
 
-    run = subprocess.run([str(probe), str(ktx2), str(cube)], capture_output=True, text=True, check=False)
+    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha)], capture_output=True, text=True, check=False)
     relay(run)
     if run.returncode != 0 or MARKER not in run.stdout:
         print("basisu probe failed; the log identifies the step.", file=sys.stderr)
@@ -80,7 +81,10 @@ def main() -> int:
     if "basisu cubemap transcode: faces=6" not in run.stdout:
         print("basisu probe: cubemap faces were not verified", file=sys.stderr)
         return 1
-    print("Basis Universal cooked and transcoded the engine 2D texture and cubemap.")
+    if "basisu alpha transcode:" not in run.stdout:
+        print("basisu probe: alpha did not survive transcoding", file=sys.stderr)
+        return 1
+    print("Basis Universal validated the 2D color, cubemap, and alpha fixtures.")
     return 0
 
 

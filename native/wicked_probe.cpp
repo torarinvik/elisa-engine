@@ -30,7 +30,7 @@
 #include "texture_probe.h"
 #include "texture_upload.h"
 #include "ktx2_upload.h"
-#include "ktx2_cube_probe.h"
+#include "ktx2_upload_probe.h"
 #include "gui_probe.h"
 #include "tracy_probe.h"
 #include "audio_probe.h"
@@ -108,6 +108,7 @@ int main(int argc, char** argv) {
     if (!check(application_host.initialize(application_config), "native application initialization")) {
         return 1;
     }
+    if (wi::arguments::HasArgument("ktx2only")) return run_ktx2_upload_smoke(argv[2]);
     if (std::getenv("ELISA_LIFECYCLE_ONLY") != nullptr) return run_lifecycle_only(application_host);
     if (std::getenv("ELISA_SCENE_RESTART_ONLY") != nullptr) {
         return run_scene_restart_diagnostic(application_host);
@@ -313,8 +314,7 @@ int main(int argc, char** argv) {
                 ktx2_texture_path.lexically_normal().string());
             if (!check(ktx2_resource.IsValid() && ktx2_resource.GetTexture().IsValid(),
                 "KTX2 texture uploaded to Wicked GPU")) return 1;
-            const std::filesystem::path ktx2_cube_path = package_path.parent_path() / "maze_tile_cube.ktx2";
-            if (!check_ktx2_cubemap_upload(ktx2_cube_path)) return 1;
+            if (!check_ktx2_upload_fixtures(package_path.parent_path())) return 1;
             goal_texture = ktx2_resource;
             const std::filesystem::path ktx_bc1_texture_path =
                 package_path.parent_path() / (asset_path.stem().string() + "_tex_bc1.ktx");
