@@ -108,8 +108,8 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     unhandled glTF semantics."""
     if document.get("extensionsUsed") or document.get("extensionsRequired"):
         raise ValueError("runtime geometry cooker does not support glTF extensions")
-    if any(document.get(name) for name in ("animations", "cameras")):
-        raise ValueError("runtime geometry cooker accepts static geometry without animations or cameras")
+    if document.get("cameras"):
+        raise ValueError("runtime geometry cooker accepts scenes without cameras")
     skin = cook_gltf_skin.normalize(document, buffer)
 
     meshes = document.get("meshes", [])
@@ -364,13 +364,15 @@ def skin_lines(geometry: dict) -> list[str]:
     bones = skin["bone_names"]
     joints = skin["joints"]
     cluster_joints = skin["cluster_joints"]
+    clips = skin.get("animation_clips", [])
     if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
-            len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS):
+            len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS or
+            len(clips) > 8):
         raise ValueError("normalized skin streams do not match the mesh")
     parents = [joint["parent"] for joint in joints]
     rests = [component for joint in joints for component in joint["rest"]]
     joint_names = [joint["name"] for joint in joints]
-    return [
+    lines = [
         f"skin_bones={len(bones)}", "skin_indices_stride=16", "skin_weights_stride=16",
         "skin_indices_b64=" + base64.b64encode(struct.pack(f"<{len(indices)}I", *indices)).decode("ascii"),
         "skin_weights_b64=" + base64.b64encode(struct.pack(f"<{len(weights)}f", *weights)).decode("ascii"),
@@ -382,8 +384,22 @@ def skin_lines(geometry: dict) -> list[str]:
         "skin_cluster_joints_stride=4",
         "skin_cluster_joints_b64=" + base64.b64encode(
             struct.pack(f"<{len(cluster_joints)}I", *cluster_joints)).decode("ascii"),
-        "animation_clips=0",
+        f"animation_clips={len(clips)}",
     ]
+    for index, clip in enumerate(clips):
+        samples = clip["samples"]
+        frames = clip["frames"]
+        if (not isinstance(clip["name"], str) or not clip["name"] or frames < 2 or frames > 3601 or
+                clip["sample_rate"] <= 0 or len(samples) != len(joints) * frames * 10):
+            raise ValueError("normalized animation clip does not match the rig")
+        encoded_name = _name_bytes([clip["name"]])
+        lines += [f"animation_{index}_name_b64=" + base64.b64encode(encoded_name).decode("ascii"),
+            f"animation_{index}_duration_seconds={clip['duration']!r}",
+            f"animation_{index}_sample_rate={clip['sample_rate']}",
+            f"animation_{index}_frames={frames}", "animation_" + str(index) + "_transform_stride=40",
+            f"animation_{index}_samples_b64=" + base64.b64encode(
+                struct.pack(f"<{len(samples)}f", *samples)).decode("ascii")]
+    return lines
 
 
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,

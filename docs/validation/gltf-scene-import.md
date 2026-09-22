@@ -14,6 +14,7 @@ fixture, proving node and primitive hierarchy, positions, indices, PBR factors,
 alpha metadata, texture references, and normalized rejection counts. The first
 authored triangle primitive is decoded into bounded engine arrays, uploaded
 through Wicked's mesh component, and used by the rendered goal marker; its
-normal stream and scalar material factors are retained when present. Richer
-authored scenes with multiple primitives, cameras/lights/skins/animations, and
-runtime material texture binding remain follow-up A05 work.
+normal stream and scalar material factors are retained when present. The
+runtime cooker now carries bounded multi-material skins and fixed-rate LINEAR
+or STEP joint animation into the v3 package; cameras, lights, morph targets,
+and complete multi-mesh scene output remain follow-up A05 work.

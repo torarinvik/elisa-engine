@@ -11,6 +11,7 @@ import math
 import struct
 
 import cook_assets
+import cook_gltf_animation
 import cook_gltf_nodes
 
 MAX_JOINTS = 64
@@ -97,6 +98,8 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
         for primitive in mesh.get("primitives", []) if isinstance(mesh.get("primitives", []), list)
     )
     if not skins and not has_skin_attributes:
+        if document.get("animations"):
+            raise ValueError("glTF animation clips require a skinned mesh")
         if any("skin" in node for node in mesh_nodes):
             raise ValueError("mesh node skin requires a declared skin and influence attributes")
         return None
@@ -162,5 +165,7 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
             raise ValueError("skin joint names must be nonempty strings")
         rig_joints.append({"name": name, "parent": -1 if parent is None else ordered_index[parent],
             "rest": _rest_transform(node, f"skin joint {node_index}")})
+    animation_clips = cook_gltf_animation.normalize(document, buffer, ordered_index,
+        [joint["rest"] for joint in rig_joints])
     return {"bone_names": [rig_joints[ordered_index[node]]["name"] for node in joints],
-        "joints": rig_joints, "cluster_joints": cluster_joints}
+        "joints": rig_joints, "cluster_joints": cluster_joints, "animation_clips": animation_clips}

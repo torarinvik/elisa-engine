@@ -212,9 +212,11 @@ per-subset bound rejects it.
   one skin with up to 64 parent-ordered TRS joints, four float32 influences per
   vertex, and up to 16 material subsets within the existing bounds.
   Inverse-bind accessors are validated; the native uploader derives the same
-  bind relation from the stored rest transforms. Mesh-node transforms must be
-  identity, joint matrices and non-TRS animation are rejected, and cameras and
-  lights remain deferred to the next A05 slice.
+  bind relation from the stored rest transforms. Sampled LINEAR and STEP TRS
+  channels become fixed 30 Hz clips (up to eight clips and 3,601 frames per
+  clip); morph and cubic-spline channels remain rejected. Mesh-node transforms
+  must be identity, and cameras and lights remain deferred to the next A05
+  slice.
 - **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
   cameras and lights still fail in the runtime cooker. The normalized scene
   contract and `native/asset_import.h` cover them only in the Wicked probe.
