@@ -108,7 +108,7 @@ def world_matrices(document: dict) -> list[tuple]:
     return result
 
 
-def normalize(document: dict, buffer: bytes) -> dict:
+def normalize(document: dict, buffer: bytes, mesh_placements: list[tuple] | None = None) -> dict:
     used = set(document.get("extensionsUsed", []))
     required = set(document.get("extensionsRequired", []))
     if used - {LIGHT_EXTENSION} or required - {LIGHT_EXTENSION} or not required <= used:
@@ -149,7 +149,11 @@ def normalize(document: dict, buffer: bytes) -> dict:
             normalized_lights.append({"node": node_index, **light, "transform": worlds[node_index]})
     if len(normalized_cameras) > MAX_CAMERAS or len(normalized_lights) > MAX_LIGHTS:
         raise ValueError("scene metadata exceeds the runtime bound")
-    return {"cameras": normalized_cameras, "lights": normalized_lights}
+    placements = mesh_placements or cook_gltf_nodes.mesh_placement_records(document, len(document.get("meshes", [])))
+    return {"mesh_count": len(document.get("meshes", [])),
+        "mesh_placements": [{"mesh": mesh, "node": node, "transform": transform}
+            for mesh, node, transform in placements],
+        "cameras": normalized_cameras, "lights": normalized_lights}
 
 
 def _encoded(values: tuple[float, ...]) -> str:
@@ -157,8 +161,15 @@ def _encoded(values: tuple[float, ...]) -> str:
 
 
 def lines(metadata: dict) -> list[str]:
+    meshes = metadata.get("mesh_count", 0)
+    placements = metadata.get("mesh_placements", [])
     cameras, lights = metadata["cameras"], metadata["lights"]
-    result = [f"camera_count={len(cameras)}"]
+    result = [f"mesh_count={meshes}", f"mesh_placement_count={len(placements)}",
+        "mesh_placement_stride=56"]
+    packed_placements = b"".join(struct.pack("<2I12f", placement["mesh"], placement["node"],
+        *placement["transform"]) for placement in placements)
+    result.append("mesh_placements_b64=" + base64.b64encode(packed_placements).decode("ascii"))
+    result.append(f"camera_count={len(cameras)}")
     for index, camera in enumerate(cameras):
         result += [f"camera_{index}_node={camera['node']}", f"camera_{index}_projection={camera['projection']}",
             f"camera_{index}_x={camera['x']!r}", f"camera_{index}_y={camera['y']!r}",

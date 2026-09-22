@@ -157,6 +157,7 @@ def cases(directory: Path) -> list[tuple]:
     hierarchy_source = ROOT / "test/fixtures/node_hierarchy_panel.gltf"
     cook_gltf_geometry.cook_geometry_package(
         hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
+    hierarchy_metadata = (directory / "hierarchy.pkg").read_bytes()
     gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
     gltf_morph_self_test.write_package(directory / "morphed-panel.pkg")
     gltf_scene_self_test.write_package(directory / "scene-metadata.pkg")
@@ -201,6 +202,11 @@ def cases(directory: Path) -> list[tuple]:
             raise RuntimeError("scene fixture mutation did not find its field")
         return scene_metadata.replace(old, new, 1)
 
+    def hierarchy_variant(old: bytes, new: bytes) -> bytes:
+        if old not in hierarchy_metadata:
+            raise RuntimeError("hierarchy metadata mutation did not find its field")
+        return hierarchy_metadata.replace(old, new, 1)
+
     def textured_strip(names, references, **fields):
         return strip_package(2, two, 2, materials=fields.pop("materials", plain),
             textures=(names, references), **fields)
@@ -232,6 +238,10 @@ def cases(directory: Path) -> list[tuple]:
             b"light_0_kind=0", b"light_0_kind=3"), "light metadata"),
         ("reject", "scene-camera-transform.pkg", scene_variant(
             b"camera_0_transform_b64=", b"camera_0_transform="), "camera metadata"),
+        ("reject", "hierarchy-mesh-stride.pkg", hierarchy_variant(
+            b"mesh_placement_stride=56", b"mesh_placement_stride=52"), "mesh placement metadata"),
+        ("reject", "hierarchy-mesh-count.pkg", hierarchy_variant(
+            b"mesh_count=3", b"mesh_count=4"), "leaves a mesh unplaced"),
         ("reject", "morph-missing-position.pkg", morph_variant(
             b"morph_0_positions_b64=", b"morph_0_position_b64="), "morph position stream"),
         ("reject", "morph-stride.pkg", morph_variant(

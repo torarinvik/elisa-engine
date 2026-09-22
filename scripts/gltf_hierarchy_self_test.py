@@ -80,6 +80,13 @@ def close(actual: tuple, expected: tuple) -> bool:
     return all(abs(a - e) <= 1e-12 for a, e in zip(actual, expected, strict=True))
 
 
+def same_baked_geometry(left: dict, right: dict) -> bool:
+    """Compare the flattened render payload while allowing source-scene
+    metadata to change when an authored grouping node is added."""
+    return ({key: value for key, value in left.items() if key != "scene"} ==
+        {key: value for key, value in right.items() if key != "scene"})
+
+
 def local_transforms_correct() -> bool:
     """A TRS node is translation after rotation after scale, a matrix node
     is column-major, and quaternions turn right-handedly: a quarter turn
@@ -201,6 +208,11 @@ def hierarchy_self_test(temporary: Path) -> int:
     geometry = cook_gltf_geometry.normalized_geometry(document, buffer)
     if not baked_correctly(geometry):
         return fail("the node hierarchy panel baked to the wrong world-space strips")
+    placements = geometry["scene"]["mesh_placements"]
+    if (geometry["scene"]["mesh_count"] != 3 or
+            [(placement["mesh"], placement["node"]) for placement in placements] !=
+            [(0, 2), (0, 3), (1, 4), (2, 5)] or len(placements) != 4):
+        return fail("the cooked scene lost source mesh and node placement identities")
     if not local_transforms_correct():
         return fail("a node's local transform composed or turned the wrong way")
 
@@ -213,7 +225,7 @@ def hierarchy_self_test(temporary: Path) -> int:
     for label, mutate in equivalent.items():
         variant = deepcopy(document)
         mutate(variant)
-        if cook_gltf_geometry.normalized_geometry(variant, buffer) != geometry:
+        if not same_baked_geometry(cook_gltf_geometry.normalized_geometry(variant, buffer), geometry):
             return fail(f"{label} baked differently from the authored panel")
 
     # Identity transforms keep a single-node package's bytes, even a -0.0
@@ -233,7 +245,7 @@ def hierarchy_self_test(temporary: Path) -> int:
         variant["nodes"][0].update(fields)
         variant["nodes"].insert(0, {"name": "group", "children": [1]})
         variant["scenes"][0]["nodes"] = [0]
-        if cook_gltf_geometry.normalized_geometry(variant, tile_buffer) != plain:
+        if not same_baked_geometry(cook_gltf_geometry.normalized_geometry(variant, tile_buffer), plain):
             return fail("an identity hierarchy changed the maze tile's bytes")
 
     # Adjacent placements on one slot share a subset, and sixteen subsets fit.

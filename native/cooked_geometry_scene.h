@@ -11,6 +11,60 @@ inline bool scene_floats(const probe::PackageIndex& package, const std::string& 
 
 inline bool parse_geometry_scene(const probe::PackageIndex& package, CookedGeometry& geometry,
     std::string& error) {
+    const auto mesh_section = package.sections.find("mesh_count");
+    const bool has_mesh_metadata = mesh_section != package.sections.end() ||
+        package.sections.count("mesh_placement_count") != 0 ||
+        package.sections.count("mesh_placement_stride") != 0 ||
+        package.sections.count("mesh_placements_b64") != 0;
+    if (has_mesh_metadata) {
+        uint64_t mesh_count = 0;
+        uint64_t placement_count = 0;
+        const auto stride = package.sections.find("mesh_placement_stride");
+        if (!parse_count(package, "mesh_count", mesh_count) || mesh_count == 0 || mesh_count > 256 ||
+            !parse_count(package, "mesh_placement_count", placement_count) ||
+            placement_count < mesh_count || placement_count > 256 || stride == package.sections.end() ||
+            stride->second != "56") {
+            error = "invalid cooked geometry mesh placement metadata";
+            return false;
+        }
+        const auto encoded = package.sections.find("mesh_placements_b64");
+        std::vector<uint8_t> bytes;
+        if (encoded == package.sections.end() || !decode_base64(encoded->second, bytes) ||
+            bytes.size() != size_t(placement_count) * 56u) {
+            error = "invalid cooked geometry mesh placement records";
+            return false;
+        }
+        auto read_u32 = [&bytes](size_t offset) -> uint32_t {
+            return uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
+                (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
+        };
+        geometry.mesh_count = uint32_t(mesh_count);
+        for (size_t index = 0; index < size_t(placement_count); ++index) {
+            const size_t offset = index * 56u;
+            CookedGeometry::MeshPlacement placement;
+            placement.mesh = read_u32(offset);
+            placement.node = read_u32(offset + 4);
+            if (placement.mesh >= geometry.mesh_count || placement.node >= 256) {
+                error = "cooked geometry mesh placement index is out of range";
+                return false;
+            }
+            for (size_t component = 0; component < placement.transform.size(); ++component) {
+                const uint32_t bits = read_u32(offset + 8 + component * 4);
+                std::memcpy(&placement.transform[component], &bits, sizeof(bits));
+                if (!std::isfinite(placement.transform[component])) {
+                    error = "cooked geometry mesh placement transform is not finite";
+                    return false;
+                }
+            }
+            geometry.mesh_placements.push_back(placement);
+        }
+        std::vector<bool> seen(geometry.mesh_count, false);
+        for (const auto& placement : geometry.mesh_placements) seen[placement.mesh] = true;
+        if (std::find(seen.begin(), seen.end(), false) != seen.end()) {
+            error = "cooked geometry mesh placement leaves a mesh unplaced";
+            return false;
+        }
+    }
     const auto camera_section = package.sections.find("camera_count");
     if (camera_section != package.sections.end()) {
         uint64_t count = 0;

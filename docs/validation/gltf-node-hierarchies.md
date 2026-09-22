@@ -4,9 +4,9 @@ Until now the runtime glTF cooker took one untransformed mesh node. A
 translated, rotated or scaled node failed, and so did a second mesh node. Now
 the cooker bakes a static scene's whole node hierarchy into one cooked mesh.
 That covers matrix and TRS nodes, nested groups, several meshes, one mesh
-placed more than once, and mirroring scales. The package format, the loader
-and the runtime are unchanged. A baked hierarchy is an ordinary cooked mesh
-with material subsets.
+placed more than once, and mirroring scales. The flattened render payload is
+still an ordinary cooked mesh with material subsets, while the package now
+also carries bounded source mesh/node placement metadata for scene clients.
 
 ## Path
 
@@ -59,6 +59,11 @@ with material subsets.
 4. **Slots.** Material slots are unchanged: one per declared glTF material,
    and each primitive's subset uses its material's slot. The primitives of
    every mesh draw from one slot list.
+5. **Retain source placement identities.** `mesh_count` and the
+   `mesh_placements_b64` records preserve each source mesh index, node index,
+   and world transform in depth-first order. The native package reader checks
+   the fixed 56-byte record stride, bounds, finite transforms, and that every
+   source mesh is represented before exposing the records to runtime clients.
 
 ## Evidence
 
@@ -101,7 +106,9 @@ vertices, 24 indices and three subsets: red (0, 12), green (12, 6) and blue
   rotation of length 1.0005, and the negated rotation.
 - Wrapping the maze tile's node in a group, with an identity TRS or an
   identity matrix, keeps its bytes. An identity placement also keeps a -0.0
-  coordinate and a unit normal that renormalizing would round.
+  coordinate and a unit normal that renormalizing would round. The flattened
+  geometry stays byte-identical; the retained source metadata correctly
+  records the added grouping node.
 - Sixteen more red placements after the two red strips merge into one
   subset: (0, 108), then green and blue, with 80 vertices. Fifteen
   alternating red and green placements plus blue keep 16 subsets.
@@ -132,7 +139,7 @@ vertices, 24 indices and three subsets: red (0, 12), green (12, 6) and blue
 second mesh node. Those are now accepted, so it rejects a camera node and a
 second scene instead.
 
-**Loader.** `scripts/test_geometry_subsets.py` now runs 46 sanitized cases.
+**Loader.** `scripts/test_geometry_subsets.py` now runs 85 sanitized cases.
 The two new ones load the cooked fixture with its three subsets and three
 authored slot records, and the 16-subset alternating cook.
 
@@ -227,9 +234,10 @@ sign only changes lighting, and the emissive color still dominates.
 - **Static scenes only.** Skins, animation, morph weights, cameras and
   extensions such as `KHR_lights_punctual` still fail visibly. Cameras,
   lights, animation and multi-material skinned meshes remain A05.
-- **Flattened.** The hierarchy bakes into one mesh. Node names and per-node
-  identity don't survive, so a game can't move one node at runtime. A mesh
-  placed twice is two vertex copies, not GPU instances.
+- **Flattened render payload.** The hierarchy still bakes into one mesh, so
+  node names and per-node runtime handles are not yet exposed and a mesh
+  placed twice is two vertex copies, not GPU instances. Source mesh/node
+  indices and world transforms are retained for the next imported-scene API.
 - **Bounds.** 256 nodes, 256 meshes, 16 primitives per mesh, 16 material
   slots and 16 subsets after merging. The existing vertex and index bounds
   apply to the baked totals.

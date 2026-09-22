@@ -73,10 +73,14 @@ def determinant(m: tuple) -> float:
     return m[0] * c[0] + m[1] * c[1] + m[2] * c[2]
 
 
-def mesh_placements(document: dict, mesh_count: int) -> list[tuple[int, tuple]]:
-    """Return (mesh index, world matrix) for every node that places a mesh,
-    depth first in scene order, a node before its children. The nodes must
-    form one scene's forest; each mesh must be placed at least once."""
+def mesh_placement_records(document: dict, mesh_count: int) -> list[tuple[int, int, tuple]]:
+    """Return (mesh index, node index, world matrix) for each mesh node.
+
+    Records retain the source identities that the flattened geometry stream
+    deliberately does not need. They are emitted as scene metadata so runtime
+    clients can address a particular authored mesh placement without parsing
+    or retaining cgltf state.
+    """
     nodes = document.get("nodes", [])
     if not isinstance(nodes, list) or not 1 <= len(nodes) <= MAX_NODES:
         raise ValueError(f"runtime geometry cooker requires 1 to {MAX_NODES} nodes")
@@ -124,14 +128,19 @@ def mesh_placements(document: dict, mesh_count: int) -> list[tuple[int, tuple]]:
             det = determinant(world)
             if not math.isfinite(det) or det == 0.0:
                 raise ValueError("node transforms must be finite and invertible")
-            placements.append((nodes[index]["mesh"], world))
+            placements.append((nodes[index]["mesh"], index, world))
         pending.extend((child, world) for child in reversed(nodes[index].get("children", [])))
     # Parent links are unique and roots have none, so a cycle is unreachable.
     if not all(visited):
         raise ValueError("every node must belong to the scene's hierarchy")
-    if {mesh for mesh, _ in placements} != set(range(mesh_count)):
+    if {mesh for mesh, _, _ in placements} != set(range(mesh_count)):
         raise ValueError("every mesh must be placed by a node")
     return placements
+
+
+def mesh_placements(document: dict, mesh_count: int) -> list[tuple[int, tuple]]:
+    """Return the legacy (mesh index, world matrix) view used by baking."""
+    return [(mesh, world) for mesh, _, world in mesh_placement_records(document, mesh_count)]
 
 
 def packed_float3(values: tuple) -> bytes:

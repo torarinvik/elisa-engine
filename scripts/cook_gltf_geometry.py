@@ -149,10 +149,11 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     if any(len(primitive.get("targets", [])) != morph_count for primitive in every_primitive):
         raise ValueError("all runtime primitives must use the same morph target count")
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
-    placements = cook_gltf_nodes.mesh_placements(document, len(meshes))
+    placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes))
+    placements = [(mesh, matrix) for mesh, _, matrix in placement_records]
     if skin is not None and any(matrix != cook_gltf_nodes.IDENTITY for _, matrix in placements):
         raise ValueError("skinned mesh node transforms must be identity; put the pose in its joints")
-    scene = cook_gltf_scene.normalize(document, buffer)
+    scene = cook_gltf_scene.normalize(document, buffer, placement_records)
     return placements, slot_count, slot_records, slot_images, skin, morph_count, scene
 
 
