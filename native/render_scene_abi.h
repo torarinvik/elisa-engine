@@ -169,6 +169,7 @@ int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
+float elisa_render_scene_v1_animation_progress(int64_t handle);
 int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
 int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float scale_u, float scale_v, float offset_u, float offset_v);
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);

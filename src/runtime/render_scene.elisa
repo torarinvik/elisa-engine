@@ -90,6 +90,8 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_advance_animation(handle: i64, delta_seconds: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_animation_progress(handle: i64) -> f32
+        @callconv(c)
         extern elisa_render_scene_v1_set_lit_material(handle: i64, roughness: f32, metallic: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_texture_uv_transform(handle: i64, scale_u: f32, scale_v: f32, offset_u: f32, offset_v: f32) -> i32
@@ -389,6 +391,14 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_stop_animation(handle.native_value, blend_seconds))
         def advance_animation(handle: InstanceHandle, delta_seconds: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_advance_animation(handle.native_value, delta_seconds))
+        # Normalized time of the active clip, for synchronizing authored cues
+        # with the engine's actual sampled animation rather than a duplicate
+        # game-side cadence timer.
+        def animation_progress(handle: InstanceHandle) -> f32 error[RenderSceneError]:
+            value: f32 = elisa_render_scene_v1_animation_progress(handle.native_value)
+            if value < 0.0:
+                raise RenderSceneError.UnknownHandle
+            value
         # Opt into PBR illumination and shadow casting. Scalars multiply surface maps.
         def set_lit_material(handle: InstanceHandle, roughness: f32, metallic: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_lit_material(handle.native_value, roughness, metallic))
