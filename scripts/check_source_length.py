@@ -6,7 +6,7 @@ import sys
 
 MAX_SOURCE_LINES = 600
 SOURCE_ROOTS = ("src", "test", "proof", "examples", "scripts", "native", "backends", "docs")
-SOURCE_SUFFIXES = (".elisa", ".elisascript", ".cpp", ".h", ".py", ".gd", ".md")
+SOURCE_SUFFIXES = (".elisa", ".elisascript", ".cpp", ".h", ".inc", ".py", ".gd", ".md")
 
 
 def source_files(root: Path):
