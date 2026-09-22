@@ -71,6 +71,8 @@ struct InstanceSlot {
     uint64_t material_high = 0;
     uint64_t material_low = 0;
     size_t shared_mesh_slot = NO_SHARED_MESH;
+    // Set on a clone: the instance whose mesh and material it draws.
+    wi::ecs::Entity shared_source = wi::ecs::INVALID_ENTITY;
     std::vector<wi::ecs::Entity> joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
@@ -83,6 +85,7 @@ struct InstanceSlot {
     float previous_animation_speed = 1.0f;
     float blend_elapsed = 0.0f;
     float blend_duration = 0.0f;
+    bool blend_eased = false;
     bool animation_loop = true;
     bool previous_animation_loop = true;
     bool live = false;
@@ -319,6 +322,7 @@ size_t find_free_arc_slot(const RenderSceneService& state) {
     }
     return MAX_ELECTRIC_ARCS;
 }
+void clear_snapshot_instance(InstanceSlot& instance);
 void reset_unlocked(RenderSceneService& state) {
     if (state.initialized) {
         wi::jobsystem::WaitForAllJobs();
@@ -343,23 +347,7 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lights = {};
     state.cameras = {};
-    for (InstanceSlot& instance : state.instances) {
-        instance.entity = wi::ecs::INVALID_ENTITY;
-        instance.gameplay_epoch = 0;
-        instance.gameplay_id = 0;
-        instance.render_id = 0;
-        instance.mesh_high = 0;
-        instance.mesh_low = 0;
-        instance.material_high = 0;
-        instance.material_low = 0;
-        instance.shared_mesh_slot = NO_SHARED_MESH;
-        instance.joint_entities.clear();
-        instance.skin_joints.clear();
-        instance.animation_clips.clear();
-        instance.animation_submission = {};
-        clear_animation_state(instance);
-        instance.live = false;
-    }
+    for (InstanceSlot& instance : state.instances) clear_snapshot_instance(instance);
     state.snapshot_row_count = 0;
     state.snapshot_retire_count = 0;
     state.snapshot_result_count = 0;
@@ -559,7 +547,7 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     wi::ecs::Entity entity = state.instances[slot].entity;
     release_animation_submission(state, state.instances[slot]);
-    state.scene->Entity_Remove(entity);
+    remove_instance_entity(state, slot);
     for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
     if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
         release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);

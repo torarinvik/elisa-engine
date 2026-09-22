@@ -1,0 +1,82 @@
+# Native coverage for shared-mesh instances: a clone draws its source's mesh
+# without a second Wicked mesh, a clone cannot be cloned, material calls on a
+# clone fail, and a source retired before its clones keeps its mesh until the
+# last clone goes.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_instancing.elisa"
+
+module RenderSceneMeshInstanceNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_instances_share_mesh(first: RenderScene::InstanceHandle,
+            second: RenderScene::InstanceHandle) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_mesh_count() -> u64
+
+        def placement(x: f32) -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: x, y: 0.0, z: 0.0},
+                rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 1.0},
+                scale: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}}
+
+    public:
+        def exercise() -> i32:
+            instances_before: u64 = RenderScene::instance_count()
+            meshes_before: u64 = elisa_render_scene_v1_test_mesh_count()
+            source: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box, placement(-2.0),
+                RenderScene::Color{red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0}):
+                value: value
+                error failure: return 1
+            meshes_with_source: u64 = elisa_render_scene_v1_test_mesh_count()
+            return 2 if meshes_with_source != meshes_before + 1
+            clone: RenderScene::InstanceHandle = catch RenderScene::create_mesh_instance(
+                source, placement(2.0),
+                RenderScene::Color{red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0}):
+                value: value
+                error failure: return 3
+            return 4 if elisa_render_scene_v1_test_mesh_count() != meshes_with_source
+            return 5 if elisa_render_scene_v1_test_instances_share_mesh(source, clone) != 1
+            return 6 if RenderScene::instance_count() != instances_before + 2
+
+            nested: i32 = catch RenderScene::create_mesh_instance(clone, placement(4.0),
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 7 if nested != 1
+            bad_color: i32 = catch RenderScene::create_mesh_instance(source, placement(4.0),
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 2.0}):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 8 if bad_color != 1
+            clone_material: i32 = catch RenderScene::set_color(clone,
+                RenderScene::Color{red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0}):
+                ok: 0
+                RenderScene::RenderSceneError.BackendFailure: 1
+                error failure: 2
+            return 9 if clone_material != 1
+            clone_hidden: i32 = catch RenderScene::set_visible(clone, false):
+                ok: 0
+                error failure: 1
+            return 10 if clone_hidden != 0
+
+            source_destroyed: i32 = catch RenderScene::destroy(source):
+                ok: 0
+                error failure: 1
+            return 11 if source_destroyed != 0
+            # The retired source's mesh keeps drawing the clone.
+            return 12 if elisa_render_scene_v1_test_mesh_count() != meshes_with_source
+            clone_shown: i32 = catch RenderScene::set_visible(clone, true):
+                ok: 0
+                error failure: 1
+            return 13 if clone_shown != 0
+            clone_destroyed: i32 = catch RenderScene::destroy(clone):
+                ok: 0
+                error failure: 1
+            return 14 if clone_destroyed != 0
+            return 15 if elisa_render_scene_v1_test_mesh_count() != meshes_before
+            return 16 if RenderScene::instance_count() != instances_before
+            0

@@ -8,6 +8,7 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.previous_animation_speed = 1.0f;
     instance.blend_elapsed = 0.0f;
     instance.blend_duration = 0.0f;
+    instance.blend_eased = false;
     instance.animation_loop = true;
     instance.previous_animation_loop = true;
 }
@@ -97,6 +98,8 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     float blend = 1.0f;
     if (instance.blend_duration > 0.0f) {
         blend = std::clamp(instance.blend_elapsed / instance.blend_duration, 0.0f, 1.0f);
+        // Smoothstep removes the velocity jump at both ends of a linear fade.
+        if (instance.blend_eased) blend = blend * blend * (3.0f - 2.0f * blend);
     }
     for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
         float current[10]{};

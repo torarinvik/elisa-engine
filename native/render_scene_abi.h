@@ -84,6 +84,19 @@ int64_t elisa_render_scene_v1_create_mesh(
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz,
     float red, float green, float blue, float alpha);
+// Draws source's mesh and material again at another transform. Wicked renders
+// every object naming one mesh entity from that mesh's buffers, so repeated
+// props load and upload once. The color multiplies the source material's base
+// color per instance. A clone has no material of its own (material calls on
+// it return BACKEND_FAILED), and a skinned, animated, morphing or cloned
+// source returns INVALID_ARGUMENT. Destroying the source first keeps its mesh
+// until the last clone is destroyed.
+int64_t elisa_render_scene_v1_create_mesh_instance(
+    int64_t source_handle,
+    float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz,
+    float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,
     float px, float py, float pz,
@@ -180,6 +193,9 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
+int32_t elisa_render_scene_v1_play_animation_blended(
+    int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds, int32_t flags);
+int32_t elisa_render_scene_v1_set_animation_speed(int64_t handle, float speed);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
 float elisa_render_scene_v1_animation_progress(int64_t handle);

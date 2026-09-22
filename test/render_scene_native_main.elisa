@@ -27,7 +27,9 @@ include "./render_scene_lighting_native.elisa"
 include "./render_scene_arc_depth_native.elisa"
 include "./render_scene_quality_settings_native.elisa"
 include "./render_scene_visibility_native.elisa"
+include "./render_scene_mesh_instance_native.elisa"
 include "./render_scene_animation_submission_native.elisa"
+include "./render_scene_animation_blend_native.elisa"
 include "./render_scene_effects_native.elisa"
 using Maze
 using MazeGame
@@ -126,7 +128,6 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(200, lighting_test_status) if lighting_test_status != 0
     camera_test: i32 = RenderSceneCameraNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(198, camera_test) if camera_test != 0
-
     invalid_arc_width: i32 = catch RenderScene::create_electric_arc(0.0, 0.1, 7):
         value: 0
         RenderScene::RenderSceneError.InvalidValue: 1
@@ -162,7 +163,6 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 94 if arc_shown != 0
-
     hud_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
         "LIVES  3", 16.0, 14.0, 24,
         RenderScene::Color{red: 0.92, green: 0.97, blue: 1.0, alpha: 1.0}):
@@ -181,7 +181,6 @@ def exercise_render_scene() -> i32:
         error failure: return 123
     panel_updates: i32 = RenderScenePanelNativeTests::exercise(hud_panel)
     return elisa_render_scene_v1_test_failed_case(229, panel_updates) if panel_updates != 0
-
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -305,6 +304,10 @@ def exercise_render_scene() -> i32:
     return 14 if not shown
     visibility_status: i32 = RenderSceneVisibilityNativeTests::exercise(box)
     return 144 + visibility_status if visibility_status != 0
+    mesh_instance_status: i32 = RenderSceneMeshInstanceNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(250, mesh_instance_status) if mesh_instance_status != 0
+    animation_blend_status: i32 = RenderSceneAnimationBlendNativeTests::exercise(box)
+    return elisa_render_scene_v1_test_failed_case(270, animation_blend_status) if animation_blend_status != 0
     bad_color: i32 = catch RenderScene::set_color(box,
         RenderScene::Color{red: 1.0, green: 0.0, blue: 0.0, alpha: 2.0}):
         ok: 0

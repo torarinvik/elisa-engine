@@ -1,0 +1,93 @@
+# Native coverage for smoother clip transitions: a speed change keeps the
+# cycle's phase, a re-requested clip keeps running, a phase-matched switch
+# starts where the old cycle was, and an eased crossfade weights the new
+# pose with a smoothstep instead of a straight line.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_animation_blend.elisa"
+
+module RenderSceneAnimationBlendNativeTests:
+    private:
+        const CLIP: cstr = "lift"
+        const FADE: f32 = 0.4
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_blend_weight(
+            handle: RenderScene::InstanceHandle) -> f32
+
+        def near(value: f32, expected: f32) -> bool:
+            value > expected - 0.002 and value < expected + 0.002
+
+        def progress(handle: RenderScene::InstanceHandle) -> f32:
+            catch RenderScene::animation_progress(handle):
+                value: value
+                error failure: -1.0
+
+        def advance(handle: RenderScene::InstanceHandle, seconds: f32) -> bool:
+            catch RenderScene::advance_animation(handle, seconds):
+                ok: true
+                error failure: false
+
+        def play(handle: RenderScene::InstanceHandle, blend: f32,
+            transition: RenderScene::AnimationTransition) -> bool:
+            catch RenderScene::play_animation_blended(handle, CLIP, true, 1.0, blend, transition):
+                ok: true
+                error failure: false
+
+        def plain() -> RenderScene::AnimationTransition:
+            RenderScene::AnimationTransition{eased: false, phase_matched: false,
+                continue_same_clip: false}
+
+        def retime(handle: RenderScene::InstanceHandle, speed: f32) -> i32:
+            catch RenderScene::set_animation_speed(handle, speed):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+
+        def phase_checks(rig: RenderScene::InstanceHandle) -> i32:
+            started: bool = catch RenderScene::play_animation(rig, CLIP, true, 1.0, 0.0):
+                ok: true
+                error failure: false
+            return 2 if not started
+            return 3 if not advance(rig, 0.5) or not near(progress(rig), 0.5)
+            # Retiming keeps the phase; the faster cadence shows on the next advance.
+            return 4 if retime(rig, 2.0) != 0 or not near(progress(rig), 0.5)
+            return 5 if not advance(rig, 0.2) or not near(progress(rig), 0.9)
+            # A re-requested clip keeps running and starts no fade.
+            return 6 if not play(rig, FADE, RenderScene::locomotion_transition()) or not near(progress(rig), 0.9)
+            return 7 if elisa_render_scene_v1_test_animation_blend_weight(rig) >= 0.0
+            0
+
+        def fade_checks(rig: RenderScene::InstanceHandle) -> i32:
+            # A phase-matched switch starts the new cycle at the old phase and
+            # fades in with a smoothstep: a quarter of the way in, the new
+            # pose weighs 0.15625 rather than 0.25.
+            eased: RenderScene::AnimationTransition = RenderScene::AnimationTransition{
+                eased: true, phase_matched: true, continue_same_clip: false}
+            return 8 if not play(rig, FADE, eased) or not near(progress(rig), 0.9)
+            return 9 if not near(elisa_render_scene_v1_test_animation_blend_weight(rig), 0.0)
+            return 10 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(rig), 0.15625)
+            return 11 if not advance(rig, 0.3) or elisa_render_scene_v1_test_animation_blend_weight(rig) >= 0.0
+            # The plain switch restarts the cycle and fades linearly.
+            return 12 if not play(rig, FADE, plain()) or not near(progress(rig), 0.0)
+            return 13 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(rig), 0.25)
+            0
+
+    public:
+        def exercise(box: RenderScene::InstanceHandle) -> i32:
+            rig: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 1
+            phase_status: i32 = phase_checks(rig)
+            return phase_status if phase_status != 0
+            fade_status: i32 = fade_checks(rig)
+            return fade_status if fade_status != 0
+            # Out-of-range speeds and unskinned instances are refused.
+            return 14 if retime(rig, -1.0) != 1
+            return 15 if retime(box, 1.0) != 1
+            destroyed: bool = catch RenderScene::destroy(rig):
+                ok: true
+                error failure: false
+            return 16 if not destroyed
+            0

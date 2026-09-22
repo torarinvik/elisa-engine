@@ -231,6 +231,7 @@ void clear_snapshot_instance(InstanceSlot& instance) {
     instance.material_high = 0;
     instance.material_low = 0;
     instance.shared_mesh_slot = NO_SHARED_MESH;
+    instance.shared_source = wi::ecs::INVALID_ENTITY;
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();

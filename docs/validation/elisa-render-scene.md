@@ -106,6 +106,17 @@ instance, and reports `UnknownHandle` for a retired instance. The SDL3/Metal
 smoke checks idle and stale-handle behavior; gameplay can use the value to
 synchronize authored cues without duplicating clip-duration state.
 
+`RenderScene::play_animation_blended` (from `render_scene_animation_blend.elisa`)
+adds an `AnimationTransition`: `eased` fades with a smoothstep instead of a
+straight line, `phase_matched` starts the next looping clip at the old clip's
+normalized time so cycles stay in step, and `continue_same_clip` keeps a
+re-requested clip running with only its speed and looping updated.
+`RenderScene::set_animation_speed` retimes the active clip without restarting it
+or starting a fade. The SDL3/Metal smoke (`test/render_scene_animation_blend_native.elisa`)
+checks the kept phase, the 0.15625 eased weight a quarter of the way into a fade
+against the linear 0.25, and the refusals for out-of-range speeds and unskinned
+instances.
+
 Calling `RenderScene::shutdown` releases the render path and all owned scene
 resources. The engine also registers a shutdown hook: application shutdown
 detaches the active path, then releases the scene before Wicked tears down its
@@ -264,6 +275,30 @@ destroy. Light slots are bounded by the existing native lighting bridge, and
 all positions and directions cross the Elisa-to-Wicked coordinate boundary in
 one place. Authored light scenes, shadow-bias policy, and reference captures
 remain open under R05.
+
+## Shared-mesh instances (2026-09-22)
+
+`RenderScene::create_mesh_instance(source, transform, color)` (from
+`src/runtime/render_scene_instancing.elisa`, in the public bundle) draws the
+source's mesh and material again at another transform. Natively the clone is a
+Wicked `ObjectComponent` whose `meshID` names the source entity, so a scene of
+repeated props loads and uploads each cooked package once; the color multiplies
+the source material's base color per instance through Wicked's instance color.
+A clone has no material of its own: `set_color`, `set_texture`,
+`set_lit_material` and the other material calls on it return `BackendFailure`,
+while `set_visible`, `set_visibility` and `update_transform` work per clone.
+Skinned, animated, morphing and cloned sources are rejected with
+`InvalidValue`. Destroying a source before its clones removes only its object
+and transform; the mesh and material stay until the last clone is destroyed,
+and that clone's destruction frees the source entity.
+
+`test/render_scene_mesh_instance_native.elisa` (case group 250) checks with the
+test-only `elisa_render_scene_v1_test_mesh_count` and
+`elisa_render_scene_v1_test_instances_share_mesh` probes that a clone adds no
+Wicked mesh and names the source's mesh, that cloning a clone and an invalid
+color fail with `InvalidValue`, that `set_color` on the clone fails with
+`BackendFailure`, that the mesh survives destroying the source first, and that
+destroying the last clone restores the mesh and instance counts.
 
 ## Exit codes
 
