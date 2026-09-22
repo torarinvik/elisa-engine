@@ -5,8 +5,9 @@
 # glows red and blue. A game registers the mesh's images, then its
 # materials, which must bind exactly those images and draw them. A slot's
 # image must come from the mesh's own bundle, under one texture ID, unchanged
-# since the mesh loaded. scripts/render_scene_native_smoke.py cooks the
-# bundles under build/cooked/subsets.
+# since the mesh loaded. A hand-registered material can enable the same
+# occlusion. scripts/render_scene_native_smoke.py cooks the bundles under
+# build/cooked/subsets.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene_assets.elisa"
 
@@ -50,6 +51,29 @@ module RenderSceneCookedTextureNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_register_snapshot_mesh_texture(mesh_high: u64, mesh_low: u64,
             index: u32, high: u64, low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
+            high: u64, low: u64,
+            base_color_high: u64, base_color_low: u64,
+            normal_high: u64, normal_low: u64,
+            surface_high: u64, surface_low: u64,
+            emissive_high: u64, emissive_low: u64,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            metallic: f32, roughness: f32, emissive_red: f32, emissive_green: f32,
+            emissive_blue: f32, alpha_cutoff: f32, alpha_mode: i32, double_sided: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(
+            high: u64, low: u64,
+            base_color_high: u64, base_color_low: u64,
+            normal_high: u64, normal_low: u64,
+            surface_high: u64, surface_low: u64,
+            emissive_high: u64, emissive_low: u64,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            metallic: f32, roughness: f32, emissive_red: f32, emissive_green: f32,
+            emissive_blue: f32, alpha_cutoff: f32, alpha_mode: i32, double_sided: i32,
+            occlusion: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
@@ -100,6 +124,7 @@ module RenderSceneCookedTextureNativeTests:
             BACKDROP: u64 = 4
             SPARE: u64 = 5
             HAND: u64 = 6
+            BARE: u64 = 7
 
         const module Set:
             PANEL: u64 = 1
@@ -257,17 +282,37 @@ module RenderSceneCookedTextureNativeTests:
             return Code::OTHER if appended != Code::OK
             register_built(materials, set)
 
-        # The painted slot's factors and images, registered by hand, which
-        # can't enable occlusion.
-        def register_hand_painted() -> i32:
+        # The painted slot's factors, base image and normal image, registered
+        # by hand with textures `surface` as its metallic-roughness image and
+        # `occluder` as its occlusion image. 0 names no image.
+        def register_hand_painted(paint: u64, surface: u64, occluder: u64) -> i32:
             material: mutable Material::Material = Material::Material()
             material.base_color <- texture_id(1)
             material.normal <- texture_id(2)
-            material.metallic_roughness <- texture_id(3)
+            if surface != 0:
+                material.metallic_roughness <- texture_id(surface)
+            if occluder != 0:
+                material.occlusion <- texture_id(occluder)
             material.metallic_factor <- 1.0
-            catch RenderScene::register_snapshot_material_asset(material_id(Paint::HAND), &material):
+            catch RenderScene::register_snapshot_material_asset(material_id(paint), &material):
                 ok: Code::OK
+                RenderScene::RenderSceneError.InvalidValue: Code::INVALID
                 error failure: Code::OTHER
+
+        # The painted slot's factors and images through the raw ABI, with
+        # texture `surface`, or none for 0, as the surface image and `flag`
+        # as the occlusion flag.
+        def register_raw_painted(paint: u64, surface: u64, flag: i32) -> i32:
+            surface_high: u64 = Ids::TEXTURES if surface != 0 else 0
+            elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(Ids::MATERIALS, paint,
+                Ids::TEXTURES, 1, Ids::TEXTURES, 2, surface_high, surface, 0, 0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, ALPHA_OPAQUE, 0, flag)
+
+        # The same through the older textured form, which has no occlusion flag.
+        def register_legacy_painted(paint: u64) -> i32:
+            elisa_render_scene_v1_register_snapshot_material_asset_with_textures(Ids::MATERIALS, paint,
+                Ids::TEXTURES, 1, Ids::TEXTURES, 2, Ids::TEXTURES, 3, 0, 0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, ALPHA_OPAQUE, 0)
 
         def texture_bytes() -> u64:
             elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes()
@@ -404,10 +449,30 @@ module RenderSceneCookedTextureNativeTests:
             # The glow samples the painted strip's base image, but as emission.
             return 7 if register_slot(2, Paint::PAINTED) != Code::INVALID or not is_painted(Paint::PAINTED)
             return 8 if set_count() != sets + 1
-            # Without occlusion, the same factors and images are another
-            # material.
-            return 9 if register_hand_painted() != Code::OK or occlusion(Paint::HAND) != 0
-            return 10 if register_slot(1, Paint::HAND) != Code::INVALID or unregister_material(Paint::HAND) != Code::OK
+            # A hand-registered material that also names the surface image
+            # as occlusion holds the painted slot's values, so the slot
+            # registers under its ID as a no-op.
+            return 9 if register_hand_painted(Paint::HAND, 3, 3) != Code::OK or not is_painted(Paint::HAND)
+            return 10 if register_slot(1, Paint::HAND) != Code::OK or unregister_material(Paint::HAND) != Code::OK
+            0
+
+        # Occlusion is part of a hand material's registration. An occlusion
+        # image named alone is also the surface image. Without occlusion,
+        # the painted slot conflicts. Occlusion needs a surface image to
+        # share, even through the raw ABI, and the older textured form
+        # never enables it.
+        def hand_occlusion() -> i32:
+            return 1 if register_hand_painted(Paint::HAND, 0, 3) != Code::OK or not is_painted(Paint::HAND)
+            return 2 if register_hand_painted(Paint::HAND, 3, 3) != Code::OK
+            return 3 if register_hand_painted(Paint::HAND, 3, 0) != Code::INVALID or occlusion(Paint::HAND) != 1
+            return 4 if register_hand_painted(Paint::BARE, 3, 0) != Code::OK or occlusion(Paint::BARE) != 0
+            return 5 if register_slot(1, Paint::BARE) != Code::INVALID or register_legacy_painted(Paint::BARE) != NATIVE_OK
+            # A separate occlusion image can't share the surface map.
+            return 6 if register_hand_painted(Paint::SPARE, 3, 2) != Code::INVALID
+            return 7 if register_raw_painted(Paint::SPARE, 0, 1) != NATIVE_INVALID
+            return 8 if register_raw_painted(Paint::SPARE, 3, 2) != NATIVE_INVALID
+            return 9 if unregister_material(Paint::SPARE) != Code::LOAD_FAILED
+            return 10 if unregister_material(Paint::HAND) != Code::OK or unregister_material(Paint::BARE) != Code::OK
             0
 
         # A second ID for one of the mesh's images makes every slot that
@@ -510,6 +575,8 @@ module RenderSceneCookedTextureNativeTests:
             return 30 + imaged if imaged != 0
             whole: i32 = whole_mesh()
             return 50 + whole if whole != 0
+            hand: i32 = hand_occlusion()
+            return 110 + hand if hand != 0
             ambiguity: i32 = ambiguous()
             return 60 + ambiguity if ambiguity != 0
             rewrite: i32 = rewritten()

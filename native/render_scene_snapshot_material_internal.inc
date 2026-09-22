@@ -2,14 +2,17 @@
 // mesh-material ABI. Callers hold the service mutex on the owner thread,
 // outside a snapshot transaction.
 
+// Occlusion reads the surface texture's red channel, so it needs one.
 bool snapshot_material_values_valid(const SnapshotMaterialAssetSlot& values) {
     const auto unit = [](float value) { return finite(value) && value >= 0.0f && value <= 1.0f; };
     const auto emission = [](float value) { return bounded(value, 1.0e4f) && value >= 0.0f; };
+    const size_t surface = static_cast<size_t>(elisa::rendering::textures::Slot::Surface);
+    const bool surfaced = values.texture_high[surface] != 0 || values.texture_low[surface] != 0;
     return valid_color(values.base_color[0], values.base_color[1], values.base_color[2], values.base_color[3]) &&
         unit(values.metallic) && unit(values.roughness) &&
         std::all_of(std::begin(values.emissive), std::end(values.emissive), emission) &&
         unit(values.alpha_cutoff) && values.alpha_mode >= ELISA_RENDER_SCENE_ALPHA_OPAQUE &&
-        values.alpha_mode <= ELISA_RENDER_SCENE_ALPHA_BLEND;
+        values.alpha_mode <= ELISA_RENDER_SCENE_ALPHA_BLEND && (!values.occlusion || surfaced);
 }
 
 bool snapshot_material_values_match(const SnapshotMaterialAssetSlot& asset,

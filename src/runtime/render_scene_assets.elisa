@@ -47,7 +47,7 @@ extend RenderScene:
             high: u64, low: u64, bundle_path: cstr, section: cstr) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
+        extern elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(
             high: u64, low: u64,
             base_color_high: u64, base_color_low: u64,
             normal_high: u64, normal_low: u64,
@@ -55,7 +55,8 @@ extend RenderScene:
             emissive_high: u64, emissive_low: u64,
             red: f32, green: f32, blue: f32, alpha: f32,
             metallic: f32, roughness: f32, emissive_red: f32, emissive_green: f32,
-            emissive_blue: f32, alpha_cutoff: f32, alpha_mode: i32, double_sided: i32) -> i32
+            emissive_blue: f32, alpha_cutoff: f32, alpha_mode: i32, double_sided: i32,
+            occlusion: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_unregister_snapshot_material_asset(high: u64, low: u64) -> i32
@@ -181,6 +182,10 @@ extend RenderScene:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
             try check_status(elisa_render_scene_v1_unregister_snapshot_texture_asset(asset.high, asset.low))
 
+        # An occlusion texture turns on Wicked's ambient occlusion from the
+        # surface map's red channel. It must be the metallic-roughness
+        # texture, or stand alone as the surface map. Occlusion is part of the
+        # registration, so the same material without it conflicts.
         def register_snapshot_material_asset(asset: Assets::AssetId,
             material: Material::Material&) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
@@ -192,8 +197,9 @@ extend RenderScene:
                     Material::AlphaMode.Mask: NativeAlphaMode::MASK
                     Material::AlphaMode.Blend: NativeAlphaMode::BLEND
             double_sided: i32 = 1 if material.double_sided else 0
+            occluded: i32 = 1 if Assets::asset_id_valid(material.occlusion) else 0
             surface_texture: Assets::AssetId = snapshot_surface_texture(material)
-            try check_status(elisa_render_scene_v1_register_snapshot_material_asset_with_textures(
+            try check_status(elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(
                 asset.high, asset.low,
                 material.base_color.high, material.base_color.low,
                 material.normal.high, material.normal.low,
@@ -203,7 +209,7 @@ extend RenderScene:
                 material.base_color_factor[2], material.base_color_factor[3],
                 material.metallic_factor, material.roughness_factor,
                 material.emissive_factor[0], material.emissive_factor[1],
-                material.emissive_factor[2], material.alpha_cutoff, alpha_mode, double_sided))
+                material.emissive_factor[2], material.alpha_cutoff, alpha_mode, double_sided, occluded))
 
         def unregister_snapshot_material_asset(asset: Assets::AssetId) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(asset)
