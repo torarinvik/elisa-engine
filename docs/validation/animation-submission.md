@@ -15,9 +15,11 @@ arrays, setters accept engine `Geometry` values, and `submit_animation_pose` /
 `RenderScene::InstanceHandle`. Skinned cooked meshes create the native bridge
 handle lazily, so ordinary instances pay no submission allocation.
 
-Evidence: the SDL3/Wicked gate creates a v3 cooked one-joint skinned mesh,
-submits a bone transform through the public Elisa API, rejects an in-flight
-second submission, verifies completion, and destroys the instance. The native
-bridge probe independently submits a morph weight and checks Wicked's morph
-target state and owner validation. Multi-instance render bounds and
-Elisa-driven runtime scheduling remain open R08 work.
+Evidence: the SDL3/Wicked gate creates two independent v3 cooked one-joint
+skinned meshes from the same source package, submits separate bone transforms
+through the public Elisa API, advances Wicked's armature update, and verifies
+each bone's state and bounds independently. It rejects an in-flight second
+submission, verifies explicit completion for both instances, and destroys both
+instances. The native bridge probe independently submits a morph weight and
+checks Wicked's morph-target state and owner validation. Elisa-driven runtime
+scheduling remains open R08 work.

@@ -2,11 +2,17 @@
 module RenderSceneAnimationSubmissionNativeTests:
     private:
         const SHIFT_X: f32 = 2.0
+        const OTHER_SHIFT_X: f32 = -2.0
         const ZERO_MORPH: f32 = 0.0
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_submission(handle: i64,
             expected_x: f32, expected_morph: f32, expected_pending: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_instances(
+            first_handle: i64, first_x: f32, second_handle: i64, second_x: f32,
+            expected_pending: i32) -> i32
 
     public:
         def exercise() -> i32:
@@ -15,6 +21,11 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
+            second_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.7, green: 0.7, blue: 0.9, alpha: 1.0}):
+                value: value
+                error failure: return 10
             pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
             shifted: Geometry::Transform = Geometry::Transform{
                 position: Geometry::Vec3{x: SHIFT_X, y: 0.0, z: 0.0},
@@ -42,16 +53,33 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             return 3 if set_bone != 0
+            second_pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
+            second_shifted: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: OTHER_SHIFT_X, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }
+            second_set_bone: i32 = catch RenderScene::set_bone_transform(&second_pose, 0, second_shifted):
+                ok: 0
+                error failure: 1
+            return 11 if second_set_bone != 0
             submit: i32 = catch RenderScene::submit_animation_pose(mesh, &pose):
                 ok: 0
                 error failure: 1
             return 4 if submit != 0 or elisa_render_scene_v1_test_animation_submission(
                 mesh, SHIFT_X, ZERO_MORPH, 1) != 1
-            second_submit: i32 = catch RenderScene::submit_animation_pose(mesh, &pose):
+            second_submit: i32 = catch RenderScene::submit_animation_pose(second_mesh, &second_pose):
+                ok: 0
+                error failure: 1
+            return 12 if second_submit != 0
+            return 13 if Application::pump() != Application::PumpStatus.Running
+            return 14 if elisa_render_scene_v1_test_animation_instances(
+                mesh, SHIFT_X, second_mesh, OTHER_SHIFT_X, 1) != 1
+            duplicate_submit: i32 = catch RenderScene::submit_animation_pose(mesh, &pose):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
-            return 5 if second_submit != 1
+            return 5 if duplicate_submit != 1
             completed: i32 = catch RenderScene::complete_animation_pose(mesh):
                 ok: 0
                 error failure: 1
@@ -62,6 +90,15 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 7 if repeated_complete != 1
+            second_completed: i32 = catch RenderScene::complete_animation_pose(second_mesh):
+                ok: 0
+                error failure: 1
+            return 15 if second_completed != 0 or elisa_render_scene_v1_test_animation_instances(
+                mesh, SHIFT_X, second_mesh, OTHER_SHIFT_X, 0) != 1
+            second_destroyed: i32 = catch RenderScene::destroy(second_mesh):
+                ok: 0
+                error failure: 1
+            return 16 if second_destroyed != 0
             destroyed: i32 = catch RenderScene::destroy(mesh):
                 ok: 0
                 error failure: 1
