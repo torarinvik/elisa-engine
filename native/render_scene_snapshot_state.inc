@@ -4,7 +4,7 @@ constexpr size_t MAX_SNAPSHOT_TEXTURE_ASSETS = 128;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_SETS = 32;
 constexpr size_t MAX_SNAPSHOT_MATERIAL_SET_SLOTS = elisa::assets::MAX_GEOMETRY_MATERIAL_SLOTS;
 constexpr size_t MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES = 256u * 1024u * 1024u;
-constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = 4;
+constexpr size_t SNAPSHOT_MATERIAL_TEXTURE_SLOTS = elisa::assets::SLOT_MATERIAL_TEXTURES;
 constexpr size_t MAX_SNAPSHOT_SHARED_MESHES = MAX_INSTANCES * 2;
 constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
 constexpr size_t MAX_SNAPSHOT_ASSET_REQUESTS = elisa::assets::SerialJobWorker<int>::MAX_JOBS;
@@ -65,7 +65,8 @@ struct SnapshotMaterialAssetSlot {
     std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low{};
     wi::ecs::Entity material_entity = wi::ecs::INVALID_ENTITY;
     bool double_sided = false;
-    // The surface texture's red channel is ambient occlusion.
+    // Occlusion samples either the packed surface texture or the dedicated
+    // occlusion texture slot.
     bool occlusion = false;
     bool live = false;
 };

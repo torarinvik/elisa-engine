@@ -60,9 +60,9 @@ PANEL_MATERIALS = [(0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 1), PA
 MASKED = (0.0, 0.5, 0.0, 1.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.25, 1, 0)
 SURFACED = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 3)
 # The textured panel's cutout, painted, glow, and backdrop slots, each with
-# its four image references.
+# its five image references.
 TEXTURED_MATERIALS = [struct.unpack_from("<10f2I", gltf_texture_self_test.SLOT_MATERIALS, slot * 48) +
-    struct.unpack_from("<4I", gltf_texture_self_test.SLOT_TEXTURES, slot * 16) for slot in range(4)]
+    struct.unpack_from("<5I", gltf_texture_self_test.SLOT_TEXTURES, slot * 20) for slot in range(4)]
 # The hierarchy panel's single-sided red, green, and blue emissive strips.
 HIERARCHY_MATERIALS = [(0.08, 0.0, 0.0, 1.0, 0.0, 0.9, 1.0, 0.0, 0.0, 0.5, 0, 0),
     (0.0, 0.08, 0.0, 1.0, 0.0, 0.9, 0.0, 1.0, 0.0, 0.5, 0, 0),
@@ -80,10 +80,11 @@ def encoded(format_string: str, values) -> str:
 def strip_package(triangles: int, subsets=None, slots: int | None = None,
         record_count: int | None = None, stride: str = "12", omit: tuple[str, ...] = (),
         skinned: bool = False, materials=None, material_stride: str = "48", textures=None,
-        texture_count: int | None = None, texture_stride: str = "16") -> bytes:
+        texture_count: int | None = None, texture_stride: str = "20") -> bytes:
     """A row of `triangles` separate triangles with optional subset, slot
     material, and slot texture records. `textures` is (section names, one
-    four-reference record per slot)."""
+    five-reference record per slot). Four-reference callers leave occlusion
+    empty for compact synthetic fixtures."""
     vertices = triangles * 3
     positions = []
     for triangle in range(triangles):
@@ -112,12 +113,13 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
         lines += [line for key, line in records.items() if key not in omit]
     if textures is not None:
         names, references = textures
+        references = [tuple(record) + (0,) if len(record) == 4 else tuple(record) for record in references]
         records = {
             "texture_count": f"texture_count={len(names) if texture_count is None else texture_count}",
             "texture_names_b64": "texture_names_b64=" + base64.b64encode(b"".join(
                 struct.pack("<I", len(name)) + name.encode("ascii") for name in names)).decode("ascii"),
             "slot_texture_stride": f"slot_texture_stride={texture_stride}",
-            "slot_textures_b64": "slot_textures_b64=" + encoded(f"<{len(references) * 4}I",
+            "slot_textures_b64": "slot_textures_b64=" + encoded(f"<{len(references) * 5}I",
                 [value for record in references for value in record]),
         }
         lines += [line for key, line in records.items() if key not in omit]
@@ -188,7 +190,7 @@ def cases(directory: Path) -> list[tuple]:
     listed = {"surface_1": images["image_2"], "albedo": images["image_3"]}
     write_geometry_package(directory / "listed.elpk", strip_package(2, two, 2, materials=[MASKED, SURFACED],
         textures=(list(listed), [(2, 0, 0, 0), (2, 0, 1, 0)])), {**listed, "spare": images["image_1"]})
-    listed_materials = [MASKED + (2, 0, 0, 0), SURFACED + (2, 0, 1, 0)]
+    listed_materials = [MASKED + (2, 0, 0, 0, 0), SURFACED + (2, 0, 1, 0, 0)]
     listed_sections = [(name, zlib.crc32(data)) for name, data in listed.items()]
     plain = [GLASS, PAINT]
 
@@ -395,7 +397,7 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     if records:
         fields.append("materials")
         for record in records[0]:
-            record += (0,) * (16 - len(record))
+            record += (0,) * (17 - len(record))
             fields += [float32_text(value) for value in record[:10]] + [str(value) for value in record[10:]]
     if len(records) > 1:
         fields.append("sections")

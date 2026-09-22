@@ -11,8 +11,8 @@ to exactly those images.
 ## Path
 
 1. **Cook.** `scripts/cook_gltf_textures.py` resolves each material's
-   textures into the four runtime slots: base color, normal, surface
-   (metallic-roughness) and emissive.
+   textures into five runtime slots: base color, normal, surface
+   (metallic-roughness), emissive and occlusion.
    - **Texture info.** It may name `index`, `texCoord`, and `scale` for the
      normal texture or `strength` for occlusion.
      - `texCoord` must be the integer 0.
@@ -23,9 +23,9 @@ to exactly those images.
    - **Samplers.** A sampler must filter trilinearly and repeat on both axes.
      That is how the render scene samples every texture. It may omit any of
      those keys, but a string or a float fails.
-   - **Occlusion.** `occlusionTexture` must sample the same image as
-     `metallicRoughnessTexture`, because Wicked reads occlusion from that
-     image's red channel. The slot then sets flag bit 1, occlusion.
+   - **Occlusion.** `occlusionTexture` may reuse the metallic-roughness image
+     or name a separate image. The latter is bound to Wicked's native
+     `OCCLUSIONMAP` slot. The slot then sets flag bit 1, occlusion.
    - **Images.** Each image must be an embedded PNG or JPEG, either from a
      packed bufferView of the embedded buffer or from a base64 data URI.
      - Its bytes must match its `mimeType`, and its dimensions must decode.
@@ -41,7 +41,7 @@ to exactly those images.
    - `texture_count`: 1–64 images
    - `texture_names_b64`: the image section names, `image_<glTF index>` in
      glTF image order
-   - `slot_texture_stride=16` and `slot_textures_b64`: four little-endian
+   - `slot_texture_stride=20` and `slot_textures_b64`: five little-endian
      `u32` references per slot, each 0 for none or one more than the image's
      position in the names
 
@@ -53,15 +53,15 @@ to exactly those images.
    parser and the new `detail::parse_slot_textures`.
    - The four keys must all be present or all absent, and they need slot
      material records.
-   - The stride must be 16 and the records must fill exactly one per slot.
+   - The stride must be 20 and the records must fill exactly one per slot.
    - **Names.** Each name must be a valid bundle section name: 1–15 bytes of
      `[a-z0-9_]`, with no embedded NUL. It can't be `mesh` or `manifest`, and
      can't repeat.
    - **References.** Every reference must name a listed image, and every
      listed image must be referenced.
    - **Needed images.** A masked slot needs a base-color image, and an
-     occluded slot needs a surface image. Flag bit 1 is now allowed; other
-     bits still fail.
+     occluded slot needs a surface or dedicated occlusion image. Flag bit 1
+     is now allowed; other bits still fail.
    - **Bundles.** `load_cooked_geometry_asset` rejects slot textures in a text
      package. In an `.elpk`, each named section must exist, and its checksum
      is kept with the mesh.
@@ -90,7 +90,8 @@ to exactly those images.
      another bundle, which doesn't count.
    - A second ID for the image is `InvalidValue`, because the slot would be
      ambiguous.
-   - The Wicked material takes those textures in their slots and
+   - The Wicked material takes those textures in their slots, including a
+     dedicated `OCCLUSIONMAP` when the glTF source uses one, and calls
      `SetOcclusionEnabled_Primary` for occluded slots.
    - Occlusion is now part of the material's registration values. The same
      factors and images without occlusion are therefore a conflicting
@@ -323,15 +324,12 @@ catches that mutation.
   never waits for it: an unresolved image is `AssetLoadFailure`.
 - **Embedded images only.** External image files, KTX2 or Basis images,
   `KHR_texture_transform`, second UV sets, normal scales, occlusion
-  strengths and separate occlusion images still fail. Images stay PNG or
+  strengths remain bounded. Images stay PNG or
   JPEG in the bundle, without cooked mip chains or GPU formats (A06).
-- **Occlusion only through the surface image.** Wicked reads occlusion from
-  the surface map's red channel. Cooked slots and hand-registered materials
-  both enable it, but only when the occlusion image is the surface image.
-  - A separate occlusion image still fails, in the cooker and at
-    registration. A cooker would have to pack the two maps into one.
-  - An occlusion texture named alone still acts as a full surface map, so
-    its green and blue channels also scale roughness and metalness.
+- **Separate occlusion channel policy.** A separate glTF occlusion image is
+  retained as a dedicated Wicked `OCCLUSIONMAP`; it is not packed into the
+  metallic-roughness surface image. An occlusion texture named alone leaves
+  metallic and roughness at their factors and does not act as a surface map.
 - **Runtime package, not cooker.** Slot texture records and subset bindings are
   valid on skinned runtime packages; the glTF cooker still needs its complete
   multi-material skinned scene path.

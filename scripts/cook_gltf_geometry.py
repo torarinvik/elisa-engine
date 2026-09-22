@@ -49,8 +49,8 @@ def unit_factors(value, count: int, label: str) -> list[float]:
 def slot_material(document: dict, material) -> tuple[bytes, list]:
     """Pack one glTF material's factors, with glTF defaults for absent ones,
     into a 48-byte slot record: base color, metallic, roughness, emissive,
-    alpha cutoff, alpha mode, and flags (bit 0: double-sided, bit 1: the
-    surface image carries occlusion). Also return the image each runtime
+    alpha cutoff, alpha mode, and flags (bit 0: double-sided, bit 1: occlusion
+    enabled). Also return the image each runtime
     texture slot samples, or None."""
     if not isinstance(material, dict):
         raise ValueError("every glTF material must be an object")
