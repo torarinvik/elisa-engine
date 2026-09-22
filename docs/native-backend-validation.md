@@ -36,6 +36,10 @@ silently become a gameplay requirement. The ABI exposes queried format bits
 and high-priority/streaming worker counts. Elisa fallback negotiation now
 requires an explicit per-feature fallback map; mapping the live host profile
 into each runtime service remains open F08 work.
+Setting `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` makes the default audio
+device fail to open and to probe, so a packaged launch proves its silent
+fallback route without unplugging hardware (a macOS sandbox cannot make
+CoreAudio fail).
 
 The SDL3 host records logical and physical window sizes, display scale, display
 changes, fullscreen state, focus, minimize, restore, and close transitions. A
