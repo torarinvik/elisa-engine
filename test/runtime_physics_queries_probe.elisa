@@ -17,6 +17,49 @@ module RuntimePhysicsQueriesProbe:
                 value: 0
                 error failure: return 124
             return 125 if query_hit_count != 0 or query_hits.count != 0
+            shape_cast: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_sphere_cast(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 1.0, 0.25,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 126
+            return 126 if shape_cast.hit or shape_cast.entity != 0
+            capsule_cast: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_capsule_cast(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
+                Geometry::Vec3{x: 100.0, y: 101.0, z: 100.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 1.0, 0.25,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 127
+            return 127 if capsule_cast.hit or capsule_cast.entity != 0
+            sphere_overlap: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_overlap_sphere(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0}, 0.25,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 128
+            return 128 if sphere_overlap.hit or sphere_overlap.entity != 0
+            sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            sphere_overlap_count: usize = catch RuntimeServices::physics_overlap_sphere_all(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0}, 0.25,
+                PhysicsRuntime::ALL_LAYERS, sphere_overlaps):
+                value: 0
+                error failure: return 129
+            return 129 if sphere_overlap_count != 0 or sphere_overlaps.count != 0
+            capsule_overlap: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_overlap_capsule(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
+                Geometry::Vec3{x: 100.0, y: 101.0, z: 100.0}, 0.25,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 130
+            return 130 if capsule_overlap.hit or capsule_overlap.entity != 0
+            capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            capsule_overlap_count: usize = catch RuntimeServices::physics_overlap_capsule_all(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
+                Geometry::Vec3{x: 100.0, y: 101.0, z: 100.0}, 0.25,
+                PhysicsRuntime::ALL_LAYERS, capsule_overlaps):
+                value: 0
+                error failure: return 131
+            return 131 if capsule_overlap_count != 0 or capsule_overlaps.count != 0
             query_contacts: mutable PhysicsRuntime::ContactBuffer = PhysicsRuntime::ContactBuffer()
             query_dropped: mutable u32 = 0
             query_count: usize = catch RuntimeServices::physics_poll_contacts(session,

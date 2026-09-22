@@ -45,6 +45,15 @@ returns copied `PhysicsQueryHit` values to the host.
   and return an explicit capacity error only inside the native fixed bound.
   `RuntimeServices::physics_raycast_all` routes this buffer through an affine
   session without exposing native storage.
+- `PhysicsQueries` exposes bounded sphere and capsule casts plus nearest and
+  all-hit sphere and capsule overlaps. `ShapeHit` copies the entity, contact
+  position/normal, cast distance, and overlap penetration depth; each all-hit
+  call uses a fixed 16-entry `ShapeHitBuffer`. Direct world calls and all six
+  session routes preserve the same `PhysicsError` mapping and reject non-finite
+  or non-positive radii, distances, and directions.
+- Managed Elisa physics boxes are represented as scaled Wicked cube entities in
+  addition to their Jolt rigid bodies. This keeps scene-BVH shape queries and
+  Jolt ray queries aligned on the same entity without exposing native handles.
 - Destroying a scene participant and rebuilding the scene removes it from the
   next query. Invalidating the token rejects every later query, including
   foreign-owner tokens.
@@ -75,8 +84,8 @@ the scene or listener object.
 
 The Elisa application smoke creates static and dynamic bodies plus a static
 sensor volume, advances the fixed-step world, verifies public nearest and
-all-hit physics rays, checks nearest-hit ordering, rejects invalid zero
-directions, and polls
+all-hit physics rays, checks nearest-hit ordering, exercises both shape casts
+and nearest/all-hit overlaps, rejects invalid zero directions, and polls
 `PhysicsRuntime::ContactBuffer`. It requires real non-trigger and trigger
 `ContactKind.Added` events, then destroys the sensor and requires a trigger
 `ContactKind.Removed` event, with zero dropped events. This proves the public

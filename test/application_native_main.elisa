@@ -153,6 +153,44 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[0].distance > ray.distance + 0.001
     for index in 1..<all_ray_count:
         raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[index].distance + 0.001 < all_rays.hits[index - 1].distance
+    stage <- 71
+    sphere_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::sphere_cast(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
+        10.0, 0.25, PhysicsRuntime::ALL_LAYERS)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if not sphere_cast_hit.hit or sphere_cast_hit.entity == 0
+    stage <- 72
+    capsule_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::capsule_cast(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 6.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 0.25, PhysicsRuntime::ALL_LAYERS)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if not capsule_cast_hit.hit or capsule_cast_hit.entity == 0
+    stage <- 73
+    sphere_overlap_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::overlap_sphere(world,
+        Geometry::Vec3{x: 0.0, y: 0.5, z: 0.0}, 2.0, PhysicsRuntime::ALL_LAYERS)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if not sphere_overlap_hit.hit or sphere_overlap_hit.entity == 0
+    stage <- 74
+    sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+    sphere_overlap_count: usize = try PhysicsQueries::overlap_sphere_all(world,
+        Geometry::Vec3{x: 0.0, y: 0.5, z: 0.0}, 2.0, PhysicsRuntime::ALL_LAYERS, sphere_overlaps)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_overlap_count == 0 or sphere_overlaps.count != sphere_overlap_count
+    stage <- 75
+    capsule_overlap_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::overlap_capsule(world,
+        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+        0.5, PhysicsRuntime::ALL_LAYERS)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if not capsule_overlap_hit.hit or capsule_overlap_hit.entity == 0
+    stage <- 76
+    capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+    capsule_overlap_count: usize = try PhysicsQueries::overlap_capsule_all(world,
+        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+        2.0, PhysicsRuntime::ALL_LAYERS, capsule_overlaps)
+    raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_overlap_count == 0 or capsule_overlaps.count != capsule_overlap_count
+    stage <- 77
+    invalid_shape: i32 = catch PhysicsQueries::sphere_cast(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        10.0, 0.25, PhysicsRuntime::ALL_LAYERS):
+        value: 1
+        PhysicsRuntime::PhysicsError.InvalidArgument: 0
+        error failure: 2
+    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_shape != 0
     invalid_all_status: i32 = catch PhysicsRuntime::raycast_all(world,
         Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
         10.0, PhysicsRuntime::ALL_LAYERS, &all_rays):
