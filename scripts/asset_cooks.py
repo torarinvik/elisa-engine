@@ -155,8 +155,8 @@ def asset_cook_command(project: Path, declaration: object,
         if max_triangles is not None and (isinstance(max_triangles, bool) or
             not isinstance(max_triangles, int) or not 1 <= max_triangles <= 1000000):
             raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
-        if importer in ("gltf", "glb") and max_triangles is not None:
-            raise BuildConfigurationError(f"asset_cooks[{index}] {importer} importer does not accept max_triangles")
+        if importer == "gltf" and max_triangles is not None:
+            raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer does not accept max_triangles")
         command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
             "--output", str(output)]
         if max_triangles is not None:
@@ -235,4 +235,3 @@ def cook_declared_assets(project: Path, config: dict[str, object], run: Callable
         if status != 0:
             return status
     return 0
-

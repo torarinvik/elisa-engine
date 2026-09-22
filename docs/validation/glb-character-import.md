@@ -1,10 +1,12 @@
-# Skinned GLB character import
+# GLB mesh and character import
 
-`scripts/cook_glb_asset.py` adds a project-level `glb` asset cooker for
-skinned character models. It imports a GLB through Blender, exports its rigged
-mesh through the existing bounded FBX cooker, and can transfer clips from an
-FBX animation source when that source contains every target joint name. Each
-source clip becomes an independent NLA take in the cooked Elisa package.
+`scripts/cook_glb_asset.py` adds a project-level `glb` asset cooker for static
+and skinned models. It imports a GLB through Blender and writes geometry
+through the existing bounded FBX cooker. Static GLB meshes can use
+`max_triangles` to simplify dense geometry with meshoptimizer. Skinned meshes
+can transfer clips from an FBX animation source when that source contains
+every target joint name. Each source clip becomes an independent NLA take in
+the cooked Elisa package.
 
 Clip transfer bakes world-space bone rotations and root translations onto the
 target rig. It preserves the GLB armature's object scale and target bone lengths;
@@ -37,6 +39,12 @@ contain one armature and at least one skinned child mesh. The existing cooked
 geometry format keeps one mesh, one skin hierarchy, and up to sixteen clips; it
 does not yet retain multiple material subsets or a separate map for every PBR
 channel. A single material's base-color image can be assigned through Elisa.
+Static GLB input may contain one or more mesh nodes, but the current FBX cooker
+retains its largest mesh. Their node transforms are preserved through the
+Blender-to-FBX conversion. Triangle simplification applies to static GLBs;
+the cooker rejects triangle limits for skinned meshes because remapping bone
+influences during simplification is not yet supported. The limit is between 1
+and 1,000,000 triangles.
 
 Blender is required only during asset cooking. The cooker looks for a
 `BLENDER` executable path, a `blender` command on `PATH`, or the standard macOS

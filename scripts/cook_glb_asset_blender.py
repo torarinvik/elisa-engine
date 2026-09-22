@@ -1,4 +1,4 @@
-"""Blender-side GLB import, compatible-rig clip transfer, and FBX export."""
+"""Blender-side static or skinned GLB conversion and compatible-rig clip transfer."""
 
 import argparse
 from pathlib import Path
@@ -162,7 +162,42 @@ def main():
     options = parse_arguments()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     glb_objects = imported(bpy.ops.import_scene.gltf, options.source)
-    armature = armature_of(glb_objects, "GLB")
+    armatures = [item for item in glb_objects if item.type == "ARMATURE"]
+    if not armatures:
+        if options.animation_source is not None:
+            raise RuntimeError("an animation source requires a skinned GLB armature")
+        meshes = [item for item in glb_objects if item.type == "MESH"]
+        if not meshes:
+            raise RuntimeError("static GLB has no mesh")
+        # Carry each node's scene transform into its FBX object transform
+        # before dropping camera, light and empty helper nodes.
+        for mesh in meshes:
+            world = mesh.matrix_world.copy()
+            mesh.parent = None
+            mesh.matrix_world = world
+        for item in list(bpy.context.scene.objects):
+            if item not in meshes:
+                bpy.data.objects.remove(item, do_unlink=True)
+        bpy.ops.object.select_all(action="DESELECT")
+        for mesh in meshes:
+            mesh.select_set(True)
+        bpy.context.view_layer.objects.active = meshes[0]
+        options.output.parent.mkdir(parents=True, exist_ok=True)
+        bpy.ops.export_scene.fbx(
+            filepath=str(options.output),
+            use_selection=True,
+            object_types={"MESH"},
+            apply_scale_options="FBX_SCALE_ALL",
+            add_leaf_bones=False,
+            bake_anim=False,
+            path_mode="STRIP",
+            embed_textures=False,
+        )
+        print(f"Exported {len(meshes)} static GLB mesh(es) to {options.output}")
+        return
+    if len(armatures) != 1:
+        raise RuntimeError(f"GLB must contain at most one armature; found {len(armatures)}")
+    armature = armatures[0]
     bones = {bone.name for bone in armature.data.bones}
     meshes = [item for item in glb_objects if item.type == "MESH" and item.parent == armature and
         len(item.vertex_groups) > 0]
