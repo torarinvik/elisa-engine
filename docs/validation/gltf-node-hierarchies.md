@@ -262,10 +262,11 @@ sign only changes lighting, and the emissive color still dominates.
 
 ## Limits
 
-- **Placement ranges are static.** Skinned and morphed packages continue to
-  use the single cooked mesh path, and skinned node transforms remain identity.
-  Cameras, lights and animation metadata are imported, but independent
-  placement entities currently apply only to static, non-morphed geometry.
+- **Placement ranges.** Direct `create_mesh` imports upload independent
+  placement entities for static, skinned, and morphed geometry. Placements in
+  one skinned instance share one armature; skinned node transforms remain
+  identity, and multiple skins per scene remain unsupported. See
+  [`skinned-mesh-placements.md`](skinned-mesh-placements.md).
 - **Snapshot rows remain flattened.** Snapshot material registration and row
   commits still use the compatibility mesh. Direct `create_mesh` imports expose
   placement entities through the root instance lifetime; their transforms are

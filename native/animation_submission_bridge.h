@@ -3,6 +3,7 @@
 #include "probe_core.h"
 #include "wiScene.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -21,17 +22,30 @@ public:
     static constexpr uint32_t MAX_INSTANCES = 16;
     static constexpr uint32_t MAX_BONES = 64;
     static constexpr uint32_t MAX_MORPHS = 32;
+    static constexpr uint32_t MAX_MESHES = 256;
 
     explicit AnimationSubmissionBridge(wi::scene::Scene& scene)
         : scene_(scene), owner_(reinterpret_cast<uintptr_t>(this)) {}
     AnimationSubmissionBridge(const AnimationSubmissionBridge&) = delete;
 
     NativeAnimationHandle create(wi::ecs::Entity armature, wi::ecs::Entity mesh) {
+        return create(armature, &mesh, 1);
+    }
+
+    NativeAnimationHandle create(wi::ecs::Entity armature, const wi::ecs::Entity* meshes, uint32_t mesh_count) {
         auto* skeleton = scene_.armatures.GetComponent(armature);
-        auto* target = scene_.meshes.GetComponent(mesh);
-        if (skeleton == nullptr || target == nullptr || skeleton->boneCollection.empty() ||
-            skeleton->boneCollection.size() > MAX_BONES || target->morph_targets.size() > MAX_MORPHS) {
+        if (skeleton == nullptr || skeleton->boneCollection.empty() || skeleton->boneCollection.size() > MAX_BONES ||
+            meshes == nullptr || mesh_count == 0 || mesh_count > MAX_MESHES) {
             return {};
+        }
+        const wi::scene::MeshComponent* first = scene_.meshes.GetComponent(meshes[0]);
+        if (first == nullptr || first->armatureID != armature || first->morph_targets.size() > MAX_MORPHS) return {};
+        const uint32_t morph_count = uint32_t(first->morph_targets.size());
+        for (uint32_t index = 0; index < mesh_count; ++index) {
+            const wi::scene::MeshComponent* target = scene_.meshes.GetComponent(meshes[index]);
+            if (target == nullptr || target->armatureID != armature || target->morph_targets.size() != morph_count) return {};
+            for (uint32_t previous = 0; previous < index; ++previous)
+                if (meshes[previous] == meshes[index]) return {};
         }
         const uint32_t slot = free_slot();
         if (slot == MAX_INSTANCES) return {};
@@ -39,9 +53,10 @@ public:
         if (entry.generation == UINT32_MAX) return {};
         ++entry.generation;
         entry.armature = armature;
-        entry.mesh = mesh;
+        entry.mesh_count = mesh_count;
+        std::copy(meshes, meshes + mesh_count, entry.meshes.begin());
         entry.bone_count = uint32_t(skeleton->boneCollection.size());
-        entry.morph_count = uint32_t(target->morph_targets.size());
+        entry.morph_count = morph_count;
         entry.active = 0;
         entry.pending = false;
         entry.live = true;
@@ -54,20 +69,29 @@ public:
         if (entry == nullptr || entry->pending || bone_count != entry->bone_count || morph_count != entry->morph_count ||
             bones == nullptr || !finite_matrices(bones, bone_count) ||
             (morph_count > 0 && (morphs == nullptr || !finite_morphs(morphs, morph_count)))) return false;
+        auto* skeleton = scene_.armatures.GetComponent(entry->armature);
+        if (skeleton == nullptr || skeleton->boneCollection.size() != bone_count) return false;
+        std::array<wi::scene::TransformComponent*, MAX_BONES> transforms{};
+        for (uint32_t index = 0; index < bone_count; ++index) {
+            transforms[index] = scene_.transforms.GetComponent(skeleton->boneCollection[index]);
+            if (transforms[index] == nullptr) return false;
+        }
+        std::array<wi::scene::MeshComponent*, MAX_MESHES> meshes{};
+        for (uint32_t mesh_index = 0; mesh_index < entry->mesh_count; ++mesh_index) {
+            meshes[mesh_index] = scene_.meshes.GetComponent(entry->meshes[mesh_index]);
+            if (meshes[mesh_index] == nullptr || meshes[mesh_index]->armatureID != entry->armature ||
+                meshes[mesh_index]->morph_targets.size() != morph_count) return false;
+        }
         const uint32_t next = 1u - entry->active;
         Buffer& buffer = entry->buffers[next];
         std::memcpy(buffer.bones.data(), bones, sizeof(XMFLOAT4X4) * bone_count);
         if (morph_count > 0) std::memcpy(buffer.morphs.data(), morphs, sizeof(float) * morph_count);
-        auto* skeleton = scene_.armatures.GetComponent(entry->armature);
-        auto* mesh = scene_.meshes.GetComponent(entry->mesh);
-        if (skeleton == nullptr || mesh == nullptr) return false;
         for (uint32_t index = 0; index < bone_count; ++index) {
-            auto* transform = scene_.transforms.GetComponent(skeleton->boneCollection[index]);
-            if (transform != nullptr) transform->MatrixTransform(buffer.bones[index]);
+            transforms[index]->MatrixTransform(buffer.bones[index]);
         }
-        for (uint32_t index = 0; index < morph_count; ++index) {
-            mesh->morph_targets[index].weight = buffer.morphs[index];
-        }
+        for (uint32_t mesh_index = 0; mesh_index < entry->mesh_count; ++mesh_index)
+            for (uint32_t index = 0; index < morph_count; ++index)
+                meshes[mesh_index]->morph_targets[index].weight = buffer.morphs[index];
         entry->active = next;
         entry->pending = true;
         return true;
@@ -99,11 +123,12 @@ private:
     };
     struct Entry {
         wi::ecs::Entity armature = wi::ecs::INVALID_ENTITY;
-        wi::ecs::Entity mesh = wi::ecs::INVALID_ENTITY;
+        std::array<wi::ecs::Entity, MAX_MESHES> meshes{};
         std::array<Buffer, 2> buffers{};
         uint32_t generation = 0;
         uint32_t bone_count = 0;
         uint32_t morph_count = 0;
+        uint32_t mesh_count = 0;
         uint32_t active = 0;
         bool pending = false;
         bool live = false;

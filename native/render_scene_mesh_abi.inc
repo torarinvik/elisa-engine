@@ -60,12 +60,11 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
         // relationship; replace its small starter geometry with cooked data.
         entity = state.scene->Entity_CreateCube(name);
         if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-        const bool has_placement_metadata = !geometry.mesh_placements.empty() &&
-            geometry.skin_joints.empty() && geometry.skin_cluster_joints.empty() &&
-            geometry.morph_targets.empty();
+        const bool has_placement_metadata = !geometry.mesh_placements.empty();
         const bool configured = has_placement_metadata ?
-            elisa::rendering::configure_cooked_mesh_placement(*state.scene, entity, geometry, 0,
-                px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha) :
+            elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
+                px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha,
+                &joint_entities, 0) :
             elisa::rendering::configure_cooked_mesh(*state.scene, entity, geometry,
                 px, py, pz, qx, qy, qz, qw, sx, sy, sz, red, green, blue, alpha,
                 &joint_entities);
@@ -75,13 +74,16 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
         }
         if (has_placement_metadata) {
             placement_entities.reserve(geometry.mesh_placements.size() - 1);
+            const wi::ecs::Entity placement_armature = geometry.skin_joints.empty() ||
+                geometry.skin_cluster_joints.empty() ? wi::ecs::INVALID_ENTITY : entity;
             for (size_t placement = 1; placement < geometry.mesh_placements.size(); ++placement) {
                 const std::string child_name = name + "_placement_" + std::to_string(placement);
                 const wi::ecs::Entity child = state.scene->Entity_CreateCube(child_name);
                 if (child == wi::ecs::INVALID_ENTITY ||
-                    !elisa::rendering::configure_cooked_mesh_placement(*state.scene, child, geometry, placement,
+                    !elisa::rendering::configure_cooked_mesh(*state.scene, child, geometry,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                        1.0f, 1.0f, 1.0f, red, green, blue, alpha)) {
+                        1.0f, 1.0f, 1.0f, red, green, blue, alpha,
+                        nullptr, placement, placement_armature)) {
                     if (child != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(child);
                     throw 1;
                 }
@@ -97,6 +99,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
         elisa::rendering::CookedSceneResources imported;
         if (state.lighting == nullptr || !elisa::rendering::install_cooked_scene(*state.scene,
             *state.lighting, geometry, state.width, state.height, entity, imported)) {
+            release_imported_scene(state, instance);
             for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
             state.scene->Entity_Remove(entity);
             return ELISA_RENDER_SCENE_BACKEND_FAILED;

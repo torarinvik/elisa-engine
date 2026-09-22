@@ -4,8 +4,12 @@ bool ensure_animation_submission(RenderSceneService& state, size_t slot) {
     if (instance.animation_submission.owner != 0) return true;
     if (state.scene->armatures.GetComponent(instance.entity) == nullptr ||
         state.scene->meshes.GetComponent(instance.entity) == nullptr) return false;
+    if (instance.imported_mesh_entities.size() + 1 > probe::AnimationSubmissionBridge::MAX_MESHES) return false;
+    std::array<wi::ecs::Entity, probe::AnimationSubmissionBridge::MAX_MESHES> meshes{};
+    meshes[0] = instance.entity;
+    std::copy(instance.imported_mesh_entities.begin(), instance.imported_mesh_entities.end(), meshes.begin() + 1);
     const probe::NativeAnimationHandle handle = state.animation_submission->create(
-        instance.entity, instance.entity);
+        instance.entity, meshes.data(), uint32_t(instance.imported_mesh_entities.size() + 1));
     if (handle.owner == 0) return false;
     instance.animation_submission = handle;
     return true;
@@ -61,16 +65,26 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     const InstanceSlot& instance = state.instances[slot];
     const wi::scene::ArmatureComponent* armature = state.scene->armatures.GetComponent(instance.entity);
     const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(instance.entity);
-    if (armature == nullptr || armature->boneCollection.empty() || mesh == nullptr) return 0;
+    if (armature == nullptr || armature->boneCollection.empty() || mesh == nullptr ||
+        instance.imported_mesh_entities.size() != 1 || mesh->vertex_positions.size() != 12 ||
+        mesh->indices.size() != 18 || mesh->subsets.size() != 3 || mesh->vertex_boneindices.size() != 12) return 0;
     const wi::scene::TransformComponent* bone = state.scene->transforms.GetComponent(armature->boneCollection[0]);
     if (bone == nullptr) return 0;
     const bool bone_match = std::abs(bone->translation_local.x - expected_x) < 1.0e-5f;
     const bool morph_match = mesh->morph_targets.empty()
         ? std::abs(expected_morph) < 1.0e-5f
         : std::abs(mesh->morph_targets[0].weight - expected_morph) < 1.0e-5f;
+    const wi::scene::MeshComponent* placement =
+        state.scene->meshes.GetComponent(instance.imported_mesh_entities[0]);
+    const bool placement_match = placement != nullptr && placement->armatureID == instance.entity &&
+        placement->vertex_positions.size() == 12 && placement->indices.size() == 18 &&
+        placement->subsets.size() == 3 && placement->vertex_boneindices.size() == 12 &&
+        placement->morph_targets.size() == mesh->morph_targets.size() &&
+        (placement->morph_targets.empty() ? std::abs(expected_morph) < 1.0e-5f :
+            std::abs(placement->morph_targets[0].weight - expected_morph) < 1.0e-5f);
     const bool pending_match = state.animation_submission->pending(instance.animation_submission) ==
         (expected_pending != 0);
-    return bone_match && morph_match && pending_match ? 1 : 0;
+    return bone_match && morph_match && placement_match && pending_match ? 1 : 0;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
