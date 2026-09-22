@@ -1,0 +1,83 @@
+# A default output device that fails to open must leave the session live on
+# the silent device instead of rolling the whole host back; the game's
+# reinitialised host hung on its GPU frame fence before this route existed.
+include "../src/runtime/services.elisa"
+
+@callconv(c)
+extern elisa_audio_v1_test_fail_next_initialize_after_open() -> i32
+
+module RuntimeServicesAudioProbe:
+    private:
+        def requirements() -> BackendRequirements::BackendStartupRequirements:
+            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            requirements.services[0] <- Capabilities::BackendFeature.Input
+            requirements.services[1] <- Capabilities::BackendFeature.Rendering
+            requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+            requirements.services[3] <- Capabilities::BackendFeature.Audio
+            requirements.service_count <- 4
+            requirements.service_fallbacks <- Capabilities::BackendFallbackProviders{
+                input: Capabilities::BackendFallbackProvider.None,
+                rendering: Capabilities::BackendFallbackProvider.None,
+                physics: Capabilities::BackendFallbackProvider.None,
+                audio: Capabilities::BackendFallbackProvider.MiniaudioDefault,
+                native_window: Capabilities::BackendFallbackProvider.None,
+                async_upload: Capabilities::BackendFallbackProvider.None,
+                callbacks: Capabilities::BackendFallbackProvider.None,
+                asset_loading: Capabilities::BackendFallbackProvider.None,
+            }
+            requirements.allow_service_fallbacks <- true
+            requirements
+
+        # The test flag needs a live host owner, so arm it from a session that
+        # requested no audio and shut that host down before the real open.
+        def arm_device_failure() -> i32:
+            silent_host: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            silent_host.services[0] <- Capabilities::BackendFeature.Input
+            silent_host.services[1] <- Capabilities::BackendFeature.Rendering
+            silent_host.services[2] <- Capabilities::BackendFeature.NativeWindow
+            silent_host.service_count <- 3
+            silent_host.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &silent_host, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            return 188 if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired
+            return 180 if elisa_audio_v1_test_fail_next_initialize_after_open() != 0
+            return 189 if not RuntimeServices::shutdown(&session)
+            0
+
+        def config() -> Application::Config:
+            Application::Config{
+                title: "Elisa silent audio route smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+
+    public:
+        def unavailable_default_device() -> i32:
+            startup: BackendRequirements::BackendStartupRequirements = requirements()
+            armed: i32 = arm_device_failure()
+            return armed if armed != 0
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config(), &startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            return 190 if opened == RuntimeServices::OpenStatus.Ready
+            return 191 if opened == RuntimeServices::OpenStatus.AudioDeviceUnavailable
+            return 192 if opened == RuntimeServices::OpenStatus.RollbackFailed
+            return 193 if opened == RuntimeServices::OpenStatus.UnsupportedProvider
+            return 194 if opened == RuntimeServices::OpenStatus.RequirementsUnavailable
+            return 195 if opened == RuntimeServices::OpenStatus.AudioInitializationFailed
+            return 181 if opened != RuntimeServices::OpenStatus.FallbackRequired
+            return 182 if not RuntimeServices::audio_active(session)
+            return 183 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
+            silent_voices: usize = catch RuntimeServices::audio_active_voice_count(session):
+                value: value
+                error failure: return 184
+            return 185 if silent_voices != 0
+            return 186 if not RuntimeServices::shutdown(&session)
+            return 187 if RuntimeServices::audio_active(session)
+            0

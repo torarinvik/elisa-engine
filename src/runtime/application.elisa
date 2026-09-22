@@ -405,6 +405,14 @@ module Application:
                                     FallbackProviderCode::MINIAUDIO_DEFAULT) == 1
                                 default_checked <- true
                             availability.miniaudio_default <- default_available
+                            # Probe the silent route so a missing device can
+                            # degrade to it instead of rejecting the start.
+                            if not default_available:
+                                if not silent_checked:
+                                    silent_available <- elisa_application_v1_fallback_provider_available(
+                                        FallbackProviderCode::MINIAUDIO_SILENT) == 1
+                                    silent_checked <- true
+                                availability.miniaudio_silent <- silent_available
                         Capabilities::BackendFallbackProvider.SynchronousUpload:
                             continue
                         Capabilities::BackendFallbackProvider.SynchronousAssetLoading:

@@ -498,12 +498,19 @@ module Capabilities:
                 resolution: mutable BackendFeatureResolution = decision.resolution
                 if decision.resolution == BackendFeatureResolution.DeclaredFallback:
                     if not fallback_provider_available(availability, decision.fallback_provider):
-                        resolution <- BackendFeatureResolution.ProviderUnavailable
+                        # A missing default audio device degrades to the silent
+                        # provider instead of rejecting the whole start, so a
+                        # headless or device-less host still reaches gameplay.
+                        degrade_to_silent: bool = decision.fallback_provider == BackendFallbackProvider.MiniaudioDefault and availability.miniaudio_silent
+                        if not degrade_to_silent:
+                            resolution <- BackendFeatureResolution.ProviderUnavailable
                         decisions[index] <- BackendFeatureDecision{
                             feature: decision.feature,
                             resolution: resolution,
-                            fallback_provider: decision.fallback_provider,
+                            fallback_provider: BackendFallbackProvider.MiniaudioSilent if degrade_to_silent else decision.fallback_provider,
                         }
+                        if degrade_to_silent:
+                            fallback_count <- fallback_count + 1
                     else:
                         fallback_count <- fallback_count + 1
                 if resolution == BackendFeatureResolution.FallbackDisallowed or resolution == BackendFeatureResolution.ProviderUnavailable or resolution == BackendFeatureResolution.Unavailable:
