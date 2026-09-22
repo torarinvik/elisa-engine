@@ -16,6 +16,13 @@ spawn plus invalid reparent leaves the live count unchanged. The world
 preflight rejects invalid commands before application; an unexpected apply
 failure restores the captured `World::Rollback::Snapshot`.
 
+`src/world/access.elisa` adds an affine six-phase access frame. Read and write
+tokens conflict as expected, structural tokens are exclusive, input and render
+reject structural mutation, and a frame cannot advance or end while a token is
+live. `src/world/phase_commands.elisa` acquires that structural token around a
+primary-world commit, and the phase section of `test/world_commands.elisa`
+covers the phase boundary, conflict, and release rules.
+
 Focused validation on macOS 27.0 / Apple M5:
 
 ```

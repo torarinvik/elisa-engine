@@ -1,0 +1,106 @@
+# Runtime phase-access boundary for world systems. Tokens are affine and the
+# frame refuses to advance or end while any access is live. Structural access
+# is exclusive and is intentionally unavailable during input and render.
+module WorldAccess:
+    public:
+        enum Phase:
+            Input
+            Simulation
+            Physics
+            Animation
+            Render
+            Audio
+
+        enum AccessKind:
+            Read
+            Write
+            Structural
+
+        enum AccessError:
+            InactiveFrame
+            PhaseRegression
+            ActiveBorrow
+            WrongPhase
+            ReadConflict
+            WriteConflict
+            StructuralConflict
+            UnknownToken
+
+        affine struct Frame:
+            private:
+                phase: mutable Phase
+                active: mutable bool
+                readers: mutable usize
+                writer: mutable bool
+                structural: mutable bool
+
+        affine struct Token:
+            private:
+                phase: Phase
+                kind: AccessKind
+                live: mutable bool
+
+        def Frame() -> Frame:
+            Frame{phase: Phase.Input, active: false, readers: 0, writer: false, structural: false}
+
+        def phase_value(phase: Phase) -> usize:
+            return 0 if phase == Phase.Input
+            return 1 if phase == Phase.Simulation
+            return 2 if phase == Phase.Physics
+            return 3 if phase == Phase.Animation
+            return 4 if phase == Phase.Render
+            5
+
+        def current_phase(frame: Frame&) -> Phase:
+            frame.phase
+
+        def begin_frame(frame: mutable Frame&) -> void:
+            frame.phase <- Phase.Input
+            frame.active <- true
+            frame.readers <- 0
+            frame.writer <- false
+            frame.structural <- false
+
+        def acquire(frame: mutable Frame&, phase: Phase, kind: AccessKind) -> Token error[AccessError]:
+            raise AccessError.InactiveFrame if not frame.active
+            raise AccessError.PhaseRegression if phase_value(phase) != phase_value(frame.phase)
+            if kind == AccessKind.Read:
+                raise AccessError.ReadConflict if frame.writer or frame.structural
+                frame.readers <- frame.readers + 1
+            if kind == AccessKind.Write:
+                raise AccessError.WriteConflict if frame.writer or frame.structural or frame.readers != 0
+                frame.writer <- true
+            if kind == AccessKind.Structural:
+                raise AccessError.WrongPhase if phase == Phase.Input or phase == Phase.Render
+                raise AccessError.StructuralConflict if frame.writer or frame.structural or frame.readers != 0
+                frame.structural <- true
+            Token{phase: phase, kind: kind, live: true}
+
+        def release(frame: mutable Frame&, token: mutable Token&) -> void error[AccessError]:
+            raise AccessError.InactiveFrame if not frame.active
+            raise AccessError.UnknownToken if not token.live
+            raise AccessError.PhaseRegression if token.phase != frame.phase
+            if token.kind == AccessKind.Read:
+                frame.readers <- frame.readers - 1
+            if token.kind == AccessKind.Write:
+                frame.writer <- false
+            if token.kind == AccessKind.Structural:
+                frame.structural <- false
+            token.live <- false
+
+        def advance(frame: mutable Frame&, next: Phase) -> void error[AccessError]:
+            raise AccessError.InactiveFrame if not frame.active
+            raise AccessError.PhaseRegression if phase_value(next) != phase_value(frame.phase) + 1
+            raise AccessError.ActiveBorrow if frame.readers != 0 or frame.writer or frame.structural
+            frame.phase <- next
+
+        def end_frame(frame: mutable Frame&) -> void error[AccessError]:
+            raise AccessError.InactiveFrame if not frame.active
+            raise AccessError.ActiveBorrow if frame.readers != 0 or frame.writer or frame.structural
+            frame.active <- false
+
+        def frame_active(frame: Frame&) -> bool:
+            frame.active
+
+        def token_live(token: Token&) -> bool:
+            token.live

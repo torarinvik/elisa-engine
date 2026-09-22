@@ -1,0 +1,20 @@
+# World command commits acquire the same exclusive structural token that world
+# systems use. The command buffer remains atomic if validation or application
+# fails, while the access frame rejects invalid phase mutation.
+include "./commands.elisa"
+include "./access.elisa"
+
+module WorldPhaseCommands:
+    public:
+        def commit(frame: mutable WorldAccess::Frame&, buffer: mutable WorldCommands::WorldBuffer&,
+            world: mutable World::World&) -> bool:
+            phase: WorldAccess::Phase = WorldAccess::current_phase(frame)
+            token: mutable WorldAccess::Token = catch WorldAccess::acquire(
+                frame, phase, WorldAccess::AccessKind.Structural):
+                value: value
+                error failure: return false
+            accepted: bool = WorldCommands::commit_world(buffer, world)
+            _ = catch WorldAccess::release(frame, &token):
+                ok: 0
+                error failure: 1
+            accepted
