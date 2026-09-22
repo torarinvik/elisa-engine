@@ -87,6 +87,7 @@ struct InstanceSlot {
     float previous_animation_speed = 1.0f;
     float blend_elapsed = 0.0f;
     float blend_duration = 0.0f;
+    bool blend_eased = false;
     bool animation_loop = true;
     bool previous_animation_loop = true;
     bool live = false;

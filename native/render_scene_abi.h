@@ -188,6 +188,9 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
+int32_t elisa_render_scene_v1_play_animation_blended(
+    int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds, int32_t flags);
+int32_t elisa_render_scene_v1_set_animation_speed(int64_t handle, float speed);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
 float elisa_render_scene_v1_animation_progress(int64_t handle);

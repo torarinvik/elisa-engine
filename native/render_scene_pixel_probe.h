@@ -340,6 +340,20 @@ extern "C" int32_t elisa_render_scene_v1_test_instances_share_mesh(int64_t first
     return first_object != nullptr && second_object != nullptr && first_object->meshID == second_object->meshID ? 1 : 0;
 }
 
+// The crossfade weight the next pose applies, after easing; -1 without a fade.
+extern "C" float elisa_render_scene_v1_test_animation_blend_weight(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return -1.0f;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return -1.0f;
+    const InstanceSlot& instance = state.instances[slot];
+    if (instance.previous_animation_clip < 0 || instance.blend_duration <= 0.0f) return -1.0f;
+    float blend = std::clamp(instance.blend_elapsed / instance.blend_duration, 0.0f, 1.0f);
+    if (instance.blend_eased) blend = blend * blend * (3.0f - 2.0f * blend);
+    return blend;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_mesh_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
