@@ -1,0 +1,19 @@
+# Session-routed physics query and contact polling smoke.
+module RuntimePhysicsQueriesProbe:
+    public:
+        def run(session: RuntimeServices::Session&) -> i32:
+            query_hit: PhysicsRuntime::RayHit = catch RuntimeServices::physics_raycast(session,
+                Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 1.0,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 121
+            return 121 if query_hit.hit or query_hit.entity != 0
+            query_contacts: mutable PhysicsRuntime::ContactBuffer = PhysicsRuntime::ContactBuffer()
+            query_dropped: mutable u32 = 0
+            query_count: usize = catch RuntimeServices::physics_poll_contacts(session,
+                &query_contacts, &query_dropped):
+                value: 0
+                error failure: return 122
+            return 123 if query_count > PhysicsRuntime::MAX_CONTACT_EVENTS or query_dropped != 0
+            0
