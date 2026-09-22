@@ -66,6 +66,7 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
         !add_geometry_bytes(geometry.indices.size(), sizeof(uint32_t), total) ||
         !add_geometry_bytes(geometry.skin_indices.size(), sizeof(uint32_t), total) ||
         !add_geometry_bytes(geometry.skin_weights.size(), sizeof(float), total) ||
+        !add_geometry_bytes(geometry.skin_inverse_bind_matrices.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.skin_cluster_joints.size(), sizeof(uint32_t), total) ||
         !add_geometry_bytes(geometry.subsets.size(), sizeof(elisa::assets::CookedGeometry::Subset), total)) return false;
     for (const std::string& name : geometry.skin_bone_names) {
@@ -101,7 +102,8 @@ size_t snapshot_shared_mesh_slot(const RenderSceneService& state,
 
 bool cooked_geometry_is_static(const elisa::assets::CookedGeometry& geometry) {
     return geometry.skin_indices.empty() && geometry.skin_weights.empty() &&
-        geometry.skin_cluster_joints.empty() && geometry.skin_bone_names.empty() &&
+        geometry.skin_inverse_bind_matrices.empty() && geometry.skin_cluster_joints.empty() &&
+        geometry.skin_bone_names.empty() &&
         geometry.skin_joints.empty() && geometry.animation_clips.empty() && geometry.morph_targets.empty();
 }
 

@@ -160,7 +160,9 @@ def cases(directory: Path) -> list[tuple]:
     cook_gltf_geometry.cook_geometry_package(
         hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
     hierarchy_metadata = (directory / "hierarchy.pkg").read_bytes()
-    gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
+    skin_path, _ = gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
+    skin_metadata = skin_path.read_bytes()
+    default_skin_path, _ = gltf_skin_self_test.write_package(directory / "default-skinned-panel.pkg", None)
     gltf_morph_self_test.write_package(directory / "morphed-panel.pkg")
     gltf_scene_self_test.write_package(directory / "scene-metadata.pkg")
     scene_metadata = (directory / "scene-metadata.pkg").read_bytes()
@@ -221,6 +223,31 @@ def cases(directory: Path) -> list[tuple]:
                 return b"".join(lines)
         raise RuntimeError("hierarchy metadata mutation did not find its records")
 
+    def skin_field(name: str, value: str | None) -> bytes:
+        lines = skin_metadata.decode("ascii").splitlines()
+        prefix = name + "="
+        for index, line in enumerate(lines):
+            if line.startswith(prefix):
+                if value is None:
+                    del lines[index]
+                else:
+                    lines[index] = prefix + value
+                return ("\n".join(lines) + "\n").encode("ascii")
+        if value is None:
+            return skin_metadata
+        lines.append(prefix + value)
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    def skin_without_rig() -> bytes:
+        rig_fields = {
+            "skin_joints", "skin_joint_parent_stride", "skin_joint_parents_b64",
+            "skin_joint_rest_stride", "skin_joint_rest_b64", "skin_joint_names_b64",
+            "skin_cluster_joints_stride", "skin_cluster_joints_b64",
+        }
+        lines = [line for line in skin_metadata.decode("ascii").splitlines()
+            if line.partition("=")[0] not in rig_fields]
+        return ("\n".join(lines) + "\n").encode("ascii")
+
     def textured_strip(names, references, **fields):
         return strip_package(2, two, 2, materials=fields.pop("materials", plain),
             textures=(names, references), **fields)
@@ -242,7 +269,29 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
         ("accept", "skinned-panel.pkg", None, (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1),
             (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
-            "animations", 1, "morphs", 1)),
+            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+        ("accept", "default-skinned-panel.pkg", default_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds",
+            gltf_skin_self_test.DEFAULT_INVERSE_BIND_MATRICES)),
+        ("reject", "skin-inverse-bind-no-stride.pkg", skin_field("skin_inverse_bind_stride", None),
+            "incomplete cooked geometry skin stream"),
+        ("reject", "skin-inverse-bind-no-data.pkg", skin_field("skin_inverse_bind_matrices_b64", None),
+            "incomplete cooked geometry skin stream"),
+        ("reject", "skin-inverse-bind-without-rig.pkg", skin_without_rig(),
+            "incomplete cooked geometry rig hierarchy"),
+        ("reject", "skin-inverse-bind-stride.pkg", skin_field("skin_inverse_bind_stride", "32"),
+            "invalid cooked geometry inverse bind matrix stream"),
+        ("reject", "skin-inverse-bind-short.pkg", skin_field("skin_inverse_bind_matrices_b64",
+            base64.b64encode(struct.pack("<31f", *gltf_skin_self_test.INVERSE_BIND_MATRICES[:31])).decode("ascii")),
+            "invalid cooked geometry inverse bind matrix stream"),
+        ("reject", "skin-inverse-bind-nonfinite.pkg", skin_field("skin_inverse_bind_matrices_b64",
+            base64.b64encode(struct.pack("<32f", *gltf_skin_self_test.INVERSE_BIND_MATRICES[:4], float("nan"),
+                *gltf_skin_self_test.INVERSE_BIND_MATRICES[5:])).decode("ascii")),
+            "invalid cooked geometry inverse bind matrix stream"),
+        ("reject", "skin-inverse-bind-singular.pkg", skin_field("skin_inverse_bind_matrices_b64",
+            base64.b64encode(struct.pack("<32f", 0.0, *gltf_skin_self_test.INVERSE_BIND_MATRICES[1:])).decode("ascii")),
+            "invalid cooked geometry inverse bind matrix"),
         ("accept", "morphed-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
             "morphs", 1)),
         ("accept", "scene-metadata.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
@@ -382,6 +431,10 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     morph_count = None
     camera_count = None
     light_count = None
+    inverse_bind_values = None
+    if len(records) >= 2 and records[-2] == "inverse_binds":
+        inverse_bind_values = records[-1]
+        records = records[:-2]
     while len(records) >= 2 and records[-2] in ("animations", "morphs", "cameras", "lights"):
         marker, count = records[-2:]
         if marker == "animations":
@@ -412,6 +465,8 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         fields += ["cameras", str(camera_count)]
     if light_count is not None:
         fields += ["lights", str(light_count)]
+    if inverse_bind_values is not None:
+        fields += ["inverse_binds"] + [float32_text(value) for value in inverse_bind_values]
     return "\t".join(fields)
 
 

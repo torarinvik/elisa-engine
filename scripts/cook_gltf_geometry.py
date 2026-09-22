@@ -451,8 +451,10 @@ def skin_lines(geometry: dict) -> list[str]:
     joints = skin["joints"]
     cluster_joints = skin["cluster_joints"]
     clips = skin.get("animation_clips", [])
+    inverse_bind_matrices = skin.get("inverse_bind_matrices")
     if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
             len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS or
+            (inverse_bind_matrices is not None and len(inverse_bind_matrices) != len(bones) * 16) or
             len(clips) > cook_gltf_animation.MAX_CLIPS):
         raise ValueError("normalized skin streams do not match the mesh")
     parents = [joint["parent"] for joint in joints]
@@ -472,6 +474,10 @@ def skin_lines(geometry: dict) -> list[str]:
             struct.pack(f"<{len(cluster_joints)}I", *cluster_joints)).decode("ascii"),
         f"animation_clips={len(clips)}",
     ]
+    if inverse_bind_matrices is not None:
+        lines += ["skin_inverse_bind_stride=64",
+            "skin_inverse_bind_matrices_b64=" + base64.b64encode(
+                struct.pack(f"<{len(inverse_bind_matrices)}f", *inverse_bind_matrices)).decode("ascii")]
     for index, clip in enumerate(clips):
         samples = clip["samples"]
         frames = clip["frames"]

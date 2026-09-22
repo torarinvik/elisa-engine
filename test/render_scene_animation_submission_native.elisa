@@ -5,6 +5,14 @@ module RenderSceneAnimationSubmissionNativeTests:
         const SHIFT_X: f32 = 2.0
         const OTHER_SHIFT_X: f32 = -2.0
         const ZERO_MORPH: f32 = 0.0
+        const TIP_CLUSTER: u32 = 1
+        const INVERSE_BIND_TRANSLATION_ROW: u32 = 3
+        const INVERSE_BIND_X_COLUMN: u32 = 0
+        const INVERSE_BIND_Y_COLUMN: u32 = 1
+        const EXPECTED_WICKED_INVERSE_BIND_X: f32 = 2.0
+        const EXPECTED_WICKED_INVERSE_BIND_Y: f32 = -1.0
+        const ANIMATION_STATE_MATCH_ALL: i32 = 15
+        const ANIMATION_STATE_ERROR_BASE: i32 = 40
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_submission(handle: RenderScene::InstanceHandle,
@@ -16,6 +24,10 @@ module RenderSceneAnimationSubmissionNativeTests:
             second_handle: RenderScene::InstanceHandle, second_x: f32,
             expected_pending: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_inverse_bind(handle: RenderScene::InstanceHandle,
+            cluster: u32, row: u32, column: u32, expected: f32) -> i32
+
     public:
         def exercise() -> i32:
             mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -23,6 +35,12 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
+            return 23 if elisa_render_scene_v1_test_inverse_bind(mesh, TIP_CLUSTER,
+                INVERSE_BIND_TRANSLATION_ROW, INVERSE_BIND_X_COLUMN,
+                EXPECTED_WICKED_INVERSE_BIND_X) != 1
+            return 24 if elisa_render_scene_v1_test_inverse_bind(mesh, TIP_CLUSTER,
+                INVERSE_BIND_TRANSLATION_ROW, INVERSE_BIND_Y_COLUMN,
+                EXPECTED_WICKED_INVERSE_BIND_Y) != 1
             second_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
                 "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(),
                 RenderScene::Color{red: 0.7, green: 0.7, blue: 0.9, alpha: 1.0}):
@@ -86,8 +104,10 @@ module RenderSceneAnimationSubmissionNativeTests:
             submit: i32 = catch RenderScene::submit_animation_pose(mesh, &pose):
                 ok: 0
                 error failure: 1
-            return 4 if submit != 0 or elisa_render_scene_v1_test_animation_submission(
-                mesh, SHIFT_X, ZERO_MORPH, 1) != 1
+            return 4 if submit != 0
+            animation_state: i32 = elisa_render_scene_v1_test_animation_submission(
+                mesh, SHIFT_X, ZERO_MORPH, 1)
+            return ANIMATION_STATE_ERROR_BASE + animation_state if animation_state != ANIMATION_STATE_MATCH_ALL
             second_submit: i32 = catch RenderScene::submit_animation_pose(second_mesh, &second_pose):
                 ok: 0
                 error failure: 1
@@ -103,8 +123,9 @@ module RenderSceneAnimationSubmissionNativeTests:
             completed: i32 = catch RenderScene::complete_animation_pose(mesh):
                 ok: 0
                 error failure: 1
-            return 6 if completed != 0 or elisa_render_scene_v1_test_animation_submission(
-                mesh, SHIFT_X, ZERO_MORPH, 0) != 1
+            completed_state: i32 = elisa_render_scene_v1_test_animation_submission(
+                mesh, SHIFT_X, ZERO_MORPH, 0)
+            return 6 if completed != 0 or completed_state != ANIMATION_STATE_MATCH_ALL
             repeated_complete: i32 = catch RenderScene::complete_animation_pose(mesh):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
