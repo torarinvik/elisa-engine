@@ -1,5 +1,6 @@
 include "../src/runtime/world_rendering.elisa"
 
+
 module WorldRenderingValidation:
     private:
         def sample_visual(mesh_low: u64) -> Assets::VisualAsset:
@@ -177,6 +178,31 @@ module WorldRenderingValidation:
                 WorldRendering::WorldRenderingError.Capacity: 1
                 error failure: 2
             return 17 if full_rejected != 1 or WorldRendering::binding_count(full_bindings) != WorldRendering::MAX_BINDINGS
+
+            sampled_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+            sampled_bind_status: i32 = catch WorldRendering::bind(&sampled_bindings, &world,
+                player, 201, visual, identity):
+                ok: 0
+                error failure: 1
+            return 33 if sampled_bind_status != 0
+            hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+            hierarchy_start: Geometry::Transform = Geometry::transform_identity()
+            return 34 if not WorldHierarchy::hierarchy_spawn(&hierarchy, player.id, hierarchy_start)
+            WorldHierarchy::hierarchy_update(&hierarchy)
+            hierarchy_target: Geometry::Transform = Geometry::transform_translate(identity,
+                Geometry::Vec3{x: 10.0, y: 0.0, z: 0.0})
+            return 35 if not WorldHierarchy::hierarchy_set_local(&hierarchy,
+                player.id, hierarchy_target, false)
+            WorldHierarchy::hierarchy_update(&hierarchy)
+            sampled_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            sampled_extract: i32 = catch WorldRendering::extract_hierarchy(&world,
+                &hierarchy, &sampled_bindings, 0.5, &sampled_snapshot):
+                ok: 0
+                error failure: 1
+            return 36 if sampled_extract != 0 or RenderSnapshot::snapshot_count(sampled_snapshot) != 1
+            sampled_entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(sampled_snapshot, 0)
+            return 37 if sampled_entry.transform.position.x < 4.99 or sampled_entry.transform.position.x > 5.01
+            return 38 if WorldHierarchy::hierarchy_world(&hierarchy, player.id).position.x != 10.0
 
             full_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
             full_extract: i32 = catch WorldRendering::extract(&world, &full_bindings, &full_snapshot):
