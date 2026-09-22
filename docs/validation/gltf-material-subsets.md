@@ -95,14 +95,14 @@ records. Nine variants must fail for the stated reason:
 
 **Loader.** `scripts/test_geometry_subsets.py` builds
 `native/geometry_subset_test.cpp` against the production loader under
-AddressSanitizer and UndefinedBehaviorSanitizer. It runs 79 cases, each of
+AddressSanitizer and UndefinedBehaviorSanitizer. It runs 83 cases, each of
 which must be accepted with exactly the expected subsets or rejected with the
 expected error:
 - accepted: the cooked panel as `.pkg` and `.elpk`, the maze tile, a legacy
   package with no records, an explicit single subset, a mesh with an unused
   slot, 16 subsets in 16 slots, the generated multi-material skinned and
   morphed glTF panels, and skinned meshes with no records, one subset, or
-  multiple subsets and slot materials
+  multiple subsets and slot materials, plus camera/light metadata records
 - rejected: a gap, an overlap, a subset that splits a triangle, an empty
   subset, a missing slot, a short total, an overrun, a count that wraps
   `uint32`, four subsets whose wraps land back on an exact partition, 17
@@ -218,9 +218,11 @@ per-subset bound rejects it.
   morph targets into Wicked and accept bounded weight submissions. Morph
   animation channels and cubic-spline channels remain rejected. Mesh-node
   transforms must be identity, and cameras and lights remain deferred to the
-  next A05 slice.
-- **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
-  cameras and lights still fail in the runtime cooker. The normalized scene
+  next A05/R03/R05 slice. The package loader now validates bounded camera and
+  `KHR_lights_punctual` records; live renderer binding remains in those tasks.
+- **One mesh node.** Scene hierarchies, node transforms, and multiple meshes
+  are carried by the runtime cooker; camera/light records are carried as
+  normalized metadata but are not bound to the live renderer yet. The normalized scene
   contract and `native/asset_import.h` cover them only in the Wicked probe.
   Superseded for hierarchies, transforms and multiple meshes by
   [`gltf-node-hierarchies.md`](gltf-node-hierarchies.md); cameras and lights

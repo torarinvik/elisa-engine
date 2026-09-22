@@ -10,6 +10,7 @@ import struct
 
 import cook_assets
 import cook_gltf_nodes
+import cook_gltf_scene
 import cook_gltf_skin
 import cook_gltf_textures
 
@@ -107,10 +108,9 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     """Return each mesh placement's (mesh index, world matrix), the material
     slot count, slot material records, and each slot's images after rejecting
     unhandled glTF semantics."""
-    if document.get("extensionsUsed") or document.get("extensionsRequired"):
+    allowed_extensions = {cook_gltf_scene.LIGHT_EXTENSION}
+    if set(document.get("extensionsUsed", [])) - allowed_extensions or set(document.get("extensionsRequired", [])) - allowed_extensions:
         raise ValueError("runtime geometry cooker does not support glTF extensions")
-    if document.get("cameras"):
-        raise ValueError("runtime geometry cooker accepts scenes without cameras")
     skin = cook_gltf_skin.normalize(document, buffer)
 
     meshes = document.get("meshes", [])
@@ -152,7 +152,8 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     placements = cook_gltf_nodes.mesh_placements(document, len(meshes))
     if skin is not None and any(matrix != cook_gltf_nodes.IDENTITY for _, matrix in placements):
         raise ValueError("skinned mesh node transforms must be identity; put the pose in its joints")
-    return placements, slot_count, slot_records, slot_images, skin, morph_count
+    scene = cook_gltf_scene.normalize(document, buffer)
+    return placements, slot_count, slot_records, slot_images, skin, morph_count, scene
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -262,7 +263,7 @@ def normalized_geometry(document: dict, buffer: bytes):
     # Material factors become slot records, and the images their textures
     # sample become bundle sections. The bounded skin path keeps joint
     # influences and parent-ordered rest transforms alongside the mesh.
-    placements, slot_count, slot_records, slot_images, skin, morph_count = validate_static_geometry_source(document, buffer)
+    placements, slot_count, slot_records, slot_images, skin, morph_count, scene = validate_static_geometry_source(document, buffer)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
     placed = []
@@ -342,7 +343,7 @@ def normalized_geometry(document: dict, buffer: bytes):
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
         "skin": skin, "skin_indices": skin_indices, "skin_weights": skin_weights,
-        "morph_targets": morph_targets}
+        "morph_targets": morph_targets, "scene": scene}
 
 
 def placed_counts(document: dict) -> dict:
@@ -466,6 +467,10 @@ def morph_lines(geometry: dict) -> list[str]:
     return lines
 
 
+def scene_lines(geometry: dict) -> list[str]:
+    return cook_gltf_scene.lines(geometry.get("scene", {"cameras": [], "lights": []}))
+
+
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         allow_textures: bool = False) -> tuple[Path, dict]:
     """Write the mesh package. A textured source cooks only when the caller
@@ -501,6 +506,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         *subset_lines(geometry),
         *skin_lines(geometry),
         *morph_lines(geometry),
+        *scene_lines(geometry),
         "positions_b64=" + base64.b64encode(geometry["positions"]).decode("ascii"),
         "normals_b64=" + base64.b64encode(geometry["normals"]).decode("ascii"),
         "uvs_b64=" + base64.b64encode(geometry["uvs"]).decode("ascii"),
@@ -514,4 +520,6 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         "indices": geometry["index_count"], "subsets": len(geometry["subsets"]),
         "material_slots": geometry["material_slots"],
         "slot_materials": len(geometry["slot_materials"]) // SLOT_MATERIAL_STRIDE, "source_sha256": digest,
-        "images": dict(geometry["images"]), "morph_targets": len(geometry.get("morph_targets", []))}
+        "images": dict(geometry["images"]), "morph_targets": len(geometry.get("morph_targets", [])),
+        "cameras": len(geometry.get("scene", {}).get("cameras", [])),
+        "lights": len(geometry.get("scene", {}).get("lights", []))}

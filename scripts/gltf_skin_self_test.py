@@ -114,6 +114,7 @@ def self_test(temporary: Path) -> int:
     rejected.append(("animation", animated))
     camera = deepcopy(document)
     camera["cameras"] = [{"type": "perspective"}]
+    camera["nodes"][0]["camera"] = 0
     rejected.append(("camera", camera))
     transformed = deepcopy(document)
     transformed["nodes"][0]["translation"] = [1.0, 0.0, 0.0]

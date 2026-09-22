@@ -16,8 +16,9 @@ authored triangle primitive is decoded into bounded engine arrays, uploaded
 through Wicked's mesh component, and used by the rendered goal marker; its
 normal stream and scalar material factors are retained when present. The
 runtime cooker now carries bounded multi-material skins, fixed-rate LINEAR or
-STEP joint animation, and dense morph POSITION/NORMAL deltas into the v3
-package. The native uploader installs those targets on each Wicked mesh, and
+STEP joint animation, dense morph POSITION/NORMAL deltas, and validated camera
+and `KHR_lights_punctual` records (including node transforms) into the runtime
+package. The native uploader installs morph targets on each Wicked mesh, and
 the SDL3/Metal animation smoke submits a bounded morph weight on the cooked
-two-joint fixture. Cameras, lights, and complete multi-mesh scene metadata
-remain follow-up A05 work.
+two-joint fixture. Binding imported cameras/lights to the live renderer and
+complete multi-mesh scene metadata remain follow-up A05/R03/R05 work.
