@@ -1,5 +1,3 @@
-# Public Elisa scene-rendering surface. Native handles and Wicked types stay
-# behind the engine-owned scalar ABI.
 include "../math/geometry.elisa"
 include "../backend/lighting.elisa"
 module RenderScene:
@@ -573,9 +571,6 @@ module RenderScene:
                 handle.id, 1 if visible else 0))
         def destroy_overlay_panel(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.id))
-        # Creates a reusable jagged, additive ribbon. Elisa supplies the live
-        # connector endpoints and phase each frame; the engine keeps endpoints
-        # pinned while generating the interior flicker and blue halo.
         def create_electric_arc(width: f32, amplitude: f32, seed: u32) -> ElectricArcHandle error[RenderSceneError]:
             native_value: i64 = elisa_render_scene_v1_create_electric_arc(width, amplitude, seed)
             if native_value <= 0:
@@ -586,8 +581,6 @@ module RenderScene:
             end: Geometry::Vec3, phase: f32, visibility: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_update_electric_arc(handle.native_value,
                 start.x, start.y, start.z, end.x, end.y, end.z, phase, visibility))
-        # Enable physical occlusion for socket-anchored world-space electricity.
-        # Existing arcs default to overlay; this setting survives every update.
         def set_electric_arc_depth_test(handle: ElectricArcHandle, enabled: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_electric_arc_depth_test(
                 handle.native_value, 1 if enabled else 0))

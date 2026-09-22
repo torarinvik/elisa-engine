@@ -99,6 +99,13 @@ center 17-by-17 pixel patch to verify that showing the arc changes the rendered
 image; ordinary game builds do not expose this probe. Visual tuning and socket
 alignment in authored gameplay remain open.
 
+For skinned instances, `RenderScene::play_animation`, `stop_animation`, and
+`advance_animation` drive the sampled Wicked pose. `RenderScene::animation_progress`
+returns the active clip's normalized time in `[0, 1]`, returns `0` for an idle
+instance, and reports `UnknownHandle` for a retired instance. The SDL3/Metal
+smoke checks idle and stale-handle behavior; gameplay can use the value to
+synchronize authored cues without duplicating clip-duration state.
+
 Calling `RenderScene::shutdown` releases the render path and all owned scene
 resources. The engine also registers a shutdown hook: application shutdown
 detaches the active path, then releases the scene before Wicked tears down its
