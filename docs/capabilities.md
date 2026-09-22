@@ -193,6 +193,7 @@ labels here do not imply that a probe is a reusable, production-ready service.
 | UI box layout (orientation, padding, spacing) | Tested | `src/ui/layout.elisa`, `test/editor.elisa` |
 | Native screen-space solid-color overlay panels | Tested + Implemented | `RenderScene::create_overlay_panel`, bounded generation-checked panel handles, and SDL3/Metal color/hide/show/lifetime checks in `scripts/render_scene_native_smoke.py`; text layout and focusable widgets remain separate work |
 | Native screen-space textured overlay images | Tested + Implemented | `RenderScene::create_overlay_image`, project-root-confined Wicked texture loading, normalized atlas UVs, color/visibility updates, generation-checked handles, and SDL3/Metal glyph-atlas pixel/lifetime checks in `scripts/render_scene_native_smoke.py`; shaping and retained UI layout remain I04/I02 work |
+| Native scoped 3D debug drawing | Tested + Implemented | `RenderScene::debug_box`, `debug_line`, `debug_text`, `debug_flush`, and `debug_clear` queue bounded owner-thread commands through `native/debug_draw_bridge.h`; the SDL3/Metal/Wicked smoke covers copied text, depth flags, invalid bounds, capacity handling, and render-path flushing in group 231 |
 | UI text line breaking (word packing) | Tested | `src/ui/text.elisa`, `test/editor.elisa` |
 | Host UI consumes Elisa style data (row height) | Tested | fixture `menu_row_height`, `backends/godot/probe.gd` |
 | Host UI consumes Elisa menu state | Tested | `backends/godot/probe.gd`, fixture `menu_*` fields |

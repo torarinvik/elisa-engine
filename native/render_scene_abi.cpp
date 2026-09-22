@@ -18,6 +18,7 @@
 #include "visibility_lod_bridge.h"
 #include "animation_submission_bridge.h"
 #include "effect_bridge.h"
+#include "debug_draw_bridge.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
@@ -127,7 +128,7 @@ struct RenderSceneService {
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
-    std::array<OverlayImageSlot, MAX_OVERLAY_IMAGES> overlay_images{};
+    std::array<OverlayImageSlot, MAX_OVERLAY_IMAGES> overlay_images{}; probe::DebugDrawBridge debug_draw;
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
     std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};
@@ -177,25 +178,7 @@ struct RenderSceneService {
     bool initialized = false;
     bool shutdown_hook_registered = false;
 };
-class ElisaRenderPath3D final : public wi::RenderPath3D {
-public:
-    explicit ElisaRenderPath3D(const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs)
-        : arcs_(arcs) {}
-    void Render() const override {
-        if (arcs_ != nullptr) {
-            for (const ElectricArcSlot& arc : *arcs_) {
-                if (arc.live && arc.visible) {
-                    wi::renderer::DrawTrailRuntime(&arc.halo);
-                    wi::renderer::DrawTrailRuntime(&arc.core);
-                    if (arc.branch.points.size() >= 2) wi::renderer::DrawTrailRuntime(&arc.branch);
-                }
-            }
-        }
-        wi::RenderPath3D::Render();
-    }
-private:
-    const std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS>* arcs_;
-};
+#include "render_scene_path.inc"
 RenderSceneService& service() {
     // NativeApplication owns a static host and runs registered hooks while
     // that host is being destroyed. Keep the callback context alive until
@@ -362,7 +345,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_expected_previous_count = 0;
     state.snapshot_transaction_active = false;
     state.snapshot_test_fail_after_creates = -1;
-    state.snapshot_asset_requests.reset();
+    state.snapshot_asset_requests.reset(); state.debug_draw.clear();
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     state.snapshot_test_transaction_api_calls = 0;
     state.snapshot_test_last_transaction_api_calls = 0;

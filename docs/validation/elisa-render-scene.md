@@ -270,6 +270,16 @@ input glyphs, for example) as a screen-space sprite on the same 2D path, with
 position, size, normalized sub-rectangle UV, color/opacity and visibility
 setters. See [`overlay-image.md`](overlay-image.md).
 
+`RenderScene::debug_box`, `debug_line`, and `debug_text` submit scoped 3D
+commands through the private native debug bridge. Bounds, positions, colors,
+depth flags, owner-thread access, and queue capacity are checked before a
+command is accepted; text is copied at the boundary. `debug_flush` gives an
+explicit count and `debug_clear` discards the current scope. The owned
+`RenderPath3D` also flushes pending commands immediately before its Wicked draw,
+so ordinary Elisa callers do not need to retain a native queue or call a hidden
+engine hook. Render smoke group 231 covers valid and invalid inputs, copied
+text, depth variants, clear-after-flush, and the automatic render-path boundary.
+
 `RenderScene::create_light` accepts the validated backend-neutral directional,
 point, and spot descriptors from `Lighting`. It returns an opaque,
 generation-checked `LightHandle`; `update_light` changes the descriptor in place
@@ -342,6 +352,7 @@ group G failed at case N` to stderr, then exits G.
 | 228 | `render_scene_node_hierarchy_native.elisa` | logged |
 | 229 | `render_scene_panel_native.elisa`, including `render_scene_image_native.elisa` | logged |
 | 230 | `render_scene_cooked_texture_native.elisa` | logged |
+| 231 | `render_scene_debug_native.elisa` | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
 codes also belonged to other groups:

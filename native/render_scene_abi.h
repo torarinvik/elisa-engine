@@ -322,6 +322,22 @@ int32_t elisa_render_scene_v1_set_overlay_panel_color(
     int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_overlay_panel_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle);
+int32_t elisa_render_scene_v1_debug_box(
+    float min_x, float min_y, float min_z,
+    float max_x, float max_y, float max_z,
+    float red, float green, float blue, float alpha,
+    int32_t depth_tested);
+int32_t elisa_render_scene_v1_debug_line(
+    float start_x, float start_y, float start_z,
+    float end_x, float end_y, float end_z,
+    float red, float green, float blue, float alpha,
+    int32_t depth_tested);
+int32_t elisa_render_scene_v1_debug_text(
+    const char* text, float x, float y, float z,
+    float red, float green, float blue, float alpha,
+    int32_t depth_tested);
+int32_t elisa_render_scene_v1_debug_flush(void);
+int32_t elisa_render_scene_v1_debug_clear(void);
 int64_t elisa_render_scene_v1_create_overlay_image(const char* asset_path,
     float x, float y, float width, float height);
 int32_t elisa_render_scene_v1_set_overlay_image_position(int64_t handle, float x, float y);
