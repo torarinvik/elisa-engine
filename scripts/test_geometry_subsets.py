@@ -86,7 +86,8 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
     for triangle in range(triangles):
         positions += [float(triangle), 0.0, 0.0, triangle + 1.0, 0.0, 0.0, float(triangle), 1.0, 0.0]
     lines = [
-        "format=elisa-cooked-v2", "source=test/strip.gltf", "source_sha256=" + "0" * 64,
+        "format=" + ("elisa-cooked-v3" if skinned else "elisa-cooked-v2"),
+        "source=test/strip.gltf", "source_sha256=" + "0" * 64,
         f"triangles={triangles}", f"positions={vertices}", f"indices={vertices}",
         "position_stride=12", "normal_stride=12", "uv_stride=8", "index_stride=4",
     ]
@@ -125,11 +126,18 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
     ]
     if skinned:
         name = b"root"
+        rest = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
         lines += [
             "skin_bones=1", "skin_indices_stride=16", "skin_weights_stride=16",
             "skin_indices_b64=" + encoded(f"<{vertices * 4}I", (0,) * (vertices * 4)),
             "skin_weights_b64=" + encoded(f"<{vertices * 4}f", (1.0, 0.0, 0.0, 0.0) * vertices),
             "skin_names_b64=" + base64.b64encode(struct.pack("<I", len(name)) + name).decode("ascii"),
+            "skin_joints=1", "skin_joint_parent_stride=4", "skin_joint_rest_stride=40",
+            "skin_joint_parents_b64=" + encoded("<i", (-1,)),
+            "skin_joint_rest_b64=" + encoded("<10f", rest),
+            "skin_joint_names_b64=" + base64.b64encode(struct.pack("<I", len(name)) + name).decode("ascii"),
+            "skin_cluster_joints_stride=4", "skin_cluster_joints_b64=" + encoded("<I", (0,)),
+            "animation_clips=0",
         ]
     return ("\n".join(lines) + "\n").encode("ascii")
 

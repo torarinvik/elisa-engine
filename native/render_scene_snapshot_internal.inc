@@ -230,6 +230,7 @@ void clear_snapshot_instance(InstanceSlot& instance) {
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
+    instance.animation_submission = {};
     clear_animation_state(instance);
     instance.live = false;
 }

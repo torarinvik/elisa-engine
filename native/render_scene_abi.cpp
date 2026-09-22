@@ -16,6 +16,7 @@
 #include "postprocess_bridge.h"
 #include "lighting_bridge.h"
 #include "visibility_lod_bridge.h"
+#include "animation_submission_bridge.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
@@ -72,6 +73,7 @@ struct InstanceSlot {
     std::vector<wi::ecs::Entity> joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
+    probe::NativeAnimationHandle animation_submission{};
     int32_t animation_clip = -1;
     int32_t previous_animation_clip = -1;
     float animation_time = 0.0f;
@@ -144,6 +146,7 @@ struct RenderSceneService {
     int32_t snapshot_test_fail_after_creates = -1;
     std::unique_ptr<probe::LightingBridge> lighting;
     std::unique_ptr<probe::VisibilityLodBridge> visibility_lod;
+    std::unique_ptr<probe::AnimationSubmissionBridge> animation_submission;
     wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity primary_camera_entity = wi::ecs::INVALID_ENTITY;
@@ -292,6 +295,15 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
     return generation != 0 && state.instances[slot].live &&
         state.instances[slot].generation == generation;
 }
+void release_animation_submission(RenderSceneService& state, InstanceSlot& instance) {
+    if (state.animation_submission != nullptr && instance.animation_submission.owner != 0) {
+        if (state.animation_submission->pending(instance.animation_submission)) {
+            state.animation_submission->complete(instance.animation_submission);
+        }
+        state.animation_submission->destroy(instance.animation_submission);
+    }
+    instance.animation_submission = {};
+}
 #include "render_scene_animation_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
@@ -318,6 +330,10 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lighting.reset();
     state.visibility_lod.reset();
+    for (InstanceSlot& instance : state.instances) {
+        release_animation_submission(state, instance);
+    }
+    state.animation_submission.reset();
     if (state.scene != nullptr) {
         state.scene->Clear();
         state.scene.reset();
@@ -337,6 +353,7 @@ void reset_unlocked(RenderSceneService& state) {
         instance.joint_entities.clear();
         instance.skin_joints.clear();
         instance.animation_clips.clear();
+        instance.animation_submission = {};
         clear_animation_state(instance);
         instance.live = false;
     }
@@ -470,6 +487,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
+    instance.animation_submission = {};
     clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -520,6 +538,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_snapshot_bundle_texture_abi.inc"
 #include "render_scene_snapshot_asset_request_abi.inc"
 #include "render_scene_animation_abi.inc"
+#include "render_scene_animation_submission_abi.inc"
 #include "render_scene_material_abi.inc"
 #include "render_scene_environment_abi.inc"
 #include "render_scene_lighting_abi.inc"
@@ -535,6 +554,7 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     wi::ecs::Entity entity = state.instances[slot].entity;
+    release_animation_submission(state, state.instances[slot]);
     state.scene->Entity_Remove(entity);
     for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
     if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {

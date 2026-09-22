@@ -51,7 +51,7 @@ public:
     bool submit(NativeAnimationHandle handle, const XMFLOAT4X4* bones, uint32_t bone_count,
         const float* morphs, uint32_t morph_count) {
         Entry* entry = get(handle);
-        if (entry == nullptr || bone_count != entry->bone_count || morph_count != entry->morph_count ||
+        if (entry == nullptr || entry->pending || bone_count != entry->bone_count || morph_count != entry->morph_count ||
             bones == nullptr || !finite_matrices(bones, bone_count) ||
             (morph_count > 0 && (morphs == nullptr || !finite_morphs(morphs, morph_count)))) return false;
         const uint32_t next = 1u - entry->active;

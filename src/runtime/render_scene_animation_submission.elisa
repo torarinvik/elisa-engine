@@ -1,0 +1,63 @@
+# Explicit animation and morph submission is a bounded extension to the core
+# render surface. The native pose buffer remains private and is copied into
+# Wicked's double-buffered bridge only at the checked ABI boundary.
+include "./render_scene.elisa"
+include "../math/geometry.elisa"
+
+module RenderSceneAnimationSubmission:
+    public:
+        const API_VERSION: i32 = 1
+        const MAX_BONES: usize = 64
+        const MAX_MORPHS: usize = 32
+
+extend RenderScene:
+    private:
+        struct NativeAnimationSubmission:
+            bones: f32[RenderSceneAnimationSubmission::MAX_BONES * Geometry::MATRIX_ELEMENTS]
+            morphs: f32[RenderSceneAnimationSubmission::MAX_MORPHS]
+            bone_count: mutable u32
+            morph_count: mutable u32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_submit_animation_pose(handle: i64,
+            submission: mutable NativeAnimationSubmission&) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_complete_animation_pose(handle: i64) -> i32
+
+    public:
+        struct AnimationPose:
+            private:
+                native: mutable NativeAnimationSubmission
+
+        def AnimationPose() -> AnimationPose:
+            AnimationPose{native: zeroed}
+
+        def set_bone_matrix(pose: mutable AnimationPose&, index: usize,
+            matrix: f32[Geometry::MATRIX_ELEMENTS]) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if index >= RenderSceneAnimationSubmission::MAX_BONES
+            base: usize = index * Geometry::MATRIX_ELEMENTS
+            for component in 0..<Geometry::MATRIX_ELEMENTS |pose, matrix, base, component|:
+                pose.native.bones[base + component] <- matrix[component]
+            count: u32 = index.u32() + 1
+            pose.native.bone_count <- count if count > pose.native.bone_count
+
+        def set_bone_transform(pose: mutable AnimationPose&, index: usize,
+            transform: Geometry::Transform) -> void error[RenderSceneError]:
+            try set_bone_matrix(pose, index, Geometry::transform_to_matrix(transform))
+
+        def set_morph_weight(pose: mutable AnimationPose&, index: usize,
+            weight: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if index >= RenderSceneAnimationSubmission::MAX_MORPHS
+            raise RenderSceneError.InvalidValue if weight != weight or weight < 0.0 or weight > 1.0
+            pose.native.morphs[index] <- weight
+            count: u32 = index.u32() + 1
+            pose.native.morph_count <- count if count > pose.native.morph_count
+
+        def submit_animation_pose(handle: InstanceHandle,
+            pose: mutable AnimationPose&) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_submit_animation_pose(handle.native_value,
+                &pose.native))
+
+        def complete_animation_pose(handle: InstanceHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_complete_animation_pose(handle.native_value))
