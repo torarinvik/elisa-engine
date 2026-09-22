@@ -6,6 +6,7 @@
 #include "snapshot_asset_worker.h"
 #include "virtual_file_service.h"
 #include "native_resource_loader.h"
+#include "package_zstd_stream_probe.h"
 
 #include <algorithm>
 #include <atomic>
@@ -17,19 +18,6 @@
 #include <zstd.h>
 
 namespace probe {
-
-inline void put_package_u16(std::vector<uint8_t>& bytes, size_t offset, uint16_t value) {
-    bytes[offset] = static_cast<uint8_t>(value);
-    bytes[offset + 1] = static_cast<uint8_t>(value >> 8);
-}
-
-inline void put_package_u32(std::vector<uint8_t>& bytes, size_t offset, uint32_t value) {
-    for (size_t index = 0; index < 4; ++index) bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8));
-}
-
-inline void put_package_u64(std::vector<uint8_t>& bytes, size_t offset, uint64_t value) {
-    for (size_t index = 0; index < 8; ++index) bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8));
-}
 
 inline void write_binary_package_fixture(const std::filesystem::path& path, bool overlap,
     bool invalid_compression = false, bool compressed = false) {
@@ -271,6 +259,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
         hidden_bomb_index.valid &&
         !read_binary_package_section(hidden_bomb.string(), hidden_bomb_index, "mesh", bomb_section, bomb_error) &&
         bomb_section.empty() && bomb_error == "zstd section decompression failed";
+    const bool streaming_zstd_cases = probe_zstd_streaming(base_root);
     const BinaryPackageIndex zstd_index = read_binary_package_index(zstd.string());
     const BinaryPackageIndex corrupt_index = read_binary_package_index(corrupt.string());
     BinaryPackageManifest unsorted_manifest;
@@ -516,6 +505,7 @@ inline bool probe_package_bounds(const std::string& valid_package,
         check(chain_of_sixteen && chain_of_seventeen_rejected, "package dependency chain bounded at 16") &&
         check(nested_names_resolve, "package dependency names relative to their package") &&
         check(bombs_rejected, "zstd decompression bombs rejected by declared size") &&
+        check(streaming_zstd_cases, "bounded zstd section streaming, truncation and cancellation") &&
         check(section_read_cancelled_at_chunk, "binary section read cancels at a chunk boundary") &&
         check(worker_read_cancelled_at_chunk,
             "asset worker cancellation reaches an in-progress package read") &&

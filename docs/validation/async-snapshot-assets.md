@@ -173,9 +173,12 @@ mutant exited 1 at the named check:
 
 - **Cancellation granularity.** `VirtualFileService` now reads ELPK sections
   in 64 KiB chunks and stops at the next chunk boundary after cancellation;
-  the currently blocking chunk completes. The production RenderScene snapshot
-  worker passes the same cancellation checkpoints into mesh and texture section
-  reads. One-shot zstd decompression and PNG/JPEG decode remain uninterruptible.
+  the currently blocking chunk completes. Compressed sections stream through
+  zstd in bounded 64 KiB input and output chunks, checking cancellation while
+  decoding and discarding partial output on cancellation. The decoder caps its
+  frame window at 64 MiB, matching the maximum unpacked section size. The
+  production RenderScene snapshot worker passes the same checkpoints into mesh
+  and texture section reads. PNG/JPEG image decode remains uninterruptible.
 - **Adoption can still fail.** Requests count against the slot limits at
   request time, but synchronous registration of another ID doesn't count
   pending requests and can take the last slot first. The budgets (256 MiB of
@@ -257,3 +260,14 @@ applied to a clean checkout:
 - The two mutants whose old exits were ambiguous exited 194. They logged
   "render scene test group 194 failed at case 4" and "... at case 10". Their
   control exited 0.
+
+## Streaming decompression validation on 2026-09-22
+
+- The package gate decodes a 4 MiB zstd section through bounded output chunks,
+  cancels during decompression, and verifies the partial decoded buffer is
+  discarded. Existing valid-section, checksum, truncated-frame, and declared
+  size bomb checks still cover the streaming reader.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON_BIN=/opt/homebrew/bin/python3 ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ elisascript scripts/wicked_probe.elisascript build` exited 0, including the package probe and SDL3/Metal render and packaged-maze smokes.
+- A standalone ASan/UBSan build invoking `probe_zstd_streaming` exited 0, and
+  the complete `package_bounds_probe.h` passed a C++17 syntax-only compile with
+  the current Wicked and SDL3 headers.

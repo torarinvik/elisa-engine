@@ -7,6 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <system_error>
@@ -16,6 +17,8 @@
 namespace probe {
 
 inline constexpr size_t BINARY_PACKAGE_READ_CHUNK_BYTES = size_t(64) * 1024;
+// Called between bounded section-read and decompression work chunks. The
+// counters describe bytes read from the encoded section.
 using BinaryPackageReadCancellationCheck = std::function<bool(size_t, size_t)>;
 
 struct PackageIndex {
@@ -170,6 +173,7 @@ struct BinaryPackageIndex {
     static constexpr size_t HEADER_BYTES = 32;
     static constexpr size_t ENTRY_BYTES = 48;
     static constexpr size_t MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
+    static constexpr int MAX_ZSTD_WINDOW_LOG = 26; // 64 MiB, matching MAX_UNPACKED_BYTES.
     std::vector<BinaryPackageSection> sections;
     bool valid = false;
     std::string error;
@@ -289,36 +293,86 @@ inline bool read_binary_package_section(const std::string& path, const BinaryPac
         section_it->size > static_cast<uint64_t>(stream_size) - section_it->offset) {
         error = "binary section read exceeds package"; return false;
     }
-    std::vector<uint8_t> compressed(static_cast<size_t>(section_it->size));
     input.seekg(static_cast<std::streamoff>(section_it->offset));
     size_t bytes_read = 0;
-    while (bytes_read < compressed.size()) {
-        if (cancellation_check && cancellation_check(bytes_read, compressed.size())) {
-            error = "binary section read cancelled";
-            return false;
-        }
-        const size_t chunk = std::min(BINARY_PACKAGE_READ_CHUNK_BYTES,
-            compressed.size() - bytes_read);
-        input.read(reinterpret_cast<char*>(compressed.data() + bytes_read),
-            static_cast<std::streamsize>(chunk));
-        if (input.gcount() != static_cast<std::streamsize>(chunk)) {
-            error = "binary section read failed";
-            return false;
-        }
-        bytes_read += chunk;
-    }
-    if (cancellation_check && cancellation_check(bytes_read, compressed.size())) {
-        error = "binary section read cancelled";
-        return false;
-    }
     if (section_it->compression == 0) {
         if (section_it->size != section_it->unpacked_size) { error = "raw section size mismatch"; return false; }
-        output = std::move(compressed);
-    } else {
         output.resize(static_cast<size_t>(section_it->unpacked_size));
-        const size_t result = ZSTD_decompress(output.data(), output.size(), compressed.data(), compressed.size());
-        if (ZSTD_isError(result) || result != output.size()) {
+        while (bytes_read < output.size()) {
+            if (cancellation_check && cancellation_check(bytes_read, output.size())) {
+                output.clear(); error = "binary section read cancelled"; return false;
+            }
+            const size_t chunk = std::min(BINARY_PACKAGE_READ_CHUNK_BYTES, output.size() - bytes_read);
+            input.read(reinterpret_cast<char*>(output.data() + bytes_read), static_cast<std::streamsize>(chunk));
+            if (input.gcount() != static_cast<std::streamsize>(chunk)) {
+                output.clear(); error = "binary section read failed"; return false;
+            }
+            bytes_read += chunk;
+        }
+        if (cancellation_check && cancellation_check(bytes_read, output.size())) {
+            output.clear(); error = "binary section read cancelled"; return false;
+        }
+    } else {
+        const size_t expected_size = static_cast<size_t>(section_it->unpacked_size);
+        std::unique_ptr<ZSTD_DStream, decltype(&ZSTD_freeDStream)> decoder(
+            ZSTD_createDStream(), ZSTD_freeDStream);
+        if (!decoder || ZSTD_isError(ZSTD_DCtx_setParameter(
+                decoder.get(), ZSTD_d_windowLogMax, BinaryPackageIndex::MAX_ZSTD_WINDOW_LOG)) ||
+            ZSTD_isError(ZSTD_initDStream(decoder.get()))) {
+            error = "zstd section decompression failed"; return false;
+        }
+        std::vector<uint8_t> encoded(BINARY_PACKAGE_READ_CHUNK_BYTES);
+        std::array<uint8_t, BINARY_PACKAGE_READ_CHUNK_BYTES> decoded{};
+        output.reserve(expected_size);
+        bool frame_complete = false;
+        while (bytes_read < section_it->size) {
+            if (cancellation_check && cancellation_check(bytes_read, section_it->size)) {
+                output.clear(); error = "binary section read cancelled"; return false;
+            }
+            const size_t chunk = std::min(BINARY_PACKAGE_READ_CHUNK_BYTES,
+                static_cast<size_t>(section_it->size) - bytes_read);
+            input.read(reinterpret_cast<char*>(encoded.data()), static_cast<std::streamsize>(chunk));
+            if (input.gcount() != static_cast<std::streamsize>(chunk)) {
+                output.clear(); error = "binary section read failed"; return false;
+            }
+            bytes_read += chunk;
+            ZSTD_inBuffer source{encoded.data(), chunk, 0};
+            bool drain = false;
+            while (source.pos < source.size || drain) {
+                if (cancellation_check && cancellation_check(bytes_read, section_it->size)) {
+                    output.clear(); error = "binary section decompression cancelled"; return false;
+                }
+                const size_t remaining = expected_size - output.size();
+                const size_t capacity = std::min(BINARY_PACKAGE_READ_CHUNK_BYTES,
+                    std::max<size_t>(remaining, 1));
+                ZSTD_outBuffer destination{decoded.data(), capacity, 0};
+                const size_t previous_source = source.pos;
+                const size_t result = ZSTD_decompressStream(decoder.get(), &destination, &source);
+                if (ZSTD_isError(result) || destination.pos > remaining) {
+                    output.clear(); error = "zstd section decompression failed"; return false;
+                }
+                output.insert(output.end(), decoded.begin(), decoded.begin() + destination.pos);
+                if (result == 0) {
+                    if (source.pos != source.size || bytes_read != section_it->size) {
+                        output.clear(); error = "zstd section decompression failed"; return false;
+                    }
+                    frame_complete = true;
+                    break;
+                }
+                drain = destination.pos == destination.size;
+                if (source.pos == previous_source && destination.pos == 0) {
+                    if (source.pos == source.size) break;
+                    output.clear(); error = "zstd section decompression failed"; return false;
+                }
+                if (source.pos == source.size && !drain) break;
+            }
+            if (frame_complete) break;
+        }
+        if (!frame_complete) {
             output.clear(); error = "zstd section decompression failed"; return false;
+        }
+        if (cancellation_check && cancellation_check(bytes_read, section_it->size)) {
+            output.clear(); error = "binary section decompression cancelled"; return false;
         }
     }
     if (package_crc32(output.data(), output.size()) != section_it->checksum) {
