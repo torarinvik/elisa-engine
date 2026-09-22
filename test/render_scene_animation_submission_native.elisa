@@ -1,4 +1,5 @@
 # Native smoke coverage for the public double-buffered animation submission.
+include "../src/runtime/render_scene_imported_scene.elisa"
 module RenderSceneAnimationSubmissionNativeTests:
     private:
         const SHIFT_X: f32 = 2.0
@@ -124,13 +125,6 @@ module RenderSceneAnimationSubmissionNativeTests:
             8 if destroyed != 0 else 0
 
 module RenderSceneImportedSceneNativeTests:
-    private:
-        @callconv(c)
-        extern elisa_render_scene_v1_test_imported_scene(expected_cameras: i32, expected_lights: i32) -> i32
-
-        @callconv(c)
-        extern elisa_render_scene_v1_test_imported_mesh_count() -> i32
-
     public:
         def exercise() -> i32:
             hierarchy_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -138,22 +132,46 @@ module RenderSceneImportedSceneNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.2, blue: 0.1, alpha: 1.0}):
                 value: value
                 error failure: return 6
-            return 7 if elisa_render_scene_v1_test_imported_mesh_count() != 8
+            hierarchy: RenderScene::ImportedScene = catch RenderScene::imported_scene(hierarchy_mesh):
+                value: value
+                error failure: return 7
+            return 8 if hierarchy.mesh_count != 4 or hierarchy.camera_count != 0 or hierarchy.light_count != 0
             hierarchy_destroyed: i32 = catch RenderScene::destroy(hierarchy_mesh):
                 ok: 0
-                error failure: 8
-            return 9 if hierarchy_destroyed != 0 or elisa_render_scene_v1_test_imported_mesh_count() != 4
+                error failure: 9
+            return 10 if hierarchy_destroyed != 0
             imported_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
                 "build/cooked/subsets/scene-metadata.pkg", Geometry::transform_identity(),
                 RenderScene::Color{red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
-            return 2 if RenderScene::instance_count() != 5 or elisa_render_scene_v1_test_imported_scene(2, 2) != 1
+            imported: RenderScene::ImportedScene = catch RenderScene::imported_scene(imported_mesh):
+                value: value
+                error failure: return 2
+            imported_valid: bool = imported.mesh_count == 1 and imported.camera_count == 2 and imported.light_count == 2
+            return 3 if RenderScene::instance_count() != 5 or not imported_valid
+            camera: RenderScene::ImportedCameraHandle = catch RenderScene::imported_camera(
+                imported_mesh, 1):
+                value: value
+                error failure: return 4
+            activated: i32 = catch RenderScene::activate_imported_camera(camera):
+                ok: 0
+                error failure: 1
+            return 5 if activated != 0
+            invalid_camera: i32 = catch RenderScene::imported_camera(imported_mesh, imported.camera_count):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 6 if invalid_camera != 1
             _ = catch RenderScene::activate_default_camera():
                 ok: 0
-                error failure: return 3
+                error failure: return 7
             destroyed: i32 = catch RenderScene::destroy(imported_mesh):
                 ok: 0
-                error failure: 4
-            return 5 if destroyed != 0 or RenderScene::instance_count() != 4 or elisa_render_scene_v1_test_imported_scene(0, 0) != 1
+                error failure: 8
+            stale_camera: i32 = catch RenderScene::activate_imported_camera(camera):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 9 if destroyed != 0 or stale_camera != 1 or RenderScene::instance_count() != 4
             0

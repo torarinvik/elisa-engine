@@ -1,0 +1,18 @@
+# Per-instance shadow controls stay behind the RenderScene boundary.
+include "./render_scene.elisa"
+
+module RenderSceneShadow:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_set_cast_shadow(handle: i64, enabled: i32) -> i32
+
+    public:
+        # Decorative or alpha-masked geometry can remain opaque while opting
+        # out of low-resolution sun shadows that would alias at its scale.
+        def set_cast_shadow(handle: InstanceHandle, enabled: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_cast_shadow(handle.native_value,
+                1 if enabled else 0))

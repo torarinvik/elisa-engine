@@ -1,0 +1,62 @@
+# Public queries for authored cameras and child resources in a cooked scene.
+# Wicked entity and light handles stay private to the native adapter.
+include "./render_scene.elisa"
+
+module RenderSceneImportedScene:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_imported_mesh_count(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_imported_camera_count(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_imported_light_count(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_activate_imported_camera(handle: i64, index: u32) -> i32
+
+        def imported_count(status: i32) -> u32 error[RenderSceneError]:
+            if status < 0:
+                try check_status(status)
+            status.u32()
+
+    public:
+        struct ImportedScene:
+            mesh_count: u32
+            camera_count: u32
+            light_count: u32
+
+        struct ImportedCameraHandle:
+            private:
+                owner: InstanceHandle
+                index: u32
+
+        def imported_mesh_count(handle: InstanceHandle) -> u32 error[RenderSceneError]:
+            try imported_count(elisa_render_scene_v1_imported_mesh_count(handle.native_value))
+
+        def imported_camera_count(handle: InstanceHandle) -> u32 error[RenderSceneError]:
+            try imported_count(elisa_render_scene_v1_imported_camera_count(handle.native_value))
+
+        def imported_light_count(handle: InstanceHandle) -> u32 error[RenderSceneError]:
+            try imported_count(elisa_render_scene_v1_imported_light_count(handle.native_value))
+
+        def imported_scene(handle: InstanceHandle) -> ImportedScene error[RenderSceneError]:
+            mesh_count: u32 = try imported_mesh_count(handle)
+            camera_count: u32 = try imported_camera_count(handle)
+            light_count: u32 = try imported_light_count(handle)
+            ImportedScene{
+                mesh_count: mesh_count,
+                camera_count: camera_count,
+                light_count: light_count,
+            }
+
+        def imported_camera(handle: InstanceHandle, index: u32) -> ImportedCameraHandle error[RenderSceneError]:
+            count: u32 = try imported_camera_count(handle)
+            raise RenderSceneError.InvalidValue if index >= count
+            ImportedCameraHandle{owner: handle, index: index}
+
+        def activate_imported_camera(camera: ImportedCameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_activate_imported_camera(
+                camera.owner.native_value, camera.index))

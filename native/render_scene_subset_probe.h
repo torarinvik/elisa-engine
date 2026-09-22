@@ -93,6 +93,16 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_casts_shadow(int64_t rend
     return object->IsCastingShadow() ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_instance_casts_shadow(int64_t render_id) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return -1;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, render_id, slot)) return -1;
+    const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(state.instances[slot].entity);
+    return object == nullptr ? -1 : (object->IsCastingShadow() ? 1 : 0);
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_snapshot_material_set_count(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

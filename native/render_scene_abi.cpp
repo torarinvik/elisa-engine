@@ -514,6 +514,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     return int64_t(encode_handle(slot, generation));
 }
 #include "render_scene_mesh_abi.inc"
+#include "render_scene_imported_scene_abi.inc"
 #include "render_scene_arcs_abi.inc"
 extern "C" int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,

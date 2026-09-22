@@ -324,6 +324,23 @@ color fail with `InvalidValue`, that `set_color` on the clone fails with
 `BackendFailure`, that the mesh survives destroying the source first, and that
 destroying the last clone restores the mesh and instance counts.
 
+## Imported scene handles and per-instance shadows (2026-09-22)
+
+`RenderScene::imported_scene` reports the mesh, camera and light resources
+authored in a cooked scene. `imported_camera` returns an opaque child handle;
+`activate_imported_camera` selects that camera while retaining the root
+generation for stale-handle rejection. The API keeps Wicked entity IDs and
+light generations private to the native boundary. The imported-scene cases use
+the four-placement hierarchy and scene-metadata fixtures, activate the second
+authored camera, reject an out-of-range index, and verify that destroying the
+root invalidates the child handle.
+
+`RenderScene::set_cast_shadow` controls the Wicked material and object shadow
+flags for a direct scene instance. It accepts only a checked instance handle,
+marks the material dirty, and can toggle a source before it is cloned. Group
+250 verifies the initial unlit shadow state, both transitions, and the native
+object probe.
+
 ## Animation transitions (2026-09-22)
 
 `RenderScene::play_animation_blended` adds explicit transition flags for eased

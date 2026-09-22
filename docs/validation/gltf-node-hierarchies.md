@@ -77,6 +77,15 @@ and game transform.
    upload, while direct imported meshes now keep independently addressable
    static placement entities.
 
+The public scene boundary exposes authored child resources without leaking
+Wicked entities. `RenderScene::imported_scene(handle)` returns bounded mesh,
+camera and light counts. `RenderScene::imported_camera(handle, index)` creates
+an opaque `ImportedCameraHandle`, and `activate_imported_camera` selects it for
+the active render path. The handle retains its root instance generation, so
+destroying the root makes later activation return `UnknownHandle`. The native
+imported-scene cases use the hierarchy and scene-metadata fixtures in the
+SDL3/Metal smoke.
+
 ## Evidence
 
 `test/fixtures/node_hierarchy_panel.gltf` has three single-sided materials,
