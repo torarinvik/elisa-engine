@@ -406,6 +406,10 @@ def exercise_render_scene() -> i32:
         value: value
         error failure: return 61
     return 62 if RenderScene::instance_count() != 4
+    initial_animation_progress: f32 = catch RenderScene::animation_progress(cooked_mesh):
+        value: value
+        error failure: return 76
+    return 77 if initial_animation_progress != 0.0
     rejected_texture_traversal: i32 = catch RenderScene::set_texture(
         cooked_mesh, RenderScene::TextureSlot.BaseColor, "../backends/coordinate_reference.png"):
         ok: 0
@@ -461,6 +465,11 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 69 if stale_cooked_mesh != 1
+    stale_animation_progress: f32 = catch RenderScene::animation_progress(cooked_mesh):
+        value: 0.0
+        RenderScene::RenderSceneError.UnknownHandle: -1.0
+        error failure: -2.0
+    return 78 if stale_animation_progress != -1.0
 
     _ = catch RenderScene::set_electric_arc_visible(electric_arc, false):
         ok: 0
