@@ -3,4 +3,4 @@
 include "./native_client.elisa"
 
 def main() -> i32:
-    MazeNativeClient::run(false)
+    MazeNativeClient::run(false, false)

@@ -118,6 +118,30 @@ through that owner. The frame-info accessor returns a value so callers do not ho
 borrow into the native host. The service probe verifies that pump, frame, exit, clock, and
 audio calls return `SessionStopped` after shutdown.
 
+## Imported maze reinitialisation
+
+`examples/maze/native_smoke_main.elisa` now requests the real Miniaudio default
+fallback and runs the complete authored maze twice. Each pass loads the cooked
+mesh and texture bundles, renders the scripted maze scene, clears its snapshot
+instances, and shuts down the SDL3/Wicked host before the next pass starts.
+
+Validation on macOS 27.0:
+
+```text
+ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1 \
+ELISA_COMPILER_BIN=/Users/torarinvikbjarko/.elisac/elisac-stage1 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+/opt/homebrew/opt/python@3.14/bin/python3.14 scripts/elisa_build_run.py run \
+  --project examples/maze --main native_smoke_main.elisa \
+  --output build/maze-f05b-two-cycle
+```
+
+The resulting SDL3/Metal executable completed both host lifecycles with exit
+status 0. A direct rerun with the project-root and shader-path environment set
+also exited 0 after the second `Created GraphicsDevice_Metal` line. This is the
+imported full-scene reproduction that was missing from F05b; the synthetic
+restart probe remains useful for long-cycle ownership and memory measurements.
+
 Validation after the maze-client migration on 2026-09-21:
 
 - Engine commit `bf592f8` passed `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" python3 scripts/application_native_smoke.py`; both SDL3/Metal app runs passed, including session-owned audio, no-Audio fallback rejection, and stopped-session checks.

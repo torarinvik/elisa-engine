@@ -37,13 +37,18 @@ module MazeNativeClient:
             TEXT_BLUE: f32 = 0.65
             TEXT_ALPHA: f32 = 1.0
 
-        def startup_requirements() -> BackendRequirements::BackendStartupRequirements:
+        def startup_requirements(with_audio_fallback: bool) -> BackendRequirements::BackendStartupRequirements:
             requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
             requirements.services[0] <- Capabilities::BackendFeature.Input
             requirements.services[1] <- Capabilities::BackendFeature.Rendering
             requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
             requirements.service_count <- 3
             requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+            if with_audio_fallback:
+                requirements.services[3] <- Capabilities::BackendFeature.Audio
+                requirements.service_count <- 4
+                requirements.service_fallbacks.audio <- Capabilities::BackendFallbackProvider.MiniaudioDefault
+                requirements.allow_service_fallbacks <- true
             requirements
 
         def bind_key(input: mutable ActionInput::Input&, action: i64,
@@ -217,24 +222,26 @@ module MazeNativeClient:
             failure
 
     public:
-        def run(self_test: bool) -> i32:
+        def run(self_test: bool, with_audio_fallback: bool) -> i32:
             config: mutable Application::Config = Application::default_config()
             if self_test:
                 config.width <- 320
                 config.height <- 200
                 config.hidden <- true
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
-            requirements: mutable BackendRequirements::BackendStartupRequirements = startup_requirements()
+            requirements: mutable BackendRequirements::BackendStartupRequirements = startup_requirements(with_audio_fallback)
             report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
             opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
                 config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
                 AudioRuntime::MIN_CHANNEL_COUNT, &report)
             if opened != RuntimeServices::OpenStatus.Ready:
-                _ = RuntimeServices::shutdown(&session)
-                return 1
+                if not with_audio_fallback or opened != RuntimeServices::OpenStatus.FallbackRequired:
+                    _ = RuntimeServices::shutdown(&session)
+                    return 1
             if report.state != Capabilities::RequirementState.Ready:
-                _ = RuntimeServices::shutdown(&session)
-                return 2
+                if not with_audio_fallback or report.state != Capabilities::RequirementState.Fallback:
+                    _ = RuntimeServices::shutdown(&session)
+                    return 2
             run_status: i32 = run_after_host(&session, config, self_test)
             render_closed: bool = catch RenderScene::shutdown():
                 ok: true
