@@ -1,0 +1,39 @@
+include "../src/world/storage.elisa"
+
+# A deterministic workload for the catalogue benchmark. Each round exercises
+# registration, dense dynamic insertion, middle-row destruction, compaction,
+# and replacement IDs for unrelated schemas.
+def main() -> i32:
+    for round in 0..<64:
+        catalog: mutable WorldStorage::Catalog = WorldStorage::Catalog()
+        return 1 if not WorldStorage::catalog_register_type_with_schema(
+            &catalog, 4001, WorldStorage::MAX_ROWS, 4)
+        return 2 if not WorldStorage::catalog_register_type_with_schema(
+            &catalog, 4002, WorldStorage::MAX_ROWS, 2)
+        ids: mutable i64[WorldStorage::MAX_DYNAMIC_ROWS] = zeroed
+        for row in 0..<WorldStorage::MAX_DYNAMIC_ROWS:
+            values: i64[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+                row.i64(), round.i64(), row.i64() * 3, 17, 0, 0, 0, 0]
+            type_id: i64 = 4001 if row % 2 == 0 else 4002
+            field_count: usize = 4 if type_id == 4001 else 2
+            ids[row] <- WorldStorage::catalog_spawn_registered_values(
+                &catalog, type_id, values, field_count)
+            return 3 if ids[row] <= 0
+        for row in 0..<WorldStorage::MAX_DYNAMIC_ROWS:
+            if row % 8 == 1:
+                return 4 if not WorldStorage::catalog_destroy_registered(&catalog, ids[row])
+            if row % 8 == 2:
+                return 4 if not WorldStorage::catalog_destroy_registered(&catalog, ids[row])
+        return 5 if WorldStorage::catalog_dynamic_count(&catalog) != 192
+        replacement_values: i64[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+            round.i64(), 99, 101, 103, 0, 0, 0, 0]
+        for replacement in 0..<32:
+            id: i64 = WorldStorage::catalog_spawn_registered_values(
+                &catalog, 4001, replacement_values, 4)
+            return 6 if id <= 0
+        for replacement in 0..<32:
+            id: i64 = WorldStorage::catalog_spawn_registered_values(
+                &catalog, 4002, replacement_values, 2)
+            return 7 if id <= 0
+        return 8 if WorldStorage::catalog_dynamic_count(&catalog) != WorldStorage::MAX_DYNAMIC_ROWS
+    0
