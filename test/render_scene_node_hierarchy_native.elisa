@@ -21,7 +21,11 @@ module RenderSceneNodeHierarchyNativeTests:
             alpha_mode: i32, double_sided: i32) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_subset_matches(render_id: i64, subset: u32,
+        extern elisa_render_scene_v1_test_snapshot_placement_count(render_id: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_placement_subset_matches(render_id: i64,
+            placement: u32, subset: u32,
             index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
 
         @callconv(c)
@@ -29,6 +33,12 @@ module RenderSceneNodeHierarchyNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_shared_mesh_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_object_count() -> u64
 
         @callconv(c)
         extern elisa_render_scene_v1_test_last_frame_dominant_channel(x_permille: u32, y_permille: u32) -> i32
@@ -87,6 +97,8 @@ module RenderSceneNodeHierarchyNativeTests:
 
         const module Placement:
             X_TRANSLATION: usize = 3
+            COUNT: i32 = 4
+            INDICES_PER_STRIP: u32 = 6
 
         # An off-axis panel pose turned about all three axes. The quaternion
         # need not be unit length; the render service normalizes it.
@@ -102,6 +114,7 @@ module RenderSceneNodeHierarchyNativeTests:
         const PANEL_ROW: i64 = 22801
         const NATIVE_OK: i32 = 0
         const NATIVE_INVALID: i32 = -1
+        const NATIVE_BACKEND_FAILED: i32 = -8
         const ALPHA_OPAQUE: i32 = 0
         const VISIBLE_Y: f32 = 4.0
         # The panel covers this frame row; the main test's electric arc
@@ -207,10 +220,13 @@ module RenderSceneNodeHierarchyNativeTests:
         def set_count() -> u64:
             elisa_render_scene_v1_test_snapshot_material_set_count()
 
-        def stage(handle: i64, set: u64, qy: f32, qw: f32) -> i32:
-            elisa_render_scene_v1_snapshot_stage(handle, 1, PANEL_ROW, PANEL_ROW,
+        def stage_as(handle: i64, render_id: i64, set: u64, qy: f32, qw: f32) -> i32:
+            elisa_render_scene_v1_snapshot_stage(handle, 1, render_id, render_id,
                 Ids::MESHES, HIERARCHY, Ids::SETS, set,
                 0.0, VISIBLE_Y, 0.0, 0.0, qy, 0.0, qw, 12.0, 1.0, 8.0)
+
+        def stage(handle: i64, set: u64, qy: f32, qw: f32) -> i32:
+            stage_as(handle, PANEL_ROW, set, qy, qw)
 
         # Commits the panel row, new or retained, turned by the yaw quaternion
         # (0, qy, 0, qw), and returns its handle or 0.
@@ -266,15 +282,34 @@ module RenderSceneNodeHierarchyNativeTests:
             left_clear: bool = left != Channel::RED and left != Channel::GREEN and left != Channel::BLUE
             left_clear and right != Channel::RED and right != Channel::GREEN and right != Channel::BLUE
 
-        def subset_is(subset: u32, start: u32, count: u32, paint: u64) -> bool:
-            elisa_render_scene_v1_test_snapshot_subset_matches(PANEL_ROW, subset, start, count,
+        def placement_subset_is(placement: u32, count: u32, paint: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_placement_subset_matches(PANEL_ROW, placement, 0, 0, count,
                 Ids::MATERIALS, paint) == 1
 
-        # The two red placements share one subset.
+        # Each baked node placement owns a local mesh slice and keeps its slot material.
         def panel_draws() -> bool:
-            return false if not subset_is(0, 0, 12, Paint::RED)
-            return false if not subset_is(1, 12, 6, Paint::GREEN)
-            subset_is(2, 18, 6, Paint::BLUE)
+            return false if elisa_render_scene_v1_test_snapshot_placement_count(PANEL_ROW) != Placement::COUNT
+            return false if not placement_subset_is(0, Placement::INDICES_PER_STRIP, Paint::RED)
+            return false if not placement_subset_is(1, Placement::INDICES_PER_STRIP, Paint::RED)
+            return false if not placement_subset_is(2, Placement::INDICES_PER_STRIP, Paint::GREEN)
+            placement_subset_is(3, Placement::INDICES_PER_STRIP, Paint::BLUE)
+
+        # Fail after the first multi-placement row has allocated its meshes and
+        # child objects. Abort must release every object and shared mesh slot.
+        def rollback(baseline_shared_meshes: u64, baseline_instances: usize,
+                baseline_objects: u64) -> bool:
+            return false if elisa_render_scene_v1_test_snapshot_fail_after_creates(1) != NATIVE_OK
+            return false if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            first: i32 = stage_as(0, PANEL_ROW, Set::STRIPS, 0.0, 1.0)
+            second: i32 = stage_as(0, PANEL_ROW + 1, Set::STRIPS, 0.0, 1.0)
+            if first != NATIVE_OK or second != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return false
+            status: i32 = elisa_render_scene_v1_snapshot_commit()
+            shared_restored: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == baseline_shared_meshes
+            instances_restored: bool = RenderScene::instance_count() == baseline_instances
+            objects_restored: bool = elisa_render_scene_v1_test_object_count() == baseline_objects
+            status == NATIVE_BACKEND_FAILED and shared_restored and instances_restored and objects_restored
 
         def registered() -> i32:
             return 1 if register_mesh() != Code::OK
@@ -295,10 +330,12 @@ module RenderSceneNodeHierarchyNativeTests:
 
         # The baked strips render where the hierarchy put them, and a turned
         # row carries them with it.
-        def rendered() -> i32:
+        def rendered(baseline_shared_meshes: u64) -> i32:
             handle: i64 = commit_panel(0, Set::STRIPS, 0.0, 1.0)
             return 1 if handle <= 0
             return 2 if not panel_draws()
+            expected_meshes: u64 = baseline_shared_meshes + Placement::COUNT.u64()
+            return 9 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != expected_meshes
             # Red at -2/3 shows on the left, the mirrored blue strip on the right.
             return 3 if not strips_show(Channel::RED, Channel::BLUE)
             return 4 if not gaps_clear()
@@ -307,6 +344,9 @@ module RenderSceneNodeHierarchyNativeTests:
             return 6 if not strips_show(Channel::BLUE, Channel::RED)
             return 7 if not posed(handle)
             return 8 if not retire(handle)
+            return 10 if elisa_render_scene_v1_test_snapshot_shared_mesh_count() != baseline_shared_meshes
+            return 11 if not rollback(baseline_shared_meshes, RenderScene::instance_count(),
+                elisa_render_scene_v1_test_object_count())
             0
 
         def cleanup() -> i32:
@@ -323,13 +363,14 @@ module RenderSceneNodeHierarchyNativeTests:
         def exercise() -> i32:
             shared_meshes: u64 = elisa_render_scene_v1_test_snapshot_shared_mesh_count()
             instances: usize = RenderScene::instance_count()
+            objects: u64 = elisa_render_scene_v1_test_object_count()
             sets: u64 = set_count()
             registration: i32 = registered()
             return registration if registration != 0
-            drawn: i32 = rendered()
+            drawn: i32 = rendered(shared_meshes)
             return 10 + drawn if drawn != 0
             cleaned: i32 = cleanup()
             return 20 + cleaned if cleaned != 0
             restored: bool = elisa_render_scene_v1_test_snapshot_shared_mesh_count() == shared_meshes
-            return 30 if not restored or RenderScene::instance_count() != instances or set_count() != sets
+            return 30 if not restored or RenderScene::instance_count() != instances or elisa_render_scene_v1_test_object_count() != objects or set_count() != sets
             0

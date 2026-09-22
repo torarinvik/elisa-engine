@@ -14,17 +14,27 @@ constexpr uint32_t DOMINANT_CHANNEL_RADIUS = 2;
 constexpr int32_t DOMINANT_CHANNEL_NONE = -1;
 constexpr int32_t DOMINANT_CHANNEL_UNREADABLE = -2;
 
-const wi::scene::MeshComponent* snapshot_instance_mesh(const RenderSceneService& state, int64_t render_id,
-    const wi::scene::ObjectComponent** object_out = nullptr) {
+const InstanceSlot* snapshot_instance(const RenderSceneService& state, int64_t render_id) {
     if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return nullptr;
     for (const InstanceSlot& instance : state.instances) {
-        if (!instance.live || instance.render_id != render_id) continue;
-        const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
-        if (object == nullptr) return nullptr;
-        if (object_out != nullptr) *object_out = object;
-        return state.scene->meshes.GetComponent(object->meshID);
+        if (instance.live && instance.render_id == render_id) return &instance;
     }
     return nullptr;
+}
+
+const wi::scene::MeshComponent* snapshot_instance_mesh(const RenderSceneService& state, int64_t render_id,
+    const wi::scene::ObjectComponent** object_out = nullptr, size_t placement_index = 0) {
+    const InstanceSlot* instance = snapshot_instance(state, render_id);
+    if (instance == nullptr) return nullptr;
+    wi::ecs::Entity object_entity = instance->entity;
+    if (placement_index != 0) {
+        if (placement_index - 1 >= instance->snapshot_placement_entities.size()) return nullptr;
+        object_entity = instance->snapshot_placement_entities[placement_index - 1];
+    }
+    const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(object_entity);
+    if (object == nullptr) return nullptr;
+    if (object_out != nullptr) *object_out = object;
+    return state.scene->meshes.GetComponent(object->meshID);
 }
 
 // An unsigned float with `mantissa_bits` of mantissa and a 5-bit exponent,
@@ -78,6 +88,27 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_subset_matches(int64_t re
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id);
+    const size_t material = snapshot_material_asset_slot(state, material_high, material_low);
+    if (mesh == nullptr || subset >= mesh->subsets.size() || material == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const wi::scene::MeshComponent::MeshSubset& actual = mesh->subsets[subset];
+    return actual.indexOffset == index_offset && actual.indexCount == index_count &&
+        actual.materialID == state.snapshot_material_assets[material].material_entity ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_placement_count(int64_t render_id) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const InstanceSlot* instance = snapshot_instance(state, render_id);
+    return instance == nullptr || instance->gameplay_epoch <= 0
+        ? -1 : int32_t(instance->snapshot_placement_entities.size() + 1);
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_placement_subset_matches(int64_t render_id,
+    uint32_t placement_index, uint32_t subset, uint32_t index_offset, uint32_t index_count,
+    uint64_t material_high, uint64_t material_low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id, nullptr, placement_index);
     const size_t material = snapshot_material_asset_slot(state, material_high, material_low);
     if (mesh == nullptr || subset >= mesh->subsets.size() || material == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
     const wi::scene::MeshComponent::MeshSubset& actual = mesh->subsets[subset];

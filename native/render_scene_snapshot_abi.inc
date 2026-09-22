@@ -193,12 +193,22 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
     std::array<size_t, MAX_SNAPSHOT_SHARED_MESHES> shared_mesh_additions{};
     for (size_t index = 0; index < state.snapshot_row_count; ++index) {
         SnapshotStageRow& row = state.snapshot_rows[index];
-        if (row.existing_handle != 0 || row.shared_mesh_slot >= MAX_SNAPSHOT_SHARED_MESHES) continue;
-        SnapshotSharedMesh& shared = state.snapshot_shared_meshes[row.shared_mesh_slot];
-        if (!shared.live || shared_mesh_additions[row.shared_mesh_slot] == std::numeric_limits<size_t>::max()) {
+        if (row.existing_handle != 0) continue;
+        auto add_shared_mesh_reference = [&](size_t shared_slot) {
+            if (shared_slot >= MAX_SNAPSHOT_SHARED_MESHES) return true;
+            SnapshotSharedMesh& shared = state.snapshot_shared_meshes[shared_slot];
+            if (!shared.live || shared_mesh_additions[shared_slot] == std::numeric_limits<size_t>::max()) return false;
+            ++shared_mesh_additions[shared_slot];
+            return true;
+        };
+        if (!add_shared_mesh_reference(row.shared_mesh_slot)) {
             return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_BACKEND_FAILED);
         }
-        ++shared_mesh_additions[row.shared_mesh_slot];
+        for (size_t shared_slot : row.created_additional_shared_mesh_slots) {
+            if (!add_shared_mesh_reference(shared_slot)) {
+                return fail_snapshot_transaction(state, ELISA_RENDER_SCENE_BACKEND_FAILED);
+            }
+        }
     }
     for (size_t index = 0; index < MAX_SNAPSHOT_SHARED_MESHES; ++index) {
         SnapshotSharedMesh& shared = state.snapshot_shared_meshes[index];
@@ -224,10 +234,16 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         size_t slot = MAX_INSTANCES;
         valid_handle(state, state.snapshot_retire_handles[index], slot);
         release_animation_submission(state, state.instances[slot]);
+        for (wi::ecs::Entity placement : state.instances[slot].snapshot_placement_entities) {
+            state.scene->Entity_Remove(placement);
+        }
         state.scene->Entity_Remove(state.instances[slot].entity);
         for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
         if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
             release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
+        }
+        for (size_t shared_slot : state.instances[slot].snapshot_additional_shared_mesh_slots) {
+            release_snapshot_shared_mesh(state, shared_slot);
         }
         clear_snapshot_instance(state, state.instances[slot]);
     }
@@ -248,6 +264,8 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
             instance.entity = row.created_entity;
             row.created_entity = wi::ecs::INVALID_ENTITY;
             instance.shared_mesh_slot = row.shared_mesh_slot;
+            instance.snapshot_additional_shared_mesh_slots = std::move(row.created_additional_shared_mesh_slots);
+            instance.snapshot_placement_entities = std::move(row.created_placement_entities);
             instance.joint_entities = std::move(row.created_joint_entities);
             instance.skin_joints = std::move(row.created_skin_joints);
             instance.animation_clips = std::move(row.created_animation_clips);
@@ -266,6 +284,12 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
         object->color = XMFLOAT4(row.tint_color[0], row.tint_color[1], row.tint_color[2], 1.0f);
         object->emissiveColor = XMFLOAT4(row.tint_emissive[0], row.tint_emissive[1],
             row.tint_emissive[2], row.tint_emissive[3]);
+        for (wi::ecs::Entity placement : instance.snapshot_placement_entities) {
+            wi::scene::ObjectComponent* child = state.scene->objects.GetComponent(placement);
+            if (child == nullptr) continue;
+            child->color = object->color;
+            child->emissiveColor = object->emissiveColor;
+        }
         touch_snapshot_mesh_asset(state, snapshot_mesh_asset_slot(state, row.mesh_high, row.mesh_low));
         touch_snapshot_material_textures(state, row.material_high, row.material_low);
         state.snapshot_results[index] = int64_t(encode_handle(slot, generation));

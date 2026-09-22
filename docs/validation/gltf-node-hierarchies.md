@@ -73,9 +73,11 @@ and game transform.
    The public runtime query is `RenderScene::snapshot_mesh_placement_count`
    followed by `RenderScene::snapshot_mesh_placement`. It returns the source
    mesh index, node index, and row-major affine 3x4 world transform without
-   re-reading the bundle. Snapshot rows retain the flattened compatibility
-   upload, while direct imported meshes now keep independently addressable
-   static placement entities.
+   re-reading the bundle. Static snapshot rows now build a cached Wicked mesh
+   from each recorded vertex/index/subset range and attach one draw object per
+   placement under the public root instance. Direct imported meshes also keep
+   independently addressable placement entities. Skinned and morphed snapshot
+   rows still use the flattened compatibility upload.
 
 The public scene boundary exposes authored child resources without leaking
 Wicked entities. `RenderScene::imported_scene(handle)` returns bounded mesh,
@@ -267,10 +269,12 @@ sign only changes lighting, and the emissive color still dominates.
   one skinned instance share one armature; skinned node transforms remain
   identity, and multiple skins per scene remain unsupported. See
   [`skinned-mesh-placements.md`](skinned-mesh-placements.md).
-- **Snapshot rows remain flattened.** Snapshot material registration and row
-  commits still use the compatibility mesh. Direct `create_mesh` imports expose
-  placement entities through the root instance lifetime; their transforms are
-  baked into each vertex range, so no extra per-placement matrix is required.
+- **Snapshot placement scope.** Static snapshot rows use one cached Wicked
+  mesh per placement and a child draw object under the single public root
+  instance. Position transforms are already baked into vertex ranges, so the
+  child follows the root transform at identity local offset. Skinned and
+  morphed snapshot rows still use the flattened compatibility mesh path; see
+  [`snapshot-mesh-placements.md`](snapshot-mesh-placements.md).
 - **Bounds.** 256 nodes, 256 meshes, 16 primitives per mesh, 16 material
   slots and 16 subsets after merging. The existing vertex and index bounds
   apply to the baked totals.

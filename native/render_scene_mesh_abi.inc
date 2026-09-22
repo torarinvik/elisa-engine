@@ -141,7 +141,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
 bool shared_source_static(const RenderSceneService& state, const InstanceSlot& source) {
     if (source.shared_source != wi::ecs::INVALID_ENTITY || !source.skin_joints.empty() ||
         !source.animation_clips.empty() || !source.joint_entities.empty() ||
-        !source.imported_mesh_entities.empty()) return false;
+        !source.imported_mesh_entities.empty() || !source.snapshot_placement_entities.empty()) return false;
     const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(source.entity);
     return mesh != nullptr && mesh->morph_targets.empty() &&
         state.scene->objects.GetComponent(source.entity) != nullptr;
