@@ -2,6 +2,7 @@
 # scene through the public engine module. The one evidence import is test-only.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_visibility.elisa"
 include "../src/runtime/render_scene_text.elisa"
 include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
@@ -24,14 +25,12 @@ include "./render_scene_environment_native.elisa"
 include "./render_scene_lighting_native.elisa"
 include "./render_scene_arc_depth_native.elisa"
 include "./render_scene_quality_settings_native.elisa"
+include "./render_scene_visibility_native.elisa"
 using Maze
 using MazeGame
 using MazeTrace
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
-# Test groups without an exit range of their own exit with their group code
-# after logging the failing case. docs/validation/elisa-render-scene.md lists
-# every exit; check it before adding a group.
 @callconv(c)
 extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 @callconv(c)
@@ -225,8 +224,6 @@ def exercise_render_scene() -> i32:
         value: value
         error failure: return 7
 
-    # A wide colored floor guarantees a known center pixel comes from scene
-    # geometry, so the smoke checks rendered output rather than a registry.
     floor_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -305,6 +302,8 @@ def exercise_render_scene() -> i32:
         ok: true
         error failure: return 13
     return 14 if not shown
+    visibility_status: i32 = RenderSceneVisibilityNativeTests::exercise(box)
+    return 144 + visibility_status if visibility_status != 0
     bad_color: i32 = catch RenderScene::set_color(box,
         RenderScene::Color{red: 1.0, green: 0.0, blue: 0.0, alpha: 2.0}):
         ok: 0
