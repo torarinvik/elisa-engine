@@ -68,7 +68,10 @@ Elisa coordinates to Wicked unreflected and swapped each cooked triangle's
 winding, so every frame showed world +X on the left. It now reflects
 transforms, the camera, cooked vertices and tangents, animation poses, the sun
 and arc points through them, and its frames match Godot's. See
-[`render-scene-handedness.md`](render-scene-handedness.md).
+[`render-scene-handedness.md`](render-scene-handedness.md). Godot needs no
+reflection, but it draws clockwise front faces, so its host reverses each
+cooked triangle once in `backends/godot/cooked_mesh.gd`. See
+[`godot-cooked-winding.md`](godot-cooked-winding.md).
 
 Validation on the pinned SDL3/Wicked Metal build:
 

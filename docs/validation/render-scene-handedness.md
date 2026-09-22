@@ -163,8 +163,10 @@ survivors were rerun.
 ## Limits
 
 - **Godot winding.** Godot treats clockwise triangles as front faces, and its
-  host uploads authored counter-clockwise indices unchanged. Its cooked
-  meshes may be drawn back-facing. This slice didn't change the Godot host.
+  host uploaded authored counter-clockwise indices unchanged, so its cooked
+  meshes were drawn back-facing. This slice didn't change the Godot host.
+  (Since fixed, along with the maze tile's inward faces: see
+  [`godot-cooked-winding.md`](godot-cooked-winding.md).)
 - **Uncovered paths.** Tangent W and animation poses have no native check;
   see the two survivors above.
 - **Probe harness.** `native/render_snapshot_bridge.h` is a `wicked_probe`

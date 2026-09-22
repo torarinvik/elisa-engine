@@ -1,5 +1,7 @@
 extends SceneTree
 
+const CookedMesh = preload("res://cooked_mesh.gd")
+
 # This probe models the small command contract emitted by the headless recorder
 # and applies it to real Godot scene resources. The Elisa world remains the
 # authority; Godot only owns this host-side representation.
@@ -101,25 +103,36 @@ func _run_probe() -> void:
         if package.get("format", "") != "elisa-cooked-v2" or int(package.get("triangles", "-1")) != int(manifest["mesh_triangles"]):
             _fail("cooked package does not match the import")
             return
-        var position_floats := Marshalls.base64_to_raw(package["positions_b64"]).to_float32_array()
-        var normal_floats := Marshalls.base64_to_raw(package["normals_b64"]).to_float32_array()
-        var index_ints := Marshalls.base64_to_raw(package["indices_b64"]).to_int32_array()
-        var cooked_vertices := PackedVector3Array()
-        for index in range(position_floats.size() / 3):
-            cooked_vertices.append(Vector3(position_floats[index * 3], position_floats[index * 3 + 1], position_floats[index * 3 + 2]))
-        var cooked_normals := PackedVector3Array()
-        for index in range(normal_floats.size() / 3):
-            cooked_normals.append(Vector3(normal_floats[index * 3], normal_floats[index * 3 + 1], normal_floats[index * 3 + 2]))
-        var cooked_arrays := []
-        cooked_arrays.resize(Mesh.ARRAY_MAX)
-        cooked_arrays[Mesh.ARRAY_VERTEX] = cooked_vertices
-        cooked_arrays[Mesh.ARRAY_NORMAL] = cooked_normals
-        cooked_arrays[Mesh.ARRAY_INDEX] = index_ints
+        var cooked_arrays := CookedMesh.surface_arrays(package)
         var cooked_mesh := ArrayMesh.new()
         cooked_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, cooked_arrays)
         print("godot probe asset: format=%s triangles=%s surface=%d" % [package.get("format", ""), package.get("triangles", ""), cooked_mesh.get_surface_count()])
         if cooked_mesh.get_surface_count() < 1:
             _fail("cooked package produced no surface")
+            return
+        # Each uploaded triangle must face the way Godot's own glTF import of
+        # the same source triangle faces. Culling needs a renderer, which
+        # --headless lacks, so this compares Godot's front-face normals:
+        # Plane(a, b, c) takes a clockwise front face, and a rendered one-sided
+        # triangle confirmed it (docs/validation/godot-cooked-winding.md).
+        var source_path: String = manifest_path.get_base_dir().path_join("..").path_join(String(manifest["mesh_asset"])).simplify_path()
+        var source_state := GLTFState.new()
+        if GLTFDocument.new().append_from_file(source_path, source_state) != OK or source_state.get_meshes().is_empty():
+            _fail("mesh asset could not be imported: %s" % source_path)
+            return
+        var source_arrays: Array = source_state.get_meshes()[0].mesh.get_surface_arrays(0)
+        var facing := _facing_matches(cooked_arrays, source_arrays)
+        # The asset's own winding must agree with its normals too, or a face
+        # shows from inside on every host. The maze tile once wound six of its
+        # twelve triangles inward, which the import comparison cannot see.
+        var outward := _facing_normals(cooked_arrays)
+        print("godot probe winding: triangles=%d facing_godot_import=%d facing_normals=%d" % [
+            int(package["triangles"]), facing, outward])
+        if facing != int(package["triangles"]):
+            _fail("cooked triangles do not face the way Godot's glTF import does")
+            return
+        if outward != int(package["triangles"]):
+            _fail("cooked triangles do not face the way their normals point")
             return
         # Cooked texture: the host turns the RGBA package into a real Godot
         # Image/ImageTexture and checks its size and a bright/dark checker pixel.
@@ -439,6 +452,43 @@ func _rgba_matches(color: Color, text: String) -> bool:
         return false
     return int(round(color.r * 255.0)) == int(parts[0]) and int(round(color.g * 255.0)) == int(parts[1]) \
         and int(round(color.b * 255.0)) == int(parts[2]) and int(round(color.a * 255.0)) == int(parts[3])
+
+# Counts uploaded triangles whose Godot front-face normal agrees with that of
+# the reference triangle over the same three positions.
+func _facing_matches(uploaded: Array, reference: Array) -> int:
+    var positions: PackedVector3Array = uploaded[Mesh.ARRAY_VERTEX]
+    var indices: PackedInt32Array = uploaded[Mesh.ARRAY_INDEX]
+    var reference_positions: PackedVector3Array = reference[Mesh.ARRAY_VERTEX]
+    var reference_indices: PackedInt32Array = reference[Mesh.ARRAY_INDEX]
+    var matches := 0
+    for first in range(0, indices.size() - 2, 3):
+        var corners := [positions[indices[first]], positions[indices[first + 1]], positions[indices[first + 2]]]
+        for other in range(0, reference_indices.size() - 2, 3):
+            var reference_corners := [reference_positions[reference_indices[other]],
+                reference_positions[reference_indices[other + 1]], reference_positions[reference_indices[other + 2]]]
+            if not corners.all(func(corner): return reference_corners.any(func(candidate): return corner.is_equal_approx(candidate))):
+                continue
+            var normal := Plane(corners[0], corners[1], corners[2]).normal
+            var reference_normal := Plane(reference_corners[0], reference_corners[1], reference_corners[2]).normal
+            if normal.dot(reference_normal) > 0.5:
+                matches += 1
+            break
+    return matches
+
+# Counts uploaded triangles whose Godot front-face normal agrees with the sum
+# of their vertex normals.
+func _facing_normals(uploaded: Array) -> int:
+    var positions: PackedVector3Array = uploaded[Mesh.ARRAY_VERTEX]
+    var normals: PackedVector3Array = uploaded[Mesh.ARRAY_NORMAL]
+    var indices: PackedInt32Array = uploaded[Mesh.ARRAY_INDEX]
+    var matches := 0
+    for first in range(0, indices.size() - 2, 3):
+        var a := indices[first]
+        var b := indices[first + 1]
+        var c := indices[first + 2]
+        if Plane(positions[a], positions[b], positions[c]).normal.dot(normals[a] + normals[b] + normals[c]) > 0.0:
+            matches += 1
+    return matches
 
 func _fail(message: String) -> void:
     push_error(message)
