@@ -29,7 +29,7 @@ def main() -> int:
         directory = Path(temporary)
         source = directory / "dense-transformed.glb"
         output = directory / "dense-transformed.pkg"
-        run([blender, "--background", "--factory-startup", "--python",
+        run([blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python",
             str(ROOT / "scripts/create_glb_static_fixture_blender.py"), "--",
             "--output", str(source)])
         document, _ = read_glb_document(source)
