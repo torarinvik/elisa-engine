@@ -97,3 +97,4 @@ extern "C" int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle) {
     entry.live = false;
     return ELISA_RENDER_SCENE_OK;
 }
+#include "render_scene_image_abi.inc"

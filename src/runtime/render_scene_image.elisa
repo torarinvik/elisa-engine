@@ -1,0 +1,74 @@
+# Screen-space textured quads (glyph atlases, icons) live apart from the core
+# primitive surface, like the text extensions.
+include "./render_scene.elisa"
+
+module RenderSceneImage:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_create_overlay_image(asset_path: cstr,
+            x: f32, y: f32, width: f32, height: f32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_image_position(handle: i64, x: f32, y: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_image_size(handle: i64, width: f32, height: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_image_uv(handle: i64,
+            u0: f32, v0: f32, u1: f32, v1: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_image_color(handle: i64,
+            red: f32, green: f32, blue: f32, alpha: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_image_visible(handle: i64, visible: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_overlay_image(handle: i64) -> i32
+
+    public:
+        const MAX_OVERLAY_IMAGES: usize = 64
+
+        struct OverlayImageHandle:
+            id: i64
+
+        # Normalized atlas rectangle; v grows downward like the image rows.
+        struct OverlayImageUv:
+            u0: f32
+            v0: f32
+            u1: f32
+            v1: f32
+
+        # The asset path is project-relative and bounded like material
+        # textures. The quad's upper-left corner sits at (x, y) in the logical
+        # canvas and it samples the whole texture until a UV rectangle is set.
+        def create_overlay_image(asset_path: cstr, x: f32, y: f32, width: f32,
+            height: f32) -> OverlayImageHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_overlay_image(asset_path,
+                x, y, width, height)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            OverlayImageHandle{id: native_value}
+        def set_overlay_image_position(handle: OverlayImageHandle, x: f32,
+            y: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_image_position(
+                handle.id, x, y))
+        def set_overlay_image_size(handle: OverlayImageHandle,
+            width: f32, height: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_image_size(
+                handle.id, width, height))
+        def set_overlay_image_uv(handle: OverlayImageHandle,
+            uv: OverlayImageUv) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_image_uv(
+                handle.id, uv.u0, uv.v0, uv.u1, uv.v1))
+        def set_overlay_image_color(handle: OverlayImageHandle,
+            color: Color) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_image_color(handle.id,
+                color.red, color.green, color.blue, color.alpha))
+        def set_overlay_image_visible(handle: OverlayImageHandle,
+            visible: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_image_visible(
+                handle.id, 1 if visible else 0))
+        def destroy_overlay_image(handle: OverlayImageHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_overlay_image(handle.id))

@@ -127,6 +127,7 @@ struct RenderSceneService {
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
+    std::array<OverlayImageSlot, MAX_OVERLAY_IMAGES> overlay_images{};
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
     std::array<int64_t, MAX_INSTANCES> snapshot_retire_handles{};
     std::array<int64_t, MAX_INSTANCES> snapshot_results{};

@@ -8,4 +8,10 @@ void reset_overlay_slots(RenderSceneService& state) {
         panel.sprite.SetHidden(true);
         panel.live = false;
     }
+    for (OverlayImageSlot& image : state.overlay_images) {
+        image.sprite.SetHidden(true);
+        image.sprite.textureResource = {};
+        image.resource = {};
+        image.live = false;
+    }
 }
