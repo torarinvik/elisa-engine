@@ -129,6 +129,17 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
     stage <- 14
     final_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
+    contact_buffer: mutable PhysicsRuntime::ContactBuffer = zeroed
+    dropped_contacts: mutable u32 = 0
+    contact_count: usize = try PhysicsRuntime::poll_contacts(world, &contact_buffer,
+        &dropped_contacts)
+    saw_added: mutable bool = false
+    for index in 0..<contact_count:
+        event: PhysicsRuntime::ContactEvent = contact_buffer.events[index]
+        if event.kind == PhysicsRuntime::ContactKind.Added:
+            saw_added <- true
+            raise PhysicsRuntime::PhysicsError.BackendFailure if event.trigger
+    raise PhysicsRuntime::PhysicsError.BackendFailure if contact_count == 0 or not saw_added or dropped_contacts != 0
     stage <- 15
     raise PhysicsRuntime::PhysicsError.BackendFailure if tick != 8 or final_position.y >= initial_position.y - 0.05
     stage <- 16

@@ -2,6 +2,7 @@
 
 #include "application_abi.h"
 #include "coordinate_transform_bridge.h"
+#include "physics_query_bridge.h"
 #include "wiPhysics.h"
 
 #include <array>
@@ -17,6 +18,7 @@ constexpr float MAX_POSITION = 1.0e6f;
 constexpr float MAX_HALF_EXTENT = 1.0e4f;
 constexpr float MAX_MASS = 1.0e8f;
 constexpr float MAX_FIXED_DELTA = 1.0f / 30.0f;
+constexpr size_t MAX_CONTACT_EVENTS = ELISA_PHYSICS_MAX_CONTACT_EVENTS;
 
 struct BodySlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -26,7 +28,12 @@ struct BodySlot {
 
 struct PhysicsService {
     std::unique_ptr<wi::scene::Scene> scene;
+    std::unique_ptr<probe::PhysicsContactQueueListener> contact_listener;
     std::array<BodySlot, MAX_BODIES> bodies{};
+    std::array<probe::PhysicsContactEvent, MAX_CONTACT_EVENTS> pending_contacts{};
+    probe::PhysicsContactQueue contact_queue;
+    size_t pending_contact_count = 0;
+    size_t pending_contact_dropped = 0;
     uint64_t world_generation = 0;
     uint64_t tick = 0;
     bool initialized = false;
@@ -67,7 +74,14 @@ BodySlot* resolve_body(PhysicsService& state, uint32_t slot, uint64_t generation
 void shutdown_world() {
     PhysicsService& state = physics_service();
     if (!state.initialized) return;
+    if (state.scene != nullptr) {
+        wi::physics::SetContactEventListener(*state.scene, nullptr);
+    }
+    state.contact_listener.reset();
     state.scene.reset();
+    state.contact_queue.reset();
+    state.pending_contact_count = 0;
+    state.pending_contact_dropped = 0;
     for (BodySlot& body : state.bodies) {
         body.entity = wi::ecs::INVALID_ENTITY;
         body.live = false;
@@ -87,20 +101,30 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
     PhysicsService& state = physics_service();
     if (state.initialized) return ELISA_PHYSICS_INVALID_STATE;
     if (state.world_generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
+    if (!state.contact_queue.reset()) return ELISA_PHYSICS_INVALID_STATE;
     try {
         state.scene = std::make_unique<wi::scene::Scene>();
+        state.contact_listener = std::make_unique<probe::PhysicsContactQueueListener>(
+            state.contact_queue);
+        wi::physics::SetContactEventListener(*state.scene, state.contact_listener.get());
     } catch (...) {
+        state.contact_listener.reset();
+        state.scene.reset();
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
 #if defined(ELISA_PHYSICS_TEST_PROBE)
     if (state.fail_next_initialize_after_scene) {
         state.fail_next_initialize_after_scene = false;
+        wi::physics::SetContactEventListener(*state.scene, nullptr);
+        state.contact_listener.reset();
         state.scene.reset();
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
 #endif
     ++state.world_generation;
     state.tick = 0;
+    state.pending_contact_count = 0;
+    state.pending_contact_dropped = 0;
     state.simulation_before = wi::physics::IsSimulationEnabled();
     state.interpolation_before = wi::physics::IsInterpolationEnabled();
     wi::physics::SetSimulationEnabled(true);
@@ -206,12 +230,111 @@ extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
     if (status != ELISA_PHYSICS_OK) return status;
     PhysicsService& state = physics_service();
     if (state.tick == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
+    const uint64_t next_tick = state.tick + 1;
+    if (!state.contact_queue.begin_step(next_tick)) return ELISA_PHYSICS_INVALID_STATE;
     try {
         state.scene->Update(delta_seconds);
     } catch (...) {
+        state.contact_queue.end_step();
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
+    state.contact_queue.drain([&](const probe::PhysicsContactEvent& event) {
+        if (state.pending_contact_count < MAX_CONTACT_EVENTS) {
+            state.pending_contacts[state.pending_contact_count++] = event;
+        } else {
+            ++state.pending_contact_dropped;
+        }
+    });
+    state.pending_contact_dropped += state.contact_queue.dropped();
+    if (!state.contact_queue.end_step()) return ELISA_PHYSICS_BACKEND_FAILURE;
     *tick = ++state.tick;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
+    ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,
+    uint32_t* dropped) {
+    if (count == nullptr || dropped == nullptr || capacity > ELISA_PHYSICS_MAX_CONTACT_EVENTS ||
+        (capacity != 0 && events == nullptr)) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    if (state.pending_contact_count > capacity) {
+        *count = static_cast<uint32_t>(state.pending_contact_count);
+        *dropped = static_cast<uint32_t>(state.pending_contact_dropped);
+        return ELISA_PHYSICS_CAPACITY;
+    }
+    for (size_t index = 0; index < state.pending_contact_count; ++index) {
+        const probe::PhysicsContactEvent& source = state.pending_contacts[index];
+        ElisaPhysicsContactEvent& destination = events[index];
+        destination.entity_a = source.entity_a;
+        destination.entity_b = source.entity_b;
+        destination.position_x = source.position.x;
+        destination.position_y = source.position.y;
+        destination.position_z = source.position.z;
+        destination.normal_x = source.normal.x;
+        destination.normal_y = source.normal.y;
+        destination.normal_z = source.normal.z;
+        destination.penetration_depth = source.depth;
+        destination.kind = static_cast<int32_t>(source.kind);
+        destination.trigger = source.trigger ? 1 : 0;
+        destination.sequence = source.sequence;
+    }
+    *count = static_cast<uint32_t>(state.pending_contact_count);
+    *dropped = static_cast<uint32_t>(state.pending_contact_dropped);
+    state.pending_contact_count = 0;
+    state.pending_contact_dropped = 0;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_contact_count(uint64_t world_generation,
+    uint32_t* count, uint32_t* dropped) {
+    if (count == nullptr || dropped == nullptr) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    const PhysicsService& state = physics_service();
+    *count = static_cast<uint32_t>(state.pending_contact_count);
+    *dropped = static_cast<uint32_t>(state.pending_contact_dropped);
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_contact_at(uint64_t world_generation, uint32_t index,
+    uint64_t* entity_a, uint64_t* entity_b,
+    float* position_x, float* position_y, float* position_z,
+    float* normal_x, float* normal_y, float* normal_z,
+    float* penetration_depth, int32_t* kind, int32_t* trigger, uint64_t* sequence) {
+    if (entity_a == nullptr || entity_b == nullptr || position_x == nullptr ||
+        position_y == nullptr || position_z == nullptr || normal_x == nullptr ||
+        normal_y == nullptr || normal_z == nullptr || penetration_depth == nullptr ||
+        kind == nullptr || trigger == nullptr || sequence == nullptr) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    const PhysicsService& state = physics_service();
+    if (index >= state.pending_contact_count) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const probe::PhysicsContactEvent& source = state.pending_contacts[index];
+    *entity_a = source.entity_a;
+    *entity_b = source.entity_b;
+    *position_x = source.position.x;
+    *position_y = source.position.y;
+    *position_z = source.position.z;
+    *normal_x = source.normal.x;
+    *normal_y = source.normal.y;
+    *normal_z = source.normal.z;
+    *penetration_depth = source.depth;
+    *kind = static_cast<int32_t>(source.kind);
+    *trigger = source.trigger ? 1 : 0;
+    *sequence = source.sequence;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_clear_contacts(uint64_t world_generation) {
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    state.pending_contact_count = 0;
+    state.pending_contact_dropped = 0;
     return ELISA_PHYSICS_OK;
 }
 

@@ -52,6 +52,19 @@ class PhysicsContactQueue {
 public:
     static constexpr size_t MAX_EVENTS = 64;
 
+    bool reset() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (active_ || dispatching_) return false;
+        events_.fill({});
+        owner_thread_ = std::thread::id();
+        last_tick_ = UINT64_MAX;
+        next_sequence_ = 1;
+        event_count_ = 0;
+        dropped_ = 0;
+        delivered_ = 0;
+        return true;
+    }
+
     bool begin_step(uint64_t tick) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (active_ || (last_tick_ != UINT64_MAX && tick <= last_tick_)) return false;
