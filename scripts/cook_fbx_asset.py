@@ -206,7 +206,7 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             clip_count = int(fields["animation_clips"])
         except (KeyError, ValueError) as failure:
             raise ValueError("cooked package has an invalid animation clip count") from failure
-        if not 0 <= clip_count <= 8:
+        if not 0 <= clip_count <= 16:
             raise ValueError("cooked package exceeds the animation clip limit")
         total_sample_floats = 0
         for clip_index in range(clip_count):

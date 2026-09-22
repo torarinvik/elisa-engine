@@ -7,9 +7,13 @@ passed. Listener IDs are subscribed to one phase, can be removed before
 delivery, and listener zero is reserved for broadcast events.
 
 Dispatch marks each event consumed, so repeated drains do not deliver it twice.
+`emit_world` additionally checks the event entity against the primary `World`
+before enqueueing. Despawned entities and references from an older world epoch
+are rejected, while the lower-level `emit` remains available for events whose
+entity identity is resolved by another service.
 The queue has no callback invocation; consumers drain a phase and then mutate
 the world under that phase's access rules. This makes reentrant callbacks and
 worker-to-main handoff explicit integration work rather than hidden mutation.
 
 `test/world_events.elisa` covers phase regression, subscription, delivery,
-unsubscription, and stale-phase emission.
+unsubscription, stale-phase emission, and rejection of a despawned entity.

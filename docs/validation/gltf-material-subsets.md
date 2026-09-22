@@ -213,7 +213,7 @@ per-subset bound rejects it.
   vertex, and up to 16 material subsets within the existing bounds.
   Inverse-bind accessors are validated; the native uploader derives the same
   bind relation from the stored rest transforms. Sampled LINEAR and STEP TRS
-  channels become fixed 30 Hz clips (up to eight clips and 3,601 frames per
+  channels become fixed 30 Hz clips (up to sixteen clips and 3,601 frames per
   clip). Dense POSITION deltas, with optional NORMAL deltas, carry up to 32
   morph targets into Wicked and accept bounded weight submissions. Morph
   animation channels and cubic-spline channels remain rejected. Mesh-node

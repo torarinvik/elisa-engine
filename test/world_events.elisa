@@ -2,36 +2,50 @@ include "../src/world/events.elisa"
 
 def main() -> i32:
     queue: mutable WorldEvents::Queue = WorldEvents::Queue()
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 1
+    entity: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+        value: value
+        error failure: return 2
     WorldEvents::begin_frame(&queue)
     _ = catch WorldEvents::subscribe(&queue, 7, WorldEvents::Phase.Simulation):
         ok: 0
-        error failure: return 1
-    _ = catch WorldEvents::emit(&queue, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity_id: 42, payload: 3, delivered: false}):
+        error failure: return 3
+    _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity_id: entity.id, payload: 3, delivered: false}):
         ok: 0
-        error failure: return 2
-    return 3 if WorldEvents::event_count(&queue) != 1
+        error failure: return 4
+    return 5 if WorldEvents::event_count(&queue) != 1
     wrong_phase: i32 = catch WorldEvents::dispatch(&queue, WorldEvents::Phase.Simulation):
         value: 1
         WorldEvents::EventError.InvalidPhase: 0
         error failure: 2
-    return 4 if wrong_phase != 0
+    return 6 if wrong_phase != 0
     _ = catch WorldEvents::advance_phase(&queue, WorldEvents::Phase.Simulation):
         ok: 0
-        error failure: return 5
+        error failure: return 7
     dispatched: usize = catch WorldEvents::dispatch(&queue, WorldEvents::Phase.Simulation):
         value: value
-        error failure: return 6
-    return 6 if dispatched != 1
+        error failure: return 8
+    return 8 if dispatched != 1
     _ = catch WorldEvents::unsubscribe(&queue, 7):
         ok: 0
-        error failure: return 7
+        error failure: return 9
     _ = catch WorldEvents::advance_phase(&queue, WorldEvents::Phase.Physics):
         ok: 0
-        error failure: return 8
-    rejected: i32 = catch WorldEvents::emit(&queue, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity_id: 42, payload: 4, delivered: false}):
+        error failure: return 10
+    _ = catch World::world_despawn(&world, entity):
+        ok: true
+        error failure: return 11
+    stale_world: i32 = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Physics, kind: WorldEvents::EventKind.Damage, listener_id: 0, entity_id: entity.id, payload: 4, delivered: false}):
+        ok: 0
+        WorldEvents::EventError.InvalidEntity: 1
+        error failure: 2
+    return 12 if stale_world != 1
+    rejected: i32 = catch WorldEvents::emit(&queue, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity_id: entity.id, payload: 4, delivered: false}):
         ok: 0
         WorldEvents::EventError.InvalidPhase: 1
         error failure: 2
-    return 9 if rejected != 1
-    return 10 if WorldEvents::end_frame(&queue) != 1
+    return 13 if rejected != 1
+    return 14 if WorldEvents::end_frame(&queue) != 1
     0

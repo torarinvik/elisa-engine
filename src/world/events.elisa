@@ -1,6 +1,8 @@
 # Typed world events and service phases. The queue is intentionally callback
 # free: native or gameplay code drains a phase explicitly, so reentrant
 # delivery cannot mutate the world while a phase borrow is active.
+include "./world.elisa"
+
 module WorldEvents:
     private:
         const module Limits:
@@ -48,6 +50,7 @@ module WorldEvents:
             DuplicateListener
             UnknownListener
             InvalidListener
+            InvalidEntity
 
         struct Event:
             phase: Phase
@@ -113,6 +116,11 @@ module WorldEvents:
                 raise EventError.Capacity if queue.event_count >= Limits::MAX_EVENTS
                 queue.events[queue.event_count] <- event
                 queue.event_count <- queue.event_count + 1
+
+            def emit_world(queue: mutable Queue&, world: World::World&, event: Event) -> void error[EventError]:
+                reference: World::EntityRef = World::EntityRef{world_epoch: World::world_epoch(world), id: event.entity_id}
+                raise EventError.InvalidEntity if not World::world_is_live(world, reference)
+                try emit(queue, event)
 
             def dispatch(queue: mutable Queue&, phase: Phase) -> usize error[EventError]:
                 raise EventError.InactiveFrame if not queue.frame_active
