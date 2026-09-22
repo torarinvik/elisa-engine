@@ -1,4 +1,5 @@
 # Native smoke coverage for the public Wicked emitter and decal bridge.
+include "../src/runtime/world_effects.elisa"
 module RenderSceneEffectsNativeTests:
     private:
         const MAX_PARTICLES: u32 = 128
@@ -17,6 +18,10 @@ module RenderSceneEffectsNativeTests:
         extern elisa_render_scene_v1_test_effect_decal(handle: RenderScene::DecalHandle,
             red: f32, green: f32, blue: f32, alpha: f32,
             range: f32, slope_blend: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_position(handle: RenderScene::EmitterHandle,
+            px: f32, py: f32, pz: f32) -> i32
 
     public:
         def exercise() -> i32:
@@ -70,4 +75,60 @@ module RenderSceneEffectsNativeTests:
             destroyed_emitter: i32 = catch RenderScene::destroy_emitter(emitter):
                 ok: 0
                 error failure: 1
-            11 if destroyed_emitter != 0 else 0
+            return 11 if destroyed_emitter != 0
+
+            world: World::World = catch World::World():
+                value: value
+                error failure: return 12
+            entity: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 13
+            initial_transform: i32 = catch World::world_set_transform(&world, entity, Geometry::Transform{
+                position: Geometry::Vec3{x: 1.0, y: 2.0, z: 3.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }):
+                ok: 0
+                error failure: 1
+            return 14 if initial_transform != 0
+            effects: WorldEffects::Effects = WorldEffects::Effects()
+            attached_emitter: i32 = catch WorldEffects::spawn_emitter(&world, &effects, entity,
+                RenderScene::Emitter(Geometry::vec3_zero(), 32, 4.0, 1.0, 0.5,
+                    Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})):
+                ok: 0
+                error failure: return 15
+            return 16 if attached_emitter != 0 or WorldEffects::binding_count(&effects) != 1
+            attached_decal: i32 = catch WorldEffects::spawn_decal(&world, &effects, entity,
+                RenderScene::Decal(Geometry::vec3_zero(), color, 2.0, 0.25)):
+                ok: 0
+                error failure: return 17
+            return 18 if attached_decal != 0 or WorldEffects::binding_count(&effects) != 1
+            scale_status: i32 = catch WorldEffects::set_time_scale(&effects, entity, 0.5):
+                ok: 0
+                error failure: 1
+            return 19 if scale_status != 0
+            moved_transform: i32 = catch World::world_set_transform(&world, entity, Geometry::Transform{
+                position: Geometry::Vec3{x: 4.0, y: 5.0, z: 6.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }):
+                ok: 0
+                error failure: 1
+            return 20 if moved_transform != 0
+            report: WorldEffects::UpdateReport = catch WorldEffects::update(&world, &effects, 0.5):
+                value: value
+                error failure: return 21
+            emitter_after_move: RenderScene::EmitterHandle = catch WorldEffects::emitter_handle(&effects, entity):
+                value: value
+                error failure: return 22
+            return 23 if report.updated != 1 or elisa_render_scene_v1_test_effect_position(
+                emitter_after_move, 4.0, 5.0, 6.0) != 1
+            despawn_status: i32 = catch World::world_despawn(&world, entity):
+                ok: 0
+                error failure: 1
+            return 24 if despawn_status != 0
+            despawn_report: WorldEffects::UpdateReport = catch WorldEffects::update(&world, &effects, 0.1):
+                value: value
+                error failure: return 25
+            return 26 if despawn_report.detached_despawned != 1 or WorldEffects::binding_count(&effects) != 0
+            0

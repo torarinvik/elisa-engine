@@ -1,0 +1,193 @@
+# Binds Wicked particle emitters and decals to checked World entities. Elisa
+# owns attachment lifetime and time scaling; native handles stay private.
+include "./render_scene_effects.elisa"
+include "../world/world.elisa"
+include "../math/geometry.elisa"
+
+module WorldEffects:
+    public:
+        const MAX_BINDINGS: usize = 64
+        const MAX_TIME_SCALE: f32 = 8.0
+
+        error WorldEffectsError:
+            Capacity
+            EntityAlreadyAttached
+            EntityUnavailable
+            EffectNotFound
+            InvalidTimeStep
+            InvalidTimeScale
+            BindingTableCorrupt
+
+        struct UpdateReport:
+            updated: usize
+            detached_despawned: usize
+
+        affine struct Effects:
+            private:
+                entities: mutable World::EntityRef[WorldEffects::MAX_BINDINGS]
+                emitters: mutable RenderScene::EmitterHandles::Pool
+                decals: mutable RenderScene::DecalHandles::Pool
+                has_emitter: mutable bool[WorldEffects::MAX_BINDINGS]
+                has_decal: mutable bool[WorldEffects::MAX_BINDINGS]
+                time_scales: mutable f32[WorldEffects::MAX_BINDINGS]
+                count: mutable usize
+
+    private:
+        const module Sentinel:
+            MISSING: usize = WorldEffects::MAX_BINDINGS
+
+        def same_entity(left: World::EntityRef, right: World::EntityRef) -> bool:
+            left.world_epoch == right.world_epoch and left.id == right.id
+
+        def binding_index(effects: Effects&, entity: World::EntityRef) -> usize:
+            for index in 0..<effects.count |found: usize = Sentinel::MISSING| -> found:
+                break index if same_entity(effects.entities[index], entity)
+
+        def free_slot(effects: Effects&) -> usize:
+            return Sentinel::MISSING if effects.count >= WorldEffects::MAX_BINDINGS
+            effects.count
+
+        def time_scale_valid(value: f32) -> bool:
+            value - value == 0.0 and value >= 0.0 and value <= WorldEffects::MAX_TIME_SCALE
+
+        def remove_at(effects: mutable Effects&, index: usize) -> void:
+            for shift in index..<effects.count - 1 |effects|:
+                effects.entities[shift] <- effects.entities[shift + 1]
+                moved_emitter: bool = RenderScene::EmitterHandles::move(&effects.emitters, shift + 1, shift)
+                moved_decal: bool = RenderScene::DecalHandles::move(&effects.decals, shift + 1, shift)
+                _ = moved_emitter
+                _ = moved_decal
+                effects.has_emitter[shift] <- effects.has_emitter[shift + 1]
+                effects.has_decal[shift] <- effects.has_decal[shift + 1]
+                effects.time_scales[shift] <- effects.time_scales[shift + 1]
+            effects.has_emitter[effects.count - 1] <- false
+            effects.has_decal[effects.count - 1] <- false
+            RenderScene::EmitterHandles::clear(&effects.emitters, effects.count - 1)
+            RenderScene::DecalHandles::clear(&effects.decals, effects.count - 1)
+            effects.time_scales[effects.count - 1] <- 0.0
+            effects.count <- effects.count - 1
+
+        def destroy_handles(effects: Effects&, index: usize) -> void error[
+            WorldEffectsError, RenderScene::RenderSceneError]:
+            if effects.has_emitter[index]:
+                emitter: RenderScene::EmitterHandle = try RenderScene::EmitterHandles::get(&effects.emitters, index)
+                try RenderScene::destroy_emitter(emitter)
+            if effects.has_decal[index]:
+                decal: RenderScene::DecalHandle = try RenderScene::DecalHandles::get(&effects.decals, index)
+                try RenderScene::destroy_decal(decal)
+
+    public:
+        def Effects() -> Effects:
+            Effects{
+                entities: zeroed,
+                emitters: RenderScene::EmitterHandles::Pool(),
+                decals: RenderScene::DecalHandles::Pool(),
+                has_emitter: zeroed,
+                has_decal: zeroed,
+                time_scales: zeroed,
+                count: 0,
+            }
+
+        def binding_count(effects: Effects&) -> usize:
+            effects.count
+
+        def emitter_handle(effects: Effects&, entity: World::EntityRef) -> RenderScene::EmitterHandle error[WorldEffectsError]:
+            index: mutable usize = binding_index(effects, entity)
+            raise WorldEffectsError.EffectNotFound if index == Sentinel::MISSING or not effects.has_emitter[index]
+            catch RenderScene::EmitterHandles::get(&effects.emitters, index):
+                value: value
+                error failure: raise WorldEffectsError.BindingTableCorrupt
+
+        def spawn_emitter(world: World::World&, effects: mutable Effects&,
+            entity: World::EntityRef, descriptor: mutable RenderScene::Emitter) -> void error[
+            WorldEffectsError, RenderScene::RenderSceneError]:
+            index: mutable usize = binding_index(effects, entity)
+            if index != Sentinel::MISSING:
+                raise WorldEffectsError.EntityAlreadyAttached if effects.has_emitter[index]
+            else:
+                index <- free_slot(effects)
+                raise WorldEffectsError.Capacity if index == Sentinel::MISSING
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldEffectsError.EntityUnavailable if not World::world_try_transform(world, entity, &pose)
+            descriptor.position <- pose.position
+            handle: RenderScene::EmitterHandle = try RenderScene::create_emitter(descriptor)
+            effects.entities[index] <- entity
+            stored: bool = RenderScene::EmitterHandles::store(&effects.emitters, index, handle)
+            raise WorldEffectsError.BindingTableCorrupt if not stored
+            effects.has_emitter[index] <- true
+            effects.time_scales[index] <- 1.0 if effects.time_scales[index] == 0.0
+            effects.count <- effects.count + 1 if index == effects.count
+
+        def spawn_decal(world: World::World&, effects: mutable Effects&,
+            entity: World::EntityRef, descriptor: mutable RenderScene::Decal) -> void error[
+            WorldEffectsError, RenderScene::RenderSceneError]:
+            index: mutable usize = binding_index(effects, entity)
+            if index != Sentinel::MISSING:
+                raise WorldEffectsError.EntityAlreadyAttached if effects.has_decal[index]
+            else:
+                index <- free_slot(effects)
+                raise WorldEffectsError.Capacity if index == Sentinel::MISSING
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            raise WorldEffectsError.EntityUnavailable if not World::world_try_transform(world, entity, &pose)
+            descriptor.position <- pose.position
+            handle: RenderScene::DecalHandle = try RenderScene::create_decal(descriptor)
+            effects.entities[index] <- entity
+            stored: bool = RenderScene::DecalHandles::store(&effects.decals, index, handle)
+            raise WorldEffectsError.BindingTableCorrupt if not stored
+            effects.has_decal[index] <- true
+            effects.time_scales[index] <- 1.0 if effects.time_scales[index] == 0.0
+            effects.count <- effects.count + 1 if index == effects.count
+
+        def set_time_scale(effects: mutable Effects&, entity: World::EntityRef,
+            value: f32) -> void error[WorldEffectsError]:
+            raise WorldEffectsError.InvalidTimeScale if not time_scale_valid(value)
+            index: usize = binding_index(effects, entity)
+            raise WorldEffectsError.EffectNotFound if index == Sentinel::MISSING
+            effects.time_scales[index] <- value
+
+        def update(world: World::World&, effects: mutable Effects&,
+            delta_seconds: f32) -> UpdateReport error[
+            WorldEffectsError, RenderScene::RenderSceneError]:
+            raise WorldEffectsError.InvalidTimeStep if not (delta_seconds > 0.0 and delta_seconds - delta_seconds == 0.0)
+            updated: mutable usize = 0
+            despawned: mutable usize = 0
+            removed: mutable bool[WorldEffects::MAX_BINDINGS] = zeroed
+            for index in 0..<effects.count |world, effects, delta_seconds, updated, despawned, removed|:
+                pose: mutable Geometry::Transform = Geometry::transform_identity()
+                if not World::world_try_transform(world, effects.entities[index], &pose):
+                    try destroy_handles(effects, index)
+                    removed[index] <- true
+                    despawned <- despawned + 1
+                else:
+                    if effects.has_emitter[index]:
+                        emitter: RenderScene::EmitterHandle = try RenderScene::EmitterHandles::get(&effects.emitters, index)
+                        try RenderScene::move_emitter(emitter, pose.position)
+                        try RenderScene::tick_emitter(emitter, delta_seconds * effects.time_scales[index])
+                    if effects.has_decal[index]:
+                        decal: RenderScene::DecalHandle = try RenderScene::DecalHandles::get(&effects.decals, index)
+                        try RenderScene::move_decal(decal, pose.position)
+                    updated <- updated + 1
+            # Despawn removal shifts later rows, so remove from the back.
+            original_count: usize = effects.count
+            for offset in 0..<original_count |effects, removed|:
+                index: usize = original_count - 1 - offset
+                if removed[index]:
+                    # The native handles were destroyed above; only compact the table.
+                    for shift in index..<effects.count - 1 |effects|:
+                        effects.entities[shift] <- effects.entities[shift + 1]
+                        moved_emitter: bool = RenderScene::EmitterHandles::move(&effects.emitters, shift + 1, shift)
+                        moved_decal: bool = RenderScene::DecalHandles::move(&effects.decals, shift + 1, shift)
+                        _ = moved_emitter
+                        _ = moved_decal
+                        effects.has_emitter[shift] <- effects.has_emitter[shift + 1]
+                        effects.has_decal[shift] <- effects.has_decal[shift + 1]
+                        effects.time_scales[shift] <- effects.time_scales[shift + 1]
+                    effects.count <- effects.count - 1
+            UpdateReport{updated: updated, detached_despawned: despawned}
+
+        def clear(effects: mutable Effects&) -> void error[
+            WorldEffectsError, RenderScene::RenderSceneError]:
+            total: usize = effects.count
+            for _ in 0..<total |effects|:
+                try destroy_handles(effects, effects.count - 1)
+                remove_at(effects, effects.count - 1)

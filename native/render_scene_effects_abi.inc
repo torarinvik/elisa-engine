@@ -72,6 +72,19 @@ extern "C" int32_t elisa_render_scene_v1_tick_effect_emitter(int64_t handle_valu
     return state.effects->tick(handle, delta_seconds) ? ELISA_RENDER_SCENE_OK : effect_failure(state, handle);
 }
 
+extern "C" int32_t elisa_render_scene_v1_update_effect_position(
+    int64_t handle_value, float px, float py, float pz) {
+    if (!valid_effect_position(px, py, pz)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    probe::EffectHandle handle;
+    if (!decode_effect_handle(state, handle_value, handle)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    return state.effects->update_position(handle, XMFLOAT3(px, py, pz))
+        ? ELISA_RENDER_SCENE_OK : effect_failure(state, handle);
+}
+
 extern "C" int64_t elisa_render_scene_v1_create_effect_decal(
     float px, float py, float pz,
     float red, float green, float blue, float alpha,
@@ -152,5 +165,19 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_decal(
     if (decal == nullptr) return 0;
     return decal->color.x == red && decal->color.y == green && decal->color.z == blue &&
         decal->color.w == alpha && decal->range == range && decal->slopeBlendPower == slope_blend ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_effect_position(
+    int64_t handle_value, float px, float py, float pz) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return 0;
+    probe::EffectHandle handle;
+    if (!decode_effect_handle(state, handle_value, handle)) return 0;
+    const auto entity = state.effects->entity(handle);
+    const auto* transform = state.scene->transforms.GetComponent(entity);
+    if (transform == nullptr) return 0;
+    return transform->translation_local.x == px && transform->translation_local.y == py &&
+        transform->translation_local.z == pz ? 1 : 0;
 }
 #endif

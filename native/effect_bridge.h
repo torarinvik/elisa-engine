@@ -95,6 +95,17 @@ public:
         return true;
     }
 
+    bool update_position(EffectHandle handle, const XMFLOAT3& position) {
+        Entry* entry = get(handle);
+        if (entry == nullptr || !std::isfinite(position.x) || !std::isfinite(position.y) ||
+            !std::isfinite(position.z)) return false;
+        auto* transform = scene_.transforms.GetComponent(entry->entity);
+        if (transform == nullptr) return false;
+        transform->translation_local = position;
+        transform->UpdateTransform();
+        return true;
+    }
+
     bool update_decal(EffectHandle handle, const DecalDesc& desc) {
         Entry* entry = get(handle);
         if (entry == nullptr || handle.kind != EffectKind::Decal || !valid(desc)) return false;

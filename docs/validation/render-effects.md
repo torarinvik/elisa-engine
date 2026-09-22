@@ -23,5 +23,14 @@ ELISA_COMPILER_BIN=/Users/torarinvikbjarko/Documents/Coding\ Projects/Elisa\ Pro
 python3 scripts/render_scene_native_smoke.py
 ```
 
-Game-level effect spawning, owner attachment, time scaling, and authored
-emitter/decal assets remain higher-level work.
+`WorldEffects` adds the first game-level ownership layer. It keeps the owner
+entity and its emitter/decal handles in a bounded Elisa table, copies the
+current World position into Wicked each update, scales emitter time per owner,
+and destroys both native handles when an owner despawns. The same smoke moves
+an attached entity, verifies the native transform, and then verifies despawn
+cleanup returns the binding count to zero. Handle pools and native values stay
+behind their owning modules; callers only hold the checked public descriptor
+and handle types.
+
+The remaining R09 work is authored event spawning and a rendered combat or
+environmental example that exercises restart and pooled resource baselines.
