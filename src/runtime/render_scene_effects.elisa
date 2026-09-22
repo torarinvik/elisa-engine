@@ -24,6 +24,10 @@ extend RenderScene:
             delta_seconds: f32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_update_effect_position(handle: i64,
+            px: f32, py: f32, pz: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_create_effect_decal(
             px: f32, py: f32, pz: f32,
             red: f32, green: f32, blue: f32, alpha: f32,
@@ -77,6 +81,70 @@ extend RenderScene:
             private:
                 native_value: i64
 
+        module EmitterHandles:
+            public:
+                const CAPACITY: usize = 64
+
+                affine struct Pool:
+                    private:
+                        values: mutable EmitterHandle[RenderScene::EmitterHandles::CAPACITY]
+                        live: mutable bool[RenderScene::EmitterHandles::CAPACITY]
+
+                def Pool() -> Pool:
+                    Pool{values: zeroed, live: zeroed}
+
+                def store(handles: mutable Pool&, index: usize, value: EmitterHandle) -> bool:
+                    return false if index >= RenderScene::EmitterHandles::CAPACITY
+                    handles.values[index] <- value
+                    handles.live[index] <- true
+                    true
+
+                def get(handles: Pool&, index: usize) -> EmitterHandle error[RenderScene::RenderSceneError]:
+                    raise RenderScene::RenderSceneError.UnknownHandle if index >= RenderScene::EmitterHandles::CAPACITY or not handles.live[index]
+                    handles.values[index]
+
+                def move(handles: mutable Pool&, source: usize, destination: usize) -> bool:
+                    return false if source >= RenderScene::EmitterHandles::CAPACITY or destination >= RenderScene::EmitterHandles::CAPACITY or not handles.live[source]
+                    handles.values[destination] <- handles.values[source]
+                    handles.live[destination] <- true
+                    handles.live[source] <- false
+                    true
+
+                def clear(handles: mutable Pool&, index: usize) -> void:
+                    handles.live[index] <- false if index < RenderScene::EmitterHandles::CAPACITY
+
+        module DecalHandles:
+            public:
+                const CAPACITY: usize = 64
+
+                affine struct Pool:
+                    private:
+                        values: mutable DecalHandle[RenderScene::DecalHandles::CAPACITY]
+                        live: mutable bool[RenderScene::DecalHandles::CAPACITY]
+
+                def Pool() -> Pool:
+                    Pool{values: zeroed, live: zeroed}
+
+                def store(handles: mutable Pool&, index: usize, value: DecalHandle) -> bool:
+                    return false if index >= RenderScene::DecalHandles::CAPACITY
+                    handles.values[index] <- value
+                    handles.live[index] <- true
+                    true
+
+                def get(handles: Pool&, index: usize) -> DecalHandle error[RenderScene::RenderSceneError]:
+                    raise RenderScene::RenderSceneError.UnknownHandle if index >= RenderScene::DecalHandles::CAPACITY or not handles.live[index]
+                    handles.values[index]
+
+                def move(handles: mutable Pool&, source: usize, destination: usize) -> bool:
+                    return false if source >= RenderScene::DecalHandles::CAPACITY or destination >= RenderScene::DecalHandles::CAPACITY or not handles.live[source]
+                    handles.values[destination] <- handles.values[source]
+                    handles.live[destination] <- true
+                    handles.live[source] <- false
+                    true
+
+                def clear(handles: mutable Pool&, index: usize) -> void:
+                    handles.live[index] <- false if index < RenderScene::DecalHandles::CAPACITY
+
         struct Emitter:
             position: Geometry::Vec3
             max_particles: u32
@@ -126,6 +194,11 @@ extend RenderScene:
             raise RenderSceneError.InvalidValue if not finite(delta_seconds) or delta_seconds < 0.0
             try check_status(elisa_render_scene_v1_tick_effect_emitter(handle.native_value, delta_seconds))
 
+        def move_emitter(handle: EmitterHandle, position: Geometry::Vec3) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not position_valid(position)
+            try check_status(elisa_render_scene_v1_update_effect_position(handle.native_value,
+                position.x, position.y, position.z))
+
         def destroy_emitter(handle: EmitterHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_effect(handle.native_value))
 
@@ -145,6 +218,11 @@ extend RenderScene:
             try check_status(elisa_render_scene_v1_update_effect_decal(handle.native_value,
                 effect.color.red, effect.color.green, effect.color.blue, effect.color.alpha,
                 effect.range, effect.slope_blend))
+
+        def move_decal(handle: DecalHandle, position: Geometry::Vec3) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not position_valid(position)
+            try check_status(elisa_render_scene_v1_update_effect_position(handle.native_value,
+                position.x, position.y, position.z))
 
         def destroy_decal(handle: DecalHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_effect(handle.native_value))
