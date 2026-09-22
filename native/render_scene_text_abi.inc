@@ -95,6 +95,27 @@ extern "C" int32_t elisa_render_scene_v1_set_text_size(
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_text_alignment(
+    int64_t handle, int32_t horizontal, int32_t vertical) {
+    if (horizontal < wi::font::WIFALIGN_LEFT || horizontal > wi::font::WIFALIGN_RIGHT ||
+        (vertical != wi::font::WIFALIGN_TOP &&
+         vertical != wi::font::WIFALIGN_CENTER &&
+         vertical != wi::font::WIFALIGN_BOTTOM)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    state.overlay_texts[slot].font.params.h_align =
+        static_cast<wi::font::Alignment>(horizontal);
+    state.overlay_texts[slot].font.params.v_align =
+        static_cast<wi::font::Alignment>(vertical);
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_text_color(
     int64_t handle, float red, float green, float blue, float alpha) {
     if (!valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;

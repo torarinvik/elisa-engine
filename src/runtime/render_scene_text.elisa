@@ -1,0 +1,38 @@
+# Text-only RenderScene extensions live apart from the core primitive surface.
+include "./render_scene.elisa"
+
+module RenderSceneText:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_set_text_alignment(handle: i64,
+            horizontal: i32, vertical: i32) -> i32
+
+    public:
+        enum OverlayTextAlignment:
+            Left
+            Center
+            Right
+            Top
+            Bottom
+
+        def set_overlay_text_alignment(handle: OverlayTextHandle,
+            horizontal: OverlayTextAlignment,
+            vertical: OverlayTextAlignment) -> void error[RenderSceneError]:
+            horizontal_value: i32 = match horizontal:
+                RenderScene::OverlayTextAlignment.Left: 0
+                RenderScene::OverlayTextAlignment.Center: 1
+                RenderScene::OverlayTextAlignment.Right: 2
+                _: 1
+            vertical_value: i32 = match vertical:
+                RenderScene::OverlayTextAlignment.Top: 3
+                RenderScene::OverlayTextAlignment.Center: 1
+                RenderScene::OverlayTextAlignment.Bottom: 4
+                _: 3
+            raise RenderSceneError.InvalidValue if horizontal == RenderScene::OverlayTextAlignment.Top or horizontal == RenderScene::OverlayTextAlignment.Bottom
+            raise RenderSceneError.InvalidValue if vertical == RenderScene::OverlayTextAlignment.Left or vertical == RenderScene::OverlayTextAlignment.Right
+            try check_status(elisa_render_scene_v1_set_text_alignment(handle.id,
+                horizontal_value, vertical_value))

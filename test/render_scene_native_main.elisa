@@ -2,6 +2,7 @@
 # scene through the public engine module. The one evidence import is test-only.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_text.elisa"
 include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"

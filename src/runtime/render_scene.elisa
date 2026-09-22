@@ -155,7 +155,6 @@ module RenderScene:
         extern elisa_render_scene_v1_set_text_position(handle: i64, x: f32, y: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_text_size(handle: i64, font_size: i32) -> i32
-        @callconv(c)
         extern elisa_render_scene_v1_set_text_color(handle: i64,
             red: f32, green: f32, blue: f32, alpha: f32) -> i32
         @callconv(c)
