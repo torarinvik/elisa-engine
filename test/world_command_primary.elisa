@@ -1,0 +1,70 @@
+include "../src/world/commands.elisa"
+
+def main() -> i32:
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 1
+    parent: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+        value: value
+        error failure: return 2
+    child: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+        value: value
+        error failure: return 3
+    identity: Geometry::Transform = Geometry::transform_identity()
+    parent_pose: Geometry::Transform = Geometry::transform_translate(
+        identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0})
+    child_pose: Geometry::Transform = Geometry::transform_translate(
+        identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0})
+    parent_status: bool = catch World::world_set_transform(&world, parent, parent_pose):
+        ok: true
+        error failure: false
+    child_status: bool = catch World::world_set_transform(&world, child, child_pose):
+        ok: true
+        error failure: false
+    return 4 if not parent_status or not child_status
+
+    reparent: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 4 if not WorldCommands::world_reparent(&reparent, child, parent, false)
+    return 5 if not WorldCommands::commit_world(&reparent, &world)
+    return 6 if not World::world_is_valid(&world)
+    return 7 if WorldCommands::world_command_count(&reparent) != 0
+    moved: mutable Geometry::Transform = Geometry::transform_identity()
+    return 8 if not World::world_try_transform(&world, child, &moved) or moved.position.x != 7.0
+    return 9 if World::world_hierarchy_count(&world) != World::world_live_count(&world)
+
+    cycle: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 11 if not WorldCommands::world_reparent(&cycle, parent, child, false)
+    return 12 if WorldCommands::commit_world(&cycle, &world)
+    return 13 if WorldCommands::world_command_count(&cycle) != 1 or not World::world_is_valid(&world)
+    spawn: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 7 if not WorldCommands::world_spawn(&spawn, World::StaticObject.Structure)
+    return 8 if WorldCommands::world_command_count(&spawn) != 1
+    return 9 if WorldCommands::commit_world(&spawn, &world)
+    return 10 if World::world_live_count(&world) != 3
+
+    duplicate: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 11 if not WorldCommands::world_despawn(&duplicate, child)
+    return 12 if not WorldCommands::world_despawn(&duplicate, child)
+    return 13 if WorldCommands::commit_world(&duplicate, &world)
+    return 14 if WorldCommands::world_command_count(&duplicate) != 2 or World::world_live_count(&world) != 3
+
+    wrong_epoch: World::EntityRef = World::EntityRef{world_epoch: World::world_epoch(&world) + 1, id: child.id}
+    invalid_despawn: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 15 if not WorldCommands::world_despawn(&invalid_despawn, wrong_epoch)
+    return 16 if WorldCommands::commit_world(&invalid_despawn, &world)
+    return 17 if WorldCommands::world_command_count(&invalid_despawn) != 1 or World::world_live_count(&world) != 3
+
+    valid_despawn: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 18 if not WorldCommands::world_despawn(&valid_despawn, child)
+    return 19 if not WorldCommands::commit_world(&valid_despawn, &world)
+    return 20 if World::world_live_count(&world) != 2 or not World::world_is_valid(&world)
+
+    mixed: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 21 if not WorldCommands::world_spawn(&mixed, World::Actor.Player)
+    invalid_child: World::EntityRef = World::EntityRef{world_epoch: World::world_epoch(&world) + 1, id: parent.id}
+    return 22 if not WorldCommands::world_reparent(&mixed, invalid_child, parent, false)
+    return 23 if WorldCommands::commit_world(&mixed, &world)
+    return 24 if WorldCommands::world_command_count(&mixed) != 2
+    return 25 if World::world_live_count(&world) != 2
+    return 26 if not World::world_is_valid(&world)
+    0
