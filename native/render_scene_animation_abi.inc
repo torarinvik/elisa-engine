@@ -110,3 +110,22 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
     }
     return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
+
+// Returns the active clip's normalized time so game code can synchronize
+// authored cues (for example footfalls) without duplicating clip durations or
+// adding a native game-specific shim. A handle with no active clip is idle.
+extern "C" float elisa_render_scene_v1_animation_progress(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return -1.0f;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return -1.0f;
+    const InstanceSlot& instance = state.instances[slot];
+    if (instance.animation_clip < 0 ||
+        instance.animation_clip >= int32_t(instance.animation_clips.size())) {
+        return 0.0f;
+    }
+    const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+    if (!finite(clip.duration_seconds) || clip.duration_seconds <= 0.0f) return 0.0f;
+    return std::clamp(instance.animation_time / clip.duration_seconds, 0.0f, 1.0f);
+}
