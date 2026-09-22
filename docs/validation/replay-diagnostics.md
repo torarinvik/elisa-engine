@@ -11,11 +11,12 @@ same-build guarantees are not presented as cross-build bit identity.
 container. It writes through a temporary path, uses an explicit checksum, and
 rejects invalid headers, unsupported versions/scopes, truncated or trailing
 payloads, checksum changes, invalid frames, and non-monotonic ticks before
-publishing the result. `test/replay.elisa` covers matching recordings, digest
+publishing the result. `Replay::Digest` provides bounded deterministic scalar
+mixing for subsystem adapters; it is explicitly diagnostic rather than
+cryptographic. `test/replay.elisa` covers matching recordings, digest
 divergence, duplicate-tick rejection, frame round trips, short-frame rejection,
-and invalid-frame rejection. The native probe also exercises durable write,
-read, comparison, and checksum-corruption rejection. Subsystem-specific digest
-production remains W09 integration work.
+invalid-frame rejection, and digest changes. The native probe also exercises
+durable write, read, comparison, and checksum-corruption rejection.
 
 The portable frame test is:
 

@@ -6,6 +6,9 @@ module Replay:
             MAX_FRAMES: usize = 256
             INVALID_TICK: i64 = -1
             BYTE_MASK: u64 = 255
+            DIGEST_MODULUS: i64 = 2147483629
+            DIGEST_MULTIPLIER: i64 = 16777619
+            DIGEST_SEED: i64 = 216613626
 
     public:
         enum ReplayError:
@@ -30,6 +33,10 @@ module Replay:
 
         const FRAME_BYTES: usize = 48
 
+        struct Digest:
+            value: mutable i64
+            count: mutable usize
+
         affine struct Recorder:
             private:
                 frames: mutable Frame[Limits::MAX_FRAMES]
@@ -48,6 +55,10 @@ module Replay:
             recorder.count <- recorder.count + 1
 
         private:
+            def digest_normalize(value: i64) -> i64:
+                remainder: i64 = value % Limits::DIGEST_MODULUS
+                remainder + Limits::DIGEST_MODULUS if remainder < 0 else remainder
+
             def frame_value_valid(frame: Frame) -> bool:
                 frame.tick >= 0
 
@@ -55,6 +66,31 @@ module Replay:
                 frame[offset].u64() + (frame[offset + 1].u64() << 8) + (frame[offset + 2].u64() << 16) + (frame[offset + 3].u64() << 24) + (frame[offset + 4].u64() << 32) + (frame[offset + 5].u64() << 40) + (frame[offset + 6].u64() << 48) + (frame[offset + 7].u64() << 56)
 
         public:
+            # The accumulator is deliberately bounded to i64 arithmetic. It
+            # is a stable diagnostic digest, not a cryptographic hash.
+            def Digest() -> Digest:
+                Digest{value: Limits::DIGEST_SEED, count: 0}
+
+            def digest_mix(digest: mutable Digest&, value: i64) -> void:
+                digest.value <- (digest.value * Limits::DIGEST_MULTIPLIER + digest_normalize(value) + digest.count.i64() + 1) % Limits::DIGEST_MODULUS
+                digest.count <- digest.count + 1
+
+            def digest_value(digest: Digest&) -> i64:
+                digest.value
+
+            def digest_count(digest: Digest&) -> usize:
+                digest.count
+
+            def digest_frame(frame: Frame) -> i64:
+                digest: mutable Digest = Digest()
+                digest_mix(&digest, frame.tick)
+                digest_mix(&digest, frame.input)
+                digest_mix(&digest, frame.random_seed)
+                digest_mix(&digest, frame.world_digest)
+                digest_mix(&digest, frame.physics_digest)
+                digest_mix(&digest, frame.render_digest)
+                digest_value(&digest)
+
             def frame_bytes() -> usize:
                 FRAME_BYTES
 

@@ -44,4 +44,13 @@ def main() -> i32:
         Replay::ReplayError.InvalidFrame: 0
         error failure: 2
     return 12 if rejected != 0
+    digest: mutable Replay::Digest = Replay::Digest()
+    Replay::digest_mix(&digest, first.tick)
+    Replay::digest_mix(&digest, first.input)
+    Replay::digest_mix(&digest, first.random_seed)
+    return 13 if Replay::digest_count(&digest) != 3 or Replay::digest_value(&digest) == 0
+    return 14 if Replay::digest_frame(first) == Replay::digest_frame(second)
+    negative: mutable Replay::Digest = Replay::Digest()
+    Replay::digest_mix(&negative, -1)
+    return 15 if Replay::digest_count(&negative) != 1 or Replay::digest_value(&negative) == Replay::digest_value(&Replay::Digest())
     0
