@@ -49,6 +49,7 @@
 #include "physics_body_bridge.h"
 #include "physics_interpolation_probe.h"
 #include "physics_query_bridge.h"
+#include "physics_contact_bridge.h"
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
 #include "debug_draw_bridge.h"
@@ -120,6 +121,7 @@ int main(int argc, char** argv) {
     if (!probe_render_snapshot_bridge(scene)) return 1;
     if (!probe_physics_body_bridge(scene)) return 1;
     if (!probe_physics_queries(scene)) return 1;
+    if (!probe_physics_contact_listener(scene)) return 1;
     if (!probe_physics_contact_queue()) return 1;
     if (!probe_action_input_bridge()) return 1;
     if (!probe_parallel_executor()) return 1;
