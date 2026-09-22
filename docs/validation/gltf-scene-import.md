@@ -18,7 +18,10 @@ normal stream and scalar material factors are retained when present. The
 runtime cooker now carries bounded multi-material skins, fixed-rate LINEAR or
 STEP joint animation, dense morph POSITION/NORMAL deltas, and validated camera
 and `KHR_lights_punctual` records (including node transforms) into the runtime
-package. The native uploader installs morph targets on each Wicked mesh, and
-the SDL3/Metal animation smoke submits a bounded morph weight on the cooked
-two-joint fixture. Binding imported cameras/lights to the live renderer and
-complete multi-mesh scene metadata remain follow-up A05/R03/R05 work.
+package. The native uploader installs morph targets on each Wicked mesh and
+instantiates imported cameras and punctual lights as transform-following
+children of the cooked mesh, with rollback and cleanup on failure. The SDL3
+native smoke verifies those live resources.
+The SDL3/Metal animation smoke submits a bounded morph weight on the cooked
+two-joint fixture. Rich public imported-scene handles and complete multi-mesh
+scene metadata remain follow-up A05/R03/R05 work.

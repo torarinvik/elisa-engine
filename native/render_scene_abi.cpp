@@ -71,7 +71,11 @@ struct InstanceSlot {
     uint64_t material_high = 0;
     uint64_t material_low = 0;
     size_t shared_mesh_slot = NO_SHARED_MESH;
+    // Set on a clone: the instance whose mesh and material it draws.
+    wi::ecs::Entity shared_source = wi::ecs::INVALID_ENTITY;
     std::vector<wi::ecs::Entity> joint_entities;
+    std::vector<wi::ecs::Entity> imported_camera_entities;
+    std::vector<probe::NativeLightHandle> imported_light_handles;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
     probe::NativeAnimationHandle animation_submission{};
@@ -297,6 +301,7 @@ bool valid_handle(const RenderSceneService& state, int64_t handle, size_t& slot)
     return generation != 0 && state.instances[slot].live &&
         state.instances[slot].generation == generation;
 }
+int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height);
 void release_animation_submission(RenderSceneService& state, InstanceSlot& instance) {
     if (state.animation_submission != nullptr && instance.animation_submission.owner != 0) {
         if (state.animation_submission->pending(instance.animation_submission)) {
@@ -306,6 +311,7 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
     }
     instance.animation_submission = {};
 }
+#include "render_scene_imported_scene_internal.inc"
 #include "render_scene_animation_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
@@ -319,6 +325,7 @@ size_t find_free_arc_slot(const RenderSceneService& state) {
     }
     return MAX_ELECTRIC_ARCS;
 }
+void clear_snapshot_instance(InstanceSlot& instance);
 void reset_unlocked(RenderSceneService& state) {
     if (state.initialized) {
         wi::jobsystem::WaitForAllJobs();
@@ -343,23 +350,7 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lights = {};
     state.cameras = {};
-    for (InstanceSlot& instance : state.instances) {
-        instance.entity = wi::ecs::INVALID_ENTITY;
-        instance.gameplay_epoch = 0;
-        instance.gameplay_id = 0;
-        instance.render_id = 0;
-        instance.mesh_high = 0;
-        instance.mesh_low = 0;
-        instance.material_high = 0;
-        instance.material_low = 0;
-        instance.shared_mesh_slot = NO_SHARED_MESH;
-        instance.joint_entities.clear();
-        instance.skin_joints.clear();
-        instance.animation_clips.clear();
-        instance.animation_submission = {};
-        clear_animation_state(instance);
-        instance.live = false;
-    }
+    for (InstanceSlot& instance : state.instances) clear_snapshot_instance(instance);
     state.snapshot_row_count = 0;
     state.snapshot_retire_count = 0;
     state.snapshot_result_count = 0;
@@ -488,6 +479,8 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.material_low = 0;
     instance.shared_mesh_slot = NO_SHARED_MESH;
     instance.joint_entities.clear();
+    instance.imported_camera_entities.clear();
+    instance.imported_light_handles.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
     instance.animation_submission = {};
@@ -557,9 +550,9 @@ extern "C" int32_t elisa_render_scene_v1_destroy(int64_t handle) {
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-    wi::ecs::Entity entity = state.instances[slot].entity;
     release_animation_submission(state, state.instances[slot]);
-    state.scene->Entity_Remove(entity);
+    release_imported_scene(state, state.instances[slot]);
+    remove_instance_entity(state, slot);
     for (wi::ecs::Entity joint : state.instances[slot].joint_entities) state.scene->Entity_Remove(joint);
     if (state.instances[slot].shared_mesh_slot < MAX_SNAPSHOT_SHARED_MESHES) {
         release_snapshot_shared_mesh(state, state.instances[slot].shared_mesh_slot);
@@ -593,6 +586,7 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
     return state.initialized ? 1 : 0;
 }
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+#include "render_scene_imported_scene_probe.inc"
 #include "render_scene_pixel_probe.h"
 #include "render_scene_environment_probe.h"
 #include "render_scene_arc_probe.h"

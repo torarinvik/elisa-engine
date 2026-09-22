@@ -84,6 +84,14 @@ int64_t elisa_render_scene_v1_create_mesh(
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz,
     float red, float green, float blue, float alpha);
+// Draws source's mesh and material again at another transform. A clone has no
+// material of its own, while the source mesh stays alive until its last clone.
+int64_t elisa_render_scene_v1_create_mesh_instance(
+    int64_t source_handle,
+    float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz,
+    float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_update_transform(
     int64_t handle,
     float px, float py, float pz,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cooked_geometry_package.h"
+#include "cooked_scene_bridge.h"
 #include "coordinate_conventions.h"
 #include "wiScene.h"
 

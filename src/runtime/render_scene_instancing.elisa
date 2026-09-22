@@ -1,0 +1,38 @@
+# Shared-mesh instances are an extension so primitive scene clients do not
+# pay for the clone path they do not use.
+include "./render_scene.elisa"
+
+module RenderSceneInstancing:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_create_mesh_instance(source: i64,
+            px: f32, py: f32, pz: f32,
+            qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32,
+            red: f32, green: f32, blue: f32, alpha: f32) -> i64
+
+    public:
+        # Draw the source's mesh and material again at another transform. The
+        # engine keeps one cooked load and one GPU mesh for the source and all
+        # of its clones; `color` multiplies the source material's base color
+        # per instance. Material calls address the source: a clone has no
+        # material of its own, so set_texture, set_color, set_lit_material and
+        # the like fail on it with BackendFailure. Visibility and transform
+        # calls work per clone. The source may be destroyed before its clones;
+        # its mesh stays until the last clone goes. Skinned, animated, morphing
+        # and cloned sources are rejected with InvalidValue.
+        def create_mesh_instance(source: InstanceHandle, transform: Geometry::Transform,
+            color: Color) -> InstanceHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_mesh_instance(source.native_value,
+                transform.position.x, transform.position.y, transform.position.z,
+                transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
+                transform.scale.x, transform.scale.y, transform.scale.z,
+                color.red, color.green, color.blue, color.alpha)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            InstanceHandle{native_value: native_value}

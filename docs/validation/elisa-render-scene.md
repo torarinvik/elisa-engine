@@ -265,6 +265,30 @@ all positions and directions cross the Elisa-to-Wicked coordinate boundary in
 one place. Authored light scenes, shadow-bias policy, and reference captures
 remain open under R05.
 
+## Shared-mesh instances (2026-09-22)
+
+`RenderScene::create_mesh_instance(source, transform, color)` (from
+`src/runtime/render_scene_instancing.elisa`, in the public bundle) draws the
+source's mesh and material again at another transform. Natively the clone is a
+Wicked `ObjectComponent` whose `meshID` names the source entity, so a scene of
+repeated props loads and uploads each cooked package once; the color multiplies
+the source material's base color per instance through Wicked's instance color.
+A clone has no material of its own: `set_color`, `set_texture`,
+`set_lit_material` and the other material calls on it return `BackendFailure`,
+while `set_visible`, `set_visibility` and `update_transform` work per clone.
+Skinned, animated, morphing and cloned sources are rejected with
+`InvalidValue`. Destroying a source before its clones removes only its object
+and transform; the mesh and material stay until the last clone is destroyed,
+and that clone's destruction frees the source entity.
+
+`test/render_scene_mesh_instance_native.elisa` (case group 250) checks with the
+test-only `elisa_render_scene_v1_test_mesh_count` and
+`elisa_render_scene_v1_test_instances_share_mesh` probes that a clone adds no
+Wicked mesh and names the source's mesh, that cloning a clone and an invalid
+color fail with `InvalidValue`, that `set_color` on the clone fails with
+`BackendFailure`, that the mesh survives destroying the source first, and that
+destroying the last clone restores the mesh and instance counts.
+
 ## Exit codes
 
 `scripts/render_scene_native_smoke.py` passes through the exit status of
