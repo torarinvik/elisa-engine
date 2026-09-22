@@ -32,9 +32,9 @@ Declare the inputs and generated outputs in `elisa.project.json`:
 ```
 
 The optional animation source must be FBX with the same joint names as the GLB
-armature. A source may contain up to eight non-static clips. GLB input must
+armature. A source may contain up to sixteen non-static clips. GLB input must
 contain one armature and at least one skinned child mesh. The existing cooked
-geometry format keeps one mesh, one skin hierarchy, and up to eight clips; it
+geometry format keeps one mesh, one skin hierarchy, and up to sixteen clips; it
 does not yet retain multiple material subsets or a separate map for every PBR
 channel. A single material's base-color image can be assigned through Elisa.
 

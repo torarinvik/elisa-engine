@@ -182,8 +182,8 @@ def main():
             raise RuntimeError("animation rig is missing GLB joint names: " + ", ".join(missing))
         actions = [action for action in bpy.data.actions
             if action not in previous_actions and action.frame_range[1] - action.frame_range[0] >= 1.0]
-        if not 1 <= len(actions) <= 8:
-            raise RuntimeError(f"animation FBX must provide 1 to 8 non-static clips; found {len(actions)}")
+        if not 1 <= len(actions) <= 16:
+            raise RuntimeError(f"animation FBX must provide 1 to 16 non-static clips; found {len(actions)}")
         names = [clip_name(action) for action in actions]
         if any(not name for name in names) or len(set(names)) != len(names):
             raise RuntimeError("animation FBX has empty or duplicate clip names")

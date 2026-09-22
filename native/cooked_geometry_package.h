@@ -422,7 +422,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         }
 
         uint64_t clip_count = 0;
-        if (!detail::parse_count(package, "animation_clips", clip_count) || clip_count > 8) {
+        if (!detail::parse_count(package, "animation_clips", clip_count) || clip_count > 16) {
             error = "invalid cooked geometry animation clip count";
             return false;
         }
