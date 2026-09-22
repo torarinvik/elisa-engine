@@ -120,6 +120,7 @@ int main(int argc, char** argv) {
     if (!probe_render_snapshot_bridge(scene)) return 1;
     if (!probe_physics_body_bridge(scene)) return 1;
     if (!probe_physics_queries(scene)) return 1;
+    if (!probe_physics_contact_queue()) return 1;
     if (!probe_action_input_bridge()) return 1;
     if (!probe_parallel_executor()) return 1;
     if (!probe_snapshot_asset_worker()) return 1;
