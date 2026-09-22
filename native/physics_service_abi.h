@@ -24,6 +24,30 @@ enum {
     ELISA_PHYSICS_BODY_DYNAMIC = 2,
 };
 
+enum {
+    ELISA_PHYSICS_CONTACT_ADDED = 0,
+    ELISA_PHYSICS_CONTACT_PERSISTED = 1,
+    ELISA_PHYSICS_CONTACT_REMOVED = 2,
+    ELISA_PHYSICS_MAX_CONTACT_EVENTS = 64,
+};
+
+// This is a deliberately flat copy type. It contains no Wicked or Jolt
+// pointers, so the Elisa side can retain events until the next poll call.
+typedef struct ElisaPhysicsContactEvent {
+    uint64_t entity_a;
+    uint64_t entity_b;
+    float position_x;
+    float position_y;
+    float position_z;
+    float normal_x;
+    float normal_y;
+    float normal_z;
+    float penetration_depth;
+    int32_t kind;
+    int32_t trigger;
+    uint64_t sequence;
+} ElisaPhysicsContactEvent;
+
 int32_t elisa_physics_v1_initialize(uint64_t* world_generation);
 int32_t elisa_physics_v1_probe_provider(void);
 int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
@@ -32,6 +56,17 @@ int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_seconds,
     uint64_t* tick);
+int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
+    ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,
+    uint32_t* dropped);
+int32_t elisa_physics_v1_contact_count(uint64_t world_generation,
+    uint32_t* count, uint32_t* dropped);
+int32_t elisa_physics_v1_contact_at(uint64_t world_generation, uint32_t index,
+    uint64_t* entity_a, uint64_t* entity_b,
+    float* position_x, float* position_y, float* position_z,
+    float* normal_x, float* normal_y, float* normal_z,
+    float* penetration_depth, int32_t* kind, int32_t* trigger, uint64_t* sequence);
+int32_t elisa_physics_v1_clear_contacts(uint64_t world_generation);
 int32_t elisa_physics_v1_body_position(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, float* x, float* y, float* z);
 int32_t elisa_physics_v1_set_sleeping(uint64_t world_generation, uint32_t slot,

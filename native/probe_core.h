@@ -12,7 +12,7 @@
 #include <vector>
 
 namespace probe {
-bool check_named(const char* probe_name, bool value, const char* message) {
+inline bool check_named(const char* probe_name, bool value, const char* message) {
     if (!value) {
         std::fprintf(stderr, "%s probe failed: %s\n", probe_name, message);
         return false;
@@ -20,11 +20,11 @@ bool check_named(const char* probe_name, bool value, const char* message) {
     return true;
 }
 
-bool check(bool value, const char* message) {
+inline bool check(bool value, const char* message) {
     return check_named("wicked", value, message);
 }
 
-bool load_manifest(const char* filename, std::map<std::string, std::string>& values) {
+inline bool load_manifest(const char* filename, std::map<std::string, std::string>& values) {
     std::ifstream input(filename);
     if (!input) {
         return false;
@@ -45,7 +45,7 @@ bool load_manifest(const char* filename, std::map<std::string, std::string>& val
 
 // "x,y;x,y;..." grid cells from the Elisa maze topology. Empty when the
 // manifest has no wall line, which keeps single-cube hosts working.
-std::vector<std::pair<int, int>> parse_walls(const std::string& spec) {
+inline std::vector<std::pair<int, int>> parse_walls(const std::string& spec) {
     std::vector<std::pair<int, int>> cells;
     size_t start = 0;
     while (start < spec.size()) {
@@ -67,7 +67,7 @@ std::vector<std::pair<int, int>> parse_walls(const std::string& spec) {
 // A tiny PCM WAV in memory: 16-bit mono at 8 kHz for 50 ms. No asset file is
 // needed to prove the audio path decodes bytes and reports real sample
 // information, which is stronger evidence than "a play call returned".
-std::vector<uint8_t> make_test_wav(int sample_count, int sample_rate) {
+inline std::vector<uint8_t> make_test_wav(int sample_count, int sample_rate) {
     const int data_bytes = sample_count * 2;
     const int file_bytes = 44 + data_bytes;
     std::vector<uint8_t> wav(file_bytes, 0);

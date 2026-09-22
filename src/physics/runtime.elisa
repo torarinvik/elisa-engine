@@ -16,6 +16,10 @@ module PhysicsRuntime:
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
 
+        const CONTACT_ADDED: i32 = 0
+        const CONTACT_PERSISTED: i32 = 1
+        const CONTACT_REMOVED: i32 = 2
+
         @callconv(c)
         extern elisa_physics_v1_initialize(world_generation: mutable u64&) -> i32
 
@@ -28,6 +32,21 @@ module PhysicsRuntime:
         @callconv(c)
         extern elisa_physics_v1_fixed_step(world_generation: u64,
             delta_seconds: f32, tick: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_contact_count(world_generation: u64,
+            count: mutable u32&, dropped: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_contact_at(world_generation: u64, index: u32,
+            entity_a: mutable u64&, entity_b: mutable u64&,
+            position_x: mutable f32&, position_y: mutable f32&, position_z: mutable f32&,
+            normal_x: mutable f32&, normal_y: mutable f32&, normal_z: mutable f32&,
+            penetration_depth: mutable f32&, kind: mutable i32&, trigger: mutable i32&,
+            sequence: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_clear_contacts(world_generation: u64) -> i32
 
         @callconv(c)
         extern elisa_physics_v1_body_position(world_generation: u64, slot: u32,
@@ -69,10 +88,33 @@ module PhysicsRuntime:
                     Status::BODY_DYNAMIC
 
     public:
+        const MAX_CONTACT_EVENTS: usize = 64
+
         enum BodyKind:
             Static
             Kinematic
             Dynamic
+
+        enum ContactKind:
+            Added
+            Persisted
+            Removed
+
+        struct ContactEvent:
+            entity_a: u64
+            entity_b: u64
+            position: Geometry::Vec3
+            normal: Geometry::Vec3
+            penetration_depth: f32
+            kind: ContactKind
+            trigger: bool
+            sequence: u64
+
+        struct ContactBuffer:
+            events: mutable ContactEvent[64]
+
+        def ContactBuffer() -> ContactBuffer:
+            ContactBuffer{events: zeroed}
 
         error PhysicsError:
             InvalidArgument
@@ -172,6 +214,42 @@ module PhysicsRuntime:
             state.tick <- tick
             tick
 
+        def service_poll_contacts(state: ServiceState&,
+            buffer: ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            count: mutable u32 = 0
+            native_dropped: mutable u32 = 0
+            try check_status(elisa_physics_v1_contact_count(state.generation,
+                &count, &native_dropped))
+            raise PhysicsError.Capacity if count > PhysicsRuntime::MAX_CONTACT_EVENTS.u32()
+            for index in 0..<count.usize() |buffer, state, index|:
+                entity_a: mutable u64 = 0
+                entity_b: mutable u64 = 0
+                position_x: mutable f32 = 0.0
+                position_y: mutable f32 = 0.0
+                position_z: mutable f32 = 0.0
+                normal_x: mutable f32 = 0.0
+                normal_y: mutable f32 = 0.0
+                normal_z: mutable f32 = 0.0
+                penetration_depth: mutable f32 = 0.0
+                kind: mutable i32 = 0
+                trigger: mutable i32 = 0
+                sequence: mutable u64 = 0
+                try check_status(elisa_physics_v1_contact_at(state.generation, index.u32(),
+                    &entity_a, &entity_b, &position_x, &position_y, &position_z,
+                    &normal_x, &normal_y, &normal_z, &penetration_depth, &kind,
+                    &trigger, &sequence))
+                contact_kind: ContactKind = ContactKind.Added if kind == PhysicsRuntime::CONTACT_ADDED else ContactKind.Persisted if kind == PhysicsRuntime::CONTACT_PERSISTED else ContactKind.Removed
+                buffer.events[index] <- ContactEvent{
+                    entity_a: entity_a, entity_b: entity_b,
+                    position: Geometry::Vec3{x: position_x, y: position_y, z: position_z},
+                    normal: Geometry::Vec3{x: normal_x, y: normal_y, z: normal_z},
+                    penetration_depth: penetration_depth, kind: contact_kind,
+                    trigger: trigger != 0, sequence: sequence}
+            try check_status(elisa_physics_v1_clear_contacts(state.generation))
+            dropped <- native_dropped
+            count.usize()
+
         def service_body_create(state: ServiceState&,
             description: BodyDesc) -> BodyHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
@@ -243,6 +321,42 @@ module PhysicsRuntime:
             try check_status(status)
             world.tick <- tick
             tick
+
+        def poll_contacts(world: World&,
+            buffer: ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            count: mutable u32 = 0
+            native_dropped: mutable u32 = 0
+            try check_status(elisa_physics_v1_contact_count(world.generation,
+                &count, &native_dropped))
+            raise PhysicsError.Capacity if count > PhysicsRuntime::MAX_CONTACT_EVENTS.u32()
+            for index in 0..<count.usize() |buffer, world, index|:
+                entity_a: mutable u64 = 0
+                entity_b: mutable u64 = 0
+                position_x: mutable f32 = 0.0
+                position_y: mutable f32 = 0.0
+                position_z: mutable f32 = 0.0
+                normal_x: mutable f32 = 0.0
+                normal_y: mutable f32 = 0.0
+                normal_z: mutable f32 = 0.0
+                penetration_depth: mutable f32 = 0.0
+                kind: mutable i32 = 0
+                trigger: mutable i32 = 0
+                sequence: mutable u64 = 0
+                try check_status(elisa_physics_v1_contact_at(world.generation, index.u32(),
+                    &entity_a, &entity_b, &position_x, &position_y, &position_z,
+                    &normal_x, &normal_y, &normal_z, &penetration_depth, &kind,
+                    &trigger, &sequence))
+                contact_kind: ContactKind = ContactKind.Added if kind == PhysicsRuntime::CONTACT_ADDED else ContactKind.Persisted if kind == PhysicsRuntime::CONTACT_PERSISTED else ContactKind.Removed
+                buffer.events[index] <- ContactEvent{
+                    entity_a: entity_a, entity_b: entity_b,
+                    position: Geometry::Vec3{x: position_x, y: position_y, z: position_z},
+                    normal: Geometry::Vec3{x: normal_x, y: normal_y, z: normal_z},
+                    penetration_depth: penetration_depth, kind: contact_kind,
+                    trigger: trigger != 0, sequence: sequence}
+            try check_status(elisa_physics_v1_clear_contacts(world.generation))
+            dropped <- native_dropped
+            count.usize()
 
         def committed_tick(world: World&) -> u64:
             world.tick
