@@ -1,6 +1,5 @@
-// Basis Universal KTX2 transcoding at the untrusted asset boundary: the cooked
-// KTX2 container is parsed and transcoded to RGBA on the CPU, so the engine
-// owns the selected texture format instead of depending on a host's loader.
+// CPU reference validation for cooked Basis KTX2 textures; runtime format
+// selection and GPU upload are exercised by the Wicked native probe.
 #include "probe_core.h"
 
 #include "basisu_transcoder.h"
@@ -12,8 +11,8 @@
 #include <vector>
 
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 3) {
-        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2]\n");
+    if (argc < 2 || argc > 4) {
+        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2]]\n");
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -47,10 +46,14 @@ int main(int argc, char** argv) {
     if (!probe::check(green, "transcoded pixels are the cooked green")) {
         return 1;
     }
+    uint8_t bc1_block[8] = {};
+    if (!probe::check(transcoder.transcode_image_level(
+        0, 0, 0, bc1_block, 1, basist::transcoder_texture_format::cTFBC1_RGB, 0, 1),
+        "opaque KTX2 transcodes to one BC1 block")) return 1;
     std::fprintf(stdout, "basisu transcode: %ux%u uastc=%d rgba_bytes=%u first=%u,%u,%u\n",
         width, height, transcoder.is_uastc() ? 1 : 0, (unsigned)rgba.size(),
         (unsigned)rgba[0], (unsigned)rgba[1], (unsigned)rgba[2]);
-    if (argc == 3) {
+    if (argc >= 3) {
         std::ifstream cube_input(argv[2], std::ios::binary);
         if (!probe::check(cube_input.good(), "KTX2 cubemap file readable")) return 1;
         const std::vector<uint8_t> cube_bytes(
@@ -83,6 +86,35 @@ int main(int argc, char** argv) {
             }
         }
         std::fprintf(stdout, "basisu cubemap transcode: faces=6\n");
+    }
+    if (argc == 4) {
+        std::ifstream alpha_input(argv[3], std::ios::binary);
+        if (!probe::check(alpha_input.good(), "KTX2 alpha file readable")) return 1;
+        const std::vector<uint8_t> alpha_bytes(
+            (std::istreambuf_iterator<char>(alpha_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder alpha;
+        if (!probe::check(alpha.init(alpha_bytes.data(), (uint32_t)alpha_bytes.size()),
+            "KTX2 alpha texture parses")) return 1;
+        if (!probe::check(alpha.get_width() == 4 && alpha.get_height() == 4 &&
+            alpha.get_layers() == 0 && alpha.get_faces() == 1 && alpha.get_has_alpha() != 0 && alpha.is_srgb(),
+            "KTX2 alpha and sRGB metadata preserved")) return 1;
+        if (!probe::check(alpha.start_transcoding(), "KTX2 alpha starts transcoding")) return 1;
+        std::vector<uint8_t> alpha_rgba(4 * 4 * 4);
+        if (!probe::check(alpha.transcode_image_level(
+            0, 0, 0, alpha_rgba.data(), 4 * 4,
+            basist::transcoder_texture_format::cTFRGBA32, 0, 4, 4),
+            "KTX2 alpha transcodes to RGBA")) return 1;
+        if (!probe::check(alpha_rgba[3] >= 90 && alpha_rgba[3] <= 165,
+            "KTX2 alpha values survive transcode")) return 1;
+        uint8_t bc7_block[16] = {};
+        if (!probe::check(alpha.transcode_image_level(
+            0, 0, 0, bc7_block, 1, basist::transcoder_texture_format::cTFBC7_RGBA, 0, 1),
+            "alpha KTX2 transcodes to one BC7 block")) return 1;
+        uint8_t bc3_block[16] = {};
+        if (!probe::check(alpha.transcode_image_level(
+            0, 0, 0, bc3_block, 1, basist::transcoder_texture_format::cTFBC3_RGBA, 0, 1),
+            "alpha KTX2 transcodes to one BC3 block")) return 1;
+        std::fprintf(stdout, "basisu alpha transcode: first_alpha=%u\n", (unsigned)alpha_rgba[3]);
     }
     return 0;
 }
