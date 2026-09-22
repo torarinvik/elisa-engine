@@ -44,22 +44,38 @@ public:
     using Wave = std::vector<Task>;
 
     bool run(const std::vector<Wave>& waves, size_t worker_limit) const {
+        return run(waves, worker_limit, nullptr);
+    }
+
+    class Cancellation {
+    public:
+        void request() { requested_.store(true); }
+        bool requested() const { return requested_.load(); }
+
+    private:
+        std::atomic<bool> requested_ = false;
+    };
+
+    bool run(const std::vector<Wave>& waves, size_t worker_limit,
+        Cancellation* cancellation) const {
         if (worker_limit == 0) return false;
         for (const Wave& wave : waves) {
             if (wave.empty() || wave.size() > worker_limit) return false;
+            if (cancellation != nullptr && cancellation->requested()) return false;
             std::atomic<bool> failed = false;
             WaveBarrier gate(wave.size() + 1);
             std::vector<std::thread> workers;
             workers.reserve(wave.size());
             for (const Task& task : wave) {
-                workers.emplace_back([&gate, &failed, &task] {
+                workers.emplace_back([&gate, &failed, task, cancellation] {
                     gate.arrive_and_wait();
+                    if (cancellation != nullptr && cancellation->requested()) return;
                     try { task(); } catch (...) { failed.store(true); }
                 });
             }
             gate.arrive_and_wait();
             for (std::thread& worker : workers) worker.join();
-            if (failed.load()) return false;
+            if (failed.load() || (cancellation != nullptr && cancellation->requested())) return false;
         }
         return true;
     }
@@ -91,7 +107,17 @@ inline bool probe_parallel_executor() {
         !check(!executor.run(waves, 1), "parallel executor enforces worker cap")) return false;
     std::vector<ParallelExecutor::Wave> failing;
     failing.push_back({[] { throw 1; }});
-    return check(!executor.run(failing, 1), "parallel executor propagates task failure");
+    if (!check(!executor.run(failing, 1), "parallel executor propagates task failure")) return false;
+    ParallelExecutor::Cancellation cancellation;
+    std::atomic<int> cancellation_runs = 0;
+    std::vector<ParallelExecutor::Wave> cancellable;
+    cancellable.push_back({[&] {
+        cancellation_runs.fetch_add(1);
+        cancellation.request();
+    }});
+    cancellable.push_back({[&] { cancellation_runs.fetch_add(1); }});
+    return check(!executor.run(cancellable, 1, &cancellation) && cancellation_runs.load() == 1,
+        "parallel executor joins and cancels before the next wave");
 }
 
 } // namespace probe
