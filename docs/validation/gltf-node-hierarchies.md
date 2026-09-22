@@ -86,9 +86,13 @@ destroying the root makes later activation return `UnknownHandle`.
 `RenderScene::imported_mesh(handle, index)` similarly returns an opaque
 `ImportedMeshHandle` for the root or any authored child placement. Its
 visibility and local transform can be changed without exposing a Wicked entity;
-invalid indices and stale roots remain checked at the native boundary. The
-native imported-scene cases use the hierarchy and scene-metadata fixtures in
-the SDL3/Metal smoke.
+invalid indices and stale roots remain checked at the native boundary.
+`RenderScene::imported_light(handle, index)` returns an opaque
+`ImportedLightHandle`; `set_imported_light_cast_shadow` changes the authored
+light's shadow flag while retaining the same root-generation check. The native
+imported-scene cases use the hierarchy and scene-metadata fixtures in the
+SDL3/Metal smoke and verify light shadow toggles before and after root
+destruction.
 
 ## Evidence
 

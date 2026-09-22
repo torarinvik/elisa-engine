@@ -100,6 +100,8 @@ int32_t elisa_render_scene_v1_update_imported_mesh_transform(
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz);
+int32_t elisa_render_scene_v1_set_imported_light_cast_shadow(
+    int64_t handle, uint32_t index, int32_t enabled);
 // Draws source's mesh and material again at another transform. Wicked renders
 // every object naming one mesh entity from that mesh's buffers, so repeated
 // props load and upload once. The color multiplies the source material's base

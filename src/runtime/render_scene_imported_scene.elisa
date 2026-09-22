@@ -25,6 +25,9 @@ extend RenderScene:
             px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32,
             sx: f32, sy: f32, sz: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_imported_light_cast_shadow(
+            handle: i64, index: u32, enabled: i32) -> i32
 
         def imported_count(status: i32) -> u32 error[RenderSceneError]:
             if status < 0:
@@ -43,6 +46,11 @@ extend RenderScene:
                 index: u32
 
         struct ImportedMeshHandle:
+            private:
+                owner: InstanceHandle
+                index: u32
+
+        struct ImportedLightHandle:
             private:
                 owner: InstanceHandle
                 index: u32
@@ -88,6 +96,16 @@ extend RenderScene:
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
+
+        def imported_light(handle: InstanceHandle, index: u32) -> ImportedLightHandle error[RenderSceneError]:
+            count: u32 = try imported_light_count(handle)
+            raise RenderSceneError.InvalidValue if index >= count
+            ImportedLightHandle{owner: handle, index: index}
+
+        def set_imported_light_cast_shadow(light: ImportedLightHandle,
+            enabled: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_imported_light_cast_shadow(
+                light.owner.native_value, light.index, 1 if enabled else 0))
 
         def activate_imported_camera(camera: ImportedCameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_activate_imported_camera(

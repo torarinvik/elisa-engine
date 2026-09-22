@@ -135,6 +135,10 @@ module RenderSceneImportedSceneNativeTests:
             handle: RenderScene::InstanceHandle, index: u32,
             px: f32, py: f32, pz: f32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_imported_light_casts_shadow(
+            handle: RenderScene::InstanceHandle, index: u32) -> i32
+
     public:
         def exercise() -> i32:
             hierarchy_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -193,28 +197,48 @@ module RenderSceneImportedSceneNativeTests:
                 error failure: return 17
             imported_valid: bool = imported.mesh_count == 1 and imported.camera_count == 2 and imported.light_count == 2
             return 18 if RenderScene::instance_count() != 5 or not imported_valid
+            light: RenderScene::ImportedLightHandle = catch RenderScene::imported_light(imported_mesh, 0):
+                value: value
+                error failure: return 19
+            initial_light_shadow: i32 = elisa_render_scene_v1_test_imported_light_casts_shadow(
+                imported_mesh, 0)
+            return 20 if initial_light_shadow != 0
+            enabled_light_shadow: i32 = catch RenderScene::set_imported_light_cast_shadow(light, true):
+                ok: 0
+                error failure: 1
+            return 21 if enabled_light_shadow != 0 or elisa_render_scene_v1_test_imported_light_casts_shadow(
+                imported_mesh, 0) != 1
+            disabled_light_shadow: i32 = catch RenderScene::set_imported_light_cast_shadow(light, false):
+                ok: 0
+                error failure: 1
+            return 22 if disabled_light_shadow != 0 or elisa_render_scene_v1_test_imported_light_casts_shadow(
+                imported_mesh, 0) != 0
             camera: RenderScene::ImportedCameraHandle = catch RenderScene::imported_camera(
                 imported_mesh, 1):
                 value: value
-                error failure: return 19
+                error failure: return 23
             activated: i32 = catch RenderScene::activate_imported_camera(camera):
                 ok: 0
                 error failure: 1
-            return 20 if activated != 0
+            return 24 if activated != 0
             invalid_camera: i32 = catch RenderScene::imported_camera(imported_mesh, imported.camera_count):
                 value: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
-            return 21 if invalid_camera != 1
+            return 25 if invalid_camera != 1
             _ = catch RenderScene::activate_default_camera():
                 ok: 0
-                error failure: return 22
+                error failure: return 26
             destroyed: i32 = catch RenderScene::destroy(imported_mesh):
                 ok: 0
-                error failure: 23
+                error failure: 27
             stale_camera: i32 = catch RenderScene::activate_imported_camera(camera):
                 ok: 0
                 RenderScene::RenderSceneError.UnknownHandle: 1
                 error failure: 2
-            return 24 if destroyed != 0 or stale_camera != 1 or RenderScene::instance_count() != 4
+            stale_light: i32 = catch RenderScene::set_imported_light_cast_shadow(light, true):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 28 if destroyed != 0 or stale_camera != 1 or stale_light != 1 or RenderScene::instance_count() != 4
             0

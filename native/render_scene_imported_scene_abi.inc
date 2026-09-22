@@ -18,6 +18,20 @@ static int32_t resolve_imported_mesh(RenderSceneService& state, int64_t handle,
     return ELISA_RENDER_SCENE_OK;
 }
 
+static int32_t resolve_imported_light(RenderSceneService& state, int64_t handle,
+    uint32_t index, wi::ecs::Entity& entity) {
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    const InstanceSlot& instance = state.instances[slot];
+    if (index >= instance.imported_light_handles.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (state.lighting == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    entity = state.lighting->entity(instance.imported_light_handles[index]);
+    if (entity == wi::ecs::INVALID_ENTITY) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_imported_mesh_count(int64_t handle) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -98,5 +112,19 @@ extern "C" int32_t elisa_render_scene_v1_update_imported_mesh_transform(
     wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
     if (transform == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     apply_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_imported_light_cast_shadow(
+    int64_t handle, uint32_t index, int32_t enabled) {
+    if (enabled != 0 && enabled != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
+    const int32_t status = resolve_imported_light(state, handle, index, entity);
+    if (status != ELISA_RENDER_SCENE_OK) return status;
+    wi::scene::LightComponent* light = state.scene->lights.GetComponent(entity);
+    if (light == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    light->SetCastShadow(enabled != 0);
     return ELISA_RENDER_SCENE_OK;
 }

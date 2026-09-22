@@ -54,3 +54,17 @@ extern "C" int32_t elisa_render_scene_v1_test_imported_mesh_position(
         std::fabs(transform->translation_local.y - expected.y) < 1.0e-5f &&
         std::fabs(transform->translation_local.z - expected.z) < 1.0e-5f ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_imported_light_casts_shadow(
+    int64_t handle, uint32_t index) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.lighting == nullptr) return -1;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return -1;
+    const InstanceSlot& instance = state.instances[slot];
+    if (index >= instance.imported_light_handles.size()) return -1;
+    const wi::ecs::Entity entity = state.lighting->entity(instance.imported_light_handles[index]);
+    const wi::scene::LightComponent* light = state.scene->lights.GetComponent(entity);
+    return light == nullptr ? -1 : (light->IsCastingShadow() ? 1 : 0);
+}

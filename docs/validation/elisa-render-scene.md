@@ -341,6 +341,11 @@ each authored child in depth-first order. `set_imported_mesh_visible` and
 handle; group 79 hides and restores a child, updates its Elisa-space local
 translation, rejects an out-of-range index, and then destroys the root.
 
+`RenderScene::imported_light` returns an opaque handle for an authored light.
+`set_imported_light_cast_shadow` toggles that light's Wicked shadow flag while
+keeping the entity and light generation private; group 79 verifies both
+transitions and stale-handle rejection after root destruction.
+
 `RenderScene::set_cast_shadow` controls the Wicked material and object shadow
 flags for a direct scene instance. It accepts only a checked instance handle,
 marks the material dirty, and can toggle a source before it is cloned. Group
