@@ -117,6 +117,7 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
     constexpr size_t DEFAULT_WARMUP_CYCLES = 16;
     constexpr size_t MAX_RESTART_CYCLES = 4096;
     constexpr size_t RESTART_RENDER_FRAMES = 2;
+    constexpr size_t FULL_SCENE_OBJECTS = 40;
     size_t restart_cycles = 0;
     size_t warmup_cycles = 0;
     if (!read_scene_restart_count("ELISA_SCENE_RESTART_CYCLES", DEFAULT_RESTART_CYCLES,
@@ -140,24 +141,34 @@ inline bool probe_in_process_scene_restarts(NativeApplication& host) {
                 NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
             {
                 wi::scene::Scene scene;
-                const auto cube = scene.Entity_CreateCube("scene_restart_cube");
+                bool entities_ready = true;
+                for (size_t index = 0; index < FULL_SCENE_OBJECTS; ++index) {
+                    const auto entity = scene.Entity_CreateCube(
+                        "scene_restart_object_" + std::to_string(index));
+                    auto* transform = scene.transforms.GetComponent(entity);
+                    auto* material = scene.materials.GetComponent(entity);
+                    if (entity == wi::ecs::INVALID_ENTITY || transform == nullptr || material == nullptr) {
+                        entities_ready = false;
+                        break;
+                    }
+                    transform->translation_local = XMFLOAT3(
+                        float(index % 8) - 3.5f, 0.0f, float(index / 8) - 2.0f);
+                    transform->scale_local = XMFLOAT3(0.35f, 0.35f, 0.35f);
+                    transform->UpdateTransform();
+                    material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
+                    material->baseColor = XMFLOAT4(
+                        0.15f + 0.02f * float(index % 8),
+                        0.35f + 0.01f * float(index / 8), 0.8f, 1.0f);
+                }
                 const auto camera = scene.Entity_CreateCamera("scene_restart_camera", 320, 200);
                 const auto lamp = scene.Entity_CreateLight("scene_restart_light");
-                auto* cube_transform = scene.transforms.GetComponent(cube);
-                auto* cube_material = scene.materials.GetComponent(cube);
                 auto* camera_transform = scene.transforms.GetComponent(camera);
                 auto* camera_component = scene.cameras.GetComponent(camera);
-                bool entities_ready = cube != wi::ecs::INVALID_ENTITY &&
-                    camera != wi::ecs::INVALID_ENTITY && lamp != wi::ecs::INVALID_ENTITY &&
-                    cube_transform != nullptr && cube_material != nullptr &&
+                entities_ready = entities_ready && camera != wi::ecs::INVALID_ENTITY &&
+                    lamp != wi::ecs::INVALID_ENTITY &&
                     camera_transform != nullptr && camera_component != nullptr;
                 if (entities_ready) {
-                    cube_transform->translation_local = XMFLOAT3(0, 0, 1);
-                    cube_transform->scale_local = XMFLOAT3(0.5f, 0.5f, 0.5f);
-                    cube_transform->UpdateTransform();
-                    cube_material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
-                    cube_material->baseColor = XMFLOAT4(0.2f, 0.7f, 1.0f, 1.0f);
-                    camera_transform->translation_local = XMFLOAT3(0, 0, -5);
+                    camera_transform->translation_local = XMFLOAT3(0, 4.5f, -8.0f);
                     camera_transform->UpdateTransform();
                     camera_component->TransformCamera(*camera_transform);
                     camera_component->UpdateCamera();

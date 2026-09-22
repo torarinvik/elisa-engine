@@ -446,3 +446,42 @@ Together with the zero-leak cycle-1/cycle-8 diff, cleared application handles,
 and fixed Lua global-table count, the two long soaks support bounded allocator
 and framework variation rather than accumulating scene, application, or GPU
 resources. F05 is complete.
+
+## Full-scene in-process restart probe (macOS 27.0, 2026-09-22)
+
+The restart probe now creates a bounded authored scene for every in-process host
+cycle instead of testing only one cube. Each scene contains 40 Wicked cube
+objects arranged as a grid, a camera, and a light. It renders two frames, waits
+for GPU completion, clears the scene, and verifies that all component stores are
+empty before the next host cycle.
+
+The focused run passed:
+
+```text
+ELISA_SCENE_RESTART_ONLY=1
+ELISA_SCENE_RESTART_CYCLES=3
+ELISA_SCENE_RESTART_WARMUP_CYCLES=1
+  build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  "$PWD/backends/scene_manifest.txt" build/full-scene-restart.png alwaysactive
+
+in-process scene restart: cycles=3 warmup_cycles=1 measured_cycles=2
+  rendered=1 components_cleared=1 gpu_delta_bytes=-294912 heap_delta_bytes=145008
+```
+
+A longer confirmation also passed:
+
+```text
+ELISA_SCENE_RESTART_ONLY=1
+ELISA_SCENE_RESTART_CYCLES=16
+ELISA_SCENE_RESTART_WARMUP_CYCLES=4
+  build/wicked-native-probe "$PWD/../WickedEngine/WickedEngine" \
+  "$PWD/backends/scene_manifest.txt" build/full-scene-restart-16.png alwaysactive
+
+in-process scene restart: cycles=16 warmup_cycles=4 measured_cycles=12
+  rendered=1 components_cleared=1 gpu_delta_bytes=0 heap_delta_bytes=4272
+```
+
+This closes the previous empty-scene coverage gap for repeated full-scene
+ownership and teardown. The imported Amazing Labyrinth bundle still needs its
+own reproduction because that scene previously hung during the second host
+initialization on Metal.

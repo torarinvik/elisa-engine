@@ -106,6 +106,17 @@ instance, and reports `UnknownHandle` for a retired instance. The SDL3/Metal
 smoke checks idle and stale-handle behavior; gameplay can use the value to
 synchronize authored cues without duplicating clip-duration state.
 
+`RenderScene::play_animation_blended` (from `render_scene_animation_blend.elisa`)
+adds an `AnimationTransition`: `eased` fades with a smoothstep instead of a
+straight line, `phase_matched` starts the next looping clip at the old clip's
+normalized time so cycles stay in step, and `continue_same_clip` keeps a
+re-requested clip running with only its speed and looping updated.
+`RenderScene::set_animation_speed` retimes the active clip without restarting it
+or starting a fade. The SDL3/Metal smoke (`test/render_scene_animation_blend_native.elisa`)
+checks the kept phase, the 0.15625 eased weight a quarter of the way into a fade
+against the linear 0.25, and the refusals for out-of-range speeds and unskinned
+instances.
+
 Calling `RenderScene::shutdown` releases the render path and all owned scene
 resources. The engine also registers a shutdown hook: application shutdown
 detaches the active path, then releases the scene before Wicked tears down its
