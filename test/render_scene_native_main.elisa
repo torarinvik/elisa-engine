@@ -1,5 +1,6 @@
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_quality_profile.elisa"
 include "../src/runtime/render_scene_visibility.elisa"
 include "../src/runtime/render_scene_quality_profile.elisa"
 include "../src/runtime/render_scene_animation_submission.elisa"
@@ -117,7 +118,6 @@ def exercise_render_scene() -> i32:
 
     animation_submission_status: i32 = RenderSceneAnimationSubmissionNativeTests::exercise()
     return 79 + animation_submission_status if animation_submission_status != 0
-
     environment_test_status: i32 = RenderSceneEnvironmentNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(197, environment_test_status) if environment_test_status != 0
     lighting_test_status: i32 = RenderSceneLightingNativeTests::exercise()
