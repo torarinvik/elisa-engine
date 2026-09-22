@@ -9,6 +9,7 @@ project-relative asset paths while a user launches the app from Finder.
 from __future__ import annotations
 
 import argparse
+import json
 import plistlib
 import re
 import shutil
@@ -18,6 +19,43 @@ from pathlib import Path
 
 class PackageError(ValueError):
     """The project or release bundle is not packageable."""
+
+
+def load_project_manifest(project: Path) -> dict[str, object]:
+    manifest = project / "elisa.project.json"
+    if not manifest.is_file():
+        return {}
+    try:
+        value = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise PackageError(f"could not read {manifest}: {error}") from error
+    if not isinstance(value, dict):
+        raise PackageError(f"{manifest} must contain a JSON object")
+    return value
+
+
+def manifest_application(manifest: dict[str, object], project: Path) -> tuple[str, str, Path]:
+    raw_name = manifest.get("name", project.name)
+    application = manifest.get("application", {})
+    if not isinstance(application, dict):
+        raise PackageError("project application settings must be an object")
+    title = application.get("title", raw_name)
+    if not isinstance(title, str) or not title.strip():
+        raise PackageError("project application title must be a non-empty string")
+    name = safe_bundle_name(title)
+    output_value = manifest.get("output", f"build/{name}")
+    if not isinstance(output_value, str) or not output_value or "\0" in output_value:
+        raise PackageError("project output must be a non-empty path")
+    executable = Path(output_value).expanduser()
+    if not executable.is_absolute():
+        executable = project / executable
+    bundle_id = application.get("bundle_id", "")
+    if not isinstance(bundle_id, str):
+        raise PackageError("application bundle_id must be a string when provided")
+    if not bundle_id:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "application"
+        bundle_id = f"org.elisa.{slug}"
+    return name, bundle_id, executable.resolve()
 
 
 def safe_bundle_name(value: str) -> str:
@@ -111,13 +149,11 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--project", type=Path, required=True,
         help="Elisa project directory")
     parser.add_argument("--executable", type=Path,
-        help="built executable (defaults to project/build/amazing-labyrinth)")
+        help="built executable (defaults to the manifest's output)")
     parser.add_argument("--output", type=Path,
         help=".app destination (defaults to project/build/<name>.app)")
-    parser.add_argument("--name", default="Amazing Labyrinth",
-        help="display and launcher name")
-    parser.add_argument("--bundle-id", default="org.elisa.amazing-labyrinth",
-        help="CFBundleIdentifier")
+    parser.add_argument("--name", help="display and launcher name (defaults to the manifest title)")
+    parser.add_argument("--bundle-id", help="CFBundleIdentifier (defaults to org.elisa.<name>)")
     parser.add_argument("--version", default="0.1.0",
         help="CFBundleShortVersionString and CFBundleVersion")
     parser.add_argument("--icon", type=Path,
@@ -129,11 +165,19 @@ def main() -> int:
     options = parse_arguments()
     try:
         project = options.project.expanduser().resolve()
-        name = safe_bundle_name(options.name)
-        executable = options.executable or project / "build" / "amazing-labyrinth"
+        manifest = load_project_manifest(project)
+        manifest_name, manifest_bundle_id, manifest_executable = manifest_application(
+            manifest, project)
+        name = safe_bundle_name(options.name) if options.name else manifest_name
+        bundle_id = options.bundle_id or manifest_bundle_id
+        executable = options.executable or manifest_executable
         output = options.output or project / "build" / f"{name}.app"
-        app = package_app(project, executable, output, name, options.bundle_id,
-            options.version, options.icon)
+        icon = options.icon
+        if icon is None:
+            candidate = project / "resources" / "AppIcon.icns"
+            icon = candidate if candidate.is_file() else None
+        app = package_app(project, executable, output, name, bundle_id,
+            options.version, icon)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
