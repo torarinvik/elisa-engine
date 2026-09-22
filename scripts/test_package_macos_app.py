@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import plistlib
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -110,6 +111,36 @@ class PackageMacosAppTests(unittest.TestCase):
         missing = self.write_manifest({"package": {"resources": ["assets/missing.png"]}})
         with self.assertRaises(packager.PackageError):
             self.package(missing)
+
+    def test_linked_libraries_are_bundled_transitively(self) -> None:
+        clang = shutil.which("clang")
+        if clang is None or shutil.which("install_name_tool") is None:
+            self.skipTest("clang and install_name_tool are required")
+        prefix = Path(self.tempdir.name) / "opt prefix" / "lib"
+        prefix.mkdir(parents=True)
+        touch(prefix / "deep.c", b"int deep_value(void) { return 4; }\n")
+        touch(prefix / "tiny.c", b"int deep_value(void);\nint tiny_value(void) { return deep_value() + 3; }\n")
+        touch(self.project / "main.c", b"#include <stdio.h>\nint tiny_value(void);\n"
+            b"int main(void) { printf(\"%d\\n\", tiny_value()); return 0; }\n")
+        deep = prefix / "libdeep.1.dylib"
+        tiny = prefix / "libtiny.1.dylib"
+        subprocess.run([clang, "-dynamiclib", "-install_name", str(deep), "-o", str(deep),
+            str(prefix / "deep.c")], check=True)
+        subprocess.run([clang, "-dynamiclib", "-install_name", str(tiny), "-o", str(tiny),
+            str(prefix / "tiny.c"), str(deep)], check=True)
+        subprocess.run([clang, "-o", str(self.project / "build" / "game"),
+            str(self.project / "main.c"), str(tiny)], check=True)
+        app = self.package(self.write_manifest({"package": {"resources": ["assets/audio"]}}))
+        frameworks = app / "Contents" / "Frameworks"
+        self.assertEqual({path.name for path in frameworks.iterdir()},
+            {"libdeep.1.dylib", "libtiny.1.dylib"})
+        binary = app / "Contents" / "Resources" / "Game.bin"
+        self.assertIn("@rpath/libtiny.1.dylib", packager.linked_libraries(binary))
+        self.assertIn("@rpath/libdeep.1.dylib", packager.linked_libraries(frameworks / "libtiny.1.dylib"))
+        shutil.rmtree(prefix)
+        result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
+            capture_output=True, text=True, check=True, cwd=self.tempdir.name)
+        self.assertEqual(result.stdout.strip(), "7")
 
     def test_symlinked_resource_is_rejected(self) -> None:
         os.symlink(self.project / "assets" / "source", self.project / "assets" / "link")
