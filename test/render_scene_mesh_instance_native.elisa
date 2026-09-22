@@ -4,7 +4,6 @@
 # last clone goes.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene_instancing.elisa"
-include "../src/runtime/render_scene_shadow.elisa"
 
 module RenderSceneMeshInstanceNativeTests:
     private:
