@@ -451,6 +451,16 @@ module World:
             WorldHierarchy::hierarchy_update(&world.hierarchy)
             raise WorldError.InvalidReference if not sync_registry_from_hierarchy(world)
 
+        # Command buffers use this read-only preflight so an invalid reference
+        # is rejected before any earlier command in the same batch can mutate
+        # the primary world.
+        def world_can_reparent(world: World&, child: EntityRef, parent: EntityRef) -> bool:
+            return false if registry_slot(world, child) == Sentinel::WORLD_INVALID_SLOT
+            return false if not WorldReference::epoch_matches(world.epoch, parent.world_epoch)
+            return false if parent.id != WorldHierarchy::ROOT and registry_slot(world, parent) == Sentinel::WORLD_INVALID_SLOT
+            return false if WorldHierarchy::would_cycle(&world.hierarchy, child.id, parent.id)
+            true
+
         def world_hierarchy_sample(world: World&, reference: EntityRef,
             alpha: f32, transform: mutable Geometry::Transform&) -> bool:
             return false if registry_slot(world, reference) == Sentinel::WORLD_INVALID_SLOT

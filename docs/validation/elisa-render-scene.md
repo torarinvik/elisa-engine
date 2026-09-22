@@ -265,10 +265,10 @@ table, verifies the next creation is rejected, and destroys the entries.
 Text measurement/layout, font selection, input focus and full widget behavior
 remain separate capabilities.
 
-`RenderScene::create_overlay_image` draws a project-bounded PNG (an atlas of
+`RenderScene::create_overlay_image` draws a project-bounded image (an atlas of
 input glyphs, for example) as a screen-space sprite on the same 2D path, with
-position, size, sub-rectangle UV, color/opacity and visibility setters. See
-[`overlay-image.md`](overlay-image.md).
+position, size, normalized sub-rectangle UV, color/opacity and visibility
+setters. See [`overlay-image.md`](overlay-image.md).
 
 `RenderScene::create_light` accepts the validated backend-neutral directional,
 point, and spot descriptors from `Lighting`. It returns an opaque,

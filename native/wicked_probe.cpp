@@ -60,6 +60,7 @@
 #include "selection_outline_bridge.h"
 #include "visibility_lod_bridge.h"
 #include "parallel_executor.h"
+#include "replay_trace.h"
 #include "snapshot_asset_worker_probe.h"
 #include "world_event_bridge.h"
 #include "lighting_bridge.h"
@@ -125,6 +126,7 @@ int main(int argc, char** argv) {
     if (!probe_physics_contact_queue()) return 1;
     if (!probe_action_input_bridge()) return 1;
     if (!probe_parallel_executor()) return 1;
+    if (!probe_replay_trace()) return 1;
     if (!probe_snapshot_asset_worker()) return 1;
     if (!probe_world_event_bridge()) return 1;
     if (!probe_lighting_bridge(scene)) return 1;

@@ -1,6 +1,7 @@
 # Deferred structural mutation. A phase records values only; commit is the one
 # boundary that accepts or rejects the complete batch.
 include "./hierarchy.elisa"
+include "./rollback.elisa"
 
 module WorldCommands:
     public:
@@ -22,10 +23,30 @@ module WorldCommands:
                 commands: mutable Command[WorldCommands::MAX_COMMANDS]
                 count: mutable usize
 
+        const MAX_WORLD_COMMANDS: usize = 128
+
+        struct WorldCommand:
+            kind: Kind
+            entity: World::EntityRef
+            parent: World::EntityRef
+            spawn_kind: World::Entity
+            keep_world: bool
+
+        affine struct WorldBuffer:
+            private:
+                commands: mutable WorldCommand[WorldCommands::MAX_WORLD_COMMANDS]
+                count: mutable usize
+
         def Buffer() -> Buffer:
             Buffer{commands: zeroed, count: 0}
 
+        def WorldBuffer() -> WorldBuffer:
+            WorldBuffer{commands: zeroed, count: 0}
+
         def command_count(buffer: Buffer&) -> usize:
+            buffer.count
+
+        def world_command_count(buffer: WorldBuffer&) -> usize:
             buffer.count
 
         def append(buffer: mutable Buffer&, command: Command) -> bool:
@@ -68,6 +89,104 @@ module WorldCommands:
 
         def commit(buffer: mutable Buffer&) -> bool:
             commit_with_capacity(buffer, WorldCommands::MAX_COMMANDS)
+
+        def world_spawn(buffer: mutable WorldBuffer&, kind: World::Entity) -> bool:
+            return false if kind is World::Entity.Unknown or buffer.count >= WorldCommands::MAX_WORLD_COMMANDS
+            buffer.commands[buffer.count] <- WorldCommand{
+                kind: Kind.Spawn,
+                entity: World::EntityRef{world_epoch: -1, id: -1},
+                parent: World::EntityRef{world_epoch: -1, id: -1},
+                spawn_kind: kind,
+                keep_world: false,
+            }
+            buffer.count <- buffer.count + 1
+            true
+
+        def world_despawn(buffer: mutable WorldBuffer&, entity: World::EntityRef) -> bool:
+            return false if entity.world_epoch <= 0 or entity.id <= 0 or buffer.count >= WorldCommands::MAX_WORLD_COMMANDS
+            buffer.commands[buffer.count] <- WorldCommand{
+                kind: Kind.Despawn,
+                entity: entity,
+                parent: World::EntityRef{world_epoch: -1, id: -1},
+                spawn_kind: World::Entity.Unknown,
+                keep_world: false,
+            }
+            buffer.count <- buffer.count + 1
+            true
+
+        def world_reparent(buffer: mutable WorldBuffer&, entity: World::EntityRef,
+            parent: World::EntityRef, keep_world: bool) -> bool:
+            return false if entity.world_epoch <= 0 or entity.id <= 0 or parent.world_epoch <= 0 or parent.id < WorldHierarchy::ROOT or buffer.count >= WorldCommands::MAX_WORLD_COMMANDS
+            buffer.commands[buffer.count] <- WorldCommand{
+                kind: Kind.Reparent,
+                entity: entity,
+                parent: parent,
+                spawn_kind: World::Entity.Unknown,
+                keep_world: keep_world,
+            }
+            buffer.count <- buffer.count + 1
+            true
+
+        private:
+            def world_command_valid(world: World::World&, command: WorldCommand) -> bool:
+                match command.kind:
+                    Kind.Spawn:
+                        not (command.spawn_kind is World::Entity.Unknown) and World::world_live_count(world) < World::MAX_ENTITIES
+                    Kind.Despawn:
+                        World::world_is_live(world, command.entity)
+                    Kind.Reparent:
+                        World::world_can_reparent(world, command.entity, command.parent)
+
+            def world_commands_conflict(left: WorldCommand, right: WorldCommand) -> bool:
+                left.kind != Kind.Spawn and right.kind != Kind.Spawn and left.entity.world_epoch == right.entity.world_epoch and left.entity.id == right.entity.id
+
+            def world_batch_valid(buffer: WorldBuffer&, world: World::World&) -> bool:
+                for index in 0..<buffer.count |valid: bool = true| -> valid:
+                    valid <- false if not world_command_valid(world, buffer.commands[index])
+                    duplicate_free: bool =
+                        for earlier in 0..<index |inner: bool = true| -> inner:
+                            inner <- false if world_commands_conflict(buffer.commands[index], buffer.commands[earlier])
+                    valid <- valid and duplicate_free
+
+            def restore_world_snapshot(world: mutable World::World&, snapshot: World::Rollback::Snapshot&) -> bool:
+                catch World::Rollback::restore(world, snapshot):
+                    ok: true
+                    error failure: false
+
+            def apply_world_command(world: mutable World::World&, command: WorldCommand) -> bool:
+                match command.kind:
+                    Kind.Spawn:
+                        spawned: World::EntityRef = catch World::world_spawn(world, command.spawn_kind):
+                            value: value
+                            error failure: World::EntityRef{world_epoch: -1, id: -1}
+                        spawned.id > 0
+                    Kind.Despawn:
+                        removed: bool = catch World::world_despawn(world, command.entity):
+                            ok: true
+                            error failure: false
+                        removed
+                    Kind.Reparent:
+                        reparented: bool = catch World::world_reparent(world, command.entity, command.parent, command.keep_world):
+                            ok: true
+                            error failure: false
+                        reparented
+
+        public:
+            def commit_world(buffer: mutable WorldBuffer&, world: mutable World::World&) -> bool:
+                return false if buffer.count > WorldCommands::MAX_WORLD_COMMANDS
+                return false if not world_batch_valid(buffer, world)
+                snapshot: mutable World::Rollback::Snapshot = catch World::Rollback::capture(world):
+                    value: World::Rollback::Snapshot()
+                    error failure: return false
+                accepted: mutable bool = true
+                for index in 0..<buffer.count |accepted|:
+                    accepted <- apply_world_command(world, buffer.commands[index]) if accepted
+                if not accepted:
+                    restored: bool = restore_world_snapshot(world, &snapshot)
+                    return false if not restored
+                    return false
+                buffer.count <- 0
+                true
 
         private:
             def apply_hierarchy_command(hierarchy: mutable WorldHierarchy::Hierarchy&, command: Command) -> bool:

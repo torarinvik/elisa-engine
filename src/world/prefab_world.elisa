@@ -1,0 +1,226 @@
+include "./prefab.elisa"
+include "./commands.elisa"
+
+# Runtime prefab instances own real World references. Authoring IDs stay inside
+# the definition; every instance receives a bounded, checked mapping into one
+# primary World and can be destroyed without leaking native identity.
+module PrefabWorld:
+    public:
+        const MAX_NODES: usize = Prefab::MAX_NODES
+
+        struct Binding:
+            authoring_id: i64
+            parent_authoring_id: i64
+            reference: World::EntityRef
+            local: Geometry::Transform
+
+        affine struct Instance:
+            private:
+                prefab_id: mutable i64
+                instance_id: mutable i64
+                bindings: mutable Binding[PrefabWorld::MAX_NODES]
+                binding_count: mutable usize
+
+        def Instance() -> Instance:
+            Instance{prefab_id: 0, instance_id: 0, bindings: zeroed, binding_count: 0}
+
+        const MAX_GROUP_INSTANCES: usize = 8
+
+        affine struct Group:
+            private:
+                instances: mutable Instance[PrefabWorld::MAX_GROUP_INSTANCES]
+                count: mutable usize
+
+        def Group() -> Group:
+            Group{instances: zeroed, count: 0}
+
+        private:
+            def binding_slot(instance: Instance&, authoring_id: i64) -> usize:
+                for index in 0..<instance.binding_count |slot: usize = PrefabWorld::MAX_NODES| -> slot:
+                    break index if instance.bindings[index].authoring_id == authoring_id
+
+            def invalid_reference() -> World::EntityRef:
+                World::EntityRef{world_epoch: -1, id: -1}
+
+            def clear(instance: mutable Instance&) -> void:
+                instance.prefab_id <- 0
+                instance.instance_id <- 0
+                instance.binding_count <- 0
+
+            def cleanup(instance: mutable Instance&, world: mutable World::World&) -> void:
+                commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+                for index in 0..<instance.binding_count |instance|:
+                    _ = WorldCommands::world_despawn(&commands, instance.bindings[index].reference)
+                _ = WorldCommands::commit_world(&commands, world)
+                clear(instance)
+
+            def definition_world_pose(definition: Prefab::Definition&, index: usize) -> Geometry::Transform:
+                return Geometry::transform_identity() if index >= definition.node_count
+                node: Prefab::Node = definition.nodes[index]
+                ancestor_slots: mutable usize[PrefabWorld::MAX_NODES] = zeroed
+                ancestor_count: mutable usize = 0
+                cursor: mutable i64 = node.parent_id
+                for _ in 0..<PrefabWorld::MAX_NODES |ancestor_slots, ancestor_count, cursor|:
+                    break if cursor == Prefab::ROOT
+                    parent_slot: usize = Prefab::node_slot(definition, cursor)
+                    break if parent_slot == PrefabWorld::MAX_NODES or ancestor_count >= PrefabWorld::MAX_NODES
+                    ancestor_slots[ancestor_count] <- parent_slot
+                    ancestor_count <- ancestor_count + 1
+                    cursor <- definition.nodes[parent_slot].parent_id
+                pose: mutable Geometry::Transform = node.local
+                for depth in 0..<ancestor_count |ancestor_slots, ancestor_count, pose|:
+                    ancestor_index: usize = ancestor_count - depth - 1
+                    pose <- Geometry::transform_compose(
+                        definition.nodes[ancestor_slots[ancestor_index]].local, pose)
+                pose
+
+            def all_live(instance: Instance&, world: World::World&) -> bool:
+                for index in 0..<instance.binding_count:
+                    return false if not World::world_is_live(world, instance.bindings[index].reference)
+                true
+
+        public:
+            def instance_binding_count(instance: Instance&) -> usize:
+                instance.binding_count
+
+            def instance_prefab_id(instance: Instance&) -> i64:
+                instance.prefab_id
+
+            def instance_id(instance: Instance&) -> i64:
+                instance.instance_id
+
+            def instance_authoring_slot(instance: Instance&, authoring_id: i64) -> usize:
+                binding_slot(instance, authoring_id)
+
+            def instance_authoring_id_at(instance: Instance&, index: usize) -> i64:
+                return 0 if index >= instance.binding_count
+                instance.bindings[index].authoring_id
+
+            def instance_local_at(instance: Instance&, index: usize) -> Geometry::Transform:
+                return Geometry::transform_identity() if index >= instance.binding_count
+                instance.bindings[index].local
+
+            def instance_reference(instance: Instance&, authoring_id: i64) -> World::EntityRef:
+                slot: usize = binding_slot(instance, authoring_id)
+                return invalid_reference() if slot == PrefabWorld::MAX_NODES
+                instance.bindings[slot].reference
+
+            def spawn(instance: mutable Instance&, world: mutable World::World&,
+                definition: Prefab::Definition&, prefab_id: i64, instance_id: i64) -> bool:
+                return false if instance.binding_count != 0 or prefab_id <= 0 or instance_id <= 0
+                return false if not Prefab::definition_valid(definition)
+                existing: usize = World::world_live_count(world)
+                return false if existing + definition.node_count > World::MAX_ENTITIES
+                commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+                for _ in 0..<definition.node_count:
+                    return false if not WorldCommands::world_spawn(&commands, World::StaticObject.Structure)
+                return false if not WorldCommands::commit_world(&commands, world)
+                instance.prefab_id <- prefab_id
+                instance.instance_id <- instance_id
+                for index in 0..<definition.node_count |instance|:
+                    reference: World::EntityRef = catch World::world_live_reference_at(world, existing + index):
+                        value: value
+                        error failure: invalid_reference()
+                    if reference.id <= 0:
+                        cleanup(instance, world)
+                        return false
+                    instance.bindings[index] <- Binding{
+                        authoring_id: definition.nodes[index].authoring_id,
+                        parent_authoring_id: definition.nodes[index].parent_id,
+                        reference: reference,
+                        local: definition.nodes[index].local,
+                    }
+                    instance.binding_count <- instance.binding_count + 1
+                for index in 0..<instance.binding_count |instance|:
+                    applied: bool = catch World::world_set_transform(world, instance.bindings[index].reference,
+                        definition_world_pose(definition, index)):
+                        ok: true
+                        error failure: false
+                    if not applied:
+                        cleanup(instance, world)
+                        return false
+                for index in 0..<instance.binding_count |instance|:
+                    parent_id: i64 = instance.bindings[index].parent_authoring_id
+                    if parent_id != Prefab::ROOT:
+                        parent_slot: usize = binding_slot(instance, parent_id)
+                        if parent_slot == PrefabWorld::MAX_NODES:
+                            cleanup(instance, world)
+                            return false
+                        linked: bool = catch World::world_reparent(world,
+                            instance.bindings[index].reference,
+                            instance.bindings[parent_slot].reference, true):
+                            ok: true
+                            error failure: false
+                        if not linked:
+                            cleanup(instance, world)
+                            return false
+                true
+
+            def override_local(instance: mutable Instance&, world: mutable World::World&,
+                authoring_id: i64, local: Geometry::Transform) -> bool:
+                return false if not Geometry::transform_is_valid(local)
+                slot: usize = binding_slot(instance, authoring_id)
+                return false if slot == PrefabWorld::MAX_NODES or not all_live(instance, world)
+                parent_id: i64 = instance.bindings[slot].parent_authoring_id
+                parent_world: Geometry::Transform = Geometry::transform_identity()
+                if parent_id != Prefab::ROOT:
+                    parent_slot: usize = binding_slot(instance, parent_id)
+                    return false if parent_slot == PrefabWorld::MAX_NODES or not World::world_try_transform(
+                        world, instance.bindings[parent_slot].reference, &parent_world)
+                world_pose: Geometry::Transform = Geometry::transform_compose(parent_world, local)
+                applied: bool = catch World::world_set_transform(world, instance.bindings[slot].reference, world_pose):
+                    ok: true
+                    error failure: false
+                return false if not applied
+                instance.bindings[slot].local <- local
+                true
+
+            def valid(instance: Instance&, world: World::World&) -> bool:
+                return false if instance.prefab_id <= 0 or instance.instance_id <= 0 or instance.binding_count == 0 or instance.binding_count > PrefabWorld::MAX_NODES
+                return false if not all_live(instance, world)
+                for index in 0..<instance.binding_count |valid: bool = true| -> valid:
+                    row: Binding = instance.bindings[index]
+                    valid <- false if row.authoring_id <= 0 or row.reference.id <= 0 or not Geometry::transform_is_valid(row.local)
+                    unique: bool =
+                        for earlier in 0..<index |inner: bool = true| -> inner:
+                            inner <- false if instance.bindings[earlier].authoring_id == row.authoring_id or instance.bindings[earlier].reference.id == row.reference.id
+                    valid <- valid and unique
+
+            def destroy(instance: mutable Instance&, world: mutable World::World&) -> bool:
+                return false if not valid(instance, world)
+                cleanup(instance, world)
+                true
+
+            def group_count(group: Group&) -> usize:
+                group.count
+
+            def group_spawn_at(group: mutable Group&, index: usize, world: mutable World::World&,
+                definition: Prefab::Definition&, prefab_id: i64, instance_id: i64) -> bool:
+                return false if index != group.count or index >= PrefabWorld::MAX_GROUP_INSTANCES
+                return false if not spawn(group.instances[index], world, definition, prefab_id, instance_id)
+                group.count <- group.count + 1
+                true
+
+            def group_reference(group: Group&, index: usize, authoring_id: i64) -> World::EntityRef:
+                return invalid_reference() if index >= group.count
+                instance_reference(group.instances[index], authoring_id)
+
+            def group_override_local(group: mutable Group&, index: usize, world: mutable World::World&,
+                authoring_id: i64, local: Geometry::Transform) -> bool:
+                return false if index >= group.count
+                override_local(group.instances[index], world, authoring_id, local)
+
+            def group_valid(group: Group&, world: World::World&) -> bool:
+                return false if group.count == 0 or group.count > PrefabWorld::MAX_GROUP_INSTANCES
+                for index in 0..<group.count:
+                    return false if not valid(group.instances[index], world)
+                true
+
+            def group_destroy(group: mutable Group&, world: mutable World::World&) -> bool:
+                return false if group.count == 0 or group.count > PrefabWorld::MAX_GROUP_INSTANCES
+                for offset in 0..<PrefabWorld::MAX_GROUP_INSTANCES |group, world|:
+                    break if offset >= group.count
+                    index: usize = group.count - offset - 1
+                    return false if not destroy(group.instances[index], world)
+                group.count <- 0
+                true

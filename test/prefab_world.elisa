@@ -1,0 +1,46 @@
+include "../src/world/prefab_world.elisa"
+include "../src/world/prefab_persistence.elisa"
+
+def main() -> i32:
+    definition: mutable Prefab::Definition = Prefab::Definition()
+    identity: Geometry::Transform = Geometry::transform_identity()
+    root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0,
+        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0})}
+    child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10,
+        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0})}
+    return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
+    return 2 if not Prefab::definition_valid(&definition)
+
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 3
+    first: mutable PrefabWorld::Instance = PrefabWorld::Instance()
+    second: mutable PrefabWorld::Instance = PrefabWorld::Instance()
+    return 4 if not PrefabWorld::spawn(&first, &world, &definition, 7, 1)
+    return 5 if not PrefabWorld::valid(&first, &world) or World::world_live_count(&world) != 2
+    return 6 if not PrefabWorld::spawn(&second, &world, &definition, 7, 2)
+    return 7 if PrefabWorld::instance_reference(&first, 10).id == PrefabWorld::instance_reference(&second, 10).id
+
+    child_reference: World::EntityRef = PrefabWorld::instance_reference(&first, 20)
+    child_world: mutable Geometry::Transform = Geometry::transform_identity()
+    return 8 if not World::world_try_transform(&world, child_reference, &child_world) or child_world.position.x != 7.0
+    local_override: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0})
+    return 9 if not PrefabWorld::override_local(&first, &world, 20, local_override)
+    return 10 if not World::world_try_transform(&world, child_reference, &child_world) or child_world.position.x != 8.0
+    return 11 if PrefabWorld::override_local(&first, &world, 999, identity)
+
+    snapshot: PrefabPersistence::Snapshot = PrefabPersistence::capture(&first)
+    return 12 if not PrefabPersistence::snapshot_valid(&snapshot)
+
+    return 13 if not PrefabWorld::destroy(&first, &world)
+    return 14 if World::world_live_count(&world) != 2 or PrefabWorld::instance_binding_count(&first) != 0
+    return 15 if not PrefabWorld::valid(&second, &world)
+    reloaded: mutable PrefabWorld::Instance = PrefabWorld::Instance()
+    return 16 if not PrefabWorld::spawn(&reloaded, &world, &definition, 7, 1)
+    return 17 if not PrefabPersistence::restore(&reloaded, &world, snapshot)
+    reloaded_child: World::EntityRef = PrefabWorld::instance_reference(&reloaded, 20)
+    return 18 if not World::world_try_transform(&world, reloaded_child, &child_world) or child_world.position.x != 8.0
+    return 19 if not PrefabWorld::destroy(&second, &world)
+    return 20 if not PrefabWorld::destroy(&reloaded, &world)
+    return 21 if World::world_live_count(&world) != 0
+    0

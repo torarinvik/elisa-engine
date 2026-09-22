@@ -1,6 +1,75 @@
-include "../src/world/commands.elisa"
+include "../src/world/phase_commands.elisa"
 
 using WorldHierarchy
+
+def phase_test() -> i32:
+    frame: mutable WorldAccess::Frame = WorldAccess::Frame()
+    WorldAccess::begin_frame(&frame)
+    return 100 if not WorldAccess::frame_active(&frame) or WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
+    read: mutable WorldAccess::Token = catch WorldAccess::acquire(
+        &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Read):
+        value: value
+        error failure: return 101
+    write_conflict: i32 = catch WorldAccess::acquire(
+        &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
+        value: 1
+        WorldAccess::AccessError.WriteConflict: 0
+        error failure: 2
+    return 102 if write_conflict != 0
+    structural_input: i32 = catch WorldAccess::acquire(
+        &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Structural):
+        value: 1
+        WorldAccess::AccessError.WrongPhase: 0
+        error failure: 2
+    return 103 if structural_input != 0
+    advance_held: i32 = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
+        ok: 1
+        WorldAccess::AccessError.ActiveBorrow: 0
+        error failure: 2
+    return 104 if advance_held != 0
+    _ = catch WorldAccess::release(&frame, &read):
+        ok: 0
+        error failure: return 105
+    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
+        ok: 0
+        error failure: return 106
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 107
+    commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 108 if not WorldCommands::world_spawn(&commands, World::Actor.Player)
+    return 109 if not WorldPhaseCommands::commit(&frame, &commands, &world)
+    return 110 if WorldCommands::world_command_count(&commands) != 0 or World::world_live_count(&world) != 1
+    active_structural: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame,
+        WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
+        value: value
+        error failure: return 111
+    advance_structural: i32 = catch WorldAccess::advance(&frame, WorldAccess::Phase.Physics):
+        ok: 1
+        WorldAccess::AccessError.ActiveBorrow: 0
+        error failure: 2
+    return 112 if advance_structural != 0
+    _ = catch WorldAccess::release(&frame, &active_structural):
+        ok: 0
+        error failure: return 113
+    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Physics):
+        ok: 0
+        error failure: return 114
+    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Animation):
+        ok: 0
+        error failure: return 115
+    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Render):
+        ok: 0
+        error failure: return 116
+    return 117 if WorldPhaseCommands::commit(&frame, &commands, &world)
+    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Audio):
+        ok: 0
+        error failure: return 118
+    _ = catch WorldAccess::end_frame(&frame):
+        ok: 0
+        error failure: return 119
+    return 120 if WorldAccess::frame_active(&frame)
+    0
 
 def main() -> i32:
     buffer: mutable WorldCommands::Buffer = WorldCommands::Buffer()
@@ -57,4 +126,4 @@ def main() -> i32:
     return 36 if not WorldCommands::despawn(&remove, 3)
     return 37 if not WorldCommands::commit_hierarchy(&remove, &hierarchy)
     return 38 if WorldHierarchy::hierarchy_count(&hierarchy) != 2
-    0
+    phase_test()

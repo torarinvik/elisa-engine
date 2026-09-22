@@ -1,0 +1,142 @@
+# Primary-world bridge for scene-cell residency. The streaming policy owns
+# generation and budget decisions; this module owns the matching world entity
+# and makes activation/unload atomic at the gameplay boundary.
+include "./cell_streaming.elisa"
+include "./world.elisa"
+
+module CellWorld:
+    private:
+        const module Limits:
+            MAX_CELLS: usize = 64
+            INVALID_SLOT: usize = MAX_CELLS
+
+        struct RuntimeCell:
+            key: WorldStreaming::CellKey
+            handle: WorldStreaming::CellHandle
+            reference: World::EntityRef
+            live: mutable bool
+
+        def invalid_reference() -> World::EntityRef:
+            World::EntityRef{world_epoch: -1, id: -1}
+
+        def slot_of(runtime: Runtime&, key: WorldStreaming::CellKey) -> usize:
+            for index in 0..<Limits::MAX_CELLS |slot: usize = Limits::INVALID_SLOT| -> slot:
+                break index if runtime.cells[index].live and runtime.cells[index].key.x == key.x and runtime.cells[index].key.y == key.y
+
+        def free_slot(runtime: Runtime&) -> usize:
+            for index in 0..<Limits::MAX_CELLS |slot: usize = Limits::INVALID_SLOT| -> slot:
+                break index if not runtime.cells[index].live
+
+        def distance_outside(key: WorldStreaming::CellKey, player_x: i64, player_y: i64, radius: i64, hysteresis: i64) -> bool:
+            return false if radius < 0 or hysteresis < 0
+            dx: i64 = key.x - player_x
+            dy: i64 = key.y - player_y
+            distance: i64 = dx * dx + dy * dy
+            threshold: i64 = radius + hysteresis
+            distance > threshold * threshold
+
+    public:
+        affine struct Runtime:
+            private:
+                stream: mutable WorldStreaming::Stream
+                cells: mutable RuntimeCell[Limits::MAX_CELLS]
+                active_count: mutable usize
+
+        def Runtime(budget: usize, hysteresis: i64) -> Runtime:
+            Runtime{
+                stream: WorldStreaming::Stream(budget, hysteresis),
+                cells: zeroed,
+                active_count: 0,
+            }
+
+        def active_count(runtime: Runtime&) -> usize:
+            runtime.active_count
+
+        def resident_count(runtime: Runtime&) -> usize:
+            WorldStreaming::resident_count(runtime.stream)
+
+        def load_count(runtime: Runtime&) -> usize:
+            WorldStreaming::load_count(runtime.stream)
+
+        def unload_count(runtime: Runtime&) -> usize:
+            WorldStreaming::unload_count(runtime.stream)
+
+        def cell_reference(runtime: Runtime&, key: WorldStreaming::CellKey) -> World::EntityRef:
+            slot: usize = slot_of(runtime, key)
+            return invalid_reference() if slot == Limits::INVALID_SLOT
+            runtime.cells[slot].reference
+
+        def valid(runtime: Runtime&, world: World::World&) -> bool:
+            return false if not WorldStreaming::stream_valid(runtime.stream)
+            return false if runtime.active_count != WorldStreaming::resident_count(runtime.stream)
+            for index in 0..<Limits::MAX_CELLS:
+                if runtime.cells[index].live:
+                    return false if not World::world_is_live(world, runtime.cells[index].reference)
+                    for earlier in 0..<index:
+                        return false if runtime.cells[earlier].live and runtime.cells[earlier].key.x == runtime.cells[index].key.x and runtime.cells[earlier].key.y == runtime.cells[index].key.y
+            true
+
+        def activate(runtime: mutable Runtime&, world: mutable World::World&,
+            key: WorldStreaming::CellKey, dependency_generation: i64) -> bool:
+            existing: usize = slot_of(runtime, key)
+            if existing != Limits::INVALID_SLOT:
+                return WorldStreaming::state(runtime.stream, runtime.cells[existing].handle) == WorldStreaming::CellState.Resident
+            slot: usize = free_slot(runtime)
+            return false if slot == Limits::INVALID_SLOT
+            handle: WorldStreaming::CellHandle = catch WorldStreaming::request(&runtime.stream, key, dependency_generation):
+                value: value
+                error failure: WorldStreaming::CellHandle{slot: Limits::INVALID_SLOT, generation: -1}
+            return false if handle.slot == Limits::INVALID_SLOT
+            reference: World::EntityRef = catch World::world_spawn(world, World::StaticObject.Structure):
+                value: value
+                error failure: invalid_reference()
+            if reference.id <= 0:
+                _ = catch WorldStreaming::cancel(&runtime.stream, handle):
+                    ok: true
+                    error failure: false
+                return false
+            activated: bool = catch WorldStreaming::activate(&runtime.stream, handle, dependency_generation):
+                ok: true
+                error failure: false
+            if not activated:
+                _ = catch World::world_despawn(world, reference):
+                    ok: true
+                    error failure: false
+                _ = catch WorldStreaming::cancel(&runtime.stream, handle):
+                    ok: true
+                    error failure: false
+                return false
+            runtime.cells[slot] <- RuntimeCell{key: key, handle: handle, reference: reference, live: true}
+            runtime.active_count <- runtime.active_count + 1
+            true
+
+        def deactivate(runtime: mutable Runtime&, world: mutable World::World&, key: WorldStreaming::CellKey) -> bool:
+            slot: usize = slot_of(runtime, key)
+            return false if slot == Limits::INVALID_SLOT
+            removed: bool = catch World::world_despawn(world, runtime.cells[slot].reference):
+                ok: true
+                error failure: false
+            return false if not removed
+            released: bool = catch WorldStreaming::release(&runtime.stream, runtime.cells[slot].handle):
+                ok: true
+                error failure: false
+            return false if not released
+            runtime.cells[slot].live <- false
+            runtime.active_count <- runtime.active_count - 1
+            true
+
+        def trim(runtime: mutable Runtime&, world: mutable World::World&, player_x: i64, player_y: i64, radius: i64) -> usize:
+            return 0 if radius < 0
+            hysteresis: i64 = WorldStreaming::hysteresis(runtime.stream)
+            changes: mutable usize = 0
+            for index in 0..<Limits::MAX_CELLS |runtime, world, player_x, player_y, radius, hysteresis, changes|:
+                if runtime.cells[index].live and distance_outside(runtime.cells[index].key, player_x, player_y, radius, hysteresis):
+                    key: WorldStreaming::CellKey = runtime.cells[index].key
+                    changes <- changes + 1 if deactivate(runtime, world, key)
+            changes
+
+        def destroy(runtime: mutable Runtime&, world: mutable World::World&) -> bool:
+            for index in 0..<Limits::MAX_CELLS |runtime, world|:
+                if runtime.cells[index].live:
+                    return false if not deactivate(runtime, world, runtime.cells[index].key)
+            runtime.active_count == 0 and WorldStreaming::resident_count(runtime.stream) == 0

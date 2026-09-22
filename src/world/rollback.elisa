@@ -163,3 +163,19 @@ module World::Rollback:
             world.actor_count <- snapshot.actor_count
             world.enemy_count <- snapshot.enemy_count
             world.static_object_count <- snapshot.static_object_count
+
+        # Replace is the load boundary for a complete in-memory runtime world.
+        # Validate and stage the current world first so a rejected replacement
+        # cannot leave a partially restored registry or hierarchy behind.
+        def replace(world: mutable World::World&, snapshot: Snapshot&) -> bool:
+            current: Snapshot = catch capture(world):
+                value: value
+                error failure: return false
+            replaced: bool = catch restore(world, snapshot):
+                ok: true
+                error failure: false
+            return true if replaced
+            _ = catch restore(world, &current):
+                ok: true
+                error failure: false
+            false

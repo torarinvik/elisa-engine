@@ -15,4 +15,10 @@ validation, and abort isolation. `scripts/save_journal.py` adds the file-level
 transaction boundary: canonical bytes are fsynced before a journal record, the
 replacement is atomic, and recovery verifies the journal hash before completing
 an interrupted write. A corrupt or mismatched journal is discarded while the
-last complete target remains readable. Its self-test runs in the shared gate.
+last complete target remains readable. Directly truncated, invalid-UTF-8, or
+non-object payloads raise `SaveError` with a byte or structural diagnostic
+instead of leaking a decoder exception. Its self-test runs in the shared gate.
+The complete runtime rollback snapshot also exposes an atomic `replace` boundary;
+an invalid replacement is rejected after the original world has been staged and
+the live world remains unchanged. Cross-epoch durable reconstruction and native
+resource rehydration remain separate work.

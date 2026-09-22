@@ -16,6 +16,10 @@ from pathlib import Path
 import tempfile
 
 
+class SaveError(ValueError):
+    """A durable save cannot be decoded or recovered safely."""
+
+
 def canonical_bytes(document: dict) -> bytes:
     return (json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
 
@@ -38,6 +42,20 @@ def _write_synced(path: Path, payload: bytes) -> None:
 
 def _paths(target: Path) -> tuple[Path, Path]:
     return target.with_name(target.name + ".tmp"), target.with_name(target.name + ".journal")
+
+
+def _decode_document(payload: bytes) -> dict:
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as failure:
+        raise SaveError(f"save payload is not valid UTF-8 at byte {failure.start}") from failure
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as failure:
+        raise SaveError(f"save payload is malformed or truncated at byte {failure.pos}") from failure
+    if not isinstance(document, dict):
+        raise SaveError("save document must be a JSON object")
+    return document
 
 
 def save(target: Path, document: dict) -> str:
@@ -65,7 +83,7 @@ def recover(target: Path) -> bool:
         payload = temporary.read_bytes()
         if hashlib.sha256(payload).hexdigest() != metadata.get("sha256"):
             raise ValueError("journal payload checksum mismatch")
-        json.loads(payload.decode("utf-8"))
+        _decode_document(payload)
         os.replace(temporary, target)
         _fsync_directory(target.parent)
         journal.unlink(missing_ok=True)
@@ -80,7 +98,11 @@ def recover(target: Path) -> bool:
 
 def load(target: Path) -> dict:
     recover(target)
-    return json.loads(target.read_text(encoding="utf-8"))
+    try:
+        payload = target.read_bytes()
+    except OSError as failure:
+        raise SaveError(f"save target cannot be read: {target}") from failure
+    return _decode_document(payload)
 
 
 def self_test() -> None:
@@ -99,7 +121,30 @@ def self_test() -> None:
         _write_synced(temporary, b"corrupt")
         _write_synced(journal, canonical_bytes({"target": target.name, "temporary": temporary.name, "sha256": "bad"}))
         assert not recover(target) and load(target) == second and not journal.exists()
-        print("save journal: commit, recovery, and corrupt-journal fallback passed")
+        _write_synced(target, canonical_bytes(second)[:12])
+        try:
+            load(target)
+        except SaveError as failure:
+            assert "malformed or truncated" in str(failure) and "byte" in str(failure)
+        else:
+            raise AssertionError("truncated save was accepted")
+        _write_synced(target, b"\xff")
+        try:
+            load(target)
+        except SaveError as failure:
+            assert "valid UTF-8" in str(failure) and "byte" in str(failure)
+        else:
+            raise AssertionError("invalid UTF-8 save was accepted")
+        _write_synced(target, b"[]\n")
+        try:
+            load(target)
+        except SaveError as failure:
+            assert "JSON object" in str(failure)
+        else:
+            raise AssertionError("non-object save was accepted")
+        save(target, second)
+        assert load(target) == second
+        print("save journal: commit, recovery, corrupt-journal fallback, and decode diagnostics passed")
 
 
 def main() -> int:
