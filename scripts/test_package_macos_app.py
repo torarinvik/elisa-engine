@@ -53,7 +53,8 @@ class PackageMacosAppTests(unittest.TestCase):
     def package(self, manifest: dict[str, object]) -> Path:
         return packager.package_app(self.project, self.project / "build" / "game",
             self.output, "Game", "org.elisa.game", "1.2.3", None,
-            packager.manifest_resources(manifest, self.project))
+            packager.manifest_resources(manifest, self.project),
+            packager.manifest_window(manifest, self.project))
 
     def staged(self, app: Path) -> set[str]:
         resources = app / "Contents" / "Resources"
@@ -81,17 +82,24 @@ class PackageMacosAppTests(unittest.TestCase):
             "shaders/elisa.shader-manifest.json"})
 
     def test_launcher_runs_from_relocated_resources(self) -> None:
-        app = self.package(self.write_manifest({"package": {"resources": ["assets/audio"]}}))
+        app = self.package(self.write_manifest({"package": {"resources": ["assets/audio"]},
+            "application": {"title": "Game", "width": 1100, "height": 820}}))
         binary = app / "Contents" / "Resources" / "Game.bin"
         binary.write_text("#!/bin/sh\npwd\ntest -f assets/audio/step.wav && echo found\n"
             "echo \"$ELISA_ENGINE_SHADER_PATH\"\n"
-            "echo \"$ELISA_ENGINE_SHADER_MANIFEST\"\n", encoding="utf-8")
+            "echo \"$ELISA_ENGINE_SHADER_MANIFEST\"\n"
+            "echo \"$ELISA_PROJECT_TITLE $ELISA_PROJECT_WIDTH $ELISA_PROJECT_HEIGHT\"\n",
+            encoding="utf-8")
         result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
             capture_output=True, text=True, check=True, cwd=self.tempdir.name)
         resources = (app / "Contents" / "Resources").resolve()
         self.assertEqual(result.stdout.splitlines(),
             [str(resources), "found", str(resources / "shaders"),
-             str(resources / "shaders" / "elisa.shader-manifest.json")])
+             str(resources / "shaders" / "elisa.shader-manifest.json"), "Game 1100 820"])
+        override = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
+            capture_output=True, text=True, check=True, cwd=self.tempdir.name,
+            env={**os.environ, "ELISA_PROJECT_WIDTH": "640"})
+        self.assertEqual(override.stdout.splitlines()[-1], "Game 640 820")
 
     def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
         manifest = packager.shader_manifest(self.project / "shaders")
@@ -100,6 +108,12 @@ class PackageMacosAppTests(unittest.TestCase):
         first = manifest["fingerprint"]
         (self.project / "shaders" / "metal" / "basic.cso").write_bytes(b"changed")
         self.assertNotEqual(first, packager.shader_manifest(self.project / "shaders")["fingerprint"])
+
+    def test_invalid_window_sizes_are_rejected(self) -> None:
+        for size in (0, -5, 20000, "wide", True):
+            manifest = self.write_manifest({"application": {"title": "Game", "width": size}})
+            with self.assertRaises(packager.PackageError):
+                packager.manifest_window(manifest, self.project)
 
     def test_invalid_resource_declarations_are_rejected(self) -> None:
         for resources in ([], ["../escape"], ["/abs"], ["assets/.git"], [""], [3]):
