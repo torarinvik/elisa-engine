@@ -14,6 +14,12 @@ enum ElisaUserDataStatus : int32_t {
     ELISA_USER_DATA_IO_FAILURE = 8,
 };
 
+enum : uint32_t {
+    // Maximum number of signed 64-bit fields in one bounded user-data blob.
+    // Existing files with fewer fields remain valid when this capacity grows.
+    ELISA_USER_DATA_MAX_FIELDS = 16,
+};
+
 extern "C" {
 
 uint32_t elisa_user_data_abi_version();

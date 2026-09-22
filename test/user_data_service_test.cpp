@@ -40,12 +40,13 @@ int main() {
 
     int64_t initial_fields[3] = {-17, std::numeric_limits<int64_t>::min(), 42};
     int64_t loaded_version = 91;
-    int64_t loaded_fields[8] = {91, 91, 91, 91, 91, 91, 91, 91};
+    int64_t loaded_fields[ELISA_USER_DATA_MAX_FIELDS] = {};
+    for (int64_t& field : loaded_fields) field = 91;
     uint32_t loaded_count = 91;
     if (!expect(elisa_user_data_v1_write_blob("settings", 4, initial_fields, 3) ==
             ELISA_USER_DATA_NOT_INITIALIZED, "write before initialization")) return 4;
     if (!expect(elisa_user_data_v1_read_blob("settings", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_NOT_INITIALIZED,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_NOT_INITIALIZED,
             "read before initialization")) return 5;
     if (!expect(elisa_user_data_v1_initialize("../bad") == ELISA_USER_DATA_INVALID_KEY,
             "reject traversal application id")) return 6;
@@ -58,7 +59,7 @@ int main() {
     if (!expect(elisa_user_data_v1_write_blob("../outside", 4, initial_fields, 3) ==
             ELISA_USER_DATA_INVALID_KEY, "reject traversal key")) return 9;
     if (!expect(elisa_user_data_v1_read_blob("missing", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_NOT_FOUND,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_NOT_FOUND,
             "missing file status")) return 10;
     if (!expect(loaded_version == 91 && loaded_count == 91 && loaded_fields[0] == 91,
             "failed read preserves outputs")) return 11;
@@ -76,18 +77,37 @@ int main() {
     if (!expect(loaded_version == 0 && loaded_count == 0 && loaded_fields[0] == 0,
             "capacity failure preserves outputs")) return 15;
     if (!expect(elisa_user_data_v1_read_blob("settings", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_OK,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_OK,
             "read settings")) return 16;
     if (!expect(loaded_version == 4 && loaded_count == 3 &&
             loaded_fields[0] == initial_fields[0] &&
             loaded_fields[1] == initial_fields[1] &&
             loaded_fields[2] == initial_fields[2], "round-trip signed fields")) return 17;
 
+    int64_t maximum_fields[ELISA_USER_DATA_MAX_FIELDS] = {};
+    for (uint32_t index = 0; index < ELISA_USER_DATA_MAX_FIELDS; ++index) {
+        maximum_fields[index] = static_cast<int64_t>(index * 17) - 31;
+    }
+    if (!expect(elisa_user_data_v1_write_blob("maximum", 5, maximum_fields,
+            ELISA_USER_DATA_MAX_FIELDS) == ELISA_USER_DATA_OK,
+            "write maximum field record")) return 34;
+    loaded_version = 0;
+    loaded_count = 0;
+    for (int64_t& field : loaded_fields) field = 0;
+    if (!expect(elisa_user_data_v1_read_blob("maximum", &loaded_version,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_OK &&
+            loaded_version == 5 && loaded_count == ELISA_USER_DATA_MAX_FIELDS,
+            "read maximum field record")) return 35;
+    for (uint32_t index = 0; index < ELISA_USER_DATA_MAX_FIELDS; ++index) {
+        if (!expect(loaded_fields[index] == maximum_fields[index],
+                "maximum field round-trip")) return 36;
+    }
+
     const int64_t replacement_fields[1] = {777};
     if (!expect(elisa_user_data_v1_write_blob("settings", 9, replacement_fields, 1) ==
             ELISA_USER_DATA_OK, "replace settings atomically")) return 18;
     if (!expect(elisa_user_data_v1_read_blob("settings", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_OK &&
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_OK &&
             loaded_version == 9 && loaded_count == 1 && loaded_fields[0] == 777,
             "read replacement")) return 19;
 
@@ -101,7 +121,7 @@ int main() {
         if (!expect(static_cast<bool>(file), "corrupt fixture")) return 21;
     }
     if (!expect(elisa_user_data_v1_read_blob("broken", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_CORRUPT,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_CORRUPT,
             "reject corrupt file")) return 22;
 
     if (!expect(elisa_user_data_v1_write_blob("bad-count", 1, replacement_fields, 1) ==
@@ -114,7 +134,7 @@ int main() {
         if (!expect(static_cast<bool>(file), "mark invalid field count")) return 32;
     }
     if (!expect(elisa_user_data_v1_read_blob("bad-count", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_CORRUPT,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_CORRUPT,
             "reject invalid field count")) return 33;
 
     if (!expect(elisa_user_data_v1_write_blob("future", 1, replacement_fields, 1) ==
@@ -127,7 +147,7 @@ int main() {
         if (!expect(static_cast<bool>(file), "mark future file version")) return 24;
     }
     if (!expect(elisa_user_data_v1_read_blob("future", &loaded_version,
-            loaded_fields, 8, &loaded_count) == ELISA_USER_DATA_WRONG_VERSION,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_WRONG_VERSION,
             "report unsupported format version")) return 25;
     if (!expect(elisa_user_data_v1_remove_blob("absent") == ELISA_USER_DATA_NOT_FOUND,
             "remove absent file")) return 26;
