@@ -2,6 +2,7 @@
 #include "mesh_tangent_frames.h"
 #include "meshoptimizer.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -126,6 +127,100 @@ bool optimize_vertex_cache(elisa::assets::FbxMeshData& mesh) {
     return true;
 }
 
+template <typename T>
+bool remap_vertex_stream(const std::vector<T>& stream, size_t vertex_count, size_t remapped_count,
+    const unsigned int* remap, std::vector<T>& output) {
+    if (vertex_count == 0 || stream.size() % vertex_count != 0) return false;
+    const size_t elements_per_vertex = stream.size() / vertex_count;
+    if (elements_per_vertex == 0 || elements_per_vertex > 256 / sizeof(T)) return false;
+    output.resize(remapped_count * elements_per_vertex);
+    meshopt_remapVertexBuffer(output.data(), stream.data(), vertex_count,
+        elements_per_vertex * sizeof(T), remap);
+    const size_t bytes_per_vertex = elements_per_vertex * sizeof(T);
+    for (size_t source = 0; source < vertex_count; ++source) {
+        const unsigned int destination = remap[source];
+        if (destination == ~0u) continue;
+        if (destination >= remapped_count || std::memcmp(
+            output.data() + size_t(destination) * elements_per_vertex,
+            stream.data() + source * elements_per_vertex, bytes_per_vertex) != 0) return false;
+    }
+    return true;
+}
+
+bool optimize_vertex_fetch(elisa::assets::FbxMeshData& mesh) {
+    const size_t vertex_count = mesh.positions.size() / 3;
+    const bool has_skin_indices = !mesh.skin_indices.empty();
+    const bool has_skin_weights = !mesh.skin_weights.empty();
+    if (vertex_count == 0 || mesh.positions.size() != vertex_count * 3 ||
+        mesh.normals.size() != vertex_count * 3 || mesh.uvs.size() != vertex_count * 2 ||
+        mesh.tangents.size() != vertex_count * 4 || mesh.indices.empty() ||
+        mesh.indices.size() % 3 != 0 || has_skin_indices != has_skin_weights ||
+        (has_skin_indices && (mesh.skin_indices.size() != vertex_count * 4 ||
+            mesh.skin_weights.size() != vertex_count * 4))) {
+        std::fprintf(stderr, "vertex-fetch optimization requires matching geometry and skin streams\n");
+        return false;
+    }
+    for (uint32_t index : mesh.indices) {
+        if (index >= vertex_count) {
+            std::fprintf(stderr, "vertex-fetch optimization found an out-of-range index\n");
+            return false;
+        }
+    }
+
+    const size_t vertex_stride = sizeof(float) * (3 + 3 + 2 + 4 + (has_skin_weights ? 4 : 0)) +
+        sizeof(uint32_t) * (has_skin_indices ? 4 : 0);
+    const meshopt_VertexFetchStatistics before = meshopt_analyzeVertexFetch(
+        mesh.indices.data(), mesh.indices.size(), vertex_count, vertex_stride);
+    std::vector<unsigned int> remap(vertex_count);
+    const size_t remapped_count = meshopt_optimizeVertexFetchRemap(
+        remap.data(), mesh.indices.data(), mesh.indices.size(), vertex_count);
+    if (remapped_count == 0 || remapped_count > vertex_count) {
+        std::fprintf(stderr, "vertex-fetch remapper returned an invalid vertex count\n");
+        return false;
+    }
+    std::vector<uint32_t> remapped_indices(mesh.indices.size());
+    meshopt_remapIndexBuffer(remapped_indices.data(), mesh.indices.data(), mesh.indices.size(), remap.data());
+    const meshopt_VertexFetchStatistics after = meshopt_analyzeVertexFetch(
+        remapped_indices.data(), remapped_indices.size(), remapped_count, vertex_stride);
+    const bool improved_or_compacted = after.bytes_fetched <= before.bytes_fetched || remapped_count < vertex_count;
+    if (!improved_or_compacted) {
+        std::printf("meshoptimizer vertex fetch: bytes fetched %u -> %u (candidate %u), vertices %zu -> %zu\n",
+            before.bytes_fetched, before.bytes_fetched, after.bytes_fetched, vertex_count, vertex_count);
+        return true;
+    }
+
+    std::vector<float> positions;
+    std::vector<float> normals;
+    std::vector<float> uvs;
+    std::vector<float> tangents;
+    std::vector<uint32_t> skin_indices;
+    std::vector<float> skin_weights;
+    const bool streams_valid = remap_vertex_stream(mesh.positions, vertex_count, remapped_count, remap.data(), positions) &&
+        remap_vertex_stream(mesh.normals, vertex_count, remapped_count, remap.data(), normals) &&
+        remap_vertex_stream(mesh.uvs, vertex_count, remapped_count, remap.data(), uvs) &&
+        remap_vertex_stream(mesh.tangents, vertex_count, remapped_count, remap.data(), tangents) &&
+        (!has_skin_indices || (remap_vertex_stream(mesh.skin_indices, vertex_count, remapped_count, remap.data(), skin_indices) &&
+            remap_vertex_stream(mesh.skin_weights, vertex_count, remapped_count, remap.data(), skin_weights)));
+    const bool indices_valid = std::all_of(remapped_indices.begin(), remapped_indices.end(),
+        [remapped_count](uint32_t index) { return index < remapped_count; });
+    if (!streams_valid || !indices_valid) {
+        std::fprintf(stderr, "vertex-fetch remap could not validate every stream and index\n");
+        return false;
+    }
+    mesh.positions.swap(positions);
+    mesh.normals.swap(normals);
+    mesh.uvs.swap(uvs);
+    mesh.tangents.swap(tangents);
+    if (has_skin_indices) {
+        mesh.skin_indices.swap(skin_indices);
+        mesh.skin_weights.swap(skin_weights);
+    }
+    mesh.indices.swap(remapped_indices);
+    std::printf("meshoptimizer vertex fetch: bytes fetched %u -> %u (candidate %u), vertices %zu -> %zu\n",
+        before.bytes_fetched, after.bytes_fetched, after.bytes_fetched, vertex_count, remapped_count);
+    return true;
+}
+
 void append_u32_le(std::vector<uint8_t>& bytes, uint32_t value) {
     bytes.push_back(uint8_t(value));
     bytes.push_back(uint8_t(value >> 8));
@@ -233,6 +328,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "FBX tangent-frame generation failed for the cooked mesh\n");
         return false;
     }
+    if (!optimize_vertex_fetch(mesh)) return false;
     for (uint32_t index : mesh.indices) {
         if (index >= mesh.positions.size() / 3) {
             std::fprintf(stderr, "FBX importer returned an out-of-range mesh index\n");

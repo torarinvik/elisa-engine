@@ -66,7 +66,9 @@
         {"path": "allocator.cpp", "sha256": "d2cc48691fe2f4c6d097bf7a766389cfb7f83ca14a5f747e3944332656d02254"},
         {"path": "vcacheoptimizer.cpp", "sha256": "618429ef4db8ab9b16fde4e73dcf425d89452acbf103085478bc8b1761fa6689"},
         {"path": "indexanalyzer.cpp", "sha256": "bff37aecb10cefa33f3f6a217413c6ac98899c23e6de5282420c60e6baf786ec"},
-        {"path": "simplifier.cpp", "sha256": "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc"}
+        {"path": "simplifier.cpp", "sha256": "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc"},
+        {"path": "vfetchoptimizer.cpp", "sha256": "aa534bb8150ca27ae229c58a0dc51f85f9acccbc5d4214f4c82edd91fc08e478"},
+        {"path": "indexgenerator.cpp", "sha256": "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e"}
       ]
     },
     {
