@@ -33,6 +33,9 @@ returns copied `PhysicsQueryHit` values to the host.
   `MAX_HITS` unique entities, even when Wicked reports several intersected
   mesh subsets for one object. Invalid radii and non-finite inputs are
   rejected.
+- `PhysicsRuntime::BodyDesc.sensor` creates a checked Jolt trigger volume; its
+  events remain contacts with `trigger = true`, while sensor bodies do not
+  contribute collision response.
 - Destroying a scene participant and rebuilding the scene removes it from the
   next query. Invalidating the token rejects every later query, including
   foreign-owner tokens.
@@ -61,7 +64,9 @@ only copied values, and queue overflow remains explicit rather than allocating
 from worker callbacks. A caller must unregister its listener before destroying
 the scene or listener object.
 
-The Elisa application smoke creates static and dynamic bodies, advances the
-fixed-step world, and polls `PhysicsRuntime::ContactBuffer`. It requires a real
-non-trigger `ContactKind.Added` event and zero dropped events, proving the
-public binding reaches the same Jolt callback queue used by the native gate.
+The Elisa application smoke creates static and dynamic bodies plus a static
+sensor volume, advances the fixed-step world, and polls
+`PhysicsRuntime::ContactBuffer`. It requires real non-trigger and trigger
+`ContactKind.Added` events, then destroys the sensor and requires a trigger
+`ContactKind.Removed` event, with zero dropped events. This proves the public
+binding reaches the same Jolt callback queue used by the native gate.

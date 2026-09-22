@@ -53,6 +53,7 @@ int32_t elisa_physics_v1_probe_provider(void);
 int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z,
     float half_x, float half_y, float half_z, float mass,
+    int32_t sensor,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_seconds,
     uint64_t* tick);

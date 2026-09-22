@@ -52,6 +52,7 @@ module WorldPhysics:
                     position: transform.position,
                     half_extents: scaled_extents,
                     mass: mass,
+                    sensor: false,
                 })
             if not PhysicsRuntime::ServiceBodyHandles::store(&bindings.bodies, bindings.count, body):
                 cleanup_ok: bool = catch RuntimeServices::physics_body_destroy(session, body):

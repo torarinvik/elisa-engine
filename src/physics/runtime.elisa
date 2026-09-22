@@ -27,6 +27,7 @@ module PhysicsRuntime:
         extern elisa_physics_v1_create_box(world_generation: u64, kind: i32,
             position_x: f32, position_y: f32, position_z: f32,
             half_x: f32, half_y: f32, half_z: f32, mass: f32,
+            sensor: i32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
 
         @callconv(c)
@@ -130,6 +131,7 @@ module PhysicsRuntime:
             position: Geometry::Vec3
             half_extents: Geometry::Vec3
             mass: f32
+            sensor: bool
 
         struct BodyHandle:
             private:
@@ -258,7 +260,8 @@ module PhysicsRuntime:
             status: i32 = elisa_physics_v1_create_box(state.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
                 description.position.z, description.half_extents.x, description.half_extents.y,
-                description.half_extents.z, description.mass, &slot, &generation)
+                description.half_extents.z, description.mass, 1 if description.sensor else 0,
+                &slot, &generation)
             try check_status(status)
             BodyHandle{world_generation: state.generation, slot: slot, generation: generation}
 
@@ -368,7 +371,8 @@ module PhysicsRuntime:
             status: i32 = elisa_physics_v1_create_box(world.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
                 description.position.z, description.half_extents.x, description.half_extents.y,
-                description.half_extents.z, description.mass, &slot, &generation)
+                description.half_extents.z, description.mass, 1 if description.sensor else 0,
+                &slot, &generation)
             try check_status(status)
             BodyHandle{world_generation: world.generation, slot: slot, generation: generation}
 
