@@ -124,7 +124,8 @@ module WorldStreaming:
                 if stream.cells[handle.slot].state == CellState.Resident:
                     stream.resident_count <- stream.resident_count - 1
                     stream.unloads <- stream.unloads + 1
-                stream.cells[handle.slot].state <- CellState.Cancelled
+                stream.cells[handle.slot].state <- CellState.Empty
+                stream.count <- stream.count - 1
                 stream.cancellations <- stream.cancellations + 1
 
             def release(stream: mutable Stream&, handle: CellHandle) -> void error[StreamError]:
@@ -149,7 +150,6 @@ module WorldStreaming:
                             _ = catch cancel(stream, handle):
                                 ok: 1
                                 error failure: 0
-                            stream.count <- stream.count - 1
                             changes <- changes + 1
                 changes
 
@@ -173,3 +173,6 @@ module WorldStreaming:
 
             def cancellation_count(stream: Stream&) -> usize:
                 stream.cancellations
+
+            def hysteresis(stream: Stream&) -> i64:
+                stream.hysteresis

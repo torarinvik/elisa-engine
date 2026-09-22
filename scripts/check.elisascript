@@ -206,8 +206,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
-
     contracts_test_binary: sview = str(root.joinpath("build/contracts-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", contracts_test_binary, str(root.joinpath("test/contracts.elisa"))])
@@ -219,8 +217,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
-
     recording_test_binary: sview = str(root.joinpath("build/recording-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", recording_test_binary, str(root.joinpath("test/recording.elisa"))])
@@ -232,9 +228,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Recording backend command tests passed.")
-
     clock_test_binary: sview = str(root.joinpath("build/clock-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", clock_test_binary, str(root.joinpath("test/clock.elisa"))])
@@ -322,6 +316,12 @@ def main(arguments: darray[sview]) -> i64:
     return save_schema_status if save_schema_status != 0
     save_journal_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/save_journal.py")), "--self-test"])
     return save_journal_status if save_journal_status != 0
+    cell_world_binary: sview = str(root.joinpath("build/cell-world-test"))
+    cell_world_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", cell_world_binary, str(root.joinpath("test/cell_world.elisa"))])
+    return cell_world_status if cell_world_status != 0
+    cell_world_status <- run_visible(cell_world_binary, [])
+    return cell_world_status if cell_world_status != 0
+    println("Primary-world cell streaming tests passed.")
     world_events_binary: sview = str(root.joinpath("build/world-events-test"))
     world_events_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", world_events_binary, str(root.joinpath("test/world_events.elisa"))])
     return world_events_status if world_events_status != 0

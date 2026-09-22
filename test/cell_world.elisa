@@ -1,0 +1,24 @@
+include "../src/world/cell_world.elisa"
+
+def main() -> i32:
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 1
+    runtime: mutable CellWorld::Runtime = CellWorld::Runtime(2, 1)
+    first: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 1, y: 1}
+    second: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 2, y: 2}
+    return 2 if not CellWorld::activate(&runtime, &world, first, 10)
+    return 3 if CellWorld::active_count(&runtime) != 1 or CellWorld::resident_count(&runtime) != 1
+    return 4 if not CellWorld::activate(&runtime, &world, first, 11)
+    return 5 if not CellWorld::activate(&runtime, &world, second, 12)
+    return 6 if CellWorld::active_count(&runtime) != 2 or World::world_live_count(&world) != 2
+    third: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 5, y: 5}
+    return 7 if CellWorld::activate(&runtime, &world, third, 13)
+    return 8 if CellWorld::cell_reference(&runtime, first).id <= 0
+    return 9 if CellWorld::trim(&runtime, &world, 0, 0, 0) != 2
+    return 10 if CellWorld::active_count(&runtime) != 0 or CellWorld::resident_count(&runtime) != 0 or World::world_live_count(&world) != 0
+    return 11 if not CellWorld::activate(&runtime, &world, first, 14)
+    return 12 if not CellWorld::deactivate(&runtime, &world, first)
+    return 13 if CellWorld::active_count(&runtime) != 0 or not CellWorld::valid(&runtime, &world)
+    return 14 if not CellWorld::destroy(&runtime, &world)
+    0
