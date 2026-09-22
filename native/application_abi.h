@@ -19,6 +19,7 @@ enum {
     ELISA_APPLICATION_WRONG_THREAD = -4,
     ELISA_APPLICATION_FRAME_FAILED = -5,
     ELISA_APPLICATION_PROFILE_UNAVAILABLE = -6,
+    ELISA_APPLICATION_SHADER_PATH_INVALID = -7,
 };
 
 // Engine-internal extension points for runtime services. The public Elisa

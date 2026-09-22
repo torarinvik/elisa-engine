@@ -76,18 +76,30 @@ script file was not edited.
 | --- | --- |
 | the sandbox profile keeps `(allow default)` and drops the deny rule | the control case exits 0 and is reported `FAILED`; the script exits 1 |
 
+## Shader-root preflight
+
+When `ELISA_ENGINE_SHADER_PATH` is set, the application validates it before
+calling Wicked's initializer. The configured path must be a directory with a
+platform shader directory (`metal` on macOS, `hlsl6` on Windows, or `spirv` on
+other platforms) containing at least one compiled shader (`.cso` or `.spv`).
+Missing, incomplete, overlong, or non-directory roots return
+`Application::InitializeStatus.ShaderPathInvalid`; Wicked is not initialized
+and the caller can report the configuration error cleanly. An unset or empty
+variable keeps Wicked's default shader path behavior.
+
+The native application smoke calls a test-only probe with a missing root and
+requires this status. It also runs the normal startup and failure-cleanup
+cases to prove that valid configured roots still initialize and shut down.
+
 ## Limits
 
 - **Shaders.** Shaders still come from the Wicked checkout through
   `ELISA_ENGINE_SHADER_PATH`. That path is outside the engine checkout, so the
   sandbox doesn't deny it. Packaged shaders are R13.
-- **Missing shader root crashes.** A shader root with no shaders crashes the
-  process with a segfault (exit 139). It doesn't fail with an error. Wicked's
-  background initializer passes a missing shader to the Metal backend's
-  `CreatePipelineState` (`wiTrailRenderer.cpp` `LoadShaders`). The crash
-  happens inside `wi::Application::Initialize`, so a check after startup can't
-  catch it. R13 must reject a missing or incomplete shader root before Wicked
-  initializes.
+- **Shader packaging.** Preflight rejects missing or incomplete configured
+  roots, but versioned shader bundles, permutation manifests, offline
+  compilation, pipeline-cache keys, and cold/warm hitch measurements remain
+  R13 work.
 - **Dynamic libraries.** The executable links SDL3, FreeType, HarfBuzz and zstd
   from absolute `/opt/homebrew/opt` paths. It also keeps an rpath into the
   Wicked checkout. Neither location is inside the engine checkout, so the
@@ -116,3 +128,13 @@ script file was not edited.
 - After the maze split into tile and texture bundles,
   `scripts/render_scene_native_smoke.py` passed all nine cases above
   (`docs/validation/bundle-dependencies.md`).
+
+## Validation on 2026-09-22
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools
+  ELISA_ALLOW_STALE_STAGE1=1
+  ELISA_COMPILER_BIN=.../Elisa-compiler/scripts/elisac_stage1.sh
+  /opt/homebrew/bin/python3 scripts/application_native_smoke.py` passed both
+  native application cases. The test-only probe rejected a missing shader root
+  before Wicked initialization, and valid startup plus failure cleanup still
+  passed on SDL3/Metal.
