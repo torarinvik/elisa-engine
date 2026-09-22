@@ -82,9 +82,13 @@ Wicked entities. `RenderScene::imported_scene(handle)` returns bounded mesh,
 camera and light counts. `RenderScene::imported_camera(handle, index)` creates
 an opaque `ImportedCameraHandle`, and `activate_imported_camera` selects it for
 the active render path. The handle retains its root instance generation, so
-destroying the root makes later activation return `UnknownHandle`. The native
-imported-scene cases use the hierarchy and scene-metadata fixtures in the
-SDL3/Metal smoke.
+destroying the root makes later activation return `UnknownHandle`.
+`RenderScene::imported_mesh(handle, index)` similarly returns an opaque
+`ImportedMeshHandle` for the root or any authored child placement. Its
+visibility and local transform can be changed without exposing a Wicked entity;
+invalid indices and stale roots remain checked at the native boundary. The
+native imported-scene cases use the hierarchy and scene-metadata fixtures in
+the SDL3/Metal smoke.
 
 ## Evidence
 

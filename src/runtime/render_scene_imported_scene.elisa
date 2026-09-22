@@ -16,6 +16,15 @@ extend RenderScene:
         extern elisa_render_scene_v1_imported_light_count(handle: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_activate_imported_camera(handle: i64, index: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_imported_mesh_visible(
+            handle: i64, index: u32, visible: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_update_imported_mesh_transform(
+            handle: i64, index: u32,
+            px: f32, py: f32, pz: f32,
+            qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
 
         def imported_count(status: i32) -> u32 error[RenderSceneError]:
             if status < 0:
@@ -29,6 +38,11 @@ extend RenderScene:
             light_count: u32
 
         struct ImportedCameraHandle:
+            private:
+                owner: InstanceHandle
+                index: u32
+
+        struct ImportedMeshHandle:
             private:
                 owner: InstanceHandle
                 index: u32
@@ -56,6 +70,24 @@ extend RenderScene:
             count: u32 = try imported_camera_count(handle)
             raise RenderSceneError.InvalidValue if index >= count
             ImportedCameraHandle{owner: handle, index: index}
+
+        def imported_mesh(handle: InstanceHandle, index: u32) -> ImportedMeshHandle error[RenderSceneError]:
+            count: u32 = try imported_mesh_count(handle)
+            raise RenderSceneError.InvalidValue if index >= count
+            ImportedMeshHandle{owner: handle, index: index}
+
+        def set_imported_mesh_visible(mesh: ImportedMeshHandle,
+            visible: bool) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_imported_mesh_visible(
+                mesh.owner.native_value, mesh.index, 1 if visible else 0))
+
+        def update_imported_mesh_transform(mesh: ImportedMeshHandle,
+            transform: Geometry::Transform) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_update_imported_mesh_transform(
+                mesh.owner.native_value, mesh.index,
+                transform.position.x, transform.position.y, transform.position.z,
+                transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
+                transform.scale.x, transform.scale.y, transform.scale.z))
 
         def activate_imported_camera(camera: ImportedCameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_activate_imported_camera(

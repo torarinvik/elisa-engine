@@ -335,6 +335,12 @@ the four-placement hierarchy and scene-metadata fixtures, activate the second
 authored camera, reject an out-of-range index, and verify that destroying the
 root invalidates the child handle.
 
+`RenderScene::imported_mesh` addresses the root placement at index zero and
+each authored child in depth-first order. `set_imported_mesh_visible` and
+`update_imported_mesh_transform` edit the child object through that opaque
+handle; group 79 hides and restores a child, updates its Elisa-space local
+translation, rejects an out-of-range index, and then destroys the root.
+
 `RenderScene::set_cast_shadow` controls the Wicked material and object shadow
 flags for a direct scene instance. It accepts only a checked instance handle,
 marks the material dirty, and can toggle a source before it is cloned. Group
