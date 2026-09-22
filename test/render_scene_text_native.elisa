@@ -30,6 +30,19 @@ module RenderSceneTextNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 146 if invalid_text_size != 1
+            text_alignment_update: i32 = catch RenderScene::set_overlay_text_alignment(handle,
+                RenderScene::OverlayTextAlignment.Center,
+                RenderScene::OverlayTextAlignment.Center):
+                ok: 0
+                error failure: 2
+            return 147 if text_alignment_update != 0
+            invalid_text_alignment: i32 = catch RenderScene::set_overlay_text_alignment(handle,
+                RenderScene::OverlayTextAlignment.Top,
+                RenderScene::OverlayTextAlignment.Top):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 148 if invalid_text_alignment != 1
             text_color_update: i32 = catch RenderScene::set_overlay_text_color(handle,
                 RenderScene::Color{red: 1.0, green: 0.42, blue: 0.18, alpha: 0.92}):
                 ok: 0
