@@ -8,11 +8,13 @@ metadata lookup; it does not own meshoptimizer state or allocate.
 The contract rejects empty/invalid levels, duplicate mesh IDs, nonmonotonic
 error thresholds, changed material subsets, and capacity overflow. Selection
 returns the most detailed level that fits the requested screen-error budget.
-The native cook stage can populate this contract with optimized, simplified,
-compressed meshes and optional meshlets once the active Wicked path consumes
-those artifacts. The native gate now simplifies the authored primitive to a
-bounded lower-index LOD, reports the resulting geometric error, and keeps the
-original material subset attached to the uploaded render mesh.
+The FBX cooker now tries a meshoptimizer vertex-cache reorder after optional
+simplification and accepts it only when its measured cache miss ratio improves.
+The native gate also simplifies an authored primitive to a bounded lower-index
+LOD, reports the resulting geometric error, and keeps the original material
+subset attached to the uploaded render mesh. Production cooked packages still
+carry one mesh level; multi-LOD package emission and runtime screen-error
+selection are not connected yet.
 
 `test/asset_lod.elisa` covers deterministic fine/coarse selection, material
 subset preservation, and rejection of invalid ordering and subset changes.

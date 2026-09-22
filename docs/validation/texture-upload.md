@@ -33,3 +33,6 @@ alpha safety, and cube shape. The render-scene smoke
 registers both loose and bundle KTX2 assets and samples them from Elisa
 materials. The glTF cooker packages embedded PNG/JPEG and Basis KTX2 sources
 selected with `KHR_texture_basisu`.
+
+The CPU probe also mutates 15 KTX2 header, DFD, key/value, and mip-index fields;
+the pinned Basis parser rejects each before transcoding.

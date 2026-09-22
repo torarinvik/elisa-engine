@@ -8,7 +8,49 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <vector>
+
+struct KTX2HeaderMutation {
+    const char* label;
+    size_t offset;
+    uint64_t value;
+    size_t width;
+};
+
+static void write_little_endian(std::vector<uint8_t>& bytes, size_t offset, uint64_t value, size_t width) {
+    for (size_t byte = 0; byte < width; ++byte) {
+        bytes[offset + byte] = static_cast<uint8_t>(value >> (byte * 8));
+    }
+}
+
+static bool check_malformed_ktx2_rejected(const std::vector<uint8_t>& valid) {
+    const KTX2HeaderMutation mutations[] = {
+        {"unsupported Vulkan format", 12, 37, 4},
+        {"invalid texel type size", 16, 2, 4},
+        {"zero image height", 24, 0, 4},
+        {"3D image depth", 28, 1, 4},
+        {"invalid face count", 36, 2, 4},
+        {"zero mip count", 40, 0, 4},
+        {"unsupported supercompression", 44, 3, 4},
+        {"out-of-range DFD offset", 48, std::numeric_limits<uint32_t>::max(), 4},
+        {"unsupported DFD size", 52, 43, 4},
+        {"out-of-range key/value offset", 56, std::numeric_limits<uint32_t>::max(), 4},
+        {"oversized key/value length", 60, std::numeric_limits<uint32_t>::max(), 4},
+        {"out-of-range mip offset", 80, std::numeric_limits<uint64_t>::max(), 8},
+        {"oversized mip payload", 88, std::numeric_limits<uint64_t>::max(), 8},
+        {"oversized decoded mip length", 96, 2ull * 1024 * 1024 * 1024, 8},
+        {"missing decoded Zstandard length", 96, 0, 8},
+    };
+    for (const KTX2HeaderMutation& mutation : mutations) {
+        std::vector<uint8_t> corrupted = valid;
+        write_little_endian(corrupted, mutation.offset, mutation.value, mutation.width);
+        basist::ktx2_transcoder transcoder;
+        if (!probe::check(!transcoder.init(corrupted.data(), static_cast<uint32_t>(corrupted.size())),
+            mutation.label)) return false;
+    }
+    return true;
+}
 
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 5) {
@@ -22,6 +64,7 @@ int main(int argc, char** argv) {
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
 
     basist::basisu_transcoder_init();
+    if (!check_malformed_ktx2_rejected(bytes)) return 1;
     basist::ktx2_transcoder transcoder;
     if (!probe::check(transcoder.init(bytes.data(), (uint32_t)bytes.size()), "KTX2 container parses")) {
         return 1;

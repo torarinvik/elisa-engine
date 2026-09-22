@@ -96,6 +96,36 @@ bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_triangles) {
     return true;
 }
 
+bool optimize_vertex_cache(elisa::assets::FbxMeshData& mesh) {
+    const size_t vertex_count = mesh.positions.size() / 3;
+    if (vertex_count == 0 || mesh.positions.size() % 3 != 0 || mesh.indices.empty() ||
+        mesh.indices.size() % 3 != 0) {
+        std::fprintf(stderr, "vertex-cache optimization requires indexed triangles\n");
+        return false;
+    }
+    for (uint32_t index : mesh.indices) {
+        if (index >= vertex_count) {
+            std::fprintf(stderr, "vertex-cache optimization found an out-of-range index\n");
+            return false;
+        }
+    }
+    const meshopt_VertexCacheStatistics before = meshopt_analyzeVertexCache(
+        mesh.indices.data(), mesh.indices.size(), vertex_count, 16, 0, 0);
+    std::vector<uint32_t> optimized(mesh.indices.size());
+    meshopt_optimizeVertexCache(optimized.data(), mesh.indices.data(), mesh.indices.size(), vertex_count);
+    const meshopt_VertexCacheStatistics after = meshopt_analyzeVertexCache(
+        optimized.data(), optimized.size(), vertex_count, 16, 0, 0);
+    if (!std::isfinite(before.acmr) || !std::isfinite(after.acmr)) {
+        std::fprintf(stderr, "vertex-cache analysis returned a non-finite miss ratio\n");
+        return false;
+    }
+    const bool improved = after.acmr + 0.0001f < before.acmr;
+    if (after.acmr <= before.acmr + 0.0001f && improved) mesh.indices.swap(optimized);
+    std::printf("meshoptimizer vertex cache: ACMR %.4f -> %.4f (candidate %.4f)\n",
+        before.acmr, improved ? after.acmr : before.acmr, after.acmr);
+    return true;
+}
+
 void append_u32_le(std::vector<uint8_t>& bytes, uint32_t value) {
     bytes.push_back(uint8_t(value));
     bytes.push_back(uint8_t(value >> 8));
@@ -197,6 +227,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         return false;
     }
     if (!simplify_geometry(mesh, max_triangles)) return false;
+    if (!optimize_vertex_cache(mesh)) return false;
     if (!elisa::assets::generate_tangent_frames(mesh.positions, mesh.normals, mesh.uvs,
         mesh.indices, mesh.tangents)) {
         std::fprintf(stderr, "FBX tangent-frame generation failed for the cooked mesh\n");
