@@ -538,7 +538,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 139 if stale_hud_panel != 1
-
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0
         error failure: 1
