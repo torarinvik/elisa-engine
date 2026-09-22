@@ -34,10 +34,12 @@ frames under a loading overlay while they load.
      registration allows.
 2. **Load and decode.** The job resolves the path under the project root,
    runs `verify_bundle_dependencies`, then calls `worker.checkpoint()`. After
-   that it reads the mesh with the cooked-geometry loader or reads and decodes
-   the PNG/JPEG section into bounded CPU pixels. The texture decoder verifies
-   the dimensions against the checked image header and caps decoded storage at
-   256 MiB per service. Only the job's own strings and owner-thread identity
+   that it reads the mesh with the cooked-geometry loader or reads the texture
+   section. PNG/JPEG decode into bounded CPU pixels; 2D KTX2 remains encoded
+   after header and checksum validation for owner-thread Basis transcode when
+   a material first uses it. The texture decoder verifies dimensions against
+   the checked image header and caps decoded storage at 256 MiB per service.
+   Only the job's own strings and owner-thread identity
    are captured. The job touches no service state and never takes the service
    mutex. The lock order is always service mutex, then worker mutex.
 3. **Adopt.** `RenderScene::pump_snapshot_assets(budget)` takes up to `budget`
@@ -178,7 +180,8 @@ mutant exited 1 at the named check:
   decoding and discarding partial output on cancellation. The decoder caps its
   frame window at 64 MiB, matching the maximum unpacked section size. The
   production RenderScene snapshot worker passes the same checkpoints into mesh
-  and texture section reads. PNG/JPEG image decode remains uninterruptible.
+  and texture section reads. PNG/JPEG image decode remains uninterruptible;
+  KTX2 is not decoded or transcoded on the worker.
 - **Adoption can still fail.** Requests count against the slot limits at
   request time, but synchronous registration of another ID doesn't count
   pending requests and can take the last slot first. The budgets (256 MiB of

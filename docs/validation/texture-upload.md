@@ -29,4 +29,5 @@ metadata, and checks distinct colors on all cube faces. The Wicked `texture`
 phase runs a focused upload smoke that verifies queried format selection,
 normal-data preservation, alpha safety, and cube shape. The render-scene smoke
 registers both loose and bundle KTX2 assets and samples them from Elisa
-materials. Bundle cooking from glTF image sources still accepts PNG and JPEG.
+materials. The glTF cooker packages embedded PNG/JPEG and Basis KTX2 sources
+selected with `KHR_texture_basisu`.

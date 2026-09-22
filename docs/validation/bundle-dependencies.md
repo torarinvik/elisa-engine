@@ -34,10 +34,11 @@ declares as a dependency.
    `--dependency NAME`, where `NAME` is relative to the output bundle's
    directory. `cook_gltf_asset.py` and `cook_fbx_asset.py` accept the flag for
    `.elpk` outputs only. The new `images` importer runs
-   `scripts/cook_image_bundle.py`, which writes a bundle of PNG and JPEG
-   sections with no mesh. The writer in `scripts/elisa_package.py` sorts the
-   names into the bundle's `manifest` section and rejects unsafe or repeated
-   ones.
+   `scripts/cook_image_bundle.py`, which writes a mesh-free bundle of PNG,
+   JPEG and bounded 2D KTX2 sections. The writer in
+   `scripts/elisa_package.py` sorts the names into the bundle index and
+   writes dependencies into its `manifest` section, rejecting unsafe or
+   repeated names.
 3. **Resolve.** A manifest names each dependency relative to the directory of
    the bundle that declares it. `native/package_manifest.h` joins the two
    before resolving, so a bundle means the same thing under any root. The

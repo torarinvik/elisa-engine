@@ -110,7 +110,7 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     """Return each mesh placement's (mesh index, world matrix), the material
     slot count, slot material records, and each slot's images after rejecting
     unhandled glTF semantics."""
-    allowed_extensions = {cook_gltf_scene.LIGHT_EXTENSION}
+    allowed_extensions = {cook_gltf_scene.LIGHT_EXTENSION, cook_gltf_textures.KHR_TEXTURE_BASISU}
     if set(document.get("extensionsUsed", [])) - allowed_extensions or set(document.get("extensionsRequired", [])) - allowed_extensions:
         raise ValueError("runtime geometry cooker does not support glTF extensions")
     skin = cook_gltf_skin.normalize(document, buffer)

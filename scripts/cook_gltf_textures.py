@@ -12,7 +12,7 @@ import base64
 import binascii
 import struct
 
-from elisa_package import MAX_SECTION_BYTES, encoded_image_dimensions
+from elisa_package import KTX2_IDENTIFIER, MAX_SECTION_BYTES, encoded_image_dimensions
 
 # Runtime texture slots, in the order a slot texture record lists them.
 SLOT_TEXTURES = ("baseColorTexture", "normalTexture", "metallicRoughnessTexture", "emissiveTexture",
@@ -23,7 +23,9 @@ SLOT_TEXTURE_STRIDE = 20
 LINEAR = 9729
 LINEAR_MIPMAP_LINEAR = 9987
 REPEAT = 10497
-IMAGE_SIGNATURES = {"image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff"}
+KHR_TEXTURE_BASISU = "KHR_texture_basisu"
+IMAGE_SIGNATURES = {"image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff",
+    "image/ktx2": KTX2_IDENTIFIER}
 
 
 def check_sampler(document: dict, reference) -> None:
@@ -55,10 +57,21 @@ def texture_image(document: dict, info, label: str, factor: str | None = None) -
     if type(index) is not int or not isinstance(textures, list) or not 0 <= index < len(textures):
         raise ValueError(f"material {label} names a missing texture")
     texture = textures[index]
-    if not isinstance(texture, dict) or set(texture) - {"source", "sampler", "name"}:
+    if not isinstance(texture, dict) or set(texture) - {"source", "sampler", "name", "extensions"}:
         raise ValueError("glTF texture has unsupported properties")
     images = document.get("images", [])
-    source = texture.get("source")
+    extensions = texture.get("extensions", {})
+    if not isinstance(extensions, dict) or set(extensions) - {KHR_TEXTURE_BASISU}:
+        raise ValueError("glTF texture has unsupported properties")
+    has_basis = KHR_TEXTURE_BASISU in extensions
+    basis = extensions.get(KHR_TEXTURE_BASISU)
+    if has_basis and (not isinstance(basis, dict) or set(basis) != {"source"}):
+        raise ValueError("KHR_texture_basisu must name one image source")
+    source = basis.get("source") if has_basis else texture.get("source")
+    fallback = texture.get("source")
+    if has_basis and fallback is not None and (
+            type(fallback) is not int or not isinstance(images, list) or not 0 <= fallback < len(images)):
+        raise ValueError("texture fallback names a missing image")
     if type(source) is not int or not isinstance(images, list) or not 0 <= source < len(images):
         raise ValueError("glTF texture names a missing image")
     if "sampler" in texture:
@@ -98,7 +111,7 @@ def view_bytes(document: dict, buffer: bytes, reference) -> bytes:
 
 
 def image_bytes(document: dict, buffer: bytes, index: int) -> bytes:
-    """Return one embedded PNG or JPEG image, from a bufferView or a data URI."""
+    """Return one embedded PNG, JPEG or KTX2 image, from a bufferView or data URI."""
     image = document["images"][index]
     if not isinstance(image, dict) or set(image) - {"uri", "mimeType", "bufferView", "name"}:
         raise ValueError("glTF image has unsupported properties")
@@ -123,10 +136,13 @@ def image_bytes(document: dict, buffer: bytes, index: int) -> bytes:
             raise ValueError("glTF image data URI is not valid base64") from failure
     signature = IMAGE_SIGNATURES.get(mime) if isinstance(mime, str) else None
     if signature is None:
-        raise ValueError("glTF image must be a PNG or JPEG")
+        raise ValueError("glTF image must be a PNG, JPEG or KTX2")
     if not data.startswith(signature):
         raise ValueError("glTF image bytes do not match its mimeType")
-    encoded_image_dimensions(data)
+    width, height = encoded_image_dimensions(data)
+    if mime == "image/ktx2":
+        if width % 4 or height % 4:
+            raise ValueError("KHR_texture_basisu dimensions must be multiples of 4")
     return data
 
 
@@ -145,8 +161,9 @@ def texture_infos(material: dict) -> list:
 def cooked_textures(document: dict, buffer: bytes, slot_images: list) -> tuple[bytes, list]:
     """Pack each slot's five image references, 0 for none or one more than
     the image's position among the sampled images, and return the records
-    with each sampled image's (section name, bytes). Every declared texture,
-    sampler and image must be sampled."""
+    with each sampled image's (section name, bytes). Every texture and sampler
+    must be used. Unused image declarations are accepted only as core glTF
+    fallback sources for KHR_texture_basisu textures."""
     declared = {name: document.get(name, []) for name in ("textures", "samplers", "images")}
     if any(not isinstance(entries, list) for entries in declared.values()):
         raise ValueError("glTF textures, samplers and images must be lists")
@@ -162,12 +179,50 @@ def cooked_textures(document: dict, buffer: bytes, slot_images: list) -> tuple[b
         raise ValueError("glTF declares a texture no cooked material samples")
     if len(samplers) != len(declared["samplers"]):
         raise ValueError("glTF declares a sampler no cooked texture uses")
-    if len(sampled) != len(declared["images"]):
-        raise ValueError("glTF declares an image no cooked material samples")
+    fallback_images = set()
+    basis_sources = set()
+    core_sources = set()
+    basis_without_fallback = False
+    for texture in declared["textures"]:
+        if not isinstance(texture, dict):
+            continue
+        extensions = texture.get("extensions", {})
+        basis = extensions.get(KHR_TEXTURE_BASISU) if isinstance(extensions, dict) else None
+        if isinstance(basis, dict):
+            basis_sources.add(basis["source"])
+            if "source" in texture:
+                fallback_images.add(texture["source"])
+            else:
+                basis_without_fallback = True
+        elif "source" in texture:
+            core_sources.add(texture["source"])
+    if set(sampled) | fallback_images != set(range(len(declared["images"]))):
+        raise ValueError("glTF declares an image no cooked material samples or uses as a Basis fallback")
+    if basis_sources:
+        extensions_used = document.get("extensionsUsed", [])
+        if not isinstance(extensions_used, list) or KHR_TEXTURE_BASISU not in extensions_used:
+            raise ValueError("KHR_texture_basisu must be listed in extensionsUsed")
+        extensions_required = document.get("extensionsRequired", [])
+        if not isinstance(extensions_required, list):
+            raise ValueError("glTF extensionsRequired must be a list")
+        if basis_without_fallback and KHR_TEXTURE_BASISU not in extensions_required:
+            raise ValueError("KHR_texture_basisu without a fallback must be listed in extensionsRequired")
+    for fallback in fallback_images:
+        if image_bytes(document, buffer, fallback).startswith(KTX2_IDENTIFIER):
+            raise ValueError("KHR_texture_basisu fallback image must be PNG or JPEG")
+    for source in core_sources:
+        if image_bytes(document, buffer, source).startswith(KTX2_IDENTIFIER):
+            raise ValueError("KTX2 glTF images must be selected by KHR_texture_basisu")
     reference = {image: position + 1 for position, image in enumerate(sampled)}
     records = b"".join(struct.pack("<5I", *(0 if image is None else reference[image] for image in images))
         for images in slot_images)
-    return records, [(section_name(image), image_bytes(document, buffer, image)) for image in sampled]
+    encoded_images = []
+    for image in sampled:
+        data = image_bytes(document, buffer, image)
+        if data.startswith(KTX2_IDENTIFIER) != (image in basis_sources):
+            raise ValueError("KTX2 glTF images must be selected by KHR_texture_basisu")
+        encoded_images.append((section_name(image), data))
+    return records, encoded_images
 
 
 def texture_lines(records: bytes, images: list) -> list[str]:

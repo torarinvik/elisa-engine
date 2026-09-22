@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "test/fixtures/textured_panel.gltf"
 ASSET_PATH = "test/fixtures/textured_panel.gltf"
 RED, GREEN, BLUE, CLEAR_GREEN = (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255), (0, 255, 0, 0)
+KHR_TEXTURE_BASISU = cook_gltf_textures.KHR_TEXTURE_BASISU
 
 
 def image(size: int, pixel) -> bytes:
@@ -71,6 +72,8 @@ SLOT_MATERIALS = (
     struct.pack("<10f2I", 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0, 0) +
     struct.pack("<10f2I", 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.5, 0, 0))
 SLOT_TEXTURES = struct.pack("<20I", 4, 0, 0, 0, 0, 1, 2, 3, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
+BASIS_SLOT_TEXTURES = struct.pack("<20I", 3, 0, 0, 0, 0, 4, 1, 2, 0, 2,
+    0, 0, 0, 4, 0, 0, 0, 0, 0, 0)
 SEPARATE_OCCLUSION_TEXTURES = struct.pack(
     "<20I", 4, 0, 0, 0, 0, 1, 2, 3, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
 NO_SURFACE_TEXTURES = struct.pack(
@@ -81,6 +84,61 @@ SUBSETS = [(0, 6, 0), (6, 6, 1), (12, 6, 2), (18, 6, 3)]
 
 def padded(data: bytes) -> bytes:
     return data + bytes(-len(data) % 4)
+
+
+def basis_ktx2(width: int = 4, height: int = 4) -> bytes:
+    """Small bounded KTX2 container shape for cooker-boundary tests."""
+    data = bytearray(108)
+    data[:12] = cook_gltf_textures.KTX2_IDENTIFIER
+    struct.pack_into("<6I", data, 20, width, height, 0, 0, 1, 1)
+    struct.pack_into("<QQQ", data, 80, 104, 4, width * height * 4)
+    data[104:] = b"KTX!"
+    return bytes(data)
+
+
+def basis_texture(document: dict) -> None:
+    image_index = len(document["images"])
+    ktx2 = basis_ktx2()
+    document["images"].append({"uri": "data:image/ktx2;base64," + base64.b64encode(ktx2).decode("ascii"),
+        "mimeType": "image/ktx2"})
+    # Keep the original PNG as each texture's fallback. The engine cooks the
+    # KTX2 source and omits the fallback because its runtime supports Basis.
+    for texture_index in (0, 4):
+        document["textures"][texture_index]["extensions"] = {
+            KHR_TEXTURE_BASISU: {"source": image_index}}
+    document["extensionsUsed"] = [KHR_TEXTURE_BASISU]
+
+
+def wrong_basis_mime(document: dict) -> None:
+    basis_texture(document)
+    data = basis_ktx2()
+    document["images"][4].update(mimeType="image/png",
+        uri="data:image/png;base64," + base64.b64encode(data).decode("ascii"))
+
+
+def invalid_basis_payload(document: dict, offset: int, value: int) -> None:
+    basis_texture(document)
+    data = bytearray(basis_ktx2())
+    struct.pack_into("<I", data, offset, value)
+    document["images"][4]["uri"] = "data:image/ktx2;base64," + base64.b64encode(data).decode("ascii")
+
+
+def core_source_uses_ktx2(document: dict) -> None:
+    basis_texture(document)
+    document["textures"][0].pop("extensions")
+    document["textures"][0]["source"] = 4
+
+
+def basis_texture_without_fallback(document: dict) -> None:
+    basis_texture(document)
+    document["images"] = document["images"][1:]
+    for texture_index in (0, 4):
+        texture = document["textures"][texture_index]
+        texture.pop("source")
+        texture["extensions"][KHR_TEXTURE_BASISU]["source"] = 3
+    for texture_index, image_index in ((1, 0), (2, 1), (3, 2)):
+        document["textures"][texture_index]["source"] = image_index
+    document["extensionsRequired"] = [KHR_TEXTURE_BASISU]
 
 
 def textured_panel() -> dict:
@@ -199,6 +257,11 @@ ACCEPTED = {
         SEPARATE_OCCLUSION_TEXTURES, SECTIONS),
     "an occlusion map without a surface image": (lambda d: d["materials"][1]["pbrMetallicRoughness"].pop(
         "metallicRoughnessTexture"), NO_SURFACE_TEXTURES, SECTIONS),
+    "KHR_texture_basisu with a PNG fallback": (basis_texture, BASIS_SLOT_TEXTURES,
+        [*SECTIONS[1:], ("image_4", basis_ktx2())]),
+    "KHR_texture_basisu without a fallback": (basis_texture_without_fallback, BASIS_SLOT_TEXTURES,
+        [("image_0", IMAGES[1]), ("image_1", IMAGES[2]), ("image_2", IMAGES[3]),
+            ("image_3", basis_ktx2())]),
 }
 
 REJECTED = {
@@ -220,6 +283,9 @@ REJECTED = {
     "a negative source": (entry("textures", 1, source=-1), "texture names a missing image"),
     "a texture extension": (entry("textures", 0, extensions={"EXT_texture_webp": {}}),
         "texture has unsupported properties"),
+    "a malformed Basis extension": (entry("textures", 0,
+        extensions={KHR_TEXTURE_BASISU: {"source": 4, "unknown": 1}}),
+        "KHR_texture_basisu must name one image source"),
     "a sampler out of range": (entry("textures", 1, sampler=1), "names a missing sampler"),
     "a nearest magnification filter": (entry("samplers", 0, magFilter=9728), "must filter trilinearly"),
     "a bilinear minification filter": (entry("samplers", 0, minFilter=9729), "must filter trilinearly"),
@@ -236,8 +302,8 @@ REJECTED = {
     "a remote URI with a base64 suffix": (entry("images", 3, uri="https://example.com/cutout.png;base64,AAAA"),
         "must be embedded"),
     "a bufferView beside a URI": (entry("images", 3, bufferView=7), "names both a bufferView and a URI"),
-    "a bufferView image without a mimeType": (drop("images", 0, "mimeType"), "must be a PNG or JPEG"),
-    "a GIF image": (entry("images", 0, mimeType="image/gif"), "must be a PNG or JPEG"),
+    "a bufferView image without a mimeType": (drop("images", 0, "mimeType"), "must be a PNG, JPEG or KTX2"),
+    "a GIF image": (entry("images", 0, mimeType="image/gif"), "must be a PNG, JPEG or KTX2"),
     "a data URI contradicting its mimeType": (entry("images", 3, mimeType="image/jpeg"), "contradicts its data URI"),
     "PNG bytes labeled JPEG": (entry("images", 1, mimeType="image/jpeg"), "do not match its mimeType"),
     "a data URI that is not base64": (entry("images", 3, uri="data:image/png;base64,!!"), "not valid base64"),
@@ -257,6 +323,21 @@ REJECTED = {
         "tangents must be float32 VEC4 values"),
     "a mask without a base-color image": (lambda d: d["materials"][0]["pbrMetallicRoughness"].pop(
         "baseColorTexture"), "alpha-mask materials need a base-color texture"),
+    "a Basis extension missing from extensionsUsed":
+        (lambda d: [basis_texture(d), d.pop("extensionsUsed")], "must be listed in extensionsUsed"),
+    "a Basis extension without a fallback but not required":
+        (lambda d: [basis_texture_without_fallback(d), d.pop("extensionsRequired")],
+            "without a fallback must be listed in extensionsRequired"),
+    "a non-KTX2 Basis source": (wrong_basis_mime, "do not match its mimeType"),
+    "a KTX2 source on the core texture field":
+        (core_source_uses_ktx2, "must be selected by KHR_texture_basisu"),
+    "a non-universal KTX2 pixel format":
+        (lambda d: invalid_basis_payload(d, 12, 37), "Basis Universal KTX2 payload"),
+    "a non-Basis KTX2 supercompression scheme":
+        (lambda d: invalid_basis_payload(d, 44, 3), "Basis Universal KTX2 payload"),
+    "Basis KTX2 dimensions not divisible by four":
+        (lambda d: [basis_texture(d), d["images"][4].update(uri="data:image/ktx2;base64," +
+            base64.b64encode(basis_ktx2(6, 4)).decode("ascii"))], "multiples of 4"),
 }
 
 
@@ -314,6 +395,21 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
         (temporary / "image.png").write_bytes(IMAGES[2])
         if cook_main([str(SOURCE), "--asset-path", ASSET_PATH, *arguments]) == 0:
             return fail(f"the asset cooker accepted {arguments[-1]}")
+
+    basis_document = deepcopy(document)
+    basis_texture(basis_document)
+    basis_source = temporary / "textured-basis.gltf"
+    basis_source.write_text(json.dumps(basis_document), encoding="utf-8")
+    basis_asset_path = "test/fixtures/textured_basis.gltf"
+    basis_bundle = temporary / "textured-basis.elpk"
+    if cook_main([str(basis_source), "--asset-path", basis_asset_path,
+            "--output", str(basis_bundle)]) != 0:
+        return fail("KHR_texture_basisu did not cook into the mesh bundle")
+    basis_geometry, basis_result = cook_gltf_geometry.cook_geometry_package(basis_source, basis_asset_path,
+        temporary / "textured-basis.pkg", allow_textures=True)
+    expected_basis_bundle = build_package_bytes({"mesh": basis_geometry.read_bytes(), **dict(basis_result["images"])})
+    if basis_bundle.read_bytes() != expected_basis_bundle:
+        return fail("the Basis texture bundle omitted or changed a cooked KTX2 image section")
 
     untextured_document = deepcopy(document)
     untextured(untextured_document)
