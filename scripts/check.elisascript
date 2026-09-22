@@ -240,9 +240,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Fixed-step clock tests passed.")
-
     headless_test_binary: sview = str(root.joinpath("build/headless-game-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", headless_test_binary, str(root.joinpath("test/headless_game.elisa"))])
@@ -316,6 +314,8 @@ def main(arguments: darray[sview]) -> i64:
     return save_schema_status if save_schema_status != 0
     save_journal_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/save_journal.py")), "--self-test"])
     return save_journal_status if save_journal_status != 0
+    scene_file_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/scene_file.py")), "--self-test"])
+    return scene_file_status if scene_file_status != 0
     cell_world_binary: sview = str(root.joinpath("build/cell-world-test"))
     cell_world_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", cell_world_binary, str(root.joinpath("test/cell_world.elisa"))])
     return cell_world_status if cell_world_status != 0

@@ -22,6 +22,12 @@ reproduces the override without serializing a world epoch or native handle.
 definitions and parent cycles, spawns nested instances in topological order,
 and destroys them in reverse order.
 
+`scripts/scene_file.py` is the durable scene-file boundary. It canonicalizes a
+version-1 JSON document through the fsynced save journal, migrates the version-0
+shape, validates bounded definitions/links/overrides and parent topology, and
+rejects non-finite transforms or runtime/native handles. The self-test covers
+round-trip persistence, migration, cycles, overrides, and the native boundary.
+
 Run the focused check with:
 
 ```sh
@@ -41,5 +47,5 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 test/prefab_scene.elisa && build/prefab-scene-test
 ```
 
-Full durable scene serialization beyond the plain override snapshot remains a
-future save-schema integration.
+Native world epochs and runtime handles remain outside the scene file; a load
+still requires the Elisa prefab modules to spawn fresh runtime bindings.
