@@ -32,8 +32,7 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_orthographic_height(vertical_size: f32) -> i32
         @callconv(c)
-        extern elisa_render_scene_v1_set_camera_perspective(vertical_fov_radians: f32,
-            near_clip: f32, far_clip: f32) -> i32
+        extern elisa_render_scene_v1_set_camera_perspective(vertical_fov_radians: f32, near_clip: f32, far_clip: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_look_at(eye_x: f32, eye_y: f32, eye_z: f32,
             target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
@@ -104,10 +103,11 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_cast_shadow(handle: i64, enabled: i32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_texture(handle: i64, slot: i32, asset_path: cstr) -> i32
         @callconv(c)
-        extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32,
-            blue: f32, strength: f32) -> i32
+        extern elisa_render_scene_v1_set_emissive(handle: i64, red: f32, green: f32, blue: f32, strength: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_environment(
             sun_direction_x: f32, sun_direction_y: f32, sun_direction_z: f32,
