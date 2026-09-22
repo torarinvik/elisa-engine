@@ -69,7 +69,26 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     const elisa::assets::CookedGeometry& geometry,
     float px, float py, float pz, float qx, float qy, float qz, float qw,
     float sx, float sy, float sz, float red, float green, float blue, float alpha,
-    std::vector<wi::ecs::Entity>* out_joint_entities = nullptr) {
+    std::vector<wi::ecs::Entity>* out_joint_entities = nullptr,
+    size_t placement_index = std::numeric_limits<size_t>::max(),
+    wi::ecs::Entity shared_armature = wi::ecs::INVALID_ENTITY) {
+    const bool use_placement = placement_index != std::numeric_limits<size_t>::max();
+    size_t vertex_start = 0;
+    size_t vertex_count = geometry.positions.size() / 3;
+    size_t index_start = 0;
+    size_t index_count = geometry.indices.size();
+    size_t subset_start = 0;
+    size_t subset_count = geometry.subsets.size();
+    if (use_placement) {
+        if (placement_index >= geometry.mesh_placements.size()) return false;
+        const auto& placement = geometry.mesh_placements[placement_index];
+        vertex_start = placement.vertex_start;
+        vertex_count = placement.vertex_count;
+        index_start = placement.index_start;
+        index_count = placement.index_count;
+        subset_start = placement.subset_start;
+        subset_count = placement.subset_count;
+    }
     wi::scene::TransformComponent* transform = scene.transforms.GetComponent(entity);
     wi::scene::MaterialComponent* material = scene.materials.GetComponent(entity);
     wi::scene::ObjectComponent* object = scene.objects.GetComponent(entity);
@@ -79,22 +98,32 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 || geometry.indices.empty() ||
         (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
         geometry.indices.size() % 3 != 0 ||
-        geometry.indices.size() > std::numeric_limits<uint32_t>::max()) return false;
+        geometry.indices.size() > std::numeric_limits<uint32_t>::max() || vertex_count == 0 ||
+        index_count == 0 || index_count % 3 != 0 || vertex_start + vertex_count > geometry.positions.size() / 3 ||
+        index_start + index_count > geometry.indices.size() || subset_count == 0 ||
+        subset_start + subset_count > geometry.subsets.size()) return false;
     for (const auto& target : geometry.morph_targets) {
         if (target.positions.size() != geometry.positions.size() ||
             (!target.normals.empty() && target.normals.size() != geometry.positions.size())) return false;
     }
+    const bool has_skin_data = !geometry.skin_joints.empty() || !geometry.skin_cluster_joints.empty() ||
+        !geometry.skin_indices.empty() || !geometry.skin_weights.empty();
     const bool has_skin_rig = !geometry.skin_joints.empty() && !geometry.skin_cluster_joints.empty();
+    if (has_skin_data != has_skin_rig || (shared_armature != wi::ecs::INVALID_ENTITY &&
+        (!has_skin_rig || out_joint_entities != nullptr || scene.armatures.GetComponent(shared_armature) == nullptr))) {
+        return false;
+    }
     if (has_skin_rig && (geometry.skin_joints.size() > 64 || geometry.skin_cluster_joints.size() > 64 ||
         geometry.skin_indices.size() != geometry.positions.size() / 3 * 4 ||
-        geometry.skin_weights.size() != geometry.skin_indices.size() || out_joint_entities == nullptr)) return false;
+        geometry.skin_weights.size() != geometry.skin_indices.size() ||
+        (shared_armature == wi::ecs::INVALID_ENTITY && out_joint_entities == nullptr))) return false;
 
-    mesh->vertex_positions.resize(geometry.positions.size() / 3);
-    mesh->vertex_normals.resize(geometry.normals.size() / 3);
+    mesh->vertex_positions.resize(vertex_count);
+    mesh->vertex_normals.resize(vertex_count);
     // Entity_CreateCube prepares tangent data for its starter geometry. Do not
     // retain any of that mesh's per-vertex streams when replacing the geometry.
     mesh->vertex_tangents.clear();
-    mesh->vertex_uvset_0.resize(geometry.uvs.size() / 2);
+    mesh->vertex_uvset_0.resize(vertex_count);
     mesh->vertex_uvset_1.clear();
     mesh->vertex_boneindices.clear();
     mesh->vertex_boneweights.clear();
@@ -105,9 +134,10 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     mesh->vertex_windweights.clear();
     mesh->morph_targets.clear();
     for (size_t index = 0; index < mesh->vertex_positions.size(); ++index) {
-        mesh->vertex_positions[index] = cooked_vector(geometry.positions, index);
-        mesh->vertex_normals[index] = cooked_vector(geometry.normals, index);
-        mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[index * 2], geometry.uvs[index * 2 + 1]);
+        const size_t source = vertex_start + index;
+        mesh->vertex_positions[index] = cooked_vector(geometry.positions, source);
+        mesh->vertex_normals[index] = cooked_vector(geometry.normals, source);
+        mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[source * 2], geometry.uvs[source * 2 + 1]);
     }
     mesh->morph_targets.resize(geometry.morph_targets.size());
     for (size_t target_index = 0; target_index < geometry.morph_targets.size(); ++target_index) {
@@ -115,29 +145,40 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         const auto& cooked = geometry.morph_targets[target_index];
         target.vertex_positions.resize(mesh->vertex_positions.size());
         for (size_t vertex = 0; vertex < target.vertex_positions.size(); ++vertex)
-            target.vertex_positions[vertex] = cooked_vector(cooked.positions, vertex);
+            target.vertex_positions[vertex] = cooked_vector(cooked.positions, vertex_start + vertex);
         if (!cooked.normals.empty()) {
             target.vertex_normals.resize(mesh->vertex_positions.size());
             for (size_t vertex = 0; vertex < target.vertex_normals.size(); ++vertex)
-                target.vertex_normals[vertex] = cooked_vector(cooked.normals, vertex);
+                target.vertex_normals[vertex] = cooked_vector(cooked.normals, vertex_start + vertex);
         }
         target.weight = 0.0f;
     }
     set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     if (!geometry.tangents.empty()) {
-        mesh->vertex_tangents.resize(geometry.tangents.size() / 4);
+        mesh->vertex_tangents.resize(vertex_count);
         for (size_t index = 0; index < mesh->vertex_tangents.size(); ++index) {
-            mesh->vertex_tangents[index] = cooked_tangent(geometry.tangents, index);
+            mesh->vertex_tangents[index] = cooked_tangent(geometry.tangents, vertex_start + index);
         }
     }
-    assign_cooked_indices(*mesh, geometry.indices);
+    if (use_placement) {
+        std::vector<uint32_t> local_indices;
+        local_indices.reserve(index_count);
+        for (size_t offset = 0; offset < index_count; ++offset) {
+            const uint32_t source = geometry.indices[index_start + offset];
+            if (source < vertex_start || size_t(source) >= vertex_start + vertex_count) return false;
+            local_indices.push_back(uint32_t(size_t(source) - vertex_start));
+        }
+        assign_cooked_indices(*mesh, local_indices);
+    } else {
+        assign_cooked_indices(*mesh, geometry.indices);
+    }
     std::vector<wi::ecs::Entity> joint_entities;
     JointEntityRollback joint_rollback{scene, joint_entities};
     if (has_skin_rig) {
-        mesh->vertex_boneindices.resize(mesh->vertex_positions.size());
-        mesh->vertex_boneweights.resize(mesh->vertex_positions.size());
-        for (size_t vertex = 0; vertex < mesh->vertex_positions.size(); ++vertex) {
-            const size_t offset = vertex * 4;
+        mesh->vertex_boneindices.resize(vertex_count);
+        mesh->vertex_boneweights.resize(vertex_count);
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            const size_t offset = (vertex_start + vertex) * 4;
             for (size_t influence = 0; influence < 4; ++influence) {
                 if (geometry.skin_weights[offset + influence] > 0.0f &&
                     geometry.skin_indices[offset + influence] >= geometry.skin_cluster_joints.size()) return false;
@@ -147,152 +188,80 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
             mesh->vertex_boneweights[vertex] = XMFLOAT4(geometry.skin_weights[offset],
                 geometry.skin_weights[offset + 1], geometry.skin_weights[offset + 2], geometry.skin_weights[offset + 3]);
         }
-        wi::scene::ArmatureComponent& armature = scene.armatures.Create(entity);
-        armature.boneCollection.reserve(geometry.skin_cluster_joints.size());
-        armature.inverseBindMatrices.reserve(geometry.skin_cluster_joints.size());
-        joint_entities.reserve(geometry.skin_joints.size());
-        for (size_t joint_index = 0; joint_index < geometry.skin_joints.size(); ++joint_index) {
-            const auto& joint = geometry.skin_joints[joint_index];
-            if (joint.parent_index < -1 || joint.parent_index >= int32_t(joint_index) ||
-                (joint.parent_index >= 0 && size_t(joint.parent_index) >= joint_entities.size())) return false;
-            const std::string name = "elisa_skin_joint_" + std::to_string(uint32_t(entity)) + "_" +
-                std::to_string(joint_index);
-            const wi::ecs::Entity joint_entity = scene.Entity_CreateTransform(name);
-            if (joint_entity == wi::ecs::INVALID_ENTITY) return false;
-            wi::scene::TransformComponent* joint_transform = scene.transforms.GetComponent(joint_entity);
-            if (joint_transform == nullptr) return false;
-            const auto& local = joint.rest_local;
-            set_transform(*joint_transform, local[0], local[1], local[2], local[3], local[4],
-                local[5], local[6], local[7], local[8], local[9]);
-            const wi::ecs::Entity parent = joint.parent_index < 0 ? entity : joint_entities[size_t(joint.parent_index)];
-            scene.Component_Attach(joint_entity, parent, true);
-            const wi::scene::TransformComponent* parent_transform = scene.transforms.GetComponent(parent);
-            if (parent_transform == nullptr) return false;
-            joint_transform->UpdateTransform_Parented(*parent_transform);
-            joint_entities.push_back(joint_entity);
-        }
-        // Creating joint entities may reallocate Wicked's component stores;
-        // reacquire the root pointers before deriving inverse bind matrices.
-        transform = scene.transforms.GetComponent(entity);
-        material = scene.materials.GetComponent(entity);
-        object = scene.objects.GetComponent(entity);
-        mesh = scene.meshes.GetComponent(entity);
-        if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr) return false;
-        const XMMATRIX armature_inverse = XMMatrixInverse(nullptr, XMLoadFloat4x4(&transform->world));
-        for (uint32_t joint_index : geometry.skin_cluster_joints) {
-            if (joint_index >= joint_entities.size()) return false;
-            const wi::ecs::Entity bone_entity = joint_entities[joint_index];
-            const wi::scene::TransformComponent* bone_transform = scene.transforms.GetComponent(bone_entity);
-            if (bone_transform == nullptr) return false;
-            const XMMATRIX bone_local = XMMatrixMultiply(XMLoadFloat4x4(&bone_transform->world), armature_inverse);
-            XMFLOAT4X4 inverse_bind;
-            XMStoreFloat4x4(&inverse_bind, XMMatrixInverse(nullptr, bone_local));
-            const float* matrix_values = &inverse_bind.m[0][0];
-            for (size_t component = 0; component < 16; ++component) {
-                if (!std::isfinite(matrix_values[component])) return false;
+        if (shared_armature != wi::ecs::INVALID_ENTITY) {
+            mesh->armatureID = shared_armature;
+        } else {
+            wi::scene::ArmatureComponent& armature = scene.armatures.Create(entity);
+            armature.boneCollection.reserve(geometry.skin_cluster_joints.size());
+            armature.inverseBindMatrices.reserve(geometry.skin_cluster_joints.size());
+            joint_entities.reserve(geometry.skin_joints.size());
+            for (size_t joint_index = 0; joint_index < geometry.skin_joints.size(); ++joint_index) {
+                const auto& joint = geometry.skin_joints[joint_index];
+                if (joint.parent_index < -1 || joint.parent_index >= int32_t(joint_index) ||
+                    (joint.parent_index >= 0 && size_t(joint.parent_index) >= joint_entities.size())) return false;
+                const std::string name = "elisa_skin_joint_" + std::to_string(uint32_t(entity)) + "_" +
+                    std::to_string(joint_index);
+                const wi::ecs::Entity joint_entity = scene.Entity_CreateTransform(name);
+                if (joint_entity == wi::ecs::INVALID_ENTITY) return false;
+                wi::scene::TransformComponent* joint_transform = scene.transforms.GetComponent(joint_entity);
+                if (joint_transform == nullptr) return false;
+                const auto& local = joint.rest_local;
+                set_transform(*joint_transform, local[0], local[1], local[2], local[3], local[4],
+                    local[5], local[6], local[7], local[8], local[9]);
+                const wi::ecs::Entity parent = joint.parent_index < 0 ? entity : joint_entities[size_t(joint.parent_index)];
+                scene.Component_Attach(joint_entity, parent, true);
+                const wi::scene::TransformComponent* parent_transform = scene.transforms.GetComponent(parent);
+                if (parent_transform == nullptr) return false;
+                joint_transform->UpdateTransform_Parented(*parent_transform);
+                joint_entities.push_back(joint_entity);
             }
-            armature.boneCollection.push_back(bone_entity);
-            armature.inverseBindMatrices.push_back(inverse_bind);
+            // Creating joint entities may reallocate Wicked's component stores;
+            // reacquire the root pointers before deriving inverse bind matrices.
+            transform = scene.transforms.GetComponent(entity);
+            material = scene.materials.GetComponent(entity);
+            object = scene.objects.GetComponent(entity);
+            mesh = scene.meshes.GetComponent(entity);
+            if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr) return false;
+            const XMMATRIX armature_inverse = XMMatrixInverse(nullptr, XMLoadFloat4x4(&transform->world));
+            for (uint32_t joint_index : geometry.skin_cluster_joints) {
+                if (joint_index >= joint_entities.size()) return false;
+                const wi::ecs::Entity bone_entity = joint_entities[joint_index];
+                const wi::scene::TransformComponent* bone_transform = scene.transforms.GetComponent(bone_entity);
+                if (bone_transform == nullptr) return false;
+                const XMMATRIX bone_local = XMMatrixMultiply(XMLoadFloat4x4(&bone_transform->world), armature_inverse);
+                XMFLOAT4X4 inverse_bind;
+                XMStoreFloat4x4(&inverse_bind, XMMatrixInverse(nullptr, bone_local));
+                const float* matrix_values = &inverse_bind.m[0][0];
+                for (size_t component = 0; component < 16; ++component) {
+                    if (!std::isfinite(matrix_values[component])) return false;
+                }
+                armature.boneCollection.push_back(bone_entity);
+                armature.inverseBindMatrices.push_back(inverse_bind);
+            }
+            mesh->armatureID = entity;
         }
-        mesh->armatureID = entity;
     }
     if (geometry.subsets.empty()) return false;
     mesh->subsets.clear();
-    for (const auto& cooked : geometry.subsets) {
-        if (cooked.index_start > mesh->indices.size() ||
-            cooked.index_count > mesh->indices.size() - cooked.index_start ||
-            cooked.index_count == 0) return false;
+    size_t subset_coverage = 0;
+    const size_t subset_index_end = use_placement ? mesh->indices.size() + index_start : mesh->indices.size();
+    for (size_t subset_index = subset_start; subset_index < subset_start + subset_count; ++subset_index) {
+        const auto& cooked = geometry.subsets[subset_index];
+        const size_t cooked_end = size_t(cooked.index_start) + cooked.index_count;
+        const size_t begin = use_placement ? std::max<size_t>(cooked.index_start, index_start) : cooked.index_start;
+        const size_t end = use_placement ? std::min(cooked_end, index_start + index_count) : cooked_end;
+        if (begin >= end || end > subset_index_end ||
+            (begin - index_start) % 3 != 0 || (end - begin) % 3 != 0) return false;
         wi::scene::MeshComponent::MeshSubset& subset = mesh->subsets.emplace_back();
-        subset.indexOffset = cooked.index_start;
-        subset.indexCount = cooked.index_count;
+        subset.indexOffset = uint32_t(begin - index_start);
+        subset.indexCount = uint32_t(end - begin);
         subset.materialID = entity;
+        subset_coverage += end - begin;
     }
+    if (mesh->subsets.empty() || subset_coverage != index_count) return false;
     mesh->CreateRenderData();
     if (out_joint_entities != nullptr) *out_joint_entities = std::move(joint_entities);
     joint_rollback.committed = true;
-    material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
-    material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
-    material->SetCastShadow(false);
-    material->userBlendMode = alpha < 0.999f ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
-    object->SetCastShadow(false);
-    return true;
-}
-
-// A static placement is a view into the flattened cooked streams. The cooker
-// records exact vertex/index ranges, so each placement can become its own
-// Wicked mesh without allocating or decoding a second geometry buffer.
-inline bool configure_cooked_mesh_placement(wi::scene::Scene& scene, wi::ecs::Entity entity,
-    const elisa::assets::CookedGeometry& geometry, size_t placement_index,
-    float px, float py, float pz, float qx, float qy, float qz, float qw,
-    float sx, float sy, float sz, float red, float green, float blue, float alpha) {
-    if (placement_index >= geometry.mesh_placements.size() || !geometry.skin_joints.empty() ||
-        !geometry.skin_cluster_joints.empty() || !geometry.morph_targets.empty()) return false;
-    const auto& placement = geometry.mesh_placements[placement_index];
-    const size_t vertex_total = geometry.positions.size() / 3;
-    const size_t index_total = geometry.indices.size();
-    if (geometry.positions.size() % 3 != 0 || geometry.normals.size() != geometry.positions.size() ||
-        geometry.uvs.size() != vertex_total * 2 || geometry.indices.empty() || geometry.indices.size() % 3 != 0 ||
-        placement.vertex_count == 0 || placement.index_count == 0 ||
-        size_t(placement.vertex_start) + placement.vertex_count > vertex_total ||
-        size_t(placement.index_start) + placement.index_count > index_total ||
-        placement.index_count % 3 != 0 ||
-        (!geometry.tangents.empty() && geometry.tangents.size() != vertex_total * 4)) return false;
-    wi::scene::TransformComponent* transform = scene.transforms.GetComponent(entity);
-    wi::scene::MaterialComponent* material = scene.materials.GetComponent(entity);
-    wi::scene::ObjectComponent* object = scene.objects.GetComponent(entity);
-    wi::scene::MeshComponent* mesh = scene.meshes.GetComponent(entity);
-    if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr) return false;
-
-    mesh->vertex_positions.resize(placement.vertex_count);
-    mesh->vertex_normals.resize(placement.vertex_count);
-    mesh->vertex_uvset_0.resize(placement.vertex_count);
-    mesh->vertex_tangents.clear();
-    mesh->vertex_uvset_1.clear();
-    mesh->vertex_boneindices.clear();
-    mesh->vertex_boneweights.clear();
-    mesh->vertex_boneindices2.clear();
-    mesh->vertex_boneweights2.clear();
-    mesh->vertex_atlas.clear();
-    mesh->vertex_colors.clear();
-    mesh->vertex_windweights.clear();
-    mesh->morph_targets.clear();
-    for (uint32_t vertex = 0; vertex < placement.vertex_count; ++vertex) {
-        const size_t source = size_t(placement.vertex_start) + vertex;
-        mesh->vertex_positions[vertex] = cooked_vector(geometry.positions, source);
-        mesh->vertex_normals[vertex] = cooked_vector(geometry.normals, source);
-        mesh->vertex_uvset_0[vertex] = XMFLOAT2(geometry.uvs[source * 2], geometry.uvs[source * 2 + 1]);
-    }
-    if (!geometry.tangents.empty()) {
-        mesh->vertex_tangents.resize(placement.vertex_count);
-        for (uint32_t vertex = 0; vertex < placement.vertex_count; ++vertex)
-            mesh->vertex_tangents[vertex] = cooked_tangent(geometry.tangents,
-                size_t(placement.vertex_start) + vertex);
-    }
-    std::vector<uint32_t> local_indices;
-    local_indices.reserve(placement.index_count);
-    for (uint32_t offset = 0; offset < placement.index_count; ++offset) {
-        const uint32_t source = geometry.indices[size_t(placement.index_start) + offset];
-        if (source < placement.vertex_start || source >= placement.vertex_start + placement.vertex_count) return false;
-        local_indices.push_back(source - placement.vertex_start);
-    }
-    assign_cooked_indices(*mesh, local_indices);
-    mesh->subsets.clear();
-    const uint32_t placement_begin = placement.index_start;
-    const uint32_t placement_end = placement_begin + placement.index_count;
-    if (placement.subset_count == 0 || size_t(placement.subset_start) + placement.subset_count > geometry.subsets.size()) return false;
-    for (uint32_t subset_index = 0; subset_index < placement.subset_count; ++subset_index) {
-        const auto& cooked = geometry.subsets[size_t(placement.subset_start) + subset_index];
-        const uint32_t begin = std::max(cooked.index_start, placement_begin);
-        const uint32_t end = std::min(cooked.index_start + cooked.index_count, placement_end);
-        if (begin >= end || (begin - placement_begin) % 3 != 0 || (end - begin) % 3 != 0) return false;
-        auto& subset = mesh->subsets.emplace_back();
-        subset.indexOffset = begin - placement_begin;
-        subset.indexCount = end - begin;
-        subset.materialID = entity;
-    }
-    if (mesh->subsets.empty()) return false;
-    set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
-    mesh->CreateRenderData();
     material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_UNLIT;
     material->SetBaseColor(XMFLOAT4(red, green, blue, alpha));
     material->SetCastShadow(false);

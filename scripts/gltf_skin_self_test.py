@@ -75,6 +75,8 @@ def generated_document() -> dict:
     document["nodes"][0].update({"children": [1], "skin": 0})
     document["nodes"] += [{"name": "root", "children": [2]},
         {"name": "tip", "translation": [0.0, 1.0, 0.0]}]
+    document["nodes"].append({"name": "second_panel_placement", "mesh": 0, "skin": 0})
+    document["scenes"][document["scene"]]["nodes"].append(3)
     document["skins"] = [{"name": "panel_rig", "joints": [1, 2], "skeleton": 1,
         "inverseBindMatrices": inverse_bind}]
     document["animations"] = [{"name": "lift", "samplers": [{"input": input_accessor,
@@ -126,12 +128,13 @@ def self_test(temporary: Path) -> int:
     second, second_result = write_package(temporary / "second.pkg")
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
     required = {
-        "format": "elisa-cooked-v3", "material_slots": "2", "subset_count": "3",
+        "format": "elisa-cooked-v3", "material_slots": "2", "subset_count": "5",
         "skin_bones": "2", "skin_joints": "2", "animation_clips": "1", "morph_targets": "1",
+        "mesh_placement_count": "2",
     }
     if (result != second_result or first.read_bytes() != second.read_bytes() or
             any(sections.get(key) != value for key, value in required.items()) or
-            len(base64.b64decode(sections["skin_indices_b64"])) != 12 * 16 or
+            len(base64.b64decode(sections["skin_indices_b64"])) != 24 * 16 or
             len(base64.b64decode(sections["skin_joint_rest_b64"])) != 2 * 40 or
             sections.get("animation_0_sample_rate") != "30" or
             sections.get("animation_0_frames") != "31"):
