@@ -1,5 +1,3 @@
-# Public Elisa scene-rendering surface. Native handles and Wicked types stay
-# behind the engine-owned scalar ABI.
 include "../math/geometry.elisa"
 include "../backend/lighting.elisa"
 module RenderScene:
@@ -39,6 +37,10 @@ module RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_look_at(eye_x: f32, eye_y: f32, eye_z: f32,
             target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_camera_ray(screen_x: f32, screen_y: f32,
+            origin_x: mutable f32&, origin_y: mutable f32&, origin_z: mutable f32&,
+            direction_x: mutable f32&, direction_y: mutable f32&, direction_z: mutable f32&) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_create_camera(projection: i32, width: i32, height: i32,
             projection_value: f32, near_clip: f32, far_clip: f32) -> i64
@@ -257,17 +259,12 @@ module RenderScene:
                 native_value: i64
         struct OverlayTextHandle:
             id: i64
-        # A generation-checked screen-space rectangle handle. Its integer
-        # value is safe to carry in game-owned Elisa state.
         struct OverlayPanelHandle:
             id: i64
         struct ElectricArcBatch:
             private:
                 handles: mutable ElectricArcHandle[RenderScene::MAX_ELECTRIC_ARCS]
                 count: mutable usize
-        # A compact owner-side collection avoids exposing the representation of
-        # opaque handles to projects. It is useful for batches such as maze
-        # tiles that are created once and shown or hidden as topology changes.
         struct InstanceBatch:
             private:
                 handles: mutable InstanceHandle[RenderScene::MAX_INSTANCES]
@@ -329,6 +326,19 @@ module RenderScene:
         def set_camera_look_at(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_look_at(
                 eye.x, eye.y, eye.z, target.x, target.y, target.z, up.x, up.y, up.z))
+        def camera_ray(screen_x: f32, screen_y: f32) -> Geometry::Ray3 error[RenderSceneError]:
+            origin_x: mutable f32 = 0.0
+            origin_y: mutable f32 = 0.0
+            origin_z: mutable f32 = 0.0
+            direction_x: mutable f32 = 0.0
+            direction_y: mutable f32 = 0.0
+            direction_z: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_camera_ray(screen_x, screen_y,
+                &origin_x, &origin_y, &origin_z, &direction_x, &direction_y, &direction_z))
+            Geometry::Ray3{
+                origin: Geometry::Vec3{x: origin_x, y: origin_y, z: origin_z},
+                direction: Geometry::Vec3{x: direction_x, y: direction_y, z: direction_z},
+            }
         def create_camera(projection: CameraProjection, width: i32, height: i32,
             projection_value: f32, near_clip: f32, far_clip: f32) -> CameraHandle error[RenderSceneError]:
             projection_code: i32 = 0 if projection == CameraProjection.Orthographic else 1
@@ -361,8 +371,6 @@ module RenderScene:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             InstanceHandle{native_value: native_value}
-        # Package paths are relative to the project root and refer to bounded
-        # engine-cooked geometry, never authoring files such as FBX at runtime.
         def create_mesh(package_path: cstr, transform: Geometry::Transform,
             color: Color) -> InstanceHandle error[RenderSceneError]:
             native_value: i64 = elisa_render_scene_v1_create_mesh(package_path,
@@ -379,8 +387,6 @@ module RenderScene:
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
-        # Clip names may be the full imported FBX stack name or its final
-        # segment (for example, "Walking"). Each instance advances independently.
         def play_animation(handle: InstanceHandle, clip_name: cstr, loop: bool,
             speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:
             loop_value: i32 = 1 if loop else 0
@@ -395,21 +401,17 @@ module RenderScene:
             if value < 0.0:
                 raise RenderSceneError.UnknownHandle
             value
-        # Opt into PBR illumination and shadow casting. Scalars multiply surface maps.
         def set_lit_material(handle: InstanceHandle, roughness: f32, metallic: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_lit_material(handle.native_value, roughness, metallic))
         def set_texture_uv_transform(handle: InstanceHandle, scale_u: f32, scale_v: f32,
             offset_u: f32, offset_v: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_texture_uv_transform(handle.native_value,
                 scale_u, scale_v, offset_u, offset_v))
-        # Call after set_environment, which creates the directional sun.
         def set_sun_shadows(enabled: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_sun_shadows(1 if enabled else 0))
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
-        # Mask keeps the mesh opaque while discarding texels below cutoff, which is
-        # suitable for fences and foliage. Blend is sorted transparency.
         def set_alpha_mode(handle: InstanceHandle, mode: AlphaMode, cutoff: f32,
             double_sided: bool) -> void error[RenderSceneError]:
             mode_code: i32 =
@@ -419,9 +421,6 @@ module RenderScene:
                     AlphaMode.Blend: 2
             try check_status(elisa_render_scene_v1_set_alpha_mode(handle.native_value,
                 mode_code, cutoff, 1 if double_sided else 0))
-        # Paths are project-relative. Surface uses Wicked's RGBA packed surface
-        # channels; Normal selects Wicked's normal-map import path.
-        # This assigns maps without changing the material's shading model.
         def set_texture(handle: InstanceHandle, slot: RenderScene::TextureSlot,
             asset_path: cstr) -> void error[RenderSceneError]:
             slot_code: i32 =
@@ -568,9 +567,6 @@ module RenderScene:
                 handle.id, 1 if visible else 0))
         def destroy_overlay_panel(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.id))
-        # Creates a reusable jagged, additive ribbon. Elisa supplies the live
-        # connector endpoints and phase each frame; the engine keeps endpoints
-        # pinned while generating the interior flicker and blue halo.
         def create_electric_arc(width: f32, amplitude: f32, seed: u32) -> ElectricArcHandle error[RenderSceneError]:
             native_value: i64 = elisa_render_scene_v1_create_electric_arc(width, amplitude, seed)
             if native_value <= 0:
@@ -591,7 +587,6 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_destroy_electric_arc(handle.native_value))
         def destroy(handle: InstanceHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy(handle.native_value))
-        # Safe to call more than once, including after application shutdown.
         def shutdown() -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_shutdown())
         def instance_count() -> usize:

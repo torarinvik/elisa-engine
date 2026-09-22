@@ -70,9 +70,14 @@ the real open still fails, `open` activates the silent device in place and recor
 routes match the runtime device-loss recovery. It was added after the Amazing Labyrinth
 bundle, launched with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`, rolled its host back,
 reinitialised SDL3/Wicked/Metal in the same process and then hung forever in the Metal
-frame-fence wait on the first rendered frames. That second-initialisation hang is a
-separate open defect of the host lifecycle under a full scene; the lifecycle probe's
-empty-scene cycles do not reproduce it. `test/runtime_services_audio_probe.elisa`, run by
+frame-fence wait on the first rendered frames. The restart probe now also exercises a
+bounded full scene before every in-process teardown: 40 authored Wicked cubes, a camera,
+and a light are rendered for two frames, GPU completion is awaited, and all scene
+component counts must return to zero. On macOS 27.0, focused three-cycle and 16-cycle
+runs passed with `rendered=1 components_cleared=1`; the 16-cycle run measured zero GPU
+delta and a 4,272-byte process-heap delta across 12 measured cycles. This validates
+full-scene ownership and cleanup, while the imported Amazing Labyrinth reproduction
+remains open because it is the scene that previously hung. `test/runtime_services_audio_probe.elisa`, run by
 the native application smoke, opens a session with the default provider while the
 test-only failure flag makes the device open fail, and checks the session is live on the
 silent route with no voices and shuts down cleanly.
