@@ -286,16 +286,19 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
     }
     const size_t source_bytes = texture.encoded.size();
     const size_t decoded_bytes = decoded.pixels.size();
-    if (source_bytes == 0 || decoded_bytes == 0) {
+    const bool is_ktx2 = texture.header.format == elisa::assets::EncodedImageFormat::Ktx2;
+    if (source_bytes == 0 || (!is_ktx2 && decoded_bytes == 0) || (is_ktx2 && decoded_bytes != 0)) {
         return ELISA_RENDER_SCENE_CAPACITY;
     }
-    const size_t pixel_count = static_cast<size_t>(decoded.width) * decoded.height;
-    const size_t stored_channels = decoded.source_channels == 3 ? 4u :
-        static_cast<size_t>(decoded.source_channels);
-    if (decoded.width != texture.header.width || decoded.height != texture.header.height ||
-        decoded.source_channels < 1 || decoded.source_channels > 4 ||
-        pixel_count > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES / stored_channels ||
-        decoded_bytes != pixel_count * stored_channels) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    if (!is_ktx2) {
+        const size_t pixel_count = static_cast<size_t>(decoded.width) * decoded.height;
+        const size_t stored_channels = decoded.source_channels == 3 ? 4u :
+            static_cast<size_t>(decoded.source_channels);
+        if (decoded.width != texture.header.width || decoded.height != texture.header.height ||
+            decoded.source_channels < 1 || decoded.source_channels > 4 ||
+            pixel_count > MAX_SNAPSHOT_DECODED_TEXTURE_BYTES / stored_channels ||
+            decoded_bytes != pixel_count * stored_channels) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
     if (!make_snapshot_texture_capacity(state, source_bytes, decoded_bytes, free_slot)) {
         return ELISA_RENDER_SCENE_CAPACITY;
     }
@@ -308,8 +311,10 @@ int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_
     asset.section = std::move(section);
     asset.resource_stem = canonical_path.string() + "#" + asset.section + "-" + checksum;
     asset.extension = elisa::assets::encoded_image_extension(texture.header.format);
+    asset.format = texture.header.format;
     asset.canonical_path = std::move(canonical_path);
     asset.decoded = std::move(decoded);
+    if (is_ktx2) asset.encoded_ktx2 = std::move(texture.encoded);
     asset.source_bytes = source_bytes;
     asset.last_used = next_snapshot_texture_use_stamp(state);
     asset.live = true;
@@ -350,7 +355,8 @@ int32_t register_snapshot_bundle_texture_locked(RenderSceneService& state, uint6
         return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
     }
     elisa::rendering::textures::DecodedImage decoded;
-    if (!elisa::rendering::textures::decode_image(texture.encoded, texture.header.width,
+    if (texture.header.format != elisa::assets::EncodedImageFormat::Ktx2 &&
+        !elisa::rendering::textures::decode_image(texture.encoded, texture.header.width,
             texture.header.height, decoded)) {
         std::fprintf(stderr, "Elisa bundle texture decode failed: %s\n", canonical_path.string().c_str());
         return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
@@ -391,12 +397,14 @@ SnapshotAssetLoad load_snapshot_asset(elisa::assets::SerialJobWorker<SnapshotAss
         } else {
             if (!elisa::assets::read_bundle_texture(load.canonical_path, section.c_str(),
                     load.texture, load.error, std::move(cancellation_check))) return load;
-            if (!elisa::rendering::textures::decode_image(load.texture.encoded,
+            if (load.texture.header.format != elisa::assets::EncodedImageFormat::Ktx2 &&
+                !elisa::rendering::textures::decode_image(load.texture.encoded,
                     load.texture.header.width, load.texture.header.height, load.decoded_texture)) {
                 load.error = "bundle texture image decode failed";
                 return load;
             }
-            load.decoded_on_worker = std::this_thread::get_id() != owner_thread;
+            load.decoded_on_worker = load.texture.header.format != elisa::assets::EncodedImageFormat::Ktx2 &&
+                std::this_thread::get_id() != owner_thread;
         }
         load.status = ELISA_RENDER_SCENE_OK;
     } catch (const std::exception& error) {

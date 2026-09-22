@@ -1,8 +1,7 @@
 #pragma once
 
-// Encoded images stored as sections of a cooked ELPK bundle. Only PNG and
-// JPEG, which Wicked decodes from memory, are accepted. The image header's
-// dimensions are bounded before any decoder allocates pixels.
+// Encoded images stored as sections of a cooked ELPK bundle. PNG and JPEG are
+// decoded from memory; Basis KTX2 stays encoded until its owner-thread upload.
 #include "virtual_package.h"
 
 #include <algorithm>
@@ -15,10 +14,12 @@
 namespace elisa::assets {
 
 inline constexpr uint32_t MAX_BUNDLE_TEXTURE_DIMENSION = 8192;
+inline constexpr uint32_t MAX_BUNDLE_KTX2_DIMENSION = 4096;
+inline constexpr size_t KTX2_HEADER_BYTES = 80;
 inline constexpr size_t MAX_BUNDLE_TEXTURE_BYTES = probe::BinaryPackageIndex::MAX_UNPACKED_BYTES;
 inline constexpr size_t MAX_BUNDLE_SECTION_NAME_BYTES = 15;
 
-enum class EncodedImageFormat { Png, Jpeg };
+enum class EncodedImageFormat { Png, Jpeg, Ktx2 };
 
 struct EncodedImageHeader {
     EncodedImageFormat format = EncodedImageFormat::Png;
@@ -52,6 +53,11 @@ inline uint32_t big_endian_u32(const std::vector<uint8_t>& bytes, size_t offset)
 
 inline uint16_t big_endian_u16(const std::vector<uint8_t>& bytes, size_t offset) {
     return static_cast<uint16_t>((bytes[offset] << 8) | bytes[offset + 1]);
+}
+
+inline uint32_t little_endian_u32(const std::vector<uint8_t>& bytes, size_t offset) {
+    return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+        (static_cast<uint32_t>(bytes[offset + 2]) << 16) | (static_cast<uint32_t>(bytes[offset + 3]) << 24);
 }
 
 // The PNG signature must be followed by a 13-byte IHDR chunk.
@@ -99,6 +105,25 @@ inline bool inspect_jpeg(const std::vector<uint8_t>& bytes, EncodedImageHeader& 
     return false;
 }
 
+// KTX2 headers are little-endian. Basis validates the complete container at
+// upload, while this section boundary rejects non-2D shapes and unsafe sizes.
+inline bool inspect_ktx2(const std::vector<uint8_t>& bytes, EncodedImageHeader& header) {
+    static constexpr uint8_t IDENTIFIER[12] = {
+        0xAB, 'K', 'T', 'X', ' ', '2', '0', 0xBB, '\r', '\n', 0x1A, '\n'
+    };
+    if (bytes.size() < KTX2_HEADER_BYTES || !std::equal(IDENTIFIER, IDENTIFIER + 12, bytes.begin())) return false;
+    header.format = EncodedImageFormat::Ktx2;
+    header.width = little_endian_u32(bytes, 20);
+    header.height = little_endian_u32(bytes, 24);
+    const uint32_t depth = little_endian_u32(bytes, 28);
+    const uint32_t layers = little_endian_u32(bytes, 32);
+    const uint32_t faces = little_endian_u32(bytes, 36);
+    const uint32_t levels = little_endian_u32(bytes, 40);
+    return header.width > 0 && header.height > 0 &&
+        header.width <= MAX_BUNDLE_KTX2_DIMENSION && header.height <= MAX_BUNDLE_KTX2_DIMENSION &&
+        depth == 0 && layers <= 1 && faces == 1 && levels > 0 && levels <= 16;
+}
+
 inline bool inspect_encoded_image(const std::vector<uint8_t>& bytes, EncodedImageHeader& header,
         std::string& error) {
     header = EncodedImageHeader{};
@@ -106,8 +131,8 @@ inline bool inspect_encoded_image(const std::vector<uint8_t>& bytes, EncodedImag
         error = "bundle texture size rejected";
         return false;
     }
-    if (!inspect_png(bytes, header) && !inspect_jpeg(bytes, header)) {
-        error = "bundle texture is not a PNG or JPEG image";
+    if (!inspect_png(bytes, header) && !inspect_jpeg(bytes, header) && !inspect_ktx2(bytes, header)) {
+        error = "bundle texture is not a supported PNG, JPEG, or 2D KTX2 image";
         return false;
     }
     if (header.width == 0 || header.height == 0 ||
@@ -119,6 +144,7 @@ inline bool inspect_encoded_image(const std::vector<uint8_t>& bytes, EncodedImag
 }
 
 inline const char* encoded_image_extension(EncodedImageFormat format) {
+    if (format == EncodedImageFormat::Ktx2) return "ktx2";
     return format == EncodedImageFormat::Png ? "png" : "jpg";
 }
 

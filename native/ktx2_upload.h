@@ -111,11 +111,11 @@ inline uint32_t ktx2_block_bytes(KTX2UploadEncoding encoding) {
     return encoding == KTX2UploadEncoding::Bc1 ? 8u : 16u;
 }
 
-inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
+inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
     KTX2TextureUsage usage = KTX2TextureUsage::Color) {
     wi::Resource resource;
-    std::vector<uint8_t> bytes;
-    if (!ktx2_upload_check(read_bounded_ktx2_container(texture_path, bytes), "KTX2 upload reads bounded complete container")) return resource;
+    if (!ktx2_upload_check(!bytes.empty() && bytes.size() <= MAX_KTX2_CONTAINER_BYTES,
+        "container is empty or exceeds its memory budget")) return resource;
     basist::basisu_transcoder_init();
     basist::ktx2_transcoder transcoder;
     if (!ktx2_upload_check(transcoder.init(bytes.data(), static_cast<uint32_t>(bytes.size())), "KTX2 upload parses")) return resource;
@@ -196,6 +196,14 @@ inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
         "KTX2 upload GPU texture")) return resource;
     resource.SetTexture(texture);
     return resource;
+}
+
+inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
+    KTX2TextureUsage usage = KTX2TextureUsage::Color) {
+    std::vector<uint8_t> bytes;
+    if (!ktx2_upload_check(read_bounded_ktx2_container(texture_path, bytes),
+        "cannot read a nonempty bounded complete container")) return {};
+    return load_ktx2_texture_resource(bytes, usage);
 }
 
 } // namespace elisa::rendering::textures

@@ -255,6 +255,17 @@ inline bool assign_decoded_texture(wi::scene::MaterialComponent& material, int32
     return assign_resource(material, slot_code, cached_resource, {});
 }
 
+inline bool assign_encoded_ktx2_texture(wi::scene::MaterialComponent& material, int32_t slot_code,
+        wi::Resource& cached_resource, const std::vector<uint8_t>& encoded) {
+    if (!valid_slot(slot_code) || encoded.empty()) return false;
+    if (!cached_resource.IsValid()) {
+        const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal)
+            ? KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
+        cached_resource = load_ktx2_texture_resource(encoded, usage);
+    }
+    return assign_resource(material, slot_code, cached_resource, {});
+}
+
 inline bool assign_project_texture(wi::scene::MaterialComponent& material,
         int32_t slot_code, const char* asset_path) {
     std::filesystem::path resolved_path;

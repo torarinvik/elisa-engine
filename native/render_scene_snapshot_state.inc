@@ -76,14 +76,15 @@ struct SnapshotTextureAssetSlot {
     uint64_t low = 0;
     std::string requested_path;
     std::filesystem::path canonical_path;
-    // Bundle sections decode to bounded CPU pixels before installation; async
-    // requests decode on the worker, while the compatibility call runs inline.
-    // Owner-thread import creates role-specific Wicked resources from pixels.
+    // PNG/JPEG sections decode to bounded CPU pixels; KTX2 stays encoded until
+    // material-role upload. Owner-thread import creates role-specific resources.
     std::string section;
     std::string resource_stem;
     elisa::rendering::textures::DecodedImage decoded;
+    std::vector<uint8_t> encoded_ktx2;
     std::array<wi::Resource, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> resources{};
     size_t source_bytes = 0;
+    elisa::assets::EncodedImageFormat format = elisa::assets::EncodedImageFormat::Png;
     const char* extension = nullptr;
     uint64_t last_used = 0;
     bool decoded_on_worker = false;
