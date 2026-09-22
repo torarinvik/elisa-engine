@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Cook a GLB character through Blender and Elisa's bounded FBX cooker.
+"""Cook a static or skinned GLB mesh through Blender and Elisa's FBX cooker.
 
-GLB supplies geometry, skinning and embedded base-color images. An optional
-FBX animation source can provide clips for a GLB rig with matching joint names.
+GLB supplies geometry, optional skinning and embedded base-color images. An
+optional FBX animation source can provide clips for a GLB rig with matching
+joint names. Static meshes may be simplified to a bounded triangle count.
 """
 
 from __future__ import annotations
@@ -179,6 +180,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--texture-output", type=Path, help="destination for the first material's base-color image")
     parser.add_argument("--texture-max-size", type=int,
         help="bound the extracted image to this many pixels per side (needs Pillow)")
+    parser.add_argument("--max-triangles", type=int,
+        help="simplify a static mesh to no more than this many triangles")
     parser.add_argument("--blender", help="Blender executable (or set BLENDER)")
     parser.add_argument("--self-test", action="store_true", help="validate the bounded GLB image reader")
     options = parser.parse_args(arguments)
@@ -188,10 +191,13 @@ def main(arguments: list[str]) -> int:
     try:
         if options.self_test:
             if (options.source is not None or options.output is not None or options.asset_path is not None or
-                    options.animation_source is not None or options.texture_output is not None):
+                    options.animation_source is not None or options.texture_output is not None or
+                    options.max_triangles is not None):
                 parser.error("--self-test cannot be combined with asset paths or cooker options")
             self_test()
             return 0
+        if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
+            parser.error("--max-triangles must be in [1, 1000000]")
         source = options.source.expanduser().resolve(strict=True)
         if not source.is_file() or source.suffix.lower() != ".glb":
             raise GlbError("source must be a regular .glb file")
@@ -241,6 +247,8 @@ def main(arguments: list[str]) -> int:
                 raise GlbError("Blender did not create a converted FBX")
             cooker = ROOT / "scripts/cook_fbx_asset.py"
             cook_command = [sys.executable, str(cooker), str(converted), "--asset-path", key, "--output", str(output)]
+            if options.max_triangles is not None:
+                cook_command.extend(["--max-triangles", str(options.max_triangles)])
             print("+", " ".join(repr(argument) for argument in cook_command), flush=True)
             subprocess.run(cook_command, cwd=ROOT, check=True)
 
