@@ -88,8 +88,13 @@ int64_t elisa_render_scene_v1_create_mesh(
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz,
     float red, float green, float blue, float alpha);
-// Draws source's mesh and material again at another transform. A clone has no
-// material of its own, while the source mesh stays alive until its last clone.
+// Draws source's mesh and material again at another transform. Wicked renders
+// every object naming one mesh entity from that mesh's buffers, so repeated
+// props load and upload once. The color multiplies the source material's base
+// color per instance. A clone has no material of its own (material calls on
+// it return BACKEND_FAILED), and a skinned, animated, morphing or cloned
+// source returns INVALID_ARGUMENT. Destroying the source first keeps its mesh
+// until the last clone is destroyed.
 int64_t elisa_render_scene_v1_create_mesh_instance(
     int64_t source_handle,
     float px, float py, float pz,
