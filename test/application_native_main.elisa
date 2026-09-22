@@ -132,6 +132,32 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
         Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
         PhysicsRuntime::ALL_LAYERS)
     raise PhysicsRuntime::PhysicsError.BackendFailure if not ray.hit or ray.entity == 0 or ray.distance <= 0.0
+    all_rays: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+    all_ray_status: i32 = catch PhysicsRuntime::raycast_all(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
+        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+        PhysicsRuntime::ALL_LAYERS, &all_rays):
+        value: value.i32()
+        PhysicsRuntime::PhysicsError.InvalidArgument: 181
+        PhysicsRuntime::PhysicsError.ApplicationUnavailable: 182
+        PhysicsRuntime::PhysicsError.WrongThread: 183
+        PhysicsRuntime::PhysicsError.Capacity: 184
+        PhysicsRuntime::PhysicsError.InvalidHandle: 185
+        PhysicsRuntime::PhysicsError.StaleWorld: 186
+        PhysicsRuntime::PhysicsError.BackendFailure: 187
+        error failure: 188
+    return all_ray_status if all_ray_status >= 181
+    all_ray_count: usize = all_ray_status.usize()
+    raise PhysicsRuntime::PhysicsError.BackendFailure if all_ray_count == 0 or all_rays.count != all_ray_count
+    raise PhysicsRuntime::PhysicsError.BackendFailure if not all_rays.hits[0].hit or all_rays.hits[0].entity == 0
+    raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[0].distance > ray.distance + 0.001
+    invalid_all_status: i32 = catch PhysicsRuntime::raycast_all(world,
+        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        10.0, PhysicsRuntime::ALL_LAYERS, &all_rays):
+        value: 1
+        PhysicsRuntime::PhysicsError.InvalidArgument: 0
+        error failure: 2
+    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_all_status != 0
     invalid_ray: i32 = catch PhysicsRuntime::raycast(world,
         Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
         Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 10.0,

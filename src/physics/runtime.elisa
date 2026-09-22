@@ -43,6 +43,27 @@ module PhysicsRuntime:
             position_z: mutable f32&, normal_x: mutable f32&, normal_y: mutable f32&,
             normal_z: mutable f32&, distance: mutable f32&, hit: mutable i32&) -> i32
 
+        struct NativeRayHit:
+            entity: u64
+            position_x: f32
+            position_y: f32
+            position_z: f32
+            normal_x: f32
+            normal_y: f32
+            normal_z: f32
+            distance: f32
+
+        struct NativeRayHitBuffer:
+            hits: NativeRayHit[16]
+            count: u32
+
+        @callconv(c)
+        extern elisa_physics_v1_raycast_all(world_generation: u64,
+            origin_x: f32, origin_y: f32, origin_z: f32,
+            direction_x: f32, direction_y: f32, direction_z: f32,
+            max_distance: f32, layer_mask: u32,
+            buffer: mutable NativeRayHitBuffer&) -> i32
+
         @callconv(c)
         extern elisa_physics_v1_contact_count(world_generation: u64,
             count: mutable u32&, dropped: mutable u32&) -> i32
@@ -99,6 +120,7 @@ module PhysicsRuntime:
 
     public:
         const MAX_CONTACT_EVENTS: usize = 64
+        const MAX_RAY_HITS: usize = 16
         const ALL_LAYERS: u32 = 4294967295
 
         enum BodyKind:
@@ -131,8 +153,15 @@ module PhysicsRuntime:
             normal: Geometry::Vec3
             distance: f32
 
+        struct RayHitBuffer:
+            hits: mutable RayHit[16]
+            count: mutable usize
+
         def ContactBuffer() -> ContactBuffer:
             ContactBuffer{events: zeroed}
+
+        def RayHitBuffer() -> RayHitBuffer:
+            RayHitBuffer{hits: zeroed, count: 0}
 
         error PhysicsError:
             InvalidArgument
@@ -256,6 +285,30 @@ module PhysicsRuntime:
                 normal: Geometry::Vec3{x: normal_x, y: normal_y, z: normal_z},
                 distance: distance,
             }
+
+        def service_raycast_all(state: ServiceState&, origin: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
+            buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            native_buffer: mutable NativeRayHitBuffer = zeroed
+            try check_status(elisa_physics_v1_raycast_all(state.generation,
+                origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
+                max_distance, layer_mask, &native_buffer))
+            count: u32 = native_buffer.count
+            raise PhysicsError.Capacity if count > PhysicsRuntime::MAX_RAY_HITS.u32()
+            for index in 0..<count.usize() |buffer, native_buffer, index|:
+                native_hit: NativeRayHit = native_buffer.hits[index]
+                buffer.hits[index] <- RayHit{
+                    hit: true,
+                    entity: native_hit.entity,
+                    position: Geometry::Vec3{x: native_hit.position_x,
+                        y: native_hit.position_y, z: native_hit.position_z},
+                    normal: Geometry::Vec3{x: native_hit.normal_x,
+                        y: native_hit.normal_y, z: native_hit.normal_z},
+                    distance: native_hit.distance,
+                }
+            buffer.count <- count.usize()
+            buffer.count
 
         def service_poll_contacts(state: ServiceState&,
             buffer: ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
@@ -389,6 +442,30 @@ module PhysicsRuntime:
                 normal: Geometry::Vec3{x: normal_x, y: normal_y, z: normal_z},
                 distance: distance,
             }
+
+        def raycast_all(world: World&, origin: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
+            buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            native_buffer: mutable NativeRayHitBuffer = zeroed
+            try check_status(elisa_physics_v1_raycast_all(world.generation,
+                origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
+                max_distance, layer_mask, &native_buffer))
+            count: u32 = native_buffer.count
+            raise PhysicsError.Capacity if count > PhysicsRuntime::MAX_RAY_HITS.u32()
+            for index in 0..<count.usize() |buffer, native_buffer, index|:
+                native_hit: NativeRayHit = native_buffer.hits[index]
+                buffer.hits[index] <- RayHit{
+                    hit: true,
+                    entity: native_hit.entity,
+                    position: Geometry::Vec3{x: native_hit.position_x,
+                        y: native_hit.position_y, z: native_hit.position_z},
+                    normal: Geometry::Vec3{x: native_hit.normal_x,
+                        y: native_hit.normal_y, z: native_hit.normal_z},
+                    distance: native_hit.distance,
+                }
+            buffer.count <- count.usize()
+            buffer.count
 
         def poll_contacts(world: World&,
             buffer: ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:

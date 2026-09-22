@@ -25,6 +25,12 @@ static_assert(sizeof(ElisaPhysicsContactEvent) == 64,
     "Elisa contact event ABI must match the fixed Elisa ContactEvent layout");
 static_assert(offsetof(ElisaPhysicsContactEvent, sequence) == 56,
     "Elisa contact event sequence offset changed");
+static_assert(sizeof(ElisaPhysicsRayHit) == 40,
+    "Elisa ray hit ABI must remain a flat fixed-width record");
+static_assert(offsetof(ElisaPhysicsRayHit, distance) == 32,
+    "Elisa ray hit distance offset changed");
+static_assert(offsetof(ElisaPhysicsRayHitBuffer, count) == 640,
+    "Elisa ray hit buffer count offset changed");
 
 struct BodySlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -308,6 +314,49 @@ extern "C" int32_t elisa_physics_v1_raycast(uint64_t world_generation,
     *normal_z = found ? result.normal.z : 0.0f;
     *distance = found ? result.distance : 0.0f;
     *hit = found ? 1 : 0;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_raycast_all(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, uint32_t layer_mask,
+    ElisaPhysicsRayHitBuffer* buffer) {
+    if (buffer == nullptr) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const float direction_length_squared = direction_x * direction_x +
+        direction_y * direction_y + direction_z * direction_z;
+    if (!std::isfinite(origin_x) || !std::isfinite(origin_y) ||
+        !std::isfinite(origin_z) || !std::isfinite(direction_x) ||
+        !std::isfinite(direction_y) || !std::isfinite(direction_z) ||
+        !std::isfinite(max_distance) || max_distance <= 0.0f ||
+        !std::isfinite(direction_length_squared) ||
+        direction_length_squared <= 0.000001f) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    probe::PhysicsQueryBridge::Hits results{};
+    const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
+        ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
+    const size_t found = state.query_bridge != nullptr
+        ? state.query_bridge->raycast_all(query_token,
+            XMFLOAT3(origin_x, origin_y, origin_z),
+            XMFLOAT3(direction_x, direction_y, direction_z), max_distance, layer_mask, results)
+        : 0;
+    buffer->count = static_cast<uint32_t>(found);
+    for (size_t index = 0; index < found; ++index) {
+        const probe::PhysicsQueryHit& source = results.values[index];
+        ElisaPhysicsRayHit& destination = buffer->hits[index];
+        destination.entity = static_cast<uint64_t>(source.entity);
+        destination.position_x = source.position.x;
+        destination.position_y = source.position.y;
+        destination.position_z = source.position.z;
+        destination.normal_x = source.normal.x;
+        destination.normal_y = source.normal.y;
+        destination.normal_z = source.normal.z;
+        destination.distance = source.distance;
+    }
     return ELISA_PHYSICS_OK;
 }
 
