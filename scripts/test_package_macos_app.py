@@ -63,7 +63,8 @@ class PackageMacosAppTests(unittest.TestCase):
             "assets/audio", "assets/textures/trim.png", "assets/audio"]}}))
         self.assertEqual(self.staged(app), {
             "Game.bin", "assets/audio/step.wav", "assets/textures/trim.png",
-            "build/cooked/player.pkg", "shaders/metal/basic.cso"})
+            "build/cooked/player.pkg", "shaders/metal/basic.cso",
+            "shaders/elisa.shader-manifest.json"})
         launcher = app / "Contents" / "MacOS" / "Game"
         self.assertTrue(launcher.stat().st_mode & stat.S_IXUSR)
         with (app / "Contents" / "Info.plist").open("rb") as stream:
@@ -75,18 +76,29 @@ class PackageMacosAppTests(unittest.TestCase):
         app = self.package(self.write_manifest({}))
         self.assertEqual(self.staged(app), {
             "Game.bin", "assets/audio/step.wav", "assets/textures/trim.png",
-            "assets/source/rig.blend", "build/cooked/player.pkg", "shaders/metal/basic.cso"})
+            "assets/source/rig.blend", "build/cooked/player.pkg", "shaders/metal/basic.cso",
+            "shaders/elisa.shader-manifest.json"})
 
     def test_launcher_runs_from_relocated_resources(self) -> None:
         app = self.package(self.write_manifest({"package": {"resources": ["assets/audio"]}}))
         binary = app / "Contents" / "Resources" / "Game.bin"
         binary.write_text("#!/bin/sh\npwd\ntest -f assets/audio/step.wav && echo found\n"
-            "echo \"$ELISA_ENGINE_SHADER_PATH\"\n", encoding="utf-8")
+            "echo \"$ELISA_ENGINE_SHADER_PATH\"\n"
+            "echo \"$ELISA_ENGINE_SHADER_MANIFEST\"\n", encoding="utf-8")
         result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
             capture_output=True, text=True, check=True, cwd=self.tempdir.name)
         resources = (app / "Contents" / "Resources").resolve()
         self.assertEqual(result.stdout.splitlines(),
-            [str(resources), "found", str(resources / "shaders")])
+            [str(resources), "found", str(resources / "shaders"),
+             str(resources / "shaders" / "elisa.shader-manifest.json")])
+
+    def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
+        manifest = packager.shader_manifest(self.project / "shaders")
+        self.assertEqual(manifest["schema"], 1)
+        self.assertEqual(len(manifest["files"]), 1)
+        first = manifest["fingerprint"]
+        (self.project / "shaders" / "metal" / "basic.cso").write_bytes(b"changed")
+        self.assertNotEqual(first, packager.shader_manifest(self.project / "shaders")["fingerprint"])
 
     def test_invalid_resource_declarations_are_rejected(self) -> None:
         for resources in ([], ["../escape"], ["/abs"], ["assets/.git"], [""], [3]):

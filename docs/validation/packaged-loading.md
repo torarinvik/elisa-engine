@@ -91,6 +91,13 @@ The native application smoke calls a test-only probe with a missing root and
 requires this status. It also runs the normal startup and failure-cleanup
 cases to prove that valid configured roots still initialize and shut down.
 
+The macOS packager writes `shaders/elisa.shader-manifest.json` beside the
+compiled shader tree. Its schema version, sorted binary paths, byte sizes, and
+SHA-256 digests produce a deterministic `fingerprint`; the relocated launcher
+exports `ELISA_ENGINE_SHADER_MANIFEST` along with the shader root. A changed
+compiled shader therefore produces a new package identity before any runtime
+pipeline cache is reused.
+
 ## Limits
 
 - **Shaders.** Shaders still come from the Wicked checkout through
@@ -138,3 +145,7 @@ cases to prove that valid configured roots still initialize and shut down.
   native application cases. The test-only probe rejected a missing shader root
   before Wicked initialization, and valid startup plus failure cleanup still
   passed on SDL3/Metal.
+- `PYTHONPATH=scripts /opt/homebrew/bin/python3
+  scripts/test_package_macos_app.py` passed all six packaging tests, including
+  deterministic and content-sensitive shader manifest fingerprints and
+  launcher export of the relocated manifest path.
