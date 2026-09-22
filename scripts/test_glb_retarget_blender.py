@@ -67,7 +67,8 @@ def main():
             for name in ('Root', 'Child'):
                 src = source.matrix_world @ source.pose.bones[name].matrix
                 dst = target.matrix_world @ target.pose.bones[name].matrix
-                assert abs(src.to_quaternion().dot(dst.to_quaternion())) > 0.99999
+                orientation_match = abs(src.to_quaternion().dot(dst.to_quaternion()))
+                assert orientation_match > 0.99999, f'{name} frame={frame} orientation dot={orientation_match}'
                 if name == 'Root':
                     assert (src.translation - dst.translation).length < 1e-5
             child = target.pose.bones['Child']

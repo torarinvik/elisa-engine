@@ -71,11 +71,14 @@ Run the Blender regression with:
 
 ```sh
 blender --background --python-exit-code 1 --python scripts/test_glb_retarget_blender.py
+blender --background --python-exit-code 1 --python scripts/test_glb_static_reduction_blender.py
 ```
 
-It transfers two clips between rigs with a 100x object-scale difference and
-different child rest orientations, checking root motion, world rotations,
-preserved limb length, and absence of object-transform animation keys.
+The retarget test transfers two clips between rigs with a 100x object-scale
+difference and different child rest orientations, checking root motion, world
+rotations, preserved limb length, and absence of object-transform animation
+keys. The static-mesh test reduces a generated dense grid under a configured
+triangle ceiling and checks regenerated normals and unchanged node transforms.
 The supplied cyborg cooks to 1.6383 metres tall (previously 163.83 after the
 incorrect raw-action transfer). All six locomotion clips were sampled at their
 start, middle and end, retaining plausible character dimensions.

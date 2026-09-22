@@ -1,4 +1,5 @@
 #include "fbx_asset_import.h"
+#include "mesh_tangent_frames.h"
 #if defined(ELISA_TEST_COOKED_SKIN)
 #include "cooked_geometry_package.h"
 #endif
@@ -62,6 +63,23 @@ bool skin_bind_pose_test() {
         "skin rest hierarchy uses cluster bind matrices, including scaled ancestors");
 }
 
+bool tangent_normal_fallback_test() {
+    const std::vector<float> positions = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f};
+    const std::vector<float> missing_normals(9, 0.0f);
+    const std::vector<float> uvs = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+    const std::vector<uint32_t> indices = {0, 1, 2};
+    std::vector<float> tangents;
+    if (!check(elisa::assets::generate_tangent_frames(positions, missing_normals, uvs, indices, tangents),
+            "zero source normals use generated geometric normals")) return false;
+    bool finite = tangents.size() == 12;
+    for (float value : tangents) finite = finite && std::isfinite(value);
+    return check(finite && std::abs(tangents[0] - 1.0f) < 1.0e-5f &&
+        std::abs(tangents[1]) < 1.0e-5f && std::abs(tangents[2]) < 1.0e-5f &&
+        std::abs(tangents[3] - 1.0f) < 1.0e-5f,
+        "fallback tangent frame is finite and follows the triangle UVs");
+}
+
 int fixture_test(const std::filesystem::path& path) {
     const auto asset = elisa::assets::import_fbx(path, true);
     if (!asset.ok) {
@@ -70,6 +88,7 @@ int fixture_test(const std::filesystem::path& path) {
     }
     print_summary("fixture", asset);
     bool ok = skin_bind_pose_test();
+    ok &= tangent_normal_fallback_test();
     ok &= check(asset.primary_mesh_extracted && asset.meshes == 1 && asset.triangles == 1,
         "triangle fixture scene and geometry were imported");
     ok &= check(asset.primary_mesh.indices.size() == 3 && asset.primary_mesh.positions.size() == 9 &&
