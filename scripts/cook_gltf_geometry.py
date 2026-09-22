@@ -10,6 +10,7 @@ import struct
 
 import cook_assets
 import cook_gltf_nodes
+import cook_gltf_skin
 import cook_gltf_textures
 
 # The native loader enforces the same bounds.
@@ -101,14 +102,15 @@ def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], 
     return len(materials), [record for record, _ in slots], [images for _, images in slots]
 
 
-def validate_static_geometry_source(document: dict) -> tuple[list, int, list[bytes], list]:
+def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list, int, list[bytes], list, dict | None]:
     """Return each mesh placement's (mesh index, world matrix), the material
     slot count, slot material records, and each slot's images after rejecting
     unhandled glTF semantics."""
     if document.get("extensionsUsed") or document.get("extensionsRequired"):
         raise ValueError("runtime geometry cooker does not support glTF extensions")
-    if any(document.get(name) for name in ("animations", "skins", "cameras")):
-        raise ValueError("runtime geometry cooker accepts static geometry only")
+    if any(document.get(name) for name in ("animations", "cameras")):
+        raise ValueError("runtime geometry cooker accepts static geometry without animations or cameras")
+    skin = cook_gltf_skin.normalize(document, buffer)
 
     meshes = document.get("meshes", [])
     if not isinstance(meshes, list) or not 1 <= len(meshes) <= cook_gltf_nodes.MAX_NODES:
@@ -126,12 +128,17 @@ def validate_static_geometry_source(document: dict) -> tuple[list, int, list[byt
             attributes = primitive.get("attributes", {})
             if not isinstance(attributes, dict) or any(type(value) is not int for value in attributes.values()):
                 raise ValueError("primitive attributes must name accessors by index")
-            if set(attributes) - {"POSITION", "NORMAL", "TEXCOORD_0"}:
+            if set(attributes) - {"POSITION", "NORMAL", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0"}:
                 raise ValueError("runtime geometry cooker encountered an unsupported vertex attribute")
+            has_joints = "JOINTS_0" in attributes
+            if has_joints != ("WEIGHTS_0" in attributes) or has_joints != (skin is not None):
+                raise ValueError("skinned primitives must consistently provide JOINTS_0 and WEIGHTS_0")
         every_primitive += primitives
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
     placements = cook_gltf_nodes.mesh_placements(document, len(meshes))
-    return placements, slot_count, slot_records, slot_images
+    if skin is not None and any(matrix != cook_gltf_nodes.IDENTITY for _, matrix in placements):
+        raise ValueError("skinned mesh node transforms must be identity; put the pose in its joints")
+    return placements, slot_count, slot_records, slot_images, skin
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -169,7 +176,12 @@ def read_vertices(document: dict, buffer: bytes, attributes: dict) -> dict:
     uvs = bytes(vertex_count * 8)
     if "TEXCOORD_0" in attributes:
         uvs = float_stream(document, buffer, attributes["TEXCOORD_0"], "VEC2", vertex_count, "UVs")
-    return {"positions": positions, "normals": normals, "uvs": uvs, "count": vertex_count, "triangles": []}
+    skin_indices = skin_weights = None
+    if "JOINTS_0" in attributes:
+        skin_indices, skin_weights = cook_gltf_skin.read_influences(document, buffer, attributes, vertex_count)
+    return {"positions": positions, "normals": normals, "uvs": uvs,
+        "skin_indices": skin_indices, "skin_weights": skin_weights,
+        "count": vertex_count, "triangles": []}
 
 
 def read_indices(document: dict, buffer: bytes, primitive: dict, vertex_count: int) -> list[int]:
@@ -220,10 +232,9 @@ def normalized_geometry(document: dict, buffer: bytes):
     # adjacent subsets on one slot merge. Primitives of one placement that
     # name the same vertex accessors share one copy of those vertices.
     # Material factors become slot records, and the images their textures
-    # sample become bundle sections. Skins, animation and cameras stay in
-    # their dedicated import paths; silently flattening them would produce
-    # wrong assets.
-    placements, slot_count, slot_records, slot_images = validate_static_geometry_source(document)
+    # sample become bundle sections. The bounded skin path keeps joint
+    # influences and parent-ordered rest transforms alongside the mesh.
+    placements, slot_count, slot_records, slot_images, skin = validate_static_geometry_source(document, buffer)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
     placed = []
@@ -239,6 +250,8 @@ def normalized_geometry(document: dict, buffer: bytes):
                 raise ValueError("primitives that share positions must share every vertex attribute")
             if key not in sources:
                 sources[key] = read_vertices(document, buffer, attributes)
+                if skin is not None and any(index >= len(skin["joints"]) for index in sources[key]["skin_indices"]):
+                    raise ValueError("skin joint index is outside the declared skin")
             block = (placement, key)
             if block not in blocks:
                 vertex_total += sources[key]["count"]
@@ -254,6 +267,8 @@ def normalized_geometry(document: dict, buffer: bytes):
             placed.append((block, values, primitive.get("material", 0)))
 
     positions, normals, uvs = bytearray(), bytearray(), bytearray()
+    skin_indices: list[int] = []
+    skin_weights: list[float] = []
     base_vertex: dict[tuple, int] = {}
     for key, block in blocks.items():
         source, matrix = block["source"], block["matrix"]
@@ -264,6 +279,9 @@ def normalized_geometry(document: dict, buffer: bytes):
             if source["normals"] is not None else \
             generated_normals(world, source["count"], block["triangles"])
         uvs += source["uvs"]
+        if skin is not None:
+            skin_indices += source["skin_indices"]
+            skin_weights += source["skin_weights"]
 
     indices = bytearray()
     subsets = []
@@ -280,7 +298,8 @@ def normalized_geometry(document: dict, buffer: bytes):
     return {"positions": bytes(positions), "normals": bytes(normals), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
-        "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images}
+        "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
+        "skin": skin, "skin_indices": skin_indices, "skin_weights": skin_weights}
 
 
 def placed_counts(document: dict) -> dict:
@@ -326,6 +345,47 @@ def subset_lines(geometry: dict) -> list[str]:
     return lines + cook_gltf_textures.texture_lines(geometry["slot_textures"], geometry["images"])
 
 
+def _name_bytes(names: list[str]) -> bytes:
+    packed = bytearray()
+    for name in names:
+        encoded = name.encode("utf-8")
+        if len(encoded) > 0xFFFFFFFF:
+            raise ValueError("skin name is too long")
+        packed += struct.pack("<I", len(encoded)) + encoded
+    return bytes(packed)
+
+
+def skin_lines(geometry: dict) -> list[str]:
+    skin = geometry["skin"]
+    if skin is None:
+        return []
+    indices = geometry["skin_indices"]
+    weights = geometry["skin_weights"]
+    bones = skin["bone_names"]
+    joints = skin["joints"]
+    cluster_joints = skin["cluster_joints"]
+    if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
+            len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS):
+        raise ValueError("normalized skin streams do not match the mesh")
+    parents = [joint["parent"] for joint in joints]
+    rests = [component for joint in joints for component in joint["rest"]]
+    joint_names = [joint["name"] for joint in joints]
+    return [
+        f"skin_bones={len(bones)}", "skin_indices_stride=16", "skin_weights_stride=16",
+        "skin_indices_b64=" + base64.b64encode(struct.pack(f"<{len(indices)}I", *indices)).decode("ascii"),
+        "skin_weights_b64=" + base64.b64encode(struct.pack(f"<{len(weights)}f", *weights)).decode("ascii"),
+        "skin_names_b64=" + base64.b64encode(_name_bytes(bones)).decode("ascii"),
+        f"skin_joints={len(joints)}", "skin_joint_parent_stride=4", "skin_joint_rest_stride=40",
+        "skin_joint_parents_b64=" + base64.b64encode(struct.pack(f"<{len(parents)}i", *parents)).decode("ascii"),
+        "skin_joint_rest_b64=" + base64.b64encode(struct.pack(f"<{len(rests)}f", *rests)).decode("ascii"),
+        "skin_joint_names_b64=" + base64.b64encode(_name_bytes(joint_names)).decode("ascii"),
+        "skin_cluster_joints_stride=4",
+        "skin_cluster_joints_b64=" + base64.b64encode(
+            struct.pack(f"<{len(cluster_joints)}I", *cluster_joints)).decode("ascii"),
+        "animation_clips=0",
+    ]
+
+
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         allow_textures: bool = False) -> tuple[Path, dict]:
     """Write the mesh package. A textured source cooks only when the caller
@@ -348,7 +408,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     output_path = output_path.expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
-        "format=elisa-cooked-v2",
+        "format=" + ("elisa-cooked-v3" if geometry["skin"] is not None else "elisa-cooked-v2"),
         f"source={asset_path}",
         f"source_sha256={digest}",
         f"triangles={counts['triangles']}",
@@ -359,6 +419,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         "uv_stride=8",
         "index_stride=4",
         *subset_lines(geometry),
+        *skin_lines(geometry),
         "positions_b64=" + base64.b64encode(geometry["positions"]).decode("ascii"),
         "normals_b64=" + base64.b64encode(geometry["normals"]).decode("ascii"),
         "uvs_b64=" + base64.b64encode(geometry["uvs"]).decode("ascii"),

@@ -12,10 +12,11 @@ with material subsets.
 
 1. **Validate the nodes.** `mesh_placements` in the new
    `scripts/cook_gltf_nodes.py` walks the scene.
-   - A document has 1–256 nodes. A node may have only `name`, `mesh`,
-     `children`, `matrix`, `translation`, `rotation` and `scale`. A camera,
-     skin, morph weights, `extras` or an extension fails as an unsupported
-     node property.
+   - A document has 1–256 nodes. A node may have only `name`, `mesh`, `skin`,
+     `children`, `matrix`, `translation`, `rotation` and `scale`. Camera and
+     morph properties, `extras` and extensions fail as unsupported node
+     properties. A `skin` field is accepted only by the bounded skin importer
+     described in [`gltf-material-subsets.md`](gltf-material-subsets.md).
    - A `matrix` has 16 finite numbers in glTF's column-major order, and its
      bottom row must be 0 0 0 1. It can't appear beside a translation,
      rotation or scale.

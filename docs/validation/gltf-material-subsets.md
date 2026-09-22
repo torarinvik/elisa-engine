@@ -95,12 +95,13 @@ records. Nine variants must fail for the stated reason:
 
 **Loader.** `scripts/test_geometry_subsets.py` builds
 `native/geometry_subset_test.cpp` against the production loader under
-AddressSanitizer and UndefinedBehaviorSanitizer. It runs 26 cases, each of
+AddressSanitizer and UndefinedBehaviorSanitizer. It runs 75 cases, each of
 which must be accepted with exactly the expected subsets or rejected with the
 expected error:
 - accepted: the cooked panel as `.pkg` and `.elpk`, the maze tile, a legacy
   package with no records, an explicit single subset, a mesh with an unused
-  slot, 16 subsets in 16 slots, and skinned meshes with no records, one
+  slot, 16 subsets in 16 slots, the generated multi-material skinned glTF
+  panel, and skinned meshes with no records, one
   subset, or multiple subsets and slot materials
 - rejected: a gap, an overlap, a subset that splits a triangle, an empty
   subset, a missing slot, a short total, an overrun, a count that wraps
@@ -207,10 +208,13 @@ per-subset bound rejects it.
 - **No material properties from glTF.** Slots carry only their order. The
   game registers each slot's material in Elisa. Superseded for factors by
   [`cooked-slot-materials.md`](cooked-slot-materials.md); textures remain.
-- **Runtime package, not cooker.** The package reader and snapshot renderer
-  support skinned subsets, but the runtime glTF cooker still emits only the
-  single-material skinned shape until the remaining A05 scene import work is
-  complete.
+- **Bounded skin importer.** The runtime glTF cooker now emits v3 packages for
+  one skin with up to 64 parent-ordered TRS joints, four float32 influences per
+  vertex, and up to 16 material subsets within the existing bounds.
+  Inverse-bind accessors are validated; the native uploader derives the same
+  bind relation from the stored rest transforms. Mesh-node transforms must be
+  identity, joint matrices and non-TRS animation are rejected, and cameras and
+  lights remain deferred to the next A05 slice.
 - **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
   cameras and lights still fail in the runtime cooker. The normalized scene
   contract and `native/asset_import.h` cover them only in the Wicked probe.

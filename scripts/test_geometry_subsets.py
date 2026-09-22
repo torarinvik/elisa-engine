@@ -31,6 +31,7 @@ import cook_assets
 import cook_gltf_geometry
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
+import gltf_skin_self_test
 import gltf_texture_self_test
 
 
@@ -154,6 +155,7 @@ def cases(directory: Path) -> list[tuple]:
     hierarchy_source = ROOT / "test/fixtures/node_hierarchy_panel.gltf"
     cook_gltf_geometry.cook_geometry_package(
         hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
+    gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
     # Fifteen placements alternating red and green, then blue: the most
     # subsets a baked hierarchy may need.
     alternating = cook_assets.read_gltf(hierarchy_source.read_bytes())
@@ -202,6 +204,7 @@ def cases(directory: Path) -> list[tuple]:
             (6, 3, [(0, 3, 2), (3, 3, 0)])),
         ("accept", "sixteen.pkg", strip_package(16, sixteen, 16), (48, 16, sixteen)),
         ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
+        ("accept", "skinned-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS)),
         ("reject", "gap.pkg", strip_package(3, [(0, 3, 0), (6, 3, 0)], 1), PARTITION),
         ("reject", "overlap.pkg", strip_package(3, [(0, 6, 0), (3, 6, 1)], 2), PARTITION),
         ("reject", "split-triangle.pkg", strip_package(2, [(0, 4, 0), (4, 2, 1)], 2), PARTITION),

@@ -137,7 +137,7 @@ def same_slot(document: dict) -> None:
 
 REJECTED = {
     "a node with a camera": (node(4, camera=0), "unsupported node properties"),
-    "a node with a skin": (node(2, skin=0), "unsupported node properties"),
+    "a node with an undeclared skin": (node(2, skin=0), "mesh node skin requires"),
     "node morph weights": (node(2, weights=[0.5]), "unsupported node properties"),
     "node extras": (node(1, extras={}), "unsupported node properties"),
     "a node that is not an object": (lambda d: d["nodes"].__setitem__(3, [2]), "unsupported node properties"),
@@ -177,8 +177,8 @@ REJECTED = {
     "a boolean mesh index": (node(3, mesh=True), "mesh index out of range"),
     "257 nodes": (lambda d: d["nodes"].extend({} for _ in range(251)), "1 to 256 nodes"),
     "257 meshes": (lambda d: d["meshes"].extend(deepcopy(d["meshes"][0]) for _ in range(254)), "1 to 256 meshes"),
-    "a camera list": (lambda d: d.update(cameras=[{"type": "orthographic"}]), "static geometry only"),
-    "an animation list": (lambda d: d.update(animations=[{}]), "static geometry only"),
+    "a camera list": (lambda d: d.update(cameras=[{"type": "orthographic"}]), "without animations or cameras"),
+    "an animation list": (lambda d: d.update(animations=[{}]), "without animations or cameras"),
     "seventeen alternating subsets": (alternating(16), "more than 16 material subsets"),
     "mesh extras": (lambda d: d["meshes"][1].update(extras={}), "unsupported mesh properties"),
     "a morph target on a placed mesh": (lambda d: d["meshes"][2]["primitives"][0].update(targets=[{}]),

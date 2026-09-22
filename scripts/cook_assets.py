@@ -131,7 +131,7 @@ def accessor_bytes(document: dict, buffer: bytes, accessor_index: int) -> bytes:
         raise ValueError("bufferView index out of range")
     view = views[view_index]
     component_sizes = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}
-    components = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[accessor["type"]]
+    components = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT2": 4, "MAT3": 9, "MAT4": 16}[accessor["type"]]
     element = component_sizes[accessor["componentType"]] * components
     stride = view.get("byteStride", element)
     start = view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
