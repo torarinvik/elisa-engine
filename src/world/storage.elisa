@@ -5,6 +5,7 @@ module WorldStorage:
         const MAX_ROWS: usize = 128
         const MAX_REGISTERED_TYPES: usize = 16
         const MAX_DYNAMIC_ROWS: usize = 256
+        const MAX_DYNAMIC_FIELDS: usize = 8
 
         enum SetKind:
             Actor
@@ -18,20 +19,21 @@ module WorldStorage:
             id: i64
             damage: i64
 
-        # Game-defined columns use a stable type key while keeping the row
-        # storage owned by the catalogue. The payload is deliberately scalar
-        # for this first dynamic layer; a game can map the two values to its
-        # own validated record without exposing the catalogue's backing array.
+        # Game-defined rows use a stable type key while keeping storage owned
+        # by the catalogue. A registered schema fixes the field count for its
+        # rows; callers receive a value copy, never a reference to the backing
+        # array.
         struct RegisteredType:
             type_id: i64
             capacity: usize
+            field_count: usize
             live: bool
 
         struct DynamicRecord:
             type_id: i64
             id: i64
-            first: i64
-            second: i64
+            fields: i64[WorldStorage::MAX_DYNAMIC_FIELDS]
+            field_count: usize
             live: bool
 
         affine struct Catalog:
@@ -79,32 +81,46 @@ module WorldStorage:
             def catalog_dynamic_count(catalog: Catalog&) -> usize:
                 catalog.dynamic_count
 
-            def catalog_register_type(catalog: mutable Catalog&, type_id: i64, capacity: usize) -> bool:
+            def catalog_register_type_with_schema(catalog: mutable Catalog&, type_id: i64,
+                capacity: usize, field_count: usize) -> bool:
                 return false if type_id <= 0 or capacity == 0 or capacity > WorldStorage::MAX_ROWS
+                return false if field_count == 0 or field_count > WorldStorage::MAX_DYNAMIC_FIELDS
                 return false if catalog.registered_type_count >= WorldStorage::MAX_REGISTERED_TYPES
                 return false if registered_type_slot(catalog, type_id) != WorldStorage::MAX_REGISTERED_TYPES
                 catalog.registered_types[catalog.registered_type_count] <- RegisteredType{
                     type_id: type_id,
                     capacity: capacity,
+                    field_count: field_count,
                     live: true,
                 }
                 catalog.registered_type_count <- catalog.registered_type_count + 1
                 true
+
+            # The original two-value helper remains the low-friction path for
+            # simple records. Rich game schemas use the explicit variant.
+            def catalog_register_type(catalog: mutable Catalog&, type_id: i64, capacity: usize) -> bool:
+                catalog_register_type_with_schema(catalog, type_id, capacity, 2)
 
             def catalog_type_capacity(catalog: Catalog&, type_id: i64) -> usize:
                 slot: usize = registered_type_slot(catalog, type_id)
                 return 0 if slot == WorldStorage::MAX_REGISTERED_TYPES
                 catalog.registered_types[slot].capacity
 
+            def catalog_type_field_count(catalog: Catalog&, type_id: i64) -> usize:
+                slot: usize = registered_type_slot(catalog, type_id)
+                return 0 if slot == WorldStorage::MAX_REGISTERED_TYPES
+                catalog.registered_types[slot].field_count
+
             def catalog_registered_count(catalog: Catalog&, type_id: i64) -> usize:
                 return 0 if registered_type_slot(catalog, type_id) == WorldStorage::MAX_REGISTERED_TYPES
                 for index in 0..<catalog.dynamic_count |count: usize = 0| -> count:
                     count <- count + 1 if catalog.dynamic_rows[index].live and catalog.dynamic_rows[index].type_id == type_id
 
-            def catalog_spawn_registered(catalog: mutable Catalog&, type_id: i64,
-                first: i64, second: i64) -> i64:
+            def catalog_spawn_registered_values(catalog: mutable Catalog&, type_id: i64,
+                values: i64[WorldStorage::MAX_DYNAMIC_FIELDS], value_count: usize) -> i64:
                 type_slot: usize = registered_type_slot(catalog, type_id)
                 return -1 if type_slot == WorldStorage::MAX_REGISTERED_TYPES
+                return -1 if value_count != catalog.registered_types[type_slot].field_count
                 return -1 if catalog.dynamic_count >= WorldStorage::MAX_DYNAMIC_ROWS
                 return -1 if catalog_registered_count(catalog, type_id) >= catalog.registered_types[type_slot].capacity
                 id: i64 = catalog.next_id
@@ -113,17 +129,27 @@ module WorldStorage:
                 catalog.dynamic_rows[catalog.dynamic_count] <- DynamicRecord{
                     type_id: type_id,
                     id: id,
-                    first: first,
-                    second: second,
+                    fields: values,
+                    field_count: value_count,
                     live: true,
                 }
                 catalog.dynamic_count <- catalog.dynamic_count + 1
                 id
 
+            def catalog_spawn_registered(catalog: mutable Catalog&, type_id: i64,
+                first: i64, second: i64) -> i64:
+                values: i64[WorldStorage::MAX_DYNAMIC_FIELDS] = [first, second, 0, 0, 0, 0, 0, 0]
+                catalog_spawn_registered_values(catalog, type_id, values, 2)
+
             def catalog_registered(catalog: Catalog&, id: i64) -> DynamicRecord:
                 slot: usize = dynamic_row_slot(catalog, id)
-                return DynamicRecord{type_id: -1, id: -1, first: 0, second: 0, live: false} if slot == WorldStorage::MAX_DYNAMIC_ROWS
+                return DynamicRecord{type_id: -1, id: -1, fields: zeroed, field_count: 0, live: false} if slot == WorldStorage::MAX_DYNAMIC_ROWS
                 catalog.dynamic_rows[slot]
+
+            def catalog_registered_valid(catalog: Catalog&, record: DynamicRecord) -> bool:
+                return false if not record.live or record.type_id <= 0 or record.id <= 0
+                type_slot: usize = registered_type_slot(catalog, record.type_id)
+                type_slot != WorldStorage::MAX_REGISTERED_TYPES and record.field_count == catalog.registered_types[type_slot].field_count
 
             def catalog_destroy_registered(catalog: mutable Catalog&, id: i64) -> bool:
                 slot: usize = dynamic_row_slot(catalog, id)
