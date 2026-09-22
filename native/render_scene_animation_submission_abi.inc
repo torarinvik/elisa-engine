@@ -47,6 +47,8 @@ extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle)
 }
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+constexpr float ANIMATION_BONE_BOUND_RADIUS = 1.0f;
+
 extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     int64_t handle, float expected_x, float expected_morph, int32_t expected_pending) {
     if (!std::isfinite(expected_x) || !std::isfinite(expected_morph) ||
@@ -69,5 +71,37 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     const bool pending_match = state.animation_submission->pending(instance.animation_submission) ==
         (expected_pending != 0);
     return bone_match && morph_match && pending_match ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
+    int64_t first_handle, float first_x, int64_t second_handle, float second_x,
+    int32_t expected_pending) {
+    if (!std::isfinite(first_x) || !std::isfinite(second_x) ||
+        (expected_pending != 0 && expected_pending != 1)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.animation_submission == nullptr) return 0;
+    size_t first_slot = MAX_INSTANCES;
+    size_t second_slot = MAX_INSTANCES;
+    if (!valid_handle(state, first_handle, first_slot) ||
+        !valid_handle(state, second_handle, second_slot) || first_slot == second_slot) return 0;
+
+    const auto matches = [&](size_t slot, float expected_x) {
+        const InstanceSlot& instance = state.instances[slot];
+        const wi::scene::ArmatureComponent* armature = state.scene->armatures.GetComponent(instance.entity);
+        if (armature == nullptr || armature->boneCollection.empty()) return false;
+        const wi::scene::TransformComponent* bone =
+            state.scene->transforms.GetComponent(armature->boneCollection[0]);
+        if (bone == nullptr) return false;
+        const bool bone_match = std::abs(bone->translation_local.x - expected_x) < 1.0e-5f;
+        const bool bounds_match = std::abs(armature->aabb._min.x -
+                (expected_x - ANIMATION_BONE_BOUND_RADIUS)) < 1.0e-5f &&
+            std::abs(armature->aabb._max.x -
+                (expected_x + ANIMATION_BONE_BOUND_RADIUS)) < 1.0e-5f;
+        const bool pending_match = state.animation_submission->pending(instance.animation_submission) ==
+            (expected_pending != 0);
+        return bone_match && bounds_match && pending_match;
+    };
+    return matches(first_slot, first_x) && matches(second_slot, second_x) ? 1 : 0;
 }
 #endif
