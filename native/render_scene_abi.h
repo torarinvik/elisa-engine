@@ -237,6 +237,28 @@ int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled);
 int32_t elisa_render_scene_v1_set_tonemap(int32_t tonemap);
 int32_t elisa_render_scene_v1_set_exposure(float exposure);
 int32_t elisa_render_scene_v1_set_shadow_quality(int32_t quality);
+enum {
+    ELISA_RENDER_SCENE_QUALITY_TONEMAP_REINHARD = 0,
+    ELISA_RENDER_SCENE_QUALITY_TONEMAP_ACES = 1,
+    ELISA_RENDER_SCENE_QUALITY_TONEMAP_UCHIMURA = 2,
+    ELISA_RENDER_SCENE_QUALITY_UPSCALER_NONE = 0,
+    ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR1 = 1,
+    ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2 = 2,
+};
+typedef struct ElisaRenderSceneQualityProfile {
+    int32_t tonemap;
+    int32_t upscaler;
+    float render_scale;
+    float bloom_threshold;
+    int32_t bloom;
+    int32_t fxaa;
+    int32_t ambient_occlusion;
+    int32_t screen_space_reflections;
+    int32_t fog;
+    int32_t depth_effects;
+} ElisaRenderSceneQualityProfile;
+int32_t elisa_render_scene_v1_apply_quality_profile(
+    const ElisaRenderSceneQualityProfile* profile);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_set_visibility_policy(
     int64_t handle, float draw_distance, float lod_bias, uint32_t layer_mask, int32_t renderable);

@@ -531,6 +531,7 @@ def exercise_application() -> i32:
     first_frame: Application::PumpStatus = Application::pump()
     return 2 if first_frame != Application::PumpStatus.Running
     return 3 if Application::frame_count() != 1
+    return 17 if Application::uptime_nanos() == 0
     actions: mutable ActionInput::Input = ActionInput::Input()
     escape: ActionInput::Binding = ActionInput::Binding{
         action: 1,

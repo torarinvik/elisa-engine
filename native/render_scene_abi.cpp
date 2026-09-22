@@ -13,6 +13,7 @@
 #include "wiTrailRenderer.h"
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
+#include "postprocess_bridge.h"
 #include "lighting_bridge.h"
 #include "visibility_lod_bridge.h"
 #include "animation_submission_bridge.h"

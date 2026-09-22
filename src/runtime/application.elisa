@@ -155,6 +155,9 @@ module Application:
         @callconv(c)
         extern elisa_application_v1_frame_count() -> u64
 
+        @callconv(c)
+        extern elisa_application_v1_uptime_nanos() -> u64
+
     public:
         enum InputEventKind:
             Key
@@ -574,3 +577,8 @@ module Application:
 
         def frame_count() -> u64:
             elisa_application_v1_frame_count()
+
+        # Monotonic host uptime is useful for bounded startup/load telemetry;
+        # it is zero before initialization and after shutdown.
+        def uptime_nanos() -> u64:
+            elisa_application_v1_uptime_nanos()

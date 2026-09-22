@@ -95,6 +95,9 @@ int64_t elisa_application_v1_next_input_event_token(void);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);
+// Monotonic nanoseconds since the current application host initialized.
+// Returns zero while the host is stopped.
+uint64_t elisa_application_v1_uptime_nanos(void);
 int32_t elisa_application_v1_activate_render_path(void* render_path);
 int32_t elisa_application_v1_register_shutdown_hook(
     void* context, elisa_application_shutdown_fn function);

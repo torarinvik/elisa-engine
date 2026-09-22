@@ -54,6 +54,10 @@ and restore. Edge bits are coalesced until a successful `frame_info` read;
 window flags describe current focus, minimize, fullscreen, suspension, and
 close-request state. A resize signal includes display changes that may affect
 pixel size or scale, and does not imply only a user drag-resize.
+`Application::uptime_nanos()` supplies a monotonic scalar measured from host
+initialization and returns zero while the host is stopped. Games can sample it
+around scene construction to report startup/load cost without a native timer
+shim or wall-clock assumptions.
 
 The lifecycle layer queues ordered keyboard, mouse-button, gamepad-button,
 gamepad-axis, and gamepad connect/disconnect events for Elisa through
@@ -85,6 +89,7 @@ Validation: `scripts/application_native_smoke.py` verifies Elisa-authored code
 can initialize SDL's gamepad subsystem, pump one frame, drain the application
 event queue through `ActionInputRuntime`, read timing/window metrics, observe
 and consume a close-request edge, and shut down without game-owned C exports.
+The application fixture also asserts that uptime is nonzero after initialization.
 Its native failure-cleanup client also proves that a returned assertion failure
 does not leave the application host active.
 `test/action_input.elisa` checks public codes and event-to-action behavior, while
