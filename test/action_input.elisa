@@ -252,11 +252,11 @@ def checked_binding_tests() -> i32:
     return 51 if typed_duplicate != 0
 
     full_bindings: mutable ActionInput::Input = ActionInput::Input()
-    for code in 0..<48 |full_bindings|:
+    for code in 0..<64 |full_bindings|:
         result: ActionInput::BindResult = ActionInput::bind_checked(&full_bindings, test_binding(1, 100 + code.i64(), 0.0))
         return 52 if result != ActionInput::BindResult.Bound
-    return 53 if ActionInput::bind_checked(&full_bindings, test_binding(1, 148, 0.0)) != ActionInput::BindResult.Capacity
-    typed_capacity: i32 = catch ActionInput::bind(&full_bindings, test_binding(1, 148, 0.0)):
+    return 53 if ActionInput::bind_checked(&full_bindings, test_binding(1, 164, 0.0)) != ActionInput::BindResult.Capacity
+    typed_capacity: i32 = catch ActionInput::bind(&full_bindings, test_binding(1, 164, 0.0)):
         ok: 1
         ActionInput::InputError.Capacity: 0
         error failure: 2
@@ -271,10 +271,10 @@ def checked_binding_tests() -> i32:
     for attempt in 0..<16 |full_actions|:
         result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(33 + attempt.i64(), 100 + attempt.i64(), 0.0))
         return 56 if result != ActionInput::BindResult.Capacity
-    for code in 32..<48 |full_actions|:
+    for code in 32..<64 |full_actions|:
         result: ActionInput::BindResult = ActionInput::bind_checked(&full_actions, test_binding(1, 100 + code.i64(), 0.0))
         return 57 if result != ActionInput::BindResult.Bound
-    return 58 if ActionInput::bind_checked(&full_actions, test_binding(1, 200, 0.0)) != ActionInput::BindResult.Capacity
+    return 58 if ActionInput::bind_checked(&full_actions, test_binding(1, 232, 0.0)) != ActionInput::BindResult.Capacity
     0
 
 def main() -> i32:

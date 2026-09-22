@@ -71,9 +71,9 @@ portable regression test disconnects one of two logical controllers, checks
 the release edge, then verifies input from the still-connected controller
 works on the next frame.
 
-The binding table is bounded at 48 entries so games can retain keyboard
-aliases, controller movement, and distinct UI-context bindings. The capacity
-fixture fills all 48 entries, verifies the next bind is rejected, and checks
+The binding table is bounded at 64 entries so games can retain keyboard
+aliases, controller movement, trigger actions, and distinct UI-context bindings.
+The capacity fixture fills all 64 entries, verifies the next bind is rejected, and checks
 that failed action-capacity insertion leaves the table unchanged.
 
 The action-input fixture imports `src/runtime/public.elisa`, verifying that

@@ -5,7 +5,7 @@ include "../vendor/elisa_math.elisa"
 module ActionInput:
     private:
         const module Limits:
-            MAX_BINDINGS: usize = 48
+            MAX_BINDINGS: usize = 64
             MAX_ACTIONS: usize = 32
             DEVICE_COUNT: usize = 3
 
