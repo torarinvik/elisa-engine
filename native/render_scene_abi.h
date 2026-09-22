@@ -241,6 +241,7 @@ int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float sca
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_alpha_mode(int64_t handle, int32_t mode, float cutoff, int32_t double_sided);
+int32_t elisa_render_scene_v1_set_cast_shadow(int64_t handle, int32_t enabled);
 // Texture slots: 0 base color, 1 normal, 2 packed surface, 3 emissive.
 // Surface RGBA channels are occlusion, roughness, metalness, reflectance.
 // Paths are project-relative and resolved inside ELISA_PROJECT_ROOT.

@@ -41,6 +41,24 @@ extern "C" int32_t elisa_render_scene_v1_set_alpha_mode(
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_cast_shadow(int64_t handle, int32_t enabled) {
+    if (enabled != 0 && enabled != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(state.instances[slot].entity);
+    wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(state.instances[slot].entity);
+    if (material == nullptr || object == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    const bool casts_shadow = enabled != 0;
+    material->SetCastShadow(casts_shadow);
+    object->SetCastShadow(casts_shadow);
+    material->SetDirty();
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_texture(
     int64_t handle, int32_t slot, const char* asset_path) {
     if (!elisa::rendering::textures::valid_slot(slot)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;

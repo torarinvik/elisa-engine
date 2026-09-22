@@ -14,6 +14,9 @@ module RenderSceneMeshInstanceNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_mesh_count() -> u64
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_instance_casts_shadow(render_id: i64) -> i32
+
         def placement(x: f32) -> Geometry::Transform:
             Geometry::Transform{
                 position: Geometry::Vec3{x: x, y: 0.0, z: 0.0},
@@ -31,6 +34,14 @@ module RenderSceneMeshInstanceNativeTests:
                 error failure: return 1
             meshes_with_source: u64 = elisa_render_scene_v1_test_mesh_count()
             return 2 if meshes_with_source != meshes_before + 1
+            return 17 if elisa_render_scene_v1_test_instance_casts_shadow(source.native_value) != 1
+            return 18 if catch RenderScene::set_cast_shadow(source, false):
+                ok: 0
+                error failure: 1
+            return 19 if elisa_render_scene_v1_test_instance_casts_shadow(source.native_value) != 0
+            return 20 if catch RenderScene::set_cast_shadow(source, true):
+                ok: 0
+                error failure: 1
             clone: RenderScene::InstanceHandle = catch RenderScene::create_mesh_instance(
                 source, placement(2.0),
                 RenderScene::Color{red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0}):
