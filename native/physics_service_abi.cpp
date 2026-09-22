@@ -34,6 +34,7 @@ struct BodySlot {
 
 struct PhysicsService {
     std::unique_ptr<wi::scene::Scene> scene;
+    std::unique_ptr<probe::PhysicsQueryBridge> query_bridge;
     std::unique_ptr<probe::PhysicsContactQueueListener> contact_listener;
     std::array<BodySlot, MAX_BODIES> bodies{};
     std::array<probe::PhysicsContactEvent, MAX_CONTACT_EVENTS> pending_contacts{};
@@ -83,6 +84,7 @@ void shutdown_world() {
     if (state.scene != nullptr) {
         wi::physics::SetContactEventListener(*state.scene, nullptr);
     }
+    state.query_bridge.reset();
     state.contact_listener.reset();
     state.scene.reset();
     state.contact_queue.reset();
@@ -110,11 +112,13 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
     if (!state.contact_queue.reset()) return ELISA_PHYSICS_INVALID_STATE;
     try {
         state.scene = std::make_unique<wi::scene::Scene>();
+        state.query_bridge = std::make_unique<probe::PhysicsQueryBridge>(*state.scene);
         state.contact_listener = std::make_unique<probe::PhysicsContactQueueListener>(
             state.contact_queue);
         wi::physics::SetContactEventListener(*state.scene, state.contact_listener.get());
     } catch (...) {
         state.contact_listener.reset();
+        state.query_bridge.reset();
         state.scene.reset();
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
@@ -123,6 +127,7 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
         state.fail_next_initialize_after_scene = false;
         wi::physics::SetContactEventListener(*state.scene, nullptr);
         state.contact_listener.reset();
+        state.query_bridge.reset();
         state.scene.reset();
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
@@ -257,6 +262,52 @@ extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
     state.pending_contact_dropped += state.contact_queue.dropped();
     if (!state.contact_queue.end_step()) return ELISA_PHYSICS_BACKEND_FAILURE;
     *tick = ++state.tick;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_raycast(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, uint32_t layer_mask,
+    uint64_t* entity, float* position_x, float* position_y, float* position_z,
+    float* normal_x, float* normal_y, float* normal_z, float* distance,
+    int32_t* hit) {
+    if (entity == nullptr || position_x == nullptr || position_y == nullptr ||
+        position_z == nullptr || normal_x == nullptr || normal_y == nullptr ||
+        normal_z == nullptr || distance == nullptr || hit == nullptr) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const float direction_length_squared = direction_x * direction_x +
+        direction_y * direction_y + direction_z * direction_z;
+    if (!std::isfinite(origin_x) || !std::isfinite(origin_y) ||
+        !std::isfinite(origin_z) || !std::isfinite(direction_x) ||
+        !std::isfinite(direction_y) || !std::isfinite(direction_z) ||
+        !std::isfinite(max_distance) || max_distance <= 0.0f ||
+        !std::isfinite(direction_length_squared) ||
+        direction_length_squared <= 0.000001f) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    probe::PhysicsQueryHit result{};
+    const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
+        ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
+    const XMFLOAT3 origin(origin_x, origin_y, origin_z);
+    const XMFLOAT3 direction(direction_x, direction_y, direction_z);
+    const bool found = state.query_bridge != nullptr &&
+        (state.query_bridge->raycast(query_token, origin, direction, max_distance,
+            layer_mask, result) || state.query_bridge->raycast_physics(query_token,
+            origin, direction, max_distance, layer_mask, result));
+    *entity = found ? static_cast<uint64_t>(result.entity) : 0;
+    *position_x = found ? result.position.x : 0.0f;
+    *position_y = found ? result.position.y : 0.0f;
+    *position_z = found ? result.position.z : 0.0f;
+    *normal_x = found ? result.normal.x : 0.0f;
+    *normal_y = found ? result.normal.y : 0.0f;
+    *normal_z = found ? result.normal.z : 0.0f;
+    *distance = found ? result.distance : 0.0f;
+    *hit = found ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }
 
