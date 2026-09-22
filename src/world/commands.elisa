@@ -1,5 +1,7 @@
 # Deferred structural mutation. A phase records values only; commit is the one
 # boundary that accepts or rejects the complete batch.
+include "./hierarchy.elisa"
+
 module WorldCommands:
     public:
         const MAX_COMMANDS: usize = 128
@@ -66,3 +68,30 @@ module WorldCommands:
 
         def commit(buffer: mutable Buffer&) -> bool:
             commit_with_capacity(buffer, WorldCommands::MAX_COMMANDS)
+
+        private:
+            def apply_hierarchy_command(hierarchy: mutable WorldHierarchy::Hierarchy&, command: Command) -> bool:
+                match command.kind:
+                    Kind.Spawn:
+                        WorldHierarchy::hierarchy_spawn(hierarchy, command.id, Geometry::transform_identity())
+                    Kind.Despawn:
+                        WorldHierarchy::hierarchy_remove(hierarchy, command.id)
+                    Kind.Reparent:
+                        WorldHierarchy::hierarchy_set_parent(hierarchy, command.id, command.parent, false)
+
+        public:
+            # A hierarchy snapshot makes the whole phase atomic: a failed
+            # parent, cycle, duplicate spawn, or missing despawn restores the
+            # exact pre-commit structure and leaves the commands available for
+            # correction or retry.
+            def commit_hierarchy(buffer: mutable Buffer&, hierarchy: mutable WorldHierarchy::Hierarchy&) -> bool:
+                return false if not batch_valid(buffer)
+                snapshot: WorldHierarchy::Snapshot = WorldHierarchy::hierarchy_snapshot(hierarchy)
+                accepted: mutable bool = true
+                for index in 0..<buffer.count |accepted, hierarchy|:
+                    accepted <- apply_hierarchy_command(hierarchy, buffer.commands[index]) if accepted
+                if not accepted:
+                    _ = WorldHierarchy::hierarchy_restore(hierarchy, snapshot)
+                    return false
+                buffer.count <- 0
+                true

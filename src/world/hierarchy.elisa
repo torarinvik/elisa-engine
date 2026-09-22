@@ -24,8 +24,32 @@ module WorldHierarchy:
                 count: mutable usize
                 tick: mutable i64
 
+        struct Snapshot:
+            nodes: Node[WorldHierarchy::MAX_NODES]
+            count: mutable usize
+            tick: mutable i64
+
         def Hierarchy() -> Hierarchy:
             Hierarchy{nodes: zeroed, count: 0, tick: 0}
+
+        def Snapshot() -> Snapshot:
+            Snapshot{nodes: zeroed, count: 0, tick: 0}
+
+        def hierarchy_snapshot(hierarchy: Hierarchy&) -> Snapshot:
+            snapshot: mutable Snapshot = Snapshot()
+            for index in 0..<WorldHierarchy::MAX_NODES |snapshot, hierarchy|:
+                snapshot.nodes[index] <- hierarchy.nodes[index]
+            snapshot.count <- hierarchy.count
+            snapshot.tick <- hierarchy.tick
+            return move snapshot
+
+        def hierarchy_restore(hierarchy: mutable Hierarchy&, snapshot: Snapshot) -> bool:
+            return false if snapshot.count > WorldHierarchy::MAX_NODES or snapshot.tick < 0
+            for index in 0..<WorldHierarchy::MAX_NODES |hierarchy, snapshot|:
+                hierarchy.nodes[index] <- snapshot.nodes[index]
+            hierarchy.count <- snapshot.count
+            hierarchy.tick <- snapshot.tick
+            true
 
         def hierarchy_count(hierarchy: Hierarchy&) -> usize:
             hierarchy.count
