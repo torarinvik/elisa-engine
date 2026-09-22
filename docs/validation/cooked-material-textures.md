@@ -97,6 +97,28 @@ to exactly those images.
      material.
    - Materials already block unregistering a texture they use.
 
+## Hand-registered occlusion
+
+Added on 2026-09-22. `RenderScene::register_snapshot_material_asset` can now
+enable the occlusion that cooked slots get.
+- **Elisa.** Naming `Material.occlusion` enables occlusion.
+  - It must be the same texture as `metallic_roughness`.
+  - If it is the only one of the two, it becomes the surface texture.
+  - Two different textures are still `InvalidValue`.
+- **ABI.** The wrapper calls
+  `elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion`.
+  - It takes the `_with_textures` arguments plus an occlusion flag, 0 or 1.
+  - `_with_textures` and the untextured form keep their signatures. They
+    forward with the flag at 0.
+- **Surface required.** Occlusion needs a surface texture.
+  `snapshot_material_values_valid` now checks this for hand and cooked
+  materials. The loader already rejected cooked occlusion without a surface
+  image.
+- **Matching.** Occlusion is still part of `snapshot_material_values_match`.
+  - A hand material with the painted slot's factors, images and occlusion is
+    the same registration as the slot.
+  - The same material without occlusion still conflicts.
+
 ## Evidence
 
 `test/fixtures/textured_panel.gltf` is written by
@@ -192,7 +214,8 @@ The test uses these hooks:
 | 11–14 | The textured mesh counts 4 images and the untextured panel 0. An unregistered mesh is `AssetLoadFailure`, and a zero ID is `InvalidValue` through Elisa and the raw ABI |
 | 21–28 | With the variant bundle's `image_3` registered, the cutout slot and the whole mesh are still `AssetLoadFailure` and leave nothing registered. That ID can't take the mesh's own image. The untextured backdrop slot registers at once |
 | 31–45 | Each image registers under its own ID, and a repeat is a no-op. Refused: one ID for two images, index 4, the untextured panel, an unregistered mesh, zero IDs, a call in an open transaction, and an ID an asynchronous request holds. None of them add texture memory |
-| 51–60 | The whole mesh registers as a set. Each Wicked material holds its slot's factors, textures, texture sizes and occlusion. A repeat is a no-op. The glow slot can't take the painted material's ID. A hand-registered material with the painted slot's factors and images but no occlusion conflicts with the slot |
+| 51–60 | The whole mesh registers as a set. Each Wicked material holds its slot's factors, textures, texture sizes and occlusion. A repeat is a no-op. The glow slot can't take the painted material's ID. A hand-registered material with the painted slot's factors and images also names its surface image as occlusion. It enables occlusion, so the painted slot registers under its ID as a no-op |
+| 111–120 | These run after 51–60. A hand material that names its surface image only as occlusion binds it as the surface image, with occlusion on. Naming it in both fields is the same registration. Without occlusion, the same ID conflicts. Under a new ID the material registers with occlusion off, and the painted slot conflicts with it. The older `_with_textures` form repeats that registration as a no-op. A separate occlusion image is `InvalidValue`. The raw ABI refuses occlusion without a surface image, and a flag of 2. Neither leaves a material behind |
 | 61–66 | A second ID for `image_0` makes the painted and glow slots and the whole mesh `InvalidValue` and leaves nothing behind. The cutout, which doesn't sample it, still registers |
 | 71–76 | After the rewrite copy is replaced by the variant, its changed `image_0` fails to load and adds no memory. Its unchanged `image_2` still registers |
 | 81–87 | A committed row draws the set. The frame shows, from the right, the cutout's green, the backdrop's red through the clear half, the painted red and blue, and the glow's red and blue. The images in use can't be unregistered |
@@ -269,6 +292,29 @@ cover sampler, texture-info, texture and image validation, occlusion,
 unused declarations, references, slot order, section names, masks, UVs,
 loose packages, package lines and section clashes.
 
+### Hand-registered occlusion mutations
+
+Six more mutations tested the occlusion registration change on 2026-09-22.
+- The five native mutants were applied to a copy of `native/` and linked
+  against the smoke's Elisa archive.
+- The wrapper mutant was applied to copies of `src/`, `test/` and
+  `examples/`, and its Elisa archive was recompiled.
+
+An unmutated control exited 0, and all six failed group 230:
+
+| Mutation | Result |
+| --- | --- |
+| the ABI drops the occlusion flag | 59: the hand material has no occlusion |
+| the wrapper never passes occlusion | 59 |
+| occlusion allowed without a surface texture | 117: the raw call without a surface registers |
+| flags other than 0 and 1 accepted | 118: flag 2 registers |
+| the `_with_textures` form forwards occlusion | 115: the legacy call conflicts with the bare material |
+| occlusion left out of the material comparison | 113: the hand material without occlusion matches |
+
+The comparison mutation in the first table failed at 60 before this change.
+Case 60 now expects the hand material with occlusion to match, so case 113
+catches that mutation.
+
 ## Limits
 
 - **Synchronous image registration.** `register_snapshot_mesh_texture` reads
@@ -279,10 +325,13 @@ loose packages, package lines and section clashes.
   `KHR_texture_transform`, second UV sets, normal scales, occlusion
   strengths and separate occlusion images still fail. Images stay PNG or
   JPEG in the bundle, without cooked mip chains or GPU formats (A06).
-- **Occlusion only through the surface image.** Hand-registered materials
-  still can't turn occlusion on. `Material.occlusion` passes its texture as
-  the surface image, but never enables Wicked occlusion. Cooked slots are
-  the only way to get it.
+- **Occlusion only through the surface image.** Wicked reads occlusion from
+  the surface map's red channel. Cooked slots and hand-registered materials
+  both enable it, but only when the occlusion image is the surface image.
+  - A separate occlusion image still fails, in the cooker and at
+    registration. A cooker would have to pack the two maps into one.
+  - An occlusion texture named alone still acts as a full surface map, so
+    its green and blue channels also scale roughness and metalness.
 - **Runtime package, not cooker.** Slot texture records and subset bindings are
   valid on skinned runtime packages; the glTF cooker still needs its complete
   multi-material skinned scene path.
@@ -312,3 +361,22 @@ because other sessions shared the main working tree.
   `git diff --check` passed.
 - The sibling compiler checkout had uncommitted changes from other work.
   `ELISA_ALLOW_STALE_STAGE1=1` used its existing stage1 binary.
+
+## Validation on 2026-09-22
+
+The hand-registered occlusion change was tested in a detached worktree on
+96dcd11 that held only this change, because other sessions shared the main
+working tree.
+- `scripts/render_scene_native_smoke.py` passed on SDL3/Metal. That covers:
+  - every render group, including 230 with cases 111–120
+  - the loader's 74 cases
+  - the maze application smoke and the packaged maze cases
+- The six occlusion mutations above behaved as listed, and the control passed.
+- A syntax-only compile of `native/render_scene_abi.cpp` without
+  `ELISA_RENDER_SCENE_TEST_PROBE` passed.
+- `scripts/check_module_hygiene.py`, `scripts/check_source_length.py` and
+  `git diff --check` passed.
+- `ELISA_ALLOW_STALE_STAGE1=1` used the sibling compiler's existing stage1
+  binary.
+- The full `scripts/check.elisascript` suite and the cooker self-test weren't
+  rerun, because this change doesn't touch the cooker or the loader.
