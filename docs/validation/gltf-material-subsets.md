@@ -217,16 +217,16 @@ per-subset bound rejects it.
   clip). Dense POSITION deltas, with optional NORMAL deltas, carry up to 32
   morph targets into Wicked and accept bounded weight submissions. Morph
   animation channels and cubic-spline channels remain rejected. Mesh-node
-  transforms must be identity, and cameras and lights remain deferred to the
-  next A05/R03/R05 slice. The package loader now validates bounded camera and
-  `KHR_lights_punctual` records; live renderer binding remains in those tasks.
-- **One mesh node.** Scene hierarchies, node transforms, and multiple meshes
-  are carried by the runtime cooker; camera/light records are carried as
-  normalized metadata but are not bound to the live renderer yet. The normalized scene
-  contract and `native/asset_import.h` cover them only in the Wicked probe.
-  Superseded for hierarchies, transforms and multiple meshes by
-  [`gltf-node-hierarchies.md`](gltf-node-hierarchies.md); cameras and lights
-  remain.
+  transforms must be identity for skinned packages. The package loader
+  validates bounded camera and `KHR_lights_punctual` records, and direct
+  `RenderScene::create_mesh` binds those authored resources through opaque
+  imported-scene handles; independent placement entities remain limited to
+  static, non-morphed geometry.
+- **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
+  camera/light metadata, skins, morphs, and animation are carried by the
+  bounded runtime cooker. Superseded for the hierarchy and live imported-scene
+  path by [`gltf-node-hierarchies.md`](gltf-node-hierarchies.md); skinned
+  placement entities remain constrained to the flattened compatibility path.
 - **Shared per set.** Two sets that list the same materials still create two
   shared Wicked meshes.
 - **Shadow policy.** An object casts a shadow when any subset is not
