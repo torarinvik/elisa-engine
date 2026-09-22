@@ -292,13 +292,21 @@ class BuildRunCliTests(unittest.TestCase):
             del declaration["texture_max_size"]
             self.assertEqual(command[command.index("--texture-output") + 1],
                 str((project / "build/cooked/cyborg-basecolor.png").resolve()))
+            bounded = {**declaration, "max_triangles": 1000}
+            with mock.patch.object(runner, "run_command", return_value=0) as bounded_run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), {
+                    "asset_cooks": [bounded]}), 0)
+            bounded_command = bounded_run.call_args.args[0]
+            self.assertEqual(bounded_command[bounded_command.index("--max-triangles") + 1], "1000")
             for changes in (
                 {"source": "assets/cyborg.gltf"},
                 {"animation_source": "../outside.fbx"},
                 {"animation_source": "assets/cyborg.glb"},
                 {"texture_output": "../outside.png"},
                 {"texture_output": "assets/cyborg.glb"},
-                {"max_triangles": 1000},
+                {"max_triangles": 0},
+                {"max_triangles": 1000001},
+                {"max_triangles": True},
             ):
                 with self.subTest(changes=changes), self.assertRaises(runner.BuildConfigurationError):
                     runner.cook_declared_assets(project.resolve(), {

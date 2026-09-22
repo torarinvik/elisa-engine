@@ -36,6 +36,8 @@ python3 scripts/fetch_dependencies.py --only ufbx_source
 python3 scripts/fetch_dependencies.py --only ufbx_header
 python3 scripts/fetch_dependencies.py --only ufbx_license
 python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier
+python3 scripts/fetch_dependencies.py --only meshoptimizer_vfetch
+python3 scripts/fetch_dependencies.py --only meshoptimizer_indexgenerator
 python3 scripts/test_fbx_import.py
 ```
 
@@ -80,12 +82,24 @@ when that measured miss ratio improves, so the 128-triangle simplified grid
 retains its existing order when the candidate is worse. The unsimplified grid
 improves from ACMR 1.0625 to 0.6543. Both paths cook deterministically.
 
+After tangent generation, the cooker applies meshoptimizer's vertex-fetch
+remap to every per-vertex stream together: positions, normals, UVs, tangents,
+and optional skin indices and weights. It validates stream lengths and index
+bounds before remapping, checks every remapped row against its original source
+bytes, and retains the candidate only when its modeled fetch bytes do not
+increase or when it removes unreferenced vertices. On the supplied
+walking FBX, this reduced the analyzer's estimated fetch traffic from 9,089,280
+to 7,815,936 bytes (14.0%) without changing the 97,679-vertex count. The
+analyzer is a cache model, not a GPU timing measurement; package validation
+also checked the remapped skin rows for in-range joints and normalized weights.
+
 `python3 scripts/cook_fbx_asset.py --self-test` passed with a generated
 512-triangle planar grid simplified to 128 triangles and 97 vertices at 0.00003
 relative error; tangent frames passed unit-length and orthogonality checks, and
 repeated output was byte-identical. The same fixture measures cache ACMR on the
-original 512-triangle grid and requires an improvement before accepting the
-reorder. Previous cooks reduced the sibling game's
+original 512-triangle grid, requires an improvement before accepting the
+reorder, and rejects a regressing vertex-fetch candidate. Previous cooks
+reduced the sibling game's
 3,077,694-triangle Arc Gate to 12,000 triangles and 10,009 vertices (619,538
 bytes without tangents; 833,098 bytes with tangents) at 0.00124 relative error.
 A fresh full game build on 2026-09-20 first exposed an index-memory failure:

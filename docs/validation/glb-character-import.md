@@ -71,11 +71,22 @@ Run the Blender regression with:
 
 ```sh
 blender --background --python-exit-code 1 --python scripts/test_glb_retarget_blender.py
+blender --background --python-exit-code 1 --python scripts/test_glb_static_reduction_blender.py
+python3 scripts/test_glb_static_cook.py
 ```
 
-It transfers two clips between rigs with a 100x object-scale difference and
-different child rest orientations, checking root motion, world rotations,
-preserved limb length, and absence of object-transform animation keys.
+The retarget test transfers two clips between rigs with a 100x object-scale
+difference and different child rest orientations, checking root motion, world
+rotations, preserved limb length, and absence of object-transform animation
+keys. The static-mesh test reduces a generated dense grid under a configured
+triangle ceiling and checks regenerated normals and unchanged node transforms.
+The end-to-end static cook test exports a transformed dense Blender mesh to GLB,
+cooks it through the production Blender and FBX stages, and verifies the triangle
+bound, package stream lengths, index bounds, and finite unit normals.
+On macOS with Blender 5.2.2, `python3 scripts/test_glb_static_cook.py` passed:
+the 3,042-triangle fixture cooked to 55 triangles and 37 vertices under its
+64-triangle ceiling. This validates package output and geometry streams; it does
+not establish visual simplification quality or runtime LOD behavior.
 The supplied cyborg cooks to 1.6383 metres tall (previously 163.83 after the
 incorrect raw-action transfer). All six locomotion clips were sampled at their
 start, middle and end, retaining plausible character dimensions.

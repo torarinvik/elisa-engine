@@ -176,7 +176,11 @@ def main(arguments: darray[sview]) -> i64:
             eprint("Missing Recast/Detour library; run python3 scripts/fetch_recast.py first.")
             return 2
     meshopt: Path = root.joinpath("dependencies/meshoptimizer")
-    for dependency_file in ["meshoptimizer.h", "allocator.cpp", "vcacheoptimizer.cpp", "indexanalyzer.cpp"]:
+    meshoptimizer_files: darray[sview] = [
+        "meshoptimizer.h", "allocator.cpp", "vcacheoptimizer.cpp", "indexanalyzer.cpp",
+        "vfetchoptimizer.cpp", "indexgenerator.cpp",
+    ]
+    for dependency_file in meshoptimizer_files:
         if not is_file(path(str(meshopt.joinpath(dependency_file)))):
             eprint("Missing meshoptimizer; run python3 scripts/fetch_dependencies.py first.")
             return 2

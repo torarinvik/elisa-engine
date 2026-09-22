@@ -263,8 +263,10 @@ def build_cooker(build_dir: Path) -> Path:
     simplifier = meshoptimizer / "simplifier.cpp"
     vcache = meshoptimizer / "vcacheoptimizer.cpp"
     analyzer = meshoptimizer / "indexanalyzer.cpp"
-    if not all(path.is_file() for path in (meshoptimizer / "meshoptimizer.h", simplifier, vcache, analyzer)):
-        raise ValueError("missing pinned meshoptimizer stages; run python3 scripts/fetch_dependencies.py --only meshoptimizer_simplifier")
+    vfetch = meshoptimizer / "vfetchoptimizer.cpp"
+    indexgenerator = meshoptimizer / "indexgenerator.cpp"
+    if not all(path.is_file() for path in (meshoptimizer / "meshoptimizer.h", simplifier, vcache, analyzer, vfetch, indexgenerator)):
+        raise ValueError("missing pinned meshoptimizer stages; run python3 scripts/fetch_dependencies.py")
     cc = os.environ.get("CC", "cc")
     cxx = os.environ.get("CXX", "c++")
     object_file = build_dir / "ufbx.o"
@@ -272,6 +274,7 @@ def build_cooker(build_dir: Path) -> Path:
     run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(object_file)])
     run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer), "-I", str(ROOT / "native"),
         str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(vcache), str(analyzer),
+        str(vfetch), str(indexgenerator),
         str(meshoptimizer / "allocator.cpp"), str(object_file), "-o", str(executable)])
     return executable
 
@@ -397,6 +400,10 @@ def main(arguments: list[str]) -> int:
                     cache_reports[0])
                 if cache_report is None or float(cache_report.group(2)) >= float(cache_report.group(1)):
                     raise ValueError("grid fixture did not improve its measured vertex-cache miss ratio")
+                fetch_report = re.search(r"meshoptimizer vertex fetch: bytes fetched (\d+) -> (\d+) \(candidate (\d+)\), vertices (\d+) -> (\d+)",
+                    cache_reports[0])
+                if fetch_report is None or int(fetch_report.group(2)) > int(fetch_report.group(1)):
+                    raise ValueError("grid fixture regressed its measured vertex-fetch cost")
                 grid_triangles = int(grid_fields["triangles"])
                 if not 0 < grid_triangles <= triangle_budget or grid_triangles >= original_triangles:
                     raise ValueError("grid fixture was not reduced to the requested triangle budget")
@@ -411,7 +418,8 @@ def main(arguments: list[str]) -> int:
                     raise ValueError("simplified grid package output is not deterministic")
                 print(f"FBX cooker self-test passed: triangle package plus {original_triangles} -> "
                     f"{grid_triangles} deterministic simplified grid triangles; vertex-cache ACMR "
-                    f"{cache_report.group(1)} -> {cache_report.group(2)}")
+                    f"{cache_report.group(1)} -> {cache_report.group(2)}; vertex-fetch bytes "
+                    f"{fetch_report.group(1)} -> {fetch_report.group(2)}")
             else:
                 package_output = options.output
                 geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output

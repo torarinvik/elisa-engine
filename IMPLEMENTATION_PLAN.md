@@ -91,9 +91,10 @@ The existing source inventory is the starting point, not a reason to rewrite wor
 | M4 — scale and network | Measured crowd/streaming scene and two-process multiplayer game; soak tests and native CI evidence | W07–W10, N05–N06, T01–T08, Q05–Q09 |
 | M5 — breadth | Tested opt-in advanced systems, each exercised by a shipped example | Remaining P2/P3 tasks |
 
-**F08 is complete for the supported provider set.** Continue with A04, then the
-native backend sequence below. Do not restart completed identity, field-privacy,
-render extraction, or mesh/material API work. Milestones are outcome gates; individual
+**F08 is complete for the supported provider set. A04's production asynchronous
+asset path is implemented and validated.** Continue with A05–A07, then the native
+backend sequence below. Do not restart completed identity, field-privacy, render
+extraction, or mesh/material API work. Milestones are outcome gates; individual
 feature tasks may advance as soon as their explicit dependencies are ready.
 
 ## Current execution queue
@@ -102,41 +103,34 @@ Select the first ready item below unless new test evidence changes the order. Ea
 points to the full acceptance criteria in its task entry; keep work vertical and leave
 the public API connected to a real Elisa client.
 
-1. **A04 — complete the asynchronous resource loader.** The production path already
-   coalesces and prioritizes requests, decodes away from the owner thread, uploads on
-   the device thread, and cancels package reads at 64 KiB boundaries after the current
-   OS read. Finish budget-based resident eviction with bounded-memory and adversarial
-   lifecycle tests. Keep synchronous compatibility APIs separate from the production
-   async path.
-   See [`async snapshot asset validation`](docs/validation/async-snapshot-assets.md).
-2. **A05–A07 — complete cooked content import.** Connect glTF scene/material import,
+1. **A05–A07 — complete cooked content import.** Connect glTF scene/material import,
    BasisU format selection, and meshoptimizer output to actual Wicked resources.
    Verify capacities, stale generations, cache invalidation, and packaged operation.
-3. **R03–R07/R13/R15 — finish the core Wicked renderer service.** Connect camera and
+2. **R03–R07/R13/R15 — finish the core Wicked renderer service.** Connect camera and
    viewport lifetime, PBR material slots, lights/environment, quality negotiation,
    packaged shader permutations, and dependent render passes. Exercise resize,
    suspension, unsupported-feature fallbacks, and visual references in one authored
    scene; measure cold startup separately from steady-state frames.
-4. **P01–P06 — make Jolt the gameplay physics service.** Elisa owns body and shape
+3. **P01–P06 — make Jolt the gameplay physics service.** Elisa owns body and shape
    identity, fixed-step scheduling, interpolation, filtered queries, contact delivery,
    and character control. Prove one physics step per committed tick, no render-driven
    simulation, rollback on creation failure, and a playable obstacle-course sample.
-5. **S01–S03/S05 — finish miniaudio as a game audio service.** Add generation-safe clips,
+4. **S01–S03/S05 — finish miniaudio as a game audio service.** Add generation-safe clips,
    streaming, buses, voice budgets, world attachment, spatial playback, and device-loss
    recovery. Test exhaustion, cancellation, fallback selection, and ordered shutdown in
    an ordinary game session.
-6. **C01–C05/N01–N04 — turn ozz and Recast/Detour into gameplay services.** Cook
+5. **C01–C05/N01–N04 — turn ozz and Recast/Detour into gameplay services.** Cook
    skeleton/clip and multi-tile navigation assets, add bounded generation-checked runtime
    handles, then connect animation, IK, agent movement, and replanning to Elisa World.
    Demonstrate both in a controllable character sample with unload/reload coverage.
-7. **I01–I07 — complete SDL3 input and Wicked UI/text services.** Use action maps for
+6. **I01–I07 — complete SDL3 input and Wicked UI/text services.** Use action maps for
    keyboard, mouse, and controller input; render interactive Elisa-owned UI; connect
    FreeType/HarfBuzz font shaping and IME text entry with focus/accessibility behavior.
    Validate high-DPI resize, device removal, and deterministic input delivery.
-8. **W04/W05, R10/R11, and A10/A11 — scale the same backend vertically.** Stream scene
+7. **W04/W05, R10/R11, and A10/A11 — scale the same backend vertically.** Stream scene
    cells and resource generations, preserve references through hot reload, and add
    visibility/LOD plus terrain/vegetation only with measured scene and memory budgets.
-9. **Q01–Q04/Q07 — prove the engine can ship.** Add representative backend regression
+8. **Q01–Q04/Q07 — prove the engine can ship.** Add representative backend regression
    scenes, reproducible native CI/toolchain setup, useful crash diagnostics, a Release
    package that runs outside the checkout, and a second authored game using the public
    services. Move the editor shell E01–E09 forward after these runtime contracts exist.
@@ -260,9 +254,7 @@ according to their dependencies and measured consumers.
   Progress: `src/backend/material.elisa` and `test/material.elisa` define validated PBR texture slots, scalar factors, alpha policy, and normal-map identity at the engine boundary; native KTX2 mip/color-space policy remains.
 - [ ] **A07 · P1 · Mesh optimization and LOD cooking** — After: A05.
   Use meshoptimizer for vertex/index optimization, simplification, compression, and optional meshlet data only where the selected render path consumes it. Done: screen-error LOD selection preserves boundaries and material subsets; visual errors, bytes, cook time, and render cost are measured.
-  Progress: `src/assets/lod.elisa` defines a bounded deterministic LOD chain with screen-error selection, material-subset preservation, duplicate/capacity checks, and invalid-order rejection; `test/asset_lod.elisa` is part of the shared gate. `native/meshopt_probe.h` validates simplification on an authored primitive, and the pinned v1.2 meshoptimizer simplifier now cooks high-density FBX geometry with a configured triangle ceiling and compacted vertex streams. `python3 scripts/cook_fbx_asset.py --self-test` passed: a generated 512-triangle grid simplified to 128 triangles and 97 vertices at 0.00003 relative error; repeated cooks were byte-identical. On 2026-09-20, `DEVELOPER_DIR="$(xcode-select -p)" python3 ../amazing-labyrinth-engine/scripts/elisa_build_run.py build --project "../amazing labyrinth"` passed after static vertices were reduced to position/normal/UV data and optional skin influences moved to a separate deduplication stream. The 3,077,694-triangle Arc Gate cooked to 12,000 triangles, 10,009 vertices, and an 833,098-byte tangent package. Multi-LOD package emission, subset-specific simplification and render-path LOD selection remain. See [`docs/validation/fbx-import.md`](docs/validation/fbx-import.md).
-  Progress on 2026-09-22: the GLB cooker now accepts bounded `max_triangles` for static meshes and coarsely reduces dense Blender meshes below the FBX parser's memory ceiling and configured triangle budget; meshoptimizer applies safe residual simplification in the FBX cooker. Static node transforms are preserved through conversion; skinned limits remain rejected because their bone weights cannot yet be remapped safely. This supports dense static obstacle models without game-side native import code. GLB multi-material/subset retention and simplified-mesh visual review remain.
-  Progress: `src/assets/lod.elisa` defines a bounded deterministic LOD chain with screen-error selection, material-subset preservation, duplicate/capacity checks, and invalid-order rejection; `test/asset_lod.elisa` is part of the shared gate. `native/meshopt_probe.h` validates simplification on an authored primitive, and the pinned v1.2 meshoptimizer simplifier now cooks high-density FBX geometry with a configured triangle ceiling and compacted vertex streams. The FBX cooker now applies meshoptimizer's vertex-cache reorder before tangent generation and keeps it only when a 16-entry cache ACMR improves. Its generated 512-triangle grid improves from 1.0625 to 0.6543 ACMR; the simplified 128-triangle case keeps its original ordering when the candidate measures worse. Repeated cooks remain byte-identical. On 2026-09-20, `DEVELOPER_DIR="$(xcode-select -p)" python3 ../amazing-labyrinth-engine/scripts/elisa_build_run.py build --project "../amazing labyrinth"` passed after static vertices were reduced to position/normal/UV data and optional skin influences moved to a separate deduplication stream. The 3,077,694-triangle Arc Gate cooked to 12,000 triangles, 10,009 vertices, and an 833,098-byte tangent package. Multi-LOD package emission, subset-specific simplification and render-path LOD selection remain. See [`docs/validation/fbx-import.md`](docs/validation/fbx-import.md).
+  Progress: `src/assets/lod.elisa` defines a bounded deterministic LOD chain with screen-error selection, material-subset preservation, duplicate/capacity checks, and invalid-order rejection; `test/asset_lod.elisa` is part of the shared gate. The pinned meshoptimizer cooker simplifies high-density FBX meshes, compacts vertex streams, and applies cache and fetch reorders only when modeled performance does not regress. Its 512-triangle fixture improves cache ACMR from 1.0625 to 0.6543; the supplied 97,679-vertex walk mesh improves modeled fetch bytes from 9,089,280 to 7,815,936. The 3,077,694-triangle Arc Gate cooks to 12,000 triangles, 10,009 vertices and an 833,098-byte tangent package. Static GLB cooking now applies bounded Blender pre-reduction plus residual meshoptimizer simplification while preserving node transforms and rejecting unsafe skinned reduction. On 2026-09-23, `scripts/test_glb_static_cook.py` passed the end-to-end GLB export, reduction, production FBX cooking and package-validation path: 3,042 input triangles became 55 triangles and 37 vertices under the 64-triangle bound, with transformed finite geometry verified. Multi-LOD package emission, subset-specific simplification and GLB multi-material retention remain; simplified-mesh visual quality and runtime LOD selection have not yet been reviewed. Evidence: [`docs/validation/fbx-import.md`](docs/validation/fbx-import.md) and [`docs/validation/glb-character-import.md`](docs/validation/glb-character-import.md).
 - [ ] **A08 · P1 · Tangents and authored lightmap UVs** — After: A05.
   Integrate MikkTSpace and xatlas as offline stages with deterministic settings, seam handling, and metadata. Done: mirrored UV normal mapping and a UV-overlap fixture validate output; tools are not pulled into the game runtime unnecessarily.
   Progress: the FBX cooker now generates float4 tangent frames after simplification, including bitangent handedness; the bounded cooked-package reader validates the optional stream and Wicked mesh upload consumes it. The 512-to-128-triangle planar-UV self-test checks normalized, orthogonal +X tangents and byte-identical output. The simpler indexed generator is not MikkTSpace; mirrored-UV seam validation and authored lightmap UV generation remain. Evidence: [`docs/validation/fbx-import.md`](docs/validation/fbx-import.md) and [`docs/validation/render-scene-textures.md`](docs/validation/render-scene-textures.md).
@@ -270,7 +262,7 @@ according to their dependencies and measured consumers.
   Progress on 2026-09-22: tangent-frame generation can now recover a missing or zero imported vertex normal from adjacent triangle geometry before orthogonalizing its tangent. This keeps rejection for malformed indices and unusable geometry while allowing static props with incomplete normals to cook.
 - [ ] **A09 · P2 · FBX import with ufbx** — After: A05, C01.
   Implement FBX-to-normalized mesh/skeleton/animation/material conversion with documented axis/unit and unsupported-feature policy. Done: the same animated character imported from glTF and FBX has comparable bind pose, playback, and material assignment; malformed input is bounded.
-  Progress: ufbx v0.23.0 is pinned by commit and SHA-256 in the dependency manifest. `native/fbx_asset_import.h` performs strict, memory-bounded FBX parsing, normalizes axis and units to right-handed +Y-up metres, and decodes the largest triangle mesh into finite indexed positions/normals/UVs. Static vertices use position/normal/UV indexing; skinned vertices add separate four-influence streams, preserving seam and weight distinctions. The importer preserves a parent-ordered skeleton (up to 64 joints), cluster palette order, normalized weights, and bounded 30 Hz samples for non-empty clips. The cooked-package reader validates these streams; static assets use v2 and skinned assets use v3. `RenderScene::create_mesh` uploads skin weights, creates the Wicked armature and inverse-bind palette, and retains per-instance clips. Elisa exposes `play_animation`, `stop_animation` (blend to rest pose), and `advance_animation`; an active game run verified live pose updates. Import tests check that walking samples change joint poses. On 2026-09-20 the supplied walk/run assets (34-bone rigs, 83,522 triangles, two source clips each) and the 3,077,694-triangle fence passed bounded import tests; the cooked walking package retains 34 clusters, 36 hierarchy joints, one non-empty clip, and 97,679 vertices. Dense offline imports have 1.5 GiB temporary, 3 GiB parsed-scene, and 1 GiB extracted-geometry ceilings. The cooker writes hash-carrying packages with deterministic tangent frames and optionally simplifies unskinned meshes via pinned meshoptimizer; the project runner forwards a validated triangle limit. `scripts/cook_glb_asset_blender.py` now retargets imported GLB clips through authored rest-pose and joint-direction alignment, scales root travel by rig height, and writes target-local quaternion channels without constraint side effects. Complete multi-mesh scene cooking, FBX material discovery/subsets, cross-fade between two authored clips, asynchronous asset residency, and production ozz integration remain.
+  Progress: ufbx v0.23.0 is pinned by commit and SHA-256 in the dependency manifest. `native/fbx_asset_import.h` performs strict, memory-bounded FBX parsing, normalizes axis and units to right-handed +Y-up metres, and decodes the largest triangle mesh into finite indexed positions/normals/UVs. Static vertices use position/normal/UV indexing; skinned vertices add separate four-influence streams, preserving seam and weight distinctions. The importer preserves a parent-ordered skeleton (up to 64 joints), cluster palette order, normalized weights, and bounded 30 Hz samples for non-empty clips. The cooked-package reader validates these streams; static assets use v2 and skinned assets use v3. `RenderScene::create_mesh` uploads skin weights, creates the Wicked armature and inverse-bind palette, and retains per-instance clips. Elisa exposes `play_animation`, `stop_animation` (blend to rest pose), and `advance_animation`; an active game run verified live pose updates. Import tests check that walking samples change joint poses. On 2026-09-20 the supplied walk/run assets (34-bone rigs, 83,522 triangles, two source clips each) and the 3,077,694-triangle fence passed bounded import tests; the cooked walking package retains 34 clusters, 36 hierarchy joints, one non-empty clip, and 97,679 vertices. Dense offline imports have 1.5 GiB temporary, 3 GiB parsed-scene, and 1 GiB extracted-geometry ceilings. The cooker writes hash-carrying packages with deterministic tangent frames and optionally simplifies unskinned meshes via pinned meshoptimizer; the project runner forwards a validated triangle limit. `scripts/cook_glb_asset_blender.py` now retargets imported GLB clips through per-joint full rest-orientation alignment, scales root travel by rig height, and writes target-local quaternion channels without constraint side effects. Complete multi-mesh scene cooking, FBX material discovery/subsets, cross-fade between two authored clips, asynchronous asset residency, and production ozz integration remain.
 - [ ] **A10 · P1 · Safe asset hot reload** — After: A04, W04.
   Stage replacement dependency graphs and swap generations at a safe frame boundary, retaining old GPU/audio resources until consumers finish. Done: edited textures/materials/meshes update live; a broken replacement preserves the last good scene and reports import errors.
 - [ ] **A11 · P2 · Collision and navigation cook artifacts** — After: A05, P02, N01.

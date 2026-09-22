@@ -44,41 +44,17 @@ def bone_order(armature):
     return ordered
 
 
-def rest_directions(armature, rotation):
-    """World-space rest direction of each joint toward its children.
-
-    Imported GLB joints carry no authored tails, so Blender's bone axes are a
-    heuristic there; the joint positions are authored on both rigs and give a
-    posture the two can be compared by. Leaves inherit their parent's direction.
-    """
-    directions = {}
-    for bone in bone_order(armature):
-        data = bone.bone
-        children = [child for child in data.children]
-        if children:
-            mean = sum((child.head_local for child in children), Vector((0.0, 0.0, 0.0))) / len(children)
-            offset = mean - data.head_local
-            direction = rotation @ offset if offset.length > 1.0e-6 else None
-        else:
-            direction = None
-        if direction is None:
-            direction = directions[bone.parent.name] if bone.parent is not None else rotation @ Vector((0.0, 1.0, 0.0))
-        directions[bone.name] = direction.normalized()
-    return directions
-
-
 def retarget_clips(armature, source_armature, actions):
     """Transfer each clip as world-space motion relative to both rest poses.
 
     Joint names identify corresponding bones, not interchangeable action
     channels: the rigs may have different object scales, rest postures and
     bone axes. For every joint the source's world rotation away from its own
-    rest pose is applied on top of the target's rest pose, after a per-joint
-    alignment that turns the target's rest posture (for example a T-pose)
-    into the source's (for example an A-pose) using the authored joint
-    positions. Root translation transfers in world units scaled by rig
-    height. Keys are written as target-local pose channels, leaving the
-    target object's unit conversion untouched.
+    rest pose is applied on top of the target rest orientation after mapping
+    the target's full rest rotation onto the source's. Root translation
+    transfers in world units scaled by rig height. Keys are written as
+    target-local pose channels, leaving the target object's unit conversion
+    untouched.
     """
     source_armature.animation_data_create()
     for track in source_armature.animation_data.nla_tracks:
@@ -88,8 +64,6 @@ def retarget_clips(armature, source_armature, actions):
     source_rotation = source_world.to_quaternion()
     target_rotation = target_world.to_quaternion()
     target_scale = target_world.to_scale()
-    source_directions = rest_directions(source_armature, source_rotation)
-    target_directions = rest_directions(armature, target_rotation)
     ordered = bone_order(armature)
     rest_source = {}
     rest_target = {}
@@ -97,7 +71,7 @@ def retarget_clips(armature, source_armature, actions):
     for bone in ordered:
         rest_source[bone.name] = source_rotation @ source_armature.data.bones[bone.name].matrix_local.to_quaternion()
         rest_target[bone.name] = target_rotation @ bone.bone.matrix_local.to_quaternion()
-        align[bone.name] = target_directions[bone.name].rotation_difference(source_directions[bone.name])
+        align[bone.name] = rest_source[bone.name] @ rest_target[bone.name].inverted()
     root = ordered[0]
     source_root_rest = (source_world @ source_armature.data.bones[root.name].matrix_local).to_translation()
     source_height = max((source_world @ Matrix.Translation(bone.head_local)).to_translation().z

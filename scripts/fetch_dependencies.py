@@ -1,4 +1,4 @@
-"""Fetch pinned third-party headers into dependencies/ (git-ignored).
+"""Fetch pinned third-party sources and headers into dependencies/ (git-ignored).
 
 Third-party code stays out of the Elisa-owned tree: this script is the
 reproducible way to obtain it. The revision and content hash are pinned, so
@@ -81,6 +81,18 @@ PINNED = {
         "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/simplifier.cpp",
         "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc",
         "meshoptimizer/simplifier.cpp",
+    ),
+    "meshoptimizer_vfetch": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/vfetchoptimizer.cpp",
+        "aa534bb8150ca27ae229c58a0dc51f85f9acccbc5d4214f4c82edd91fc08e478",
+        "meshoptimizer/vfetchoptimizer.cpp",
+    ),
+    "meshoptimizer_indexgenerator": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/indexgenerator.cpp",
+        "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e",
+        "meshoptimizer/indexgenerator.cpp",
     ),
 }
 
