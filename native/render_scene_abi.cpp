@@ -14,6 +14,7 @@
 #include "render_cooked_mesh.h"
 #include "render_scene_effects.h"
 #include "lighting_bridge.h"
+#include "visibility_lod_bridge.h"
 #include "render_scene_textures.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
@@ -141,6 +142,7 @@ struct RenderSceneService {
     bool snapshot_transaction_active = false;
     int32_t snapshot_test_fail_after_creates = -1;
     std::unique_ptr<probe::LightingBridge> lighting;
+    std::unique_ptr<probe::VisibilityLodBridge> visibility_lod;
     wi::ecs::Entity sun_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity camera_entity = wi::ecs::INVALID_ENTITY;
     wi::ecs::Entity primary_camera_entity = wi::ecs::INVALID_ENTITY;
@@ -314,6 +316,7 @@ void reset_unlocked(RenderSceneService& state) {
         state.path.reset();
     }
     state.lighting.reset();
+    state.visibility_lod.reset();
     if (state.scene != nullptr) {
         state.scene->Clear();
         state.scene.reset();

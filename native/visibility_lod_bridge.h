@@ -52,6 +52,13 @@ public:
         return entry != nullptr && valid(desc) && apply(*entry, desc);
     }
 
+    // Public render services already own generation-checked instance handles.
+    // Let those services reuse the same validation and Wicked application path
+    // without allocating a second native handle table.
+    bool update_entity(wi::ecs::Entity entity, const VisibilityDesc& desc) {
+        return valid(desc) && apply_entity(entity, desc);
+    }
+
     bool destroy(VisibilityHandle handle) {
         Entry* entry = get(handle);
         if (entry == nullptr) return false;
@@ -74,7 +81,10 @@ private:
             std::isfinite(desc.lod_bias) && desc.lod_bias >= -16.0f && desc.lod_bias <= 16.0f;
     }
     bool apply(Entry& entry, const VisibilityDesc& desc) {
-        auto* object = scene_.objects.GetComponent(entry.entity);
+        return apply_entity(entry.entity, desc);
+    }
+    bool apply_entity(wi::ecs::Entity entity, const VisibilityDesc& desc) {
+        auto* object = scene_.objects.GetComponent(entity);
         if (object == nullptr) return false;
         object->draw_distance = desc.draw_distance;
         object->lod_bias = desc.lod_bias;
