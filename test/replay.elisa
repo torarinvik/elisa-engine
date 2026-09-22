@@ -25,4 +25,23 @@ def main() -> i32:
         error failure: 2
     return 7 if duplicate != 1
     return 8 if not Replay::recorder_valid(&left) or Replay::scope(&left) != Replay::DeterminismScope.SameBuild
+    frame_bytes: u8[48] = catch Replay::encode(second):
+        value: value
+        error failure: zeroed
+    restored: Replay::Frame = catch Replay::decode(frame_bytes, Replay::frame_bytes()):
+        value: value
+        error failure: Replay::Frame{tick: -1, input: 0, random_seed: 0, world_digest: 0, physics_digest: 0, render_digest: 0}
+    return 9 if restored.tick != second.tick or restored.input != second.input or restored.random_seed != second.random_seed
+    return 10 if restored.world_digest != second.world_digest or restored.physics_digest != second.physics_digest or restored.render_digest != second.render_digest
+    short: i32 = catch Replay::decode(frame_bytes, Replay::frame_bytes() - 1):
+        value: 1
+        Replay::ReplayError.ShortFrame: 0
+        error failure: 2
+    return 11 if short != 0
+    invalid: Replay::Frame = Replay::Frame{tick: -1, input: 0, random_seed: 0, world_digest: 0, physics_digest: 0, render_digest: 0}
+    rejected: i32 = catch Replay::encode(invalid):
+        value: 1
+        Replay::ReplayError.InvalidFrame: 0
+        error failure: 2
+    return 12 if rejected != 0
     0

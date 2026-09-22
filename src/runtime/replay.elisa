@@ -5,12 +5,16 @@ module Replay:
         const module Limits:
             MAX_FRAMES: usize = 256
             INVALID_TICK: i64 = -1
+            BYTE_MASK: u64 = 255
 
     public:
         enum ReplayError:
             Capacity
             NonMonotonicTick
             InvalidTick
+            ShortFrame
+            LongFrame
+            InvalidFrame
 
         enum DeterminismScope:
             SameBuild
@@ -23,6 +27,8 @@ module Replay:
             world_digest: i64
             physics_digest: i64
             render_digest: i64
+
+        const FRAME_BYTES: usize = 48
 
         affine struct Recorder:
             private:
@@ -40,6 +46,93 @@ module Replay:
                 raise ReplayError.NonMonotonicTick if frame.tick <= recorder.frames[recorder.count - 1].tick
             recorder.frames[recorder.count] <- frame
             recorder.count <- recorder.count + 1
+
+        private:
+            def frame_value_valid(frame: Frame) -> bool:
+                frame.tick >= 0
+
+            def read_u64(frame: u8[FRAME_BYTES], offset: usize) -> u64:
+                frame[offset].u64() + (frame[offset + 1].u64() << 8) + (frame[offset + 2].u64() << 16) + (frame[offset + 3].u64() << 24) + (frame[offset + 4].u64() << 32) + (frame[offset + 5].u64() << 40) + (frame[offset + 6].u64() << 48) + (frame[offset + 7].u64() << 56)
+
+        public:
+            def frame_bytes() -> usize:
+                FRAME_BYTES
+
+            # Fixed little-endian payload shared with native replay tooling.
+            # The six i64 values are encoded explicitly instead of relying on
+            # host struct layout or alignment.
+            def encode(frame: Frame) -> u8[FRAME_BYTES] error[ReplayError]:
+                raise ReplayError.InvalidFrame if not frame_value_valid(frame)
+                out: mutable u8[FRAME_BYTES] = zeroed
+                tick: u64 = frame.tick.u64()
+                input: u64 = frame.input.u64()
+                seed: u64 = frame.random_seed.u64()
+                world: u64 = frame.world_digest.u64()
+                physics: u64 = frame.physics_digest.u64()
+                render: u64 = frame.render_digest.u64()
+                out[0] <- (tick & Limits::BYTE_MASK).u8()
+                out[1] <- ((tick >> 8) & Limits::BYTE_MASK).u8()
+                out[2] <- ((tick >> 16) & Limits::BYTE_MASK).u8()
+                out[3] <- ((tick >> 24) & Limits::BYTE_MASK).u8()
+                out[4] <- ((tick >> 32) & Limits::BYTE_MASK).u8()
+                out[5] <- ((tick >> 40) & Limits::BYTE_MASK).u8()
+                out[6] <- ((tick >> 48) & Limits::BYTE_MASK).u8()
+                out[7] <- ((tick >> 56) & Limits::BYTE_MASK).u8()
+                out[8] <- (input & Limits::BYTE_MASK).u8()
+                out[9] <- ((input >> 8) & Limits::BYTE_MASK).u8()
+                out[10] <- ((input >> 16) & Limits::BYTE_MASK).u8()
+                out[11] <- ((input >> 24) & Limits::BYTE_MASK).u8()
+                out[12] <- ((input >> 32) & Limits::BYTE_MASK).u8()
+                out[13] <- ((input >> 40) & Limits::BYTE_MASK).u8()
+                out[14] <- ((input >> 48) & Limits::BYTE_MASK).u8()
+                out[15] <- ((input >> 56) & Limits::BYTE_MASK).u8()
+                out[16] <- (seed & Limits::BYTE_MASK).u8()
+                out[17] <- ((seed >> 8) & Limits::BYTE_MASK).u8()
+                out[18] <- ((seed >> 16) & Limits::BYTE_MASK).u8()
+                out[19] <- ((seed >> 24) & Limits::BYTE_MASK).u8()
+                out[20] <- ((seed >> 32) & Limits::BYTE_MASK).u8()
+                out[21] <- ((seed >> 40) & Limits::BYTE_MASK).u8()
+                out[22] <- ((seed >> 48) & Limits::BYTE_MASK).u8()
+                out[23] <- ((seed >> 56) & Limits::BYTE_MASK).u8()
+                out[24] <- (world & Limits::BYTE_MASK).u8()
+                out[25] <- ((world >> 8) & Limits::BYTE_MASK).u8()
+                out[26] <- ((world >> 16) & Limits::BYTE_MASK).u8()
+                out[27] <- ((world >> 24) & Limits::BYTE_MASK).u8()
+                out[28] <- ((world >> 32) & Limits::BYTE_MASK).u8()
+                out[29] <- ((world >> 40) & Limits::BYTE_MASK).u8()
+                out[30] <- ((world >> 48) & Limits::BYTE_MASK).u8()
+                out[31] <- ((world >> 56) & Limits::BYTE_MASK).u8()
+                out[32] <- (physics & Limits::BYTE_MASK).u8()
+                out[33] <- ((physics >> 8) & Limits::BYTE_MASK).u8()
+                out[34] <- ((physics >> 16) & Limits::BYTE_MASK).u8()
+                out[35] <- ((physics >> 24) & Limits::BYTE_MASK).u8()
+                out[36] <- ((physics >> 32) & Limits::BYTE_MASK).u8()
+                out[37] <- ((physics >> 40) & Limits::BYTE_MASK).u8()
+                out[38] <- ((physics >> 48) & Limits::BYTE_MASK).u8()
+                out[39] <- ((physics >> 56) & Limits::BYTE_MASK).u8()
+                out[40] <- (render & Limits::BYTE_MASK).u8()
+                out[41] <- ((render >> 8) & Limits::BYTE_MASK).u8()
+                out[42] <- ((render >> 16) & Limits::BYTE_MASK).u8()
+                out[43] <- ((render >> 24) & Limits::BYTE_MASK).u8()
+                out[44] <- ((render >> 32) & Limits::BYTE_MASK).u8()
+                out[45] <- ((render >> 40) & Limits::BYTE_MASK).u8()
+                out[46] <- ((render >> 48) & Limits::BYTE_MASK).u8()
+                out[47] <- ((render >> 56) & Limits::BYTE_MASK).u8()
+                out
+
+            def decode(frame: u8[FRAME_BYTES], count: usize) -> Frame error[ReplayError]:
+                raise ReplayError.ShortFrame if count < FRAME_BYTES
+                raise ReplayError.LongFrame if count > FRAME_BYTES
+                value: Frame = Frame{
+                    tick: read_u64(frame, 0).i64(),
+                    input: read_u64(frame, 8).i64(),
+                    random_seed: read_u64(frame, 16).i64(),
+                    world_digest: read_u64(frame, 24).i64(),
+                    physics_digest: read_u64(frame, 32).i64(),
+                    render_digest: read_u64(frame, 40).i64(),
+                }
+                raise ReplayError.InvalidFrame if not frame_value_valid(value)
+                value
 
         def frame_count(recorder: Recorder&) -> usize:
             recorder.count
