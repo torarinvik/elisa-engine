@@ -248,6 +248,8 @@ REJECTED = {
     "textures that are not a list": (lambda d: d.update(textures={}), "names a missing texture"),
     "a textured strip without UVs": (lambda d: d["meshes"][0]["primitives"][1]["attributes"].pop("TEXCOORD_0"),
         "a primitive with a textured material needs TEXCOORD_0"),
+    "a malformed tangent stream": (lambda d: d["meshes"][0]["primitives"][0]["attributes"].update(TANGENT=1),
+        "tangents must be float32 VEC4 values"),
     "a mask without a base-color image": (lambda d: d["materials"][0]["pbrMetallicRoughness"].pop(
         "baseColorTexture"), "alpha-mask materials need a base-color texture"),
 }
@@ -270,8 +272,13 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     geometry = cook_gltf_geometry.normalized_geometry(document, buffer)
     if (geometry["slot_materials"] != SLOT_MATERIALS or geometry["slot_textures"] != SLOT_TEXTURES or
             geometry["images"] != SECTIONS or geometry["vertex_count"] != 16 or
-            geometry["subsets"] != SUBSETS):
+            geometry["subsets"] != SUBSETS or len(geometry["tangents"]) != 16 * 16):
         return fail("the textured panel cooked the wrong slot records, images or subsets")
+    tangent_values = list(struct.iter_unpack("<4f", geometry["tangents"]))
+    if any(abs(tangent[0] - 1.0) > 1.0e-5 or abs(tangent[1]) > 1.0e-5 or
+            abs(tangent[2]) > 1.0e-5 or abs(abs(tangent[3]) - 1.0) > 1.0e-5
+            for tangent in tangent_values):
+        return fail("the textured panel did not receive deterministic tangent frames")
     names = b"".join(struct.pack("<I", 7) + name.encode("ascii") for name, _ in SECTIONS)
     lines = cook_gltf_geometry.subset_lines(geometry)
     expected_lines = ["texture_count=4", "texture_names_b64=" + base64.b64encode(names).decode("ascii"),
