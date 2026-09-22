@@ -3,6 +3,7 @@ include "../src/runtime/render_scene.elisa"
 include "../src/runtime/render_scene_quality_profile.elisa"
 include "../src/runtime/render_scene_visibility.elisa"
 include "../src/runtime/render_scene_animation_submission.elisa"
+include "../src/runtime/render_scene_effects.elisa"
 include "../src/runtime/render_scene_text.elisa"
 include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
@@ -27,6 +28,7 @@ include "./render_scene_arc_depth_native.elisa"
 include "./render_scene_quality_settings_native.elisa"
 include "./render_scene_visibility_native.elisa"
 include "./render_scene_animation_submission_native.elisa"
+include "./render_scene_effects_native.elisa"
 using Maze
 using MazeGame
 using MazeTrace
@@ -114,14 +116,14 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 33 if valid_camera != 0
-
     animation_submission_status: i32 = RenderSceneAnimationSubmissionNativeTests::exercise()
     return 79 + animation_submission_status if animation_submission_status != 0
+    effects_test_status: i32 = RenderSceneEffectsNativeTests::exercise()
+    return 80 + effects_test_status if effects_test_status != 0
     environment_test_status: i32 = RenderSceneEnvironmentNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(197, environment_test_status) if environment_test_status != 0
     lighting_test_status: i32 = RenderSceneLightingNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(200, lighting_test_status) if lighting_test_status != 0
-
     camera_test: i32 = RenderSceneCameraNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(198, camera_test) if camera_test != 0
 
@@ -174,7 +176,6 @@ def exercise_render_scene() -> i32:
     return 77 if invalid_hud_text != 1
     text_updates: i32 = RenderSceneTextNativeTests::exercise(hud_text)
     return elisa_render_scene_v1_test_failed_case(199, text_updates) if text_updates != 0
-
     hud_panel: RenderScene::OverlayPanelHandle = catch RenderScenePanelNativeTests::create():
         value: value
         error failure: return 123
@@ -192,7 +193,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.InvalidValue: 1
         error failure: 2
     return 5 if invalid_create != 1 or RenderScene::instance_count() != 0
-
     huge_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 1.0e30, y: 0.0, z: 0.0},
         rotation: Geometry::quat_identity(),

@@ -197,6 +197,19 @@ typedef struct ElisaRenderSceneAnimationSubmission {
 int32_t elisa_render_scene_v1_submit_animation_pose(
     int64_t handle, const ElisaRenderSceneAnimationSubmission* submission);
 int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle);
+int64_t elisa_render_scene_v1_create_effect_emitter(
+    float px, float py, float pz, uint32_t max_particles,
+    float count, float lifetime, float size,
+    float velocity_x, float velocity_y, float velocity_z);
+int32_t elisa_render_scene_v1_tick_effect_emitter(int64_t handle, float delta_seconds);
+int64_t elisa_render_scene_v1_create_effect_decal(
+    float px, float py, float pz,
+    float red, float green, float blue, float alpha,
+    float range, float slope_blend);
+int32_t elisa_render_scene_v1_update_effect_decal(
+    int64_t handle, float red, float green, float blue, float alpha,
+    float range, float slope_blend);
+int32_t elisa_render_scene_v1_destroy_effect(int64_t handle);
 int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
 int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float scale_u, float scale_v, float offset_u, float offset_v);
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);

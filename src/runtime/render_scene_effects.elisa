@@ -1,0 +1,150 @@
+# Wicked emitter and decal controls stay behind generation checked scalar
+# handles. Descriptors are value types so callers can keep effect setup local
+# to the expression that creates the effect.
+include "./render_scene.elisa"
+include "../math/geometry.elisa"
+
+module RenderSceneEffects:
+    public:
+        const API_VERSION: i32 = 1
+        const MAX_PARTICLES: u32 = 65536
+        const MAX_VELOCITY: f32 = 10000.0
+        const MAX_POSITION: f32 = 1000000.0
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_create_effect_emitter(
+            px: f32, py: f32, pz: f32, max_particles: u32,
+            count: f32, lifetime: f32, size: f32,
+            velocity_x: f32, velocity_y: f32, velocity_z: f32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_tick_effect_emitter(handle: i64,
+            delta_seconds: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_create_effect_decal(
+            px: f32, py: f32, pz: f32,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            range: f32, slope_blend: f32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_update_effect_decal(handle: i64,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            range: f32, slope_blend: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_effect(handle: i64) -> i32
+
+        def finite(value: f32) -> bool:
+            value - value == 0.0
+
+        def position_valid(value: Geometry::Vec3) -> bool:
+            return false if not Geometry::vec3_is_finite(value)
+            return false if value.x < -RenderSceneEffects::MAX_POSITION or value.x > RenderSceneEffects::MAX_POSITION
+            return false if value.y < -RenderSceneEffects::MAX_POSITION or value.y > RenderSceneEffects::MAX_POSITION
+            return false if value.z < -RenderSceneEffects::MAX_POSITION or value.z > RenderSceneEffects::MAX_POSITION
+            true
+
+        def emitter_valid(effect: Emitter) -> bool:
+            return false if not position_valid(effect.position)
+            return false if effect.max_particles == 0 or effect.max_particles > RenderSceneEffects::MAX_PARTICLES
+            return false if not finite(effect.count) or effect.count < 0.0 or effect.count > effect.max_particles.f32()
+            return false if not finite(effect.lifetime) or effect.lifetime <= 0.0
+            return false if not finite(effect.size) or effect.size <= 0.0
+            return false if not finite(effect.velocity.x) or not finite(effect.velocity.y) or not finite(effect.velocity.z)
+            return false if effect.velocity.x < -RenderSceneEffects::MAX_VELOCITY or effect.velocity.x > RenderSceneEffects::MAX_VELOCITY
+            return false if effect.velocity.y < -RenderSceneEffects::MAX_VELOCITY or effect.velocity.y > RenderSceneEffects::MAX_VELOCITY
+            return false if effect.velocity.z < -RenderSceneEffects::MAX_VELOCITY or effect.velocity.z > RenderSceneEffects::MAX_VELOCITY
+            true
+
+        def decal_valid(effect: Decal) -> bool:
+            return false if not position_valid(effect.position)
+            return false if not finite(effect.color.red) or not finite(effect.color.green) or not finite(effect.color.blue) or not finite(effect.color.alpha)
+            return false if effect.color.red < 0.0 or effect.color.red > 1.0 or effect.color.green < 0.0 or effect.color.green > 1.0
+            return false if effect.color.blue < 0.0 or effect.color.blue > 1.0 or effect.color.alpha < 0.0 or effect.color.alpha > 1.0
+            return false if not finite(effect.range) or effect.range <= 0.0
+            return false if not finite(effect.slope_blend) or effect.slope_blend < 0.0
+            true
+
+    public:
+        struct EmitterHandle:
+            private:
+                native_value: i64
+
+        struct DecalHandle:
+            private:
+                native_value: i64
+
+        struct Emitter:
+            position: Geometry::Vec3
+            max_particles: u32
+            count: f32
+            lifetime: f32
+            size: f32
+            velocity: Geometry::Vec3
+
+        def Emitter(position: Geometry::Vec3, max_particles: u32, count: f32,
+            lifetime: f32, size: f32, velocity: Geometry::Vec3) -> Emitter:
+            Emitter{
+                position: position,
+                max_particles: max_particles,
+                count: count,
+                lifetime: lifetime,
+                size: size,
+                velocity: velocity,
+            }
+
+        struct Decal:
+            position: Geometry::Vec3
+            color: RenderScene::Color
+            range: f32
+            slope_blend: f32
+
+        def Decal(position: Geometry::Vec3, color: RenderScene::Color,
+            range: f32, slope_blend: f32) -> Decal:
+            Decal{
+                position: position,
+                color: color,
+                range: range,
+                slope_blend: slope_blend,
+            }
+
+        def create_emitter(effect: Emitter) -> EmitterHandle error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not emitter_valid(effect)
+            native_value: i64 = elisa_render_scene_v1_create_effect_emitter(
+                effect.position.x, effect.position.y, effect.position.z,
+                effect.max_particles, effect.count, effect.lifetime, effect.size,
+                effect.velocity.x, effect.velocity.y, effect.velocity.z)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            EmitterHandle{native_value: native_value}
+
+        def tick_emitter(handle: EmitterHandle, delta_seconds: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not finite(delta_seconds) or delta_seconds < 0.0
+            try check_status(elisa_render_scene_v1_tick_effect_emitter(handle.native_value, delta_seconds))
+
+        def destroy_emitter(handle: EmitterHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_effect(handle.native_value))
+
+        def create_decal(effect: Decal) -> DecalHandle error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not decal_valid(effect)
+            native_value: i64 = elisa_render_scene_v1_create_effect_decal(
+                effect.position.x, effect.position.y, effect.position.z,
+                effect.color.red, effect.color.green, effect.color.blue, effect.color.alpha,
+                effect.range, effect.slope_blend)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            DecalHandle{native_value: native_value}
+
+        def update_decal(handle: DecalHandle, effect: Decal) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not decal_valid(effect)
+            try check_status(elisa_render_scene_v1_update_effect_decal(handle.native_value,
+                effect.color.red, effect.color.green, effect.color.blue, effect.color.alpha,
+                effect.range, effect.slope_blend))
+
+        def destroy_decal(handle: DecalHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_effect(handle.native_value))

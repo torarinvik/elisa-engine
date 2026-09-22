@@ -35,6 +35,8 @@ struct DecalDesc {
 class EffectBridge {
 public:
     static constexpr uint32_t MAX_EFFECTS = 32;
+    static constexpr uint32_t MAX_PARTICLES = 65536;
+    static constexpr float MAX_VELOCITY = 10000.0f;
 
     explicit EffectBridge(wi::scene::Scene& scene)
         : scene_(scene), owner_(reinterpret_cast<uintptr_t>(this)) {}
@@ -112,6 +114,11 @@ public:
         return true;
     }
 
+    wi::ecs::Entity entity(EffectHandle handle) const {
+        const Entry* entry = get(handle);
+        return entry == nullptr ? wi::ecs::INVALID_ENTITY : entry->entity;
+    }
+
 private:
     struct Entry {
         wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -121,9 +128,12 @@ private:
     };
 
     static bool valid(const EmitterDesc& desc) {
-        return desc.max_particles > 0 && desc.max_particles <= 65536 &&
+        return desc.max_particles > 0 && desc.max_particles <= MAX_PARTICLES &&
             std::isfinite(desc.count) && desc.count >= 0.0f && desc.count <= desc.max_particles &&
-            std::isfinite(desc.lifetime) && desc.lifetime > 0.0f && std::isfinite(desc.size) && desc.size > 0.0f;
+            std::isfinite(desc.lifetime) && desc.lifetime > 0.0f && std::isfinite(desc.size) && desc.size > 0.0f &&
+            std::isfinite(desc.velocity.x) && std::isfinite(desc.velocity.y) && std::isfinite(desc.velocity.z) &&
+            std::abs(desc.velocity.x) <= MAX_VELOCITY && std::abs(desc.velocity.y) <= MAX_VELOCITY &&
+            std::abs(desc.velocity.z) <= MAX_VELOCITY;
     }
     static bool valid(const DecalDesc& desc) {
         return std::isfinite(desc.color.x) && std::isfinite(desc.color.y) && std::isfinite(desc.color.z) &&
@@ -139,6 +149,10 @@ private:
         return true;
     }
     Entry* get(EffectHandle handle) {
+        return handle.owner == owner_ && handle.slot < MAX_EFFECTS && entries_[handle.slot].live &&
+            entries_[handle.slot].generation == handle.generation && entries_[handle.slot].kind == handle.kind ? &entries_[handle.slot] : nullptr;
+    }
+    const Entry* get(EffectHandle handle) const {
         return handle.owner == owner_ && handle.slot < MAX_EFFECTS && entries_[handle.slot].live &&
             entries_[handle.slot].generation == handle.generation && entries_[handle.slot].kind == handle.kind ? &entries_[handle.slot] : nullptr;
     }

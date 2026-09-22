@@ -1,0 +1,73 @@
+# Native smoke coverage for the public Wicked emitter and decal bridge.
+module RenderSceneEffectsNativeTests:
+    private:
+        const MAX_PARTICLES: u32 = 128
+        const COUNT: f32 = 12.0
+        const LIFETIME: f32 = 2.5
+        const SIZE: f32 = 0.75
+        const RANGE: f32 = 3.0
+        const SLOPE_BLEND: f32 = 1.25
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_emitter(handle: RenderScene::EmitterHandle,
+            max_particles: u32, count: f32, lifetime: f32, size: f32,
+            velocity_x: f32, velocity_y: f32, velocity_z: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_decal(handle: RenderScene::DecalHandle,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            range: f32, slope_blend: f32) -> i32
+
+    public:
+        def exercise() -> i32:
+            position: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 3.0, z: -1.0}
+            velocity: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 4.0, z: 1.0}
+            color: RenderScene::Color = RenderScene::Color{red: 0.7, green: 0.2, blue: 0.9, alpha: 0.5}
+            emitter: RenderScene::EmitterHandle = catch RenderScene::create_emitter(
+                RenderScene::Emitter(position, MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity)):
+                value: value
+                error failure: return 1
+            return 2 if elisa_render_scene_v1_test_effect_emitter(emitter,
+                MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity.x, velocity.y, velocity.z) != 1
+            invalid_tick: i32 = catch RenderScene::tick_emitter(emitter, -1.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 3 if invalid_tick != 1
+            ticked: i32 = catch RenderScene::tick_emitter(emitter, 1.0 / 60.0):
+                ok: 0
+                error failure: 1
+            return 4 if ticked != 0
+
+            decal: RenderScene::DecalHandle = catch RenderScene::create_decal(
+                RenderScene::Decal(position, color, RANGE, SLOPE_BLEND)):
+                value: value
+                error failure: return 5
+            return 6 if elisa_render_scene_v1_test_effect_decal(decal,
+                color.red, color.green, color.blue, color.alpha, RANGE, SLOPE_BLEND) != 1
+            invalid_update: i32 = catch RenderScene::update_decal(decal,
+                RenderScene::Decal(position, color, 0.0, SLOPE_BLEND)):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 7 if invalid_update != 1
+            updated_color: RenderScene::Color = RenderScene::Color{red: 0.1, green: 0.8, blue: 0.4, alpha: 1.0}
+            updated: i32 = catch RenderScene::update_decal(decal,
+                RenderScene::Decal(position, updated_color, 4.0, 0.5)):
+                ok: 0
+                error failure: 1
+            return 8 if updated != 0 or elisa_render_scene_v1_test_effect_decal(decal,
+                updated_color.red, updated_color.green, updated_color.blue, updated_color.alpha, 4.0, 0.5) != 1
+            destroyed_decal: i32 = catch RenderScene::destroy_decal(decal):
+                ok: 0
+                error failure: 1
+            return 9 if destroyed_decal != 0
+            stale_decal: i32 = catch RenderScene::destroy_decal(decal):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 10 if stale_decal != 1
+            destroyed_emitter: i32 = catch RenderScene::destroy_emitter(emitter):
+                ok: 0
+                error failure: 1
+            11 if destroyed_emitter != 0 else 0
