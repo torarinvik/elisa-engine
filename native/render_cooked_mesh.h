@@ -79,6 +79,10 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
         geometry.indices.size() % 3 != 0 ||
         geometry.indices.size() > std::numeric_limits<uint32_t>::max()) return false;
+    for (const auto& target : geometry.morph_targets) {
+        if (target.positions.size() != geometry.positions.size() ||
+            (!target.normals.empty() && target.normals.size() != geometry.positions.size())) return false;
+    }
     const bool has_skin_rig = !geometry.skin_joints.empty() && !geometry.skin_cluster_joints.empty();
     if (has_skin_rig && (geometry.skin_joints.size() > 64 || geometry.skin_cluster_joints.size() > 64 ||
         geometry.skin_indices.size() != geometry.positions.size() / 3 * 4 ||
@@ -103,6 +107,20 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         mesh->vertex_positions[index] = cooked_vector(geometry.positions, index);
         mesh->vertex_normals[index] = cooked_vector(geometry.normals, index);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[index * 2], geometry.uvs[index * 2 + 1]);
+    }
+    mesh->morph_targets.resize(geometry.morph_targets.size());
+    for (size_t target_index = 0; target_index < geometry.morph_targets.size(); ++target_index) {
+        auto& target = mesh->morph_targets[target_index];
+        const auto& cooked = geometry.morph_targets[target_index];
+        target.vertex_positions.resize(mesh->vertex_positions.size());
+        for (size_t vertex = 0; vertex < target.vertex_positions.size(); ++vertex)
+            target.vertex_positions[vertex] = cooked_vector(cooked.positions, vertex);
+        if (!cooked.normals.empty()) {
+            target.vertex_normals.resize(mesh->vertex_positions.size());
+            for (size_t vertex = 0; vertex < target.vertex_normals.size(); ++vertex)
+                target.vertex_normals[vertex] = cooked_vector(cooked.normals, vertex);
+        }
+        target.weight = 0.0f;
     }
     set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     if (!geometry.tangents.empty()) {

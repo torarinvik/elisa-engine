@@ -182,7 +182,7 @@ REJECTED = {
     "seventeen alternating subsets": (alternating(16), "more than 16 material subsets"),
     "mesh extras": (lambda d: d["meshes"][1].update(extras={}), "unsupported mesh properties"),
     "a morph target on a placed mesh": (lambda d: d["meshes"][2]["primitives"][0].update(targets=[{}]),
-        "unsupported primitive properties"),
+        "morph targets must provide"),
     "a mesh that is not an object": (lambda d: d["meshes"].__setitem__(1, []), "unsupported mesh properties"),
     "a second mesh without primitives": (lambda d: d["meshes"][1].update(primitives=[]), "1 to 16 primitives"),
 }

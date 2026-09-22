@@ -31,6 +31,7 @@ import cook_assets
 import cook_gltf_geometry
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
+import gltf_morph_self_test
 import gltf_skin_self_test
 import gltf_texture_self_test
 
@@ -156,6 +157,8 @@ def cases(directory: Path) -> list[tuple]:
     cook_gltf_geometry.cook_geometry_package(
         hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
     gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
+    gltf_morph_self_test.write_package(directory / "morphed-panel.pkg")
+    morph = (directory / "morphed-panel.pkg").read_bytes()
     # Fifteen placements alternating red and green, then blue: the most
     # subsets a baked hierarchy may need.
     alternating = cook_assets.read_gltf(hierarchy_source.read_bytes())
@@ -185,6 +188,11 @@ def cases(directory: Path) -> list[tuple]:
     listed_sections = [(name, zlib.crc32(data)) for name, data in listed.items()]
     plain = [GLASS, PAINT]
 
+    def morph_variant(old: bytes, new: bytes) -> bytes:
+        if old not in morph:
+            raise RuntimeError("morph fixture mutation did not find its field")
+        return morph.replace(old, new, 1)
+
     def textured_strip(names, references, **fields):
         return strip_package(2, two, 2, materials=fields.pop("materials", plain),
             textures=(names, references), **fields)
@@ -205,7 +213,15 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "sixteen.pkg", strip_package(16, sixteen, 16), (48, 16, sixteen)),
         ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
         ("accept", "skinned-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
-            "animations", 1)),
+            "animations", 1, "morphs", 1)),
+        ("accept", "morphed-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
+            "morphs", 1)),
+        ("reject", "morph-missing-position.pkg", morph_variant(
+            b"morph_0_positions_b64=", b"morph_0_position_b64="), "morph position stream"),
+        ("reject", "morph-stride.pkg", morph_variant(
+            b"morph_target_position_stride=12", b"morph_target_position_stride=16"), "morph metadata"),
+        ("reject", "morph-empty.pkg", morph_variant(
+            b"morph_targets=1", b"morph_targets=0"), "morph metadata"),
         ("reject", "gap.pkg", strip_package(3, [(0, 3, 0), (6, 3, 0)], 1), PARTITION),
         ("reject", "overlap.pkg", strip_package(3, [(0, 6, 0), (3, 6, 1)], 2), PARTITION),
         ("reject", "split-triangle.pkg", strip_package(2, [(0, 4, 0), (4, 2, 1)], 2), PARTITION),
@@ -318,8 +334,13 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         return "\t".join(fields + [expectation])
     index_count, slots, subsets, *records = expectation
     animation_count = None
-    if len(records) >= 2 and records[-2] == "animations":
-        animation_count = records[-1]
+    morph_count = None
+    while len(records) >= 2 and records[-2] in ("animations", "morphs"):
+        marker, count = records[-2:]
+        if marker == "animations":
+            animation_count = count
+        else:
+            morph_count = count
         records = records[:-2]
     fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
     if records:
@@ -333,6 +354,8 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
             fields += [name, str(checksum)]
     if animation_count is not None:
         fields += ["animations", str(animation_count)]
+    if morph_count is not None:
+        fields += ["morphs", str(morph_count)]
     return "\t".join(fields)
 
 

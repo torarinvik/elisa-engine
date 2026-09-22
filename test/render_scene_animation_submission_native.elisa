@@ -18,12 +18,12 @@ module RenderSceneAnimationSubmissionNativeTests:
     public:
         def exercise() -> i32:
             mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
-                "build/cooked/subsets/skinned.pkg", Geometry::transform_identity(),
+                "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(),
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
             second_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
-                "build/cooked/subsets/skinned.pkg", Geometry::transform_identity(),
+                "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(),
                 RenderScene::Color{red: 0.7, green: 0.7, blue: 0.9, alpha: 1.0}):
                 value: value
                 error failure: return 10
@@ -64,6 +64,24 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             return 11 if second_set_bone != 0
+            set_morph: i32 = catch RenderScene::set_morph_weight(&pose, 0, ZERO_MORPH):
+                ok: 0
+                error failure: 1
+            return 17 if set_morph != 0
+            set_second_bone: i32 = catch RenderScene::set_bone_transform(&pose, 1,
+                Geometry::transform_identity()):
+                ok: 0
+                error failure: 1
+            return 21 if set_second_bone != 0
+            second_set_morph: i32 = catch RenderScene::set_morph_weight(&second_pose, 0, ZERO_MORPH):
+                ok: 0
+                error failure: 1
+            return 18 if second_set_morph != 0
+            second_set_second_bone: i32 = catch RenderScene::set_bone_transform(&second_pose, 1,
+                Geometry::transform_identity()):
+                ok: 0
+                error failure: 1
+            return 22 if second_set_second_bone != 0
             submit: i32 = catch RenderScene::submit_animation_pose(mesh, &pose):
                 ok: 0
                 error failure: 1

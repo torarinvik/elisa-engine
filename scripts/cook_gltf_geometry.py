@@ -18,6 +18,7 @@ MAX_SUBSETS = 16
 MAX_MATERIAL_SLOTS = 16
 MAX_VERTICES = 2_000_000
 MAX_INDICES = 15_000_000
+MAX_MORPH_TARGETS = 32
 
 
 # Render scene alpha modes. Alpha masking needs a base-color texture.
@@ -123,7 +124,7 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
         if not isinstance(primitives, list) or not 1 <= len(primitives) <= MAX_SUBSETS:
             raise ValueError(f"runtime geometry cooker requires 1 to {MAX_SUBSETS} primitives")
         for primitive in primitives:
-            if not isinstance(primitive, dict) or set(primitive) - {"attributes", "indices", "mode", "material"}:
+            if not isinstance(primitive, dict) or set(primitive) - {"attributes", "indices", "mode", "material", "targets"}:
                 raise ValueError("runtime geometry cooker encountered unsupported primitive properties")
             attributes = primitive.get("attributes", {})
             if not isinstance(attributes, dict) or any(type(value) is not int for value in attributes.values()):
@@ -133,12 +134,25 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
             has_joints = "JOINTS_0" in attributes
             if has_joints != ("WEIGHTS_0" in attributes) or has_joints != (skin is not None):
                 raise ValueError("skinned primitives must consistently provide JOINTS_0 and WEIGHTS_0")
+            targets = primitive.get("targets", [])
+            if not isinstance(targets, list) or len(targets) > MAX_MORPH_TARGETS:
+                raise ValueError(f"runtime geometry cooker accepts at most {MAX_MORPH_TARGETS} morph targets")
+            for target in targets:
+                if (not isinstance(target, dict) or set(target) - {"POSITION", "NORMAL"} or
+                        "POSITION" not in target or type(target["POSITION"]) is not int or
+                        any(type(value) is not int for value in target.values())):
+                    raise ValueError("morph targets must provide a POSITION accessor and optional NORMAL")
+            if every_primitive and len(targets) != len(every_primitive[0].get("targets", [])):
+                raise ValueError("all runtime primitives must use the same morph target count")
         every_primitive += primitives
+    morph_count = len(every_primitive[0].get("targets", [])) if every_primitive else 0
+    if any(len(primitive.get("targets", [])) != morph_count for primitive in every_primitive):
+        raise ValueError("all runtime primitives must use the same morph target count")
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
     placements = cook_gltf_nodes.mesh_placements(document, len(meshes))
     if skin is not None and any(matrix != cook_gltf_nodes.IDENTITY for _, matrix in placements):
         raise ValueError("skinned mesh node transforms must be identity; put the pose in its joints")
-    return placements, slot_count, slot_records, slot_images, skin
+    return placements, slot_count, slot_records, slot_images, skin, morph_count
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -157,7 +171,20 @@ def float_stream(document: dict, buffer: bytes, reference, type_name: str,
     return data
 
 
-def read_vertices(document: dict, buffer: bytes, attributes: dict) -> dict:
+def read_morph_targets(document: dict, buffer: bytes, targets: list[dict], vertex_count: int) -> list[dict]:
+    result = []
+    for index, target in enumerate(targets):
+        positions = float_stream(document, buffer, target["POSITION"], "VEC3", vertex_count,
+            f"morph target {index} positions")
+        normals = None
+        if "NORMAL" in target:
+            normals = float_stream(document, buffer, target["NORMAL"], "VEC3", vertex_count,
+                f"morph target {index} normals")
+        result.append({"positions": positions, "normals": normals})
+    return result
+
+
+def read_vertices(document: dict, buffer: bytes, attributes: dict, targets: list[dict]) -> dict:
     if "POSITION" not in attributes:
         raise ValueError("triangle primitive is missing positions or indices")
     accessors = document.get("accessors", [])
@@ -181,6 +208,7 @@ def read_vertices(document: dict, buffer: bytes, attributes: dict) -> dict:
         skin_indices, skin_weights = cook_gltf_skin.read_influences(document, buffer, attributes, vertex_count)
     return {"positions": positions, "normals": normals, "uvs": uvs,
         "skin_indices": skin_indices, "skin_weights": skin_weights,
+        "morph_targets": read_morph_targets(document, buffer, targets, vertex_count),
         "count": vertex_count, "triangles": []}
 
 
@@ -234,7 +262,7 @@ def normalized_geometry(document: dict, buffer: bytes):
     # Material factors become slot records, and the images their textures
     # sample become bundle sections. The bounded skin path keeps joint
     # influences and parent-ordered rest transforms alongside the mesh.
-    placements, slot_count, slot_records, slot_images, skin = validate_static_geometry_source(document, buffer)
+    placements, slot_count, slot_records, slot_images, skin, morph_count = validate_static_geometry_source(document, buffer)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
     placed = []
@@ -245,11 +273,13 @@ def normalized_geometry(document: dict, buffer: bytes):
             if primitive.get("mode", 4) != 4:
                 raise ValueError("runtime geometry cooker supports triangle primitives only")
             attributes = primitive.get("attributes", {})
-            key = tuple(sorted(attributes.items()))
+            targets = primitive.get("targets", [])
+            target_key = tuple(tuple(sorted(target.items())) for target in targets)
+            key = (tuple(sorted(attributes.items())), target_key)
             if block_for_position.setdefault(attributes.get("POSITION"), key) != key:
                 raise ValueError("primitives that share positions must share every vertex attribute")
             if key not in sources:
-                sources[key] = read_vertices(document, buffer, attributes)
+                sources[key] = read_vertices(document, buffer, attributes, targets)
                 if skin is not None and any(index >= len(skin["joints"]) for index in sources[key]["skin_indices"]):
                     raise ValueError("skin joint index is outside the declared skin")
             block = (placement, key)
@@ -267,6 +297,8 @@ def normalized_geometry(document: dict, buffer: bytes):
             placed.append((block, values, primitive.get("material", 0)))
 
     positions, normals, uvs = bytearray(), bytearray(), bytearray()
+    morph_positions = [bytearray() for _ in range(morph_count)]
+    morph_normals = [bytearray() for _ in range(morph_count)]
     skin_indices: list[int] = []
     skin_weights: list[float] = []
     base_vertex: dict[tuple, int] = {}
@@ -279,6 +311,10 @@ def normalized_geometry(document: dict, buffer: bytes):
             if source["normals"] is not None else \
             generated_normals(world, source["count"], block["triangles"])
         uvs += source["uvs"]
+        for morph_index, target in enumerate(source["morph_targets"]):
+            morph_positions[morph_index] += cook_gltf_nodes.transform_vectors(target["positions"], matrix)
+            if target["normals"] is not None:
+                morph_normals[morph_index] += cook_gltf_nodes.transform_normal_deltas(target["normals"], matrix)
         if skin is not None:
             skin_indices += source["skin_indices"]
             skin_weights += source["skin_weights"]
@@ -295,11 +331,18 @@ def normalized_geometry(document: dict, buffer: bytes):
     if len(subsets) > MAX_SUBSETS:
         raise ValueError(f"placed primitives need more than {MAX_SUBSETS} material subsets")
     slot_textures, images = cook_gltf_textures.cooked_textures(document, buffer, slot_images)
+    morph_targets = [{"positions": bytes(morph_positions[index]),
+        "normals": bytes(morph_normals[index]) if morph_normals[index] else None}
+        for index in range(morph_count)]
+    if any(target["normals"] is not None for target in morph_targets) and any(
+            target["normals"] is None for target in morph_targets):
+        raise ValueError("all morph targets must provide normals or none may provide them")
     return {"positions": bytes(positions), "normals": bytes(normals), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
-        "skin": skin, "skin_indices": skin_indices, "skin_weights": skin_weights}
+        "skin": skin, "skin_indices": skin_indices, "skin_weights": skin_weights,
+        "morph_targets": morph_targets}
 
 
 def placed_counts(document: dict) -> dict:
@@ -402,6 +445,27 @@ def skin_lines(geometry: dict) -> list[str]:
     return lines
 
 
+def morph_lines(geometry: dict) -> list[str]:
+    targets = geometry.get("morph_targets", [])
+    if not targets:
+        return []
+    if len(targets) > MAX_MORPH_TARGETS:
+        raise ValueError("normalized morph target count exceeds the runtime bound")
+    lines = [f"morph_targets={len(targets)}", "morph_target_position_stride=12"]
+    has_normals = all(target["normals"] is not None for target in targets)
+    if has_normals:
+        lines.append("morph_target_normal_stride=12")
+    for index, target in enumerate(targets):
+        if len(target["positions"]) != geometry["vertex_count"] * 12:
+            raise ValueError("normalized morph position stream does not match the mesh")
+        lines.append(f"morph_{index}_positions_b64=" + base64.b64encode(target["positions"]).decode("ascii"))
+        if has_normals:
+            if len(target["normals"]) != geometry["vertex_count"] * 12:
+                raise ValueError("normalized morph normal stream does not match the mesh")
+            lines.append(f"morph_{index}_normals_b64=" + base64.b64encode(target["normals"]).decode("ascii"))
+    return lines
+
+
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         allow_textures: bool = False) -> tuple[Path, dict]:
     """Write the mesh package. A textured source cooks only when the caller
@@ -436,6 +500,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         "index_stride=4",
         *subset_lines(geometry),
         *skin_lines(geometry),
+        *morph_lines(geometry),
         "positions_b64=" + base64.b64encode(geometry["positions"]).decode("ascii"),
         "normals_b64=" + base64.b64encode(geometry["normals"]).decode("ascii"),
         "uvs_b64=" + base64.b64encode(geometry["uvs"]).decode("ascii"),
@@ -449,4 +514,4 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         "indices": geometry["index_count"], "subsets": len(geometry["subsets"]),
         "material_slots": geometry["material_slots"],
         "slot_materials": len(geometry["slot_materials"]) // SLOT_MATERIAL_STRIDE, "source_sha256": digest,
-        "images": dict(geometry["images"])}
+        "images": dict(geometry["images"]), "morph_targets": len(geometry.get("morph_targets", []))}

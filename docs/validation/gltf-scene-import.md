@@ -15,6 +15,9 @@ alpha metadata, texture references, and normalized rejection counts. The first
 authored triangle primitive is decoded into bounded engine arrays, uploaded
 through Wicked's mesh component, and used by the rendered goal marker; its
 normal stream and scalar material factors are retained when present. The
-runtime cooker now carries bounded multi-material skins and fixed-rate LINEAR
-or STEP joint animation into the v3 package; cameras, lights, morph targets,
-and complete multi-mesh scene output remain follow-up A05 work.
+runtime cooker now carries bounded multi-material skins, fixed-rate LINEAR or
+STEP joint animation, and dense morph POSITION/NORMAL deltas into the v3
+package. The native uploader installs those targets on each Wicked mesh, and
+the SDL3/Metal animation smoke submits a bounded morph weight on the cooked
+two-joint fixture. Cameras, lights, and complete multi-mesh scene metadata
+remain follow-up A05 work.

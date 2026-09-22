@@ -75,6 +75,10 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
         if (!add_geometry_bytes(clip.name.size(), 1, total) ||
             !add_geometry_bytes(clip.local_transforms.size(), sizeof(float), total)) return false;
     }
+    for (const auto& target : geometry.morph_targets) {
+        if (!add_geometry_bytes(target.positions.size(), sizeof(float), total) ||
+            !add_geometry_bytes(target.normals.size(), sizeof(float), total)) return false;
+    }
     bytes = total;
     return true;
 }
@@ -92,7 +96,7 @@ size_t snapshot_shared_mesh_slot(const RenderSceneService& state,
 bool cooked_geometry_is_static(const elisa::assets::CookedGeometry& geometry) {
     return geometry.skin_indices.empty() && geometry.skin_weights.empty() &&
         geometry.skin_cluster_joints.empty() && geometry.skin_bone_names.empty() &&
-        geometry.skin_joints.empty() && geometry.animation_clips.empty();
+        geometry.skin_joints.empty() && geometry.animation_clips.empty() && geometry.morph_targets.empty();
 }
 
 bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity entity,

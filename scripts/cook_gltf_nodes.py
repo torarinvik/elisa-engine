@@ -150,6 +150,30 @@ def transform_points(data: bytes, m: tuple) -> bytes:
     )) for x, y, z in struct.iter_unpack("<3f", data))
 
 
+def transform_vectors(data: bytes, m: tuple) -> bytes:
+    """Apply only the linear part of an affine node transform to vectors."""
+    if m == IDENTITY:
+        return data
+    return b"".join(packed_float3((
+        m[0] * x + m[1] * y + m[2] * z,
+        m[4] * x + m[5] * y + m[6] * z,
+        m[8] * x + m[9] * y + m[10] * z,
+    )) for x, y, z in struct.iter_unpack("<3f", data))
+
+
+def transform_normal_deltas(data: bytes, m: tuple) -> bytes:
+    """Apply the inverse-transpose linear transform without normalizing."""
+    if m == IDENTITY:
+        return data
+    c = cofactors(m)
+    sign = 1.0 if determinant(m) > 0.0 else -1.0
+    return b"".join(packed_float3((
+        sign * (c[0] * x + c[1] * y + c[2] * z),
+        sign * (c[3] * x + c[4] * y + c[5] * z),
+        sign * (c[6] * x + c[7] * y + c[8] * z),
+    )) for x, y, z in struct.iter_unpack("<3f", data))
+
+
 def transform_normals(data: bytes, m: tuple) -> bytes:
     """Carry normals by the inverse transpose, renormalized. A mirroring
     transform's cofactors point normals inward, so they flip back."""

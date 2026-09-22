@@ -54,6 +54,13 @@ def generated_document() -> dict:
         influence_accessors[count] = (joint_accessor, weight_accessor)
         primitive["attributes"]["JOINTS_0"] = joint_accessor
         primitive["attributes"]["WEIGHTS_0"] = weight_accessor
+    morph_accessors = {}
+    for primitive, count in zip(document["meshes"][0]["primitives"], primitive_counts):
+        if count not in morph_accessors:
+            deltas = (0.0, 0.0, 0.125) * count
+            morph_accessors[count] = _append(document, buffer,
+                struct.pack(f"<{count * 3}f", *deltas), 5126, "VEC3", count)
+        primitive["targets"] = [{"POSITION": morph_accessors[count]}]
     identity = (1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
@@ -88,7 +95,7 @@ def self_test(temporary: Path) -> int:
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
     required = {
         "format": "elisa-cooked-v3", "material_slots": "2", "subset_count": "3",
-        "skin_bones": "2", "skin_joints": "2", "animation_clips": "1",
+        "skin_bones": "2", "skin_joints": "2", "animation_clips": "1", "morph_targets": "1",
     }
     if (result != second_result or first.read_bytes() != second.read_bytes() or
             any(sections.get(key) != value for key, value in required.items()) or
