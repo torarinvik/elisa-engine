@@ -1,8 +1,7 @@
 #pragma once
 
-// Bounded Basis/KTX2 decode at the native asset boundary. The transcoder owns
-// compressed-container parsing; Wicked receives validated RGBA 2D or cube data.
-#include "probe_core.h"
+// Bounded Basis/KTX2 transcode at the native asset boundary. Wicked receives
+// queried GPU-native blocks where supported, with a validated RGBA fallback.
 #include "ktx2_format_policy.h"
 #include "wiGraphicsDevice.h"
 #include "wiResourceManager.h"
@@ -11,12 +10,18 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <mutex>
 #include <string>
 #include <vector>
 
-namespace probe {
+namespace elisa::rendering::textures {
+
+inline bool ktx2_upload_check(bool value, const char* message) {
+    if (!value) std::fprintf(stderr, "KTX2 texture upload failed: %s\n", message);
+    return value;
+}
 
 constexpr uint64_t MAX_KTX2_CONTAINER_BYTES = 64ull * 1024ull * 1024ull;
 
@@ -110,30 +115,30 @@ inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
     KTX2TextureUsage usage = KTX2TextureUsage::Color) {
     wi::Resource resource;
     std::vector<uint8_t> bytes;
-    if (!check(read_bounded_ktx2_container(texture_path, bytes), "KTX2 upload reads bounded complete container")) return resource;
+    if (!ktx2_upload_check(read_bounded_ktx2_container(texture_path, bytes), "KTX2 upload reads bounded complete container")) return resource;
     basist::basisu_transcoder_init();
     basist::ktx2_transcoder transcoder;
-    if (!check(transcoder.init(bytes.data(), static_cast<uint32_t>(bytes.size())), "KTX2 upload parses")) return resource;
+    if (!ktx2_upload_check(transcoder.init(bytes.data(), static_cast<uint32_t>(bytes.size())), "KTX2 upload parses")) return resource;
     const uint32_t width = transcoder.get_width();
     const uint32_t height = transcoder.get_height();
     const uint32_t levels = transcoder.get_levels();
-    if (!check(width > 0 && height > 0 && width <= 4096 && height <= 4096 && levels > 0 && levels <= 16,
+    if (!ktx2_upload_check(width > 0 && height > 0 && width <= 4096 && height <= 4096 && levels > 0 && levels <= 16,
         "KTX2 upload dimensions")) return resource;
     const uint32_t layers = transcoder.get_layers();
     const uint32_t faces = transcoder.get_faces();
     const bool is_cubemap = faces == 6;
-    if (!check(layers <= 1 && (faces == 1 || is_cubemap),
+    if (!ktx2_upload_check(layers <= 1 && (faces == 1 || is_cubemap),
         "KTX2 upload is a 2D texture or cubemap")) return resource;
-    if (!check(!is_cubemap || width == height, "KTX2 cubemap faces are square")) return resource;
+    if (!ktx2_upload_check(!is_cubemap || width == height, "KTX2 cubemap faces are square")) return resource;
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
-    if (!check(device != nullptr, "KTX2 upload has a graphics device")) return resource;
+    if (!ktx2_upload_check(device != nullptr, "KTX2 upload has a graphics device")) return resource;
     const bool srgb = usage == KTX2TextureUsage::Color && transcoder.is_srgb();
     const KTX2UploadFormats supported_formats = query_ktx2_upload_formats(device, srgb);
     const KTX2UploadEncoding encoding = choose_ktx2_upload_encoding(
         transcoder.get_has_alpha() != 0, supported_formats, usage);
-    if (!check(encoding != KTX2UploadEncoding::Unsupported,
+    if (!ktx2_upload_check(encoding != KTX2UploadEncoding::Unsupported,
         "KTX2 upload has a supported native texture format")) return resource;
-    if (!check(transcoder.start_transcoding(), "KTX2 upload starts transcoding")) return resource;
+    if (!ktx2_upload_check(transcoder.start_transcoding(), "KTX2 upload starts transcoding")) return resource;
     constexpr size_t MAX_DECODED_BYTES = 64u * 1024u * 1024u;
     const size_t subresource_count = static_cast<size_t>(levels) * faces;
     std::vector<std::vector<uint8_t>> mip_bytes(subresource_count);
@@ -148,12 +153,12 @@ inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
         for (uint32_t face = 0; face < faces; ++face) {
             const size_t subresource = static_cast<size_t>(face) * levels + level;
             basist::ktx2_image_level_info info{};
-            if (!check(transcoder.get_image_level_info(info, level, 0, face), "KTX2 upload mip metadata")) return resource;
+            if (!ktx2_upload_check(transcoder.get_image_level_info(info, level, 0, face), "KTX2 upload mip metadata")) return resource;
             const uint32_t mip_width = info.m_orig_width;
             const uint32_t mip_height = info.m_orig_height;
             const uint32_t expected_width = std::max(1u, width >> level);
             const uint32_t expected_height = std::max(1u, height >> level);
-            if (!check(mip_width == expected_width && mip_height == expected_height,
+            if (!ktx2_upload_check(mip_width == expected_width && mip_height == expected_height,
                 "KTX2 upload mip dimensions match texture")) return resource;
             const size_t pixel_count = static_cast<size_t>(mip_width) * mip_height;
             const size_t blocks_x = (mip_width + 3u) / 4u;
@@ -161,10 +166,10 @@ inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
             const size_t output_units = is_compressed ? blocks_x * blocks_y : pixel_count;
             const size_t mip_size = output_units * (is_compressed ? block_bytes : 4u);
             const size_t row_pitch = is_compressed ? blocks_x * block_bytes : mip_width * 4u;
-            if (!check(output_units <= UINT32_MAX && mip_size <= MAX_DECODED_BYTES - decoded_bytes,
+            if (!ktx2_upload_check(output_units <= UINT32_MAX && mip_size <= MAX_DECODED_BYTES - decoded_bytes,
                 "KTX2 upload decoded budget")) return resource;
             mip_bytes[subresource].resize(mip_size);
-            if (!check(transcoder.transcode_image_level(level, 0, face, mip_bytes[subresource].data(),
+            if (!ktx2_upload_check(transcoder.transcode_image_level(level, 0, face, mip_bytes[subresource].data(),
                 static_cast<uint32_t>(output_units), basis_format,
                 0, static_cast<uint32_t>(is_compressed ? blocks_x : mip_width),
                 is_compressed ? 0u : mip_height), "KTX2 upload transcodes selected mip format")) return resource;
@@ -187,10 +192,10 @@ inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
     desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
     if (is_cubemap) desc.misc_flags = wi::graphics::ResourceMiscFlag::TEXTURECUBE;
     wi::graphics::Texture texture;
-    if (!check(device->CreateTexture(&desc, init_data.data(), &texture),
+    if (!ktx2_upload_check(device->CreateTexture(&desc, init_data.data(), &texture),
         "KTX2 upload GPU texture")) return resource;
     resource.SetTexture(texture);
     return resource;
 }
 
-} // namespace probe
+} // namespace elisa::rendering::textures

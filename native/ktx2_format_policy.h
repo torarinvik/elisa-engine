@@ -1,6 +1,6 @@
 #pragma once
 
-namespace probe {
+namespace elisa::rendering::textures {
 
 enum class KTX2UploadEncoding { Rgba8, Bc1, Bc3, Bc7, Unsupported };
 enum class KTX2TextureUsage { Color, NormalData };
@@ -28,4 +28,4 @@ inline KTX2UploadEncoding choose_ktx2_upload_encoding(bool has_alpha, KTX2Upload
     return formats.rgba8 ? KTX2UploadEncoding::Rgba8 : KTX2UploadEncoding::Unsupported;
 }
 
-} // namespace probe
+} // namespace elisa::rendering::textures

@@ -52,6 +52,7 @@ def main() -> int:
     brew_include = Path(os.environ.get("WICKED_BREW_INCLUDE_DIR", "/opt/homebrew/include")).resolve()
     brew_library = Path(os.environ.get("WICKED_BREW_LIB_DIR", "/opt/homebrew/lib")).resolve()
     utility = libraries / "Utility"
+    basisu_transcoder = ROOT / "dependencies/basisu/transcoder"
     required = [
         wicked_source / "wiApplication.h", wicked_source / "wiAppleHelper.mm",
         wicked_source / "wiInput_Apple.mm", wicked_source / "shaders",
@@ -59,6 +60,7 @@ def main() -> int:
         libraries / "libJolt.a", utility / "libUtility.a",
         utility / "FAudio/libFAudio.a", libraries / "LUA/libLUA.a",
         sdl_include / "SDL3/SDL.h", sdl_library / "libSDL3.dylib",
+        basisu_transcoder / "basisu_transcoder.h", basisu_transcoder / "basisu_transcoder.cpp",
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
@@ -67,6 +69,9 @@ def main() -> int:
 
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
+    ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
+    if ktx2_status != 0:
+        return ktx2_status
     cooked_mesh = build / "cooked/render-scene-triangle.elpk"
     status = run([
         sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"),
@@ -174,6 +179,7 @@ def main() -> int:
         "-I", str(sdl_include), "-I", str(sdl_include / "SDL3"),
         "-I", str(brew_include), "-I", str(brew_include / "freetype2"),
         "-I", str(brew_include / "harfbuzz"), "-I", str(ROOT / "dependencies/miniaudio"),
+        "-I", str(basisu_transcoder),
         str(ROOT / "native/application_abi.cpp"),
         str(ROOT / "native/render_scene_abi.cpp"),
         str(ROOT / "native/elisa_native_fallbacks.cpp"),
@@ -181,6 +187,7 @@ def main() -> int:
         str(ROOT / "native/miniaudio_implementation.cpp"),
         str(ROOT / "native/physics_service_abi.cpp"),
         str(ROOT / "native/physics_shape_service_abi.cpp"),
+        str(basisu_transcoder / "basisu_transcoder.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
         str(archive), str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),

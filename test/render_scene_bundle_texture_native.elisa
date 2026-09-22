@@ -106,4 +106,13 @@ module RenderSceneBundleTextureNativeTests:
             return 19 if unregister_material(1) != 0 or unregister_material(2) != 0
             return 31 if unregister_texture(1) != 0 or unregister_texture(2) != 0 or unregister_texture(4) != 4
             return 32 if elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() != 0
+            ktx2: cstr = "build/cooked/maze_tile_tex.ktx2"
+            ktx2_registration: i32 = catch RenderScene::register_snapshot_texture_asset(texture_id(5), ktx2):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.AssetLoadFailure: 2
+                error failure: 3
+            return 33 if ktx2_registration != 0
+            return 34 if register_material(3, 5) != 0 or not base_color_size(3, 4, 4)
+            return 35 if unregister_material(3) != 0 or unregister_texture(5) != 0
             0

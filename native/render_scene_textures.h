@@ -2,12 +2,14 @@
 
 // Private Wicked texture assignment for the engine-owned render-scene ABI.
 #include "cooked_geometry_package.h"
+#include "ktx2_upload.h"
 #include "Utility/stb_image.h"
 #include "wiResourceManager.h"
 #include "wiScene.h"
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <limits>
@@ -112,9 +114,23 @@ inline bool assign_resource(wi::scene::MaterialComponent& material, int32_t slot
 }
 
 inline bool assign_resolved_texture(wi::scene::MaterialComponent& material,
-        int32_t slot_code, const std::filesystem::path& resolved_path) {
+        int32_t slot_code, const std::filesystem::path& resolved_path,
+        wi::Resource* cached_resource = nullptr) {
     if (!valid_slot(slot_code)) return false;
     if (resolved_path.empty()) return false;
+    std::string extension = resolved_path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    if (extension == ".ktx2") {
+        wi::Resource resource;
+        wi::Resource* destination = cached_resource == nullptr ? &resource : cached_resource;
+        if (!destination->IsValid()) {
+            const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal)
+                ? KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
+            *destination = load_ktx2_texture_resource(resolved_path.string(), usage);
+        }
+        return assign_resource(material, slot_code, *destination, {});
+    }
     wi::Resource resource = wi::resourcemanager::Load(resolved_path.string(), import_flags(slot_code));
     return assign_resource(material, slot_code, std::move(resource), resolved_path.string());
 }
