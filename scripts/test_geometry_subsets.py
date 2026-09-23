@@ -37,6 +37,8 @@ import gltf_morph_self_test
 import gltf_scene_self_test
 import gltf_skin_self_test
 import gltf_texture_self_test
+import test_geometry_uv1
+from geometry_subset_manifest import manifest_line
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -323,6 +325,8 @@ def cases(directory: Path) -> list[tuple]:
     return [
         ("accept", "panel.pkg", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
+        *test_geometry_uv1.cases(directory, panel_source, PANEL_MATERIALS, panel_subsets,
+            [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)]),
         ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
         ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),
         *lod_chain_accepts,
@@ -501,58 +505,6 @@ def cases(directory: Path) -> list[tuple]:
             materials=[GLASS, SURFACED]), NEEDS_TEXTURE),
     ]
 
-
-def float32_text(value: float) -> str:
-    return repr(struct.unpack("<f", struct.pack("<f", value))[0])
-
-
-def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
-    """One loader-test manifest line; see native/geometry_subset_test.cpp."""
-    fields = [verdict, str(directory / name)]
-    if verdict == "reject":
-        return "\t".join(fields + [expectation])
-    index_count, slots, subsets, *records = expectation
-    animation_count = None
-    morph_count = None
-    camera_count = None
-    light_count = None
-    inverse_bind_values = None
-    if len(records) >= 2 and records[-2] == "inverse_binds":
-        inverse_bind_values = records[-1]
-        records = records[:-2]
-    while len(records) >= 2 and records[-2] in ("animations", "morphs", "cameras", "lights"):
-        marker, count = records[-2:]
-        if marker == "animations":
-            animation_count = count
-        else:
-            if marker == "morphs":
-                morph_count = count
-            elif marker == "cameras":
-                camera_count = count
-            else:
-                light_count = count
-        records = records[:-2]
-    fields += [str(index_count), str(slots)] + [str(value) for subset in subsets for value in subset]
-    if records:
-        fields.append("materials")
-        for record in records[0]:
-            record += (0,) * (17 - len(record))
-            fields += [float32_text(value) for value in record[:10]] + [str(value) for value in record[10:]]
-    if len(records) > 1:
-        fields.append("sections")
-        for name, checksum in records[1]:
-            fields += [name, str(checksum)]
-    if animation_count is not None:
-        fields += ["animations", str(animation_count)]
-    if morph_count is not None:
-        fields += ["morphs", str(morph_count)]
-    if camera_count is not None:
-        fields += ["cameras", str(camera_count)]
-    if light_count is not None:
-        fields += ["lights", str(light_count)]
-    if inverse_bind_values is not None:
-        fields += ["inverse_binds"] + [float32_text(value) for value in inverse_bind_values]
-    return "\t".join(fields)
 
 
 def main() -> int:

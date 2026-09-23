@@ -95,7 +95,9 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     wi::scene::MeshComponent* mesh = scene.meshes.GetComponent(entity);
     if (transform == nullptr || material == nullptr || object == nullptr || mesh == nullptr ||
         geometry.positions.size() % 3 != 0 || geometry.normals.size() != geometry.positions.size() ||
-        geometry.uvs.size() != geometry.positions.size() / 3 * 2 || geometry.indices.empty() ||
+        geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
+        (!geometry.uv1s.empty() && geometry.uv1s.size() != geometry.positions.size() / 3 * 2) ||
+        geometry.indices.empty() ||
         (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
         geometry.indices.size() % 3 != 0 ||
         geometry.indices.size() > std::numeric_limits<uint32_t>::max() || vertex_count == 0 ||
@@ -127,7 +129,7 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
     // retain any of that mesh's per-vertex streams when replacing the geometry.
     mesh->vertex_tangents.clear();
     mesh->vertex_uvset_0.resize(vertex_count);
-    mesh->vertex_uvset_1.clear();
+    mesh->vertex_uvset_1.resize(geometry.uv1s.empty() ? 0 : vertex_count);
     mesh->vertex_boneindices.clear();
     mesh->vertex_boneweights.clear();
     mesh->vertex_boneindices2.clear();
@@ -141,6 +143,9 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         mesh->vertex_positions[index] = cooked_vector(geometry.positions, source);
         mesh->vertex_normals[index] = cooked_vector(geometry.normals, source);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[source * 2], geometry.uvs[source * 2 + 1]);
+        if (!geometry.uv1s.empty()) {
+            mesh->vertex_uvset_1[index] = XMFLOAT2(geometry.uv1s[source * 2], geometry.uv1s[source * 2 + 1]);
+        }
     }
     mesh->morph_targets.resize(geometry.morph_targets.size());
     for (size_t target_index = 0; target_index < geometry.morph_targets.size(); ++target_index) {

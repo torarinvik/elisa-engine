@@ -6,6 +6,7 @@
 #include "cooked_package_fields.h"
 #include "cooked_geometry_limits.h"
 #include "cooked_slot_materials.h"
+#include "cooked_geometry_uv1.h"
 #include "virtual_package.h"
 
 #include <algorithm>
@@ -29,7 +30,12 @@ struct CookedGeometry {
     std::vector<float> positions;
     std::vector<float> normals;
     std::vector<float> uvs;
+    std::vector<float> uv1s;
     std::vector<float> tangents;
+    std::string uv1_source;
+    uint32_t uv1_generation_resolution = 0;
+    uint32_t uv1_generation_padding = 0;
+    uint32_t uv1_chart_count = 0;
     std::vector<uint32_t> indices;
     std::vector<std::string> skin_bone_names;
     std::vector<uint32_t> skin_indices;
@@ -261,6 +267,11 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         !detail::decode_floats(package, "normals_b64", size_t(vertices) * 3, geometry.normals) ||
         !detail::decode_floats(package, "uvs_b64", size_t(vertices) * 2, geometry.uvs)) {
         error = "invalid cooked geometry vertex streams";
+        return false;
+    }
+    if (!detail::parse_geometry_uv1(package, vertices, geometry.uv1s, geometry.uv1_source,
+            geometry.uv1_generation_resolution, geometry.uv1_generation_padding,
+            geometry.uv1_chart_count, error)) {
         return false;
     }
     const auto tangent_stride = package.sections.find("tangent_stride");

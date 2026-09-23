@@ -21,6 +21,7 @@ struct CookedPackage {
     std::vector<float> position_data;
     std::vector<float> normal_data;
     std::vector<float> uv_data;
+    std::vector<float> uv1_data;
     std::vector<uint32_t> index_data;
     bool loaded = false;
 };
@@ -91,6 +92,8 @@ inline CookedPackage load_cooked_package(const std::string& path) {
             decode_floats(value, package.normal_data);
         } else if (key == "uvs_b64") {
             decode_floats(value, package.uv_data);
+        } else if (key == "uv1s_b64") {
+            decode_floats(value, package.uv1_data);
         } else if (key == "indices_b64") {
             decode_u32(value, package.index_data);
         }
@@ -102,7 +105,8 @@ inline CookedPackage load_cooked_package(const std::string& path) {
         package.position_data.size() == (size_t)package.positions * 3 &&
         package.index_data.size() >= (size_t)package.triangles * 3 &&
         package.normal_data.size() == package.position_data.size() &&
-        (package.uv_data.empty() || package.uv_data.size() == (size_t)package.positions * 2);
+        (package.uv_data.empty() || package.uv_data.size() == (size_t)package.positions * 2) &&
+        (package.uv1_data.empty() || package.uv1_data.size() == (size_t)package.positions * 2);
     return package;
 }
 
@@ -140,6 +144,12 @@ inline wi::ecs::Entity create_cooked_mesh(wi::scene::Scene& scene, const std::st
         mesh->vertex_uvset_0.resize(package.position_data.size() / 3);
         for (size_t i = 0; i < mesh->vertex_uvset_0.size(); ++i) {
             mesh->vertex_uvset_0[i] = XMFLOAT2(package.uv_data[i * 2], package.uv_data[i * 2 + 1]);
+        }
+    }
+    if (package.uv1_data.size() == package.position_data.size() / 3 * 2) {
+        mesh->vertex_uvset_1.resize(package.position_data.size() / 3);
+        for (size_t i = 0; i < mesh->vertex_uvset_1.size(); ++i) {
+            mesh->vertex_uvset_1[i] = XMFLOAT2(package.uv1_data[i * 2], package.uv1_data[i * 2 + 1]);
         }
     }
     mesh->indices = package.index_data;

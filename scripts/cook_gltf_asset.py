@@ -17,6 +17,7 @@ from cook_gltf_meshopt import self_test as meshopt_self_test
 from cook_gltf_lod import self_test as lod_self_test
 from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 from cook_gltf_lod_package import self_test as lod_package_self_test
+from cook_gltf_lightmap_uv import self_test as lightmap_uv_self_test
 from cook_gltf_mikktspace import self_test as mikktspace_self_test
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
@@ -43,6 +44,9 @@ def self_test() -> int:
     lod_package_status = lod_package_self_test()
     if lod_package_status != 0:
         return lod_package_status
+    lightmap_uv_status = lightmap_uv_self_test()
+    if lightmap_uv_status != 0:
+        return lightmap_uv_status
     source = ROOT / "examples/maze/assets/maze_tile.gltf"
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-cooker-") as temporary:
         first = Path(temporary) / "first.pkg"
@@ -304,23 +308,35 @@ def main(arguments: list[str]) -> int:
         help="cook a static LOD variant at this fraction of each placement/material triangle count")
     parser.add_argument("--lod-ratios",
         help="cook full detail plus descending ratios (for example 0.5,0.25); --output supplies a base name for <stem>.lod.json and content-addressed sibling packages")
+    parser.add_argument("--generate-lightmap-uv", action="store_true",
+        help="generate vertex-aligned TEXCOORD_1 charts with pinned xatlas")
+    parser.add_argument("--lightmap-resolution", type=int, default=1024,
+        help="xatlas square output resolution, from 16 to 8192 (default: 1024)")
+    parser.add_argument("--lightmap-padding", type=int, default=4,
+        help="xatlas chart padding in pixels, from 0 to 64 (default: 4)")
     parser.add_argument("--self-test", action="store_true", help="cook the authored maze mesh twice")
     options = parser.parse_args(arguments)
     if options.self_test:
         if (options.source is not None or options.asset_path is not None or options.output is not None or
-                options.simplify_ratio is not None or options.lod_ratios is not None):
+                options.simplify_ratio is not None or options.lod_ratios is not None or
+                options.generate_lightmap_uv or options.lightmap_resolution != 1024 or
+                options.lightmap_padding != 4):
             parser.error("--self-test cannot be combined with source, --asset-path, --output, or LOD options")
         return self_test()
     if options.source is None or options.asset_path is None or options.output is None:
         parser.error("source, --asset-path, and --output are required")
     try:
         textures = parse_texture_arguments(options.texture)
+        if not options.generate_lightmap_uv and (
+                options.lightmap_resolution != 1024 or options.lightmap_padding != 4):
+            raise ValueError("--lightmap-resolution and --lightmap-padding require --generate-lightmap-uv")
         if options.lod_ratios is not None and options.simplify_ratio is not None:
             raise ValueError("--lod-ratios and --simplify-ratio are mutually exclusive")
         if options.lod_ratios is not None:
             ratios = parse_lod_ratios(options.lod_ratios)
             manifest_path, levels = cook_lod_chain(options.source, options.asset_path,
-                options.output, ratios, textures, options.dependency)
+                options.output, ratios, textures, options.dependency,
+                options.generate_lightmap_uv, options.lightmap_resolution, options.lightmap_padding)
             print(f"cooked {len(levels)} LOD levels for {options.asset_path} -> {manifest_path}")
             for level in levels:
                 print(f"level {level['index']}: {level['triangles']} triangles, "
@@ -334,7 +350,10 @@ def main(arguments: list[str]) -> int:
             with tempfile.TemporaryDirectory(prefix="elisa-gltf-bundle-") as temporary:
                 geometry_path, result = cook_gltf_geometry.cook_geometry_package(
                     options.source, options.asset_path, Path(temporary) / "geometry.pkg",
-                    allow_textures=True, simplify_ratio=options.simplify_ratio)
+                    allow_textures=True, simplify_ratio=options.simplify_ratio,
+                    generate_lightmap_uv=options.generate_lightmap_uv,
+                    lightmap_resolution=options.lightmap_resolution,
+                    lightmap_padding=options.lightmap_padding)
                 images = result["images"]
                 if images.keys() & textures.keys():
                     raise ValueError("--texture names a section the source's material images use")
@@ -345,7 +364,10 @@ def main(arguments: list[str]) -> int:
         else:
             output, result = cook_assets.cook_geometry_package(
                 options.source, options.asset_path, options.output,
-                simplify_ratio=options.simplify_ratio)
+                simplify_ratio=options.simplify_ratio,
+                generate_lightmap_uv=options.generate_lightmap_uv,
+                lightmap_resolution=options.lightmap_resolution,
+                lightmap_padding=options.lightmap_padding)
         reduction = (f"{result['triangles']}/{result['source_triangles']} triangles"
             if result["lod"] is not None else f"{result['triangles']} triangles")
         print(f"cooked {options.asset_path} -> {output} ({reduction}, {result['positions']} vertices)")

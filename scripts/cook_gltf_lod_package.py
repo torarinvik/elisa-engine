@@ -54,7 +54,8 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 def cook_lod_chain(source_path: Path, asset_path: str, output_base: Path,
         ratios: list[float], textures: dict[str, Path] | None = None,
-        dependencies: list[str] | None = None) -> tuple[Path, list[dict]]:
+        dependencies: list[str] | None = None, generate_lightmap_uv: bool = False,
+        lightmap_resolution: int = 1024, lightmap_padding: int = 4) -> tuple[Path, list[dict]]:
     """Cook full and reduced packages; publish the manifest only after all levels."""
     import cook_gltf_package
 
@@ -84,7 +85,9 @@ def cook_lod_chain(source_path: Path, asset_path: str, output_base: Path,
         for level_index, ratio in enumerate([None, *ratios]):
             geometry_path, result = cook_gltf_package.cook_geometry_package(
                 source_path, asset_path, temporary / f"geometry-{level_index:02d}.pkg",
-                allow_textures=suffix == ".elpk", simplify_ratio=ratio)
+                allow_textures=suffix == ".elpk", simplify_ratio=ratio,
+                generate_lightmap_uv=generate_lightmap_uv,
+                lightmap_resolution=lightmap_resolution, lightmap_padding=lightmap_padding)
             images = result["images"]
             if images.keys() & textures.keys():
                 raise ValueError("external texture names overlap source material image sections")

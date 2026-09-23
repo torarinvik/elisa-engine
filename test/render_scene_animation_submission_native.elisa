@@ -234,6 +234,9 @@ module RenderSceneAnimationSubmissionNativeTests:
 module RenderSceneImportedSceneNativeTests:
     private:
         @callconv(c)
+        extern elisa_render_scene_v1_test_mesh_has_uv1(handle: i64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_imported_mesh_visible(
             handle: i64, index: u32) -> i32
 
@@ -247,6 +250,22 @@ module RenderSceneImportedSceneNativeTests:
             handle: i64, index: u32) -> i32
 
     public:
+        def exercise_uv1() -> i32:
+            uv1_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/uv1.pkg",
+                Geometry::Transform{position: Geometry::Vec3{x: 20.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(), scale: Geometry::vec3_one()},
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 80
+            return 81 if elisa_render_scene_v1_test_mesh_has_uv1(
+                RenderScene::native_smoke_handle(uv1_mesh)) != 1
+            destroyed: i32 = catch RenderScene::destroy(uv1_mesh):
+                ok: 0
+                error failure: 1
+            return 82 if destroyed != 0 or RenderScene::instance_count() != 4
+            0
+
         def exercise() -> i32:
             hierarchy_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
                 "build/cooked/subsets/hierarchy.elpk", Geometry::transform_identity(),
