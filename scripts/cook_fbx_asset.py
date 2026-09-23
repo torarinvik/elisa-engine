@@ -518,7 +518,7 @@ def main(arguments: list[str]) -> int:
                     "self-test/material-grid.fbx", directory / "material-grid.pkg", max_triangles=64)
                 material_grid_subsets = base64.b64decode(material_grid_fields["subsets_b64"], validate=True)
                 subset_words = struct.unpack("<6I", material_grid_subsets)
-                if (int(material_grid_fields["triangles"]) > 64 or
+                if (int(material_grid_fields["triangles"]) != 64 or
                         material_grid_fields.get("material_slots") != "2" or
                         material_grid_fields.get("subset_count") != "2" or
                         subset_words[0] != 0 or subset_words[2] != 0 or
