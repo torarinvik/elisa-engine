@@ -10,6 +10,7 @@ import struct
 
 import cook_assets
 import cook_gltf_animation
+import cook_gltf_meshopt
 import cook_gltf_nodes
 import cook_gltf_scene
 import cook_gltf_skin
@@ -22,7 +23,6 @@ MAX_MATERIAL_SLOTS = 16
 MAX_VERTICES = 2_000_000
 MAX_INDICES = 15_000_000
 MAX_MORPH_TARGETS = 32
-
 
 # Render scene alpha modes. Alpha masking needs a base-color texture.
 ALPHA_MODES = {"OPAQUE": 0, "MASK": 1, "BLEND": 2}
@@ -400,7 +400,7 @@ def normalized_geometry(document: dict, buffer: bytes):
     if any(target["normals"] is not None for target in morph_targets) and any(
             target["normals"] is None for target in morph_targets):
         raise ValueError("all morph targets must provide normals or none may provide them")
-    return {"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents), "uvs": bytes(uvs),
+    return cook_gltf_meshopt.optimize_geometry({"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
@@ -409,7 +409,7 @@ def normalized_geometry(document: dict, buffer: bytes):
         "skin_indices": skin_indices, "skin_weights": skin_weights,
         "morph_targets": morph_targets, "scene": {**scene, "mesh_placements": [
             {**placement, **placement_ranges[index]}
-            for index, placement in enumerate(scene["mesh_placements"])]}}
+            for index, placement in enumerate(scene["mesh_placements"])]}})
 
 
 def placed_counts(document: dict, *, skinned: bool = False) -> dict:

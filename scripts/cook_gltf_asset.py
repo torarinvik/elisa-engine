@@ -13,6 +13,7 @@ import tempfile
 
 import cook_assets
 import cook_gltf_geometry
+from cook_gltf_meshopt import self_test as meshopt_self_test
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
 from gltf_morph_self_test import self_test as morph_self_test
@@ -26,6 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def self_test() -> int:
+    meshopt_status = meshopt_self_test()
+    if meshopt_status != 0:
+        return meshopt_status
     source = ROOT / "examples/maze/assets/maze_tile.gltf"
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-cooker-") as temporary:
         first = Path(temporary) / "first.pkg"
