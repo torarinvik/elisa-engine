@@ -339,6 +339,7 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
                 material_assignments.append(str(int(x >= cells_per_side // 2) if two_materials else 0))
 
     material_layer = ""
+    material_layer_reference = ""
     material_objects = ""
     material_connections = ""
     material_definition = ""
@@ -350,6 +351,8 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
             f'LayerElementMaterial: 0 {{ Version: 101 Name: "" MappingInformationType: "ByPolygon" '
             f'ReferenceInformationType: "IndexToDirect" Materials: *{len(material_assignments)} {{ a: '
             f'{",".join(material_assignments)} }} }} ')
+        material_layer_reference = (
+            ' LayerElement: { Type: "LayerElementMaterial" TypedIndex: 0 }')
         material_objects = (
             'Material: 1103, "Material::First", "" { Version: 102 } '
             'Material: 1104, "Material::Second", "" { Version: 102 } ')
@@ -378,7 +381,8 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
         f'LayerElementUV: 0 {{ Version: 101 Name: "UVMap" '
         f'MappingInformationType: "ByVertice" ReferenceInformationType: "Direct" '
         f'UV: *{len(uvs)} {{ a: {",".join(uvs)} }} }} '
-        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 } } } '
+        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 }'
+        f'{material_layer_reference} }} }} '
         f'Model: 1002, "Model::Grid", "Mesh" {{ Version: 232 }} {material_objects}}}\n'
         f'Connections: {{ C: "OO",1001,1002 C: "OO",1002,0{material_connections} }}\n'
         'Takes: { Current: "" }\n',
@@ -465,6 +469,14 @@ def main(arguments: list[str]) -> int:
                         material_fields.get("subset_count") != "2" or
                         struct.unpack("<6I", material_subsets) != (0, 3, 0, 3, 3, 1)):
                     raise ValueError("FBX cooker did not preserve its two polygon material subsets")
+                try:
+                    cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
+                        directory / "under-budget.pkg", max_triangles=1)
+                except subprocess.CalledProcessError as failure:
+                    if "at least one triangle per FBX material subset" not in (failure.stderr or ""):
+                        raise
+                else:
+                    raise ValueError("FBX simplification accepted fewer triangles than material subsets")
                 grid_source = directory / "grid.fbx"
                 cache_output = directory / "grid-cache.pkg"
                 grid_output = directory / "grid.pkg"
