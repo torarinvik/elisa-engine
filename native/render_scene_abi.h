@@ -315,6 +315,7 @@ typedef struct ElisaRenderSceneQualityProfile {
     float bloom_threshold;
     int32_t bloom;
     int32_t fxaa;
+    int32_t temporal_aa;
     int32_t ambient_occlusion;
     int32_t screen_space_reflections;
     int32_t fog;
