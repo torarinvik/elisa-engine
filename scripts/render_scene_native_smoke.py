@@ -18,6 +18,7 @@ import cook_assets
 import cook_gltf_asset
 import cook_gltf_geometry
 import cook_gltf_lod
+import fbx_test_fixtures
 from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 import elisa_build_run
 from elisa_package import write_geometry_package
@@ -109,6 +110,15 @@ def main() -> int:
             return subset_status
         subset_directory = build / "cooked/subsets"
         subset_directory.mkdir(parents=True, exist_ok=True)
+        fbx_material_source = subset_directory / "two-material-mesh.fbx"
+        fbx_test_fixtures.write_two_material_mesh(fbx_material_source)
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"), str(fbx_material_source),
+            "--asset-path", "test/fixtures/two-material-mesh.fbx",
+            "--output", str(subset_directory / "fbx-two-material.pkg"),
+        ])
+        if subset_status != 0:
+            return subset_status
         subset_status = run([
             sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
             str(ROOT / "test/fixtures/multi_material_panel.gltf"),

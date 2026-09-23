@@ -56,6 +56,9 @@ def main() -> int:
         multi_mesh_fixture = build / "two-mesh-scene.fbx"
         fbx_test_fixtures.write_two_mesh_scene(multi_mesh_fixture)
         run([str(test_binary), "--mesh-selection", str(multi_mesh_fixture)])
+        material_fixture = build / "two-material-mesh.fbx"
+        fbx_test_fixtures.write_two_material_mesh(material_fixture)
+        run([str(test_binary), "--material-subsets", str(material_fixture)])
         if args.assets_root is not None:
             asset_root = args.assets_root.expanduser().resolve()
             run([str(test_binary), "--assets-root", str(asset_root)])

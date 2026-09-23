@@ -1,6 +1,6 @@
 #include "fbx_asset_import.h"
+#include "fbx_asset_cooker_geometry.h"
 #include "mikktspace_geometry.h"
-#include "meshoptimizer.h"
 
 #include <algorithm>
 #include <array>
@@ -23,7 +23,6 @@ namespace {
 
 constexpr size_t MAX_PACKAGE_BYTES = size_t(64) * 1024 * 1024;
 constexpr size_t MAX_LINE_BYTES = size_t(16) * 1024 * 1024;
-constexpr float MAX_SIMPLIFICATION_ERROR = 0.03f;
 
 bool safe_asset_key(const std::string& value) {
     if (value.empty() || value.size() > 4096 || value.front() == '/' ||
@@ -38,186 +37,6 @@ bool safe_asset_key(const std::string& value) {
         if (end == std::string::npos) break;
         start = end + 1;
     }
-    return true;
-}
-
-bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_triangles) {
-    if (max_triangles == 0 || mesh.indices.size() / 3 <= max_triangles) return true;
-    if (!mesh.skin_indices.empty()) {
-        std::fprintf(stderr, "skinned FBX geometry cannot be simplified until bone influences are remapped with the mesh\n");
-        return false;
-    }
-    const size_t original_triangles = mesh.indices.size() / 3;
-    const size_t target_indices = max_triangles * 3;
-    std::vector<uint32_t> simplified(mesh.indices.size());
-    float result_error = 0.0f;
-    const size_t simplified_count = meshopt_simplify(simplified.data(), mesh.indices.data(),
-        mesh.indices.size(), mesh.positions.data(), mesh.positions.size() / 3,
-        sizeof(float) * 3, target_indices, MAX_SIMPLIFICATION_ERROR,
-        meshopt_SimplifyLockBorder, &result_error);
-    if (simplified_count == 0 || simplified_count % 3 != 0 || simplified_count > target_indices ||
-        !std::isfinite(result_error) || result_error > MAX_SIMPLIFICATION_ERROR) {
-        std::fprintf(stderr, "mesh simplification did not meet the requested triangle budget\n");
-        return false;
-    }
-
-    const uint32_t unused = std::numeric_limits<uint32_t>::max();
-    std::vector<uint32_t> remap(mesh.positions.size() / 3, unused);
-    std::vector<float> positions;
-    std::vector<float> normals;
-    std::vector<float> uvs;
-    std::vector<uint32_t> indices;
-    positions.reserve(simplified_count * 3);
-    normals.reserve(simplified_count * 3);
-    uvs.reserve(simplified_count * 2);
-    indices.reserve(simplified_count);
-    for (size_t index = 0; index < simplified_count; ++index) {
-        const uint32_t source_index = simplified[index];
-        if (source_index >= remap.size()) {
-            std::fprintf(stderr, "mesh simplifier returned an out-of-range index\n");
-            return false;
-        }
-        if (remap[source_index] == unused) {
-            remap[source_index] = uint32_t(positions.size() / 3);
-            for (size_t axis = 0; axis < 3; ++axis) {
-                positions.push_back(mesh.positions[source_index * 3 + axis]);
-                normals.push_back(mesh.normals[source_index * 3 + axis]);
-            }
-            uvs.push_back(mesh.uvs[source_index * 2]);
-            uvs.push_back(mesh.uvs[source_index * 2 + 1]);
-        }
-        indices.push_back(remap[source_index]);
-    }
-    mesh.positions.swap(positions);
-    mesh.normals.swap(normals);
-    mesh.uvs.swap(uvs);
-    mesh.indices.swap(indices);
-    std::printf("simplified %zu -> %zu triangles (relative error %.5f, %zu vertices)\n",
-        original_triangles, mesh.indices.size() / 3, result_error, mesh.positions.size() / 3);
-    return true;
-}
-
-bool optimize_vertex_cache(elisa::assets::FbxMeshData& mesh) {
-    const size_t vertex_count = mesh.positions.size() / 3;
-    if (vertex_count == 0 || mesh.positions.size() % 3 != 0 || mesh.indices.empty() ||
-        mesh.indices.size() % 3 != 0) {
-        std::fprintf(stderr, "vertex-cache optimization requires indexed triangles\n");
-        return false;
-    }
-    for (uint32_t index : mesh.indices) {
-        if (index >= vertex_count) {
-            std::fprintf(stderr, "vertex-cache optimization found an out-of-range index\n");
-            return false;
-        }
-    }
-    const meshopt_VertexCacheStatistics before = meshopt_analyzeVertexCache(
-        mesh.indices.data(), mesh.indices.size(), vertex_count, 16, 0, 0);
-    std::vector<uint32_t> optimized(mesh.indices.size());
-    meshopt_optimizeVertexCache(optimized.data(), mesh.indices.data(), mesh.indices.size(), vertex_count);
-    const meshopt_VertexCacheStatistics after = meshopt_analyzeVertexCache(
-        optimized.data(), optimized.size(), vertex_count, 16, 0, 0);
-    if (!std::isfinite(before.acmr) || !std::isfinite(after.acmr)) {
-        std::fprintf(stderr, "vertex-cache analysis returned a non-finite miss ratio\n");
-        return false;
-    }
-    const bool improved = after.acmr + 0.0001f < before.acmr;
-    if (after.acmr <= before.acmr + 0.0001f && improved) mesh.indices.swap(optimized);
-    std::printf("meshoptimizer vertex cache: ACMR %.4f -> %.4f (candidate %.4f)\n",
-        before.acmr, improved ? after.acmr : before.acmr, after.acmr);
-    return true;
-}
-
-template <typename T>
-bool remap_vertex_stream(const std::vector<T>& stream, size_t vertex_count, size_t remapped_count,
-    const unsigned int* remap, std::vector<T>& output) {
-    if (vertex_count == 0 || stream.size() % vertex_count != 0) return false;
-    const size_t elements_per_vertex = stream.size() / vertex_count;
-    if (elements_per_vertex == 0 || elements_per_vertex > 256 / sizeof(T)) return false;
-    output.resize(remapped_count * elements_per_vertex);
-    meshopt_remapVertexBuffer(output.data(), stream.data(), vertex_count,
-        elements_per_vertex * sizeof(T), remap);
-    const size_t bytes_per_vertex = elements_per_vertex * sizeof(T);
-    for (size_t source = 0; source < vertex_count; ++source) {
-        const unsigned int destination = remap[source];
-        if (destination == ~0u) continue;
-        if (destination >= remapped_count || std::memcmp(
-            output.data() + size_t(destination) * elements_per_vertex,
-            stream.data() + source * elements_per_vertex, bytes_per_vertex) != 0) return false;
-    }
-    return true;
-}
-
-bool optimize_vertex_fetch(elisa::assets::FbxMeshData& mesh) {
-    const size_t vertex_count = mesh.positions.size() / 3;
-    const bool has_skin_indices = !mesh.skin_indices.empty();
-    const bool has_skin_weights = !mesh.skin_weights.empty();
-    if (vertex_count == 0 || mesh.positions.size() != vertex_count * 3 ||
-        mesh.normals.size() != vertex_count * 3 || mesh.uvs.size() != vertex_count * 2 ||
-        mesh.tangents.size() != vertex_count * 4 || mesh.indices.empty() ||
-        mesh.indices.size() % 3 != 0 || has_skin_indices != has_skin_weights ||
-        (has_skin_indices && (mesh.skin_indices.size() != vertex_count * 4 ||
-            mesh.skin_weights.size() != vertex_count * 4))) {
-        std::fprintf(stderr, "vertex-fetch optimization requires matching geometry and skin streams\n");
-        return false;
-    }
-    for (uint32_t index : mesh.indices) {
-        if (index >= vertex_count) {
-            std::fprintf(stderr, "vertex-fetch optimization found an out-of-range index\n");
-            return false;
-        }
-    }
-
-    const size_t vertex_stride = sizeof(float) * (3 + 3 + 2 + 4 + (has_skin_weights ? 4 : 0)) +
-        sizeof(uint32_t) * (has_skin_indices ? 4 : 0);
-    const meshopt_VertexFetchStatistics before = meshopt_analyzeVertexFetch(
-        mesh.indices.data(), mesh.indices.size(), vertex_count, vertex_stride);
-    std::vector<unsigned int> remap(vertex_count);
-    const size_t remapped_count = meshopt_optimizeVertexFetchRemap(
-        remap.data(), mesh.indices.data(), mesh.indices.size(), vertex_count);
-    if (remapped_count == 0 || remapped_count > vertex_count) {
-        std::fprintf(stderr, "vertex-fetch remapper returned an invalid vertex count\n");
-        return false;
-    }
-    std::vector<uint32_t> remapped_indices(mesh.indices.size());
-    meshopt_remapIndexBuffer(remapped_indices.data(), mesh.indices.data(), mesh.indices.size(), remap.data());
-    const meshopt_VertexFetchStatistics after = meshopt_analyzeVertexFetch(
-        remapped_indices.data(), remapped_indices.size(), remapped_count, vertex_stride);
-    const bool improved_or_compacted = after.bytes_fetched <= before.bytes_fetched || remapped_count < vertex_count;
-    if (!improved_or_compacted) {
-        std::printf("meshoptimizer vertex fetch: bytes fetched %u -> %u (candidate %u), vertices %zu -> %zu\n",
-            before.bytes_fetched, before.bytes_fetched, after.bytes_fetched, vertex_count, vertex_count);
-        return true;
-    }
-
-    std::vector<float> positions;
-    std::vector<float> normals;
-    std::vector<float> uvs;
-    std::vector<float> tangents;
-    std::vector<uint32_t> skin_indices;
-    std::vector<float> skin_weights;
-    const bool streams_valid = remap_vertex_stream(mesh.positions, vertex_count, remapped_count, remap.data(), positions) &&
-        remap_vertex_stream(mesh.normals, vertex_count, remapped_count, remap.data(), normals) &&
-        remap_vertex_stream(mesh.uvs, vertex_count, remapped_count, remap.data(), uvs) &&
-        remap_vertex_stream(mesh.tangents, vertex_count, remapped_count, remap.data(), tangents) &&
-        (!has_skin_indices || (remap_vertex_stream(mesh.skin_indices, vertex_count, remapped_count, remap.data(), skin_indices) &&
-            remap_vertex_stream(mesh.skin_weights, vertex_count, remapped_count, remap.data(), skin_weights)));
-    const bool indices_valid = std::all_of(remapped_indices.begin(), remapped_indices.end(),
-        [remapped_count](uint32_t index) { return index < remapped_count; });
-    if (!streams_valid || !indices_valid) {
-        std::fprintf(stderr, "vertex-fetch remap could not validate every stream and index\n");
-        return false;
-    }
-    mesh.positions.swap(positions);
-    mesh.normals.swap(normals);
-    mesh.uvs.swap(uvs);
-    mesh.tangents.swap(tangents);
-    if (has_skin_indices) {
-        mesh.skin_indices.swap(skin_indices);
-        mesh.skin_weights.swap(skin_weights);
-    }
-    mesh.indices.swap(remapped_indices);
-    std::printf("meshoptimizer vertex fetch: bytes fetched %u -> %u (candidate %u), vertices %zu -> %zu\n",
-        before.bytes_fetched, after.bytes_fetched, after.bytes_fetched, vertex_count, remapped_count);
     return true;
 }
 
@@ -322,8 +141,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "FBX importer returned incomplete triangle geometry\n");
         return false;
     }
-    if (!simplify_geometry(mesh, max_triangles)) return false;
-    if (!optimize_vertex_cache(mesh)) return false;
+    if (!elisa::assets::detail::fbx_cooker::simplify_geometry(mesh, max_triangles)) return false;
+    if (!elisa::assets::detail::fbx_cooker::optimize_vertex_cache(mesh)) return false;
     elisa::assets::MikkGeometry tangent_geometry;
     if (!elisa::assets::generate_mikktspace_geometry(mesh.positions, mesh.normals, mesh.uvs,
         mesh.indices, tangent_geometry)) {
@@ -353,7 +172,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     mesh.uvs.swap(tangent_geometry.uvs);
     mesh.tangents.swap(tangent_geometry.tangents);
     mesh.indices.swap(tangent_geometry.indices);
-    if (!optimize_vertex_fetch(mesh)) return false;
+    if (!elisa::assets::detail::fbx_cooker::optimize_vertex_fetch(mesh)) return false;
     for (uint32_t index : mesh.indices) {
         if (index >= mesh.positions.size() / 3) {
             std::fprintf(stderr, "FBX importer returned an out-of-range mesh index\n");
@@ -365,6 +184,27 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const std::vector<uint8_t> uvs = float_bytes(mesh.uvs);
     const std::vector<uint8_t> tangents = float_bytes(mesh.tangents);
     const std::vector<uint8_t> indices = index_bytes(mesh.indices);
+    std::vector<uint32_t> subset_words;
+    subset_words.reserve(mesh.subsets.size() * 3);
+    uint32_t next_subset_index = 0;
+    for (const auto& subset : mesh.subsets) {
+        if (subset.index_start != next_subset_index || subset.index_count == 0 ||
+            subset.index_count % 3 != 0 || subset.material_slot >= mesh.material_slots ||
+            subset.index_count > mesh.indices.size() - subset.index_start) {
+            std::fprintf(stderr, "FBX cooker produced invalid material subset ranges\n");
+            return false;
+        }
+        subset_words.push_back(subset.index_start);
+        subset_words.push_back(subset.index_count);
+        subset_words.push_back(subset.material_slot);
+        next_subset_index += subset.index_count;
+    }
+    if (mesh.material_slots == 0 || mesh.material_slots > elisa::assets::detail::MAX_FBX_MATERIAL_SLOTS ||
+        mesh.subsets.empty() || next_subset_index != mesh.indices.size()) {
+        std::fprintf(stderr, "FBX cooker material subsets do not cover the index stream\n");
+        return false;
+    }
+    const std::vector<uint8_t> subset_bytes = index_bytes(subset_words);
     const std::vector<uint8_t> skin_indices = index_bytes(mesh.skin_indices);
     const std::vector<uint8_t> skin_weights = float_bytes(mesh.skin_weights);
     const std::vector<uint8_t> skin_names = skin_name_bytes(mesh.skin_bone_names);
@@ -388,6 +228,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t uvs_encoded = base64_size(uvs.size());
     const size_t tangents_encoded = base64_size(tangents.size());
     const size_t indices_encoded = base64_size(indices.size());
+    const size_t subsets_encoded = base64_size(subset_bytes.size());
     const size_t skin_indices_encoded = base64_size(skin_indices.size());
     const size_t skin_weights_encoded = base64_size(skin_weights.size());
     const size_t skin_names_encoded = base64_size(skin_names.size());
@@ -409,6 +250,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t max_payload = MAX_LINE_BYTES - 14;
     if (positions_encoded > max_payload || normals_encoded > max_payload ||
         uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload ||
+        subsets_encoded > max_payload ||
         (has_skin && (skin_indices_encoded > max_payload || skin_weights_encoded > max_payload ||
             skin_names_encoded > max_payload || skin_joint_parents_encoded > max_payload ||
             skin_joint_rest_encoded > max_payload || skin_joint_names_encoded > max_payload ||
@@ -438,6 +280,9 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         << "bounds_min=" << mesh.bounds_min[0] << ',' << mesh.bounds_min[1] << ',' << mesh.bounds_min[2] << "\n"
         << "bounds_max=" << mesh.bounds_max[0] << ',' << mesh.bounds_max[1] << ',' << mesh.bounds_max[2] << "\n"
         << "position_stride=12\nnormal_stride=12\nuv_stride=8\ntangent_stride=16\nindex_stride=4\n"
+        << "material_slots=" << mesh.material_slots << "\n"
+        << "subset_count=" << mesh.subsets.size() << "\nsubset_stride=12\n"
+        << "subsets_b64=" << base64(subset_bytes) << "\n"
         << "positions_b64=" << base64(positions) << "\n"
         << "normals_b64=" << base64(normals) << "\n"
         << "uvs_b64=" << base64(uvs) << "\n"
