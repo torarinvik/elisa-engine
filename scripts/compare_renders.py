@@ -8,6 +8,7 @@ Usage:
   compare_renders.py stats <png>
   compare_renders.py check <png> <width> <height>
   compare_renders.py compare <a.png> <b.png> [--per-channel T] [--mean T]
+  compare_renders.py lod-quality <fine.png> <coarse.png>
 """
 
 import os
@@ -112,6 +113,41 @@ def compare(first, second, per_channel, mean):
         peak = max(peak, worst)
         total += worst
     return peak, total / count, peak <= per_channel and total / count <= mean
+
+
+def lod_quality_metrics(fine, coarse):
+    """Compare the centered mesh region while excluding unrelated UI corners."""
+    if fine[:2] != coarse[:2]:
+        raise ValueError("LOD screenshots have different dimensions")
+    width, height = fine[:2]
+    channels = fine[2]
+    if channels != coarse[2]:
+        raise ValueError("LOD screenshots have different channel layouts")
+    x0, x1 = width // 4, width // 2
+    y0, y1 = height // 8, height * 43 // 50
+    errors = []
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            a = (y * width + x) * channels
+            b = (y * width + x) * channels
+            errors.append(max(abs(fine[3][a + c] - coarse[3][b + c]) for c in range(3)) / 255.0)
+    errors.sort()
+    count = len(errors)
+    mean = sum(errors) / count
+    p95 = errors[(count * 95 + 99) // 100 - 1]
+    changed = sum(error > 2.0 / 255.0 for error in errors) / count
+    probe_x, probe_y = width * 3 // 8, height // 2
+    above = (height // 8 * width + probe_x) * channels
+    below = ((height - height // 8 - 1) * width + probe_x) * channels
+
+    def target_contrast(frame):
+        center = (probe_y * width + probe_x) * channels
+        return max(abs(frame[3][center + channel] -
+            (frame[3][above + channel] + frame[3][below + channel]) // 2)
+            for channel in range(3)) / 255.0
+
+    contrast = min(target_contrast(fine), target_contrast(coarse))
+    return errors[-1], mean, p95, changed, (x0, y0, x1 - x0, y1 - y0), contrast
 
 
 def resample_nearest(source, target_width, target_height):
@@ -353,6 +389,22 @@ def main(arguments):
         print(__doc__.splitlines()[0], file=sys.stderr)
         return 2
     command = arguments[1]
+    if command == "lod-quality":
+        if len(arguments) != 4:
+            print("usage: compare_renders.py lod-quality <fine.png> <coarse.png>", file=sys.stderr)
+            return 2
+        fine, coarse = read_png(arguments[2]), read_png(arguments[3])
+        if frame_range(fine[3], fine[2]) < 0.01 or frame_range(coarse[3], coarse[2]) < 0.01:
+            print("LOD screenshot is blank", file=sys.stderr)
+            return 1
+        peak, mean, p95, changed, crop, contrast = lod_quality_metrics(fine, coarse)
+        if contrast < 0.08:
+            print(f"LOD target is not visibly rendered at its probe pixel (contrast={contrast:.4f})",
+                  file=sys.stderr)
+            return 1
+        print(f"LOD visual error over crop={crop}: peak={peak:.4f} mean={mean:.5f} "
+              f"p95={p95:.4f} changed_pixels={changed:.2%} target_contrast={contrast:.4f}")
+        return 0
     if command == "nonblank":
         # One frame from a live-input run: there is no fixture topology to
         # check, but a host that renders nothing must still fail loudly.

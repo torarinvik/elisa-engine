@@ -580,6 +580,7 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
 }
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 #include "render_scene_imported_scene_probe.inc"
+#include "render_scene_lod_probe.h"
 #include "render_scene_pixel_probe.h"
 #include "render_scene_environment_probe.h"
 #include "render_scene_arc_probe.h"

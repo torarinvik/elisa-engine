@@ -5,8 +5,10 @@
 # purpose. scripts/bundle_dependency_fixtures.py writes the bundles under
 # build/cooked/dependencies.
 include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
 include "../src/runtime/render_scene_assets.elisa"
 include "../src/math/geometry.elisa"
+include "./render_scene_lod_visual_native.elisa"
 
 module RenderSceneAsyncAssetNativeTests:
     private:
@@ -214,6 +216,8 @@ module RenderSceneAsyncAssetNativeTests:
             return 74 if elisa_render_scene_v1_test_select_snapshot_lod(handle, 2) != Code::OK
             return 75 if elisa_render_scene_v1_test_snapshot_lod_level(handle) != 2
             return 76 if elisa_render_scene_v1_test_select_snapshot_lod(handle, 0) != Code::OK or elisa_render_scene_v1_test_snapshot_lod_level(handle) != 0
+            visual_status: i32 = RenderSceneLodVisualNativeTests::validate(handle)
+            return visual_status if visual_status != 0
             return 77 if not retire_mesh_row(handle)
             return 78 if geometry_bytes() <= prior_bytes or unregister_mesh(99) != Code::OK
             return 79 if geometry_bytes() != prior_bytes

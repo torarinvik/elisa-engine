@@ -1,0 +1,119 @@
+# Same-camera visual and completed-frame-cost checks for the cooked LOD chain.
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneLodVisualNativeTests:
+    private:
+        const LAYER_MASK: u32 = 4294967295
+
+        const module Code:
+            OK: i32 = 0
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_lod_level(handle: i64) -> u32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_wait_render_pipelines() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_isolate_snapshot_instance(handle: i64,
+            isolate: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_lod_frame_times(handle: i64,
+            expected_level: u32, warmup_frames: u32, sample_count: u32,
+            median_microseconds: &mut u64, p95_microseconds: &mut u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_visibility_policy(handle: i64,
+            draw_distance: f32, lod_bias: f32, layer_mask: u32, renderable: i32) -> i32
+
+        def set_bias(handle: i64, bias: f32) -> i32:
+            elisa_render_scene_v1_set_visibility_policy(handle, 1000.0,
+                bias, LAYER_MASK, 1)
+
+        def pump_frames(count: u32) -> bool:
+            for frame in 0..<count:
+                if Application::pump() != Application::PumpStatus.Running:
+                    return false
+            true
+
+        def restore_scene(handle: i64) -> i32:
+            policy: i32 = set_bias(handle, 0.0)
+            isolation: i32 = elisa_render_scene_v1_test_isolate_snapshot_instance(handle, 0)
+            projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: 1
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 21.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}):
+                ok: 0
+                error failure: 1
+            return 1 if policy != Code::OK or isolation != Code::OK
+            return 2 if projection != 0 or view != 0
+            0
+
+    public:
+        def validate(handle: i64) -> i32:
+            fine_capture: cstr = Application::environment_value("ELISA_LOD_FINE_CAPTURE")
+            coarse_capture: cstr = Application::environment_value("ELISA_LOD_COARSE_CAPTURE")
+            return 0 if fine_capture == "" or coarse_capture == ""
+            return 91 if elisa_render_scene_v1_test_isolate_snapshot_instance(handle, 1) != Code::OK
+            perspective: i32 = catch RenderScene::set_camera_perspective(1.0, 0.1, 500.0):
+                ok: 0
+                error failure: 1
+            if perspective != 0:
+                _ = restore_scene(handle)
+                return 92
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 12.0, y: 12.0, z: 30.0},
+                Geometry::Vec3{x: 12.0, y: 12.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            if view != 0:
+                _ = restore_scene(handle)
+                return 93
+            if set_bias(handle, -16.0) != Code::OK:
+                _ = restore_scene(handle)
+                return 94
+            if elisa_render_scene_v1_test_wait_render_pipelines() != Code::OK:
+                _ = restore_scene(handle)
+                return 103
+            if not pump_frames(3):
+                _ = restore_scene(handle)
+                return 95
+            if (elisa_render_scene_v1_test_snapshot_lod_level(handle) != 0 or
+                not Application::save_screenshot(fine_capture)):
+                _ = restore_scene(handle)
+                return 96
+            mutable fine_median: u64 = 0
+            mutable fine_p95: u64 = 0
+            fine_timing: i32 = elisa_render_scene_v1_test_lod_frame_times(
+                handle, 0, 5, 21, &fine_median, &fine_p95)
+            if fine_timing != Code::OK:
+                _ = restore_scene(handle)
+                return 97
+            if set_bias(handle, 0.0) != Code::OK:
+                _ = restore_scene(handle)
+                return 98
+            if elisa_render_scene_v1_test_wait_render_pipelines() != Code::OK:
+                _ = restore_scene(handle)
+                return 104
+            if not pump_frames(3):
+                _ = restore_scene(handle)
+                return 99
+            if (elisa_render_scene_v1_test_snapshot_lod_level(handle) != 2 or
+                not Application::save_screenshot(coarse_capture)):
+                _ = restore_scene(handle)
+                return 100
+            mutable coarse_median: u64 = 0
+            mutable coarse_p95: u64 = 0
+            coarse_timing: i32 = elisa_render_scene_v1_test_lod_frame_times(
+                handle, 2, 5, 21, &coarse_median, &coarse_p95)
+            restore_status: i32 = restore_scene(handle)
+            return 101 if coarse_timing != Code::OK or fine_median == 0 or coarse_median == 0
+            return 102 if restore_status != 0 or fine_p95 < fine_median or coarse_p95 < coarse_median
+            0

@@ -294,6 +294,15 @@ def main() -> int:
     runtime_env = dict(os.environ)
     runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(wicked_source / "shaders")
     runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)
+    fine_lod_capture = build / "render-scene-lod-fine.png"
+    coarse_lod_capture = build / "render-scene-lod-coarse.png"
+    lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
+    capture_lod_quality = not render_only or lod_fixture_available
+    if capture_lod_quality:
+        fine_lod_capture.unlink(missing_ok=True)
+        coarse_lod_capture.unlink(missing_ok=True)
+        runtime_env["ELISA_LOD_FINE_CAPTURE"] = str(fine_lod_capture)
+        runtime_env["ELISA_LOD_COARSE_CAPTURE"] = str(coarse_lod_capture)
     with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory:
         if render_only:
             status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
@@ -313,6 +322,12 @@ def main() -> int:
                     escape_link.unlink(missing_ok=True)
                     texture_link.unlink(missing_ok=True)
                     dependency_link.unlink(missing_ok=True)
+    if status == 0 and capture_lod_quality:
+        quality_status = run([sys.executable, str(ROOT / "scripts/compare_renders.py"),
+            "lod-quality", str(fine_lod_capture), str(coarse_lod_capture)])
+        if quality_status != 0:
+            print("Same-camera LOD image quality comparison failed.", file=sys.stderr)
+            return quality_status
     if status == 0:
         if render_only:
             print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")

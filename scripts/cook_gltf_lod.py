@@ -301,7 +301,9 @@ def test_fixture() -> dict:
             a = y * side + x
             b, c, d = a + 1, a + side, a + side + 1
             target = left if x < (side - 1) // 2 else right
-            target.extend(((a, c, b), (b, c, d)))
+            # The grid normals face +Z, so keep the triangles counterclockwise
+            # from the +Z camera used by the runtime LOD image regression.
+            target.extend(((a, b, c), (b, d, c)))
     random.Random(233).shuffle(left)
     random.Random(811).shuffle(right)
     left = [index for triangle in left for index in triangle]
