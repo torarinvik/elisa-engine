@@ -9,13 +9,16 @@ from ktx2_container import KTX2_IDENTIFIER
 
 def make_ktx2(width: int = 4, height: int = 4, *, scheme: int = 0,
         key_values: tuple[tuple[str, bytes], ...] = (), global_data: bytes = b"",
-        levels: tuple[bytes, ...] = (b"KTX!",)) -> bytes:
-    """Build a bounded section-layout fixture; image and DFD data are placeholders."""
-    dfd = bytearray(44)
+        levels: tuple[bytes, ...] | None = None) -> bytes:
+    """Build a bounded UASTC or ETC1S KTX2 layout fixture."""
+    etc1s = scheme == 1
+    dfd = bytearray(60 if etc1s else 44)
     struct.pack_into("<I", dfd, 0, len(dfd))
     struct.pack_into("<HH", dfd, 8, 2, len(dfd) - 4)
-    dfd[12:20] = bytes((166, 1, 1, 0, 3, 3, 0, 0))
-    dfd[20] = 16
+    dfd[12:20] = bytes((163, 1, 1, 0, 3, 3, 0, 0) if etc1s else
+        (166, 1, 1, 0, 3, 3, 0, 0))
+    dfd[20:28] = bytes((8, 8, 0, 0, 0, 0, 0, 0) if etc1s else
+        (16, 0, 0, 0, 0, 0, 0, 0))
     kvd = bytearray()
     for key, value in key_values:
         entry = key.encode("utf-8") + b"\0" + value
@@ -23,6 +26,9 @@ def make_ktx2(width: int = 4, height: int = 4, *, scheme: int = 0,
         kvd.extend(entry)
         kvd.extend(bytes(-len(kvd) % 4))
 
+    if levels is None:
+        expected = ((width + 3) // 4) * ((height + 3) // 4) * 16
+        levels = (bytes(1),) if etc1s else (bytes(expected),)
     level_index_end = 80 + len(levels) * 24
     dfd_offset = level_index_end
     kvd_offset = dfd_offset + len(dfd) if kvd else 0
@@ -43,15 +49,23 @@ def make_ktx2(width: int = 4, height: int = 4, *, scheme: int = 0,
     if global_data:
         file_data[sgd_offset:sgd_offset + len(global_data)] = global_data
 
-    index_position = 80
-    for level_data in levels:
-        offset = (position + 3) & ~3
+    level_alignment = 1 if scheme != 0 else 16
+    level_index = [b""] * len(levels)
+    for level in range(len(levels) - 1, -1, -1):
+        level_data = levels[level]
+        offset = (position + level_alignment - 1) & ~(level_alignment - 1)
         if offset > len(file_data):
             file_data.extend(bytes(offset - len(file_data)))
         file_data.extend(level_data)
-        uncompressed = 0 if scheme == 1 else len(level_data)
-        struct.pack_into("<3Q", file_data, index_position, offset,
-            len(level_data), uncompressed)
-        index_position += 24
+        mip_width = max(1, width >> level)
+        mip_height = max(1, height >> level)
+        expected_uastc = ((mip_width + 3) // 4) * ((mip_height + 3) // 4) * 16
+        uncompressed = 0 if scheme == 1 else expected_uastc
+        if scheme == 0 and len(level_data) != expected_uastc:
+            raise ValueError("uncompressed UASTC fixture level has the wrong block size")
+        level_index[level] = struct.pack("<3Q", offset, len(level_data), uncompressed)
         position = offset + len(level_data)
+    for level, entry in enumerate(level_index):
+        index_position = 80 + level * 24
+        file_data[index_position:index_position + 24] = entry
     return bytes(file_data)
