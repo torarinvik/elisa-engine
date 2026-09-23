@@ -108,9 +108,19 @@ def _sample(track: tuple[list[float], list[tuple[float, ...]], str], time: float
         return _normalize_quaternion(result, label) if quaternion else result
     first, second = values[left], values[right]
     if quaternion:
-        if sum(a * b for a, b in zip(first, second)) < 0.0:
+        dot = sum(a * b for a, b in zip(first, second))
+        if dot < 0.0:
             second = tuple(-component for component in second)
-        result = tuple(a + (b - a) * amount for a, b in zip(first, second))
+            dot = -dot
+        if dot > 0.9995:
+            result = tuple(a + (b - a) * amount for a, b in zip(first, second))
+        else:
+            angle = math.acos(max(-1.0, min(1.0, dot)))
+            sine = math.sin(angle)
+            first_weight = math.sin((1.0 - amount) * angle) / sine
+            second_weight = math.sin(amount * angle) / sine
+            result = tuple(a * first_weight + b * second_weight
+                for a, b in zip(first, second))
         return _normalize_quaternion(result, label)
     return tuple(a + (b - a) * amount for a, b in zip(first, second))
 
@@ -122,7 +132,20 @@ def _track(document: dict, buffer: bytes, sampler: dict, path: str,
     interpolation = sampler.get("interpolation", "LINEAR")
     if interpolation not in ("LINEAR", "STEP", "CUBICSPLINE"):
         raise ValueError(f"{label} interpolation must be LINEAR, STEP, or CUBICSPLINE")
+    input_accessor = _accessor(document, input_reference, "SCALAR", f"{label} input")
     times = [value[0] for value in _values(document, buffer, input_reference, "SCALAR", f"{label} input")]
+    if not times:
+        raise ValueError(f"{label} input must contain at least one key time")
+    bounds = (input_accessor.get("min"), input_accessor.get("max"))
+    if any(not isinstance(bound, list) or len(bound) != 1 or
+            type(bound[0]) not in (int, float) or not math.isfinite(bound[0]) or
+            abs(bound[0]) > cook_gltf_nodes.FLOAT_MAX
+            for bound in bounds):
+        raise ValueError(f"{label} input accessor must define scalar min and max bounds")
+    rounded_bounds = tuple(struct.unpack("<f", struct.pack("<f", bound[0]))[0]
+        for bound in bounds)
+    if rounded_bounds != (min(times), max(times)):
+        raise ValueError(f"{label} input accessor bounds do not match its key times")
     if path == "weights":
         if morph_count <= 0:
             raise ValueError(f"{label} targets a mesh without morph targets")
@@ -220,6 +243,9 @@ def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int | list
             path = target.get("path")
             if type(node) is not int:
                 raise ValueError(f"{channel_label} target node is invalid")
+            source_nodes = document.get("nodes", [])
+            if node < 0 or node >= len(source_nodes) or not isinstance(source_nodes[node], dict):
+                raise ValueError(f"{channel_label} target node is out of range")
             if path == "weights":
                 if node not in node_placements or morph_count == 0:
                     raise ValueError(f"{channel_label} must target a placed mesh with morph targets")
@@ -231,6 +257,8 @@ def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int | list
                 continue
             if path not in ("translation", "rotation", "scale") or node not in ordered_index:
                 raise ValueError(f"{channel_label} must target a skin rig-node TRS path or mesh weights")
+            if "matrix" in source_nodes[node]:
+                raise ValueError(f"{channel_label} cannot animate TRS on a matrix-authored node")
             rig_indices = ordered_index[node]
             if type(rig_indices) is int:
                 rig_indices = [rig_indices]

@@ -144,7 +144,7 @@ def same_slot(document: dict) -> None:
 
 REJECTED = {
     "a node with an undeclared skin": (node(2, skin=0), "mesh node skin requires"),
-    "node morph weights": (node(2, weights=[0.5]), "unsupported node properties"),
+    "node morph weights without morph targets": (node(2, weights=[0.5]), "weights require morph targets"),
     "node extras": (node(1, extras={}), "unsupported node properties"),
     "a node that is not an object": (lambda d: d["nodes"].__setitem__(3, [2]), "unsupported node properties"),
     "a matrix beside a translation": (node(0, translation=[0.0, 0.0, 0.0]), "excludes translation"),
@@ -160,9 +160,9 @@ REJECTED = {
     "a zero scale": (node(3, scale=[1.0, 0.0, 1.0]), "finite and invertible"),
     "a collapsing parent": (node(1, scale=[0.0, 1.0, 1.0]), "finite and invertible"),
     "an overflowing world transform": (lambda d: [d["nodes"][index].update(scale=[1e200, 1.0, 1.0])
-        for index in (1, 2)], "finite and invertible"),
+        for index in (1, 2)], "must be finite"),
     "an overflowing world translation": (lambda d: [node(1, scale=[1e200, 1.0, 1.0])(d),
-        node(2, translation=[1e200, 0.0, 0.0], scale=[1e-200, 1.0, 0.5])(d)], "finite and invertible"),
+        node(2, translation=[1e200, 0.0, 0.0], scale=[1e-200, 1.0, 0.5])(d)], "must be finite"),
     "a vertex beyond the float range": (node(5, translation=[1e39, 0.0, 0.0]), "outside the float range"),
     "a child index out of range": (lambda d: d["nodes"][1]["children"].append(6), "child index out of range"),
     "a string child": (lambda d: d["nodes"][1]["children"].append("2"), "child index out of range"),
@@ -184,7 +184,7 @@ REJECTED = {
     "257 nodes": (lambda d: d["nodes"].extend({} for _ in range(251)), "1 to 256 nodes"),
     "257 meshes": (lambda d: d["meshes"].extend(deepcopy(d["meshes"][0]) for _ in range(254)), "1 to 256 meshes"),
     "a node with an invalid camera": (lambda d: d["nodes"][0].update(camera=0), "camera index is out of range"),
-    "an animation list": (lambda d: d.update(animations=[{}]), "require a skinned mesh"),
+    "an empty animation entry": (lambda d: d.update(animations=[{}]), "needs at least one channel"),
     "seventeen alternating subsets": (alternating(16), "more than 16 material subsets"),
     "mesh extras": (lambda d: d["meshes"][1].update(extras={}), "unsupported mesh properties"),
     "a morph target on a placed mesh": (lambda d: d["meshes"][2]["primitives"][0].update(targets=[{}]),

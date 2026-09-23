@@ -60,6 +60,7 @@ def animated_document() -> dict:
     document = generated_document()
     buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
     input_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 2, "SCALAR")
+    document["accessors"][input_accessor].update({"min": [0.0], "max": [1.0]})
     output_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 2, "SCALAR")
     document["meshes"][0]["weights"] = [0.2]
     document["nodes"][0]["weights"] = [0.4]

@@ -208,20 +208,21 @@ per-subset bound rejects it.
 - **No material properties from glTF.** Slots carry only their order. The
   game registers each slot's material in Elisa. Superseded for factors by
   [`cooked-slot-materials.md`](cooked-slot-materials.md); textures remain.
-- **Bounded skin importer.** The runtime glTF cooker now emits v3 packages for
-  one skin with up to 64 parent-ordered TRS joints, four float32 influences per
-  vertex, and up to 16 material subsets within the existing bounds.
-  Inverse-bind accessors are validated; the native uploader derives the same
-  bind relation from the stored rest transforms. Sampled LINEAR and STEP TRS
-  channels become fixed 30 Hz clips (up to twenty-four clips and 3,601 frames per
-  clip). Dense POSITION deltas, with optional NORMAL deltas, carry up to 32
-  morph targets into Wicked and accept bounded weight submissions. Morph
-  animation channels and cubic-spline channels remain rejected. Mesh-node
-  transforms must be identity for skinned packages. The package loader
-  validates bounded camera and `KHR_lights_punctual` records, and direct
-  `RenderScene::create_mesh` binds those authored resources through opaque
-  imported-scene handles; independent placement entities remain limited to
-  static, non-morphed geometry.
+- **Bounded skin importer.** The runtime glTF cooker emits v3 packages with
+  bounded combined skin rigs, up to 64 palette bones and 256 transform nodes,
+  four float32 influences per vertex, and up to 16 material subsets. Authored
+  inverse-bind matrices are retained in palette order. Sampled LINEAR, STEP,
+  and CUBICSPLINE TRS and morph-weight channels become fixed 30 Hz clips (up to
+  twenty-four clips and 3,601 frames per clip); LINEAR quaternion keys use spherical
+  interpolation, and quaternion outputs are normalized. Morph outputs accept
+  float32 or normalized 8/16-bit accessors. Mesh and node defaults are kept per
+  placement, and weight channels work for skinned and unskinned meshes. Dense
+  POSITION deltas, with optional NORMAL deltas, carry up to 32 morph targets
+  into Wicked. See [`gltf-skin-hierarchies.md`](gltf-skin-hierarchies.md) and
+  [`skinned-mesh-placements.md`](skinned-mesh-placements.md) for current
+  placement limits and smoke results. The package loader also validates
+  bounded camera and `KHR_lights_punctual` records, which
+  `RenderScene::create_mesh` binds through opaque imported-scene handles.
 - **One mesh node.** Scene hierarchies, node transforms, multiple meshes,
   camera/light metadata, skins, morphs, and animation are carried by the
   bounded runtime cooker. Superseded for the hierarchy and live imported-scene

@@ -18,6 +18,15 @@ nodes as well as palette joints. Matrix-authored rig nodes are decomposed to
 TRS when their affine linear columns are orthogonal and have nonzero scale;
 matrices with shear are rejected rather than approximated.
 
+glTF animation channels now support translation, rotation, and scale on
+skinned rig/helper nodes, plus morph weights on placed mesh nodes, with LINEAR,
+STEP, or CUBICSPLINE interpolation. LINEAR rotations use spherical
+interpolation; cubic quaternion results are normalized. Morph-weight tracks
+are stored per mesh placement, so one placement can animate while another
+retains its authored node or mesh defaults. Morph-only clips also work on
+unskinned meshes. Inputs are checked against their required float32 time
+bounds, and matrix-authored nodes cannot receive TRS channels.
+
 The generated fixture places the mesh and skeleton on sibling branches under
 a translated common parent, inserts a translated helper above the two-joint
 skeleton, then adjusts inverse binds so the bind pose remains unchanged. A
@@ -34,16 +43,20 @@ native loader also accepts a 65-node rig with two palette bones.
 
 ## Validation
 
-- `/opt/homebrew/bin/python3 scripts/gltf_skin_self_test.py` passed.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 99 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer. The multi-skin and mixed static/skinned packages are among the accepted cases.
+- `/opt/homebrew/bin/python3 scripts/gltf_skin_self_test.py` passed, including
+  cubic translation, cubic quaternion normalization, and LINEAR spherical
+  interpolation.
+- `/opt/homebrew/bin/python3 scripts/gltf_morph_self_test.py` passed, including
+  normalized 8-bit outputs, cubic weights, per-placement defaults, and an
+  unskinned morph-only clip.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 100 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer. The multi-skin, mixed static/skinned, and unskinned animated-morph packages are among the accepted cases.
 - The SDL3/Metal RenderScene smoke compiled and passed the sibling-branch animation submission probe, the separately rooted mesh upload/world-offset assertion, and the multi-skin and mixed-placement armature probes. It later returned status 134 at the overlay-hide readback in `test/render_scene_native_main.elisa`, after those probes completed. This is the same later failure seen with the earlier two-joint fixture, so the full native gate remains incomplete.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
 Multi-skin scenes combine separate rig branches and palettes, bounded by 64
 total palette bones and 256 rig nodes. Mixed static and skinned placements
 are also supported; static placements receive a synthetic identity bind bone,
-which counts toward the palette limit. Morph-weight animation channels remain
-unsupported. A
-dedicated cooker regression combines a 45-degree mesh rotation with
-nonuniform scale, verifies that its mesh-relative basis contains shear, and
-requires a clear rejection instead of an approximate TRS transform.
+which counts toward the palette limit. A dedicated cooker regression combines
+a 45-degree mesh rotation with nonuniform scale, verifies that its
+mesh-relative basis contains shear, and requires a clear rejection instead of
+an approximate TRS transform.

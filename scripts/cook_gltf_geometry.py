@@ -151,6 +151,7 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
     placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes),
         allow_singular_mesh_transforms=bool(document.get("skins")))
+    skin = cook_gltf_skin.normalize(document, buffer)
     if morph_count == 0 and any("weights" in document["nodes"][node_index] or
             "weights" in meshes[mesh_index] for mesh_index, node_index, _ in placement_records):
         raise ValueError("mesh and node weights require morph targets")
@@ -162,7 +163,6 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
             has_joints = "JOINTS_0" in primitive.get("attributes", {})
             if has_joints != skinned_placement:
                 raise ValueError("skinned placements require joint attributes; static placements must omit them")
-    skin = cook_gltf_skin.normalize(document, buffer)
     ordered_index = {} if skin is None else skin["source_node_indices"]
     rest = [] if skin is None else [joint["rest"] for joint in skin["joints"]]
     animation_clips = cook_gltf_animation.normalize(document, buffer, ordered_index, rest,

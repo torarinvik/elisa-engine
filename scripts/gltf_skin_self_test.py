@@ -15,6 +15,7 @@ import cook_gltf_animation
 import cook_gltf_geometry
 import cook_gltf_nodes
 import cook_gltf_skin
+import gltf_animation_self_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +97,7 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
         inverse_bind = _append(document, buffer,
             struct.pack(f"<{len(inverse_bind_matrices)}f", *inverse_bind_matrices), 5126, "MAT4", joint_count)
     input_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 5126, "SCALAR", 2)
+    document["accessors"][input_accessor].update({"min": [0.0], "max": [1.0]})
     output_accessor = _append(document, buffer, struct.pack("<6f", 0.0, 1.0, 0.0, 0.0, 2.0, 0.0),
         5126, "VEC3", 2)
     document["buffers"][0]["byteLength"] = len(buffer)
@@ -292,14 +294,13 @@ def animation_limit_self_test(temporary: Path) -> int:
     template = document["animations"][0]
     document["animations"] = [dict(template, name=f"clip_{index}")
         for index in range(cook_gltf_animation.MAX_CLIPS)]
-    source = temporary / "twenty_four_clips.gltf"
+    source = temporary / f"{cook_gltf_animation.MAX_CLIPS}_clips.gltf"
     source.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
     try:
         package, _ = cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH,
-            temporary / "twenty_four_clips.pkg")
+            temporary / f"{cook_gltf_animation.MAX_CLIPS}_clips.pkg")
     except (ValueError, KeyError, IndexError, TypeError) as error:
-        print(f"glTF skin self-test failed: {cook_gltf_animation.MAX_CLIPS} clips were rejected: {error}",
-            file=sys.stderr)
+        print(f"glTF skin self-test failed: {cook_gltf_animation.MAX_CLIPS} clips were rejected: {error}", file=sys.stderr)
         return 1
     fields = dict(line.split("=", 1) for line in package.read_text(encoding="utf-8").splitlines())
     if fields.get("animation_clips") != str(cook_gltf_animation.MAX_CLIPS):
@@ -312,8 +313,7 @@ def animation_limit_self_test(temporary: Path) -> int:
         cook_gltf_geometry.normalized_geometry(document, overflow_buffer)
     except ValueError:
         return 0
-    print("glTF skin self-test failed: accepted an animation clip above the configured limit",
-        file=sys.stderr)
+    print("glTF skin self-test failed: accepted an animation clip above the configured limit", file=sys.stderr)
     return 1
 
 
@@ -416,51 +416,7 @@ def self_test(temporary: Path) -> int:
     def normalized_skin(source_document: dict) -> dict:
         return normalized(source_document)["skin"]
 
-    cubic = deepcopy(document)
-    cubic_buffer = bytearray(base64.b64decode(cubic["buffers"][0]["uri"].split(",", 1)[1]))
-    cubic_values = (0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 2.0, 0.0, 0.0, 0.0, 0.0)
-    cubic_accessor = _append(cubic, cubic_buffer,
-        struct.pack(f"<{len(cubic_values)}f", *cubic_values), 5126, "VEC3", 6)
-    cubic["animations"][0]["samplers"][0].update({
-        "output": cubic_accessor, "interpolation": "CUBICSPLINE"})
-    cubic["buffers"][0]["byteLength"] = len(cubic_buffer)
-    cubic["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
-        base64.b64encode(cubic_buffer).decode("ascii")
-    cubic_geometry = normalized(cubic)
-    cubic_rig_index = cubic_geometry["skin"]["source_node_indices"][2]
-    cubic_rig_index = cubic_rig_index[0] if isinstance(cubic_rig_index, list) else cubic_rig_index
-    cubic_samples = cubic_geometry["animation_clips"][0]["samples"]
-    cubic_midpoint_y = cubic_samples[(15 * len(cubic_geometry["skin"]["joints"])
-        + cubic_rig_index) * 10 + 1]
-    if abs(cubic_midpoint_y - 1.5) > 1.0e-6:
-        print("glTF skin self-test failed: cubic translation was not Hermite sampled", file=sys.stderr)
-        return 1
-
-    cubic_rotation = deepcopy(document)
-    rotation_buffer = bytearray(base64.b64decode(cubic_rotation["buffers"][0]["uri"].split(",", 1)[1]))
-    zero_quaternion = (0.0, 0.0, 0.0, 0.0)
-    cubic_quaternion = (*zero_quaternion, 0.0, 0.0, 0.0, 1.0,
-        *zero_quaternion, *zero_quaternion, 0.0, 0.0, 2.0 ** -0.5, 2.0 ** -0.5,
-        *zero_quaternion)
-    rotation_accessor = _append(cubic_rotation, rotation_buffer,
-        struct.pack(f"<{len(cubic_quaternion)}f", *cubic_quaternion), 5126, "VEC4", 6)
-    rotation_channel_target = cubic_rotation["animations"][0]["channels"][0]["target"]
-    rotation_channel_target["path"] = "rotation"
-    cubic_rotation["animations"][0]["samplers"][0].update({
-        "output": rotation_accessor, "interpolation": "CUBICSPLINE"})
-    cubic_rotation["buffers"][0]["byteLength"] = len(rotation_buffer)
-    cubic_rotation["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
-        base64.b64encode(rotation_buffer).decode("ascii")
-    rotation_geometry = normalized(cubic_rotation)
-    rotation_index = rotation_geometry["skin"]["source_node_indices"][2]
-    rotation_index = rotation_index[0] if isinstance(rotation_index, list) else rotation_index
-    rotation_samples = rotation_geometry["animation_clips"][0]["samples"]
-    quaternion_start = (15 * len(rotation_geometry["skin"]["joints"]) + rotation_index) * 10 + 3
-    midpoint_rotation = rotation_samples[quaternion_start:quaternion_start + 4]
-    if abs(sum(value * value for value in midpoint_rotation) - 1.0) > 1.0e-5:
-        print("glTF skin self-test failed: cubic quaternion was not normalized", file=sys.stderr)
+    if gltf_animation_self_test.interpolation_self_test(document, _append, normalized) != 0:
         return 1
 
     shared_ancestor = deepcopy(document)
@@ -583,6 +539,15 @@ def self_test(temporary: Path) -> int:
     duplicate_track["animations"][0]["channels"].append(deepcopy(
         duplicate_track["animations"][0]["channels"][0]))
     rejected.append(("duplicate animation track", duplicate_track))
+    missing_time_bound = deepcopy(document)
+    input_reference = missing_time_bound["animations"][0]["samplers"][0]["input"]
+    missing_time_bound["accessors"][input_reference].pop("max")
+    rejected.append(("animation input without bounds", missing_time_bound))
+    matrix_animation = deepcopy(document)
+    matrix_animation["nodes"][2]["matrix"] = [1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]
+    matrix_animation["nodes"][2].pop("translation")
+    rejected.append(("TRS animation on a matrix-authored node", matrix_animation))
     for label, unsupported in rejected:
         try:
             unsupported_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
