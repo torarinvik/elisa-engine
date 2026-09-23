@@ -114,7 +114,12 @@ def main() -> int:
         fbx_material_source = subset_directory / "two-material-mesh.fbx"
         (subset_directory / "fbx-albedo.png").write_bytes(encode_png(2, 1,
             bytes((220, 80, 40, 255, 40, 80, 220, 255))))
-        fbx_test_fixtures.write_two_material_mesh(fbx_material_source, "fbx-albedo.png")
+        (subset_directory / "fbx-roughness.png").write_bytes(encode_png(2, 1,
+            bytes((64, 1, 2, 255, 128, 3, 4, 255))))
+        (subset_directory / "fbx-metalness.png").write_bytes(encode_png(2, 1,
+            bytes((200, 5, 6, 255, 20, 7, 8, 255))))
+        fbx_test_fixtures.write_two_material_mesh(fbx_material_source, "fbx-albedo.png",
+            "fbx-roughness.png", "fbx-metalness.png")
         subset_status = run([
             sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"), str(fbx_material_source),
             "--asset-path", "test/fixtures/two-material-mesh.fbx",
