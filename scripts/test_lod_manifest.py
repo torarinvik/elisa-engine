@@ -58,6 +58,31 @@ def main() -> int:
             "package", document["levels"][1]["package"].replace(
                 document["levels"][1]["sha256"][:16], "0" * 16)))
 
+        tampered_document = copy.deepcopy(original)
+        tampered_level = tampered_document["levels"][1]
+        tampered_name = f"tampered.lod-01-{tampered_level['sha256'][:16]}{Path(tampered_level['package']).suffix}"
+        original_package = directory / tampered_level["package"]
+        tampered_package = directory / tampered_name
+        shutil.copyfile(original_package, tampered_package)
+        damaged = bytearray(tampered_package.read_bytes())
+        damaged[-1] ^= 1
+        tampered_package.write_bytes(damaged)
+        tampered_level["package"] = tampered_name
+        tampered_manifest = directory / "tampered-package.json"
+        tampered_manifest.write_text(json.dumps(tampered_document, sort_keys=True,
+            separators=(",", ":")) + "\n", encoding="utf-8")
+
+        outside_package = directory.parent / f"{directory.name}-outside.pkg"
+        outside_package.write_bytes(original_package.read_bytes())
+        escaped_document = copy.deepcopy(original)
+        escaped_level = escaped_document["levels"][1]
+        escaped_name = f"escape.lod-01-{escaped_level['sha256'][:16]}{Path(escaped_level['package']).suffix}"
+        (directory / escaped_name).symlink_to(outside_package)
+        escaped_level["package"] = escaped_name
+        escaped_manifest = directory / "escaped-package.json"
+        escaped_manifest.write_text(json.dumps(escaped_document, sort_keys=True,
+            separators=(",", ":")) + "\n", encoding="utf-8")
+
         executable = directory / "lod-manifest-test"
         command = [compiler, "-std=c++17", "-O1", "-g", "-fno-omit-frame-pointer",
             "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
@@ -68,11 +93,14 @@ def main() -> int:
         if built.returncode != 0:
             print(built.stderr or built.stdout, file=sys.stderr)
             return built.returncode
-        checked = subprocess.run([str(executable), str(manifest_path),
-            *(str(path) for path in rejected_paths)], capture_output=True, text=True, check=False)
+        checked = subprocess.run([str(executable), str(manifest_path), "--reject-chain",
+            str(tampered_manifest), "--reject-chain", str(escaped_manifest),
+            *(str(path) for path in rejected_paths)],
+            capture_output=True, text=True, check=False)
+        outside_package.unlink(missing_ok=True)
         sys.stdout.write(checked.stdout)
         sys.stderr.write(checked.stderr)
-        if checked.returncode != 0 or f"{len(levels)} levels loaded" not in checked.stdout:
+        if checked.returncode != 0 or f"{len(levels)} levels hash-verified" not in checked.stdout:
             print(f"LOD manifest validation failed with exit {checked.returncode}", file=sys.stderr)
             return 1
     return 0
