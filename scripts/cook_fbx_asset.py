@@ -17,9 +17,10 @@ import sys
 import tempfile
 
 import cook_gltf_animation
-from elisa_package import write_geometry_package
+from elisa_package import encoded_image_dimensions, write_geometry_package
 from fbx_material_cooker_self_test import validate_material_package
 from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
+from png_image import encode_png
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,7 +159,7 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
         for slot in range(material_slots):
             record = struct.unpack_from("<10f2I", material_data, slot * 48)
             if (not all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in record[:10]) or
-                    record[10] > 2 or record[11] & ~1):
+                    record[10] > 2 or record[11] & ~3):
                 raise ValueError("cooked package contains out-of-range FBX material factors")
         names_data = decode("slot_material_names_b64")
         offset = 0
@@ -178,6 +179,52 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             offset += length
         if offset != len(names_data):
             raise ValueError("cooked package FBX material-name stream has trailing bytes")
+    texture_source_fields = {"texture_source_count", "texture_source_names_b64", "slot_texture_sources_b64"}
+    present_texture_source_fields = texture_source_fields.intersection(fields)
+    if present_texture_source_fields and present_texture_source_fields != texture_source_fields:
+        raise ValueError("cooked package has incomplete FBX texture source metadata")
+    if present_texture_source_fields:
+        if not present_subset_fields or not present_slot_material_fields:
+            raise ValueError("FBX texture sources require material slots and material records")
+        try:
+            texture_source_count = int(fields["texture_source_count"])
+        except ValueError as failure:
+            raise ValueError("cooked package has an invalid FBX texture source count") from failure
+        if not 1 <= texture_source_count <= 64:
+            raise ValueError("cooked package exceeds the 64 FBX texture source limit")
+        names_data = decode("texture_source_names_b64")
+        texture_source_names: list[str] = []
+        offset = 0
+        for _ in range(texture_source_count):
+            if len(names_data) - offset < 4:
+                raise ValueError("cooked package FBX texture-name stream is truncated")
+            (length,) = struct.unpack_from("<I", names_data, offset)
+            offset += 4
+            if length == 0 or length > 4096 or length > len(names_data) - offset:
+                raise ValueError("cooked package FBX texture path exceeds its limit")
+            try:
+                name = names_data[offset:offset + length].decode("utf-8", errors="strict")
+            except UnicodeDecodeError as failure:
+                raise ValueError("cooked package FBX texture path is not UTF-8") from failure
+            offset += length
+            validate_texture_source_path(name)
+            if name in texture_source_names:
+                raise ValueError("cooked package has duplicate FBX texture source paths")
+            texture_source_names.append(name)
+        if offset != len(names_data):
+            raise ValueError("cooked package FBX texture-name stream has trailing bytes")
+        source_references = decode("slot_texture_sources_b64")
+        if len(source_references) != material_slots * 5 * 4:
+            raise ValueError("cooked package FBX texture references do not match its material slots")
+        references = struct.unpack(f"<{material_slots * 5}I", source_references)
+        sampled_sources: set[int] = set()
+        for reference in references:
+            if reference > texture_source_count:
+                raise ValueError("cooked package FBX material references a missing texture path")
+            if reference:
+                sampled_sources.add(reference)
+        if len(sampled_sources) != texture_source_count:
+            raise ValueError("cooked package contains an unused FBX texture source")
     skin_fields = {"skin_bones", "skin_indices_stride", "skin_weights_stride",
         "skin_indices_b64", "skin_weights_b64", "skin_names_b64"}
     present_skin_fields = skin_fields.intersection(fields)
@@ -311,6 +358,58 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
                     raise ValueError("cooked package contains an invalid animation sample")
             total_sample_floats += sample_floats
     return fields
+
+
+def validate_texture_source_path(value: str) -> None:
+    """Require a portable relative FBX texture path with no traversal."""
+    if (not value or len(value.encode("utf-8")) > 4096 or value.startswith("/") or
+            "\\" in value or ":" in value or "\0" in value or "\r" in value or "\n" in value or
+            any(part in ("", ".", "..") for part in value.split("/"))):
+        raise ValueError("FBX texture source must be a safe relative path without parent traversal")
+
+
+def package_fbx_texture_sources(source: Path, geometry_package: bytes,
+    fields: dict[str, str]) -> tuple[bytes, dict[str, bytes]]:
+    """Resolve external FBX images and translate their source paths to ELPK sections."""
+    if "texture_source_count" not in fields:
+        return geometry_package, {}
+    count = int(fields["texture_source_count"])
+    names_data = base64.b64decode(fields["texture_source_names_b64"], validate=True)
+    source_names: list[str] = []
+    offset = 0
+    for _ in range(count):
+        (length,) = struct.unpack_from("<I", names_data, offset)
+        offset += 4
+        source_names.append(names_data[offset:offset + length].decode("utf-8", errors="strict"))
+        offset += length
+    texture_root = source.resolve(strict=True).parent
+    images: dict[str, bytes] = {}
+    for index, name in enumerate(source_names):
+        validate_texture_source_path(name)
+        image_path = (texture_root / PurePosixPath(name)).resolve(strict=True)
+        try:
+            image_path.relative_to(texture_root)
+        except ValueError as failure:
+            raise ValueError("FBX texture resolves outside the source directory") from failure
+        if not image_path.is_file() or image_path.stat().st_size > MAX_PACKAGE_BYTES:
+            raise ValueError("FBX texture is missing, not a regular file, or exceeds the image-size limit")
+        image = image_path.read_bytes()
+        encoded_image_dimensions(image)
+        images[f"fbx_image_{index}"] = image
+    references = base64.b64decode(fields["slot_texture_sources_b64"], validate=True)
+    texture_names = b"".join(struct.pack("<I", len(name.encode("ascii"))) + name.encode("ascii")
+        for name in images)
+    runtime_fields = {
+        "texture_count": str(len(images)),
+        "texture_names_b64": base64.b64encode(texture_names).decode("ascii"),
+        "slot_texture_stride": "20",
+        "slot_textures_b64": base64.b64encode(references).decode("ascii"),
+    }
+    source_fields = {"texture_source_count", "texture_source_names_b64", "slot_texture_sources_b64"}
+    lines = [line for line in geometry_package.decode("ascii").splitlines()
+        if line.partition("=")[0] not in source_fields]
+    lines.extend(f"{key}={value}" for key, value in runtime_fields.items())
+    return ("\n".join(lines) + "\n").encode("ascii"), images
 
 
 def build_cooker(build_dir: Path) -> Path:
@@ -504,6 +603,28 @@ def main(arguments: list[str]) -> int:
                         struct.unpack("<6I", material_subsets) != (0, 3, 0, 3, 3, 1)):
                     raise ValueError("FBX cooker did not preserve its two polygon material subsets")
                 validate_material_package(material_fields)
+                texture_directory = directory / "textured-fbx"
+                texture_directory.mkdir()
+                texture_source = texture_directory / "two-material-texture.fbx"
+                (texture_directory / "albedo.png").write_bytes(encode_png(2, 1,
+                    bytes((220, 80, 40, 255, 40, 80, 220, 255))))
+                write_two_material_mesh(texture_source, "albedo.png")
+                texture_fields = cook_one(cooker, texture_source,
+                    "self-test/textured-fbx/two-material-texture.fbx",
+                    directory / "textured-fbx-geometry.pkg")
+                expected_refs = struct.pack("<10I", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                if (texture_fields.get("texture_source_count") != "1" or
+                        base64.b64decode(texture_fields["slot_texture_sources_b64"], validate=True) != expected_refs):
+                    raise ValueError("FBX cooker did not retain its base-color texture binding")
+                bundled_geometry, bundled_images = package_fbx_texture_sources(
+                    texture_source, (directory / "textured-fbx-geometry.pkg").read_bytes(), texture_fields)
+                if (list(bundled_images) != ["fbx_image_0"] or
+                        bundled_images["fbx_image_0"] != (texture_directory / "albedo.png").read_bytes() or
+                        b"texture_source_" in bundled_geometry or b"texture_count=1" not in bundled_geometry or
+                        base64.b64decode(dict(line.split("=", 1) for line in bundled_geometry.decode().splitlines())[
+                            "slot_textures_b64"], validate=True) != expected_refs):
+                    raise ValueError("FBX external texture was not converted to a packaged image slot")
+                write_geometry_package(directory / "textured-fbx.elpk", bundled_geometry, bundled_images)
                 try:
                     cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
                         directory / "under-budget.pkg", max_triangles=1)
@@ -565,13 +686,25 @@ def main(arguments: list[str]) -> int:
                     f"{cache_report.group(1)} -> {cache_report.group(2)}; vertex-fetch bytes "
                     f"{fetch_report.group(1)} -> {fetch_report.group(2)}")
             else:
-                package_output = options.output
-                geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output
+                package_output = options.output.expanduser().resolve()
+                geometry_output = directory / "geometry.pkg"
                 fields = cook_one(cooker, options.source, options.asset_path, geometry_output,
                     options.max_triangles, options.mesh_name)
                 if package_output.suffix.lower() == ".elpk":
-                    write_geometry_package(package_output, geometry_output.read_bytes(),
+                    geometry, images = package_fbx_texture_sources(
+                        options.source.expanduser().resolve(strict=True), geometry_output.read_bytes(), fields)
+                    write_geometry_package(package_output, geometry, images,
                         dependencies=options.dependency)
+                elif "texture_source_count" in fields:
+                    raise ValueError("FBX external material textures require an .elpk output bundle")
+                else:
+                    package_output.parent.mkdir(parents=True, exist_ok=True)
+                    temporary_output = package_output.with_name(package_output.name + ".tmp")
+                    try:
+                        temporary_output.write_bytes(geometry_output.read_bytes())
+                        os.replace(temporary_output, package_output)
+                    finally:
+                        temporary_output.unlink(missing_ok=True)
                 print(f"FBX package validated: {fields['triangles']} triangles, {fields['positions']} vertices")
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as failure:
         print(f"FBX cooking failed: {failure}", file=sys.stderr)

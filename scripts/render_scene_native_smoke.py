@@ -22,6 +22,7 @@ import fbx_test_fixtures
 from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 import elisa_build_run
 from elisa_package import write_geometry_package
+from png_image import encode_png
 import gltf_texture_self_test
 import gltf_skin_self_test
 import gltf_morph_self_test
@@ -111,11 +112,13 @@ def main() -> int:
         subset_directory = build / "cooked/subsets"
         subset_directory.mkdir(parents=True, exist_ok=True)
         fbx_material_source = subset_directory / "two-material-mesh.fbx"
-        fbx_test_fixtures.write_two_material_mesh(fbx_material_source)
+        (subset_directory / "fbx-albedo.png").write_bytes(encode_png(2, 1,
+            bytes((220, 80, 40, 255, 40, 80, 220, 255))))
+        fbx_test_fixtures.write_two_material_mesh(fbx_material_source, "fbx-albedo.png")
         subset_status = run([
             sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"), str(fbx_material_source),
             "--asset-path", "test/fixtures/two-material-mesh.fbx",
-            "--output", str(subset_directory / "fbx-two-material.pkg"),
+            "--output", str(subset_directory / "fbx-two-material.elpk"),
         ])
         if subset_status != 0:
             return subset_status

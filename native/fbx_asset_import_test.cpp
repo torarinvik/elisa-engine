@@ -185,6 +185,46 @@ int material_subset_test(const std::filesystem::path& path) {
     return ok ? 0 : 1;
 }
 
+int material_texture_test(const std::filesystem::path& path) {
+    const auto imported = elisa::assets::import_fbx(path, true);
+    if (!check(imported.ok, "textured FBX material fixture imports")) {
+        std::fprintf(stderr, "  importer error: %s\n", imported.error.c_str());
+        return 1;
+    }
+    const bool valid = imported.primary_mesh.materials.size() == 2 &&
+        imported.primary_mesh.materials[0].texture_sources[0] == "albedo.png" &&
+        imported.primary_mesh.materials[0].texture_sources[1].empty() &&
+        imported.primary_mesh.materials[0].texture_sources[3].empty() &&
+        imported.primary_mesh.materials[1].texture_sources[0].empty();
+    bool ok = check(valid, "FBX diffuse texture binds only to its material base-color slot");
+
+    ufbx_texture unsupported_texture{};
+    ufbx_material unsupported_material{};
+    unsupported_material.pbr.roughness.texture = &unsupported_texture;
+    unsupported_material.pbr.roughness.texture_enabled = true;
+    elisa::assets::FbxMaterialData unsupported_output;
+    elisa::assets::FbxImportResult unsupported_result;
+    ok &= check(!elisa::assets::detail::extract_fbx_material(unsupported_material,
+        unsupported_output, unsupported_result) &&
+        unsupported_result.error.find("texture role") != std::string::npos,
+        "unpacked roughness textures fail with a role-specific diagnostic");
+
+    const char traversal_path[] = "../outside.png";
+    ufbx_texture traversal_texture{};
+    traversal_texture.type = UFBX_TEXTURE_FILE;
+    traversal_texture.relative_filename = ufbx_string{traversal_path, sizeof(traversal_path) - 1};
+    ufbx_material traversal_material{};
+    traversal_material.pbr.base_color.texture = &traversal_texture;
+    traversal_material.pbr.base_color.texture_enabled = true;
+    elisa::assets::FbxMaterialData traversal_output;
+    elisa::assets::FbxImportResult traversal_result;
+    ok &= check(!elisa::assets::detail::extract_fbx_material(traversal_material,
+        traversal_output, traversal_result) &&
+        traversal_result.error.find("parent directories") != std::string::npos,
+        "FBX texture paths reject parent-directory traversal");
+    return ok ? 0 : 1;
+}
+
 int decode_mesh(const std::filesystem::path& path) {
     const auto asset = elisa::assets::import_fbx(path, true);
     if (!asset.ok) {
@@ -351,6 +391,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--material-subsets") {
         return material_subset_test(argv[2]);
     }
+    if (argc == 3 && std::string(argv[1]) == "--material-texture") {
+        return material_texture_test(argv[2]);
+    }
     if (argc == 3 && std::string(argv[1]) == "--assets-root") {
         return supplied_assets_test(argv[2]);
     }
@@ -361,9 +404,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--cooked-skin") {
         return cooked_skin_test(argv[2]);
     }
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --material-texture FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
 #else
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --assets-root DIR | --decode FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --material-texture FILE | --assets-root DIR | --decode FILE\n");
 #endif
     return 2;
 }

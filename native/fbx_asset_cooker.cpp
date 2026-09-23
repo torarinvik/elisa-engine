@@ -24,6 +24,7 @@ namespace {
 constexpr size_t MAX_PACKAGE_BYTES = size_t(64) * 1024 * 1024;
 constexpr size_t MAX_LINE_BYTES = size_t(16) * 1024 * 1024;
 constexpr uint32_t SLOT_MATERIAL_DOUBLE_SIDED_FLAG = 1u;
+constexpr uint32_t SLOT_MATERIAL_OCCLUSION_FLAG = 2u;
 
 bool safe_asset_key(const std::string& value) {
     if (value.empty() || value.size() > 4096 || value.front() == '/' ||
@@ -88,7 +89,9 @@ std::vector<uint8_t> slot_material_bytes(const std::vector<elisa::assets::FbxMat
         const std::vector<uint8_t> factor_bytes = float_bytes(factors);
         bytes.insert(bytes.end(), factor_bytes.begin(), factor_bytes.end());
         append_u32_le(bytes, material.alpha_mode);
-        append_u32_le(bytes, material.double_sided ? SLOT_MATERIAL_DOUBLE_SIDED_FLAG : 0);
+        uint32_t flags = material.double_sided ? SLOT_MATERIAL_DOUBLE_SIDED_FLAG : 0;
+        if (material.occlusion) flags |= SLOT_MATERIAL_OCCLUSION_FLAG;
+        append_u32_le(bytes, flags);
     }
     return bytes;
 }
@@ -232,6 +235,31 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     for (const auto& material : mesh.materials) slot_material_names.push_back(material.name);
     const std::vector<uint8_t> slot_materials = slot_material_bytes(mesh.materials);
     const std::vector<uint8_t> slot_material_names_bytes = skin_name_bytes(slot_material_names);
+    std::vector<std::string> texture_source_names;
+    std::vector<uint32_t> slot_texture_sources;
+    slot_texture_sources.reserve(mesh.materials.size() * 5);
+    for (const auto& material : mesh.materials) {
+        for (size_t role = 0; role < material.texture_sources.size(); ++role) {
+            const std::string& source = material.texture_sources[role];
+            if (source.empty()) {
+                slot_texture_sources.push_back(0);
+                continue;
+            }
+            const auto found = std::find(texture_source_names.begin(), texture_source_names.end(), source);
+            if (found == texture_source_names.end()) {
+                if (texture_source_names.size() >= 64) {
+                    std::fprintf(stderr, "FBX material textures exceed the 64-image package limit\n");
+                    return false;
+                }
+                texture_source_names.push_back(source);
+                slot_texture_sources.push_back(uint32_t(texture_source_names.size()));
+            } else {
+                slot_texture_sources.push_back(uint32_t(found - texture_source_names.begin() + 1));
+            }
+        }
+    }
+    const std::vector<uint8_t> texture_source_names_bytes = skin_name_bytes(texture_source_names);
+    const std::vector<uint8_t> slot_texture_source_bytes = index_bytes(slot_texture_sources);
     const std::vector<uint8_t> skin_indices = index_bytes(mesh.skin_indices);
     const std::vector<uint8_t> skin_weights = float_bytes(mesh.skin_weights);
     const std::vector<uint8_t> skin_names = skin_name_bytes(mesh.skin_bone_names);
@@ -258,6 +286,9 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t subsets_encoded = base64_size(subset_bytes.size());
     const size_t slot_materials_encoded = base64_size(slot_materials.size());
     const size_t slot_material_names_encoded = base64_size(slot_material_names_bytes.size());
+    const size_t texture_source_names_encoded = base64_size(texture_source_names_bytes.size());
+    const size_t slot_texture_sources_encoded = base64_size(slot_texture_source_bytes.size());
+    const bool has_texture_sources = !texture_source_names.empty();
     const size_t skin_indices_encoded = base64_size(skin_indices.size());
     const size_t skin_weights_encoded = base64_size(skin_weights.size());
     const size_t skin_names_encoded = base64_size(skin_names.size());
@@ -281,6 +312,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload ||
         subsets_encoded > max_payload || slot_materials_encoded > max_payload ||
         slot_material_names_encoded > max_payload ||
+        (has_texture_sources && (texture_source_names_encoded > max_payload ||
+            slot_texture_sources_encoded > max_payload)) ||
         (has_skin && (skin_indices_encoded > max_payload || skin_weights_encoded > max_payload ||
             skin_names_encoded > max_payload || skin_joint_parents_encoded > max_payload ||
             skin_joint_rest_encoded > max_payload || skin_joint_names_encoded > max_payload ||
@@ -322,6 +355,11 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         package << "slot_material_stride=48\n"
             << "slot_materials_b64=" << base64(slot_materials) << "\n"
             << "slot_material_names_b64=" << base64(slot_material_names_bytes) << "\n";
+    }
+    if (has_texture_sources) {
+        package << "texture_source_count=" << texture_source_names.size() << "\n"
+            << "texture_source_names_b64=" << base64(texture_source_names_bytes) << "\n"
+            << "slot_texture_sources_b64=" << base64(slot_texture_source_bytes) << "\n";
     }
     if (has_skin) {
         package << "skin_bones=" << mesh.skin_bone_names.size() << "\n"
