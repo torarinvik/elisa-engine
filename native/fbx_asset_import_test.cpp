@@ -136,6 +136,25 @@ int mesh_selection_test(const std::filesystem::path& path) {
     return ok ? 0 : 1;
 }
 
+int material_subset_test(const std::filesystem::path& path) {
+    const auto imported = elisa::assets::import_fbx(path, true);
+    bool ok = check(imported.ok, "two-material FBX fixture imports");
+    if (!imported.ok) {
+        std::fprintf(stderr, "  importer error: %s\n", imported.error.c_str());
+        return 1;
+    }
+    ok &= check(imported.primary_mesh.material_slots == 2 && imported.primary_mesh.subsets.size() == 2,
+        "one cooked mesh preserves two polygon material slots as two subsets");
+    if (imported.primary_mesh.subsets.size() == 2) {
+        const auto& first = imported.primary_mesh.subsets[0];
+        const auto& second = imported.primary_mesh.subsets[1];
+        ok &= check(first.index_start == 0 && first.index_count == 3 && first.material_slot == 0 &&
+            second.index_start == 3 && second.index_count == 3 && second.material_slot == 1,
+            "material subsets form an ordered exact partition of the triangle indices");
+    }
+    return ok ? 0 : 1;
+}
+
 int decode_mesh(const std::filesystem::path& path) {
     const auto asset = elisa::assets::import_fbx(path, true);
     if (!asset.ok) {
@@ -299,6 +318,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--mesh-selection") {
         return mesh_selection_test(argv[2]);
     }
+    if (argc == 3 && std::string(argv[1]) == "--material-subsets") {
+        return material_subset_test(argv[2]);
+    }
     if (argc == 3 && std::string(argv[1]) == "--assets-root") {
         return supplied_assets_test(argv[2]);
     }
@@ -309,9 +331,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--cooked-skin") {
         return cooked_skin_test(argv[2]);
     }
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
 #else
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --assets-root DIR | --decode FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --assets-root DIR | --decode FILE\n");
 #endif
     return 2;
 }

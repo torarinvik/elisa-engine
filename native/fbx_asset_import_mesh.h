@@ -10,6 +10,8 @@
 
 namespace elisa::assets::detail {
 
+inline constexpr size_t MAX_FBX_MATERIAL_SLOTS = 16;
+
 inline ufbx_vec3 face_normal(ufbx_vec3 a, ufbx_vec3 b, ufbx_vec3 c) {
     const double abx = double(b.x) - a.x;
     const double aby = double(b.y) - a.y;
@@ -74,8 +76,17 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
     output.node_name.assign(source_node->name.data ? source_node->name.data : "",
         source_node->name.length);
     output.mesh_name.assign(mesh.name.data ? mesh.name.data : "", mesh.name.length);
+    const size_t material_count = source_node->materials.count != 0
+        ? source_node->materials.count : mesh.materials.count;
+    if (material_count > MAX_FBX_MATERIAL_SLOTS ||
+        (mesh.face_material.count != 0 && mesh.face_material.count != mesh.faces.count)) {
+        fail(result, "FBX mesh material slots exceed the bounded 16-slot limit or have invalid face assignments");
+        return false;
+    }
+    output.material_slots = uint32_t(std::max<size_t>(1, material_count));
     std::vector<FbxVertex> corners;
     std::vector<FbxSkinInfluence> skin_corners;
+    std::vector<uint32_t> triangle_material_slots;
     std::vector<uint32_t> indices(corner_count);
     corners.reserve(corner_count);
     std::vector<uint32_t> triangle_indices(mesh.max_face_triangles * 3);
@@ -123,12 +134,20 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
     for (size_t face_index = 0; face_index < mesh.faces.count; ++face_index) {
         const ufbx_face face = mesh.faces.data[face_index];
         if (face.num_indices < 3) continue;
+        uint32_t material_slot = mesh.face_material.count != 0 ? mesh.face_material.data[face_index] : 0;
+        if (material_slot == UFBX_NO_INDEX) material_slot = 0;
+        if (material_slot >= output.material_slots) {
+            fail(result, "FBX face references a material outside its mesh slot table");
+            return false;
+        }
         const size_t triangle_count = ufbx_triangulate_face(
             triangle_indices.data(), triangle_indices.size(), &mesh, face);
         if (triangle_count == 0 || triangle_count > mesh.max_face_triangles) {
             fail(result, "ufbx could not triangulate an FBX mesh face");
             return false;
         }
+        for (size_t triangle = 0; triangle < triangle_count; ++triangle)
+            triangle_material_slots.push_back(material_slot);
         for (size_t corner = 0; corner < triangle_count * 3; ++corner) {
             const uint32_t index = triangle_indices[corner];
             if (index >= mesh.vertex_position.indices.count) {
@@ -244,7 +263,7 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
             corners.push_back(vertex);
         }
     }
-    if (corners.size() != corner_count) {
+    if (corners.size() != corner_count || triangle_material_slots.size() != mesh.num_triangles) {
         fail(result, "FBX face triangulation disagrees with the reported triangle count");
         return false;
     }
@@ -268,6 +287,20 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
     corners.resize(unique_count);
     if (skin != nullptr) skin_corners.resize(unique_count);
     indices.resize(corner_count);
+    std::vector<uint32_t> material_ordered_indices;
+    material_ordered_indices.reserve(corner_count);
+    for (uint32_t slot = 0; slot < output.material_slots; ++slot) {
+        const uint32_t subset_start = uint32_t(material_ordered_indices.size());
+        for (size_t triangle = 0; triangle < triangle_material_slots.size(); ++triangle) {
+            if (triangle_material_slots[triangle] != slot) continue;
+            material_ordered_indices.push_back(indices[triangle * 3]);
+            material_ordered_indices.push_back(indices[triangle * 3 + 1]);
+            material_ordered_indices.push_back(indices[triangle * 3 + 2]);
+        }
+        const uint32_t subset_count = uint32_t(material_ordered_indices.size()) - subset_start;
+        if (subset_count != 0) output.subsets.push_back({subset_start, subset_count, slot});
+    }
+    indices.swap(material_ordered_indices);
     output.positions.reserve(unique_count * 3);
     output.normals.reserve(unique_count * 3);
     output.uvs.reserve(unique_count * 2);

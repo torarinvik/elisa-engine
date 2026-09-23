@@ -39,6 +39,12 @@ struct FbxAnimationClip {
     std::vector<float> local_transforms;
 };
 
+struct FbxMeshSubset {
+    uint32_t index_start = 0;
+    uint32_t index_count = 0;
+    uint32_t material_slot = 0;
+};
+
 struct FbxMeshData {
     std::string node_name;
     std::string mesh_name;
@@ -47,6 +53,8 @@ struct FbxMeshData {
     std::vector<float> uvs;
     std::vector<float> tangents;
     std::vector<uint32_t> indices;
+    std::vector<FbxMeshSubset> subsets;
+    uint32_t material_slots = 1;
     std::vector<std::string> skin_bone_names;
     std::vector<uint32_t> skin_indices;
     std::vector<float> skin_weights;

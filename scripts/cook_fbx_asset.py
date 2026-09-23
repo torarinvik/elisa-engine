@@ -18,7 +18,7 @@ import tempfile
 
 import cook_gltf_animation
 from elisa_package import write_geometry_package
-from fbx_test_fixtures import write_two_mesh_scene
+from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +120,29 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             raise ValueError("cooked package contains an invalid tangent frame")
     if any(value >= vertex_count for (value,) in struct.iter_unpack("<I", indices)):
         raise ValueError("cooked package contains an out-of-range index")
+    subset_fields = {"material_slots", "subset_count", "subset_stride", "subsets_b64"}
+    present_subset_fields = subset_fields.intersection(fields)
+    if present_subset_fields and present_subset_fields != subset_fields:
+        raise ValueError("cooked package has incomplete material subset metadata")
+    if present_subset_fields:
+        try:
+            material_slots = int(fields["material_slots"])
+            subset_count = int(fields["subset_count"])
+        except ValueError as failure:
+            raise ValueError("cooked package has invalid material subset counts") from failure
+        subset_data = decode("subsets_b64")
+        if not 1 <= material_slots <= 16 or not 1 <= subset_count <= 16 or \
+                fields["subset_stride"] != "12" or len(subset_data) != subset_count * 12:
+            raise ValueError("cooked package has unsupported material subset bounds or stride")
+        subset_words = struct.unpack(f"<{subset_count * 3}I", subset_data)
+        next_index = 0
+        for subset in range(subset_count):
+            start, count, slot = subset_words[subset * 3:subset * 3 + 3]
+            if start != next_index or count == 0 or count % 3 or count > index_count - start or slot >= material_slots:
+                raise ValueError("cooked package material subsets do not partition the index stream")
+            next_index += count
+        if next_index != index_count:
+            raise ValueError("cooked package material subsets do not cover the index stream")
     skin_fields = {"skin_bones", "skin_indices_stride", "skin_weights_stride",
         "skin_indices_b64", "skin_weights_b64", "skin_names_b64"}
     present_skin_fields = skin_fields.intersection(fields)
@@ -291,7 +314,7 @@ def build_cooker(build_dir: Path) -> Path:
     return executable
 
 
-def write_grid_fixture(path: Path, cells_per_side: int) -> None:
+def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = False) -> None:
     """Write a small planar FBX grid that exercises the real simplification path."""
     vertex_count = (cells_per_side + 1) ** 2
     positions = []
@@ -301,6 +324,7 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
             positions.extend((str(x), str(y), "0"))
             uvs.extend((str(x / cells_per_side), str(y / cells_per_side)))
     polygon_indices = []
+    polygon_materials = []
     for y in range(cells_per_side):
         for x in range(cells_per_side):
             top_left = y * (cells_per_side + 1) + x
@@ -311,6 +335,23 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
                     (top_left, bottom_right, bottom_left)):
                 polygon_indices.extend(str(index) for index in triangle[:-1])
                 polygon_indices.append(str(-triangle[-1] - 1))
+                if two_materials:
+                    polygon_materials.append("0" if x < cells_per_side // 2 else "1")
+
+    definitions = ('Definitions: { Version: 100 Count: 4 '
+        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } '
+        'ObjectType: "Material" { Count: 2 } }\n' if two_materials else
+        'Definitions: { Version: 100 Count: 2 '
+        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } }\n')
+    material_layer = (f'LayerElementMaterial: 0 {{ Version: 101 Name: "" '
+        f'MappingInformationType: "ByPolygon" ReferenceInformationType: "IndexToDirect" '
+        f'Materials: *{len(polygon_materials)} {{ a: {",".join(polygon_materials)} }} }} '
+        if two_materials else "")
+    layer_material_ref = (' LayerElement: { Type: "LayerElementMaterial" TypedIndex: 0 }'
+        if two_materials else "")
+    material_objects = ('Material: 1003, "Material::First", "" { Version: 102 } '
+        'Material: 1004, "Material::Second", "" { Version: 102 } ' if two_materials else "")
+    material_connections = (' C: "OO",1003,1002 C: "OO",1004,1002' if two_materials else "")
 
     path.write_text(
         '; FBX 7.4.0 project file\n'
@@ -323,8 +364,8 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
         'P: "CoordAxis", "int", "Integer", "", 0 '
         'P: "CoordAxisSign", "int", "Integer", "", 1 '
         'P: "UnitScaleFactor", "double", "Number", "", 1 } }\n'
-        'Definitions: { Version: 100 Count: 2 '
-        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } }\n'
+        + definitions
+        +
         'Objects: { '
         f'Geometry: 1001, "Geometry::Grid", "Mesh" {{ '
         f'GeometryVersion: 124 Vertices: *{vertex_count * 3} {{ a: '
@@ -334,9 +375,12 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
         f'LayerElementUV: 0 {{ Version: 101 Name: "UVMap" '
         f'MappingInformationType: "ByVertice" ReferenceInformationType: "Direct" '
         f'UV: *{len(uvs)} {{ a: {",".join(uvs)} }} }} '
-        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 } } } '
-        'Model: 1002, "Model::Grid", "Mesh" { Version: 232 } }\n'
-        'Connections: { C: "OO",1001,1002 C: "OO",1002,0 }\n'
+        + material_layer
+        + f'Layer: 0 {{ Version: 100 LayerElement: {{ Type: "LayerElementUV" TypedIndex: 0 }}{layer_material_ref} }} }} '
+        + 'Model: 1002, "Model::Grid", "Mesh" { Version: 232 } '
+        + material_objects
+        + '}\n'
+        + f'Connections: {{ C: "OO",1001,1002 C: "OO",1002,0{material_connections} }}\n'
         'Takes: { Current: "" }\n',
         encoding="ascii")
 
@@ -412,6 +456,38 @@ def main(arguments: list[str]) -> int:
                     directory / "selected-mesh.pkg", mesh_name="SmallTriangle")
                 if int(multi_mesh_fields["triangles"]) != 2 or int(selected_mesh_fields["triangles"]) != 1:
                     raise ValueError("exact FBX mesh-name selection did not override largest-mesh selection")
+                material_source = directory / "two-material-mesh.fbx"
+                write_two_material_mesh(material_source)
+                material_fields = cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
+                    directory / "two-material-mesh.pkg")
+                material_subsets = base64.b64decode(material_fields["subsets_b64"], validate=True)
+                if (int(material_fields["triangles"]) != 2 or material_fields.get("material_slots") != "2" or
+                        material_fields.get("subset_count") != "2" or
+                        struct.unpack("<6I", material_subsets) != (0, 3, 0, 3, 3, 1)):
+                    raise ValueError("FBX cooker did not preserve its two polygon material subsets")
+                try:
+                    cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
+                        directory / "under-budget.pkg", 1)
+                except subprocess.CalledProcessError as failure:
+                    if "at least one triangle per FBX material subset" not in (failure.stderr or ""):
+                        raise
+                else:
+                    raise ValueError("FBX simplification accepted fewer triangles than material subsets")
+                material_grid_source = directory / "two-material-grid.fbx"
+                material_grid_output = directory / "two-material-grid.pkg"
+                write_grid_fixture(material_grid_source, 16, two_materials=True)
+                material_grid_fields = cook_one(cooker, material_grid_source,
+                    "self-test/two-material-grid.fbx", material_grid_output, 128)
+                simplified_subsets = struct.unpack("<6I",
+                    base64.b64decode(material_grid_fields["subsets_b64"], validate=True))
+                first_start, first_count, first_slot, second_start, second_count, second_slot = simplified_subsets
+                if (int(material_grid_fields["triangles"]) > 128 or
+                        int(material_grid_fields.get("material_slots", "0")) != 2 or
+                        int(material_grid_fields.get("subset_count", "0")) != 2 or
+                        (first_start, first_slot, second_start, second_slot) != (0, 0, first_count, 1) or
+                        first_count == 0 or second_count == 0 or (first_count + second_count) % 3 != 0 or
+                        first_count + second_count != int(material_grid_fields["indices"])):
+                    raise ValueError("FBX simplification did not preserve exact material subset ranges")
                 grid_source = directory / "grid.fbx"
                 cache_output = directory / "grid-cache.pkg"
                 grid_output = directory / "grid.pkg"
