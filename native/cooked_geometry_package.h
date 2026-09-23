@@ -24,7 +24,6 @@
 namespace elisa::assets {
 inline constexpr uint32_t MAX_GEOMETRY_SUBSETS = 16;
 inline constexpr uint32_t MAX_GEOMETRY_MATERIAL_SLOTS = 16;
-inline constexpr uint32_t MAX_GEOMETRY_ANIMATION_CLIPS = 24;
 
 struct CookedGeometry {
     std::vector<float> positions;
