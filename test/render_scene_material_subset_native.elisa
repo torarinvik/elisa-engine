@@ -16,6 +16,14 @@ module RenderSceneMaterialSubsetNativeTests:
             index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_placement_count(render_id: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_placement_subset_matches(render_id: i64,
+            placement_index: u32, subset: u32, index_offset: u32, index_count: u32,
+            material_high: u64, material_low: u64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_casts_shadow(render_id: i64) -> i32
 
         @callconv(c)
@@ -405,9 +413,11 @@ module RenderSceneMaterialSubsetNativeTests:
                 return 12
             return 13 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
             scene_handle: i64 = elisa_render_scene_v1_snapshot_result(0)
-            return 14 if scene_handle <= 0 or elisa_render_scene_v1_test_snapshot_subset_count(Row::FBX_SCENE) != 2
-            return 15 if not subset_is(Row::FBX_SCENE, 0, 0, 3, Paint::BLUE)
-            return 16 if not subset_is(Row::FBX_SCENE, 1, 3, 6, Paint::RED)
+            return 14 if scene_handle <= 0 or elisa_render_scene_v1_test_snapshot_placement_count(Row::FBX_SCENE) != 2
+            return 15 if elisa_render_scene_v1_test_snapshot_placement_subset_matches(Row::FBX_SCENE,
+                0, 0, 0, 3, Ids::MATERIALS, Paint::BLUE) != 1
+            return 16 if elisa_render_scene_v1_test_snapshot_placement_subset_matches(Row::FBX_SCENE,
+                1, 0, 0, 6, Ids::MATERIALS, Paint::RED) != 1
             return 17 if not retire(scene_handle)
             return 18 if unregister_mesh(Mesh::FBX_PANEL) != Code::OK
             0

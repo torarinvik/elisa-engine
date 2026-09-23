@@ -5,7 +5,7 @@ from __future__ import annotations
 import struct
 import zlib
 
-from fbx_surface_texture import decode_png_rgba, pack_surface_maps
+from fbx_surface_texture import ALPHA_BLEND, ALPHA_MASK, decode_png_rgba, infer_alpha_mode, pack_surface_maps
 from png_image import encode_png
 
 
@@ -90,6 +90,19 @@ def validate_surface_texture_decoder() -> None:
     if decode_png_rgba(pack_surface_maps(None, metalness)) != (2, 1,
             bytes((255, 255, 200, 255, 255, 255, 20, 255))):
         raise ValueError("metalness-only packing does not fill missing channels neutrally")
+    cutout = encode_png(2, 1, bytes((220, 80, 40, 0, 40, 80, 220, 255)))
+    translucent = encode_png(2, 1, bytes((220, 80, 40, 96, 40, 80, 220, 255)))
+    opaque = encode_png(2, 1, bytes((220, 80, 40, 255, 40, 80, 220, 255)))
+    rgb_png, _ = _filtered_png(2, 1, [bytes((220, 80, 40))])
+    ihdr_end = len(PNG_SIGNATURE) + 4 + 4 + 13 + 4
+    rgb_trns = (rgb_png[:ihdr_end] + _chunk(b"tRNS", struct.pack(">HHH", 220, 80, 40)) +
+        rgb_png[ihdr_end:])
+    if (infer_alpha_mode(cutout, 0) != ALPHA_MASK or
+            infer_alpha_mode(translucent, 0) != ALPHA_BLEND or
+            infer_alpha_mode(opaque, 0) != 0 or
+            infer_alpha_mode(rgb_trns, 0) != ALPHA_BLEND or
+            infer_alpha_mode(cutout, ALPHA_BLEND) != ALPHA_BLEND):
+        raise ValueError("FBX PNG alpha samples did not infer the safe material alpha policy")
 
     damaged = bytearray(roughness)
     damaged[-1] ^= 1

@@ -43,6 +43,49 @@ RGBA_ALPHA_CHANNEL = 3
 OPAQUE_ALPHA = 255
 NEUTRAL_SURFACE_CHANNEL = 255
 MAX_DECODED_RGBA_BYTES = 64 * 1024 * 1024
+ALPHA_OPAQUE = 0
+ALPHA_MASK = 1
+ALPHA_BLEND = 2
+
+
+def _png_has_transparency_chunk(data: bytes) -> bool:
+    offset = len(PNG_SIGNATURE)
+    while offset + PNG_CHUNK_OVERHEAD_BYTES <= len(data):
+        length = struct.unpack_from(">I", data, offset)[0]
+        kind_start = offset + PNG_CHUNK_LENGTH_BYTES
+        kind = data[kind_start:kind_start + PNG_CHUNK_TYPE_BYTES]
+        if length > len(data) - offset - PNG_CHUNK_OVERHEAD_BYTES:
+            return True
+        if kind == b"tRNS":
+            return True
+        offset += PNG_CHUNK_OVERHEAD_BYTES + length
+        if kind == b"IEND":
+            break
+    return False
+
+
+def infer_alpha_mode(png: bytes, current_mode: int) -> int:
+    """Infer a safe opaque/mask/blend policy from a base-color PNG alpha."""
+    if current_mode != ALPHA_OPAQUE or not png.startswith(PNG_SIGNATURE):
+        return current_mode
+    if len(png) < len(PNG_SIGNATURE) + PNG_CHUNK_OVERHEAD_BYTES + PNG_HEADER_BYTES:
+        return current_mode
+    _, _, bit_depth, color_type, compression, filtering, interlace = struct.unpack_from(
+        ">IIBBBBB", png, len(PNG_SIGNATURE) + PNG_CHUNK_LENGTH_BYTES + PNG_CHUNK_TYPE_BYTES)
+    alpha_channel = color_type in (PNG_COLOR_TYPE_GRAY_ALPHA, PNG_COLOR_TYPE_RGBA)
+    if not alpha_channel and not _png_has_transparency_chunk(png):
+        return current_mode
+    # Indexed tRNS and non-8-bit alpha remain visually safe with blending. The
+    # mask inference needs exact alpha samples and is limited to decoder input.
+    if (alpha_channel and bit_depth == PNG_BIT_DEPTH_8 and compression == 0 and filtering == 0 and
+            interlace == PNG_INTERLACE_NONE):
+        _, _, rgba = decode_png_rgba(png)
+        alphas = rgba[RGBA_ALPHA_CHANNEL::RGBA_CHANNEL_COUNT]
+        if all(alpha == OPAQUE_ALPHA for alpha in alphas):
+            return ALPHA_OPAQUE
+        if all(alpha in (0, OPAQUE_ALPHA) for alpha in alphas):
+            return ALPHA_MASK
+    return ALPHA_BLEND
 
 
 def decode_png_rgba(data: bytes) -> tuple[int, int, bytes]:
