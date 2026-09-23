@@ -122,6 +122,17 @@ def write_package(output: Path,
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 
+def write_separate_root_package(output: Path) -> tuple[Path, dict]:
+    """Cook the same skinned mesh with a skeleton on an independent scene root."""
+    document = generated_document()
+    document["nodes"][5]["children"] = [0]
+    document["scenes"][0]["nodes"] = [5, 4, 3]
+    with tempfile.TemporaryDirectory(prefix="elisa-gltf-separate-skin-root-") as temporary:
+        source = Path(temporary) / "separate_root_skinned_panel.gltf"
+        source.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+
+
 def write_large_rig_package(output: Path, rig_node_count: int) -> tuple[Path, dict]:
     """Cook a bounded rig with more transform nodes than palette bones."""
     if not 3 <= rig_node_count <= cook_gltf_skin.MAX_RIG_NODES:
@@ -274,6 +285,18 @@ def self_test(temporary: Path) -> int:
             sections.get("animation_0_frames") != "31"):
         print("glTF skin self-test failed: package is unstable or incomplete", file=sys.stderr)
         return 1
+    separate_package, _ = write_separate_root_package(temporary / "separate-root.pkg")
+    separate_sections = dict(line.split("=", 1)
+        for line in separate_package.read_text(encoding="utf-8").splitlines())
+    if (separate_sections.get("skin_joints") != "4" or
+            struct.unpack("<4i", base64.b64decode(separate_sections["skin_joint_parents_b64"])) !=
+                (-1, 0, 1, 2) or
+            struct.unpack("<2I", base64.b64decode(separate_sections["skin_cluster_joints_b64"])) != (2, 3) or
+            struct.unpack("<10f", base64.b64decode(separate_sections["skin_joint_rest_b64"])[:40]) !=
+                (0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
+        print("glTF skin self-test failed: separate-root basis was not preserved in the package",
+            file=sys.stderr)
+        return 1
     document = generated_document()
     buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
         json.dumps(document, separators=(",", ":")).encode("utf-8")))
@@ -309,6 +332,22 @@ def self_test(temporary: Path) -> int:
             separate_rig["joints"][0]["rest"][:3] != (0.0, 0.0, -1.0)):
         print("glTF skin self-test failed: separate skeleton root lacks a mesh-relative basis",
             file=sys.stderr)
+        return 1
+
+    sheared_basis = deepcopy(document)
+    sheared_basis["nodes"][0].update({
+        "rotation": [0.0, 0.3826834323650898, 0.0, 0.9238795325112867],
+        "scale": [2.0, 1.0, 1.0],
+    })
+    try:
+        normalized_skin(sheared_basis)
+    except ValueError as error:
+        if "shear" not in str(error):
+            print(f"glTF skin self-test failed: sheared mesh-relative basis failed for another reason: {error}",
+                file=sys.stderr)
+            return 1
+    else:
+        print("glTF skin self-test failed: accepted a sheared mesh-relative basis", file=sys.stderr)
         return 1
 
     matrix_ancestor = deepcopy(document)

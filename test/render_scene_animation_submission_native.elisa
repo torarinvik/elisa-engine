@@ -11,6 +11,7 @@ module RenderSceneAnimationSubmissionNativeTests:
         const INVERSE_BIND_Y_COLUMN: u32 = 1
         const EXPECTED_WICKED_INVERSE_BIND_X: f32 = 2.0
         const EXPECTED_WICKED_INVERSE_BIND_Y: f32 = -1.0
+        const SEPARATE_ROOT_WICKED_Z: f32 = 0.5
         const ANIMATION_STATE_MATCH_ALL: i32 = 31
         const ANIMATION_STATE_ERROR_BASE: i32 = 40
 
@@ -27,6 +28,10 @@ module RenderSceneAnimationSubmissionNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_inverse_bind(handle: RenderScene::InstanceHandle,
             cluster: u32, row: u32, column: u32, expected: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_skin_mesh_relative_root(
+            handle: RenderScene::InstanceHandle, expected_world_z: f32) -> i32
 
     public:
         def exercise() -> i32:
@@ -143,7 +148,20 @@ module RenderSceneAnimationSubmissionNativeTests:
             destroyed: i32 = catch RenderScene::destroy(mesh):
                 ok: 0
                 error failure: 1
-            8 if destroyed != 0 else 0
+            return 8 if destroyed != 0
+            separate_root: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/separate-root-skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 25
+            return 26 if Application::pump() != Application::PumpStatus.Running
+            return 27 if elisa_render_scene_v1_test_skin_mesh_relative_root(
+                separate_root, SEPARATE_ROOT_WICKED_Z) != 1
+            separate_destroyed: i32 = catch RenderScene::destroy(separate_root):
+                ok: 0
+                error failure: 1
+            return 28 if separate_destroyed != 0
+            0
 
 module RenderSceneImportedSceneNativeTests:
     private:
