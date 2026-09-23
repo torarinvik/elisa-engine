@@ -1,31 +1,101 @@
 include "../src/assets/lod.elisa"
+include "../src/vendor/elisa_math.elisa"
+
+const TEST_MESH_NAMESPACE: u64 = 0xA55E700000000001
+const TEST_MATERIAL_NAMESPACE: u64 = 0xA55E700000000002
+
+def test_asset_id(namespace: u64, value: u64) -> Assets::AssetId:
+    Assets::AssetId{high: namespace, low: value}
+
+def test_level(mesh: Assets::AssetId, screen_error: f32,
+        byte_size: usize, subset: Assets::AssetId, live: bool = true) -> AssetLod::Level:
+    AssetLod::Level{mesh_id: mesh, screen_error: screen_error,
+        byte_size: byte_size, material_subset: subset, live: live}
 
 def main() -> i32:
+    shared_subset: Assets::AssetId = test_asset_id(TEST_MATERIAL_NAMESPACE, 4)
     chain: mutable AssetLod::Chain = AssetLod::Chain()
-    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 1, screen_error: 0.01, byte_size: 4096, material_subset: 4, live: true}):
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 1), 0.01, 4096, shared_subset)):
         ok: 0
         error failure: return 1
-    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 2, screen_error: 0.1, byte_size: 2048, material_subset: 4, live: true}):
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 2), 0.1, 2048, shared_subset)):
         ok: 0
         error failure: return 2
-    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 3, screen_error: 0.5, byte_size: 1024, material_subset: 4, live: true}):
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 3), 0.5, 1024, shared_subset)):
         ok: 0
         error failure: return 3
     return 4 if AssetLod::level_count(&chain) != 3
     fine: AssetLod::Level = catch AssetLod::select(&chain, 0.05):
         value: value
         error failure: return 5
-    return 6 if fine.mesh_id != 1
+    return 6 if fine.mesh_id.low != 1
     coarse: AssetLod::Level = catch AssetLod::select(&chain, 0.2):
         value: value
         error failure: return 7
-    return 8 if coarse.mesh_id != 2
-    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 4, screen_error: 0.25, byte_size: 512, material_subset: 4, live: true}):
+    return 8 if coarse.mesh_id.low != 2
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 4), 0.25, 512, shared_subset)):
         ok: 0
         AssetLod::LodError.NonMonotonicError: 0
         error failure: return 9
-    _ = catch AssetLod::append(&chain, AssetLod::Level{mesh_id: 5, screen_error: 0.6, byte_size: 512, material_subset: 9, live: true}):
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 5), 0.6, 512,
+        test_asset_id(TEST_MATERIAL_NAMESPACE, 9))):
         ok: 0
         AssetLod::LodError.MaterialSubsetChanged: 0
         error failure: return 10
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 1), 0.6, 512, shared_subset)):
+        ok: 0
+        AssetLod::LodError.DuplicateMesh: 0
+        error failure: return 11
+
+    identity_chain: mutable AssetLod::Chain = AssetLod::Chain()
+    _ = catch AssetLod::append(&identity_chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 1), 0.01, 1024, shared_subset)):
+        ok: 0
+        error failure: return 12
+    _ = catch AssetLod::append(&identity_chain, test_level(
+        test_asset_id(TEST_MATERIAL_NAMESPACE, 1), 0.02, 512, shared_subset)):
+        ok: 0
+        error failure: return 13
+    return 14 if AssetLod::level_count(&identity_chain) != 2
+    resolved: AssetLod::Level = catch AssetLod::read(&identity_chain,
+        test_asset_id(TEST_MATERIAL_NAMESPACE, 1)):
+        value: value
+        error failure: return 15
+    return 16 if resolved.mesh_id.high != TEST_MATERIAL_NAMESPACE
+    _ = catch AssetLod::read(&identity_chain, Assets::AssetId{high: 0, low: 0}):
+        value: value
+        AssetLod::LodError.UnknownMesh: 0
+        error failure: return 17
+
+    _ = catch AssetLod::append(&chain, test_level(
+        Assets::AssetId{high: 0, low: 0}, 0.7, 256, shared_subset)):
+        ok: 0
+        AssetLod::LodError.InvalidLevel: 0
+        error failure: return 18
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 6), 0.7, 256, shared_subset, false)):
+        ok: 0
+        AssetLod::LodError.InvalidLevel: 0
+        error failure: return 19
+    nan: f32 = ElisaMath::sqrtf(-1.0)
+    _ = catch AssetLod::append(&chain, test_level(
+        test_asset_id(TEST_MESH_NAMESPACE, 7), nan, 256, shared_subset)):
+        ok: 0
+        AssetLod::LodError.InvalidLevel: 0
+        error failure: return 20
+    _ = catch AssetLod::select(&chain, nan):
+        value: value
+        AssetLod::LodError.InvalidLevel: 0
+        error failure: return 21
+    empty_chain: AssetLod::Chain = AssetLod::Chain()
+    _ = catch AssetLod::select(&empty_chain, 0.1):
+        value: value
+        AssetLod::LodError.InvalidLevel: 0
+        error failure: return 22
     0

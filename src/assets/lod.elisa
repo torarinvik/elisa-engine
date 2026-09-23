@@ -1,20 +1,36 @@
 # Portable mesh LOD contract. Offline meshoptimizer stages populate these
 # levels; runtime selection only reads validated screen-error metadata.
+include "./descriptor.elisa"
+
 module AssetLod:
     private:
         const module Limits:
             MAX_LEVELS: usize = 8
 
-        def level_slot(chain: Chain&, mesh_id: i64) -> usize:
+        def finite(value: f32) -> bool:
+            value - value == 0.0
+
+        def valid_level(level: Level) -> bool:
+            mesh_valid: bool = Assets::asset_id_valid(level.mesh_id)
+            subset_valid: bool = Assets::asset_id_valid(level.material_subset)
+            error_valid: bool = finite(level.screen_error) and level.screen_error >= 0.0
+            payload_valid: bool = level.byte_size != 0 and level.live
+            mesh_valid and subset_valid and error_valid and payload_valid
+
+        def selectable(chain: Chain&, screen_error_budget: f32) -> bool:
+            chain.count != 0 and finite(screen_error_budget) and screen_error_budget >= 0.0
+
+        def level_slot(chain: Chain&, mesh_id: Assets::AssetId) -> usize:
             for index in 0..<chain.count |slot: usize = Limits::MAX_LEVELS| -> slot:
-                break index if chain.levels[index].live and chain.levels[index].mesh_id == mesh_id
+                break index if chain.levels[index].live and Assets::same_asset_id(
+                    chain.levels[index].mesh_id, mesh_id)
 
     public:
         struct Level:
-            mesh_id: i64
+            mesh_id: Assets::AssetId
             screen_error: f32
             byte_size: usize
-            material_subset: i64
+            material_subset: Assets::AssetId
             live: bool
 
         enum LodError:
@@ -37,24 +53,26 @@ module AssetLod:
             chain.count
 
         def append(chain: mutable Chain&, level: Level) -> void error[LodError]:
-            raise LodError.InvalidLevel if level.mesh_id <= 0 or level.screen_error < 0.0 or level.byte_size == 0
+            raise LodError.InvalidLevel if not valid_level(level)
             raise LodError.DuplicateMesh if level_slot(chain, level.mesh_id) < Limits::MAX_LEVELS
             raise LodError.Capacity if chain.count >= Limits::MAX_LEVELS
             if chain.count > 0:
                 previous: Level = chain.levels[chain.count - 1]
                 raise LodError.NonMonotonicError if level.screen_error < previous.screen_error
-                raise LodError.MaterialSubsetChanged if level.material_subset != previous.material_subset
+                raise LodError.MaterialSubsetChanged if not Assets::same_asset_id(
+                    level.material_subset, previous.material_subset)
             chain.levels[chain.count] <- level
             chain.count <- chain.count + 1
 
         def select(chain: Chain&, screen_error_budget: f32) -> Level error[LodError]:
-            raise LodError.InvalidLevel if chain.count == 0 or screen_error_budget < 0.0
+            raise LodError.InvalidLevel if not selectable(chain, screen_error_budget)
             selected: mutable usize = 0
             for index in 0..<chain.count |selected, chain|:
                 selected <- index if chain.levels[index].screen_error <= screen_error_budget
             chain.levels[selected]
 
-        def read(chain: Chain&, mesh_id: i64) -> Level error[LodError]:
+        def read(chain: Chain&, mesh_id: Assets::AssetId) -> Level error[LodError]:
+            raise LodError.UnknownMesh if not Assets::asset_id_valid(mesh_id)
             slot: usize = level_slot(chain, mesh_id)
             raise LodError.UnknownMesh if slot >= Limits::MAX_LEVELS
             chain.levels[slot]
