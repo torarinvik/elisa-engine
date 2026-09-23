@@ -62,6 +62,10 @@ def main() -> int:
         texture_fixture = build / "two-material-texture.fbx"
         fbx_test_fixtures.write_two_material_mesh(texture_fixture, "albedo.png")
         run([str(test_binary), "--material-texture", str(texture_fixture)])
+        surface_texture_fixture = build / "two-material-surface-texture.fbx"
+        fbx_test_fixtures.write_two_material_mesh(surface_texture_fixture,
+            roughness_texture="roughness.png", metalness_texture="metalness.png")
+        run([str(test_binary), "--material-surface-texture", str(surface_texture_fixture)])
         if args.assets_root is not None:
             asset_root = args.assets_root.expanduser().resolve()
             run([str(test_binary), "--assets-root", str(asset_root)])

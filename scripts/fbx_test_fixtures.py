@@ -34,22 +34,30 @@ def write_two_mesh_scene(path: Path) -> None:
         encoding="ascii")
 
 
-def write_two_material_mesh(path: Path, base_color_texture: str | None = None) -> None:
+def write_two_material_mesh(path: Path, base_color_texture: str | None = None,
+    roughness_texture: str | None = None, metalness_texture: str | None = None) -> None:
     """Write two triangles in one mesh with separate polygon material slots."""
-    texture_definition = ('ObjectType: "Texture" { Count: 1 } ' if base_color_texture is not None else "")
-    texture_object = ""
-    texture_connection = ""
-    texture_uv = ""
+    texture_roles = [(1105, base_color_texture, "DiffuseColor"),
+        (1106, roughness_texture, "Roughness"), (1107, metalness_texture, "Metalness")]
+    texture_roles = [role for role in texture_roles if role[1] is not None]
+    has_surface_maps = roughness_texture is not None or metalness_texture is not None
+    texture_definition = (f'ObjectType: "Texture" {{ Count: {len(texture_roles)} }} '
+        if texture_roles else "")
+    texture_objects = ""
+    texture_connections = ""
     texture_mesh_tail = "} } "
-    definitions_count = 5 if base_color_texture is not None else 4
-    if base_color_texture is not None:
-        if not base_color_texture or any(character in base_color_texture for character in '\"\r\n\0'):
-            raise ValueError("fixture texture path must be a non-empty quoted FBX path")
-        texture_object = (
-            f'Texture: 1105, "Texture::BaseColor", "" {{ Version: 202 '
-            f'FileName: "{base_color_texture}" RelativeFilename: "{base_color_texture}" '
-            'WrapModeU: 0 WrapModeV: 0 } ')
-        texture_connection = ' C: "OP",1105,1103,"DiffuseColor"'
+    definitions_count = 4 + bool(texture_roles)
+    if texture_roles:
+        for texture_id, texture_path, role_name in texture_roles:
+            if not texture_path or any(character in texture_path for character in '\"\r\n\0'):
+                raise ValueError("fixture texture path must be a non-empty quoted FBX path")
+            texture_objects += (
+                f'Texture: {texture_id}, "Texture::{role_name}", "" {{ Version: 202 '
+                f'FileName: "{texture_path}" RelativeFilename: "{texture_path}" '
+                'WrapModeU: 0 WrapModeV: 0 } ')
+            connection_property = {"Roughness": "3dsMax|main|roughness",
+                "Metalness": "3dsMax|main|metalness"}.get(role_name, role_name)
+            texture_connections += f' C: "OP",{texture_id},1103,"{connection_property}"'
         texture_uv = (
             'LayerElementUV: 0 { Version: 101 Name: "UVMap" '
             'MappingInformationType: "ByVertice" ReferenceInformationType: "Direct" '
@@ -77,16 +85,21 @@ def write_two_material_mesh(path: Path, base_color_texture: str | None = None) -
         'LayerElementMaterial: 0 { Version: 101 Name: "" MappingInformationType: "ByPolygon" '
         'ReferenceInformationType: "IndexToDirect" Materials: *2 { a: 0,1 } ' + texture_mesh_tail +
         'Model: 1102, "Model::TwoMaterialNode", "Mesh" { Version: 232 } '
-        'Material: 1103, "Material::First", "" { Version: 102 ShadingModel: "phong" Properties70: { '
+        'Material: 1103, "Material::First", "" { Version: 102 ShadingModel: "' +
+        ('' if has_surface_maps else 'phong') + '" Properties70: { '
         'P: "DiffuseColor", "Color", "", "A", 0.2,0.4,0.6 '
         'P: "DiffuseFactor", "Number", "", "A", 0.8 '
         'P: "Shininess", "Number", "", "A", 32 '
         'P: "EmissiveColor", "Color", "", "A", 0.3,0.2,0.1 '
-        'P: "TransparencyFactor", "Number", "", "A", 0.25 } } '
+        'P: "TransparencyFactor", "Number", "", "A", 0.25 ' +
+        ('P: "3dsMax|ClassIDa", "int", "Integer", "", 943849874 '
+            'P: "3dsMax|ClassIDb", "int", "Integer", "", 1174294043 '
+            'P: "3dsMax|main|roughness", "Number", "", "A", 0.5 '
+            'P: "3dsMax|main|metalness", "Number", "", "A", 0.0 ' if has_surface_maps else '') + '} } '
         'Material: 1104, "Material::Second", "" { Version: 102 ShadingModel: "phong" Properties70: { '
         'P: "DiffuseColor", "Color", "", "A", 0.7,0.2,0.1 '
-        'P: "Shininess", "Number", "", "A", 12 } } ' + texture_object + '}\n' +
+        'P: "Shininess", "Number", "", "A", 12 } } ' + texture_objects + '}\n' +
         'Connections: { C: "OO",1101,1102 C: "OO",1102,0 '
-        'C: "OO",1103,1102 C: "OO",1104,1102' + texture_connection + ' }\n' +
+        'C: "OO",1103,1102 C: "OO",1104,1102' + texture_connections + ' }\n' +
         'Takes: { Current: "" }\n',
         encoding="ascii")

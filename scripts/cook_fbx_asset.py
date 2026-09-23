@@ -19,6 +19,8 @@ import tempfile
 import cook_gltf_animation
 from elisa_package import encoded_image_dimensions, write_geometry_package
 from fbx_material_cooker_self_test import validate_material_package
+from fbx_surface_texture import decode_png_rgba, pack_surface_maps
+from fbx_surface_texture_self_test import validate_surface_texture_decoder
 from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
 from png_image import encode_png
 
@@ -190,6 +192,8 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
     present_texture_source_fields = texture_source_fields.intersection(fields)
     if present_texture_source_fields and present_texture_source_fields != texture_source_fields:
         raise ValueError("cooked package has incomplete FBX texture source metadata")
+    if "slot_surface_texture_sources_b64" in fields and not present_texture_source_fields:
+        raise ValueError("FBX surface-map references require texture source metadata")
     if present_texture_source_fields:
         if not present_subset_fields or not present_slot_material_fields:
             raise ValueError("FBX texture sources require material slots and material records")
@@ -224,8 +228,15 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
         if len(source_references) != material_slots * 5 * 4:
             raise ValueError("cooked package FBX texture references do not match its material slots")
         references = struct.unpack(f"<{material_slots * 5}I", source_references)
+        if "slot_surface_texture_sources_b64" in fields:
+            surface_source_data = decode("slot_surface_texture_sources_b64")
+            if len(surface_source_data) != material_slots * 2 * 4:
+                raise ValueError("cooked package FBX surface-map references do not match its material slots")
+            surface_source_references = struct.unpack(f"<{material_slots * 2}I", surface_source_data)
+        else:
+            surface_source_references = (0,) * (material_slots * 2)
         sampled_sources: set[int] = set()
-        for reference in references:
+        for reference in (*references, *surface_source_references):
             if reference > texture_source_count:
                 raise ValueError("cooked package FBX material references a missing texture path")
             if reference:
@@ -390,7 +401,7 @@ def package_fbx_texture_sources(source: Path, geometry_package: bytes,
         source_names.append(names_data[offset:offset + length].decode("utf-8", errors="strict"))
         offset += length
     texture_root = source.resolve(strict=True).parent
-    images: dict[str, bytes] = {}
+    source_images: list[bytes] = []
     for index, name in enumerate(source_names):
         validate_texture_source_path(name)
         image_path = (texture_root / PurePosixPath(name)).resolve(strict=True)
@@ -402,8 +413,64 @@ def package_fbx_texture_sources(source: Path, geometry_package: bytes,
             raise ValueError("FBX texture is missing, not a regular file, or exceeds the image-size limit")
         image = image_path.read_bytes()
         encoded_image_dimensions(image)
-        images[f"fbx_image_{index}"] = image
+        source_images.append(image)
     references = base64.b64decode(fields["slot_texture_sources_b64"], validate=True)
+    material_slots = int(fields["material_slots"])
+    if len(references) != material_slots * 5 * 4:
+        raise ValueError("FBX texture references do not match their material slots")
+    direct_references = struct.unpack(f"<{material_slots * 5}I", references)
+    encoded_surface_references = fields.get("slot_surface_texture_sources_b64")
+    if encoded_surface_references is not None:
+        surface_reference_data = base64.b64decode(encoded_surface_references, validate=True)
+        if len(surface_reference_data) != material_slots * 2 * 4:
+            raise ValueError("FBX surface-map references do not match their material slots")
+        surface_references = struct.unpack(f"<{material_slots * 2}I", surface_reference_data)
+    else:
+        surface_references = (0,) * (material_slots * 2)
+    all_source_references = (*direct_references, *surface_references)
+    if any(reference > len(source_images) for reference in all_source_references):
+        raise ValueError("FBX material references a missing texture source image")
+    if {reference for reference in all_source_references if reference} != set(range(1, len(source_images) + 1)):
+        raise ValueError("FBX package contains an unused texture source image")
+
+    images: dict[str, bytes] = {}
+    image_indices: dict[bytes, int] = {}
+    runtime_references = [0] * (material_slots * 5)
+    referenced_direct = {reference - 1 for reference in direct_references if reference}
+    source_to_runtime: dict[int, int] = {}
+    for source_index, image in enumerate(source_images):
+        if source_index not in referenced_direct:
+            continue
+        runtime_index = image_indices.get(image)
+        if runtime_index is None:
+            section = f"fbx_image_{len(images)}"
+            images[section] = image
+            runtime_index = len(images)
+            image_indices[image] = runtime_index
+        source_to_runtime[source_index + 1] = runtime_index
+    for slot, reference in enumerate(direct_references):
+        if reference:
+            runtime_references[slot] = source_to_runtime[reference]
+
+    for slot in range(material_slots):
+        roughness_reference, metalness_reference = surface_references[slot * 2:slot * 2 + 2]
+        if not roughness_reference and not metalness_reference:
+            continue
+        if direct_references[slot * 5 + 2]:
+            raise ValueError("FBX material cannot combine a packed surface map with separate roughness or metalness maps")
+        packed = pack_surface_maps(
+            source_images[roughness_reference - 1] if roughness_reference else None,
+            source_images[metalness_reference - 1] if metalness_reference else None)
+        runtime_index = image_indices.get(packed)
+        if runtime_index is None:
+            section = f"fbx_image_{len(images)}"
+            images[section] = packed
+            runtime_index = len(images)
+            image_indices[packed] = runtime_index
+        runtime_references[slot * 5 + 2] = runtime_index
+    if not images or len(images) > 64:
+        raise ValueError("cooked FBX material images exceed the 64-image package limit")
+    references = struct.pack(f"<{len(runtime_references)}I", *runtime_references)
     texture_names = b"".join(struct.pack("<I", len(name.encode("ascii"))) + name.encode("ascii")
         for name in images)
     runtime_fields = {
@@ -412,7 +479,8 @@ def package_fbx_texture_sources(source: Path, geometry_package: bytes,
         "slot_texture_stride": "20",
         "slot_textures_b64": base64.b64encode(references).decode("ascii"),
     }
-    source_fields = {"texture_source_count", "texture_source_names_b64", "slot_texture_sources_b64"}
+    source_fields = {"texture_source_count", "texture_source_names_b64", "slot_texture_sources_b64",
+        "slot_surface_texture_sources_b64"}
     lines = [line for line in geometry_package.decode("ascii").splitlines()
         if line.partition("=")[0] not in source_fields]
     lines.extend(f"{key}={value}" for key, value in runtime_fields.items())
@@ -597,6 +665,7 @@ def main(arguments: list[str]) -> int:
             directory = Path(temporary)
             cooker = build_cooker(directory)
             if options.self_test:
+                validate_surface_texture_decoder()
                 tangent_test = subprocess.run([sys.executable,
                     str(ROOT / "scripts/test_mikktspace.py")], check=False)
                 if tangent_test.returncode != 0:
@@ -683,6 +752,44 @@ def main(arguments: list[str]) -> int:
                 validate_material_package(ignored_texture_fields)
                 if "texture_source_count" in ignored_texture_fields:
                     raise ValueError("explicitly ignored FBX textures leaked into the cooked package")
+
+
+                surface_directory = directory / "surface-textured-fbx"
+                surface_directory.mkdir()
+                surface_source = surface_directory / "two-material-surface-texture.fbx"
+                roughness_pixels = bytes((64, 1, 2, 255, 128, 3, 4, 255))
+                metalness_pixels = bytes((200, 5, 6, 255, 20, 7, 8, 255))
+                roughness_path = surface_directory / "roughness.png"
+                metalness_path = surface_directory / "metalness.png"
+                roughness_path.write_bytes(encode_png(2, 1, roughness_pixels))
+                metalness_path.write_bytes(encode_png(2, 1, metalness_pixels))
+                write_two_material_mesh(surface_source,
+                    roughness_texture="roughness.png", metalness_texture="metalness.png")
+                surface_fields = cook_one(cooker, surface_source,
+                    "self-test/surface-textured-fbx/two-material-surface-texture.fbx",
+                    directory / "surface-textured-fbx-geometry.pkg")
+                if (surface_fields.get("texture_source_count") != "2" or
+                        struct.unpack("<4I", base64.b64decode(
+                            surface_fields["slot_surface_texture_sources_b64"], validate=True)) != (1, 2, 0, 0) or
+                        struct.unpack("<10I", base64.b64decode(
+                            surface_fields["slot_texture_sources_b64"], validate=True)) != (0,) * 10):
+                    raise ValueError("FBX cooker did not preserve separate roughness and metalness source roles")
+                bundled_surface_geometry, bundled_surface_images = package_fbx_texture_sources(
+                    surface_source, (directory / "surface-textured-fbx-geometry.pkg").read_bytes(), surface_fields)
+                runtime_surface_fields = dict(line.split("=", 1)
+                    for line in bundled_surface_geometry.decode("ascii").splitlines())
+                packed_image = bundled_surface_images.get("fbx_image_0")
+                if packed_image is None or len(bundled_surface_images) != 1 or \
+                        runtime_surface_fields.get("texture_count") != "1" or \
+                        struct.unpack("<10I", base64.b64decode(
+                            runtime_surface_fields["slot_textures_b64"], validate=True)) != (0, 0, 1, 0, 0, 0, 0, 0, 0, 0):
+                    raise ValueError("separate FBX surface maps did not become one runtime surface slot")
+                packed_width, packed_height, packed_rgba = decode_png_rgba(packed_image)
+                if (packed_width, packed_height, packed_rgba) != (2, 1,
+                        bytes((255, 64, 200, 255, 255, 128, 20, 255))):
+                    raise ValueError("packed FBX surface image does not hold roughness in G and metalness in B")
+                write_geometry_package(directory / "surface-textured-fbx.elpk",
+                    bundled_surface_geometry, bundled_surface_images)
                 try:
                     cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
                         directory / "under-budget.pkg", max_triangles=1)

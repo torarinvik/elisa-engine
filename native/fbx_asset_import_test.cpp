@@ -210,6 +210,7 @@ int material_texture_test(const std::filesystem::path& path) {
     bool ok = check(valid, "FBX diffuse texture binds only to its material base-color slot");
 
     ufbx_texture unsupported_texture{};
+    unsupported_texture.type = UFBX_TEXTURE_PROCEDURAL;
     ufbx_material unsupported_material{};
     unsupported_material.pbr.roughness.texture = &unsupported_texture;
     unsupported_material.pbr.roughness.texture_enabled = true;
@@ -217,8 +218,29 @@ int material_texture_test(const std::filesystem::path& path) {
     elisa::assets::FbxImportResult unsupported_result;
     ok &= check(!elisa::assets::detail::extract_fbx_material(unsupported_material,
         unsupported_output, unsupported_result) &&
-        unsupported_result.error.find("texture role") != std::string::npos,
-        "unpacked roughness textures fail with a role-specific diagnostic");
+        unsupported_result.error.find("direct external files") != std::string::npos,
+        "roughness textures reject embedded or non-file image sources");
+
+    const char roughness_path[] = "roughness.png";
+    const char metalness_path[] = "metalness.png";
+    ufbx_texture roughness_texture{};
+    roughness_texture.type = UFBX_TEXTURE_FILE;
+    roughness_texture.relative_filename = ufbx_string{roughness_path, sizeof(roughness_path) - 1};
+    ufbx_texture metalness_texture{};
+    metalness_texture.type = UFBX_TEXTURE_FILE;
+    metalness_texture.relative_filename = ufbx_string{metalness_path, sizeof(metalness_path) - 1};
+    ufbx_material surface_material{};
+    surface_material.pbr.roughness.texture = &roughness_texture;
+    surface_material.pbr.roughness.texture_enabled = true;
+    surface_material.pbr.metalness.texture = &metalness_texture;
+    surface_material.pbr.metalness.texture_enabled = true;
+    elisa::assets::FbxMaterialData surface_output;
+    elisa::assets::FbxImportResult surface_result;
+    ok &= check(elisa::assets::detail::extract_fbx_material(surface_material,
+        surface_output, surface_result) &&
+        surface_output.surface_texture_sources[0] == roughness_path &&
+        surface_output.surface_texture_sources[1] == metalness_path,
+        "direct roughness and metalness source paths are retained for surface packing");
 
     const char traversal_path[] = "../outside.png";
     ufbx_texture traversal_texture{};
@@ -234,6 +256,28 @@ int material_texture_test(const std::filesystem::path& path) {
         traversal_result.error.find("parent directories") != std::string::npos,
         "FBX texture paths reject parent-directory traversal");
     return ok ? 0 : 1;
+}
+
+int material_surface_texture_test(const std::filesystem::path& path) {
+    const auto imported = elisa::assets::import_fbx(path, true);
+    if (!check(imported.ok, "separate surface-map FBX fixture imports")) {
+        std::fprintf(stderr, "  importer error: %s\n", imported.error.c_str());
+        return 1;
+    }
+    const auto& materials = imported.primary_mesh.materials;
+    const bool valid = materials.size() == 2 &&
+        materials[0].surface_texture_sources[0] == "roughness.png" &&
+        materials[0].surface_texture_sources[1] == "metalness.png" &&
+        materials[0].texture_sources[2].empty() &&
+        materials[1].surface_texture_sources[0].empty() &&
+        materials[1].surface_texture_sources[1].empty();
+    if (!valid && !materials.empty()) {
+        std::fprintf(stderr, "  imported surface maps: slots=%zu rough=%s metal=%s packed=%s\n",
+            materials.size(), materials[0].surface_texture_sources[0].c_str(),
+            materials[0].surface_texture_sources[1].c_str(), materials[0].texture_sources[2].c_str());
+    }
+    return check(valid,
+        "separate FBX surface maps bind to only their authored material slot") ? 0 : 1;
 }
 
 int decode_mesh(const std::filesystem::path& path) {
@@ -405,6 +449,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--material-texture") {
         return material_texture_test(argv[2]);
     }
+    if (argc == 3 && std::string(argv[1]) == "--material-surface-texture") {
+        return material_surface_texture_test(argv[2]);
+    }
     if (argc == 3 && std::string(argv[1]) == "--assets-root") {
         return supplied_assets_test(argv[2]);
     }
@@ -415,9 +462,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--cooked-skin") {
         return cooked_skin_test(argv[2]);
     }
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --material-texture FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --material-texture FILE | --material-surface-texture FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
 #else
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --material-texture FILE | --assets-root DIR | --decode FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --material-subsets FILE | --material-texture FILE | --material-surface-texture FILE | --assets-root DIR | --decode FILE\n");
 #endif
     return 2;
 }

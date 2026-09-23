@@ -121,7 +121,7 @@ inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& o
         &source.pbr.base_color, &source.fbx.diffuse_color,
         &source.pbr.normal_map, &source.fbx.normal_map,
         &source.pbr.emission_color, &source.fbx.emission_color,
-        &source.pbr.ambient_occlusion,
+        &source.pbr.ambient_occlusion, &source.pbr.roughness, &source.pbr.metalness,
     };
     if (!ignore_textures) {
         for (size_t index = 0; index < UFBX_MATERIAL_PBR_MAP_COUNT; ++index) {
@@ -203,7 +203,11 @@ inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& o
         !fbx_extract_texture_role(source.pbr.emission_color, source.fbx.emission_color,
             output.texture_sources[3], result) ||
         !fbx_texture_source_path(source.pbr.ambient_occlusion,
-            output.texture_sources[4], result)) return false;
+            output.texture_sources[4], result) ||
+        !fbx_texture_source_path(source.pbr.roughness,
+            output.surface_texture_sources[0], result) ||
+        !fbx_texture_source_path(source.pbr.metalness,
+            output.surface_texture_sources[1], result)) return false;
     output.occlusion = !output.texture_sources[4].empty();
     return true;
 }
@@ -261,6 +265,8 @@ inline bool extract_mesh_node(ufbx_scene& scene, ufbx_node* source_node,
         const bool has_textures = std::any_of(output.materials.begin(), output.materials.end(),
             [](const FbxMaterialData& material) {
                 return std::any_of(material.texture_sources.begin(), material.texture_sources.end(),
+                    [](const std::string& path) { return !path.empty(); }) ||
+                    std::any_of(material.surface_texture_sources.begin(), material.surface_texture_sources.end(),
                     [](const std::string& path) { return !path.empty(); });
             });
         if (has_textures && !mesh.vertex_uv.exists) {
