@@ -22,6 +22,8 @@ size_t snapshot_texture_asset_slot(const RenderSceneService& state, uint64_t hig
     return MAX_SNAPSHOT_TEXTURE_ASSETS;
 }
 
+void touch_snapshot_mesh_asset(RenderSceneService& state, size_t slot);
+
 #include "render_scene_snapshot_material_set_internal.inc"
 
 bool apply_snapshot_material_textures(RenderSceneService& state,
@@ -92,12 +94,12 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
 
 size_t snapshot_shared_mesh_slot(const RenderSceneService& state,
     uint64_t mesh_high, uint64_t mesh_low, uint64_t material_high, uint64_t material_low,
-    uint32_t placement_index) {
+    uint32_t placement_index, uint32_t lod_level = 0) {
     for (size_t index = 0; index < MAX_SNAPSHOT_SHARED_MESHES; ++index) {
         const SnapshotSharedMesh& mesh = state.snapshot_shared_meshes[index];
         if (mesh.live && mesh.mesh_high == mesh_high && mesh.mesh_low == mesh_low &&
             mesh.material_high == material_high && mesh.material_low == material_low &&
-            mesh.placement_index == placement_index) return index;
+            mesh.placement_index == placement_index && mesh.lod_level == lod_level) return index;
     }
     return MAX_SNAPSHOT_SHARED_MESHES;
 }
@@ -191,9 +193,9 @@ bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity ent
 
 size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state, const SnapshotStageRow& row,
     const SnapshotSlotMaterials& materials, const std::string& name, uint32_t placement_index,
-    int32_t& failure_status) {
+    int32_t& failure_status, uint32_t lod_level = 0) {
     const size_t existing = snapshot_shared_mesh_slot(state,
-        row.mesh_high, row.mesh_low, row.material_high, row.material_low, placement_index);
+        row.mesh_high, row.mesh_low, row.material_high, row.material_low, placement_index, lod_level);
     if (existing < MAX_SNAPSHOT_SHARED_MESHES) return existing;
     const size_t mesh_asset_slot_index = snapshot_mesh_asset_slot(state, row.mesh_high, row.mesh_low);
     if (mesh_asset_slot_index == MAX_SNAPSHOT_MESH_ASSETS) {
@@ -201,9 +203,15 @@ size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state, const Snap
         return MAX_SNAPSHOT_SHARED_MESHES;
     }
     const SnapshotMeshAssetSlot& mesh_asset = state.snapshot_mesh_assets[mesh_asset_slot_index];
-    if (!cooked_geometry_is_static(mesh_asset.geometry) ||
-        mesh_asset.bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_shared_geometry_bytes) {
-        failure_status = mesh_asset.bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_shared_geometry_bytes
+    if (lod_level >= mesh_asset.lod_level_count) {
+        failure_status = ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        return MAX_SNAPSHOT_SHARED_MESHES;
+    }
+    const elisa::assets::CookedGeometry& geometry = snapshot_mesh_geometry(mesh_asset, lod_level);
+    size_t geometry_bytes = 0;
+    if (!cooked_geometry_is_static(geometry) || !cooked_geometry_bytes(geometry, geometry_bytes) ||
+        geometry_bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_shared_geometry_bytes) {
+        failure_status = geometry_bytes > MAX_SNAPSHOT_GEOMETRY_BYTES - state.snapshot_shared_geometry_bytes
             ? ELISA_RENDER_SCENE_CAPACITY : ELISA_RENDER_SCENE_BACKEND_FAILED;
         return MAX_SNAPSHOT_SHARED_MESHES;
     }
@@ -223,7 +231,7 @@ size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state, const Snap
     try {
         entity = state.scene->Entity_CreateMesh(name);
         if (entity == wi::ecs::INVALID_ENTITY ||
-            !configure_shared_snapshot_mesh(*state.scene, entity, mesh_asset.geometry, materials, placement_index)) {
+            !configure_shared_snapshot_mesh(*state.scene, entity, geometry, materials, placement_index)) {
             if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
             return MAX_SNAPSHOT_SHARED_MESHES;
         }
@@ -238,9 +246,10 @@ size_t create_or_find_shared_snapshot_mesh(RenderSceneService& state, const Snap
     shared.material_high = row.material_high;
     shared.material_low = row.material_low;
     shared.placement_index = placement_index;
+    shared.lod_level = lod_level;
     shared.entity = entity;
     shared.references = 0;
-    shared.bytes = mesh_asset.bytes;
+    shared.bytes = geometry_bytes;
     shared.live = true;
     state.snapshot_shared_geometry_bytes += shared.bytes;
     return free_slot;
@@ -271,6 +280,134 @@ void discard_unreferenced_shared_snapshot_meshes(RenderSceneService& state) {
     }
 }
 
+int32_t set_snapshot_mesh_lod_level_unlocked(RenderSceneService& state, size_t instance_slot,
+        size_t lod_level) {
+    if (instance_slot >= MAX_INSTANCES || !state.instances[instance_slot].live) {
+        return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    }
+    InstanceSlot& instance = state.instances[instance_slot];
+    const size_t asset_slot = snapshot_mesh_asset_slot(state, instance.mesh_high, instance.mesh_low);
+    if (asset_slot == MAX_SNAPSHOT_MESH_ASSETS) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    const SnapshotMeshAssetSlot& mesh_asset = state.snapshot_mesh_assets[asset_slot];
+    if (lod_level >= mesh_asset.lod_level_count) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (lod_level == instance.snapshot_lod_level) return ELISA_RENDER_SCENE_OK;
+    const elisa::assets::CookedGeometry& geometry = snapshot_mesh_geometry(mesh_asset, lod_level);
+    if (!cooked_geometry_is_static(geometry) || instance.joint_entities.size() != 0 ||
+        instance.skin_joints.size() != 0 || instance.animation_clips.size() != 0) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    const size_t placement_count = geometry.mesh_placements.empty() ? 1 : geometry.mesh_placements.size();
+    if (instance.snapshot_placement_entities.size() + 1 != placement_count) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    SnapshotSlotMaterials materials;
+    const int32_t resolve_status = resolve_snapshot_slot_materials(state,
+        instance.material_high, instance.material_low, geometry.material_slots, materials);
+    if (resolve_status != ELISA_RENDER_SCENE_OK) return resolve_status;
+
+    SnapshotStageRow row{};
+    row.mesh_high = instance.mesh_high;
+    row.mesh_low = instance.mesh_low;
+    row.material_high = instance.material_high;
+    row.material_low = instance.material_low;
+    std::vector<size_t> next_slots;
+    std::vector<size_t> next_additional_slots;
+    try {
+        next_slots.reserve(placement_count);
+        const std::string name = "elisa_snapshot_lod_" + std::to_string(instance.render_id) + "_" +
+            std::to_string(lod_level);
+        int32_t mesh_status = ELISA_RENDER_SCENE_OK;
+        for (size_t placement = 0; placement < placement_count; ++placement) {
+            const size_t shared_slot = create_or_find_shared_snapshot_mesh(state, row, materials,
+                name + "_" + std::to_string(placement), uint32_t(placement),
+                mesh_status, uint32_t(lod_level));
+            if (shared_slot >= MAX_SNAPSHOT_SHARED_MESHES) {
+                discard_unreferenced_shared_snapshot_meshes(state);
+                return mesh_status == ELISA_RENDER_SCENE_OK
+                    ? ELISA_RENDER_SCENE_BACKEND_FAILED : mesh_status;
+            }
+            next_slots.push_back(shared_slot);
+        }
+        next_additional_slots.assign(next_slots.begin() + 1, next_slots.end());
+    } catch (...) {
+        discard_unreferenced_shared_snapshot_meshes(state);
+        return ELISA_RENDER_SCENE_CAPACITY;
+    }
+
+    for (size_t index = 0; index < next_slots.size(); ++index) {
+        const SnapshotSharedMesh& shared = state.snapshot_shared_meshes[next_slots[index]];
+        if (!shared.live || shared.references == std::numeric_limits<size_t>::max()) {
+            discard_unreferenced_shared_snapshot_meshes(state);
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        const wi::ecs::Entity draw_entity = index == 0 ? instance.entity :
+            instance.snapshot_placement_entities[index - 1];
+        if (state.scene->objects.GetComponent(draw_entity) == nullptr) {
+            discard_unreferenced_shared_snapshot_meshes(state);
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+    }
+    for (size_t shared_slot : next_slots) ++state.snapshot_shared_meshes[shared_slot].references;
+
+    const size_t old_root_slot = instance.shared_mesh_slot;
+    std::vector<size_t> old_additional_slots = std::move(instance.snapshot_additional_shared_mesh_slots);
+    for (size_t index = 0; index < next_slots.size(); ++index) {
+        const wi::ecs::Entity draw_entity = index == 0 ? instance.entity :
+            instance.snapshot_placement_entities[index - 1];
+        state.scene->objects.GetComponent(draw_entity)->meshID =
+            state.snapshot_shared_meshes[next_slots[index]].entity;
+    }
+    instance.shared_mesh_slot = next_slots[0];
+    instance.snapshot_additional_shared_mesh_slots = std::move(next_additional_slots);
+    instance.snapshot_lod_level = lod_level;
+    release_snapshot_shared_mesh(state, old_root_slot);
+    for (size_t shared_slot : old_additional_slots) release_snapshot_shared_mesh(state, shared_slot);
+    touch_snapshot_mesh_asset(state, asset_slot);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+void update_snapshot_lod_selection(RenderSceneService& state) {
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.snapshot_transaction_active ||
+        state.scene == nullptr ||
+        state.camera == nullptr || state.height <= 0) return;
+    const XMVECTOR camera_eye = state.camera->GetEye();
+    const XMVECTOR camera_at = state.camera->GetAt();
+    for (size_t slot = 0; slot < MAX_INSTANCES; ++slot) {
+        InstanceSlot& instance = state.instances[slot];
+        if (!instance.live || (instance.mesh_high == 0 && instance.mesh_low == 0)) continue;
+        const size_t asset_slot = snapshot_mesh_asset_slot(state, instance.mesh_high, instance.mesh_low);
+        if (asset_slot == MAX_SNAPSHOT_MESH_ASSETS) continue;
+        const SnapshotMeshAssetSlot& asset = state.snapshot_mesh_assets[asset_slot];
+        if (asset.lod_level_count < 2 || instance.snapshot_lod_level >= asset.lod_level_count) continue;
+        const wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+        const wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.entity);
+        if (object == nullptr || transform == nullptr) continue;
+
+        const XMFLOAT3 position = transform->GetPosition();
+        const XMFLOAT3 scale = transform->GetScale();
+        const double world_scale = std::max({std::abs(double(scale.x)),
+            std::abs(double(scale.y)), std::abs(double(scale.z))});
+        const XMVECTOR offset = XMVectorSubtract(XMLoadFloat3(&position), camera_eye);
+        const double depth = XMVectorGetX(XMVector3Dot(offset, camera_at));
+        const double radius = asset.lod_manifest.object_extent * world_scale * 0.8660254037844386;
+        const double nearest_depth = std::max(double(state.camera->zNearP), depth - radius);
+        double projection_scale = 0.0;
+        if (state.camera->IsOrtho()) {
+            projection_scale = double(state.height) / state.camera->ortho_vertical_size;
+        } else {
+            const double denominator = 2.0 * std::tan(double(state.camera->fov) * 0.5) * nearest_depth;
+            projection_scale = double(state.height) / denominator;
+        }
+        const double pixel_budget = std::exp2(double(object->lod_bias));
+        const size_t selected = elisa::assets::select_lod_level(asset.lod_manifest, world_scale,
+            projection_scale, pixel_budget, instance.snapshot_lod_level);
+        if (selected < asset.lod_level_count && selected != instance.snapshot_lod_level) {
+            (void)set_snapshot_mesh_lod_level_unlocked(state, slot, selected);
+        }
+    }
+}
+
 void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance) {
     clear_instance_pick_bindings(state, instance);
     instance.entity = wi::ecs::INVALID_ENTITY;
@@ -282,6 +419,7 @@ void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance) 
     instance.material_high = 0;
     instance.material_low = 0;
     instance.shared_mesh_slot = NO_SHARED_MESH;
+    instance.snapshot_lod_level = 0;
     instance.snapshot_additional_shared_mesh_slots.clear();
     instance.shared_source = wi::ecs::INVALID_ENTITY;
     instance.joint_entities.clear();

@@ -51,13 +51,17 @@ struct SnapshotMeshAssetSlot {
     std::filesystem::path canonical_path;
     elisa::assets::CookedGeometry geometry;
     std::array<elisa::assets::CookedGeometry, elisa::assets::MAX_LOD_LEVELS - 1> additional_lod_geometry{};
-    std::array<double, elisa::assets::MAX_LOD_LEVELS> lod_error_budgets{};
-    double lod_object_extent = 0.0;
+    elisa::assets::LodManifest lod_manifest;
     size_t lod_level_count = 1;
     size_t bytes = 0;
     uint64_t last_used = 0;
     bool live = false;
 };
+
+const elisa::assets::CookedGeometry& snapshot_mesh_geometry(
+        const SnapshotMeshAssetSlot& asset, size_t level) {
+    return level == 0 ? asset.geometry : asset.additional_lod_geometry[level - 1];
+}
 
 struct SnapshotMaterialAssetSlot {
     uint64_t high = 0;
@@ -104,6 +108,7 @@ struct SnapshotSharedMesh {
     uint64_t material_high = 0;
     uint64_t material_low = 0;
     uint32_t placement_index = 0;
+    uint32_t lod_level = 0;
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     size_t references = 0;
     size_t bytes = 0;

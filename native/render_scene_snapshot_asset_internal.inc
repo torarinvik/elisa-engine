@@ -108,11 +108,6 @@ bool snapshot_mesh_path_is_lod_manifest(const std::string& path) {
         path.compare(path.size() - (sizeof(SUFFIX) - 1), sizeof(SUFFIX) - 1, SUFFIX) == 0;
 }
 
-const elisa::assets::CookedGeometry& snapshot_mesh_geometry(
-        const SnapshotMeshAssetSlot& asset, size_t level) {
-    return level == 0 ? asset.geometry : asset.additional_lod_geometry[level - 1];
-}
-
 bool snapshot_texture_asset_in_use(const RenderSceneService& state, size_t slot) {
     if (slot >= MAX_SNAPSHOT_TEXTURE_ASSETS || !state.snapshot_texture_assets[slot].live) return false;
     const SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[slot];
@@ -300,10 +295,8 @@ int32_t install_snapshot_lod_chain(RenderSceneService& state, uint64_t high, uin
     asset.geometry = std::move(chain.geometry[0]);
     for (size_t index = 1; index < chain.level_count; ++index) {
         asset.additional_lod_geometry[index - 1] = std::move(chain.geometry[index]);
-        asset.lod_error_budgets[index] = chain.manifest.levels[index].relative_error_budget;
     }
-    asset.lod_error_budgets[0] = chain.manifest.levels[0].relative_error_budget;
-    asset.lod_object_extent = chain.manifest.object_extent;
+    asset.lod_manifest = std::move(chain.manifest);
     asset.lod_level_count = chain.level_count;
     asset.bytes = chain.resident_bytes;
     asset.last_used = next_snapshot_mesh_use_stamp(state);

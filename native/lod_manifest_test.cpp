@@ -1,5 +1,6 @@
 #include "cooked_geometry_package.h"
 #include "lod_geometry_chain.h"
+#include "lod_selection.h"
 #include "sha256_file.h"
 
 #include <cstdio>
@@ -16,6 +17,24 @@ int main(int argc, char** argv) {
     known_hash.update(abc, sizeof(abc));
     if (known_hash.finish() != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
         std::fprintf(stderr, "SHA-256 known vector failed\n");
+        return 1;
+    }
+    elisa::assets::LodManifest selection;
+    selection.valid = true;
+    selection.level_count = 3;
+    selection.object_extent = 2.0;
+    selection.levels[0].relative_error_budget = 0.0;
+    selection.levels[1].relative_error_budget = 0.01;
+    selection.levels[2].relative_error_budget = 0.05;
+    const size_t select_coarse = elisa::assets::select_lod_level(selection, 1.0, 100.0, 3.0, 0);
+    const size_t hold_coarse = elisa::assets::select_lod_level(selection, 1.0, 100.0, 1.9, 1);
+    const size_t switch_fine = elisa::assets::select_lod_level(selection, 1.0, 100.0, 1.8, 1);
+    const size_t select_finer = elisa::assets::select_lod_level(selection, 1.0, 100.0, 20.0, 1);
+    const size_t reject_budget = elisa::assets::select_lod_level(selection, 1.0, 100.0, 0.0, 1);
+    if (select_coarse != 1 || hold_coarse != 1 || switch_fine != 0 || select_finer != 2 ||
+        reject_budget < elisa::assets::MAX_LOD_LEVELS) {
+        std::fprintf(stderr, "screen-error LOD selection or hysteresis failed: %zu %zu %zu %zu %zu\n",
+            select_coarse, hold_coarse, switch_fine, select_finer, reject_budget);
         return 1;
     }
     elisa::assets::LodGeometryChain chain;

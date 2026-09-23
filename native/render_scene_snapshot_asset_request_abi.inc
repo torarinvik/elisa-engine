@@ -252,6 +252,24 @@ extern "C" uint32_t elisa_render_scene_v1_test_snapshot_mesh_lod_count(uint64_t 
         uint32_t(state.snapshot_mesh_assets[slot].lod_level_count) : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_select_snapshot_lod(int64_t handle, uint32_t level) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    return set_snapshot_mesh_lod_level_unlocked(state, slot, level);
+}
+
+extern "C" uint32_t elisa_render_scene_v1_test_snapshot_lod_level(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    size_t slot = MAX_INSTANCES;
+    return valid_handle(state, handle, slot)
+        ? uint32_t(state.instances[slot].snapshot_lod_level) : UINT32_MAX;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_snapshot_geometry_bytes(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
