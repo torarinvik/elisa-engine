@@ -24,11 +24,11 @@ ASSET_PATH = "test/generated/multi_material_skinned_panel.gltf"
 ROOT_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
-    -2.0, 0.0, -0.5, 1.0)
+    -2.0, 0.0, 0.25, 1.0)
 TIP_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
-    -2.0, -1.0, -0.5, 1.0)
+    -2.0, -1.0, 0.25, 1.0)
 INVERSE_BIND_MATRICES = ROOT_INVERSE_BIND + TIP_INVERSE_BIND
 GLTF_IDENTITY_MATRIX = (1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -91,7 +91,7 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
         5126, "VEC3", 2)
     document["buffers"][0]["byteLength"] = len(buffer)
     document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
-    document["nodes"][0].update({"children": [4], "skin": 0})
+    document["nodes"][0].update({"skin": 0, "translation": [0.0, 0.0, 0.75]})
     document["nodes"] += [{"name": "root", "translation": [2.0, 0.0, 0.0], "children": [2]},
         {"name": "tip", "translation": [0.0, 1.0, 0.0]}]
     document["nodes"].append({"name": "second_panel_placement", "mesh": 0, "skin": 0,
@@ -100,7 +100,9 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
         "scale": [2.0, 1.0, 0.5]})
     document["nodes"].append({"name": "skeleton_offset", "children": [1],
         "translation": [0.0, 0.0, 0.5]})
-    document["scenes"][document["scene"]]["nodes"].append(3)
+    document["nodes"].append({"name": "shared_scene_root", "children": [0, 4],
+        "translation": [0.0, 0.0, 0.25]})
+    document["scenes"][document["scene"]]["nodes"] = [5, 3]
     skin = {"name": "panel_rig", "joints": [1, 2], "skeleton": 1}
     if inverse_bind is not None:
         skin["inverseBindMatrices"] = inverse_bind
@@ -125,7 +127,7 @@ def write_large_rig_package(output: Path, rig_node_count: int) -> tuple[Path, di
     if not 3 <= rig_node_count <= cook_gltf_skin.MAX_RIG_NODES:
         raise ValueError("large rig fixture node count is outside the runtime bound")
     document = generated_document()
-    helper_count = rig_node_count - len(document["skins"][0]["joints"])
+    helper_count = rig_node_count - len(document["skins"][0]["joints"]) - 1
     parent = 4
     for helper_index in range(1, helper_count):
         child = len(document["nodes"])
@@ -255,17 +257,17 @@ def self_test(temporary: Path) -> int:
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
     required = {
         "format": "elisa-cooked-v3", "material_slots": "2", "subset_count": "5",
-        "skin_bones": "2", "skin_joints": "3", "animation_clips": "1", "morph_targets": "1",
+        "skin_bones": "2", "skin_joints": "4", "animation_clips": "1", "morph_targets": "1",
         "mesh_placement_count": "2", "skin_inverse_bind_stride": "64",
     }
     if (result != second_result or first.read_bytes() != second.read_bytes() or
             any(sections.get(key) != value for key, value in required.items()) or
             len(base64.b64decode(sections["skin_indices_b64"])) != 24 * 16 or
-            len(base64.b64decode(sections["skin_joint_rest_b64"])) != 3 * 40 or
-            struct.unpack("<3i", base64.b64decode(sections["skin_joint_parents_b64"])) != (-1, 0, 1) or
-            struct.unpack("<2I", base64.b64decode(sections["skin_cluster_joints_b64"])) != (1, 2) or
+            len(base64.b64decode(sections["skin_joint_rest_b64"])) != 4 * 40 or
+            struct.unpack("<4i", base64.b64decode(sections["skin_joint_parents_b64"])) != (-1, 0, 1, 2) or
+            struct.unpack("<2I", base64.b64decode(sections["skin_cluster_joints_b64"])) != (2, 3) or
             struct.unpack("<10f", base64.b64decode(sections["skin_joint_rest_b64"])[:40]) !=
-                (0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0) or
+                (0.0, 0.0, -0.75, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0) or
             base64.b64decode(sections["skin_inverse_bind_matrices_b64"]) !=
                 struct.pack("<32f", *INVERSE_BIND_MATRICES) or
             sections.get("animation_0_sample_rate") != "30" or
@@ -281,11 +283,32 @@ def self_test(temporary: Path) -> int:
         return cook_gltf_geometry.normalized_geometry(source_document, source_buffer)["skin"]
 
     shared_ancestor = deepcopy(document)
-    shared_ancestor["nodes"][0]["translation"] = [5.0, -2.0, 3.0]
+    shared_ancestor["nodes"][5]["translation"] = [5.0, -2.0, 3.0]
     shared_rig = normalized_skin(shared_ancestor)
-    if (len(shared_rig["joints"]) != 3 or
-            shared_rig["joints"][0]["rest"] != (0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
+    if (len(shared_rig["joints"]) != 4 or
+            shared_rig["joints"][0]["rest"] != (0.0, 0.0, -0.75, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
         print("glTF skin self-test failed: shared mesh ancestors leaked into the rig", file=sys.stderr)
+        return 1
+
+    nested_helper = deepcopy(document)
+    nested_helper["nodes"][5]["children"] = [0]
+    nested_helper["nodes"][0]["children"] = [4]
+    nested_rig = normalized_skin(nested_helper)
+    if (len(nested_rig["joints"]) != 3 or
+            [joint["parent"] for joint in nested_rig["joints"]] != [-1, 0, 1] or
+            [joint for joint in nested_rig["cluster_joints"]] != [1, 2]):
+        print("glTF skin self-test failed: descendant helper hierarchy gained a mesh basis",
+            file=sys.stderr)
+        return 1
+
+    separate_branch = deepcopy(document)
+    separate_branch["nodes"][5]["children"] = [0]
+    separate_branch["scenes"][0]["nodes"] = [5, 4, 3]
+    separate_rig = normalized_skin(separate_branch)
+    if (len(separate_rig["joints"]) != 4 or
+            separate_rig["joints"][0]["rest"][:3] != (0.0, 0.0, -1.0)):
+        print("glTF skin self-test failed: separate skeleton root lacks a mesh-relative basis",
+            file=sys.stderr)
         return 1
 
     matrix_ancestor = deepcopy(document)
@@ -293,7 +316,7 @@ def self_test(temporary: Path) -> int:
     matrix_ancestor["nodes"][4]["matrix"] = [0.0, 1.0, 0.0, 0.0,
         -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5, 1.0]
     matrix_rig = normalized_skin(matrix_ancestor)
-    matrix_rest = matrix_rig["joints"][0]["rest"]
+    matrix_rest = matrix_rig["joints"][1]["rest"]
     if (matrix_rest[:3] != (0.0, 0.0, 0.5) or
             any(abs(value - expected) > 1.0e-6 for value, expected in
                 zip(matrix_rest[3:7], (0.0, 0.0, 2.0 ** -0.5, 2.0 ** -0.5)))):
@@ -306,7 +329,7 @@ def self_test(temporary: Path) -> int:
     animated_helper["animations"][0]["channels"].append({"sampler": 0,
         "target": {"node": 4, "path": "translation"}})
     animated_rig = normalized_skin(animated_helper)
-    if len(animated_rig["joints"]) != 3 or len(animated_rig["animation_clips"][0]["samples"]) != 3 * 31 * 10:
+    if len(animated_rig["joints"]) != 4 or len(animated_rig["animation_clips"][0]["samples"]) != 4 * 31 * 10:
         print("glTF skin self-test failed: animated helper node was omitted from the rig",
             file=sys.stderr)
         return 1
@@ -327,7 +350,7 @@ def self_test(temporary: Path) -> int:
         0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 0.0, 1.0]
     matrix_joint["nodes"][1].pop("translation", None)
     matrix_skin = normalized_skin(matrix_joint)
-    if matrix_skin["joints"][1]["rest"][0] != 2.0:
+    if matrix_skin["joints"][2]["rest"][0] != 2.0:
         print("glTF skin self-test failed: matrix joint rest transform was not decomposed",
             file=sys.stderr)
         return 1

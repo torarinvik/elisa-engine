@@ -34,54 +34,50 @@ def _accessor(document: dict, index: int, type_name: str, label: str) -> dict:
     return value
 
 
+def _rest_matrix_transform(matrix: tuple[float, ...], label: str) -> tuple[float, ...]:
+    columns = [(matrix[0], matrix[4], matrix[8]),
+        (matrix[1], matrix[5], matrix[9]), (matrix[2], matrix[6], matrix[10])]
+    scales = [math.sqrt(sum(value * value for value in column)) for column in columns]
+    if any(not math.isfinite(scale) or scale <= 1.0e-12 for scale in scales):
+        raise ValueError(f"{label} matrix must have nonzero scale")
+    if cook_gltf_nodes.determinant(matrix) < 0.0:
+        scales[0] = -scales[0]
+    rotation = [[matrix[row * 4 + column] / scales[column] for column in range(3)]
+        for row in range(3)]
+    orthogonality = (sum(rotation[row][0] * rotation[row][1] for row in range(3)),
+        sum(rotation[row][0] * rotation[row][2] for row in range(3)),
+        sum(rotation[row][1] * rotation[row][2] for row in range(3)))
+    if any(abs(value) > 1.0e-5 for value in orthogonality):
+        raise ValueError(f"{label} matrix contains shear")
+    trace = rotation[0][0] + rotation[1][1] + rotation[2][2]
+    if trace > 0.0:
+        factor = math.sqrt(trace + 1.0) * 2.0
+        quaternion = ((rotation[2][1] - rotation[1][2]) / factor,
+            (rotation[0][2] - rotation[2][0]) / factor,
+            (rotation[1][0] - rotation[0][1]) / factor, factor * 0.25)
+    elif rotation[0][0] > rotation[1][1] and rotation[0][0] > rotation[2][2]:
+        factor = math.sqrt(1.0 + rotation[0][0] - rotation[1][1] - rotation[2][2]) * 2.0
+        quaternion = (factor * 0.25, (rotation[0][1] + rotation[1][0]) / factor,
+            (rotation[0][2] + rotation[2][0]) / factor, (rotation[2][1] - rotation[1][2]) / factor)
+    elif rotation[1][1] > rotation[2][2]:
+        factor = math.sqrt(1.0 + rotation[1][1] - rotation[0][0] - rotation[2][2]) * 2.0
+        quaternion = ((rotation[0][1] + rotation[1][0]) / factor, factor * 0.25,
+            (rotation[1][2] + rotation[2][1]) / factor, (rotation[0][2] - rotation[2][0]) / factor)
+    else:
+        factor = math.sqrt(1.0 + rotation[2][2] - rotation[0][0] - rotation[1][1]) * 2.0
+        quaternion = ((rotation[0][2] + rotation[2][0]) / factor,
+            (rotation[1][2] + rotation[2][1]) / factor, factor * 0.25,
+            (rotation[1][0] - rotation[0][1]) / factor)
+    quaternion_length = math.sqrt(sum(value * value for value in quaternion))
+    if not math.isfinite(quaternion_length) or quaternion_length <= 1.0e-12:
+        raise ValueError(f"{label} matrix has an invalid rotation")
+    quaternion = tuple(value / quaternion_length for value in quaternion)
+    return (matrix[3], matrix[7], matrix[11], *quaternion, *scales)
+
+
 def _rest_transform(node: dict, label: str) -> tuple[float, ...]:
     if "matrix" in node:
-        matrix = cook_gltf_nodes.local_matrix(node)
-        columns = [
-            (matrix[0], matrix[4], matrix[8]),
-            (matrix[1], matrix[5], matrix[9]),
-            (matrix[2], matrix[6], matrix[10]),
-        ]
-        scales = [math.sqrt(sum(value * value for value in column)) for column in columns]
-        if any(not math.isfinite(scale) or scale <= 1.0e-12 for scale in scales):
-            raise ValueError(f"{label} matrix must have nonzero scale")
-        if cook_gltf_nodes.determinant(matrix) < 0.0:
-            scales[0] = -scales[0]
-        rotation = [[matrix[row * 4 + column] / scales[column] for column in range(3)]
-            for row in range(3)]
-        orthogonality = (
-            sum(rotation[row][0] * rotation[row][1] for row in range(3)),
-            sum(rotation[row][0] * rotation[row][2] for row in range(3)),
-            sum(rotation[row][1] * rotation[row][2] for row in range(3)),
-        )
-        if any(abs(value) > 1.0e-5 for value in orthogonality):
-            raise ValueError(f"{label} matrix contains shear")
-        trace = rotation[0][0] + rotation[1][1] + rotation[2][2]
-        if trace > 0.0:
-            factor = math.sqrt(trace + 1.0) * 2.0
-            quaternion = ((rotation[2][1] - rotation[1][2]) / factor,
-                (rotation[0][2] - rotation[2][0]) / factor,
-                (rotation[1][0] - rotation[0][1]) / factor, factor * 0.25)
-        elif rotation[0][0] > rotation[1][1] and rotation[0][0] > rotation[2][2]:
-            factor = math.sqrt(1.0 + rotation[0][0] - rotation[1][1] - rotation[2][2]) * 2.0
-            quaternion = (factor * 0.25, (rotation[0][1] + rotation[1][0]) / factor,
-                (rotation[0][2] + rotation[2][0]) / factor,
-                (rotation[2][1] - rotation[1][2]) / factor)
-        elif rotation[1][1] > rotation[2][2]:
-            factor = math.sqrt(1.0 + rotation[1][1] - rotation[0][0] - rotation[2][2]) * 2.0
-            quaternion = ((rotation[0][1] + rotation[1][0]) / factor, factor * 0.25,
-                (rotation[1][2] + rotation[2][1]) / factor,
-                (rotation[0][2] - rotation[2][0]) / factor)
-        else:
-            factor = math.sqrt(1.0 + rotation[2][2] - rotation[0][0] - rotation[1][1]) * 2.0
-            quaternion = ((rotation[0][2] + rotation[2][0]) / factor,
-                (rotation[1][2] + rotation[2][1]) / factor, factor * 0.25,
-                (rotation[1][0] - rotation[0][1]) / factor)
-        quaternion_length = math.sqrt(sum(value * value for value in quaternion))
-        if not math.isfinite(quaternion_length) or quaternion_length <= 1.0e-12:
-            raise ValueError(f"{label} matrix has an invalid rotation")
-        quaternion = tuple(value / quaternion_length for value in quaternion)
-        return (matrix[3], matrix[7], matrix[11], *quaternion, *scales)
+        return _rest_matrix_transform(cook_gltf_nodes.local_matrix(node), label)
     translation = cook_gltf_nodes.finite_numbers(node.get("translation", [0.0, 0.0, 0.0]), 3, label)
     rotation = cook_gltf_nodes.finite_numbers(node.get("rotation", [0.0, 0.0, 0.0, 1.0]), 4, label)
     length = math.sqrt(sum(value * value for value in rotation))
@@ -91,6 +87,21 @@ def _rest_transform(node: dict, label: str) -> tuple[float, ...]:
     if any(value == 0.0 for value in scale):
         raise ValueError(f"{label} scale must be nonzero")
     return (*translation, *(value / length for value in rotation), *scale)
+
+
+def _inverse_affine(matrix: tuple[float, ...], label: str) -> tuple[float, ...]:
+    a, b, c, tx, d, e, f, ty, g, h, i, tz = matrix
+    determinant = cook_gltf_nodes.determinant(matrix)
+    if not math.isfinite(determinant) or determinant == 0.0:
+        raise ValueError(f"{label} must be invertible for skin hierarchy conversion")
+    inverse = (
+        (e * i - f * h) / determinant, (c * h - b * i) / determinant, (b * f - c * e) / determinant,
+        (f * g - d * i) / determinant, (a * i - c * g) / determinant, (c * d - a * f) / determinant,
+        (d * h - e * g) / determinant, (b * g - a * h) / determinant, (a * e - b * d) / determinant,
+    )
+    return (inverse[0], inverse[1], inverse[2], -(inverse[0] * tx + inverse[1] * ty + inverse[2] * tz),
+        inverse[3], inverse[4], inverse[5], -(inverse[3] * tx + inverse[4] * ty + inverse[5] * tz),
+        inverse[6], inverse[7], inverse[8], -(inverse[6] * tx + inverse[7] * ty + inverse[8] * tz))
 
 
 def _read_inverse_bind(document: dict, buffer: bytes, skin: dict, joint_count: int) -> list[float]:
@@ -228,6 +239,23 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
             if type(node_index) is int:
                 animated_nodes.add(node_index)
 
+    source_locals = [cook_gltf_nodes.local_matrix(node) for node in nodes]
+    world_cache: dict[int, tuple[float, ...]] = {}
+
+    def world_matrix(node_index: int, visiting: set[int] | None = None) -> tuple[float, ...]:
+        if node_index in world_cache:
+            return world_cache[node_index]
+        active = set() if visiting is None else visiting
+        if node_index in active:
+            raise ValueError("skin joint hierarchy contains a cycle")
+        active.add(node_index)
+        parent = source_parents[node_index]
+        result = source_locals[node_index] if parent is None else cook_gltf_nodes.multiply(
+            world_matrix(parent, active), source_locals[node_index])
+        active.remove(node_index)
+        world_cache[node_index] = result
+        return result
+
     rig_nodes = set(joints)
     for joint_index in joints:
         ancestor = source_parents[joint_index]
@@ -246,12 +274,44 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
 
     inverse_bind_matrices = _read_inverse_bind(document, buffer, skin, len(joints))
 
+    mesh_world = world_matrix(mesh_root)
+    mesh_inverse: tuple[float, ...] | None = None
     parents: dict[int, int | None] = {}
+    basis_by_boundary: dict[int | None, int] = {}
+    basis_records: dict[int, tuple[str, tuple[float, ...]]] = {}
+    next_basis = len(nodes)
     for node_index in rig_nodes:
         ancestor = source_parents[node_index]
         while ancestor is not None and ancestor not in rig_nodes:
             ancestor = source_parents[ancestor]
-        parents[node_index] = ancestor
+        if ancestor is not None:
+            parents[node_index] = ancestor
+            continue
+
+        boundary = source_parents[node_index]
+        while boundary is not None and boundary not in mesh_space_ancestors:
+            boundary = source_parents[boundary]
+        if boundary == mesh_root:
+            basis = cook_gltf_nodes.IDENTITY
+        else:
+            if mesh_inverse is None:
+                mesh_inverse = _inverse_affine(mesh_world, "skinned mesh-space root")
+            boundary_world = cook_gltf_nodes.IDENTITY if boundary is None else world_matrix(boundary)
+            basis = cook_gltf_nodes.multiply(mesh_inverse, boundary_world)
+        if all(abs(value - expected) <= 1.0e-6 for value, expected in zip(basis, cook_gltf_nodes.IDENTITY)):
+            parents[node_index] = None
+            continue
+        if boundary not in basis_by_boundary:
+            basis_id = next_basis
+            next_basis += 1
+            basis_by_boundary[boundary] = basis_id
+            name = f"skin_mesh_basis_{boundary if boundary is not None else 'root'}"
+            basis_records[basis_id] = (name, _rest_matrix_transform(basis, name))
+            parents[basis_id] = None
+        parents[node_index] = basis_by_boundary[boundary]
+
+    if len(rig_nodes) + len(basis_records) > MAX_RIG_NODES:
+        raise ValueError(f"skin rig hierarchy exceeds {MAX_RIG_NODES} nodes")
     ordered: list[int] = []
     visiting: set[int] = set()
     visited: set[int] = set()
@@ -269,21 +329,25 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
         visited.add(node_index)
         ordered.append(node_index)
 
-    for node_index in joints:
+    for node_index in (*basis_records, *joints):
         visit(node_index)
     ordered_index = {node: index for index, node in enumerate(ordered)}
-    cluster_joints = [ordered_index[node] for node in joints]
+    source_ordered_index = {node: ordered_index[node] for node in rig_nodes}
+    cluster_joints = [source_ordered_index[node] for node in joints]
     rig_joints = []
     for node_index in ordered:
-        node = document["nodes"][node_index]
         parent = parents[node_index]
-        name = node.get("name", f"joint_{node_index}")
-        if not isinstance(name, str) or not name:
-            raise ValueError("skin rig node names must be nonempty strings")
-        rig_joints.append({"name": name, "parent": -1 if parent is None else ordered_index[parent],
-            "rest": _rest_transform(node, f"skin joint {node_index}")})
-    animation_clips = cook_gltf_animation.normalize(document, buffer, ordered_index,
+        if node_index in basis_records:
+            name, rest = basis_records[node_index]
+        else:
+            node = document["nodes"][node_index]
+            name = node.get("name", f"joint_{node_index}")
+            if not isinstance(name, str) or not name:
+                raise ValueError("skin rig node names must be nonempty strings")
+            rest = _rest_transform(node, f"skin rig node {node_index}")
+        rig_joints.append({"name": name, "parent": -1 if parent is None else ordered_index[parent], "rest": rest})
+    animation_clips = cook_gltf_animation.normalize(document, buffer, source_ordered_index,
         [joint["rest"] for joint in rig_joints])
-    return {"bone_names": [rig_joints[ordered_index[node]]["name"] for node in joints],
+    return {"bone_names": [rig_joints[source_ordered_index[node]]["name"] for node in joints],
         "joints": rig_joints, "cluster_joints": cluster_joints,
         "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips}

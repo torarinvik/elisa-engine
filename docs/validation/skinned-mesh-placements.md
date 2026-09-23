@@ -36,13 +36,16 @@ weight before the snapshot is cleared.
 
 The importer still accepts one glTF skin. It ignores skinned mesh-node
 transforms, as required by glTF, while retaining authored transforms in
-placement metadata. Transformed and animated non-joint ancestors below the
-mesh-space root now survive as helper rig nodes; the palette still contains
-only the actual skin joints. Multiple skins in one scene remain unsupported.
+placement metadata. Transformed and animated non-joint ancestors now survive
+as helper rig nodes, including when the skeleton is in a sibling branch under
+a shared scene parent. A synthetic mesh-relative basis accounts for that
+branch offset; the palette still contains only actual skin joints. Multiple
+skins in one scene remain unsupported.
 Static snapshot placement uploads are covered in
 [`snapshot-mesh-placements.md`](snapshot-mesh-placements.md). This change does
 not claim performance measurements. The two-placement animation fixture gives
 its second skinned mesh node a nonidentity transform, and the native smoke
 confirms its uploaded positions match the first placement. It now also has a
-translated helper ancestor and verifies its world transform through the native
+transformed shared parent and a translated helper ancestor on the sibling
+skeleton branch, and verifies the resulting world transform through the native
 animation probe; see [`gltf-skin-hierarchies.md`](gltf-skin-hierarchies.md).

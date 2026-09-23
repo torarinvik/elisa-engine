@@ -57,7 +57,7 @@ extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle)
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 constexpr float ANIMATION_BONE_BOUND_RADIUS = 1.0f;
-constexpr float SKIN_ANCESTOR_WICKED_Z = -0.5f;
+constexpr float SKIN_ANCESTOR_WICKED_Z = 0.25f;
 enum AnimationStateProbeMatch : int32_t {
     ANIMATION_BONE_MATCH = 1 << 0,
     ANIMATION_MORPH_MATCH = 1 << 1,
