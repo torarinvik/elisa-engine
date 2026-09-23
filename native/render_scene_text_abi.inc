@@ -10,6 +10,28 @@ extern "C" int32_t elisa_render_scene_v1_measure_text(const char* text,
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     try {
+        const uint64_t frame = elisa_application_v1_frame_count();
+        std::string cache_key = std::to_string(font_size);
+        cache_key.push_back('\0');
+        cache_key.append(text);
+        auto entry = state.overlay_text_measure_cache.find(cache_key);
+        if (entry == state.overlay_text_measure_cache.end()) {
+            if (state.overlay_text_measure_cache.size() >= MAX_OVERLAY_TEXT_MEASURE_CACHE_ENTRIES) {
+                auto oldest = state.overlay_text_measure_cache.begin();
+                for (auto candidate = state.overlay_text_measure_cache.begin();
+                    candidate != state.overlay_text_measure_cache.end(); ++candidate) {
+                    if (candidate->second.last_used_frame < oldest->second.last_used_frame) {
+                        oldest = candidate;
+                    }
+                }
+                state.overlay_text_measure_cache.erase(oldest);
+            }
+            entry = state.overlay_text_measure_cache.emplace(cache_key,
+                OverlayTextMeasureCacheEntry{frame, frame, 0.0f, 0.0f, false}).first;
+        }
+        OverlayTextMeasureCacheEntry& cached = entry->second;
+        cached.last_used_frame = frame;
+
         wi::SpriteFont font;
         font.SetText(text);
         font.params.size = font_size;
@@ -22,7 +44,26 @@ extern "C" int32_t elisa_render_scene_v1_measure_text(const char* text,
         }
         *width = measured_width;
         *height = measured_height;
-        *ready = text[0] == '\0' || measured_width > 0.0f || measured_height > 0.0f;
+        if (text[0] == '\0') {
+            cached.ready = true;
+            cached.ready_width = measured_width;
+            cached.ready_height = measured_height;
+        } else if (cached.ready) {
+            const float tolerance = std::max(0.25f, cached.ready_width * 0.005f);
+            if (measured_width + tolerance < cached.ready_width ||
+                measured_height + tolerance < cached.ready_height) {
+                cached.ready = false;
+                cached.requested_frame = frame;
+            } else {
+                cached.ready_width = measured_width;
+                cached.ready_height = measured_height;
+            }
+        } else if (frame > cached.requested_frame && measured_width > 0.0f) {
+            cached.ready = true;
+            cached.ready_width = measured_width;
+            cached.ready_height = measured_height;
+        }
+        *ready = cached.ready;
     } catch (...) {
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
