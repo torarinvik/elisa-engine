@@ -4,6 +4,7 @@
 // cooked offline; the runtime accepts only this versioned, validated format.
 #include "bundle_dependencies.h"
 #include "cooked_package_fields.h"
+#include "cooked_geometry_limits.h"
 #include "cooked_slot_materials.h"
 #include "virtual_package.h"
 
@@ -21,7 +22,6 @@
 #include <vector>
 
 namespace elisa::assets {
-
 inline constexpr uint32_t MAX_GEOMETRY_SUBSETS = 16;
 inline constexpr uint32_t MAX_GEOMETRY_MATERIAL_SLOTS = 16;
 inline constexpr uint32_t MAX_GEOMETRY_ANIMATION_CLIPS = 24;
@@ -331,7 +331,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     }
     if (has_skin) {
         uint64_t bone_count = 0;
-        if (!detail::parse_count(package, "skin_bones", bone_count) || bone_count == 0 || bone_count > 64 ||
+        if (!detail::parse_count(package, "skin_bones", bone_count) || bone_count == 0 ||
+            bone_count > MAX_GEOMETRY_SKIN_BONES ||
             skin_index_stride->second != "16" || skin_weight_stride->second != "16" ||
             vertices > std::numeric_limits<size_t>::max() / 4 ||
             !detail::decode_u32(package, "skin_indices_b64", size_t(vertices) * 4, geometry.skin_indices) ||
@@ -383,7 +384,6 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     }
     if (!detail::parse_geometry_morphs(package, geometry, vertices, error)) return false;
     if (!detail::parse_geometry_scene(package, geometry, error)) return false;
-
     const auto joint_count_section = package.sections.find("skin_joints");
     const auto parents_stride = package.sections.find("skin_joint_parent_stride");
     const auto parents_data = package.sections.find("skin_joint_parents_b64");
@@ -409,7 +409,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         uint64_t joint_count = 0;
         std::vector<int32_t> parents;
         std::vector<float> rest_values;
-        if (!detail::parse_count(package, "skin_joints", joint_count) || joint_count == 0 || joint_count > 64 ||
+        if (!detail::parse_count(package, "skin_joints", joint_count) || joint_count == 0 ||
+            joint_count > MAX_GEOMETRY_RIG_NODES ||
             parents_stride->second != "4" || rest_stride->second != "40" || cluster_map_stride->second != "4" ||
             !detail::decode_i32(package, "skin_joint_parents_b64", size_t(joint_count), parents) ||
             !detail::decode_floats(package, "skin_joint_rest_b64", size_t(joint_count) * 10, rest_values) ||

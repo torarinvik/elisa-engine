@@ -113,7 +113,8 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
         (!has_skin_rig || out_joint_entities != nullptr || scene.armatures.GetComponent(shared_armature) == nullptr))) {
         return false;
     }
-    if (has_skin_rig && (geometry.skin_joints.size() > 64 || geometry.skin_cluster_joints.size() > 64 ||
+    if (has_skin_rig && (geometry.skin_joints.size() > elisa::assets::MAX_GEOMETRY_RIG_NODES ||
+        geometry.skin_cluster_joints.size() > elisa::assets::MAX_GEOMETRY_SKIN_BONES ||
         geometry.skin_indices.size() != geometry.positions.size() / 3 * 4 ||
         geometry.skin_weights.size() != geometry.skin_indices.size() ||
         (!geometry.skin_inverse_bind_matrices.empty() &&

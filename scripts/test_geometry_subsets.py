@@ -162,6 +162,8 @@ def cases(directory: Path) -> list[tuple]:
     hierarchy_metadata = (directory / "hierarchy.pkg").read_bytes()
     skin_path, _ = gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
     skin_metadata = skin_path.read_bytes()
+    large_skin_path, _ = gltf_skin_self_test.write_large_rig_package(
+        directory / "large-skinned-rig.pkg", 65)
     default_skin_path, _ = gltf_skin_self_test.write_package(directory / "default-skinned-panel.pkg", None)
     gltf_morph_self_test.write_package(directory / "morphed-panel.pkg")
     gltf_scene_self_test.write_package(directory / "scene-metadata.pkg")
@@ -269,6 +271,9 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
         ("accept", "skinned-panel.pkg", None, (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1),
             (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+        ("accept", "large-skinned-rig.pkg", large_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
         ("accept", "default-skinned-panel.pkg", default_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,

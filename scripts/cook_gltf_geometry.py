@@ -457,7 +457,8 @@ def skin_lines(geometry: dict) -> list[str]:
     clips = skin.get("animation_clips", [])
     inverse_bind_matrices = skin.get("inverse_bind_matrices")
     if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
-            len(bones) != len(cluster_joints) or not joints or len(joints) > cook_gltf_skin.MAX_JOINTS or
+            len(bones) != len(cluster_joints) or len(bones) > cook_gltf_skin.MAX_JOINTS or
+            not joints or len(joints) > cook_gltf_skin.MAX_RIG_NODES or
             (inverse_bind_matrices is not None and len(inverse_bind_matrices) != len(bones) * 16) or
             len(clips) > cook_gltf_animation.MAX_CLIPS):
         raise ValueError("normalized skin streams do not match the mesh")

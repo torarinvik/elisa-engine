@@ -57,11 +57,13 @@ extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle)
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 constexpr float ANIMATION_BONE_BOUND_RADIUS = 1.0f;
+constexpr float SKIN_ANCESTOR_WICKED_Z = -0.5f;
 enum AnimationStateProbeMatch : int32_t {
     ANIMATION_BONE_MATCH = 1 << 0,
     ANIMATION_MORPH_MATCH = 1 << 1,
     ANIMATION_PLACEMENT_MATCH = 1 << 2,
     ANIMATION_PENDING_MATCH = 1 << 3,
+    ANIMATION_HIERARCHY_MATCH = 1 << 4,
 };
 
 extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
@@ -85,6 +87,7 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     if (bone == nullptr) return 0;
     const float expected_wicked_x = -expected_x;
     const bool bone_match = std::abs(bone->translation_local.x - expected_wicked_x) < 1.0e-5f;
+    const bool hierarchy_match = std::abs(bone->world.m[3][2] - SKIN_ANCESTOR_WICKED_Z) < 1.0e-5f;
     const bool morph_match = mesh->morph_targets.empty()
         ? std::abs(expected_morph) < 1.0e-5f
         : std::abs(mesh->morph_targets[0].weight - expected_morph) < 1.0e-5f;
@@ -108,7 +111,8 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
         (expected_pending != 0);
     return (bone_match ? ANIMATION_BONE_MATCH : 0) | (morph_match ? ANIMATION_MORPH_MATCH : 0) |
         (placement_match && placement_vertices_match ? ANIMATION_PLACEMENT_MATCH : 0) |
-        (pending_match ? ANIMATION_PENDING_MATCH : 0);
+        (pending_match ? ANIMATION_PENDING_MATCH : 0) |
+        (hierarchy_match ? ANIMATION_HIERARCHY_MATCH : 0);
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
