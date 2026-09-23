@@ -154,7 +154,11 @@ inline bool configure_cooked_mesh(wi::scene::Scene& scene, wi::ecs::Entity entit
             for (size_t vertex = 0; vertex < target.vertex_normals.size(); ++vertex)
                 target.vertex_normals[vertex] = cooked_vector(cooked.normals, vertex_start + vertex);
         }
-        target.weight = 0.0f;
+        const size_t placement_count = geometry.mesh_placements.empty() ? 1 : geometry.mesh_placements.size();
+        const size_t placement = use_placement ? placement_index : 0;
+        const size_t weight_index = placement * geometry.morph_targets.size() + target_index;
+        if (placement >= placement_count || weight_index >= geometry.morph_default_weights.size()) return false;
+        target.weight = geometry.morph_default_weights[weight_index];
     }
     set_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
     if (!geometry.tangents.empty()) {

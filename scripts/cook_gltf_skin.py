@@ -11,7 +11,6 @@ import math
 import struct
 
 import cook_assets
-import cook_gltf_animation
 import cook_gltf_nodes
 
 MAX_JOINTS = 64
@@ -180,8 +179,6 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
         for primitive in mesh.get("primitives", []) if isinstance(mesh.get("primitives", []), list)
     )
     if not skins and not has_skin_attributes:
-        if document.get("animations"):
-            raise ValueError("glTF animation clips require a skinned mesh")
         if any("skin" in node for node in mesh_nodes):
             raise ValueError("mesh node skin requires a declared skin and influence attributes")
         return None
@@ -346,11 +343,9 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
                 raise ValueError("skin rig node names must be nonempty strings")
             rest = _rest_transform(node, f"skin rig node {node_index}")
         rig_joints.append({"name": name, "parent": -1 if parent is None else ordered_index[parent], "rest": rest})
-    animation_clips = cook_gltf_animation.normalize(document, buffer, source_ordered_index,
-        [joint["rest"] for joint in rig_joints])
     return {"bone_names": [rig_joints[source_ordered_index[node]]["name"] for node in joints],
         "joints": rig_joints, "cluster_joints": cluster_joints,
-        "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips,
+        "inverse_bind_matrices": inverse_bind_matrices,
         "source_node_indices": source_ordered_index,
         "placement_palettes": {mesh_node: {"palette_offset": 0, "palette_count": len(joints)}
             for mesh_node in (index for index, node in enumerate(nodes)
@@ -461,8 +456,6 @@ def _normalize_scene_skins(document: dict, buffer: bytes) -> dict:
 
     if len(joints) > MAX_RIG_NODES:
         raise ValueError(f"combined skin rig exceeds {MAX_RIG_NODES} nodes")
-    animation_clips = cook_gltf_animation.normalize(document, buffer, source_node_indices,
-        [joint["rest"] for joint in joints])
     return {"bone_names": bone_names, "joints": joints, "cluster_joints": cluster_joints,
-        "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips,
+        "inverse_bind_matrices": inverse_bind_matrices,
         "source_node_indices": source_node_indices, "placement_palettes": placement_palettes}

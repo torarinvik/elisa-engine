@@ -175,6 +175,27 @@ extern "C" int32_t elisa_render_scene_v1_test_mixed_skin_layout(int64_t handle) 
         skinned->vertex_boneweights[0].x > 0.99f && fixed->vertex_boneweights[0].x > 0.99f ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_morph_animation_weights(
+    int64_t handle, float first_weight, float second_weight) {
+    if (!std::isfinite(first_weight) || !std::isfinite(second_weight)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const InstanceSlot& instance = state.instances[slot];
+    const wi::scene::MeshComponent* first = state.scene->meshes.GetComponent(instance.entity);
+    if (!instance.skin_joints.empty() || instance.joint_entities.size() != 0 ||
+        instance.animation_clips.size() != 1 || instance.animation_clip < 0 ||
+        first == nullptr || first->morph_targets.size() != 1 ||
+        instance.imported_mesh_entities.size() != 1) return 0;
+    const wi::scene::MeshComponent* second =
+        state.scene->meshes.GetComponent(instance.imported_mesh_entities[0]);
+    return second != nullptr && second->morph_targets.size() == 1 &&
+        std::abs(first->morph_targets[0].weight - first_weight) < 1.0e-5f &&
+        std::abs(second->morph_targets[0].weight - second_weight) < 1.0e-5f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
     int64_t first_handle, float first_x, int64_t second_handle, float second_x,
     int32_t expected_pending) {

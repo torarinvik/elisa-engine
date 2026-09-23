@@ -44,7 +44,7 @@ DEFAULT_INVERSE_BIND_MATRICES = GLTF_IDENTITY_MATRIX * 2
 
 
 def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
-        value_type: str, count: int) -> int:
+        value_type: str, count: int, normalized: bool = False) -> int:
     offset = len(buffer)
     if offset % 4:
         buffer += bytes(4 - offset % 4)
@@ -52,8 +52,11 @@ def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
     buffer += payload
     view = len(document["bufferViews"])
     document["bufferViews"].append({"buffer": 0, "byteOffset": offset, "byteLength": len(payload)})
-    document["accessors"].append({"bufferView": view, "componentType": component,
-        "count": count, "type": value_type})
+    accessor = {"bufferView": view, "componentType": component,
+        "count": count, "type": value_type}
+    if normalized:
+        accessor["normalized"] = True
+    document["accessors"].append(accessor)
     return len(document["accessors"]) - 1
 
 
@@ -405,10 +408,60 @@ def self_test(temporary: Path) -> int:
     document = generated_document()
     buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
         json.dumps(document, separators=(",", ":")).encode("utf-8")))
-    def normalized_skin(source_document: dict) -> dict:
+    def normalized(source_document: dict) -> dict:
         source_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
             json.dumps(source_document, separators=(",", ":")).encode("utf-8")))
-        return cook_gltf_geometry.normalized_geometry(source_document, source_buffer)["skin"]
+        return cook_gltf_geometry.normalized_geometry(source_document, source_buffer)
+
+    def normalized_skin(source_document: dict) -> dict:
+        return normalized(source_document)["skin"]
+
+    cubic = deepcopy(document)
+    cubic_buffer = bytearray(base64.b64decode(cubic["buffers"][0]["uri"].split(",", 1)[1]))
+    cubic_values = (0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 2.0, 0.0, 0.0, 0.0, 0.0)
+    cubic_accessor = _append(cubic, cubic_buffer,
+        struct.pack(f"<{len(cubic_values)}f", *cubic_values), 5126, "VEC3", 6)
+    cubic["animations"][0]["samplers"][0].update({
+        "output": cubic_accessor, "interpolation": "CUBICSPLINE"})
+    cubic["buffers"][0]["byteLength"] = len(cubic_buffer)
+    cubic["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
+        base64.b64encode(cubic_buffer).decode("ascii")
+    cubic_geometry = normalized(cubic)
+    cubic_rig_index = cubic_geometry["skin"]["source_node_indices"][2]
+    cubic_rig_index = cubic_rig_index[0] if isinstance(cubic_rig_index, list) else cubic_rig_index
+    cubic_samples = cubic_geometry["animation_clips"][0]["samples"]
+    cubic_midpoint_y = cubic_samples[(15 * len(cubic_geometry["skin"]["joints"])
+        + cubic_rig_index) * 10 + 1]
+    if abs(cubic_midpoint_y - 1.5) > 1.0e-6:
+        print("glTF skin self-test failed: cubic translation was not Hermite sampled", file=sys.stderr)
+        return 1
+
+    cubic_rotation = deepcopy(document)
+    rotation_buffer = bytearray(base64.b64decode(cubic_rotation["buffers"][0]["uri"].split(",", 1)[1]))
+    zero_quaternion = (0.0, 0.0, 0.0, 0.0)
+    cubic_quaternion = (*zero_quaternion, 0.0, 0.0, 0.0, 1.0,
+        *zero_quaternion, *zero_quaternion, 0.0, 0.0, 2.0 ** -0.5, 2.0 ** -0.5,
+        *zero_quaternion)
+    rotation_accessor = _append(cubic_rotation, rotation_buffer,
+        struct.pack(f"<{len(cubic_quaternion)}f", *cubic_quaternion), 5126, "VEC4", 6)
+    rotation_channel_target = cubic_rotation["animations"][0]["channels"][0]["target"]
+    rotation_channel_target["path"] = "rotation"
+    cubic_rotation["animations"][0]["samplers"][0].update({
+        "output": rotation_accessor, "interpolation": "CUBICSPLINE"})
+    cubic_rotation["buffers"][0]["byteLength"] = len(rotation_buffer)
+    cubic_rotation["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
+        base64.b64encode(rotation_buffer).decode("ascii")
+    rotation_geometry = normalized(cubic_rotation)
+    rotation_index = rotation_geometry["skin"]["source_node_indices"][2]
+    rotation_index = rotation_index[0] if isinstance(rotation_index, list) else rotation_index
+    rotation_samples = rotation_geometry["animation_clips"][0]["samples"]
+    quaternion_start = (15 * len(rotation_geometry["skin"]["joints"]) + rotation_index) * 10 + 3
+    midpoint_rotation = rotation_samples[quaternion_start:quaternion_start + 4]
+    if abs(sum(value * value for value in midpoint_rotation) - 1.0) > 1.0e-5:
+        print("glTF skin self-test failed: cubic quaternion was not normalized", file=sys.stderr)
+        return 1
 
     shared_ancestor = deepcopy(document)
     shared_ancestor["nodes"][5]["translation"] = [5.0, -2.0, 3.0]
@@ -472,8 +525,9 @@ def self_test(temporary: Path) -> int:
     animated_helper["nodes"][4].pop("translation")
     animated_helper["animations"][0]["channels"].append({"sampler": 0,
         "target": {"node": 4, "path": "translation"}})
-    animated_rig = normalized_skin(animated_helper)
-    if len(animated_rig["joints"]) != 4 or len(animated_rig["animation_clips"][0]["samples"]) != 4 * 31 * 10:
+    animated_geometry = normalized(animated_helper)
+    if (len(animated_geometry["skin"]["joints"]) != 4 or
+            len(animated_geometry["animation_clips"][0]["samples"]) != 4 * 31 * 10):
         print("glTF skin self-test failed: animated helper node was omitted from the rig",
             file=sys.stderr)
         return 1
@@ -525,12 +579,6 @@ def self_test(temporary: Path) -> int:
     projective_inverse_bind["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
         base64.b64encode(projective_buffer).decode("ascii")
     rejected.append(("projective inverse bind", projective_inverse_bind))
-    cubic = deepcopy(document)
-    cubic["animations"][0]["samplers"][0]["interpolation"] = "CUBICSPLINE"
-    rejected.append(("cubic-spline animation", cubic))
-    morph_channel = deepcopy(document)
-    morph_channel["animations"][0]["channels"][0]["target"]["path"] = "weights"
-    rejected.append(("morph animation", morph_channel))
     duplicate_track = deepcopy(document)
     duplicate_track["animations"][0]["channels"].append(deepcopy(
         duplicate_track["animations"][0]["channels"][0]))

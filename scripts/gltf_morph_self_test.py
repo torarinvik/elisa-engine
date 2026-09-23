@@ -19,7 +19,9 @@ SOURCE = ROOT / "test/fixtures/multi_material_panel.gltf"
 ASSET_PATH = "test/generated/multi_material_morphed_panel.gltf"
 
 
-def _append(document: dict, buffer: bytearray, payload: bytes, count: int) -> int:
+def _append(document: dict, buffer: bytearray, payload: bytes, count: int,
+        value_type: str = "VEC3", component: int = 5126,
+        normalized: bool = False) -> int:
     offset = len(buffer)
     if offset % 4:
         buffer += bytes(4 - offset % 4)
@@ -27,8 +29,11 @@ def _append(document: dict, buffer: bytearray, payload: bytes, count: int) -> in
     buffer += payload
     view = len(document["bufferViews"])
     document["bufferViews"].append({"buffer": 0, "byteOffset": offset, "byteLength": len(payload)})
-    document["accessors"].append({"bufferView": view, "componentType": 5126,
-        "count": count, "type": "VEC3"})
+    accessor = {"bufferView": view, "componentType": component,
+        "count": count, "type": value_type}
+    if normalized:
+        accessor["normalized"] = True
+    document["accessors"].append(accessor)
     return len(document["accessors"]) - 1
 
 
@@ -50,10 +55,55 @@ def generated_document() -> dict:
     return document
 
 
+def animated_document() -> dict:
+    """Animate one unskinned placement while a sibling keeps mesh defaults."""
+    document = generated_document()
+    buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
+    input_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 2, "SCALAR")
+    output_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 2, "SCALAR")
+    document["meshes"][0]["weights"] = [0.2]
+    document["nodes"][0]["weights"] = [0.4]
+    second = deepcopy(document["nodes"][0])
+    second["name"] = "default_weight_placement"
+    second.pop("weights")
+    second["translation"] = [2.0, 0.0, 0.0]
+    second_node = len(document["nodes"])
+    document["nodes"].append(second)
+    document["scenes"][0]["nodes"].append(second_node)
+    document["animations"] = [{"name": "weights", "samplers": [{"input": input_accessor,
+        "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
+        "target": {"node": 0, "path": "weights"}}]}]
+    document["buffers"][0]["byteLength"] = len(buffer)
+    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
+    return document
+
+
+def animation_output_document(payload: bytes, component: int = 5126,
+        normalized: bool = False, interpolation: str = "LINEAR") -> dict:
+    """Replace the scalar weight output with a selected glTF encoding."""
+    document = animated_document()
+    buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
+    output = _append(document, buffer, payload, 2 if interpolation != "CUBICSPLINE" else 6,
+        "SCALAR", component, normalized)
+    document["animations"][0]["samplers"][0].update({
+        "output": output, "interpolation": interpolation})
+    document["buffers"][0]["byteLength"] = len(buffer)
+    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
+        base64.b64encode(buffer).decode("ascii")
+    return document
+
+
 def write_package(output: Path) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-morph-") as temporary:
         source = Path(temporary) / "multi_material_morphed_panel.gltf"
         source.write_text(json.dumps(generated_document(), separators=(",", ":")), encoding="utf-8")
+        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+
+
+def write_animated_package(output: Path) -> tuple[Path, dict]:
+    with tempfile.TemporaryDirectory(prefix="elisa-gltf-morph-animation-") as temporary:
+        source = Path(temporary) / "morph_animation_panel.gltf"
+        source.write_text(json.dumps(animated_document(), separators=(",", ":")), encoding="utf-8")
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 
@@ -68,6 +118,46 @@ def self_test(temporary: Path) -> int:
             len(base64.b64decode(sections.get("morph_0_positions_b64", ""))) != 12 * 12 or
             len(base64.b64decode(sections.get("morph_0_normals_b64", ""))) != 12 * 12):
         print("glTF morph self-test failed: package is unstable or incomplete", file=sys.stderr)
+        return 1
+    animated_path, _ = write_animated_package(temporary / "animated.pkg")
+    animated = dict(line.split("=", 1) for line in animated_path.read_text(encoding="utf-8").splitlines())
+    morph_samples = struct.unpack("<62f", base64.b64decode(animated["animation_0_morph_samples_b64"]))
+    defaults = struct.unpack("<2f", base64.b64decode(animated["morph_default_weights_b64"]))
+    if (animated.get("format") != "elisa-cooked-v3" or animated.get("animation_clips") != "1" or
+            "skin_joints" in animated or any(abs(value - expected) > 1.0e-6
+                for value, expected in zip(defaults, (0.4, 0.2))) or
+            any(abs(value - expected) > 1.0e-6 for value, expected in
+                zip(morph_samples[0:2], (0.0, 0.2))) or
+            any(abs(value - expected) > 1.0e-6 for value, expected in
+                zip(morph_samples[30:32], (0.5, 0.2))) or
+            any(abs(value - expected) > 1.0e-6 for value, expected in
+                zip(morph_samples[60:62], (1.0, 0.2)))):
+        print("glTF morph self-test failed: unskinned weight clips or placement defaults were lost",
+            file=sys.stderr)
+        return 1
+
+    quantized_document = animation_output_document(bytes((0, 255)), 5121, True)
+    quantized_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
+        json.dumps(quantized_document, separators=(",", ":")).encode("utf-8")))
+    quantized_geometry = cook_gltf_geometry.normalized_geometry(quantized_document, quantized_buffer)
+    quantized_samples = quantized_geometry["animation_clips"][0]["morph_weights"]
+    if (abs(quantized_samples[30] - 0.5) > 1.0e-6 or
+            abs(quantized_samples[60] - 1.0) > 1.0e-6):
+        print("glTF morph self-test failed: normalized integer weights were not decoded",
+            file=sys.stderr)
+        return 1
+
+    cubic_document = animation_output_document(struct.pack("<6f", 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0), interpolation="CUBICSPLINE")
+    cubic_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
+        json.dumps(cubic_document, separators=(",", ":")).encode("utf-8")))
+    cubic_geometry = cook_gltf_geometry.normalized_geometry(cubic_document, cubic_buffer)
+    cubic_samples = cubic_geometry["animation_clips"][0]["morph_weights"]
+    if (abs(cubic_samples[30] - 0.5) > 1.0e-6 or
+            abs(cubic_samples[60] - 1.0) > 1.0e-6 or
+            abs(cubic_samples[61] - 0.2) > 1.0e-6):
+        print("glTF morph self-test failed: cubic-spline weights or sibling defaults were lost",
+            file=sys.stderr)
         return 1
     document = generated_document()
     buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(

@@ -40,6 +40,7 @@ struct SnapshotStageRow {
     std::vector<wi::ecs::Entity> created_joint_entities;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> created_skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> created_animation_clips;
+    std::vector<float> created_morph_default_weights;
 };
 
 struct SnapshotMeshAssetSlot {

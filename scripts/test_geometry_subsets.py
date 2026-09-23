@@ -175,6 +175,8 @@ def cases(directory: Path) -> list[tuple]:
     gltf_scene_self_test.write_package(directory / "scene-metadata.pkg")
     scene_metadata = (directory / "scene-metadata.pkg").read_bytes()
     morph = (directory / "morphed-panel.pkg").read_bytes()
+    animated_morph_path, _ = gltf_morph_self_test.write_animated_package(
+        directory / "animated-morph-panel.pkg")
     # Fifteen placements alternating red and green, then blue: the most
     # subsets a baked hierarchy may need.
     alternating = cook_assets.read_gltf(hierarchy_source.read_bytes())
@@ -297,6 +299,9 @@ def cases(directory: Path) -> list[tuple]:
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds",
             gltf_skin_self_test.DEFAULT_INVERSE_BIND_MATRICES)),
+        ("accept", "animated-morph-panel.pkg", animated_morph_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)],
+            PANEL_MATERIALS, "animations", 1, "morphs", 1)),
         ("reject", "skin-inverse-bind-no-stride.pkg", skin_field("skin_inverse_bind_stride", None),
             "incomplete cooked geometry skin stream"),
         ("reject", "skin-inverse-bind-no-data.pkg", skin_field("skin_inverse_bind_matrices_b64", None),

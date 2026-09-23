@@ -21,6 +21,7 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 import gltf_texture_self_test
 import gltf_skin_self_test
+import gltf_morph_self_test
 import gltf_scene_self_test
 import packaged_maze_smoke
 import test_geometry_subsets
@@ -119,6 +120,8 @@ def main() -> int:
         subset_directory / "multi-skin-panel.pkg")
     gltf_skin_self_test.write_mixed_skin_package(
         subset_directory / "mixed-skin-panel.pkg")
+    gltf_morph_self_test.write_animated_package(
+        subset_directory / "animated-morph-panel.pkg")
     gltf_scene_self_test.write_package(subset_directory / "scene-metadata.pkg")
     # The cooked-material test also registers a variant whose center slot is
     # blended, single-sided glass. Its buffer is embedded, so the copy cooks

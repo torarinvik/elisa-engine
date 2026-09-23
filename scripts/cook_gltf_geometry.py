@@ -106,21 +106,17 @@ def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], 
     return len(materials), [record for record, _ in slots], [images for _, images in slots]
 
 
-def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list, int, list[bytes], list, dict | None]:
-    """Return each mesh placement's (mesh index, world matrix), the material
-    slot count, slot material records, and each slot's images after rejecting
-    unhandled glTF semantics."""
+def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
+    """Validate glTF input and normalize placement, skin, morph, animation, and material metadata."""
     allowed_extensions = {cook_gltf_scene.LIGHT_EXTENSION, cook_gltf_textures.KHR_TEXTURE_BASISU}
     if set(document.get("extensionsUsed", [])) - allowed_extensions or set(document.get("extensionsRequired", [])) - allowed_extensions:
         raise ValueError("runtime geometry cooker does not support glTF extensions")
-    skin = cook_gltf_skin.normalize(document, buffer)
-
     meshes = document.get("meshes", [])
     if not isinstance(meshes, list) or not 1 <= len(meshes) <= cook_gltf_nodes.MAX_NODES:
         raise ValueError(f"runtime geometry cooker requires 1 to {cook_gltf_nodes.MAX_NODES} meshes")
     every_primitive = []
     for mesh in meshes:
-        if not isinstance(mesh, dict) or set(mesh) - {"name", "primitives"}:
+        if not isinstance(mesh, dict) or set(mesh) - {"name", "primitives", "weights"}:
             raise ValueError("runtime geometry cooker encountered unsupported mesh properties")
         primitives = mesh.get("primitives", [])
         if not isinstance(primitives, list) or not 1 <= len(primitives) <= MAX_SUBSETS:
@@ -154,7 +150,10 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
         raise ValueError("all runtime primitives must use the same morph target count")
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
     placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes),
-        allow_singular_mesh_transforms=skin is not None)
+        allow_singular_mesh_transforms=bool(document.get("skins")))
+    if morph_count == 0 and any("weights" in document["nodes"][node_index] or
+            "weights" in meshes[mesh_index] for mesh_index, node_index, _ in placement_records):
+        raise ValueError("mesh and node weights require morph targets")
     for mesh_index, node_index, authored_matrix in placement_records:
         skinned_placement = "skin" in document["nodes"][node_index]
         if not skinned_placement and cook_gltf_nodes.determinant(authored_matrix) == 0.0:
@@ -163,8 +162,15 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
             has_joints = "JOINTS_0" in primitive.get("attributes", {})
             if has_joints != skinned_placement:
                 raise ValueError("skinned placements require joint attributes; static placements must omit them")
+    skin = cook_gltf_skin.normalize(document, buffer)
+    ordered_index = {} if skin is None else skin["source_node_indices"]
+    rest = [] if skin is None else [joint["rest"] for joint in skin["joints"]]
+    animation_clips = cook_gltf_animation.normalize(document, buffer, ordered_index, rest,
+        placement_records, morph_count)
+    default_weights = cook_gltf_animation.morph_defaults(document, placement_records, morph_count)
     scene = cook_gltf_scene.normalize(document, buffer, placement_records)
-    return placement_records, slot_count, slot_records, slot_images, skin, morph_count, scene
+    return (placement_records, slot_count, slot_records, slot_images, skin, morph_count,
+        animation_clips, default_weights, scene)
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -273,7 +279,8 @@ def normalized_geometry(document: dict, buffer: bytes):
     # Node transforms bake into placement streams; material subsets and
     # textures stay grouped. Identical accessors share data within a placement.
     # Skin streams retain remapped influences and parent-ordered rig transforms.
-    placements, slot_count, slot_records, slot_images, skin, morph_count, scene = validate_static_geometry_source(document, buffer)
+    (placements, slot_count, slot_records, slot_images, skin, morph_count,
+        animation_clips, morph_default_weights, scene) = validate_static_geometry_source(document, buffer)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
     placed = []
@@ -397,7 +404,9 @@ def normalized_geometry(document: dict, buffer: bytes):
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
-        "skin": skin, "skin_indices": skin_indices, "skin_weights": skin_weights,
+        "skin": skin, "animation_clips": animation_clips,
+        "morph_default_weights": morph_default_weights,
+        "skin_indices": skin_indices, "skin_weights": skin_weights,
         "morph_targets": morph_targets, "scene": {**scene, "mesh_placements": [
             {**placement, **placement_ranges[index]}
             for index, placement in enumerate(scene["mesh_placements"])]}}
@@ -473,13 +482,11 @@ def skin_lines(geometry: dict) -> list[str]:
     bones = skin["bone_names"]
     joints = skin["joints"]
     cluster_joints = skin["cluster_joints"]
-    clips = skin.get("animation_clips", [])
     inverse_bind_matrices = skin.get("inverse_bind_matrices")
     if (len(indices) != geometry["vertex_count"] * 4 or len(weights) != len(indices) or
             len(bones) != len(cluster_joints) or len(bones) > cook_gltf_skin.MAX_JOINTS or
             not joints or len(joints) > cook_gltf_skin.MAX_RIG_NODES or
-            (inverse_bind_matrices is not None and len(inverse_bind_matrices) != len(bones) * 16) or
-            len(clips) > cook_gltf_animation.MAX_CLIPS):
+            (inverse_bind_matrices is not None and len(inverse_bind_matrices) != len(bones) * 16)):
         raise ValueError("normalized skin streams do not match the mesh")
     parents = [joint["parent"] for joint in joints]
     rests = [component for joint in joints for component in joint["rest"]]
@@ -496,25 +503,11 @@ def skin_lines(geometry: dict) -> list[str]:
         "skin_cluster_joints_stride=4",
         "skin_cluster_joints_b64=" + base64.b64encode(
             struct.pack(f"<{len(cluster_joints)}I", *cluster_joints)).decode("ascii"),
-        f"animation_clips={len(clips)}",
     ]
     if inverse_bind_matrices is not None:
         lines += ["skin_inverse_bind_stride=64",
             "skin_inverse_bind_matrices_b64=" + base64.b64encode(
                 struct.pack(f"<{len(inverse_bind_matrices)}f", *inverse_bind_matrices)).decode("ascii")]
-    for index, clip in enumerate(clips):
-        samples = clip["samples"]
-        frames = clip["frames"]
-        if (not isinstance(clip["name"], str) or not clip["name"] or frames < 2 or frames > 3601 or
-                clip["sample_rate"] <= 0 or len(samples) != len(joints) * frames * 10):
-            raise ValueError("normalized animation clip does not match the rig")
-        encoded_name = _name_bytes([clip["name"]])
-        lines += [f"animation_{index}_name_b64=" + base64.b64encode(encoded_name).decode("ascii"),
-            f"animation_{index}_duration_seconds={clip['duration']!r}",
-            f"animation_{index}_sample_rate={clip['sample_rate']}",
-            f"animation_{index}_frames={frames}", "animation_" + str(index) + "_transform_stride=40",
-            f"animation_{index}_samples_b64=" + base64.b64encode(
-                struct.pack(f"<{len(samples)}f", *samples)).decode("ascii")]
     return lines
 
 
@@ -525,6 +518,11 @@ def morph_lines(geometry: dict) -> list[str]:
     if len(targets) > MAX_MORPH_TARGETS:
         raise ValueError("normalized morph target count exceeds the runtime bound")
     lines = [f"morph_targets={len(targets)}", "morph_target_position_stride=12"]
+    defaults = geometry.get("morph_default_weights", [])
+    if len(defaults) != len(geometry["scene"]["mesh_placements"]) * len(targets):
+        raise ValueError("morph default weights do not match the mesh placements")
+    lines += ["morph_default_weights_stride=4", "morph_default_weights_b64=" + base64.b64encode(
+        struct.pack(f"<{len(defaults)}f", *defaults)).decode("ascii")]
     has_normals = all(target["normals"] is not None for target in targets)
     if has_normals:
         lines.append("morph_target_normal_stride=12")
@@ -565,7 +563,8 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     output_path = output_path.expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
-        "format=" + ("elisa-cooked-v3" if geometry["skin"] is not None else "elisa-cooked-v2"),
+        "format=" + ("elisa-cooked-v3" if geometry["skin"] is not None or geometry["animation_clips"]
+            else "elisa-cooked-v2"),
         f"source={asset_path}",
         f"source_sha256={digest}",
         f"triangles={counts['triangles']}",
@@ -578,6 +577,9 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         *subset_lines(geometry),
         *tangent_lines(geometry),
         *skin_lines(geometry),
+        *cook_gltf_animation.package_lines(geometry["animation_clips"],
+            0 if geometry["skin"] is None else len(geometry["skin"]["joints"]),
+            len(geometry["scene"]["mesh_placements"]), len(geometry["morph_targets"])),
         *morph_lines(geometry),
         *scene_lines(geometry),
         "positions_b64=" + base64.b64encode(geometry["positions"]).decode("ascii"),

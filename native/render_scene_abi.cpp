@@ -447,6 +447,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.imported_light_handles.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
+    instance.morph_default_weights.clear();
     instance.animation_submission = {};
     clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;

@@ -83,6 +83,26 @@ void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, flo
     interpolate_transform(first, second, weight, output);
 }
 
+float sample_animation_morph_weight(const InstanceSlot& instance, int32_t clip_index,
+    float time, bool loop, size_t placement, size_t target, size_t placement_count,
+    size_t morph_count) {
+    const size_t default_index = placement * morph_count + target;
+    if (clip_index < 0 || instance.animation_clips[size_t(clip_index)].morph_weights.empty()) {
+        return default_index < instance.morph_default_weights.size()
+            ? instance.morph_default_weights[default_index] : 0.0f;
+    }
+    const auto& clip = instance.animation_clips[size_t(clip_index)];
+    const float frame_position = std::min(animation_time(clip, time, loop) * float(clip.sample_rate),
+        float(clip.frame_count - 1));
+    const uint32_t first_frame = uint32_t(std::floor(frame_position));
+    const uint32_t second_frame = std::min(first_frame + 1, clip.frame_count - 1);
+    const float amount = frame_position - float(first_frame);
+    const size_t first = (size_t(first_frame) * placement_count + placement) * morph_count + target;
+    const size_t second = (size_t(second_frame) * placement_count + placement) * morph_count + target;
+    if (second >= clip.morph_weights.size()) return 0.0f;
+    return clip.morph_weights[first] + (clip.morph_weights[second] - clip.morph_weights[first]) * amount;
+}
+
 // Poses are sampled and blended in Elisa space, then reflected into Wicked's
 // frame as they are stored, like every other render-service transform.
 void store_joint_pose(wi::scene::TransformComponent& transform, const float* pose) {
@@ -94,7 +114,8 @@ void store_joint_pose(wi::scene::TransformComponent& transform, const float* pos
 
 bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     InstanceSlot& instance = state.instances[slot];
-    if (instance.skin_joints.empty() || instance.joint_entities.size() != instance.skin_joints.size()) return false;
+    if (instance.joint_entities.size() != instance.skin_joints.size()) return false;
+    const bool has_joints = !instance.skin_joints.empty();
     float blend = 1.0f;
     if (instance.blend_duration > 0.0f) {
         blend = std::clamp(instance.blend_elapsed / instance.blend_duration, 0.0f, 1.0f);
@@ -130,5 +151,33 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
             transform->UpdateTransform_Parented(*parent);
         }
     }
-    return true;
+    const auto& children = instance.snapshot_placement_entities.empty()
+        ? instance.imported_mesh_entities : instance.snapshot_placement_entities;
+    const size_t placement_count = children.size() + 1;
+    const wi::scene::MeshComponent* root_mesh = state.scene->meshes.GetComponent(instance.entity);
+    if (root_mesh == nullptr) return false;
+    const size_t morph_count = root_mesh->morph_targets.size();
+    const bool has_morph_tracks = std::any_of(instance.animation_clips.begin(), instance.animation_clips.end(),
+        [](const auto& clip) { return !clip.morph_weights.empty(); });
+    if (morph_count > 0 && has_morph_tracks) {
+        for (size_t placement = 0; placement < placement_count; ++placement) {
+            const wi::ecs::Entity entity = placement == 0 ? instance.entity : children[placement - 1];
+            wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(entity);
+            if (mesh == nullptr || mesh->morph_targets.size() != morph_count) return false;
+            for (size_t target = 0; target < morph_count; ++target) {
+                const float current = sample_animation_morph_weight(instance, instance.animation_clip,
+                    instance.animation_time, instance.animation_loop, placement, target, placement_count, morph_count);
+                float weight = current;
+                if (blend < 1.0f) {
+                    const float previous = sample_animation_morph_weight(instance, instance.previous_animation_clip,
+                        instance.previous_animation_time, instance.previous_animation_loop, placement, target,
+                        placement_count, morph_count);
+                    weight = previous + (current - previous) * blend;
+                }
+                if (!std::isfinite(weight)) return false;
+                mesh->morph_targets[target].weight = weight;
+            }
+        }
+    }
+    return has_joints || has_morph_tracks;
 }
