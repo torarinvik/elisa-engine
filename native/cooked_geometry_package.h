@@ -114,6 +114,8 @@ struct CookedGeometry {
     // One entry per material slot, or none when the source authored no
     // material factors and the game supplies every slot's material.
     std::vector<SlotMaterial> slot_materials;
+    // Source labels stay parallel to authored slot factors when supplied.
+    std::vector<std::string> slot_material_names;
     // Image sections of the enclosing ELPK bundle that slot materials sample,
     // and each section's checksum when the mesh loaded.
     std::vector<std::string> texture_sections;
@@ -393,6 +395,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     }
     if (!detail::parse_geometry_subsets(package, geometry, error)) return false;
     if (!detail::parse_slot_materials(package, geometry.material_slots, geometry.slot_materials, error) ||
+        !detail::parse_slot_material_names(package, geometry.material_slots, geometry.slot_materials,
+            geometry.slot_material_names, error) ||
         !detail::parse_slot_textures(package, geometry.slot_materials, geometry.texture_sections, error)) {
         return false;
     }

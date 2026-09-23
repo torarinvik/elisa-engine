@@ -145,6 +145,36 @@ int material_subset_test(const std::filesystem::path& path) {
     }
     ok &= check(imported.primary_mesh.material_slots == 2 && imported.primary_mesh.subsets.size() == 2,
         "one cooked mesh preserves two polygon material slots as two subsets");
+    ok &= check(imported.primary_mesh.materials.size() == 2 &&
+        imported.primary_mesh.materials[0].name == "First" &&
+        imported.primary_mesh.materials[1].name == "Second",
+        "material slot order retains bounded FBX material names");
+    if (imported.primary_mesh.materials.size() == 2) {
+        const auto& first = imported.primary_mesh.materials[0];
+        const auto& second = imported.primary_mesh.materials[1];
+        ok &= check(std::abs(first.base_color[0] - 0.16f) < 1.0e-5f &&
+            std::abs(first.base_color[1] - 0.32f) < 1.0e-5f &&
+            std::abs(first.base_color[2] - 0.48f) < 1.0e-5f &&
+            std::abs(first.base_color[3] - 0.75f) < 1.0e-5f &&
+            std::abs(first.roughness - 0.434315f) < 1.0e-4f &&
+            std::abs(first.emissive[0] - 0.3f) < 1.0e-5f &&
+            std::abs(first.emissive[1] - 0.2f) < 1.0e-5f &&
+            std::abs(first.emissive[2] - 0.1f) < 1.0e-5f && first.alpha_mode == 2,
+            "Phong factors normalize to the supported PBR and blend fields");
+        ok &= check(std::abs(second.base_color[0] - 0.7f) < 1.0e-5f &&
+            std::abs(second.base_color[1] - 0.2f) < 1.0e-5f &&
+            std::abs(second.base_color[2] - 0.1f) < 1.0e-5f &&
+            std::abs(second.roughness - 0.65359f) < 1.0e-4f &&
+            second.metallic == 0.0f && second.alpha_mode == 0,
+            "second FBX material factors stay in their matching polygon slot");
+    }
+    ufbx_material double_sided_source{};
+    double_sided_source.features.double_sided.enabled = true;
+    elisa::assets::FbxMaterialData double_sided_material;
+    elisa::assets::FbxImportResult material_result;
+    ok &= check(elisa::assets::detail::extract_fbx_material(double_sided_source,
+        double_sided_material, material_result) && double_sided_material.double_sided,
+        "explicit FBX double-sided material policy is retained");
     if (imported.primary_mesh.subsets.size() == 2) {
         const auto& first = imported.primary_mesh.subsets[0];
         const auto& second = imported.primary_mesh.subsets[1];

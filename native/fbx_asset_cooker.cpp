@@ -23,6 +23,7 @@ namespace {
 
 constexpr size_t MAX_PACKAGE_BYTES = size_t(64) * 1024 * 1024;
 constexpr size_t MAX_LINE_BYTES = size_t(16) * 1024 * 1024;
+constexpr uint32_t SLOT_MATERIAL_DOUBLE_SIDED_FLAG = 1u;
 
 bool safe_asset_key(const std::string& value) {
     if (value.empty() || value.size() > 4096 || value.front() == '/' ||
@@ -71,6 +72,23 @@ std::vector<uint8_t> skin_name_bytes(const std::vector<std::string>& names) {
         if (name.size() > std::numeric_limits<uint32_t>::max()) return {};
         append_u32_le(bytes, uint32_t(name.size()));
         bytes.insert(bytes.end(), name.begin(), name.end());
+    }
+    return bytes;
+}
+
+std::vector<uint8_t> slot_material_bytes(const std::vector<elisa::assets::FbxMaterialData>& materials) {
+    std::vector<uint8_t> bytes;
+    bytes.reserve(materials.size() * 48);
+    for (const auto& material : materials) {
+        std::vector<float> factors(material.base_color.begin(), material.base_color.end());
+        factors.push_back(material.metallic);
+        factors.push_back(material.roughness);
+        factors.insert(factors.end(), material.emissive.begin(), material.emissive.end());
+        factors.push_back(material.alpha_cutoff);
+        const std::vector<uint8_t> factor_bytes = float_bytes(factors);
+        bytes.insert(bytes.end(), factor_bytes.begin(), factor_bytes.end());
+        append_u32_le(bytes, material.alpha_mode);
+        append_u32_le(bytes, material.double_sided ? SLOT_MATERIAL_DOUBLE_SIDED_FLAG : 0);
     }
     return bytes;
 }
@@ -204,7 +222,16 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "FBX cooker material subsets do not cover the index stream\n");
         return false;
     }
+    if (!mesh.materials.empty() && mesh.materials.size() != mesh.material_slots) {
+        std::fprintf(stderr, "FBX cooker material records do not match the material slots\n");
+        return false;
+    }
     const std::vector<uint8_t> subset_bytes = index_bytes(subset_words);
+    std::vector<std::string> slot_material_names;
+    slot_material_names.reserve(mesh.materials.size());
+    for (const auto& material : mesh.materials) slot_material_names.push_back(material.name);
+    const std::vector<uint8_t> slot_materials = slot_material_bytes(mesh.materials);
+    const std::vector<uint8_t> slot_material_names_bytes = skin_name_bytes(slot_material_names);
     const std::vector<uint8_t> skin_indices = index_bytes(mesh.skin_indices);
     const std::vector<uint8_t> skin_weights = float_bytes(mesh.skin_weights);
     const std::vector<uint8_t> skin_names = skin_name_bytes(mesh.skin_bone_names);
@@ -229,6 +256,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t tangents_encoded = base64_size(tangents.size());
     const size_t indices_encoded = base64_size(indices.size());
     const size_t subsets_encoded = base64_size(subset_bytes.size());
+    const size_t slot_materials_encoded = base64_size(slot_materials.size());
+    const size_t slot_material_names_encoded = base64_size(slot_material_names_bytes.size());
     const size_t skin_indices_encoded = base64_size(skin_indices.size());
     const size_t skin_weights_encoded = base64_size(skin_weights.size());
     const size_t skin_names_encoded = base64_size(skin_names.size());
@@ -250,7 +279,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t max_payload = MAX_LINE_BYTES - 14;
     if (positions_encoded > max_payload || normals_encoded > max_payload ||
         uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload ||
-        subsets_encoded > max_payload ||
+        subsets_encoded > max_payload || slot_materials_encoded > max_payload ||
+        slot_material_names_encoded > max_payload ||
         (has_skin && (skin_indices_encoded > max_payload || skin_weights_encoded > max_payload ||
             skin_names_encoded > max_payload || skin_joint_parents_encoded > max_payload ||
             skin_joint_rest_encoded > max_payload || skin_joint_names_encoded > max_payload ||
@@ -288,6 +318,11 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         << "uvs_b64=" << base64(uvs) << "\n"
         << "tangents_b64=" << base64(tangents) << "\n"
         << "indices_b64=" << base64(indices) << "\n";
+    if (!mesh.materials.empty()) {
+        package << "slot_material_stride=48\n"
+            << "slot_materials_b64=" << base64(slot_materials) << "\n"
+            << "slot_material_names_b64=" << base64(slot_material_names_bytes) << "\n";
+    }
     if (has_skin) {
         package << "skin_bones=" << mesh.skin_bone_names.size() << "\n"
             << "skin_indices_stride=16\nskin_weights_stride=16\n"
