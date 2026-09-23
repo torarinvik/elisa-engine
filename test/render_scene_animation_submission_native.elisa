@@ -41,6 +41,10 @@ module RenderSceneAnimationSubmissionNativeTests:
         extern elisa_render_scene_v1_test_mixed_skin_layout(
             handle: RenderScene::InstanceHandle) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_morph_animation_weights(
+            handle: RenderScene::InstanceHandle, first_weight: f32, second_weight: f32) -> i32
+
     public:
         def exercise() -> i32:
             mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -191,6 +195,30 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             return 36 if mixed_skin_destroyed != 0
+            morph_animation: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/animated-morph-panel.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 37
+            play_morph: i32 = catch RenderScene::play_animation(morph_animation, "weights", true, 1.0, 0.0):
+                ok: 0
+                error failure: 1
+            return 38 if play_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
+                morph_animation, 0.0, 0.2) != 1
+            advance_morph: i32 = catch RenderScene::advance_animation(morph_animation, 0.5):
+                ok: 0
+                error failure: 1
+            return 39 if advance_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
+                morph_animation, 0.5, 0.2) != 1
+            stop_morph: i32 = catch RenderScene::stop_animation(morph_animation, 0.0):
+                ok: 0
+                error failure: 1
+            return 40 if stop_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
+                morph_animation, 0.4, 0.2) != 1
+            morph_destroyed: i32 = catch RenderScene::destroy(morph_animation):
+                ok: 0
+                error failure: 1
+            return 41 if morph_destroyed != 0
             0
 
 module RenderSceneImportedSceneNativeTests:

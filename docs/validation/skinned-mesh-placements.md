@@ -25,10 +25,17 @@ checks rollback to the original object count, retries, submits a pose through
 the C ABI, and verifies the child mesh receives the root armature and morph
 weight before the snapshot is cleared.
 
+The geometry cooker also preserves per-placement morph defaults and animation
+tracks. A weight channel can animate a single unskinned or skinned placement;
+other placements keep their node-level defaults, falling back to mesh defaults
+and then zero. LINEAR, STEP, and CUBICSPLINE tracks are sampled into the same
+bounded 30 Hz clips used by native playback.
+
 ## Validation
 
 - `/opt/homebrew/bin/python3 scripts/gltf_skin_self_test.py` passed.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools CXX=/opt/homebrew/opt/llvm/bin/clang++ /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 87 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools CXX=/opt/homebrew/opt/llvm/bin/clang++ /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 100 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer.
+- On 2026-09-23, the glTF skin and morph cooker self-tests passed for cubic TRS and weight channels, LINEAR spherical rotation interpolation, normalized integer morph output, per-placement defaults, and unskinned morph-only clips.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py` passed. The SDL3/Metal smoke exercised the imported placement and animation tests; the packaged maze also ran outside the checkout.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON_BIN=/opt/homebrew/bin/python3 ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ elisascript scripts/wicked_probe.elisascript build` passed, including the application lifecycle, SDL3/Metal render, and packaged-maze gates.
 - On 2026-09-23, the SDL3/Metal RenderScene native smoke passed with animated snapshot placement, rollback, pose submission and cleanup coverage. Its separate maze application and packaged-maze stages were skipped because the preceding run had stalled in Metal teardown after the native gate.

@@ -49,6 +49,7 @@ struct CookedGeometry {
         uint32_t sample_rate = 0;
         uint32_t frame_count = 0;
         std::vector<float> local_transforms;
+        std::vector<float> morph_weights;
     };
     std::vector<SkinJoint> skin_joints;
     std::vector<uint32_t> skin_cluster_joints;
@@ -58,6 +59,7 @@ struct CookedGeometry {
         std::vector<float> normals;
     };
     std::vector<MorphTarget> morph_targets;
+    std::vector<float> morph_default_weights;
     struct Camera {
         uint32_t node = 0;
         uint32_t projection = 0;
@@ -162,6 +164,8 @@ inline bool valid_inverse_bind_matrix(const float* matrix) {
 inline bool parse_geometry_morphs(const probe::PackageIndex& package, CookedGeometry& geometry,
     uint64_t vertex_count, std::string& error);
 inline bool parse_geometry_scene(const probe::PackageIndex& package, CookedGeometry& geometry,
+    std::string& error);
+inline bool parse_geometry_animations(const probe::PackageIndex& package, CookedGeometry& geometry,
     std::string& error);
 
 // Subset records are all present or all absent. Static and skinned geometry
@@ -381,8 +385,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         !detail::parse_slot_textures(package, geometry.slot_materials, geometry.texture_sections, error)) {
         return false;
     }
-    if (!detail::parse_geometry_morphs(package, geometry, vertices, error)) return false;
     if (!detail::parse_geometry_scene(package, geometry, error)) return false;
+    if (!detail::parse_geometry_morphs(package, geometry, vertices, error)) return false;
     const auto joint_count_section = package.sections.find("skin_joints");
     const auto parents_stride = package.sections.find("skin_joint_parent_stride");
     const auto parents_data = package.sections.find("skin_joint_parents_b64");
@@ -392,7 +396,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     const auto cluster_map_stride = package.sections.find("skin_cluster_joints_stride");
     const auto cluster_map_data = package.sections.find("skin_cluster_joints_b64");
     const bool has_rig = joint_count_section != package.sections.end();
-    if (has_rig_format != has_rig ||
+    if ((has_rig && !has_rig_format) ||
         (parents_stride != package.sections.end()) != has_rig ||
         (parents_data != package.sections.end()) != has_rig ||
         (rest_stride != package.sections.end()) != has_rig ||
@@ -457,65 +461,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             geometry.skin_joints[joint].cluster_index = int32_t(cluster);
         }
 
-        uint64_t clip_count = 0;
-        if (!detail::parse_count(package, "animation_clips", clip_count) || clip_count > 16) {
-            error = "invalid cooked geometry animation clip count";
-            return false;
-        }
-        size_t total_sample_floats = 0;
-        for (size_t clip_index = 0; clip_index < size_t(clip_count); ++clip_index) {
-            const std::string prefix = "animation_" + std::to_string(clip_index) + "_";
-            const auto encoded_name = package.sections.find(prefix + "name_b64");
-            const auto sample_rate = package.sections.find(prefix + "sample_rate");
-            const auto frame_count_section = package.sections.find(prefix + "frames");
-            const auto transform_stride = package.sections.find(prefix + "transform_stride");
-            const auto samples = package.sections.find(prefix + "samples_b64");
-            float duration = 0.0f;
-            uint64_t rate = 0;
-            uint64_t frames = 0;
-            if (encoded_name == package.sections.end() || sample_rate == package.sections.end() ||
-                frame_count_section == package.sections.end() || transform_stride == package.sections.end() ||
-                samples == package.sections.end() || transform_stride->second != "40" ||
-                !detail::parse_finite_float(package, prefix + "duration_seconds", duration) || duration <= 0.0f ||
-                !detail::parse_count(package, (prefix + "sample_rate").c_str(), rate) || rate == 0 || rate > 120 ||
-                !detail::parse_count(package, (prefix + "frames").c_str(), frames) || frames < 2 || frames > 3601 ||
-                size_t(joint_count) > (2'000'000 - total_sample_floats) / 10 / size_t(frames)) {
-                error = "invalid cooked geometry animation metadata";
-                return false;
-            }
-            const size_t sample_floats = size_t(joint_count) * size_t(frames) * 10;
-            CookedGeometry::AnimationClip clip;
-            std::vector<uint8_t> clip_name_bytes;
-            std::vector<std::string> names;
-            if (!detail::decode_base64(encoded_name->second, clip_name_bytes) ||
-                !detail::decode_names(clip_name_bytes, 1, names) ||
-                !detail::decode_floats(package, (prefix + "samples_b64").c_str(), sample_floats,
-                    clip.local_transforms)) {
-                error = "invalid cooked geometry animation samples or name";
-                return false;
-            }
-            clip.name = std::move(names[0]);
-            if (clip.name.empty()) {
-                error = "cooked geometry animation name is empty";
-                return false;
-            }
-            clip.duration_seconds = duration;
-            clip.sample_rate = uint32_t(rate);
-            clip.frame_count = uint32_t(frames);
-            for (size_t offset = 0; offset < clip.local_transforms.size(); offset += 10) {
-                const float* transform = clip.local_transforms.data() + offset;
-                const float rotation_length = std::sqrt(transform[3] * transform[3] + transform[4] * transform[4] +
-                    transform[5] * transform[5] + transform[6] * transform[6]);
-                if (!(rotation_length > 0.99f && rotation_length < 1.01f) ||
-                    transform[7] == 0.0f || transform[8] == 0.0f || transform[9] == 0.0f) {
-                    error = "cooked geometry animation has an invalid transform sample";
-                    return false;
-                }
-            }
-            total_sample_floats += sample_floats;
-            geometry.animation_clips.push_back(std::move(clip));
-        }
     }
+    if (!detail::parse_geometry_animations(package, geometry, error)) return false;
     return true;
 }
 
@@ -598,3 +545,4 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
 
 #include "cooked_geometry_morphs.h"
 #include "cooked_geometry_scene.h"
+#include "cooked_geometry_animations.h"

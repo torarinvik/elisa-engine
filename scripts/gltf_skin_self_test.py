@@ -15,6 +15,7 @@ import cook_gltf_animation
 import cook_gltf_geometry
 import cook_gltf_nodes
 import cook_gltf_skin
+import gltf_animation_self_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +45,7 @@ DEFAULT_INVERSE_BIND_MATRICES = GLTF_IDENTITY_MATRIX * 2
 
 
 def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
-        value_type: str, count: int) -> int:
+        value_type: str, count: int, normalized: bool = False) -> int:
     offset = len(buffer)
     if offset % 4:
         buffer += bytes(4 - offset % 4)
@@ -52,8 +53,11 @@ def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
     buffer += payload
     view = len(document["bufferViews"])
     document["bufferViews"].append({"buffer": 0, "byteOffset": offset, "byteLength": len(payload)})
-    document["accessors"].append({"bufferView": view, "componentType": component,
-        "count": count, "type": value_type})
+    accessor = {"bufferView": view, "componentType": component,
+        "count": count, "type": value_type}
+    if normalized:
+        accessor["normalized"] = True
+    document["accessors"].append(accessor)
     return len(document["accessors"]) - 1
 
 
@@ -93,6 +97,7 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
         inverse_bind = _append(document, buffer,
             struct.pack(f"<{len(inverse_bind_matrices)}f", *inverse_bind_matrices), 5126, "MAT4", joint_count)
     input_accessor = _append(document, buffer, struct.pack("<2f", 0.0, 1.0), 5126, "SCALAR", 2)
+    document["accessors"][input_accessor].update({"min": [0.0], "max": [1.0]})
     output_accessor = _append(document, buffer, struct.pack("<6f", 0.0, 1.0, 0.0, 0.0, 2.0, 0.0),
         5126, "VEC3", 2)
     document["buffers"][0]["byteLength"] = len(buffer)
@@ -403,10 +408,16 @@ def self_test(temporary: Path) -> int:
     document = generated_document()
     buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
         json.dumps(document, separators=(",", ":")).encode("utf-8")))
-    def normalized_skin(source_document: dict) -> dict:
+    def normalized(source_document: dict) -> dict:
         source_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
             json.dumps(source_document, separators=(",", ":")).encode("utf-8")))
-        return cook_gltf_geometry.normalized_geometry(source_document, source_buffer)["skin"]
+        return cook_gltf_geometry.normalized_geometry(source_document, source_buffer)
+
+    def normalized_skin(source_document: dict) -> dict:
+        return normalized(source_document)["skin"]
+
+    if gltf_animation_self_test.interpolation_self_test(document, _append, normalized) != 0:
+        return 1
 
     shared_ancestor = deepcopy(document)
     shared_ancestor["nodes"][5]["translation"] = [5.0, -2.0, 3.0]
@@ -470,8 +481,9 @@ def self_test(temporary: Path) -> int:
     animated_helper["nodes"][4].pop("translation")
     animated_helper["animations"][0]["channels"].append({"sampler": 0,
         "target": {"node": 4, "path": "translation"}})
-    animated_rig = normalized_skin(animated_helper)
-    if len(animated_rig["joints"]) != 4 or len(animated_rig["animation_clips"][0]["samples"]) != 4 * 31 * 10:
+    animated_geometry = normalized(animated_helper)
+    if (len(animated_geometry["skin"]["joints"]) != 4 or
+            len(animated_geometry["animation_clips"][0]["samples"]) != 4 * 31 * 10):
         print("glTF skin self-test failed: animated helper node was omitted from the rig",
             file=sys.stderr)
         return 1
@@ -523,16 +535,19 @@ def self_test(temporary: Path) -> int:
     projective_inverse_bind["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
         base64.b64encode(projective_buffer).decode("ascii")
     rejected.append(("projective inverse bind", projective_inverse_bind))
-    cubic = deepcopy(document)
-    cubic["animations"][0]["samplers"][0]["interpolation"] = "CUBICSPLINE"
-    rejected.append(("cubic-spline animation", cubic))
-    morph_channel = deepcopy(document)
-    morph_channel["animations"][0]["channels"][0]["target"]["path"] = "weights"
-    rejected.append(("morph animation", morph_channel))
     duplicate_track = deepcopy(document)
     duplicate_track["animations"][0]["channels"].append(deepcopy(
         duplicate_track["animations"][0]["channels"][0]))
     rejected.append(("duplicate animation track", duplicate_track))
+    missing_time_bound = deepcopy(document)
+    input_reference = missing_time_bound["animations"][0]["samplers"][0]["input"]
+    missing_time_bound["accessors"][input_reference].pop("max")
+    rejected.append(("animation input without bounds", missing_time_bound))
+    matrix_animation = deepcopy(document)
+    matrix_animation["nodes"][2]["matrix"] = [1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]
+    matrix_animation["nodes"][2].pop("translation")
+    rejected.append(("TRS animation on a matrix-authored node", matrix_animation))
     for label, unsupported in rejected:
         try:
             unsupported_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(

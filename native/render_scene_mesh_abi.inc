@@ -29,6 +29,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.joint_entities.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
+    instance.morph_default_weights.clear();
     instance.animation_submission = {};
     clear_animation_state(instance);
     std::filesystem::path resolved_path;
@@ -129,6 +130,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.joint_entities = std::move(joint_entities);
     instance.skin_joints = std::move(geometry.skin_joints);
     instance.animation_clips = std::move(geometry.animation_clips);
+    instance.morph_default_weights = std::move(geometry.morph_default_weights);
     instance.generation = generation;
     instance.live = true;
     return int64_t(encode_handle(slot, generation));

@@ -107,7 +107,10 @@ extern "C" int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float bl
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     InstanceSlot& instance = state.instances[slot];
-    if (instance.skin_joints.empty() || instance.joint_entities.size() != instance.skin_joints.size()) {
+    const bool has_morph_animation = std::any_of(instance.animation_clips.begin(),
+        instance.animation_clips.end(), [](const auto& clip) { return !clip.morph_weights.empty(); });
+    if (instance.joint_entities.size() != instance.skin_joints.size() ||
+        (instance.skin_joints.empty() && !has_morph_animation)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     if (instance.animation_clip >= 0 && instance.animation_clip < int32_t(instance.animation_clips.size())) {

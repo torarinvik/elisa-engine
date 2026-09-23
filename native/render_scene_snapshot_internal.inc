@@ -291,6 +291,7 @@ void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance) 
     instance.imported_light_handles.clear();
     instance.skin_joints.clear();
     instance.animation_clips.clear();
+    instance.morph_default_weights.clear();
     instance.animation_submission = {};
     clear_animation_state(instance);
     instance.live = false;

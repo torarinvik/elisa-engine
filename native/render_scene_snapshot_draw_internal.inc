@@ -176,6 +176,7 @@ wi::ecs::Entity create_animated_snapshot_entity(
     row.created_joint_entities = std::move(joint_entities);
     row.created_skin_joints = geometry.skin_joints;
     row.created_animation_clips = geometry.animation_clips;
+    row.created_morph_default_weights = geometry.morph_default_weights;
     return entity;
   } catch (...) {
     discard_root();
