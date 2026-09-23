@@ -204,6 +204,18 @@ def main() -> int:
         variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
         write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
 
+    if render_only:
+        # The native test rewrites this bundle while checking checksum
+        # rejection. Restore the source copy before every render-only run so
+        # reruns don't start with the already-mutated variant from a prior run.
+        subset_directory = build / "cooked/subsets"
+        textured = subset_directory / "textured.elpk"
+        rewrite = subset_directory / "textured_rewrite.elpk"
+        if not textured.is_file() or not rewrite.is_file():
+            print("Render-only mode requires the cooked textured-panel fixtures", file=sys.stderr)
+            return 2
+        shutil.copyfile(textured, rewrite)
+
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
     archive = build / "render-scene-native-smoke.a"
