@@ -3,6 +3,29 @@ include "./render_scene_ui_native.elisa"
 module RenderSceneTextNativeTests:
     public:
         def exercise(handle: RenderScene::OverlayTextHandle) -> i32:
+            _warm_metrics: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("MAZE ROUTE", 16):
+                value: value
+                error failure: return 6
+            for frame in 0..<3:
+                return 6 if Application::pump() != Application::PumpStatus.Running
+            measured_small: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("MAZE ROUTE", 16):
+                value: value
+                error failure: return 1
+            return 2 if not measured_small.ready or measured_small.width <= 0.0 or measured_small.height <= 0.0
+            _warm_large: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("MAZE ROUTE", 32):
+                value: value
+                error failure: return 7
+            for frame in 0..<3:
+                return 8 if Application::pump() != Application::PumpStatus.Running
+            measured_large: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("MAZE ROUTE", 32):
+                value: value
+                error failure: return 3
+            return 4 if not measured_large.ready or measured_large.width <= measured_small.width or measured_large.height <= measured_small.height
+            invalid_measure_size: i32 = catch RenderScene::measure_overlay_text("MAZE ROUTE", 7):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 5 if invalid_measure_size != 1
             text_update: i32 = catch RenderScene::set_overlay_text(handle, "LIVES  2"):
                 ok: 0
                 error failure: 2

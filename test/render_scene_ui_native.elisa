@@ -9,9 +9,10 @@ module RenderSceneUiNativeTests:
 
         def create_fixture() -> Fixture error[RenderScene::RenderSceneError]:
             menu: mutable Ui::Menu = Ui::Menu(24, 36)
-            _ = Ui::menu_add_labeled(&menu, 1, true, "START")
-            _ = Ui::menu_add_labeled(&menu, 2, false, "LOCKED")
-            _ = Ui::menu_add_labeled(&menu, 3, true, "QUIT")
+            for index in 0..<18 |menu|:
+                enabled: bool = index != 1
+                label: cstr = "START" if index == 0 else "LOCKED" if index == 1 else "SETTING"
+                _ = Ui::menu_add_labeled(&menu, index.i64() + 1, enabled, label)
             _ = Ui::menu_set_visible(&menu, 2)
             theme: UiStyle::Theme = UiStyle::theme_default()
             background: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(
@@ -21,29 +22,50 @@ module RenderSceneUiNativeTests:
                 24.0, 36.0, 160.0, 20.0,
                 RenderScene::Color{red: 1.0, green: 0.5, blue: 0.0, alpha: 0.2})
             canvas: mutable UiRenderer::MenuCanvas = UiRenderer::MenuCanvas(background, focus)
-            first: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "START", 30.0, 36.0, 14,
-                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
-            second: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "LOCKED", 30.0, 56.0, 14,
-                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
-            third: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "QUIT", 30.0, 76.0, 14,
-                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
-            _ = UiRenderer::menu_canvas_add_label(&canvas, first)
-            _ = UiRenderer::menu_canvas_add_label(&canvas, second)
-            _ = UiRenderer::menu_canvas_add_label(&canvas, third)
+            for index in 0..<18 |canvas|:
+                label: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                    "SETTING", 30.0, 36.0 + index.f32() * 20.0, 14,
+                    RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
+                _ = UiRenderer::menu_canvas_add_label(&canvas, label)
             try UiRenderer::sync_menu(&canvas, &menu, &theme, 160, 14)
             Fixture{menu: menu, theme: theme, canvas: canvas}
 
         def review_focus_and_scroll(fixture: mutable Fixture&) -> i32:
+            _warm_metrics: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 12):
+                value: value
+                error failure: return 18
+            for frame in 0..<3:
+                return 18 if Application::pump() != Application::PumpStatus.Running
+            text_small: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 12):
+                value: value
+                error failure: return 13
+            return 14 if not text_small.ready or text_small.width <= 0.0 or text_small.height <= 0.0
+            measured_run: mutable UiText::Run = UiText::Run()
+            return 27 if not UiRenderer::wrapped_run_add_measured_word(&measured_run,
+                "ELISA", text_small)
+            return 28 if UiText::word_label(measured_run, 0) != "ELISA" or UiText::word_width(measured_run, 0).f32() < text_small.width
+            _warm_large: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 24):
+                value: value
+                error failure: return 19
+            for frame in 0..<3:
+                return 20 if Application::pump() != Application::PumpStatus.Running
+            text_large: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 24):
+                value: value
+                error failure: return 15
+            return 16 if not text_large.ready or text_large.width <= text_small.width or text_large.height <= text_small.height
+            invalid_measure_size: i32 = catch RenderScene::measure_overlay_text("ELISA UI", 7):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 17 if invalid_measure_size != 1
             return 1 if not UiRenderer::menu_canvas_valid(&fixture.canvas, &fixture.menu)
-            return 2 if not Ui::focus_next(&fixture.menu) or fixture.menu.focus != 2 or fixture.menu.scroll != 1
+            return 2 if UiRenderer::menu_canvas_label_count(&fixture.canvas) != 18
+            return 3 if not Ui::focus_next(&fixture.menu) or fixture.menu.focus != 2 or fixture.menu.scroll != 1
             scrolled: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
                 &fixture.menu, &fixture.theme, 160, 14):
                 ok: 0
-                error failure: 3
-            return 4 if scrolled != 0
+                error failure: 4
+            return 5 if scrolled != 0
             # Repositioning and restyling the retained view must be reflected
             # without recreating its native handles.
             fixture.menu.y <- 100
@@ -51,16 +73,47 @@ module RenderSceneUiNativeTests:
             moved: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
                 &fixture.menu, &fixture.theme, 280, 14):
                 ok: 0
-                error failure: 5
-            return 6 if moved != 0
+                error failure: 6
+            return 7 if moved != 0
+            # A full settings page also fits inside the renderer's bounded
+            # layout and retains one label per item.
+            _ = Ui::menu_set_visible(&fixture.menu, 18)
+            full_page: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
+                &fixture.menu, &fixture.theme, 280, 14):
+                ok: 0
+                error failure: 8
+            return 9 if full_page != 0
             for frame in 0..<3:
                 return 12 if Application::pump() != Application::PumpStatus.Running
             invalid: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
                 &fixture.menu, &fixture.theme, 160, 32):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
-                error failure: 2
-            return 7 if invalid != 1
+                error failure: 10
+            return 11 if invalid != 1
+            run: mutable UiText::Run = UiText::Run()
+            _ = UiText::run_add_labeled_word(&run, 50, "ELECTRIC")
+            _ = UiText::run_add_labeled_word(&run, 40, "FENCE")
+            _ = UiText::run_add_labeled_word(&run, 30, "MAZE")
+            _ = UiText::run_add_labeled_word(&run, 35, "ROUTE")
+            wrapped: UiText::Wrapped = UiText::wrap(run, 90, 8)
+            return 21 if not UiText::wrapped_matches_run(&wrapped, run)
+            return 22 if wrapped.line_count != 3 or UiText::line_start(wrapped, 1) != 1 or UiText::line_start(wrapped, 2) != 3
+            word_canvas: mutable UiRenderer::WrappedCanvas = UiRenderer::WrappedCanvas()
+            for index in 0..<UiRenderer::menu_canvas_label_count(&fixture.canvas) |word_canvas, fixture|:
+                _ = UiRenderer::wrapped_canvas_add_label(&word_canvas,
+                    fixture.canvas.labels[index])
+            wrapped_sync: i32 = catch UiRenderer::sync_wrapped(&word_canvas,
+                run, fixture.theme, 32, 40, 90, 12, 18, 8):
+                ok: 0
+                error failure: 23
+            return 24 if wrapped_sync != 0
+            empty_run: UiText::Run = UiText::Run()
+            empty_sync: i32 = catch UiRenderer::sync_wrapped(&word_canvas,
+                empty_run, fixture.theme, 32, 40, 90, 12, 18, 8):
+                ok: 0
+                error failure: 25
+            return 26 if empty_sync != 0
             0
 
         def destroy_fixture(fixture: mutable Fixture&) -> i32:
