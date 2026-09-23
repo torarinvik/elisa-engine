@@ -97,7 +97,7 @@ def self_test() -> int:
                 struct.unpack_from("<Q", two_level_fixture, 80)[0], 8),
             invalid_structure("UASTC-BasisLZ-scheme", ktx2_bytes, 44, 1),
             invalid_structure("ETC1S-non-BasisLZ-scheme", basis_lz_fixture, 44, 2),
-            invalid_structure("uncompressed-UASTC-zero-plane", ktx2_bytes,
+            invalid_structure("UASTC-uncompressed-zero-plane", ktx2_bytes,
                 struct.unpack_from("<I", ktx2_bytes, 48)[0] + 20, 0, 8),
         ]
         excess_mips = directory / "structure-mip-count-exceeds-dimensions.ktx2"

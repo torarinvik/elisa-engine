@@ -23,7 +23,7 @@ namespace elisa::assets {
 // positions use metres in Elisa's right-handed +Y-up frame.
 inline FbxImportResult import_fbx(const std::filesystem::path& path,
     bool decode_first_mesh = true, const std::string& selected_mesh_name = {},
-    bool all_meshes = false) {
+    bool ignore_material_textures = false, bool all_meshes = false) {
     FbxImportResult result;
     if (all_meshes && !selected_mesh_name.empty()) {
         detail::fail(result, "--all-meshes cannot be combined with an exact mesh selector");
@@ -111,7 +111,8 @@ inline FbxImportResult import_fbx(const std::filesystem::path& path,
         }
     }
     if (decode_first_mesh &&
-        !detail::extract_scene_meshes(*scene, result, selected_mesh_name, all_meshes)) return result;
+        !detail::extract_scene_meshes(*scene, result, selected_mesh_name, all_meshes,
+            ignore_material_textures)) return result;
     result.ok = true;
     return result;
 }

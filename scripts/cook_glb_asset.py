@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Cook a static or skinned GLB mesh through Blender and Elisa's FBX cooker.
 
-GLB supplies geometry, optional skinning and embedded base-color images. An
-optional FBX animation source can provide clips for a GLB rig with matching
-joint names. Static meshes may be simplified to a bounded triangle count.
+GLB supplies geometry, optional skinning and embedded base-color images. Image
+nodes are removed from the intermediate FBX because this cooker preserves
+geometry and scalar materials; an explicitly requested base-color image is
+extracted separately. An optional FBX animation source can provide clips for a
+GLB rig with matching joint names. Static meshes may be simplified to a
+bounded triangle count.
 """
 
 from __future__ import annotations

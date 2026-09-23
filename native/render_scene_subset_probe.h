@@ -82,6 +82,15 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_subset_count(int64_t rend
     return mesh == nullptr ? -1 : int32_t(mesh->subsets.size());
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_placement_subset_count(
+    int64_t render_id, uint32_t placement_index) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(
+        state, render_id, nullptr, placement_index);
+    return mesh == nullptr ? -1 : int32_t(mesh->subsets.size());
+}
+
 // 1 when the instance's mesh subset covers exactly these indices and draws
 // with the registered material `material_high:material_low`.
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_subset_matches(int64_t render_id, uint32_t subset,

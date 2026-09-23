@@ -13,7 +13,7 @@ module RenderSceneQualitySettingsNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_quality_profile_matches(
             tonemap: i32, render_scale: f32, bloom_threshold: f32,
-            bloom: i32, fxaa: i32, ambient_occlusion: i32,
+            bloom: i32, fxaa: i32, temporal_aa: i32, ambient_occlusion: i32,
             screen_space_reflections: i32, fog: i32, depth_effects: i32) -> i32
 
     public:
@@ -46,11 +46,12 @@ module RenderSceneQualitySettingsNativeTests:
             return 115 if shadow_status != 0 or elisa_render_scene_v1_test_shadow_quality_matches(2) != 1
             profile: mutable Quality::Profile = Quality::Profile()
             profile.tonemap <- Quality::Tonemap.Uchimura
-            profile.upscaler <- Quality::Upscaler.Fsr2
+            profile.upscaler <- Quality::Upscaler.None
             profile.render_scale <- 0.75
             profile.bloom_threshold <- 1.4
             profile.bloom <- true
             profile.fxaa <- true
+            profile.temporal_aa <- true
             profile.ambient_occlusion <- true
             profile.screen_space_reflections <- true
             profile.fog <- false
@@ -59,7 +60,14 @@ module RenderSceneQualitySettingsNativeTests:
                 ok: 0
                 error failure: 1
             return 116 if profile_status != 0 or elisa_render_scene_v1_test_quality_profile_matches(
-                2, 0.75, 1.4, 1, 1, 1, 1, 0, 0) != 1
+                2, 0.75, 1.4, 1, 1, 1, 1, 1, 0, 0) != 1
+            profile.upscaler <- Quality::Upscaler.Fsr2
+            invalid_temporal_upscaler: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 118 if invalid_temporal_upscaler != 1
+            profile.upscaler <- Quality::Upscaler.None
             profile.render_scale <- 1.1
             invalid_profile: i32 = catch RenderScene::apply_quality_profile(&profile):
                 ok: 0

@@ -28,7 +28,7 @@ import gltf_skin_self_test
 import gltf_morph_self_test
 import gltf_scene_self_test
 import packaged_maze_smoke
-import test_geometry_subsets
+import geometry_subset_cases
 
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORKS = [
@@ -171,7 +171,7 @@ def main() -> int:
         ])
         if subset_status != 0:
             return subset_status
-        (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
+        (subset_directory / "skinned.pkg").write_bytes(geometry_subset_cases.strip_package(
             2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
         gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg", second_animation=True)
         gltf_skin_self_test.write_separate_root_package(
@@ -218,6 +218,18 @@ def main() -> int:
         variant = dict(gltf_texture_self_test.SECTIONS)
         variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
         write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
+
+    if render_only:
+        # The native test rewrites this bundle while checking checksum
+        # rejection. Restore the source copy before every render-only run so
+        # reruns don't start with the already-mutated variant from a prior run.
+        subset_directory = build / "cooked/subsets"
+        textured = subset_directory / "textured.elpk"
+        rewrite = subset_directory / "textured_rewrite.elpk"
+        if not textured.is_file() or not rewrite.is_file():
+            print("Render-only mode requires the cooked textured-panel fixtures", file=sys.stderr)
+            return 2
+        shutil.copyfile(textured, rewrite)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")

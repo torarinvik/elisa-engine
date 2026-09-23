@@ -17,6 +17,31 @@ def imported(importer, path):
     return [item for item in bpy.data.objects if item not in before]
 
 
+def strip_image_texture_nodes(meshes):
+    """Drop GLB image nodes from the intermediate FBX material graph.
+
+    The bounded FBX cooker preserves scalar material data but does not package
+    image paths. GLB images are extracted separately by cook_glb_asset.py when
+    requested, so carrying Blender's temporary texture references into FBX
+    would create unsupported, machine-local paths.
+    """
+    seen = set()
+    removed = 0
+    for mesh in meshes:
+        for material in mesh.data.materials:
+            if material is None or material.as_pointer() in seen:
+                continue
+            seen.add(material.as_pointer())
+            tree = material.node_tree
+            if tree is None:
+                continue
+            for node in list(tree.nodes):
+                if node.type == "TEX_IMAGE":
+                    tree.nodes.remove(node)
+                    removed += 1
+    return removed
+
+
 def armature_of(objects, label):
     armatures = [item for item in objects if item.type == "ARMATURE"]
     if len(armatures) != 1:
@@ -210,6 +235,7 @@ def main():
         stage_static_reduction(meshes, options.max_triangles)
         if options.max_triangles is not None:
             recalculate_static_normals(meshes)
+        removed_textures = strip_image_texture_nodes(meshes)
         # Carry each node's scene transform into its FBX object transform
         # before dropping camera, light and empty helper nodes.
         for mesh in meshes:
@@ -234,6 +260,8 @@ def main():
             path_mode="STRIP",
             embed_textures=False,
         )
+        if removed_textures:
+            print(f"Stripped {removed_textures} GLB image texture node(s); use --texture-output to cook the first base-color map")
         print(f"Exported {len(meshes)} static GLB mesh(es) to {options.output}")
         return
     if len(armatures) != 1:
@@ -248,6 +276,7 @@ def main():
         raise RuntimeError("GLB armature has no skinned child mesh")
     if any(group.name not in bones for mesh in meshes for group in mesh.vertex_groups):
         raise RuntimeError("GLB skinned mesh references a vertex group absent from its armature")
+    removed_textures = strip_image_texture_nodes(meshes)
 
     actions = []
     if options.animation_source is not None:
@@ -310,6 +339,8 @@ def main():
         path_mode="STRIP",
         embed_textures=False,
     )
+    if removed_textures:
+        print(f"Stripped {removed_textures} GLB image texture node(s); use --texture-output to cook the first base-color map")
     print(f"Exported {len(meshes)} GLB skinned mesh(es) and {len(actions)} animation clip(s) to {options.output}")
 
 

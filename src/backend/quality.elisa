@@ -32,6 +32,7 @@ module Quality:
             bloom: mutable bool
             bloom_threshold: mutable f32
             fxaa: mutable bool
+            temporal_aa: mutable bool
             ambient_occlusion: mutable bool
             screen_space_reflections: mutable bool
             fog: mutable bool
@@ -46,6 +47,7 @@ module Quality:
                 bloom: true,
                 bloom_threshold: 1.0,
                 fxaa: false,
+                temporal_aa: false,
                 ambient_occlusion: false,
                 screen_space_reflections: false,
                 fog: true,
@@ -53,7 +55,7 @@ module Quality:
             }
 
         def profile_valid(profile: Profile) -> bool:
-            profile.render_scale >= Limits::MIN_SCALE and profile.render_scale <= Limits::MAX_SCALE and profile.bloom_threshold >= Limits::MIN_BLOOM_THRESHOLD and profile.bloom_threshold <= Limits::MAX_BLOOM_THRESHOLD
+            profile.render_scale >= Limits::MIN_SCALE and profile.render_scale <= Limits::MAX_SCALE and profile.bloom_threshold >= Limits::MIN_BLOOM_THRESHOLD and profile.bloom_threshold <= Limits::MAX_BLOOM_THRESHOLD and not (profile.temporal_aa and profile.upscaler == Upscaler.Fsr2)
 
         def low() -> Profile:
             profile: mutable Profile = Profile()
@@ -71,6 +73,8 @@ module Quality:
             profile: mutable Profile = Profile()
             profile.level <- Level.High
             profile.render_scale <- 1.0
+            profile.fxaa <- false
+            profile.temporal_aa <- true
             profile.ambient_occlusion <- true
             profile.screen_space_reflections <- true
             profile.depth_effects <- true

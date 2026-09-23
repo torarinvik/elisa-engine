@@ -9,5 +9,6 @@
 docs/tail-return-validation.md
 Elisa_Engine_Architecture_and_Plan.md
 *.pyc
+log.txt
 examples/maze/assets/*.elpk
 /shaders/

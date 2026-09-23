@@ -1,0 +1,533 @@
+#!/usr/bin/env python3
+"""Build valid and adversarial cooked-geometry package fixtures."""
+
+from __future__ import annotations
+
+import base64
+import json
+import subprocess
+import sys
+from pathlib import Path
+import struct
+import zlib
+
+import cook_assets
+import cook_gltf_geometry
+import cook_gltf_lod
+from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
+from elisa_package import write_geometry_package
+import gltf_hierarchy_self_test
+import gltf_morph_self_test
+import gltf_scene_self_test
+import gltf_skin_self_test
+import gltf_texture_self_test
+import test_geometry_uv1
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+PARTITION = "subsets do not partition the index stream"
+
+RECORDS = "invalid cooked geometry subset records"
+
+MISSING_SLOT = "subset names a missing material slot"
+
+MATERIAL_RECORDS = "invalid cooked slot material records"
+
+MATERIAL_RANGE = "cooked slot material is out of range"
+
+TEXTURE_RECORDS = "invalid cooked slot texture records"
+
+SECTION_NAME = "invalid cooked texture section name"
+
+MISSING_IMAGE = "cooked slot texture names a missing image"
+
+UNSAMPLED = "cooked texture image is never sampled"
+
+NEEDS_TEXTURE = "cooked slot material lacks the texture it needs"
+
+NEEDS_BUNDLE = "cooked slot textures need an ELPK bundle"
+
+MISSING_SECTION = "cooked slot texture section is missing from its bundle"
+
+MATERIAL_NAMES = "invalid cooked slot material names"
+
+MATERIAL_NAME = "invalid cooked slot material name"
+
+GLASS = (0.0, 0.0, 0.08, 0.5, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 2, 0)
+
+PAINT = (0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, 0, 1)
+
+ZEROS = (0.0,) * 10 + (0, 0)
+
+ONES = (1.0,) * 10 + (2, 1)
+
+PANEL_MATERIALS = [(0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 1), PAINT]
+
+MASKED = (0.0, 0.5, 0.0, 1.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.25, 1, 0)
+
+SURFACED = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 3)
+
+TEXTURED_MATERIALS = [struct.unpack_from("<10f2I", gltf_texture_self_test.SLOT_MATERIALS, slot * 48) +
+    struct.unpack_from("<5I", gltf_texture_self_test.SLOT_TEXTURES, slot * 20) for slot in range(4)]
+
+HIERARCHY_MATERIALS = [(0.08, 0.0, 0.0, 1.0, 0.0, 0.9, 1.0, 0.0, 0.0, 0.5, 0, 0),
+    (0.0, 0.08, 0.0, 1.0, 0.0, 0.9, 0.0, 1.0, 0.0, 0.5, 0, 0),
+    (0.0, 0.0, 0.08, 1.0, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 0, 0)]
+
+def with_field(record: tuple, index: int, value) -> tuple:
+    return record[:index] + (value,) + record[index + 1:]
+
+def encoded(format_string: str, values) -> str:
+    return base64.b64encode(struct.pack(format_string, *values)).decode("ascii")
+
+def strip_package(triangles: int, subsets=None, slots: int | None = None,
+        record_count: int | None = None, stride: str = "12", omit: tuple[str, ...] = (),
+        skinned: bool = False, materials=None, material_stride: str = "48", textures=None,
+        texture_count: int | None = None, texture_stride: str = "20", material_names=None,
+        material_name_payload: bytes | None = None) -> bytes:
+    """A row of `triangles` separate triangles with optional subset, slot
+    material, and slot texture records. `textures` is (section names, one
+    five-reference record per slot). Four-reference callers leave occlusion
+    empty for compact synthetic fixtures."""
+    vertices = triangles * 3
+    positions = []
+    for triangle in range(triangles):
+        positions += [float(triangle), 0.0, 0.0, triangle + 1.0, 0.0, 0.0, float(triangle), 1.0, 0.0]
+    lines = [
+        "format=" + ("elisa-cooked-v3" if skinned else "elisa-cooked-v2"),
+        "source=test/strip.gltf", "source_sha256=" + "0" * 64,
+        f"triangles={triangles}", f"positions={vertices}", f"indices={vertices}",
+        "position_stride=12", "normal_stride=12", "uv_stride=8", "index_stride=4",
+    ]
+    if subsets is not None:
+        records = {
+            "material_slots": f"material_slots={slots}",
+            "subset_count": f"subset_count={len(subsets) if record_count is None else record_count}",
+            "subset_stride": f"subset_stride={stride}",
+            "subsets_b64": "subsets_b64=" + encoded(f"<{len(subsets) * 3}I",
+                [value for subset in subsets for value in subset]),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
+    if materials is not None:
+        records = {
+            "slot_material_stride": f"slot_material_stride={material_stride}",
+            "slot_materials_b64": "slot_materials_b64=" + base64.b64encode(
+                b"".join(struct.pack("<10f2I", *record) for record in materials)).decode("ascii"),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
+    if material_names is not None or material_name_payload is not None:
+        names_data = material_name_payload
+        if names_data is None:
+            names_data = b"".join(struct.pack("<I", len(name.encode("utf-8"))) + name.encode("utf-8")
+                for name in material_names)
+        if "slot_material_names_b64" not in omit:
+            lines.append("slot_material_names_b64=" + base64.b64encode(names_data).decode("ascii"))
+    if textures is not None:
+        names, references = textures
+        references = [tuple(record) + (0,) if len(record) == 4 else tuple(record) for record in references]
+        records = {
+            "texture_count": f"texture_count={len(names) if texture_count is None else texture_count}",
+            "texture_names_b64": "texture_names_b64=" + base64.b64encode(b"".join(
+                struct.pack("<I", len(name)) + name.encode("ascii") for name in names)).decode("ascii"),
+            "slot_texture_stride": f"slot_texture_stride={texture_stride}",
+            "slot_textures_b64": "slot_textures_b64=" + encoded(f"<{len(references) * 5}I",
+                [value for record in references for value in record]),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
+    lines += [
+        "positions_b64=" + encoded(f"<{vertices * 3}f", positions),
+        "normals_b64=" + encoded(f"<{vertices * 3}f", (0.0, 0.0, 1.0) * vertices),
+        "uvs_b64=" + encoded(f"<{vertices * 2}f", (0.0,) * (vertices * 2)),
+        "indices_b64=" + encoded(f"<{vertices}I", range(vertices)),
+    ]
+    if skinned:
+        name = b"root"
+        rest = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+        lines += [
+            "skin_bones=1", "skin_indices_stride=16", "skin_weights_stride=16",
+            "skin_indices_b64=" + encoded(f"<{vertices * 4}I", (0,) * (vertices * 4)),
+            "skin_weights_b64=" + encoded(f"<{vertices * 4}f", (1.0, 0.0, 0.0, 0.0) * vertices),
+            "skin_names_b64=" + base64.b64encode(struct.pack("<I", len(name)) + name).decode("ascii"),
+            "skin_joints=1", "skin_joint_parent_stride=4", "skin_joint_rest_stride=40",
+            "skin_joint_parents_b64=" + encoded("<i", (-1,)),
+            "skin_joint_rest_b64=" + encoded("<10f", rest),
+            "skin_joint_names_b64=" + base64.b64encode(struct.pack("<I", len(name)) + name).decode("ascii"),
+            "skin_cluster_joints_stride=4", "skin_cluster_joints_b64=" + encoded("<I", (0,)),
+            "animation_clips=0",
+        ]
+    return ("\n".join(lines) + "\n").encode("ascii")
+
+def cases(directory: Path) -> list[tuple]:
+    """Return (verdict, file name, package bytes or None, expectation) tuples."""
+    panel_source = ROOT / "test/fixtures/multi_material_panel.gltf"
+    panel_path, _ = cook_gltf_geometry.cook_geometry_package(
+        panel_source, "test/fixtures/multi_material_panel.gltf", directory / "panel.pkg")
+    panel = panel_path.read_bytes()
+    write_geometry_package(directory / "panel.elpk", panel)
+    tile_path, _ = cook_gltf_geometry.cook_geometry_package(
+        ROOT / "examples/maze/assets/maze_tile.gltf", "assets/maze_tile.gltf", directory / "tile.pkg")
+    hierarchy_source = ROOT / "test/fixtures/node_hierarchy_panel.gltf"
+    cook_gltf_geometry.cook_geometry_package(
+        hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
+    hierarchy_metadata = (directory / "hierarchy.pkg").read_bytes()
+    skin_path, _ = gltf_skin_self_test.write_package(directory / "skinned-panel.pkg")
+    skin_metadata = skin_path.read_bytes()
+    separate_skin_path, _ = gltf_skin_self_test.write_separate_root_package(
+        directory / "separate-root-skinned.pkg")
+    multi_skin_path, _ = gltf_skin_self_test.write_multi_skin_package(
+        directory / "multi-skin-panel.pkg")
+    mixed_skin_path, _ = gltf_skin_self_test.write_mixed_skin_package(
+        directory / "mixed-skin-panel.pkg")
+    large_skin_path, _ = gltf_skin_self_test.write_large_rig_package(
+        directory / "large-skinned-rig.pkg", 65)
+    default_skin_path, _ = gltf_skin_self_test.write_package(directory / "default-skinned-panel.pkg", None)
+    gltf_morph_self_test.write_package(directory / "morphed-panel.pkg")
+    gltf_scene_self_test.write_package(directory / "scene-metadata.pkg")
+    scene_metadata = (directory / "scene-metadata.pkg").read_bytes()
+    morph = (directory / "morphed-panel.pkg").read_bytes()
+    animated_morph_path, _ = gltf_morph_self_test.write_animated_package(
+        directory / "animated-morph-panel.pkg")
+    # Fifteen placements alternating red and green, then blue: the most
+    # subsets a baked hierarchy may need.
+    alternating = cook_assets.read_gltf(hierarchy_source.read_bytes())
+    gltf_hierarchy_self_test.alternating(15)(alternating)
+    (directory / "alternating.gltf").write_text(json.dumps(alternating), encoding="utf-8")
+    cook_gltf_geometry.cook_geometry_package(
+        directory / "alternating.gltf", "test/alternating.gltf", directory / "alternating.pkg")
+    alternating_subsets = [(index * 6, 6, index % 2) for index in range(15)] + [(90, 6, 2)]
+    panel_subsets = [(0, 6, 1), (6, 6, 0), (12, 6, 1)]
+    sixteen = [(index * 3, 3, index) for index in range(16)]
+    seventeen = [(index * 3, 3, index % 16) for index in range(17)]
+    two = [(0, 3, 0), (3, 3, 1)]
+    # The textured panel may only load from a bundle that holds its images.
+    textured_path, _ = cook_gltf_geometry.cook_geometry_package(gltf_texture_self_test.SOURCE,
+        gltf_texture_self_test.ASSET_PATH, directory / "textured.pkg", allow_textures=True)
+    textured = textured_path.read_bytes()
+    images = dict(gltf_texture_self_test.SECTIONS)
+    write_geometry_package(directory / "textured.elpk", textured, images)
+    write_geometry_package(directory / "textured-missing.elpk", textured,
+        {name: data for name, data in images.items() if name != "image_2"})
+    textured_sections = [(name, zlib.crc32(data)) for name, data in gltf_texture_self_test.SECTIONS]
+    # Sections listed out of bundle order, beside a section nothing samples.
+    listed = {"surface_1": images["image_2"], "albedo": images["image_3"]}
+    write_geometry_package(directory / "listed.elpk", strip_package(2, two, 2, materials=[MASKED, SURFACED],
+        textures=(list(listed), [(2, 0, 0, 0), (2, 0, 1, 0)])), {**listed, "spare": images["image_1"]})
+    listed_materials = [MASKED + (2, 0, 0, 0, 0), SURFACED + (2, 0, 1, 0, 0)]
+    listed_sections = [(name, zlib.crc32(data)) for name, data in listed.items()]
+    plain = [GLASS, PAINT]
+    lod_source = cook_gltf_lod.write_test_source(directory)
+    lod_path = directory / "simplified-lod.pkg"
+    cooked_lod = subprocess.run([sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+        str(lod_source), "--asset-path", "test/lod-grid.gltf", "--output", str(lod_path),
+        "--simplify-ratio", "0.5"], capture_output=True, text=True, check=False)
+    if cooked_lod.returncode != 0:
+        raise RuntimeError(cooked_lod.stderr or cooked_lod.stdout or "LOD CLI fixture cook failed")
+    lod_sections = dict(line.split("=", 1) for line in lod_path.read_text(encoding="ascii").splitlines())
+    lod_subsets = list(struct.iter_unpack("<3I", base64.b64decode(lod_sections["subsets_b64"])))
+    lod_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(lod_sections["slot_materials_b64"])))
+    lod_triangles = int(lod_sections["triangles"])
+    lod_indices = int(lod_sections["indices"])
+    lod_vertex_count = int(lod_sections["positions"])
+    lod_positions = base64.b64decode(lod_sections["positions_b64"])
+    lod_normals = base64.b64decode(lod_sections["normals_b64"])
+    lod_uvs = base64.b64decode(lod_sections["uvs_b64"])
+    lod_tangents = base64.b64decode(lod_sections["tangents_b64"])
+    lod_index_stream = base64.b64decode(lod_sections["indices_b64"])
+    lod_placements = list(struct.iter_unpack("<8I12f",
+        base64.b64decode(lod_sections["mesh_placements_b64"])))
+    source_placement_counts = cook_gltf_geometry.placed_counts(
+        cook_assets.read_gltf(lod_source.read_bytes()))
+    if (lod_triangles <= 0 or lod_triangles >= 2304 or lod_indices != lod_triangles * 3 or
+            [subset[2] for subset in lod_subsets] != [0, 1, 0, 1] or
+            "0.500" not in cooked_lod.stdout or "attribute bytes=" not in cooked_lod.stdout or
+            lod_vertex_count >= source_placement_counts["positions"] or
+            len(lod_positions) != lod_vertex_count * 12 or len(lod_normals) != lod_vertex_count * 12 or
+            len(lod_uvs) != lod_vertex_count * 8 or len(lod_tangents) != lod_vertex_count * 16 or
+            len(lod_index_stream) != lod_indices * 4 or len(lod_placements) != 2 or
+            any(placement[2] + placement[3] > lod_vertex_count or
+                placement[4] + placement[5] > lod_indices for placement in lod_placements)):
+        raise RuntimeError("static LOD cooker did not satisfy its compaction, attribute, or range limits")
+    for placement in lod_placements:
+        _, _, vertex_start, vertex_count, index_start, index_count, _, _, *_ = placement
+        placement_indices = struct.unpack_from(f"<{index_count}I", lod_index_stream, index_start * 4)
+        if any(index < vertex_start or index >= vertex_start + vertex_count for index in placement_indices):
+            raise RuntimeError("static LOD cooker remapped indices outside a placement's compacted vertices")
+    lod_chain_manifest, lod_chain_levels = cook_lod_chain(lod_source, "test/lod-grid.gltf",
+        directory / "lod-chain.pkg", parse_lod_ratios("0.5,0.25"))
+    lod_chain_accepts = []
+    for level in lod_chain_levels:
+        package_path = directory / level["package"]
+        package_fields = dict(line.split("=", 1)
+            for line in package_path.read_text(encoding="ascii").splitlines())
+        package_subsets = list(struct.iter_unpack("<3I",
+            base64.b64decode(package_fields["subsets_b64"])))
+        package_materials = list(struct.iter_unpack("<10f2I",
+            base64.b64decode(package_fields["slot_materials_b64"])))
+        lod_chain_accepts.append(("accept", package_path.name, None,
+            (int(package_fields["indices"]), int(package_fields["material_slots"]),
+                package_subsets, package_materials)))
+    if not lod_chain_manifest.is_file() or len(lod_chain_accepts) != 3:
+        raise RuntimeError("static LOD chain cook did not publish its complete manifest and package set")
+
+    def morph_variant(old: bytes, new: bytes) -> bytes:
+        if old not in morph:
+            raise RuntimeError("morph fixture mutation did not find its field")
+        return morph.replace(old, new, 1)
+
+    def scene_variant(old: bytes, new: bytes) -> bytes:
+        if old not in scene_metadata:
+            raise RuntimeError("scene fixture mutation did not find its field")
+        return scene_metadata.replace(old, new, 1)
+
+    def hierarchy_variant(old: bytes, new: bytes) -> bytes:
+        if old not in hierarchy_metadata:
+            raise RuntimeError("hierarchy metadata mutation did not find its field")
+        return hierarchy_metadata.replace(old, new, 1)
+
+    def hierarchy_record_variant(field_offset: int, value: int) -> bytes:
+        marker = b"mesh_placements_b64="
+        lines = hierarchy_metadata.splitlines(keepends=True)
+        for index, line in enumerate(lines):
+            if line.startswith(marker):
+                encoded = line[len(marker):].strip()
+                records = bytearray(base64.b64decode(encoded))
+                struct.pack_into("<I", records, field_offset, value)
+                lines[index] = marker + base64.b64encode(records) + b"\n"
+                return b"".join(lines)
+        raise RuntimeError("hierarchy metadata mutation did not find its records")
+
+    def skin_field(name: str, value: str | None) -> bytes:
+        lines = skin_metadata.decode("ascii").splitlines()
+        prefix = name + "="
+        for index, line in enumerate(lines):
+            if line.startswith(prefix):
+                if value is None:
+                    del lines[index]
+                else:
+                    lines[index] = prefix + value
+                return ("\n".join(lines) + "\n").encode("ascii")
+        if value is None:
+            return skin_metadata
+        lines.append(prefix + value)
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    def skin_without_rig() -> bytes:
+        rig_fields = {
+            "skin_joints", "skin_joint_parent_stride", "skin_joint_parents_b64",
+            "skin_joint_rest_stride", "skin_joint_rest_b64", "skin_joint_names_b64",
+            "skin_cluster_joints_stride", "skin_cluster_joints_b64",
+        }
+        lines = [line for line in skin_metadata.decode("ascii").splitlines()
+            if line.partition("=")[0] not in rig_fields]
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    def textured_strip(names, references, **fields):
+        return strip_package(2, two, 2, materials=fields.pop("materials", plain),
+            textures=(names, references), **fields)
+
+    def named(name):
+        return textured_strip([name], [(1, 0, 0, 0), (0, 0, 0, 0)])
+
+    return [
+        ("accept", "panel.pkg", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
+        ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
+        *test_geometry_uv1.cases(directory, panel_source, PANEL_MATERIALS, panel_subsets,
+            [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)]),
+        ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
+        ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),
+        *lod_chain_accepts,
+        ("accept", "hierarchy.pkg", None, (24, 3, gltf_hierarchy_self_test.SUBSETS, HIERARCHY_MATERIALS)),
+        ("accept", "alternating.pkg", None, (96, 3, alternating_subsets, HIERARCHY_MATERIALS)),
+        ("accept", "legacy.pkg", strip_package(2), (6, 1, [(0, 6, 0)])),
+        ("accept", "explicit-single.pkg", strip_package(2, [(0, 6, 0)], 1), (6, 1, [(0, 6, 0)])),
+        ("accept", "unused-slot.pkg", strip_package(2, [(0, 3, 2), (3, 3, 0)], 3),
+            (6, 3, [(0, 3, 2), (3, 3, 0)])),
+        ("accept", "sixteen.pkg", strip_package(16, sixteen, 16), (48, 16, sixteen)),
+        ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
+        ("accept", "skinned-panel.pkg", None, (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1),
+            (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+        ("accept", "separate-root-skinned.pkg", separate_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+        ("accept", "multi-skin-panel.pkg", multi_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds",
+            gltf_skin_self_test.INVERSE_BIND_MATRICES +
+                gltf_skin_self_test.SECOND_INVERSE_BIND_MATRICES)),
+        ("accept", "mixed-skin-panel.pkg", mixed_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds",
+            gltf_skin_self_test.INVERSE_BIND_MATRICES + gltf_skin_self_test.GLTF_IDENTITY_MATRIX)),
+        ("accept", "large-skinned-rig.pkg", large_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+        ("accept", "default-skinned-panel.pkg", default_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds",
+            gltf_skin_self_test.DEFAULT_INVERSE_BIND_MATRICES)),
+        ("accept", "animated-morph-panel.pkg", animated_morph_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)],
+            PANEL_MATERIALS, "animations", 1, "morphs", 1)),
+        ("reject", "skin-inverse-bind-no-stride.pkg", skin_field("skin_inverse_bind_stride", None),
+            "incomplete cooked geometry skin stream"),
+        ("reject", "skin-inverse-bind-no-data.pkg", skin_field("skin_inverse_bind_matrices_b64", None),
+            "incomplete cooked geometry skin stream"),
+        ("reject", "skin-inverse-bind-without-rig.pkg", skin_without_rig(),
+            "incomplete cooked geometry rig hierarchy"),
+        ("reject", "skin-inverse-bind-stride.pkg", skin_field("skin_inverse_bind_stride", "32"),
+            "invalid cooked geometry inverse bind matrix stream"),
+        ("reject", "skin-inverse-bind-short.pkg", skin_field("skin_inverse_bind_matrices_b64",
+            base64.b64encode(struct.pack("<31f", *gltf_skin_self_test.INVERSE_BIND_MATRICES[:31])).decode("ascii")),
+            "invalid cooked geometry inverse bind matrix stream"),
+        ("reject", "skin-inverse-bind-nonfinite.pkg", skin_field("skin_inverse_bind_matrices_b64",
+            base64.b64encode(struct.pack("<32f", *gltf_skin_self_test.INVERSE_BIND_MATRICES[:4], float("nan"),
+                *gltf_skin_self_test.INVERSE_BIND_MATRICES[5:])).decode("ascii")),
+            "invalid cooked geometry inverse bind matrix stream"),
+        ("reject", "skin-inverse-bind-singular.pkg", skin_field("skin_inverse_bind_matrices_b64",
+            base64.b64encode(struct.pack("<32f", 0.0, *gltf_skin_self_test.INVERSE_BIND_MATRICES[1:])).decode("ascii")),
+            "invalid cooked geometry inverse bind matrix"),
+        ("accept", "morphed-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
+            "morphs", 1)),
+        ("accept", "scene-metadata.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
+            "cameras", 2, "lights", 2)),
+        ("reject", "scene-camera-projection.pkg", scene_variant(
+            b"camera_0_projection=0", b"camera_0_projection=2"), "camera metadata"),
+        ("reject", "scene-light-kind.pkg", scene_variant(
+            b"light_0_kind=0", b"light_0_kind=3"), "light metadata"),
+        ("reject", "scene-camera-transform.pkg", scene_variant(
+            b"camera_0_transform_b64=", b"camera_0_transform="), "camera metadata"),
+        ("reject", "hierarchy-mesh-stride.pkg", hierarchy_variant(
+            b"mesh_placement_stride=80", b"mesh_placement_stride=72"), "mesh placement metadata"),
+        ("reject", "hierarchy-mesh-count.pkg", hierarchy_variant(
+            b"mesh_count=3", b"mesh_count=4"), "leaves a mesh unplaced"),
+        ("reject", "hierarchy-placement-range.pkg", hierarchy_record_variant(12, 0),
+            "index is out of range"),
+        ("reject", "hierarchy-placement-partition.pkg", hierarchy_record_variant(16, 6),
+            "do not partition the streams"),
+        ("reject", "morph-missing-position.pkg", morph_variant(
+            b"morph_0_positions_b64=", b"morph_0_position_b64="), "morph position stream"),
+        ("reject", "morph-stride.pkg", morph_variant(
+            b"morph_target_position_stride=12", b"morph_target_position_stride=16"), "morph metadata"),
+        ("reject", "morph-empty.pkg", morph_variant(
+            b"morph_targets=1", b"morph_targets=0"), "morph metadata"),
+        ("reject", "gap.pkg", strip_package(3, [(0, 3, 0), (6, 3, 0)], 1), PARTITION),
+        ("reject", "overlap.pkg", strip_package(3, [(0, 6, 0), (3, 6, 1)], 2), PARTITION),
+        ("reject", "split-triangle.pkg", strip_package(2, [(0, 4, 0), (4, 2, 1)], 2), PARTITION),
+        ("reject", "empty-subset.pkg", strip_package(2, [(0, 6, 0), (6, 0, 1)], 2), PARTITION),
+        ("reject", "missing-slot.pkg", strip_package(2, [(0, 3, 0), (3, 3, 2)], 2), MISSING_SLOT),
+        ("reject", "short.pkg", strip_package(3, [(0, 3, 0), (3, 3, 1)], 2), PARTITION),
+        ("reject", "overrun.pkg", strip_package(2, [(0, 3, 0), (3, 6, 1)], 2), PARTITION),
+        ("reject", "wrapping.pkg", strip_package(2, [(0, 3, 0), (3, 0xFFFFFFFF, 1)], 2), PARTITION),
+        # Each subset wraps uint32 once. Three wraps land back on an exact
+        # partition of 6 indices, so only the per-subset bound rejects it.
+        ("reject", "triple-wrap.pkg", strip_package(2, [(0, 0xC0000000, 0), (0xC0000000, 0xC0000000, 0),
+            (0x80000000, 0xC0000000, 0), (0x40000000, 0xC0000006, 0)], 1), PARTITION),
+        ("reject", "seventeen.pkg", strip_package(17, seventeen, 16), RECORDS),
+        ("reject", "seventeen-slots.pkg", strip_package(2, [(0, 6, 16)], 17), RECORDS),
+        ("reject", "zero-slots.pkg", strip_package(2, [(0, 6, 0)], 0), RECORDS),
+        ("reject", "count-mismatch.pkg", strip_package(2, [(0, 3, 0), (3, 3, 1)], 2, record_count=3), RECORDS),
+        ("reject", "stride.pkg", strip_package(2, [(0, 6, 0)], 1, stride="16"), RECORDS),
+        ("reject", "no-slots.pkg", strip_package(2, [(0, 6, 0)], 1, omit=("material_slots",)), RECORDS),
+        ("reject", "no-records.pkg", strip_package(2, [(0, 6, 0)], 1, omit=("subsets_b64",)), RECORDS),
+        ("accept", "skinned-subsets.pkg", strip_package(2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True),
+            (6, 2, [(0, 3, 0), (3, 3, 1)])),
+        ("accept", "skinned-single.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True),
+            (6, 1, [(0, 6, 0)])),
+        ("accept", "materials.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT]),
+            (6, 2, two, [GLASS, PAINT])),
+        ("accept", "material-names.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_names=["First", "Second"]),
+            (6, 2, two, [GLASS, PAINT], "slot_names", ["First", "Second"])),
+        ("accept", "single-material.pkg", strip_package(2, [(0, 6, 0)], 1, materials=[PAINT]),
+            (6, 1, [(0, 6, 0)], [PAINT])),
+        ("accept", "material-bounds.pkg", strip_package(2, two, 2, materials=[ZEROS, ONES]),
+            (6, 2, two, [ZEROS, ONES])),
+        ("reject", "materials-without-subsets.pkg", strip_package(2, materials=[PAINT]), MATERIAL_RECORDS),
+        ("reject", "material-names-without-materials.pkg", strip_package(2, two, 2,
+            material_name_payload=b""), MATERIAL_NAMES),
+        ("reject", "material-names-truncated.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=b"\x04\x00"), MATERIAL_NAMES),
+        ("reject", "material-name-too-long.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=struct.pack("<I", 257) + b"a" * 257 +
+                struct.pack("<I", 0)), MATERIAL_NAME),
+        ("reject", "material-name-invalid-utf8.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=struct.pack("<I", 2) + b"\xc0\xaf" +
+                struct.pack("<I", 0)), MATERIAL_NAME),
+        ("reject", "material-name-nul.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=struct.pack("<I", 1) + b"\0" +
+                struct.pack("<I", 0)), MATERIAL_NAME),
+        ("reject", "material-names-trailing.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_names=["First", "Second"],
+            material_name_payload=struct.pack("<I", 1) + b"a" + struct.pack("<I", 1) + b"b" + b"x"),
+            MATERIAL_NAMES),
+        ("accept", "skinned-materials.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True, materials=[PAINT]),
+            (6, 1, [(0, 6, 0)], [PAINT])),
+        ("reject", "material-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
+            material_stride="44"), MATERIAL_RECORDS),
+        ("reject", "material-no-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
+            omit=("slot_material_stride",)), MATERIAL_RECORDS),
+        ("reject", "material-no-records.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],
+            omit=("slot_materials_b64",)), MATERIAL_RECORDS),
+        ("reject", "material-short.pkg", strip_package(2, two, 2, materials=[GLASS]), MATERIAL_RECORDS),
+        ("reject", "material-long.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT, PAINT]),
+            MATERIAL_RECORDS),
+        ("reject", "material-above-one.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 0, 1.5)]), MATERIAL_RANGE),
+        ("reject", "material-negative.pkg", strip_package(2, two, 2,
+            materials=[with_field(GLASS, 5, -0.25), PAINT]), MATERIAL_RANGE),
+        ("reject", "material-nan.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 4, float("nan"))]), MATERIAL_RANGE),
+        ("reject", "material-infinite.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 8, float("inf"))]), MATERIAL_RANGE),
+        ("reject", "material-cutoff.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 9, 1.5)]), MATERIAL_RANGE),
+        ("reject", "material-mask.pkg", strip_package(2, two, 2,
+            materials=[with_field(GLASS, 10, 1), PAINT]), NEEDS_TEXTURE),
+        ("reject", "material-mode.pkg", strip_package(2, two, 2,
+            materials=[with_field(GLASS, 10, 3), PAINT]), MATERIAL_RANGE),
+        ("reject", "material-flags.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 11, 4)]), MATERIAL_RANGE),
+        ("reject", "material-occlusion.pkg", strip_package(2, two, 2,
+            materials=[GLASS, with_field(PAINT, 11, 2)]), NEEDS_TEXTURE),
+        ("accept", "textured.elpk", None, (24, 4, gltf_texture_self_test.SUBSETS, TEXTURED_MATERIALS,
+            textured_sections)),
+        ("accept", "listed.elpk", None, (6, 2, two, listed_materials, listed_sections)),
+        ("reject", "textured.pkg", None, NEEDS_BUNDLE),
+        ("reject", "textured-missing.elpk", None, MISSING_SECTION),
+        ("reject", "texture-count-zero.pkg", textured_strip([], [(0,) * 4] * 2), TEXTURE_RECORDS),
+        ("reject", "texture-count-mismatch.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            texture_count=2), TEXTURE_RECORDS),
+        ("reject", "texture-too-many.pkg", textured_strip([f"image_{index}" for index in range(65)],
+            [(1, 2, 3, 4)] * 2), TEXTURE_RECORDS),
+        ("reject", "texture-stride.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2, texture_stride="12"),
+            TEXTURE_RECORDS),
+        ("reject", "texture-no-count.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("texture_count",)), TEXTURE_RECORDS),
+        ("reject", "texture-no-names.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("texture_names_b64",)), TEXTURE_RECORDS),
+        ("reject", "texture-no-stride.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("slot_texture_stride",)), TEXTURE_RECORDS),
+        ("reject", "texture-no-records.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 2,
+            omit=("slot_textures_b64",)), TEXTURE_RECORDS),
+        ("reject", "texture-short.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)]), TEXTURE_RECORDS),
+        ("reject", "texture-long.pkg", textured_strip(["albedo"], [(1, 0, 0, 0)] * 3), TEXTURE_RECORDS),
+        ("reject", "texture-without-materials.pkg", strip_package(2, two, 2,
+            textures=(["albedo"], [(1, 0, 0, 0)] * 2)), TEXTURE_RECORDS),
+        ("reject", "texture-duplicate.pkg", textured_strip(["albedo", "albedo"], [(1, 0, 0, 0), (2, 0, 0, 0)]),
+            SECTION_NAME),
+        ("reject", "texture-mesh.pkg", named("mesh"), SECTION_NAME),
+        ("reject", "texture-manifest.pkg", named("manifest"), SECTION_NAME),
+        ("reject", "texture-empty-name.pkg", named(""), SECTION_NAME),
+        ("reject", "texture-uppercase.pkg", named("Albedo"), SECTION_NAME),
+        ("reject", "texture-path.pkg", named("../albedo"), SECTION_NAME),
+        ("reject", "texture-nul.pkg", named("albedo\0x"), SECTION_NAME),
+        ("reject", "texture-long-name.pkg", named("a" * 16), SECTION_NAME),
+        ("reject", "texture-beyond.pkg", textured_strip(["albedo"], [(1, 0, 0, 0), (0, 0, 2, 0)]), MISSING_IMAGE),
+        ("reject", "texture-unsampled.pkg", textured_strip(["albedo", "spare"], [(1, 0, 0, 0)] * 2), UNSAMPLED),
+        ("reject", "mask-without-base.pkg", textured_strip(["normal"], [(0, 1, 0, 0), (0, 0, 0, 0)],
+            materials=[MASKED, PAINT]), NEEDS_TEXTURE),
+        ("reject", "occlusion-without-surface.pkg", textured_strip(["albedo"], [(0, 0, 0, 0), (1, 0, 0, 0)],
+            materials=[GLASS, SURFACED]), NEEDS_TEXTURE),
+    ]

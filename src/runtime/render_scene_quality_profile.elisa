@@ -17,6 +17,7 @@ extend RenderScene:
             bloom_threshold: f32
             bloom: i32
             fxaa: i32
+            temporal_aa: i32
             ambient_occlusion: i32
             screen_space_reflections: i32
             fog: i32
@@ -38,6 +39,7 @@ extend RenderScene:
                 bloom_threshold: profile.bloom_threshold,
                 bloom: 1 if profile.bloom else 0,
                 fxaa: 1 if profile.fxaa else 0,
+                temporal_aa: 1 if profile.temporal_aa else 0,
                 ambient_occlusion: 1 if profile.ambient_occlusion else 0,
                 screen_space_reflections: 1 if profile.screen_space_reflections else 0,
                 fog: 1 if profile.fog else 0,

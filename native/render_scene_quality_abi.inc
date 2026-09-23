@@ -77,6 +77,7 @@ extern "C" int32_t elisa_render_scene_v1_apply_quality_profile(
         profile->upscaler > ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2 ||
         (profile->bloom != 0 && profile->bloom != 1) ||
         (profile->fxaa != 0 && profile->fxaa != 1) ||
+        (profile->temporal_aa != 0 && profile->temporal_aa != 1) ||
         (profile->ambient_occlusion != 0 && profile->ambient_occlusion != 1) ||
         (profile->screen_space_reflections != 0 && profile->screen_space_reflections != 1) ||
         (profile->fog != 0 && profile->fog != 1) ||
@@ -97,6 +98,7 @@ extern "C" int32_t elisa_render_scene_v1_apply_quality_profile(
     desc.bloom_threshold = profile->bloom_threshold;
     desc.bloom = profile->bloom != 0;
     desc.fxaa = profile->fxaa != 0;
+    desc.temporal_aa = profile->temporal_aa != 0;
     desc.ambient_occlusion = profile->ambient_occlusion != 0;
     desc.screen_space_reflections = profile->screen_space_reflections != 0;
     desc.fog = profile->fog != 0;
@@ -117,7 +119,18 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_matches(int32_t ambient_oc
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_quality_rejects_invalid_flags(void) {
-    return elisa_render_scene_v1_set_ambient_occlusion(2) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+    ElisaRenderSceneQualityProfile invalid_profile{};
+    invalid_profile.render_scale = 1.0f;
+    invalid_profile.bloom_threshold = 1.0f;
+    invalid_profile.temporal_aa = 2;
+    ElisaRenderSceneQualityProfile duplicate_temporal{};
+    duplicate_temporal.render_scale = 1.0f;
+    duplicate_temporal.bloom_threshold = 1.0f;
+    duplicate_temporal.temporal_aa = 1;
+    duplicate_temporal.upscaler = ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2;
+    return elisa_render_scene_v1_apply_quality_profile(&invalid_profile) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_apply_quality_profile(&duplicate_temporal) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_set_ambient_occlusion(2) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion_settings(0.0f, 1.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion_settings(1.0f, 9.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_fxaa(-1) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
@@ -153,7 +166,7 @@ extern "C" int32_t elisa_render_scene_v1_test_shadow_quality_matches(int32_t qua
 
 extern "C" int32_t elisa_render_scene_v1_test_quality_profile_matches(
     int32_t tonemap, float render_scale, float bloom_threshold,
-    int32_t bloom, int32_t fxaa, int32_t ambient_occlusion,
+    int32_t bloom, int32_t fxaa, int32_t temporal_aa, int32_t ambient_occlusion,
     int32_t screen_space_reflections, int32_t fog, int32_t depth_effects) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -167,6 +180,7 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_profile_matches(
         std::abs(state.path->getBloomThreshold() - bloom_threshold) < 1.0e-5f &&
         state.path->getBloomEnabled() == (bloom != 0) &&
         state.path->getFXAAEnabled() == (fxaa != 0) &&
+        wi::renderer::GetTemporalAAEnabled() == (temporal_aa != 0) &&
         state.path->getAO() == (ambient_occlusion != 0 ? wi::RenderPath3D::AO_SSAO : wi::RenderPath3D::AO_DISABLED) &&
         state.path->getSSREnabled() == (screen_space_reflections != 0) &&
         state.path->getDepthOfFieldEnabled() == (depth_effects != 0) &&

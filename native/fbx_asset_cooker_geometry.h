@@ -11,11 +11,11 @@
 #include <limits>
 #include <vector>
 
-namespace elisa::assets::detail::fbx_cooker {
+namespace elisa::assets::cooker {
 
 inline constexpr float MAX_SIMPLIFICATION_ERROR = 0.03f;
 
-inline bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_triangles) {
+bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_triangles) {
     if (max_triangles == 0 || mesh.indices.size() / 3 <= max_triangles) return true;
     if (!mesh.skin_indices.empty()) {
         std::fprintf(stderr, "skinned FBX geometry cannot be simplified until bone influences are remapped with the mesh\n");
@@ -120,7 +120,7 @@ inline bool simplify_geometry(elisa::assets::FbxMeshData& mesh, size_t max_trian
     return true;
 }
 
-inline bool optimize_vertex_cache(elisa::assets::FbxMeshData& mesh) {
+bool optimize_vertex_cache(elisa::assets::FbxMeshData& mesh) {
     const size_t vertex_count = mesh.positions.size() / 3;
     if (vertex_count == 0 || mesh.positions.size() % 3 != 0 || mesh.indices.empty() ||
         mesh.indices.size() % 3 != 0) {
@@ -179,7 +179,7 @@ bool remap_vertex_stream(const std::vector<T>& stream, size_t vertex_count, size
     return true;
 }
 
-inline bool optimize_vertex_fetch(elisa::assets::FbxMeshData& mesh) {
+bool optimize_vertex_fetch(elisa::assets::FbxMeshData& mesh) {
     const size_t vertex_count = mesh.positions.size() / 3;
     const bool has_skin_indices = !mesh.skin_indices.empty();
     const bool has_skin_weights = !mesh.skin_weights.empty();
@@ -253,4 +253,4 @@ inline bool optimize_vertex_fetch(elisa::assets::FbxMeshData& mesh) {
     return true;
 }
 
-} // namespace elisa::assets::detail::fbx_cooker
+} // namespace elisa::assets::cooker

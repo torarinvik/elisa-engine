@@ -2,6 +2,7 @@
 
 #include "probe_core.h"
 #include "wiRenderPath3D.h"
+#include "wiRenderer.h"
 
 #include <cmath>
 #include <cstdint>
@@ -19,6 +20,7 @@ struct NativePostProcessDesc {
     float bloom_threshold = 1.0f;
     bool bloom = true;
     bool fxaa = false;
+    bool temporal_aa = false;
     bool ambient_occlusion = false;
     bool screen_space_reflections = false;
     bool fog = true;
@@ -35,6 +37,7 @@ public:
         path_.setBloomThreshold(desc.bloom_threshold);
         path_.setBloomEnabled(desc.bloom);
         path_.setFXAAEnabled(desc.fxaa);
+        wi::renderer::SetTemporalAAEnabled(desc.temporal_aa);
         path_.setAO(desc.ambient_occlusion ? wi::RenderPath3D::AO_SSAO : wi::RenderPath3D::AO_DISABLED);
         path_.setSSREnabled(desc.screen_space_reflections);
         if (path_.scene != nullptr) path_.scene->weather.SetHeightFog(desc.fog);
@@ -57,7 +60,8 @@ private:
     static bool valid(const NativePostProcessDesc& desc) {
         return std::isfinite(desc.render_scale) && desc.render_scale >= 0.25f &&
             desc.render_scale <= 1.0f && std::isfinite(desc.bloom_threshold) &&
-            desc.bloom_threshold >= 0.0f && desc.bloom_threshold <= 100.0f;
+            desc.bloom_threshold >= 0.0f && desc.bloom_threshold <= 100.0f &&
+            !(desc.temporal_aa && desc.upscaler == NativeUpscaler::Fsr2);
     }
 
     static wi::renderer::Tonemap tonemap(NativeTonemap value) {
@@ -74,10 +78,11 @@ inline bool probe_postprocess_bridge(wi::RenderPath3D& path) {
     const bool original_fog = path.scene != nullptr && path.scene->weather.IsHeightFog();
     NativePostProcessDesc desc;
     desc.tonemap = NativeTonemap::Uchimura;
-    desc.upscaler = NativeUpscaler::Fsr2;
+    desc.upscaler = NativeUpscaler::Fsr1;
     desc.render_scale = 0.5f;
     desc.bloom_threshold = 2.0f;
     desc.fxaa = true;
+    desc.temporal_aa = true;
     desc.ambient_occlusion = true;
     desc.screen_space_reflections = true;
     desc.fog = false;
@@ -85,11 +90,13 @@ inline bool probe_postprocess_bridge(wi::RenderPath3D& path) {
         "postprocess reports unsupported upscaler fallback") ||
         !check(path.getTonemap() == wi::renderer::Tonemap::Uchimura &&
             path.getBloomThreshold() == 2.0f && path.getFXAAEnabled() &&
+            wi::renderer::GetTemporalAAEnabled() &&
             path.getAO() == wi::RenderPath3D::AO_SSAO && path.getSSREnabled() &&
             path.resolutionScale == 0.5f && path.scene != nullptr && !path.scene->weather.IsHeightFog(),
             "postprocess applies validated profile") ||
         !check(bridge.apply(NativePostProcessDesc{}, true) == PostProcessApply::Applied &&
             path.getTonemap() == wi::renderer::Tonemap::ACES && path.resolutionScale == 1.0f &&
+            !wi::renderer::GetTemporalAAEnabled() &&
             path.scene != nullptr && path.scene->weather.IsHeightFog(),
             "postprocess applies supported default")) {
         return false;
@@ -98,8 +105,13 @@ inline bool probe_postprocess_bridge(wi::RenderPath3D& path) {
     invalid.render_scale = 2.0f;
     const bool rejected = check(bridge.apply(invalid, true) == PostProcessApply::Invalid,
         "postprocess rejects invalid scale");
+    invalid = NativePostProcessDesc{};
+    invalid.upscaler = NativeUpscaler::Fsr2;
+    invalid.temporal_aa = true;
+    const bool rejects_double_temporal = check(bridge.apply(invalid, true) == PostProcessApply::Invalid,
+        "postprocess rejects simultaneous TAA and FSR2");
     if (path.scene != nullptr) path.scene->weather.SetHeightFog(original_fog);
-    return rejected;
+    return rejected && rejects_double_temporal;
 }
 
 } // namespace probe

@@ -4,17 +4,19 @@
 quality selection in Elisa, validates render scale and bloom thresholds, and
 offers bounded low/medium/high presets. `native/postprocess_bridge.h` translates
 the contract to Wicked's `RenderPath3D` controls for tonemapping, bloom, FXAA,
-SSAO, SSR, height fog, depth effects, and render scale. Low quality disables
-fog along with the more expensive effects; invalid scale and thresholds are
-rejected before any native state changes. FSR1/FSR2 are enabled only when the
-queried adapter says they are supported; otherwise the adapter returns an
-explicit fallback after applying the rest of the profile.
+temporal AA, SSAO, SSR, height fog, depth effects, and render scale. Low
+quality disables fog along with the more expensive effects; invalid scale and
+thresholds are rejected before any native state changes. FSR1/FSR2 are enabled
+only when the queried adapter says they are supported; otherwise the adapter
+returns an explicit fallback after applying the rest of the profile. Temporal
+AA uses Wicked's renderer history path; Elisa profiles reject enabling it
+alongside FSR2, which already owns a temporal reconstruction pass.
 
 Evidence: the shared Elisa gate runs `test/quality.elisa`; the SDL3/Wicked gate
 calls `probe_postprocess_bridge` and checks both fallback and supported paths,
-including fog state. The probe restores the original scene weather after the
-check. History-resource resizing and measured GPU/VRAM costs remain open R07
-work.
+including fog and temporal-AA state. The probe restores the original scene
+weather after the check. History-resource resizing and measured GPU/VRAM costs
+remain open R07 work.
 
 The public `RenderScene` API also exposes direct SSAO and FXAA toggles for
 applications that manage a scene without the backend profile bridge. The
@@ -24,11 +26,11 @@ integer flags are rejected at the C ABI boundary. Validation passed:
 
 `RenderScene::apply_quality_profile` now carries the validated Elisa `Quality::Profile`
 contract through the public Elisa runtime. It applies tonemap, render scale,
-bloom threshold/toggle, FXAA, SSAO, SSR, height fog and depth effects in one
-checked call; an unsupported FSR request keeps the rest of the profile and
-returns the documented fallback as success. The native quality fixture checks
-the applied Wicked state and rejects an out-of-range render scale before any
-native call.
+bloom threshold/toggle, FXAA or temporal AA, SSAO, SSR, height fog and depth
+effects in one checked call; an unsupported FSR request keeps the rest of the
+profile and returns the documented fallback as success. The native quality
+fixture checks the applied Wicked state and rejects an out-of-range render
+scale before any native call.
 
 `RenderScene::set_shadow_quality` adds a checked Low/Medium/High preset for
 Wicked's shadow atlas. The presets select 512/1024/2048-pixel 2D maps and a

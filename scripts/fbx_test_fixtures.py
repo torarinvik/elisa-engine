@@ -26,7 +26,8 @@ def write_two_mesh_scene(path: Path) -> None:
         'Vertices: *12 { a: 2,0,0,4,0,0,4,2,0,2,2,0 } '
         'PolygonVertexIndex: *4 { a: 0,1,2,-4 } } '
         'Model: 1002, "Model::SmallNode", "Mesh" { Version: 232 } '
-        'Model: 1004, "Model::SelectedNode", "Mesh" { Version: 232 } }\n'
+        'Model: 1004, "Model::SelectedNode", "Mesh" { Version: 232 Properties70: { '
+        'P: "Lcl Translation", "Lcl Translation", "", "A", 10,0,0 } } }\n'
         'Connections: { C: "OO",1001,1002 C: "OO",1002,0 '
         'C: "OO",1003,1004 C: "OO",1004,0 }\n'
         'Takes: { Current: "" }\n',
