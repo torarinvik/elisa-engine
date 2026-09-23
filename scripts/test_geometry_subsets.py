@@ -30,6 +30,7 @@ import zlib
 import cook_assets
 import cook_gltf_geometry
 import cook_gltf_lod
+from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
 import gltf_morph_self_test
@@ -243,6 +244,22 @@ def cases(directory: Path) -> list[tuple]:
         placement_indices = struct.unpack_from(f"<{index_count}I", lod_index_stream, index_start * 4)
         if any(index < vertex_start or index >= vertex_start + vertex_count for index in placement_indices):
             raise RuntimeError("static LOD cooker remapped indices outside a placement's compacted vertices")
+    lod_chain_manifest, lod_chain_levels = cook_lod_chain(lod_source, "test/lod-grid.gltf",
+        directory / "lod-chain.pkg", parse_lod_ratios("0.5,0.25"))
+    lod_chain_accepts = []
+    for level in lod_chain_levels:
+        package_path = directory / level["package"]
+        package_fields = dict(line.split("=", 1)
+            for line in package_path.read_text(encoding="ascii").splitlines())
+        package_subsets = list(struct.iter_unpack("<3I",
+            base64.b64decode(package_fields["subsets_b64"])))
+        package_materials = list(struct.iter_unpack("<10f2I",
+            base64.b64decode(package_fields["slot_materials_b64"])))
+        lod_chain_accepts.append(("accept", package_path.name, None,
+            (int(package_fields["indices"]), int(package_fields["material_slots"]),
+                package_subsets, package_materials)))
+    if not lod_chain_manifest.is_file() or len(lod_chain_accepts) != 3:
+        raise RuntimeError("static LOD chain cook did not publish its complete manifest and package set")
 
     def morph_variant(old: bytes, new: bytes) -> bytes:
         if old not in morph:
@@ -308,6 +325,7 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
         ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),
+        *lod_chain_accepts,
         ("accept", "hierarchy.pkg", None, (24, 3, gltf_hierarchy_self_test.SUBSETS, HIERARCHY_MATERIALS)),
         ("accept", "alternating.pkg", None, (96, 3, alternating_subsets, HIERARCHY_MATERIALS)),
         ("accept", "legacy.pkg", strip_package(2), (6, 1, [(0, 6, 0)])),

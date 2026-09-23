@@ -59,8 +59,10 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     if len(package_bytes) > 64 * 1024 * 1024:
         raise ValueError("cooked geometry package exceeds the 64 MiB runtime limit")
     output_path.write_bytes(package_bytes)
+    attribute_bytes = sum(len(geometry[name]) for name in ("positions", "normals", "uvs", "tangents"))
     return output_path, {"triangles": triangles, "source_triangles": source_counts["triangles"],
         "positions": geometry["vertex_count"], "indices": geometry["index_count"],
+        "attribute_bytes": attribute_bytes,
         "subsets": len(geometry["subsets"]), "material_slots": geometry["material_slots"],
         "slot_materials": len(geometry["slot_materials"]) // geometry_cooker.SLOT_MATERIAL_STRIDE,
         "source_sha256": source_digest, "images": dict(geometry["images"]),
