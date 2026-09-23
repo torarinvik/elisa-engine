@@ -1,9 +1,13 @@
 #pragma once
 
 #include "ktx2_upload.h"
+#include "wiHelper.h"
 
+#include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace probe {
 
@@ -141,10 +145,42 @@ inline bool check_ktx2_hdr_upload(const std::filesystem::path& path) {
     const KTX2UploadFormats supported = query_ktx2_upload_formats(wi::graphics::GetDevice(), false);
     const KTX2UploadEncoding expected = choose_ktx2_upload_encoding(
         false, supported, KTX2TextureUsage::Color, true);
-    return check(resource.IsValid() && resource.GetTexture().IsValid() &&
+    if (!check(resource.IsValid() && resource.GetTexture().IsValid() &&
         (expected == KTX2UploadEncoding::Bc6h || expected == KTX2UploadEncoding::Rgba16Float) &&
         resource.GetTexture().GetDesc().format == ktx2_wicked_format(expected, false),
-        "KTX2 HDR uploads to BC6H or a range-preserving RGBA16F fallback");
+        "KTX2 HDR uploads to BC6H or a range-preserving RGBA16F fallback")) return false;
+
+    if (!check(supported.rgba16f, "HDR fallback probe has RGBA16F device support")) return false;
+    std::vector<uint8_t> encoded;
+    if (!check(read_bounded_ktx2_container(path.lexically_normal().string(), encoded),
+        "HDR fallback fixture reads within its container budget")) return false;
+    KTX2UploadFormats fallback_formats = supported;
+    fallback_formats.bc6h = false;
+    const wi::Resource fallback = elisa::rendering::textures::detail::load_ktx2_texture_resource(
+        encoded, KTX2TextureUsage::Color, &fallback_formats);
+    if (!check(fallback.IsValid() && fallback.GetTexture().IsValid() &&
+        fallback.GetTexture().GetDesc().format == wi::graphics::Format::R16G16B16A16_FLOAT,
+        "HDR fallback transcodes and uploads as RGBA16F")) return false;
+
+    wi::graphics::GetDevice()->WaitForGPU();
+    wi::vector<uint8_t> readback;
+    if (!check(wi::helper::saveTextureToMemory(fallback.GetTexture(), readback) &&
+        readback.size() >= 4u * 4u * 8u, "HDR fallback texture reads back as half floats")) return false;
+    bool retained_hdr_range = false;
+    for (size_t pixel = 0; pixel < 16 && !retained_hdr_range; ++pixel) {
+        for (size_t channel = 0; channel < 3; ++channel) {
+            uint16_t encoded_channel = 0;
+            std::memcpy(&encoded_channel, readback.data() + pixel * 8u + channel * 2u,
+                sizeof(encoded_channel));
+            const float value = wi::math::f16tof32(encoded_channel);
+            retained_hdr_range = retained_hdr_range || (std::isfinite(value) && value > 1.0f);
+        }
+    }
+    if (!check(retained_hdr_range,
+        "HDR RGBA16F GPU readback retains values above linear white")) return false;
+    std::fprintf(stdout,
+        "KTX2 HDR upload: device-selected format and forced RGBA16F preserve values above 1.0\n");
+    return true;
 }
 
 inline bool check_ktx2_upload_fixtures(const std::filesystem::path& cooked_directory) {

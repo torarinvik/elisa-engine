@@ -8,17 +8,19 @@ into geometry or image bundles. The accepted layout follows the official
 ## Checks and results
 
 - `/opt/homebrew/bin/python3 scripts/cook_image_bundle.py --self-test` passed.
-  It accepts metadata, BasisLZ global data, and multi-level section layouts;
-  rejects 25 malformed DFD, KVD, SGD, level-index, type-size, scheme/profile,
+  It accepts metadata, BasisLZ global data, multi-level layouts, and legacy
+  Zstandard UASTC DFDs with a zero bytes-per-plane field; rejects 25 malformed
+  DFD, KVD, SGD, level-index, type-size, scheme/profile,
   mip-order, alignment, padding, and trailing-data cases; and confirms
   deterministic bundle output.
 - The boundary rejects impossible mip counts, mismatched UASTC/ETC1S
   supercompression schemes, wrong per-level UASTC block sizes, wrong physical
   mip order, unaligned or non-zero mip padding, and bytes after the final mip.
+  A zero bytes-per-plane field is accepted only for Zstandard-supercompressed
+  UASTC, preserving files written under an earlier KTX2 revision; uncompressed
+  UASTC must declare its 16-byte plane.
   Valid uncompressed UASTC levels use the KTX2-required block alignment; valid
-  BasisLZ and Zstandard levels retain their scheme-defined byte alignment. A
-  regression fixture also accepts the legacy supercompressed UASTC DFD with a
-  zero bytes-per-plane field allowed by older KTX2 revisions.
+  BasisLZ and Zstandard levels retain their scheme-defined byte alignment.
 - `/opt/homebrew/bin/python3 scripts/cook_gltf_asset.py --self-test` passed,
   including cooking the KTX2 material fixture into its bundle.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3

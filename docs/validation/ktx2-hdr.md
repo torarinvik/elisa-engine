@@ -40,7 +40,9 @@ This passed on the Metal device and uploaded the HDR fixture as BC6H.
   UASTC HDR profile checks at the image-package boundary.
 
 The GPU run exercised BC6H on this Mac. The RGBA16F device fallback is covered
-by policy tests but was not selected by this device; other GPU backends remain
-unverified. The fixture is single-mip and 2D. HDR environment lighting,
-lightmap authoring, quality comparisons, and broader compressed/HDR formats
-remain open A06 work.
+by forcing the native upload selector to hide BC6H while retaining the device's
+real RGBA16F capability. The probe uploads the same HDR fixture through that
+fallback, reads back the half-float texture, and confirms at least one RGB
+sample remains above linear white. Other GPU backends remain unverified. The
+fixture is single-mip and 2D. HDR environment lighting, lightmap authoring,
+quality comparisons, and broader compressed/HDR formats remain open A06 work.

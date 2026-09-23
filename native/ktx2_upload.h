@@ -136,8 +136,21 @@ inline uint32_t ktx2_pixel_bytes(KTX2UploadEncoding encoding) {
     return encoding == KTX2UploadEncoding::Rgba16Float ? 8u : 4u;
 }
 
+namespace detail {
+
+inline bool ktx2_formats_are_subset(const KTX2UploadFormats& requested,
+    const KTX2UploadFormats& available) {
+    return (!requested.rgba8 || available.rgba8) && (!requested.bc1 || available.bc1) &&
+        (!requested.bc3 || available.bc3) && (!requested.bc7 || available.bc7) &&
+        (!requested.bc5 || available.bc5) && (!requested.bc6h || available.bc6h) &&
+        (!requested.rgba16f || available.rgba16f);
+}
+
+// The optional mask lets native probes exercise a real fallback path on a
+// device that supports a higher-priority format. Callers may only remove
+// formats the active device actually supports.
 inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
-    KTX2TextureUsage usage = KTX2TextureUsage::Color) {
+    KTX2TextureUsage usage, const KTX2UploadFormats* format_mask) {
     wi::Resource resource;
     if (!ktx2_upload_check(!bytes.empty() && bytes.size() <= MAX_KTX2_CONTAINER_BYTES,
         "container is empty or exceeds its memory budget")) return resource;
@@ -158,7 +171,12 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     if (!ktx2_upload_check(device != nullptr, "KTX2 upload has a graphics device")) return resource;
     const bool hdr = transcoder.is_hdr();
     const bool srgb = !hdr && usage == KTX2TextureUsage::Color && transcoder.is_srgb();
-    const KTX2UploadFormats supported_formats = query_ktx2_upload_formats(device, srgb);
+    const KTX2UploadFormats available_formats = query_ktx2_upload_formats(device, srgb);
+    if (format_mask != nullptr && !ktx2_formats_are_subset(*format_mask, available_formats)) {
+        return resource;
+    }
+    const KTX2UploadFormats supported_formats =
+        format_mask == nullptr ? available_formats : *format_mask;
     const KTX2UploadEncoding encoding = choose_ktx2_upload_encoding(
         transcoder.get_has_alpha() != 0, supported_formats, usage, hdr);
     if (!ktx2_upload_check(encoding != KTX2UploadEncoding::Unsupported,
@@ -222,6 +240,13 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
         "KTX2 upload GPU texture")) return resource;
     resource.SetTexture(texture);
     return resource;
+}
+
+} // namespace detail
+
+inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
+    KTX2TextureUsage usage = KTX2TextureUsage::Color) {
+    return detail::load_ktx2_texture_resource(bytes, usage, nullptr);
 }
 
 inline wi::Resource load_ktx2_texture_resource(const std::string& texture_path,
