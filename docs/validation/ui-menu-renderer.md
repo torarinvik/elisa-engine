@@ -27,10 +27,19 @@ targeted maze-game fixture also passes 18-item focus traversal, scrolling and
 hit testing. `scripts/check_module_hygiene.py` and
 `scripts/check_source_length.py` passed.
 
-The current full `scripts/check.elisascript` invocation returned
-`runtime: Time` while compiling its unrelated `test/world.elisa` fixture. The
-focused maze-game fixture and UI native smoke were compiled and run separately
-and exited 0; the full suite result is therefore not claimed for this update.
+The same focused smoke verifies Wicked `SpriteFont` measurements at two logical
+font sizes after dynamic glyph-atlas warm-up, and checks rejection of an invalid
+size. It also lays out a four-word `UiText::Run` into three lines through
+`UiRenderer::sync_wrapped`, then verifies that syncing an empty run hides the
+retained word labels. `test/editor.elisa` passes the word-run, line-boundary,
+invalid-wrapped-data, and maximum-line-capacity checks.
+
+The full `elisascript scripts/check.elisascript` gate passed on 2026-09-23 when
+run with Homebrew Python 3.14 first on `PATH`. The default Xcode Python lacked
+both `compression.zstd` and a discoverable `libzstd`, causing the package test
+to fail after the runtime fixtures had passed; selecting Python 3.14 resolved
+that environment dependency. Module hygiene, source length, and the native
+dependency manifest checks also passed.
 
 The broader `scripts/render_scene_native_smoke.py` cooked and linked, but its
 full render-scene app exited 134 immediately after Wicked logged creation of
@@ -42,7 +51,10 @@ does not hit that mesh/GPU-buffer path.
 
 The adapter uses logical pixel coordinates and the existing default font. The
 smoke exercises the real Wicked path but does not compare captured pixels for
-this menu. Clipping, DPI scaling, text shaping/measurement, wrapping, and
-dynamic label ownership are not implemented. Menu labels are static `cstr`
-values and must outlive the menu; callers should use RenderScene text updates
-for runtime values.
+this menu. `measure_overlay_text` reports `ready = false` until Wicked has
+processed the requested glyphs through its dynamic atlas; callers must retry
+after a render frame. Font selection, clipping, DPI scaling and text shaping
+remain open. Wrapped runs currently take already-tokenized words and one
+retained overlay handle per word. Menu and wrapped-word labels are static
+`cstr` values and must outlive their models; runtime wording can be refreshed
+with RenderScene text updates.

@@ -1,3 +1,34 @@
+extern "C" int32_t elisa_render_scene_v1_measure_text(const char* text,
+    int32_t font_size, float* width, float* height, int32_t* ready) {
+    if (!valid_overlay_text_value(text) || font_size < MIN_OVERLAY_FONT_SIZE ||
+        font_size > MAX_OVERLAY_FONT_SIZE || width == nullptr || height == nullptr ||
+        ready == nullptr) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    try {
+        wi::SpriteFont font;
+        font.SetText(text);
+        font.params.size = font_size;
+        const float measured_width = font.TextWidth();
+        const float measured_height = font.TextHeight();
+        if (!std::isfinite(measured_width) || !std::isfinite(measured_height) ||
+            measured_width < 0.0f || measured_height < 0.0f ||
+            measured_width > 1.0e6f || measured_height > 1.0e6f) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        *width = measured_width;
+        *height = measured_height;
+        *ready = text[0] == '\0' || measured_width > 0.0f || measured_height > 0.0f;
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int64_t elisa_render_scene_v1_create_text(const char* text,
     float x, float y, int32_t font_size, float red, float green, float blue, float alpha) {
     if (!valid_overlay_text(text, x, y, font_size, red, green, blue, alpha)) {

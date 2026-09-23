@@ -179,7 +179,7 @@ def text_test() -> i32:
     wrapped: Wrapped = wrap(&run, 6, 1)
     return 12 if wrapped.line_count != 2 or not wrapped_valid(&wrapped)
     negative_word: mutable Run = run
-    negative_word.words[1] <- Word{width: -1}
+    negative_word.words[1] <- Word{width: -1, label: ""}
     return 53 if run_valid(&negative_word)
     unordered_lines: mutable Wrapped = wrapped
     unordered_lines.line_starts[1] <- 0
@@ -193,6 +193,20 @@ def text_test() -> i32:
     wide: Wrapped = wrap(&long_run, 6, 1)
     return 16 if wide.line_count != 2 or line_width(&wide, 0) != 10 or line_width(&wide, 1) != 2
     return 17 if wrap(&run, 0, 1).line_count != 0
+    return 55 if not wrapped_matches_run(&wrapped, &run)
+    mismatched: mutable Wrapped = wrapped
+    mismatched.line_starts[1] <- run.count
+    return 56 if wrapped_matches_run(&mismatched, &run)
+    labeled: mutable Run = Run()
+    _ = run_add_labeled_word(&labeled, 4, "EXIT")
+    return 57 if word_width(&labeled, 0) != 4 or word_label(&labeled, 0) != "EXIT"
+    return 58 if wrap(&labeled, 10, 1).line_count != 1
+    return 59 if run_add_word(&labeled, 1000001) or wrap(&run, 1000001, 1).line_count != 0
+    crowded: mutable Run = Run()
+    for index in 0..<17 |crowded|:
+        _ = run_add_word(&crowded, 11)
+    too_many_lines: Wrapped = wrap(&crowded, 10, 0)
+    return 60 if too_many_lines.line_count != 0 or wrapped_matches_run(&too_many_lines, &crowded)
     0
 
 # One theme decides every state color; a disabled row never shows focus, and

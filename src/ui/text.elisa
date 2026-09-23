@@ -9,10 +9,15 @@ module UiText:
         const module Tune:
             MAX_WORDS: usize = 32
             MAX_LINES: usize = 16
+            MAX_WIDTH: i64 = 1000000
 
     public:
+        const MAX_WORDS: usize = Tune::MAX_WORDS
+        const MAX_LINES: usize = Tune::MAX_LINES
+
         struct Word:
             width: i64
+            label: cstr
 
         struct Run:
             words: mutable Word[Tune::MAX_WORDS]
@@ -32,19 +37,46 @@ module UiText:
         def run_valid(run: Run&) -> bool:
             return false if run.count > Tune::MAX_WORDS
             for index in 0..<run.count |valid: bool = true| -> valid:
-                valid <- false if run.words[index].width < 0
+                valid <- false if run.words[index].width < 0 or run.words[index].width > Tune::MAX_WIDTH
 
         def run_add_word(run: mutable Run&, width: i64) -> bool:
-            return false if run.count >= Tune::MAX_WORDS or width < 0
-            run.words[run.count] <- Word{width: width}
+            return false if run.count >= Tune::MAX_WORDS or width < 0 or width > Tune::MAX_WIDTH
+            run.words[run.count] <- Word{width: width, label: ""}
             run.count <- run.count + 1
             true
+
+        # A renderer can retain one text handle per authored word and use its
+        # backend-measured width for the engine's line-breaking pass.
+        def run_add_labeled_word(run: mutable Run&, width: i64,
+            label: cstr) -> bool:
+            return false if run.count >= Tune::MAX_WORDS or width < 0 or width > Tune::MAX_WIDTH
+            run.words[run.count] <- Word{width: width, label: label}
+            run.count <- run.count + 1
+            true
+
+        def word_width(run: Run&, index: usize) -> i64:
+            return -1 if index >= run.count
+            run.words[index].width
+
+        def word_label(run: Run&, index: usize) -> cstr:
+            return "" if index >= run.count
+            run.words[index].label
 
         def wrapped_valid(wrapped: Wrapped&) -> bool:
             return false if wrapped.line_count > Tune::MAX_LINES
             for index in 0..<wrapped.line_count |ordered: bool = true| -> ordered:
-                ordered <- false if wrapped.line_widths[index] < 0
+                ordered <- false if wrapped.line_widths[index] < 0 or wrapped.line_widths[index] > Tune::MAX_WIDTH
                 ordered <- false if index > 0 and wrapped.line_starts[index] <= wrapped.line_starts[index - 1]
+
+        def wrapped_matches_run(wrapped: Wrapped&, run: Run&) -> bool:
+            return false if not run_valid(run) or not wrapped_valid(wrapped)
+            return false if run.count == 0 and wrapped.line_count != 0
+            return false if run.count != 0 and wrapped.line_count == 0
+            return true if run.count == 0
+            return false if wrapped.line_starts[0] != 0
+            for index in 0..<wrapped.line_count:
+                return false if wrapped.line_starts[index] >= run.count
+            true
 
         def line_start(wrapped: Wrapped&, index: usize) -> usize:
             return Tune::MAX_WORDS if index >= wrapped.line_count
@@ -60,13 +92,14 @@ module UiText:
         # recorded rather than hidden.
         def wrap(run: Run&, max_width: i64, spacing: i64) -> Wrapped:
             result: mutable Wrapped = Wrapped()
-            return result if run.count == 0 or max_width <= 0 or spacing < 0
+            return result if not run_valid(run) or run.count == 0 or max_width <= 0 or max_width > Tune::MAX_WIDTH or spacing < 0 or spacing > Tune::MAX_WIDTH
             line_start: mutable usize = 0
             line_width: mutable i64 = 0
             for index in 0..<run.count |result, run, line_start, line_width, max_width, spacing|:
                 word: i64 = run.words[index].width
                 fits: bool = line_width == 0 or line_width + spacing + word <= max_width
                 if not fits:
+                    return Wrapped() if result.line_count >= Tune::MAX_LINES
                     result.line_starts[result.line_count] <- line_start
                     result.line_widths[result.line_count] <- line_width
                     result.line_count <- result.line_count + 1
@@ -74,6 +107,7 @@ module UiText:
                     line_width <- word
                 else:
                     line_width <- word if line_width == 0 else line_width + spacing + word
+            return Wrapped() if result.line_count >= Tune::MAX_LINES
             result.line_starts[result.line_count] <- line_start
             result.line_widths[result.line_count] <- line_width
             result.line_count <- result.line_count + 1

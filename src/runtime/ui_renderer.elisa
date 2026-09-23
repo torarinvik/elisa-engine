@@ -6,6 +6,7 @@ include "./render_scene_text.elisa"
 include "../ui/layout.elisa"
 include "../ui/menu.elisa"
 include "../ui/style.elisa"
+include "../ui/text.elisa"
 
 module UiRenderer:
     private:
@@ -13,8 +14,10 @@ module UiRenderer:
             # Match Ui::Menu's capacity so a retained canvas can represent a
             # complete settings page while keeping smaller menus cheap.
             MAX_ROWS: usize = 24
+            MAX_WORDS: usize = 32
             MIN_FONT_SIZE: i32 = 8
             MAX_FONT_SIZE: i32 = 128
+            MAX_COORDINATE: i64 = 16384
 
     public:
         struct MenuCanvas:
@@ -23,10 +26,17 @@ module UiRenderer:
             labels: mutable RenderScene::OverlayTextHandle[Bounds::MAX_ROWS]
             label_count: mutable usize
 
+        struct WrappedCanvas:
+            labels: mutable RenderScene::OverlayTextHandle[Bounds::MAX_WORDS]
+            label_count: mutable usize
+
         def MenuCanvas(background: RenderScene::OverlayPanelHandle,
             focus_band: RenderScene::OverlayPanelHandle) -> MenuCanvas:
             MenuCanvas{background: background, focus_band: focus_band,
                 labels: zeroed, label_count: 0}
+
+        def WrappedCanvas() -> WrappedCanvas:
+            WrappedCanvas{labels: zeroed, label_count: 0}
 
         # Labels correspond to menu item indices, including items outside the
         # currently visible scroll window.
@@ -39,6 +49,24 @@ module UiRenderer:
 
         def menu_canvas_label_count(canvas: MenuCanvas&) -> usize:
             canvas.label_count
+
+        def wrapped_canvas_add_label(canvas: mutable WrappedCanvas&,
+            label: RenderScene::OverlayTextHandle) -> bool:
+            return false if canvas.label_count >= Bounds::MAX_WORDS
+            canvas.labels[canvas.label_count] <- label
+            canvas.label_count <- canvas.label_count + 1
+            true
+
+        def wrapped_canvas_valid(canvas: WrappedCanvas&, run: UiText::Run&) -> bool:
+            UiText::run_valid(run) and run.count <= canvas.label_count and canvas.label_count <= Bounds::MAX_WORDS
+
+        # Convert the backend's fractional glyph width conservatively before
+        # storing it in the integer-width line-breaking model.
+        def wrapped_run_add_measured_word(run: mutable UiText::Run&,
+            label: cstr, metrics: RenderSceneText::OverlayTextMetrics&) -> bool:
+            return false if not metrics.ready
+            UiText::run_add_labeled_word(run,
+                RenderSceneText::overlay_text_width_ceiling(metrics), label)
 
         def menu_canvas_valid(canvas: MenuCanvas&, menu: Ui::Menu&) -> bool:
             (canvas.label_count == Ui::item_count(menu)) and (canvas.label_count <= Bounds::MAX_ROWS)
@@ -121,3 +149,44 @@ module UiRenderer:
                         RenderScene::OverlayTextAlignment.Left,
                         RenderScene::OverlayTextAlignment.Top)
                 try RenderScene::set_overlay_text_visible(label, shown)
+
+        # Lay out authored words with the engine's greedy wrapping model. Word
+        # widths come from RenderSceneText::measure_overlay_text; passing more
+        # labels than words lets a retained paragraph shrink without recreation.
+        def sync_wrapped(canvas: mutable WrappedCanvas&, run: UiText::Run&,
+            theme: UiStyle::Theme&, x: i64, y: i64, max_width: i64,
+            font_size: i32, line_height: i64, word_spacing: i64) -> void error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not UiStyle::theme_valid(theme)
+            raise RenderScene::RenderSceneError.InvalidValue if not wrapped_canvas_valid(canvas, run)
+            raise RenderScene::RenderSceneError.InvalidValue if x < -Bounds::MAX_COORDINATE or x > Bounds::MAX_COORDINATE
+            raise RenderScene::RenderSceneError.InvalidValue if y < -Bounds::MAX_COORDINATE or y > Bounds::MAX_COORDINATE
+            raise RenderScene::RenderSceneError.InvalidValue if max_width <= 0 or max_width > Bounds::MAX_COORDINATE
+            raise RenderScene::RenderSceneError.InvalidValue if font_size < Bounds::MIN_FONT_SIZE or font_size > Bounds::MAX_FONT_SIZE
+            raise RenderScene::RenderSceneError.InvalidValue if line_height < font_size.i64() or line_height > Bounds::MAX_COORDINATE
+            raise RenderScene::RenderSceneError.InvalidValue if word_spacing < 0 or word_spacing > Bounds::MAX_COORDINATE
+            run_layout: mutable UiText::Run = run
+            wrapped: mutable UiText::Wrapped = UiText::wrap(run_layout, max_width, word_spacing)
+            raise RenderScene::RenderSceneError.InvalidValue if not UiText::wrapped_matches_run(&wrapped, run)
+            for index in 0..<canvas.label_count |canvas, run, wrapped, theme, x, y, word_spacing, font_size, line_height|:
+                label: RenderScene::OverlayTextHandle = canvas.labels[index]
+                if index < run.count:
+                    line_index: mutable i64 = 0
+                    for candidate in 0..<wrapped.line_count:
+                        if UiText::line_start(wrapped, candidate) <= index:
+                            line_index <- candidate.i64()
+                    line_start: usize = UiText::line_start(wrapped, line_index.usize())
+                    offset_x: mutable i64 = 0
+                    for prior in line_start..<index:
+                        offset_x <- offset_x + UiText::word_width(run_layout, prior) + word_spacing
+                    text_x: i64 = x + offset_x
+                    text_y: i64 = y + line_index * line_height
+                    try RenderScene::set_overlay_text(label, UiText::word_label(run_layout, index))
+                    try RenderScene::set_overlay_text_position(label, text_x.f32(), text_y.f32())
+                    try RenderScene::set_overlay_text_size(label, font_size)
+                    try RenderScene::set_overlay_text_color(label, render_color(theme.text))
+                    try RenderScene::set_overlay_text_alignment(label,
+                        RenderScene::OverlayTextAlignment.Left,
+                        RenderScene::OverlayTextAlignment.Top)
+                    try RenderScene::set_overlay_text_visible(label, true)
+                else:
+                    try RenderScene::set_overlay_text_visible(label, false)

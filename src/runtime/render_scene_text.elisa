@@ -4,9 +4,22 @@ include "./render_scene.elisa"
 module RenderSceneText:
     public:
         const API_VERSION: i32 = 1
+        struct OverlayTextMetrics:
+            width: f32
+            height: f32
+            ready: bool
+
+        def overlay_text_width_ceiling(metrics: OverlayTextMetrics&) -> i64:
+            width_pixels: i64 = metrics.width.i64()
+            return width_pixels + 1 if width_pixels.f32() < metrics.width
+            width_pixels
 
 extend RenderScene:
     private:
+        @callconv(c)
+        extern elisa_render_scene_v1_measure_text(text: cstr, font_size: i32,
+            width: mutable f32&, height: mutable f32&,
+            ready: mutable i32&) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_text_alignment(handle: i64,
             horizontal: i32, vertical: i32) -> i32
@@ -36,3 +49,17 @@ extend RenderScene:
             raise RenderSceneError.InvalidValue if vertical == RenderScene::OverlayTextAlignment.Left or vertical == RenderScene::OverlayTextAlignment.Right
             try check_status(elisa_render_scene_v1_set_text_alignment(handle.id,
                 horizontal_value, vertical_value))
+
+        # Measure using Wicked's active SpriteFont metrics at logical pixel
+        # size, so Elisa layout can wrap text without estimating glyph widths.
+        # Dynamic glyphs may need one render frame before their atlas metrics
+        # are available; callers should retry when ready is false.
+        def measure_overlay_text(text: cstr, font_size: i32) -> RenderSceneText::OverlayTextMetrics error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if font_size < 8 or font_size > 128
+            width: mutable f32 = 0.0
+            height: mutable f32 = 0.0
+            ready: mutable i32 = 0
+            try check_status(elisa_render_scene_v1_measure_text(text, font_size,
+                &width, &height, &ready))
+            RenderSceneText::OverlayTextMetrics{width: width, height: height,
+                ready: ready != 0}
