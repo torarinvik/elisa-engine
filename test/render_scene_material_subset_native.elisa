@@ -24,6 +24,11 @@ module RenderSceneMaterialSubsetNativeTests:
             material_high: u64, material_low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_material_name(mesh_high: u64, mesh_low: u64,
+            slot: u32, name_bytes: mutable u8&, name_capacity: u32,
+            name_length: mutable u32&) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_casts_shadow(render_id: i64) -> i32
 
         @callconv(c)
@@ -124,6 +129,14 @@ module RenderSceneMaterialSubsetNativeTests:
         const NATIVE_INVALID: i32 = -1
         const NATIVE_LOAD_FAILED: i32 = -9
         const NATIVE_BATCH_ACTIVE: i32 = -10
+        const NATIVE_CAPACITY: i32 = -5
+        const FIRST_NAME_BYTES: usize = 5
+        const SECOND_NAME_BYTES: usize = 6
+        const SHORT_NAME_BUFFER_BYTES: usize = 1
+        const FIRST_NAME_INITIAL_BYTE: u8 = 70
+        const FIRST_NAME_FINAL_BYTE: u8 = 116
+        const SECOND_NAME_INITIAL_BYTE: u8 = 83
+        const SECOND_NAME_FINAL_BYTE: u8 = 100
         const MAX_SNAPSHOT_MATERIAL_SETS: u64 = 32
         const MAX_SET_SLOTS: u32 = 16
         const VISIBLE_Y: f32 = 4.0
@@ -147,6 +160,29 @@ module RenderSceneMaterialSubsetNativeTests:
             catch RenderScene::unregister_snapshot_mesh_asset(Assets::AssetId{high: Ids::MESHES, low: low}):
                 ok: Code::OK
                 error failure: Code::OTHER
+
+        def fbx_material_names_are(mesh: Assets::AssetId) -> bool:
+            first: mutable RenderScene::SnapshotMeshMaterialName = RenderScene::SnapshotMeshMaterialName()
+            first_status: i32 = catch RenderScene::snapshot_mesh_material_name(mesh, 0, &first):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return false if first_status != Code::OK or first.length != FIRST_NAME_BYTES
+            return false if first.bytes[0] != FIRST_NAME_INITIAL_BYTE
+            return false if first.bytes[FIRST_NAME_BYTES - 1] != FIRST_NAME_FINAL_BYTE
+            short_buffer: mutable u8[SHORT_NAME_BUFFER_BYTES] = zeroed
+            required_bytes: mutable u32 = 0
+            short_status: i32 = elisa_render_scene_v1_snapshot_mesh_material_name(
+                mesh.high, mesh.low, 0, &short_buffer[0], SHORT_NAME_BUFFER_BYTES.u32(), &required_bytes)
+            return false if short_status != NATIVE_CAPACITY or required_bytes != FIRST_NAME_BYTES.u32()
+            return false if short_buffer[0] != 0
+            second: mutable RenderScene::SnapshotMeshMaterialName = RenderScene::SnapshotMeshMaterialName()
+            second_status: i32 = catch RenderScene::snapshot_mesh_material_name(mesh, 1, &second):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return false if second_status != Code::OK or second.length != SECOND_NAME_BYTES
+            return false if second.bytes[0] != SECOND_NAME_INITIAL_BYTE
+            return false if second.bytes[SECOND_NAME_BYTES - 1] != SECOND_NAME_FINAL_BYTE
+            true
 
         # A double-sided emissive paint; glass blends it at half alpha. The
         # base color is dim and the emission stays at 1 so the ACES tonemap
@@ -393,6 +429,7 @@ module RenderSceneMaterialSubsetNativeTests:
         # contract used by glTF, so the render ABI needs no importer-specific path.
         def fbx_material_subsets() -> i32:
             return 1 if register_mesh(Mesh::FBX_PANEL, "build/cooked/subsets/fbx-two-material.pkg") != Code::OK
+            return 19 if not fbx_material_names_are(Assets::AssetId{high: Ids::MESHES, low: Mesh::FBX_PANEL})
             return 2 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
             staged: i32 = stage(Row::FBX_SUBSETS, Mesh::FBX_PANEL, set_id(Set::BLUE_CENTER), HIDDEN_Y)
             if staged != NATIVE_OK:

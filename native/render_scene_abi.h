@@ -208,6 +208,12 @@ int32_t elisa_render_scene_v1_unregister_snapshot_material_set(uint64_t high, ui
 // none. Registration follows the material rules; the set call consumes the
 // staged slots and, on failure, removes every material it created.
 int32_t elisa_render_scene_v1_snapshot_mesh_material_count(uint64_t mesh_high, uint64_t mesh_low);
+// Copies a slot name as UTF-8 bytes without a trailing NUL. Names are optional;
+// unnamed slots succeed with length 0. A short buffer returns CAPACITY and
+// reports the required byte count through name_length.
+int32_t elisa_render_scene_v1_snapshot_mesh_material_name(
+    uint64_t mesh_high, uint64_t mesh_low, uint32_t slot,
+    uint8_t* name_bytes, uint32_t name_capacity, uint32_t* name_length);
 int32_t elisa_render_scene_v1_snapshot_mesh_placement_count(uint64_t mesh_high, uint64_t mesh_low);
 int32_t elisa_render_scene_v1_snapshot_mesh_placement(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index,
