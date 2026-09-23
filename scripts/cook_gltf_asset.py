@@ -15,6 +15,8 @@ import cook_assets
 import cook_gltf_geometry
 from cook_gltf_meshopt import self_test as meshopt_self_test
 from cook_gltf_lod import self_test as lod_self_test
+from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
+from cook_gltf_lod_package import self_test as lod_package_self_test
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
 from gltf_morph_self_test import self_test as morph_self_test
@@ -34,6 +36,9 @@ def self_test() -> int:
     lod_status = lod_self_test()
     if lod_status != 0:
         return lod_status
+    lod_package_status = lod_package_self_test()
+    if lod_package_status != 0:
+        return lod_package_status
     source = ROOT / "examples/maze/assets/maze_tile.gltf"
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-cooker-") as temporary:
         first = Path(temporary) / "first.pkg"
@@ -293,16 +298,32 @@ def main(arguments: list[str]) -> int:
         help="name a bundle this .elpk needs, relative to the output's directory")
     parser.add_argument("--simplify-ratio", type=float,
         help="cook a static LOD variant at this fraction of each placement/material triangle count")
+    parser.add_argument("--lod-ratios",
+        help="cook full detail plus descending ratios (for example 0.5,0.25); --output supplies a base name for <stem>.lod.json and content-addressed sibling packages")
     parser.add_argument("--self-test", action="store_true", help="cook the authored maze mesh twice")
     options = parser.parse_args(arguments)
     if options.self_test:
-        if options.source is not None or options.asset_path is not None or options.output is not None:
-            parser.error("--self-test cannot be combined with source, --asset-path, or --output")
+        if (options.source is not None or options.asset_path is not None or options.output is not None or
+                options.simplify_ratio is not None or options.lod_ratios is not None):
+            parser.error("--self-test cannot be combined with source, --asset-path, --output, or LOD options")
         return self_test()
     if options.source is None or options.asset_path is None or options.output is None:
         parser.error("source, --asset-path, and --output are required")
     try:
         textures = parse_texture_arguments(options.texture)
+        if options.lod_ratios is not None and options.simplify_ratio is not None:
+            raise ValueError("--lod-ratios and --simplify-ratio are mutually exclusive")
+        if options.lod_ratios is not None:
+            ratios = parse_lod_ratios(options.lod_ratios)
+            manifest_path, levels = cook_lod_chain(options.source, options.asset_path,
+                options.output, ratios, textures, options.dependency)
+            print(f"cooked {len(levels)} LOD levels for {options.asset_path} -> {manifest_path}")
+            for level in levels:
+                print(f"level {level['index']}: {level['triangles']} triangles, "
+                    f"{level['vertices']} vertices, {level['byte_size']} bytes, "
+                    f"relative_error_budget={level['relative_error_budget']:.6f}, "
+                    f"sha256={level['sha256']}")
+            return 0
         if (textures or options.dependency) and options.output.suffix.lower() != ".elpk":
             raise ValueError("--texture and --dependency require an .elpk output bundle")
         if options.output.suffix.lower() == ".elpk":

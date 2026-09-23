@@ -36,6 +36,7 @@ module AssetLod:
         enum LodError:
             Capacity
             InvalidLevel
+            InvalidProjection
             NonMonotonicError
             MaterialSubsetChanged
             DuplicateMesh
@@ -48,6 +49,19 @@ module AssetLod:
 
         def Chain() -> Chain:
             Chain{levels: zeroed, count: 0}
+
+        # Convert meshoptimizer's normalized geometric error to a conservative
+        # pixel error. object_extent bounds every simplified subset; callers
+        # supply the maximum world scale and camera projection at nearest depth.
+        def projected_error_pixels(relative_error: f32, object_extent: f32,
+                world_scale: f32, projection_pixels_per_world_unit: f32) -> f32 error[LodError]:
+            raise LodError.InvalidProjection if not finite(relative_error) or relative_error < 0.0
+            raise LodError.InvalidProjection if not finite(object_extent) or object_extent < 0.0
+            raise LodError.InvalidProjection if not finite(world_scale) or world_scale <= 0.0
+            raise LodError.InvalidProjection if not finite(projection_pixels_per_world_unit) or projection_pixels_per_world_unit <= 0.0
+            pixel_error: f32 = relative_error * object_extent * world_scale * projection_pixels_per_world_unit
+            raise LodError.InvalidProjection if not finite(pixel_error)
+            pixel_error
 
         def level_count(chain: Chain&) -> usize:
             chain.count

@@ -14,6 +14,19 @@ def test_level(mesh: Assets::AssetId, screen_error: f32,
 
 def main() -> i32:
     shared_subset: Assets::AssetId = test_asset_id(TEST_MATERIAL_NAMESPACE, 4)
+    projected_error: f32 = catch AssetLod::projected_error_pixels(
+        0.002, 10.0, 2.0, 100.0):
+        value: value
+        error failure: return 23
+    return 24 if ElisaMath::fabsf(projected_error - 4.0) > 0.0001
+    non_finite_projection: f32 = ElisaMath::sqrtf(-1.0)
+    rejected_projection: f32 = catch AssetLod::projected_error_pixels(
+        0.01, 10.0, 2.0, non_finite_projection):
+        value: value
+        AssetLod::LodError.InvalidProjection: 0.0
+        error failure: return 26
+    return 25 if rejected_projection != 0.0
+
     chain: mutable AssetLod::Chain = AssetLod::Chain()
     _ = catch AssetLod::append(&chain, test_level(
         test_asset_id(TEST_MESH_NAMESPACE, 1), 0.01, 4096, shared_subset)):
