@@ -128,10 +128,10 @@ def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int],
             node = target.get("node")
             path = target.get("path")
             if type(node) is not int or node not in ordered_index or path not in ("translation", "rotation", "scale"):
-                raise ValueError(f"{channel_label} must target a skin joint TRS path")
+                raise ValueError(f"{channel_label} must target a skin rig-node TRS path")
             key = (ordered_index[node], path)
             if key in tracks:
-                raise ValueError(f"{channel_label} duplicates a joint TRS track")
+                raise ValueError(f"{channel_label} duplicates a skin rig-node TRS track")
             tracks[key] = _track(document, buffer, samplers[sampler_index], path, channel_label)
         duration = max(track[0][-1] for track in tracks.values())
         if not math.isfinite(duration) or duration <= 0.0 or duration > MAX_DURATION:
