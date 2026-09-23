@@ -1,7 +1,23 @@
 #include "mikktspace_geometry.h"
 
 #include <cstdio>
+#include <cmath>
 #include <vector>
+
+static bool valid_frames(const elisa::assets::MikkGeometry& geometry) {
+    for (size_t vertex = 0; vertex < geometry.source_vertices.size(); ++vertex) {
+        const float* normal = geometry.normals.data() + vertex * 3;
+        const float* tangent = geometry.tangents.data() + vertex * 4;
+        const float length = std::sqrt(tangent[0] * tangent[0] + tangent[1] * tangent[1] +
+            tangent[2] * tangent[2]);
+        const float dot = tangent[0] * normal[0] + tangent[1] * normal[1] + tangent[2] * normal[2];
+        if (!std::isfinite(length) || std::abs(length - 1.0f) > 0.02f ||
+            !std::isfinite(dot) || std::abs(dot) > 0.02f || std::abs(std::abs(tangent[3]) - 1.0f) > 1.0e-4f) {
+            return false;
+        }
+    }
+    return true;
+}
 
 int main() {
     const std::vector<float> positions = {0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0};
@@ -36,6 +52,34 @@ int main() {
         std::fprintf(stderr, "MikkTSpace failed to recover missing source normals\n");
         return 1;
     }
+    std::vector<float> unused_positions = positions;
+    std::vector<float> unused_normals = normals;
+    std::vector<float> unused_uvs = uvs;
+    unused_positions.insert(unused_positions.end(), {10.0f, 20.0f, 30.0f});
+    unused_normals.insert(unused_normals.end(), {0.0f, 0.0f, 0.0f});
+    unused_uvs.insert(unused_uvs.end(), {0.0f, 0.0f});
+    if (!elisa::assets::generate_mikktspace_geometry(unused_positions, unused_normals,
+        unused_uvs, indices, recovered) || recovered.tangents.size() != first.tangents.size() ||
+        !valid_frames(recovered)) {
+        std::fprintf(stderr, "MikkTSpace failed to ignore an unreferenced control point\n");
+        return 1;
+    }
+    const std::vector<float> triangle_positions = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+    const std::vector<float> triangle_normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
+    const std::vector<float> degenerate_uvs = {0, 0, 0, 0, 0, 0};
+    const std::vector<uint32_t> triangle_indices = {0, 1, 2};
+    if (!elisa::assets::generate_mikktspace_geometry(triangle_positions, triangle_normals,
+        degenerate_uvs, triangle_indices, recovered) || !valid_frames(recovered)) {
+        std::fprintf(stderr, "MikkTSpace failed to provide a frame for a degenerate UV chart\n");
+        return 1;
+    }
+    const std::vector<float> degenerate_positions(9, 0.0f);
+    const std::vector<float> zero_normals(9, 0.0f);
+    if (!elisa::assets::generate_mikktspace_geometry(degenerate_positions, zero_normals,
+        degenerate_uvs, triangle_indices, recovered) || !valid_frames(recovered)) {
+        std::fprintf(stderr, "MikkTSpace failed to bound a fully degenerate triangle frame\n");
+        return 1;
+    }
     std::vector<uint32_t> invalid_indices = indices;
     invalid_indices[0] = uint32_t(positions.size());
     if (elisa::assets::generate_mikktspace_geometry(positions, normals, uvs,
@@ -43,7 +87,7 @@ int main() {
         std::fprintf(stderr, "MikkTSpace accepted an out-of-range index\n");
         return 1;
     }
-    std::printf("MikkTSpace mirrored seam, normal fallback, and deterministic split passed (%zu -> %zu vertices)\n",
+    std::printf("MikkTSpace mirrored seam, normal/UV fallbacks, and deterministic split passed (%zu -> %zu vertices)\n",
         positions.size() / 3, first.source_vertices.size());
     return 0;
 }
