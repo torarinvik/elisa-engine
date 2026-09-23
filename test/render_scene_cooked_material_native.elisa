@@ -16,6 +16,17 @@ module RenderSceneCookedMaterialNativeTests:
             alpha_mode: i32, double_sided: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture(high: u64, low: u64,
+            slot: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_texture_count(mesh_high: u64, mesh_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_register_snapshot_mesh_texture(mesh_high: u64, mesh_low: u64,
+            index: u32, texture_high: u64, texture_low: u64) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_subset_matches(render_id: i64, subset: u32,
             index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
 
@@ -68,6 +79,7 @@ module RenderSceneCookedMaterialNativeTests:
             MESHES: u64 = 960
             MATERIALS: u64 = 961
             SETS: u64 = 962
+            TEXTURES: u64 = 963
 
         const module Mesh:
             PANEL: u64 = 1
@@ -92,6 +104,9 @@ module RenderSceneCookedMaterialNativeTests:
             GLASS: u64 = 2
             SCRATCH: u64 = 3
             FBX: u64 = 4
+
+        const module Texture:
+            FBX_ALBEDO: u64 = 1
 
         const module Code:
             OK: i32 = 0
@@ -286,7 +301,7 @@ module RenderSceneCookedMaterialNativeTests:
             return 2 if register_mesh(Mesh::GLASS, "build/cooked/subsets/glass_panel.pkg") != Code::OK
             return 3 if register_mesh(Mesh::TILE, "examples/maze/assets/maze_tile.elpk") != Code::OK
             return 4 if register_mesh(Mesh::SKINNED, "build/cooked/subsets/skinned.pkg") != Code::OK
-            return 5 if register_mesh(Mesh::FBX, "build/cooked/subsets/fbx-two-material.pkg") != Code::OK
+            return 5 if register_mesh(Mesh::FBX, "build/cooked/subsets/fbx-two-material.elpk") != Code::OK
             0
 
         # Meshes whose source declared no materials cook none.
@@ -294,9 +309,10 @@ module RenderSceneCookedMaterialNativeTests:
             return 1 if material_count(mesh_id(Mesh::PANEL)) != 2 or material_count(mesh_id(Mesh::GLASS)) != 2
             return 2 if material_count(mesh_id(Mesh::TILE)) != 0 or material_count(mesh_id(Mesh::SKINNED)) != 0
             return 3 if material_count(mesh_id(Mesh::FBX)) != 2
-            return 4 if material_count(mesh_id(Mesh::ABSENT)) != Count::LOAD_FAILED
-            return 5 if material_count(Assets::AssetId{high: 0, low: 0}) != Count::INVALID
-            return 6 if elisa_render_scene_v1_snapshot_mesh_material_count(0, 0) != NATIVE_INVALID
+            return 4 if elisa_render_scene_v1_snapshot_mesh_texture_count(Ids::MESHES, Mesh::FBX) != 1
+            return 5 if material_count(mesh_id(Mesh::ABSENT)) != Count::LOAD_FAILED
+            return 6 if material_count(Assets::AssetId{high: 0, low: 0}) != Count::INVALID
+            return 7 if elisa_render_scene_v1_snapshot_mesh_material_count(0, 0) != NATIVE_INVALID
             0
 
         # A slot registers as an ordinary material. The same slot again is a
@@ -336,8 +352,12 @@ module RenderSceneCookedMaterialNativeTests:
             return 5 if register_cooked(Mesh::GLASS, set_id(Set::GLASS), Paint::GLASS, Paint::EDGE, 0) != Code::OK
             return 6 if not is_center(Paint::GLASS, 0.5, ALPHA_BLEND, 0) or is_center(Paint::GLASS, 1.0, ALPHA_OPAQUE, 1)
             return 7 if set_count() != sets + 2
-            return 8 if register_cooked(Mesh::FBX, set_id(Set::FBX), Paint::FBX_FIRST, Paint::FBX_SECOND, 0) != Code::OK
-            return 9 if not is_fbx_first(Paint::FBX_FIRST) or not is_fbx_second(Paint::FBX_SECOND)
+            return 8 if elisa_render_scene_v1_register_snapshot_mesh_texture(Ids::MESHES, Mesh::FBX, 0,
+                Ids::TEXTURES, Texture::FBX_ALBEDO) != Code::OK
+            return 9 if register_cooked(Mesh::FBX, set_id(Set::FBX), Paint::FBX_FIRST, Paint::FBX_SECOND, 0) != Code::OK
+            return 10 if not is_fbx_first(Paint::FBX_FIRST) or not is_fbx_second(Paint::FBX_SECOND)
+            return 11 if elisa_render_scene_v1_test_snapshot_material_texture(Ids::MATERIALS,
+                Paint::FBX_FIRST, 0) != 1
             0
 
         # Every failure leaves no new material or set behind, even after

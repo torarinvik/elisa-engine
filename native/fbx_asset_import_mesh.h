@@ -54,11 +54,95 @@ inline bool fbx_unit_color(const ufbx_material_map& map, const ufbx_material_map
     return true;
 }
 
+inline bool fbx_map_has_texture(const ufbx_material_map& map) {
+    return map.texture_enabled && map.texture != nullptr;
+}
+
+inline bool fbx_texture_source_path(const ufbx_material_map& map, std::string& path,
+    FbxImportResult& result) {
+    path.clear();
+    if (!fbx_map_has_texture(map)) return true;
+    const ufbx_texture& texture = *map.texture;
+    if (texture.type != UFBX_TEXTURE_FILE || texture.content.size != 0 || texture.video != nullptr ||
+        texture.has_uv_transform || texture.wrap_u != UFBX_WRAP_REPEAT ||
+        texture.wrap_v != UFBX_WRAP_REPEAT || texture.uv_set.length != 0) {
+        fail(result, "FBX textures must be direct external files with default UVs and repeat wrapping");
+        return false;
+    }
+    const ufbx_string filename = texture.relative_filename.length != 0
+        ? texture.relative_filename : texture.filename;
+    if (filename.data == nullptr || filename.length == 0 || filename.length > 4096) {
+        fail(result, "FBX texture has no bounded relative file path");
+        return false;
+    }
+    path.assign(filename.data, filename.length);
+    if (path.front() == '/' || path.find_first_of("\\:\r\n") != std::string::npos ||
+        path.find('\0') != std::string::npos) {
+        fail(result, "FBX texture paths must be safe relative paths");
+        return false;
+    }
+    size_t start = 0;
+    while (start < path.size()) {
+        const size_t end = path.find('/', start);
+        const std::string component = path.substr(start,
+            end == std::string::npos ? std::string::npos : end - start);
+        if (component.empty() || component == "." || component == "..") {
+            fail(result, "FBX texture paths cannot contain empty, current, or parent directories");
+            return false;
+        }
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return true;
+}
+
+inline bool fbx_extract_texture_role(const ufbx_material_map& preferred,
+    const ufbx_material_map& fallback, std::string& path, FbxImportResult& result) {
+    const ufbx_material_map* selected = nullptr;
+    if (fbx_map_has_texture(preferred)) selected = &preferred;
+    if (fbx_map_has_texture(fallback)) {
+        if (selected != nullptr && selected->texture != fallback.texture) {
+            fail(result, "FBX material has conflicting textures for one supported material role");
+            return false;
+        }
+        selected = &fallback;
+    }
+    if (selected == nullptr) {
+        path.clear();
+        return true;
+    }
+    return fbx_texture_source_path(*selected, path, result);
+}
+
 inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& output,
     FbxImportResult& result, bool ignore_textures = false) {
-    if (source.textures.count != 0 && !ignore_textures) {
-        fail(result, "FBX material textures are not supported by this cooker yet");
-        return false;
+    const ufbx_material_map* supported[] = {
+        &source.pbr.base_color, &source.fbx.diffuse_color,
+        &source.pbr.normal_map, &source.fbx.normal_map,
+        &source.pbr.emission_color, &source.fbx.emission_color,
+        &source.pbr.ambient_occlusion,
+    };
+    if (!ignore_textures) {
+        for (size_t index = 0; index < UFBX_MATERIAL_PBR_MAP_COUNT; ++index) {
+            const ufbx_material_map& map = source.pbr.maps[index];
+            if (!fbx_map_has_texture(map)) continue;
+            bool allowed = false;
+            for (const ufbx_material_map* candidate : supported) allowed = allowed || &map == candidate;
+            if (!allowed) {
+                fail(result, "FBX material uses a texture role that the runtime cannot represent yet");
+                return false;
+            }
+        }
+        for (size_t index = 0; index < UFBX_MATERIAL_FBX_MAP_COUNT; ++index) {
+            const ufbx_material_map& map = source.fbx.maps[index];
+            if (!fbx_map_has_texture(map)) continue;
+            bool allowed = false;
+            for (const ufbx_material_map* candidate : supported) allowed = allowed || &map == candidate;
+            if (!allowed) {
+                fail(result, "FBX material uses a texture role that the runtime cannot represent yet");
+                return false;
+            }
+        }
     }
     if (source.name.length > 256 || (source.name.length != 0 && source.name.data == nullptr)) {
         fail(result, "FBX material name exceeds the 256-byte limit");
@@ -110,11 +194,21 @@ inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& o
     output.base_color[3] *= 1.0f - transparency;
     output.alpha_mode = output.base_color[3] < 1.0f ? 2u : 0u;
     output.double_sided = source.features.double_sided.enabled;
+    if (ignore_textures) return true;
+    if (!fbx_extract_texture_role(source.pbr.base_color, source.fbx.diffuse_color,
+            output.texture_sources[0], result) ||
+        !fbx_extract_texture_role(source.pbr.normal_map, source.fbx.normal_map,
+            output.texture_sources[1], result) ||
+        !fbx_extract_texture_role(source.pbr.emission_color, source.fbx.emission_color,
+            output.texture_sources[3], result) ||
+        !fbx_texture_source_path(source.pbr.ambient_occlusion,
+            output.texture_sources[4], result)) return false;
+    output.occlusion = !output.texture_sources[4].empty();
     return true;
 }
 
 inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
-    const std::string& selected_name, bool ignore_textures) {
+    const std::string& selected_name, bool ignore_textures = false) {
     ufbx_node* source_node = nullptr;
     for (size_t index = 0; index < scene.nodes.count; ++index) {
         ufbx_node* node = scene.nodes.data[index];
@@ -181,6 +275,15 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
             FbxMaterialData extracted;
             if (!extract_fbx_material(*material, extracted, result, ignore_textures)) return false;
             output.materials.push_back(std::move(extracted));
+        }
+        const bool has_textures = std::any_of(output.materials.begin(), output.materials.end(),
+            [](const FbxMaterialData& material) {
+                return std::any_of(material.texture_sources.begin(), material.texture_sources.end(),
+                    [](const std::string& path) { return !path.empty(); });
+            });
+        if (has_textures && !mesh.vertex_uv.exists) {
+            fail(result, "FBX material textures require UV coordinates on the primary mesh");
+            return false;
         }
     }
     std::vector<FbxVertex> corners;

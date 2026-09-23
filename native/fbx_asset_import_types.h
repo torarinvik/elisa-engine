@@ -55,6 +55,11 @@ struct FbxMaterialData {
     float alpha_cutoff = 0.5f;
     uint32_t alpha_mode = 0;
     bool double_sided = false;
+    bool occlusion = false;
+    // External image paths in the FBX source, ordered as base, normal,
+    // packed surface, emissive and occlusion. The FBX cooker resolves these
+    // into bundle image sections; only direct file textures are supported.
+    std::array<std::string, 5> texture_sources{};
 };
 
 struct FbxMeshData {
