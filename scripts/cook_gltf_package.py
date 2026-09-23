@@ -4,11 +4,28 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import math
 from pathlib import Path
+import struct
 
 import cook_assets
 import cook_gltf_animation
 import cook_gltf_geometry as geometry_cooker
+
+
+def position_extent(positions: bytes) -> float:
+    """Return the largest source-space AABB dimension for conservative LOD error projection."""
+    if not positions or len(positions) % 12 != 0:
+        raise ValueError("position stream cannot provide a bounded LOD extent")
+    minimum = [float("inf")] * 3
+    maximum = [float("-inf")] * 3
+    for vertex in struct.iter_unpack("<3f", positions):
+        for axis, value in enumerate(vertex):
+            if not math.isfinite(value):
+                raise ValueError("position stream contains a non-finite LOD extent")
+            minimum[axis] = min(minimum[axis], value)
+            maximum[axis] = max(maximum[axis], value)
+    return max(maximum[axis] - minimum[axis] for axis in range(3))
 
 
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
@@ -63,6 +80,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     return output_path, {"triangles": triangles, "source_triangles": source_counts["triangles"],
         "positions": geometry["vertex_count"], "indices": geometry["index_count"],
         "attribute_bytes": attribute_bytes,
+        "position_extent": position_extent(geometry["positions"]),
         "subsets": len(geometry["subsets"]), "material_slots": geometry["material_slots"],
         "slot_materials": len(geometry["slot_materials"]) // geometry_cooker.SLOT_MATERIAL_STRIDE,
         "source_sha256": source_digest, "images": dict(geometry["images"]),

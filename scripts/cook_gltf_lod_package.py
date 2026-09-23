@@ -77,6 +77,7 @@ def cook_lod_chain(source_path: Path, asset_path: str, output_base: Path,
     previous_error = 0.0
     seen_digests = set()
     source_digest = ""
+    object_extent = 0.0
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-lod-chain-",
             dir=output_base.parent) as temporary_name:
         temporary = Path(temporary_name)
@@ -104,6 +105,8 @@ def cook_lod_chain(source_path: Path, asset_path: str, output_base: Path,
             if source_digest and source_digest != result["source_sha256"]:
                 raise ValueError("LOD levels were cooked from different source generations")
             source_digest = result["source_sha256"]
+            if level_index == 0:
+                object_extent = result["position_extent"]
             error = 0.0 if result["lod"] is None else result["lod"]["maximum_error"]
             relative_error_budget = max(previous_error, error)
             previous_error = relative_error_budget
@@ -133,6 +136,7 @@ def cook_lod_chain(source_path: Path, asset_path: str, output_base: Path,
             "format": MANIFEST_FORMAT,
             "asset_path": asset_path,
             "source_sha256": source_digest,
+            "object_extent": object_extent,
             "error_metric": ERROR_METRIC,
             "level_count": len(levels),
             "levels": levels,
@@ -161,6 +165,8 @@ def self_test() -> int:
             manifest = json.loads(manifest_bytes)
             if (manifest.get("format") != MANIFEST_FORMAT or
                     manifest.get("error_metric") != ERROR_METRIC or len(levels) != 3 or
+                    not math.isfinite(manifest.get("object_extent", 0.0)) or
+                    manifest["object_extent"] <= 0.0 or
                     manifest.get("level_count") != len(levels) or
                     manifest.get("levels") != levels or
                     [level["index"] for level in levels] != [0, 1, 2] or
