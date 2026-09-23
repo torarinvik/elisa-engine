@@ -24,7 +24,7 @@ def ui_scroll_test() -> i32:
         _ = Ui::menu_add(&menu, action.i64(), true)
     return 76 if not Ui::menu_valid(&menu) or item_count(&menu) != 8
     duplicate_action: mutable Ui::Menu = menu
-    duplicate_action.items[7] <- Ui::Item{action: 1, enabled: true}
+    duplicate_action.items[7] <- Ui::Item{action: 1, enabled: true, label: "DUPLICATE"}
     return 89 if Ui::menu_valid(&duplicate_action)
     return 77 if not Ui::menu_set_visible(&menu, 3) or Ui::visible_rows(&menu) != 3 or Ui::scroll_offset(&menu) != 0
     Ui::focus_next(&menu)
@@ -42,6 +42,9 @@ def ui_scroll_test() -> i32:
     return 82 if not Ui::menu_set_row_height(&menu, 40) or Ui::menu_row_height(&menu) != 40 or not Ui::menu_valid(&menu)
     return 83 if Ui::hit_test(&menu, 20) != 5 or Ui::hit_test(&menu, 40) != 6
     return 84 if Ui::menu_set_row_height(&menu, 0)
+    labeled: mutable Ui::Menu = Ui::Menu(0, 0)
+    return 85 if not Ui::menu_add_labeled(&labeled, 9, true, "PLAY")
+    return 86 if labeled.items[0].label != "PLAY" or not Ui::menu_valid(&labeled)
     0
 
 # Buffered input into the play-in-editor: actions are queued as a host would

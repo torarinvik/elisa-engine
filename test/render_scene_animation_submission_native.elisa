@@ -1,5 +1,13 @@
 # Native smoke coverage for the public double-buffered animation submission.
 include "../src/runtime/render_scene_imported_scene.elisa"
+extend RenderScene:
+    public:
+        # C smoke probes accept the raw i64 ABI handle. Keep the conversion in
+        # this test-only extension so normal application code still sees the
+        # opaque InstanceHandle wrapper.
+        def native_smoke_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+
 module RenderSceneAnimationSubmissionNativeTests:
     private:
         const SHIFT_X: f32 = 2.0
@@ -16,34 +24,34 @@ module RenderSceneAnimationSubmissionNativeTests:
         const ANIMATION_STATE_ERROR_BASE: i32 = 40
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_animation_submission(handle: RenderScene::InstanceHandle,
+        extern elisa_render_scene_v1_test_animation_submission(handle: i64,
             expected_x: f32, expected_morph: f32, expected_pending: i32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_instances(
-            first_handle: RenderScene::InstanceHandle, first_x: f32,
-            second_handle: RenderScene::InstanceHandle, second_x: f32,
+            first_handle: i64, first_x: f32,
+            second_handle: i64, second_x: f32,
             expected_pending: i32) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_inverse_bind(handle: RenderScene::InstanceHandle,
+        extern elisa_render_scene_v1_test_inverse_bind(handle: i64,
             cluster: u32, row: u32, column: u32, expected: f32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_skin_mesh_relative_root(
-            handle: RenderScene::InstanceHandle, expected_world_z: f32) -> i32
+            handle: i64, expected_world_z: f32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_multi_skin_layout(
-            handle: RenderScene::InstanceHandle) -> i32
+            handle: i64) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_mixed_skin_layout(
-            handle: RenderScene::InstanceHandle) -> i32
+            handle: i64) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_morph_animation_weights(
-            handle: RenderScene::InstanceHandle, first_weight: f32, second_weight: f32) -> i32
+            handle: i64, first_weight: f32, second_weight: f32) -> i32
 
     public:
         def exercise() -> i32:
@@ -52,10 +60,10 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
-            return 23 if elisa_render_scene_v1_test_inverse_bind(mesh, TIP_CLUSTER,
+            return 23 if elisa_render_scene_v1_test_inverse_bind(RenderScene::native_smoke_handle(mesh), TIP_CLUSTER,
                 INVERSE_BIND_TRANSLATION_ROW, INVERSE_BIND_X_COLUMN,
                 EXPECTED_WICKED_INVERSE_BIND_X) != 1
-            return 24 if elisa_render_scene_v1_test_inverse_bind(mesh, TIP_CLUSTER,
+            return 24 if elisa_render_scene_v1_test_inverse_bind(RenderScene::native_smoke_handle(mesh), TIP_CLUSTER,
                 INVERSE_BIND_TRANSLATION_ROW, INVERSE_BIND_Y_COLUMN,
                 EXPECTED_WICKED_INVERSE_BIND_Y) != 1
             second_mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -123,7 +131,7 @@ module RenderSceneAnimationSubmissionNativeTests:
                 error failure: 1
             return 4 if submit != 0
             animation_state: i32 = elisa_render_scene_v1_test_animation_submission(
-                mesh, SHIFT_X, ZERO_MORPH, 1)
+                RenderScene::native_smoke_handle(mesh), SHIFT_X, ZERO_MORPH, 1)
             return ANIMATION_STATE_ERROR_BASE + animation_state if animation_state != ANIMATION_STATE_MATCH_ALL
             second_submit: i32 = catch RenderScene::submit_animation_pose(second_mesh, &second_pose):
                 ok: 0
@@ -131,7 +139,8 @@ module RenderSceneAnimationSubmissionNativeTests:
             return 12 if second_submit != 0
             return 13 if Application::pump() != Application::PumpStatus.Running
             return 14 if elisa_render_scene_v1_test_animation_instances(
-                mesh, SHIFT_X, second_mesh, OTHER_SHIFT_X, 1) != 1
+                RenderScene::native_smoke_handle(mesh), SHIFT_X,
+                RenderScene::native_smoke_handle(second_mesh), OTHER_SHIFT_X, 1) != 1
             duplicate_submit: i32 = catch RenderScene::submit_animation_pose(mesh, &pose):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
@@ -141,7 +150,7 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             completed_state: i32 = elisa_render_scene_v1_test_animation_submission(
-                mesh, SHIFT_X, ZERO_MORPH, 0)
+                RenderScene::native_smoke_handle(mesh), SHIFT_X, ZERO_MORPH, 0)
             return 6 if completed != 0 or completed_state != ANIMATION_STATE_MATCH_ALL
             repeated_complete: i32 = catch RenderScene::complete_animation_pose(mesh):
                 ok: 0
@@ -152,7 +161,8 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             return 15 if second_completed != 0 or elisa_render_scene_v1_test_animation_instances(
-                mesh, SHIFT_X, second_mesh, OTHER_SHIFT_X, 0) != 1
+                RenderScene::native_smoke_handle(mesh), SHIFT_X,
+                RenderScene::native_smoke_handle(second_mesh), OTHER_SHIFT_X, 0) != 1
             second_destroyed: i32 = catch RenderScene::destroy(second_mesh):
                 ok: 0
                 error failure: 1
@@ -168,7 +178,7 @@ module RenderSceneAnimationSubmissionNativeTests:
                 error failure: return 25
             return 26 if Application::pump() != Application::PumpStatus.Running
             return 27 if elisa_render_scene_v1_test_skin_mesh_relative_root(
-                separate_root, SEPARATE_ROOT_WICKED_Z) != 1
+                RenderScene::native_smoke_handle(separate_root), SEPARATE_ROOT_WICKED_Z) != 1
             separate_destroyed: i32 = catch RenderScene::destroy(separate_root):
                 ok: 0
                 error failure: 1
@@ -179,7 +189,7 @@ module RenderSceneAnimationSubmissionNativeTests:
                 value: value
                 error failure: return 29
             return 30 if Application::pump() != Application::PumpStatus.Running
-            return 31 if elisa_render_scene_v1_test_multi_skin_layout(multi_skin) != 1
+            return 31 if elisa_render_scene_v1_test_multi_skin_layout(RenderScene::native_smoke_handle(multi_skin)) != 1
             multi_skin_destroyed: i32 = catch RenderScene::destroy(multi_skin):
                 ok: 0
                 error failure: 1
@@ -190,7 +200,7 @@ module RenderSceneAnimationSubmissionNativeTests:
                 value: value
                 error failure: return 33
             return 34 if Application::pump() != Application::PumpStatus.Running
-            return 35 if elisa_render_scene_v1_test_mixed_skin_layout(mixed_skin) != 1
+            return 35 if elisa_render_scene_v1_test_mixed_skin_layout(RenderScene::native_smoke_handle(mixed_skin)) != 1
             mixed_skin_destroyed: i32 = catch RenderScene::destroy(mixed_skin):
                 ok: 0
                 error failure: 1
@@ -204,17 +214,17 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             return 38 if play_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
-                morph_animation, 0.0, 0.2) != 1
+                RenderScene::native_smoke_handle(morph_animation), 0.0, 0.2) != 1
             advance_morph: i32 = catch RenderScene::advance_animation(morph_animation, 0.5):
                 ok: 0
                 error failure: 1
             return 39 if advance_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
-                morph_animation, 0.5, 0.2) != 1
+                RenderScene::native_smoke_handle(morph_animation), 0.5, 0.2) != 1
             stop_morph: i32 = catch RenderScene::stop_animation(morph_animation, 0.0):
                 ok: 0
                 error failure: 1
             return 40 if stop_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
-                morph_animation, 0.4, 0.2) != 1
+                RenderScene::native_smoke_handle(morph_animation), 0.4, 0.2) != 1
             morph_destroyed: i32 = catch RenderScene::destroy(morph_animation):
                 ok: 0
                 error failure: 1
@@ -225,16 +235,16 @@ module RenderSceneImportedSceneNativeTests:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_test_imported_mesh_visible(
-            handle: RenderScene::InstanceHandle, index: u32) -> i32
+            handle: i64, index: u32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_imported_mesh_position(
-            handle: RenderScene::InstanceHandle, index: u32,
+            handle: i64, index: u32,
             px: f32, py: f32, pz: f32) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_imported_light_casts_shadow(
-            handle: RenderScene::InstanceHandle, index: u32) -> i32
+            handle: i64, index: u32) -> i32
 
     public:
         def exercise() -> i32:
@@ -255,12 +265,12 @@ module RenderSceneImportedSceneNativeTests:
                 ok: 0
                 error failure: 1
             return 10 if hidden_child != 0 or elisa_render_scene_v1_test_imported_mesh_visible(
-                hierarchy_mesh, 1) != 0
+                RenderScene::native_smoke_handle(hierarchy_mesh), 1) != 0
             shown_child: i32 = catch RenderScene::set_imported_mesh_visible(imported_child, true):
                 ok: 0
                 error failure: 1
             return 11 if shown_child != 0 or elisa_render_scene_v1_test_imported_mesh_visible(
-                hierarchy_mesh, 1) != 1
+                RenderScene::native_smoke_handle(hierarchy_mesh), 1) != 1
             moved_child: i32 = catch RenderScene::update_imported_mesh_transform(imported_child,
                 Geometry::Transform{
                     position: Geometry::Vec3{x: 0.25, y: 0.5, z: -0.75},
@@ -270,7 +280,7 @@ module RenderSceneImportedSceneNativeTests:
                 ok: 0
                 error failure: 1
             return 12 if moved_child != 0 or elisa_render_scene_v1_test_imported_mesh_position(
-                hierarchy_mesh, 1, 0.25, 0.5, -0.75) != 1
+                RenderScene::native_smoke_handle(hierarchy_mesh), 1, 0.25, 0.5, -0.75) != 1
             invalid_mesh: i32 = catch RenderScene::imported_mesh(hierarchy_mesh, hierarchy.mesh_count):
                 value: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
@@ -298,18 +308,18 @@ module RenderSceneImportedSceneNativeTests:
                 value: value
                 error failure: return 19
             initial_light_shadow: i32 = elisa_render_scene_v1_test_imported_light_casts_shadow(
-                imported_mesh, 0)
+                RenderScene::native_smoke_handle(imported_mesh), 0)
             return 20 if initial_light_shadow != 0
             enabled_light_shadow: i32 = catch RenderScene::set_imported_light_cast_shadow(light, true):
                 ok: 0
                 error failure: 1
             return 21 if enabled_light_shadow != 0 or elisa_render_scene_v1_test_imported_light_casts_shadow(
-                imported_mesh, 0) != 1
+                RenderScene::native_smoke_handle(imported_mesh), 0) != 1
             disabled_light_shadow: i32 = catch RenderScene::set_imported_light_cast_shadow(light, false):
                 ok: 0
                 error failure: 1
             return 22 if disabled_light_shadow != 0 or elisa_render_scene_v1_test_imported_light_casts_shadow(
-                imported_mesh, 0) != 0
+                RenderScene::native_smoke_handle(imported_mesh), 0) != 0
             camera: RenderScene::ImportedCameraHandle = catch RenderScene::imported_camera(
                 imported_mesh, 1):
                 value: value

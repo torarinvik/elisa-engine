@@ -1,0 +1,20 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+include "./render_scene_ui_native.elisa"
+
+def main() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa UI Renderer Smoke",
+        width: 320,
+        height: 200,
+        hidden: true,
+    }
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 2
+    return 3 if initialized != 0
+    ui_status: i32 = RenderSceneUiNativeTests::exercise()
+    shutdown: bool = Application::shutdown()
+    return 4 if not shutdown
+    ui_status

@@ -1,5 +1,12 @@
 # Native smoke coverage for the public Wicked emitter and decal bridge.
 include "../src/runtime/world_effects.elisa"
+extend RenderScene:
+    public:
+        def native_smoke_emitter_handle(handle: EmitterHandle) -> i64:
+            handle.native_value
+        def native_smoke_decal_handle(handle: DecalHandle) -> i64:
+            handle.native_value
+
 module RenderSceneEffectsNativeTests:
     private:
         const MAX_PARTICLES: u32 = 128
@@ -10,17 +17,17 @@ module RenderSceneEffectsNativeTests:
         const SLOPE_BLEND: f32 = 1.25
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_effect_emitter(handle: RenderScene::EmitterHandle,
+        extern elisa_render_scene_v1_test_effect_emitter(handle: i64,
             max_particles: u32, count: f32, lifetime: f32, size: f32,
             velocity_x: f32, velocity_y: f32, velocity_z: f32) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_effect_decal(handle: RenderScene::DecalHandle,
+        extern elisa_render_scene_v1_test_effect_decal(handle: i64,
             red: f32, green: f32, blue: f32, alpha: f32,
             range: f32, slope_blend: f32) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_effect_position(handle: RenderScene::EmitterHandle,
+        extern elisa_render_scene_v1_test_effect_position(handle: i64,
             px: f32, py: f32, pz: f32) -> i32
 
     public:
@@ -32,7 +39,8 @@ module RenderSceneEffectsNativeTests:
                 RenderScene::Emitter(position, MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity)):
                 value: value
                 error failure: return 1
-            return 2 if elisa_render_scene_v1_test_effect_emitter(emitter,
+            raw_emitter: i64 = RenderScene::native_smoke_emitter_handle(emitter)
+            return 2 if elisa_render_scene_v1_test_effect_emitter(raw_emitter,
                 MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity.x, velocity.y, velocity.z) != 1
             invalid_tick: i32 = catch RenderScene::tick_emitter(emitter, -1.0):
                 ok: 0
@@ -48,7 +56,8 @@ module RenderSceneEffectsNativeTests:
                 RenderScene::Decal(position, color, RANGE, SLOPE_BLEND)):
                 value: value
                 error failure: return 5
-            return 6 if elisa_render_scene_v1_test_effect_decal(decal,
+            raw_decal: i64 = RenderScene::native_smoke_decal_handle(decal)
+            return 6 if elisa_render_scene_v1_test_effect_decal(raw_decal,
                 color.red, color.green, color.blue, color.alpha, RANGE, SLOPE_BLEND) != 1
             invalid_update: i32 = catch RenderScene::update_decal(decal,
                 RenderScene::Decal(position, color, 0.0, SLOPE_BLEND)):
@@ -61,7 +70,7 @@ module RenderSceneEffectsNativeTests:
                 RenderScene::Decal(position, updated_color, 4.0, 0.5)):
                 ok: 0
                 error failure: 1
-            return 8 if updated != 0 or elisa_render_scene_v1_test_effect_decal(decal,
+            return 8 if updated != 0 or elisa_render_scene_v1_test_effect_decal(raw_decal,
                 updated_color.red, updated_color.green, updated_color.blue, updated_color.alpha, 4.0, 0.5) != 1
             destroyed_decal: i32 = catch RenderScene::destroy_decal(decal):
                 ok: 0
@@ -121,8 +130,9 @@ module RenderSceneEffectsNativeTests:
             emitter_after_move: RenderScene::EmitterHandle = catch WorldEffects::emitter_handle(&effects, entity):
                 value: value
                 error failure: return 22
+            raw_emitter_after_move: i64 = RenderScene::native_smoke_emitter_handle(emitter_after_move)
             return 23 if report.updated != 1 or elisa_render_scene_v1_test_effect_position(
-                emitter_after_move, 4.0, 5.0, 6.0) != 1
+                raw_emitter_after_move, 4.0, 5.0, 6.0) != 1
             despawn_status: i32 = catch World::world_despawn(&world, entity):
                 ok: 0
                 error failure: 1

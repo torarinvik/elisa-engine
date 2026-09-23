@@ -6,10 +6,11 @@ module RenderSceneSelectionNativeTests:
         const ALL_LAYERS: u32 = 4294967295
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_selection_state(handle: RenderScene::InstanceHandle) -> i32
+        extern elisa_render_scene_v1_test_selection_state(handle: i64) -> i32
 
     public:
         def exercise(handle: RenderScene::InstanceHandle) -> i32:
+            raw_handle: i64 = RenderScene::native_smoke_handle(handle)
             identity_status: i32 = catch RenderScene::set_pick_identity(handle, 7, 42):
                 ok: 0
                 error failure: 1
@@ -42,9 +43,9 @@ module RenderSceneSelectionNativeTests:
             selected: i32 = catch RenderScene::select(handle):
                 ok: 0
                 error failure: 1
-            return 6 if selected != 0 or elisa_render_scene_v1_test_selection_state(handle) != 1
+            return 6 if selected != 0 or elisa_render_scene_v1_test_selection_state(raw_handle) != 1
             cleared: i32 = catch RenderScene::clear_selection():
                 ok: 0
                 error failure: 1
-            return 7 if cleared != 0 or elisa_render_scene_v1_test_selection_state(handle) != 0
+            return 7 if cleared != 0 or elisa_render_scene_v1_test_selection_state(raw_handle) != 0
             0

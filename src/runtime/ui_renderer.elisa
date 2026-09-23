@@ -1,0 +1,121 @@
+# Elisa-owned bridge from UI models to the screen-space renderer. Applications
+# create these handles once; sync_menu applies menu layout, labels, theme and
+# focus without asking a game-specific native layer to draw interface elements.
+include "./render_scene.elisa"
+include "./render_scene_text.elisa"
+include "../ui/layout.elisa"
+include "../ui/menu.elisa"
+include "../ui/style.elisa"
+
+module UiRenderer:
+    private:
+        const module Bounds:
+            MAX_ROWS: usize = 8
+            MIN_FONT_SIZE: i32 = 8
+            MAX_FONT_SIZE: i32 = 128
+
+    public:
+        struct MenuCanvas:
+            background: RenderScene::OverlayPanelHandle
+            focus_band: RenderScene::OverlayPanelHandle
+            labels: mutable RenderScene::OverlayTextHandle[Bounds::MAX_ROWS]
+            label_count: mutable usize
+
+        def MenuCanvas(background: RenderScene::OverlayPanelHandle,
+            focus_band: RenderScene::OverlayPanelHandle) -> MenuCanvas:
+            MenuCanvas{background: background, focus_band: focus_band,
+                labels: zeroed, label_count: 0}
+
+        # Labels correspond to menu item indices, including items outside the
+        # currently visible scroll window.
+        def menu_canvas_add_label(canvas: mutable MenuCanvas&,
+            label: RenderScene::OverlayTextHandle) -> bool:
+            return false if canvas.label_count >= Bounds::MAX_ROWS
+            canvas.labels[canvas.label_count] <- label
+            canvas.label_count <- canvas.label_count + 1
+            true
+
+        def menu_canvas_label_count(canvas: MenuCanvas&) -> usize:
+            canvas.label_count
+
+        def menu_canvas_valid(canvas: MenuCanvas&, menu: Ui::Menu&) -> bool:
+            (canvas.label_count == Ui::item_count(menu)) and (canvas.label_count <= Bounds::MAX_ROWS)
+
+        def render_color(color: UiStyle::Color&) -> RenderScene::Color:
+            RenderScene::Color{
+                red: color.r.f32() / 255.0,
+                green: color.g.f32() / 255.0,
+                blue: color.b.f32() / 255.0,
+                alpha: color.a.f32() / 255.0,
+            }
+
+        # Synchronize one retained menu view. Coordinates and dimensions are
+        # logical screen pixels. Layout is computed from Elisa's menu and
+        # layout models; hidden scrolled rows keep their text handles alive.
+        def sync_menu(canvas: mutable MenuCanvas&, menu: Ui::Menu&, theme: UiStyle::Theme&, width: i64, font_size: i32) -> void error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not Ui::menu_valid(menu)
+            raise RenderScene::RenderSceneError.InvalidValue if not UiStyle::theme_valid(theme)
+            raise RenderScene::RenderSceneError.InvalidValue if not menu_canvas_valid(canvas, menu)
+            raise RenderScene::RenderSceneError.InvalidValue if width <= 0
+            raise RenderScene::RenderSceneError.InvalidValue if font_size < Bounds::MIN_FONT_SIZE or font_size > Bounds::MAX_FONT_SIZE
+            raise RenderScene::RenderSceneError.InvalidValue if font_size > Ui::menu_row_height(menu)
+
+            rows: mutable UiLayout::Layout = UiLayout::Layout()
+            root: i64 = UiLayout::layout_add(&rows, -1,
+                UiLayout::Orientation.Vertical, 0, 0, 0)
+            raise RenderScene::RenderSceneError.InvalidValue if root != 0
+            for row in 0..<Ui::visible_rows(menu):
+                row_node: i64 = UiLayout::layout_add(&rows, root,
+                    UiLayout::Orientation.Horizontal,
+                    Ui::menu_row_height(menu), 0, 0)
+                raise RenderScene::RenderSceneError.InvalidValue if row_node < 0
+            height: i64 = Ui::visible_rows(menu).i64() * Ui::menu_row_height(menu)
+            UiLayout::layout_compute(&rows, menu.x, menu.y, width, height)
+            panel: UiLayout::Rect = UiLayout::node_rect(&rows, 0)
+            try RenderScene::set_overlay_panel_position(canvas.background,
+                panel.x.f32(), panel.y.f32())
+            try RenderScene::set_overlay_panel_size(canvas.background,
+                panel.width.f32(), panel.height.f32())
+            try RenderScene::set_overlay_panel_color(canvas.background,
+                render_color(theme.background))
+            try RenderScene::set_overlay_panel_visible(canvas.background, true)
+
+            focus_row: i64 = menu.focus - menu.scroll
+            focused: bool = focus_row >= 0 and focus_row < Ui::visible_rows(menu).i64()
+            if focused:
+                focus_rect: UiLayout::Rect = UiLayout::node_rect(&rows,
+                    (focus_row + 1).usize())
+                focus_color: mutable UiStyle::Color = theme.focus
+                focus_color.a <- focus_color.a / 5
+                try RenderScene::set_overlay_panel_position(canvas.focus_band,
+                    focus_rect.x.f32(), focus_rect.y.f32())
+                try RenderScene::set_overlay_panel_size(canvas.focus_band,
+                    focus_rect.width.f32(), focus_rect.height.f32())
+                try RenderScene::set_overlay_panel_color(canvas.focus_band,
+                    render_color(&focus_color))
+            try RenderScene::set_overlay_panel_visible(canvas.focus_band, focused)
+
+            for index in 0..<canvas.label_count |canvas, menu, rows, theme, font_size|:
+                item_index: i64 = index.i64()
+                on_screen: bool = (item_index >= menu.scroll) and (item_index < menu.scroll + Ui::visible_rows(menu).i64())
+                shown: bool = (index < Ui::item_count(menu)) and on_screen
+                label: RenderScene::OverlayTextHandle = canvas.labels[index]
+                if shown:
+                    row: i64 = item_index - menu.scroll
+                    row_rect: UiLayout::Rect = UiLayout::node_rect(&rows,
+                        (row + 1).usize())
+                    inset: i64 = UiStyle::theme_surface_inset(theme)
+                    text_y: i64 = row_rect.y + (row_rect.height - font_size.i64()) / 2
+                    try RenderScene::set_overlay_text(label,
+                        menu.items[index].label)
+                    try RenderScene::set_overlay_text_position(label,
+                        (row_rect.x + inset).f32(), text_y.f32())
+                    try RenderScene::set_overlay_text_size(label, font_size)
+                    item_color: UiStyle::Color = UiStyle::theme_text_color(theme,
+                        menu.items[index].enabled, item_index == menu.focus)
+                    try RenderScene::set_overlay_text_color(label,
+                        render_color(&item_color))
+                    try RenderScene::set_overlay_text_alignment(label,
+                        RenderScene::OverlayTextAlignment.Left,
+                        RenderScene::OverlayTextAlignment.Top)
+                try RenderScene::set_overlay_text_visible(label, shown)
