@@ -338,6 +338,7 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
                 material_assignments.append(str(int(x >= cells_per_side // 2) if two_materials else 0))
 
     material_layer = ""
+    material_layer_reference = ""
     material_objects = ""
     material_connections = ""
     material_definition = ""
@@ -349,6 +350,8 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
             f'LayerElementMaterial: 0 {{ Version: 101 Name: "" MappingInformationType: "ByPolygon" '
             f'ReferenceInformationType: "IndexToDirect" Materials: *{len(material_assignments)} {{ a: '
             f'{",".join(material_assignments)} }} }} ')
+        material_layer_reference = (
+            ' LayerElement: { Type: "LayerElementMaterial" TypedIndex: 0 }')
         material_objects = (
             'Material: 1103, "Material::First", "" { Version: 102 } '
             'Material: 1104, "Material::Second", "" { Version: 102 } ')
@@ -377,7 +380,8 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
         f'LayerElementUV: 0 {{ Version: 101 Name: "UVMap" '
         f'MappingInformationType: "ByVertice" ReferenceInformationType: "Direct" '
         f'UV: *{len(uvs)} {{ a: {",".join(uvs)} }} }} '
-        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 } } } '
+        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 }'
+        f'{material_layer_reference} }} }} '
         f'Model: 1002, "Model::Grid", "Mesh" {{ Version: 232 }} {material_objects}}}\n'
         f'Connections: {{ C: "OO",1001,1002 C: "OO",1002,0{material_connections} }}\n'
         'Takes: { Current: "" }\n',

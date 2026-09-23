@@ -12,5 +12,5 @@ The cooker writes the existing `material_slots`, `subset_count`, `subset_stride=
 ## Validation
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_fbx_import.py` passed. Its deterministic FBX fixture assigns two polygons to distinct materials and checks exact subset ranges and slot indices.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/cook_fbx_asset.py --self-test` passed. It validates the two-slot cooked package and simplifies a planar 128-triangle, two-material grid to 64 triangles while preserving both exact index partitions. It also rejects a triangle budget below the number of non-empty subsets.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/cook_fbx_asset.py --self-test` passed. It validates the two-slot cooked package, rejects a one-triangle budget for two subsets, and simplifies a planar 128-triangle, two-material grid to 64 triangles while preserving both exact index partitions.
 - The SDL3/Metal RenderScene subset smoke loads a cooked FBX package, assigns a two-entry material set, and checks that each Wicked subset resolves to the expected slot material.
