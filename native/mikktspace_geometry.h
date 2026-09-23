@@ -145,11 +145,12 @@ inline uint32_t float_bits(float value) {
 
 inline bool generate_mikktspace_geometry(const std::vector<float>& positions,
         const std::vector<float>& normals, const std::vector<float>& uvs,
-        const std::vector<uint32_t>& indices, MikkGeometry& output) {
+        const std::vector<uint32_t>& indices, MikkGeometry& output,
+        size_t max_output_vertices = std::numeric_limits<size_t>::max()) {
     const size_t vertex_count = positions.size() / 3;
     if (positions.empty() || positions.size() % 3 != 0 || normals.size() != positions.size() ||
         uvs.size() != vertex_count * 2 || indices.empty() || indices.size() % 3 != 0 ||
-        indices.size() / 3 > size_t(std::numeric_limits<int>::max())) return false;
+        indices.size() / 3 > size_t(std::numeric_limits<int>::max()) || max_output_vertices == 0) return false;
     for (float value : positions) if (!std::isfinite(value)) return false;
     for (float value : normals) if (!std::isfinite(value)) return false;
     for (float value : uvs) if (!std::isfinite(value)) return false;
@@ -242,11 +243,12 @@ inline bool generate_mikktspace_geometry(const std::vector<float>& positions,
 
     MikkGeometry result;
     result.indices.reserve(indices.size());
-    result.source_vertices.reserve(std::min(indices.size(), vertex_count * 2));
-    result.positions.reserve(std::min(indices.size(), vertex_count * 2) * 3);
-    result.normals.reserve(std::min(indices.size(), vertex_count * 2) * 3);
-    result.uvs.reserve(std::min(indices.size(), vertex_count * 2) * 2);
-    result.tangents.reserve(std::min(indices.size(), vertex_count * 2) * 4);
+    const size_t reserve_vertices = std::min({indices.size(), vertex_count, max_output_vertices});
+    result.source_vertices.reserve(reserve_vertices);
+    result.positions.reserve(reserve_vertices * 3);
+    result.normals.reserve(reserve_vertices * 3);
+    result.uvs.reserve(reserve_vertices * 2);
+    result.tangents.reserve(reserve_vertices * 4);
     std::map<mikktspace_detail::VertexKey, uint32_t> vertices;
     for (size_t corner = 0; corner < indices.size(); ++corner) {
         const auto& frame = corner_frames[corner];
@@ -264,7 +266,8 @@ inline bool generate_mikktspace_geometry(const std::vector<float>& positions,
             mikktspace_detail::float_bits(frame[3])}};
         auto found = vertices.find(key);
         if (found == vertices.end()) {
-            if (result.source_vertices.size() >= std::numeric_limits<uint32_t>::max()) return false;
+            if (result.source_vertices.size() >= max_output_vertices ||
+                result.source_vertices.size() >= std::numeric_limits<uint32_t>::max()) return false;
             const uint32_t next = uint32_t(result.source_vertices.size());
             found = vertices.emplace(key, next).first;
             result.source_vertices.push_back(source);

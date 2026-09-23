@@ -14,6 +14,7 @@ import cook_gltf_lod
 import cook_gltf_nodes
 import cook_gltf_scene
 import cook_gltf_skin
+import cook_gltf_mikktspace
 import gltf_tangent_frames
 import cook_gltf_textures
 
@@ -275,6 +276,15 @@ def generated_normals(positions: bytes, vertex_count: int, indices: list[int]) -
     return bytes(packed)
 
 
+def remap_stream(data: bytes, stride: int, source_vertices: list[int]) -> bytes:
+    return b"".join(data[index * stride:(index + 1) * stride] for index in source_vertices)
+
+
+def remap_components(values: list, components: int, source_vertices: list[int]) -> list:
+    return [values[index * components + component] for index in source_vertices
+        for component in range(components)]
+
+
 def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | None = None):
     # Node transforms bake into placement streams; material subsets and
     # textures stay grouped. Identical accessors share data within a placement.
@@ -350,21 +360,47 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
         placement_ranges[placement]["vertex_start"] = (
             base_vertex[key] if placement_ranges[placement]["vertex_start"] is None else
             placement_ranges[placement]["vertex_start"])
-        placement_ranges[placement]["vertex_count"] += source["count"]
         world = cook_gltf_nodes.transform_points(source["positions"], matrix)
-        positions += world
         transformed_normals = cook_gltf_nodes.transform_normals(source["normals"], matrix) \
             if source["normals"] is not None else \
             generated_normals(world, source["count"], block["triangles"])
-        normals += transformed_normals
-        tangents += gltf_tangent_frames.transformed(source["tangents"], transformed_normals, matrix) \
-            if source["tangents"] is not None else \
-            gltf_tangent_frames.generated(world, transformed_normals, source["uvs"], source["count"], block["triangles"])
-        uvs += source["uvs"]
+        if source["tangents"] is None:
+            tangent_geometry = cook_gltf_mikktspace.generate(world, transformed_normals,
+                source["uvs"], source["count"], block["triangles"])
+            source_vertices = tangent_geometry["source_vertices"]
+            block["remapped_indices"] = tangent_geometry["indices"]
+            block["remapped_index_cursor"] = 0
+            block["cooked_vertex_count"] = len(source_vertices)
+            if skin is not None:
+                block["skin_indices"] = remap_components(block["skin_indices"], 4, source_vertices)
+                block["skin_weights"] = remap_components(block["skin_weights"], 4, source_vertices)
+            positions += tangent_geometry["positions"]
+            normals += tangent_geometry["normals"]
+            tangents += tangent_geometry["tangents"]
+            uvs += tangent_geometry["uvs"]
+        else:
+            block["remapped_indices"] = None
+            block["cooked_vertex_count"] = source["count"]
+            positions += world
+            normals += transformed_normals
+            tangents += gltf_tangent_frames.transformed(
+                source["tangents"], transformed_normals, matrix)
+            uvs += source["uvs"]
+            source_vertices = list(range(source["count"]))
+        vertex_count = block["cooked_vertex_count"]
+        if len(positions) // 12 > MAX_VERTICES:
+            raise ValueError("MikkTSpace seam splits exceed the cooked vertex bound")
+        placement_ranges[placement]["vertex_count"] += vertex_count
         for morph_index, target in enumerate(source["morph_targets"]):
-            morph_positions[morph_index] += cook_gltf_nodes.transform_vectors(target["positions"], matrix)
+            transformed_morph_positions = cook_gltf_nodes.transform_vectors(target["positions"], matrix)
+            if source["tangents"] is None:
+                transformed_morph_positions = remap_stream(transformed_morph_positions, 12, source_vertices)
+            morph_positions[morph_index] += transformed_morph_positions
             if target["normals"] is not None:
-                morph_normals[morph_index] += cook_gltf_nodes.transform_normal_deltas(target["normals"], matrix)
+                transformed_morph_normals = cook_gltf_nodes.transform_normal_deltas(target["normals"], matrix)
+                if source["tangents"] is None:
+                    transformed_morph_normals = remap_stream(transformed_morph_normals, 12, source_vertices)
+                morph_normals[morph_index] += transformed_morph_normals
         if skin is not None:
             skin_indices += block["skin_indices"]
             skin_weights += block["skin_weights"]
@@ -376,7 +412,16 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
         placement_range = placement_ranges[placement]
         if placement_range["index_start"] is None:
             placement_range["index_start"] = start
-        indices += struct.pack(f"<{len(values)}I", *(value + base_vertex[block] for value in values))
+        remapped = blocks[block]["remapped_indices"]
+        if remapped is not None:
+            cursor = blocks[block]["remapped_index_cursor"]
+            corner_count = len(values)
+            values = remapped[cursor:cursor + corner_count]
+            if len(values) != corner_count:
+                raise ValueError("MikkTSpace remapped an incomplete primitive index range")
+            blocks[block]["remapped_index_cursor"] = cursor + corner_count
+        indices.extend(cook_gltf_mikktspace.pack_u32(
+            value + base_vertex[block] for value in values))
         if subsets and subsets[-1][2] == slot:
             subsets[-1] = (subsets[-1][0], subsets[-1][1] + len(values), slot)
         else:

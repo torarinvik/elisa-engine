@@ -15,6 +15,7 @@ import cook_gltf_animation
 import cook_gltf_geometry
 import cook_gltf_nodes
 import cook_gltf_skin
+import gltf_skin_mikktspace_self_test
 import gltf_animation_self_test
 
 
@@ -323,6 +324,10 @@ def self_test(temporary: Path) -> int:
     if inverse_bind_defaults_self_test(temporary) != 0:
         return 1
     if skinned_mesh_transform_self_test(temporary) != 0:
+        return 1
+    skin_document = generated_document()
+    skin_buffer = cook_assets.source_bytes(SOURCE.parent, skin_document)
+    if not gltf_skin_mikktspace_self_test.self_test(skin_document, skin_buffer):
         return 1
     first, result = write_package(temporary / "first.pkg")
     second, second_result = write_package(temporary / "second.pkg")

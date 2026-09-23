@@ -27,6 +27,7 @@ import sys
 
 import cook_gltf_geometry
 import cook_gltf_textures
+import cook_gltf_mikktspace
 from ktx2_fixtures import make_ktx2
 from elisa_package import build_package_bytes
 from png_image import encode_png
@@ -413,6 +414,72 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     if plain["slot_textures"] != b"" or plain["images"] or any(line.startswith("texture") or
             line.startswith("slot_texture") for line in cook_gltf_geometry.subset_lines(plain)):
         return fail("an untextured panel cooked texture records")
+
+    mirrored_document = deepcopy(untextured_document)
+    mirrored_buffer = bytearray(buffer)
+    uv_view = mirrored_document["bufferViews"][2]
+    uv_offset = uv_view.get("byteOffset", 0)
+    panel_uvs = list(struct.unpack_from("<32f", mirrored_buffer, uv_offset))
+    panel_uvs[4:6] = (-1.0, 1.0)
+    struct.pack_into("<32f", mirrored_buffer, uv_offset, *panel_uvs)
+    morph_values = [float(index + 1) for index in range(16) for _ in range(3)]
+    if len(mirrored_buffer) % 4:
+        mirrored_buffer.extend(bytes(-len(mirrored_buffer) % 4))
+    morph_view = len(mirrored_document["bufferViews"])
+    morph_offset = len(mirrored_buffer)
+    morph_payload = struct.pack("<48f", *morph_values)
+    mirrored_buffer.extend(morph_payload)
+    mirrored_document["bufferViews"].append({"buffer": 0, "byteOffset": morph_offset,
+        "byteLength": len(morph_payload)})
+    morph_accessor = len(mirrored_document["accessors"])
+    mirrored_document["accessors"].append({"bufferView": morph_view, "componentType": 5126,
+        "count": 16, "type": "VEC3"})
+    for primitive in mirrored_document["meshes"][0]["primitives"]:
+        primitive["targets"] = [{"POSITION": morph_accessor}]
+    all_indices = []
+    for primitive in mirrored_document["meshes"][0]["primitives"]:
+        all_indices.extend(cook_gltf_geometry.read_indices(
+            mirrored_document, mirrored_buffer, primitive, 16))
+
+    def view_bytes(index: int) -> bytes:
+        view = mirrored_document["bufferViews"][index]
+        start = view.get("byteOffset", 0)
+        return bytes(mirrored_buffer[start:start + view["byteLength"]])
+
+    try:
+        expected_mikk = cook_gltf_mikktspace.generate(
+            view_bytes(0), view_bytes(1), view_bytes(2), 16, all_indices)
+    except (ValueError, struct.error) as error:
+        return fail(f"MikkTSpace reference fixture failed: {error}")
+    try:
+        mirrored_geometry = cook_gltf_geometry.normalized_geometry(
+            mirrored_document, bytes(mirrored_buffer))
+    except ValueError as error:
+        return fail(f"MikkTSpace rejected the mirrored glTF panel: {error}")
+    if (mirrored_geometry["vertex_count"] != len(expected_mikk["source_vertices"]) or
+            mirrored_geometry["positions"] != expected_mikk["positions"] or
+            mirrored_geometry["normals"] != expected_mikk["normals"] or
+            mirrored_geometry["uvs"] != expected_mikk["uvs"] or
+            mirrored_geometry["tangents"] != expected_mikk["tangents"]):
+        return fail("the glTF cooker did not preserve MikkTSpace seam-split vertex streams")
+    cooked_indices = list(struct.unpack(
+        f"<{mirrored_geometry['index_count']}I", mirrored_geometry["indices"]))
+    cooked_tangents = list(struct.iter_unpack("<4f", mirrored_geometry["tangents"]))
+    first_subset = mirrored_geometry["subsets"][0]
+    triangle_signs = []
+    for cursor in range(first_subset[0], first_subset[0] + first_subset[1], 3):
+        triangle = cooked_indices[cursor:cursor + 3]
+        signs = {cooked_tangents[index][3] for index in triangle}
+        if len(signs) != 1:
+            return fail("a mirrored glTF triangle received inconsistent tangent handedness")
+        triangle_signs.append(next(iter(signs)))
+    morph_output = mirrored_geometry["morph_targets"][0]["positions"]
+    morph_output_values = list(struct.iter_unpack("<3f", morph_output))
+    if (len(triangle_signs) != 2 or triangle_signs[0] == triangle_signs[1] or
+            len(morph_output_values) != len(expected_mikk["source_vertices"]) or
+            any(morph_output_values[index][0] != source + 1.0
+                for index, source in enumerate(expected_mikk["source_vertices"]))):
+        return fail("the glTF cooker lost mirrored seam handedness or morph deltas")
     for label, (mutate, records, sections) in ACCEPTED.items():
         variant = deepcopy(document)
         mutate(variant)

@@ -17,6 +17,7 @@ from cook_gltf_meshopt import self_test as meshopt_self_test
 from cook_gltf_lod import self_test as lod_self_test
 from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 from cook_gltf_lod_package import self_test as lod_package_self_test
+from cook_gltf_mikktspace import self_test as mikktspace_self_test
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
 from gltf_morph_self_test import self_test as morph_self_test
@@ -30,6 +31,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def self_test() -> int:
+    mikktspace_status = mikktspace_self_test()
+    if mikktspace_status != 0:
+        return mikktspace_status
     meshopt_status = meshopt_self_test()
     if meshopt_status != 0:
         return meshopt_status

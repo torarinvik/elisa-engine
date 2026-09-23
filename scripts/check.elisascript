@@ -35,7 +35,7 @@ def godot_path() -> sview:
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
     result: ProcessCapture =
         empty_input: sview = ""
-        capture_process_result(executable(program), arguments, empty_input)
+        capture_process_result(executable(program), arguments, empty_input, 300000000i64)
     _ = write_stdout(result.stdout)
     _ = write_stderr(result.stderr)
     result.exit_status

@@ -45,6 +45,12 @@ int main() {
             first_sign, mirrored_sign);
         return 1;
     }
+    elisa::assets::MikkGeometry bounded;
+    if (elisa::assets::generate_mikktspace_geometry(positions, normals, uvs,
+        indices, bounded, positions.size() / 3)) {
+        std::fprintf(stderr, "MikkTSpace exceeded the caller's output vertex bound\n");
+        return 1;
+    }
     std::vector<float> missing_normals(normals.size(), 0.0f);
     elisa::assets::MikkGeometry recovered;
     if (!elisa::assets::generate_mikktspace_geometry(positions, missing_normals, uvs,
