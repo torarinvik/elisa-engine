@@ -27,9 +27,10 @@ targeted maze-game fixture also passes 18-item focus traversal, scrolling and
 hit testing. `scripts/check_module_hygiene.py` and
 `scripts/check_source_length.py` passed.
 
-The same focused smoke verifies Wicked `SpriteFont` measurements at two logical
-font sizes after dynamic glyph-atlas warm-up, and checks rejection of an invalid
-size. It also lays out a four-word `UiText::Run` into three lines through
+The same focused smoke verifies that a repeated text measurement stays
+unready during the request frame, then measures Wicked `SpriteFont` text at two
+logical sizes after a rendered atlas warm-up frame; it also checks rejection of
+an invalid size. It lays out a four-word `UiText::Run` into three lines through
 `UiRenderer::sync_wrapped`, then verifies that syncing an empty run hides the
 retained word labels. `test/editor.elisa` passes the word-run, line-boundary,
 invalid-wrapped-data, and maximum-line-capacity checks.

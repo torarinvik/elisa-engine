@@ -40,6 +40,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 namespace {
 constexpr size_t MAX_INSTANCES = 512;
@@ -63,6 +64,7 @@ constexpr size_t MAX_RENDER_LIGHTS = probe::LightingBridge::MAX_LIGHTS;
 constexpr size_t MAX_RENDER_CAMERAS = 8;
 constexpr unsigned CAMERA_HANDLE_SLOT_BITS = 4;
 constexpr uint64_t CAMERA_HANDLE_SLOT_MASK = (uint64_t(1) << CAMERA_HANDLE_SLOT_BITS) - 1;
+constexpr size_t MAX_OVERLAY_TEXT_MEASURE_CACHE_ENTRIES = 256;
 #include "render_scene_text_internal.inc"
 #include "render_scene_panel_internal.inc"
 #include "render_scene_instance_state.inc"
@@ -74,6 +76,13 @@ struct RenderCameraSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
     bool live = false;
+};
+struct OverlayTextMeasureCacheEntry {
+    uint64_t requested_frame = 0;
+    uint64_t last_used_frame = 0;
+    float ready_width = 0.0f;
+    float ready_height = 0.0f;
+    bool ready = false;
 };
 #include "render_scene_snapshot_state.inc"
 struct ElectricArcSlot {
@@ -97,6 +106,7 @@ struct RenderSceneService {
     std::array<RenderCameraSlot, MAX_RENDER_CAMERAS> cameras{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
+    std::unordered_map<std::string, OverlayTextMeasureCacheEntry> overlay_text_measure_cache;
     std::array<OverlayPanelSlot, MAX_OVERLAY_PANELS> overlay_panels{};
     std::array<OverlayImageSlot, MAX_OVERLAY_IMAGES> overlay_images{}; probe::DebugDrawBridge debug_draw;
     std::array<SnapshotStageRow, MAX_INSTANCES> snapshot_rows{};
@@ -351,6 +361,7 @@ void reset_unlocked(RenderSceneService& state) {
         arc.live = false;
     }
     reset_overlay_slots(state);
+    state.overlay_text_measure_cache.clear();
     state.camera_entity = wi::ecs::INVALID_ENTITY;
     state.primary_camera_entity = wi::ecs::INVALID_ENTITY;
     state.camera = nullptr;

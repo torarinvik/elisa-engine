@@ -34,6 +34,10 @@ module RenderSceneUiNativeTests:
             _warm_metrics: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 12):
                 value: value
                 error failure: return 18
+            same_frame_metrics: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 12):
+                value: value
+                error failure: return 29
+            return 30 if same_frame_metrics.ready
             for frame in 0..<3:
                 return 18 if Application::pump() != Application::PumpStatus.Running
             text_small: RenderSceneText::OverlayTextMetrics = catch RenderScene::measure_overlay_text("ELISA UI", 12):
