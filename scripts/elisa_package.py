@@ -11,6 +11,7 @@ import tempfile
 from typing import Mapping, Sequence
 import zlib
 
+from ktx2_container import KTX2_IDENTIFIER, ktx2_dimensions as _ktx2_dimensions
 
 HEADER_BYTES = 32
 ENTRY_BYTES = 48
@@ -21,10 +22,7 @@ MAX_MANIFEST_BYTES = 16 * 1024
 MAX_DEPENDENCIES = 16
 ALIGNMENT_BYTES = 16
 MAX_IMAGE_DIMENSION = 8192
-MAX_KTX2_DIMENSION = 4096
-MAX_KTX2_LEVELS = 16
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-KTX2_IDENTIFIER = b"\xabKTX 20\xbb\r\n\x1a\n"
 MANIFEST_HEADER = "ELISA-PACKAGE-MANIFEST-1"
 
 
@@ -188,24 +186,6 @@ def _jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
             return width, height
         offset += 2 + length
     return None
-
-
-def _ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
-    """Check a bounded 2D KTX2 header and its level index before packaging."""
-    if len(data) < 80 or data[:12] != KTX2_IDENTIFIER:
-        return None
-    width, height, depth, layers, faces, levels = struct.unpack_from("<6I", data, 20)
-    if (not 1 <= width <= MAX_KTX2_DIMENSION or not 1 <= height <= MAX_KTX2_DIMENSION or
-            depth != 0 or layers > 1 or faces != 1 or not 1 <= levels <= MAX_KTX2_LEVELS):
-        return None
-    level_index_end = 80 + levels * 24
-    if level_index_end > len(data):
-        return None
-    for level in range(levels):
-        offset, length, _ = struct.unpack_from("<QQQ", data, 80 + level * 24)
-        if offset < level_index_end or length == 0 or offset > len(data) or length > len(data) - offset:
-            return None
-    return width, height
 
 
 def encoded_image_dimensions(data: bytes) -> tuple[int, int]:

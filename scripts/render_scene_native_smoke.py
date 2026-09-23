@@ -77,7 +77,7 @@ def main() -> int:
     render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1"
     if render_only:
         (build / "cooked").mkdir(parents=True, exist_ok=True)
-    else:
+    if not render_only:
         ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
         if ktx2_status != 0:
             return ktx2_status
@@ -258,22 +258,25 @@ def main() -> int:
     runtime_env = dict(os.environ)
     runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(wicked_source / "shaders")
     runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)
-    with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory, \
-            tempfile.TemporaryDirectory(prefix="Elisa cooked mesh path escape ") as outside_directory:
-        outside_package = Path(outside_directory) / "outside.pkg"
-        outside_package.write_text("format=elisa-cooked-v2\n", encoding="ascii")
-        escape_link = build / "cooked/render-scene-outside-link.pkg"
-        escape_link.unlink(missing_ok=True)
-        escape_link.symlink_to(outside_package)
-        texture_link = bundle_texture_fixtures.write_fixtures(build / "cooked", Path(outside_directory),
-            build / "cooked/maze_tile_tex.ktx2")
-        dependency_link = bundle_dependency_fixtures.write_fixtures(build / "cooked", Path(outside_directory))
-        try:
+    with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory:
+        if render_only:
             status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
-        finally:
-            escape_link.unlink(missing_ok=True)
-            texture_link.unlink(missing_ok=True)
-            dependency_link.unlink(missing_ok=True)
+        else:
+            with tempfile.TemporaryDirectory(prefix="Elisa cooked mesh path escape ") as outside_directory:
+                outside_package = Path(outside_directory) / "outside.pkg"
+                outside_package.write_text("format=elisa-cooked-v2\n", encoding="ascii")
+                escape_link = build / "cooked/render-scene-outside-link.pkg"
+                escape_link.unlink(missing_ok=True)
+                escape_link.symlink_to(outside_package)
+                texture_link = bundle_texture_fixtures.write_fixtures(build / "cooked", Path(outside_directory),
+                    build / "cooked/maze_tile_tex.ktx2")
+                dependency_link = bundle_dependency_fixtures.write_fixtures(build / "cooked", Path(outside_directory))
+                try:
+                    status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
+                finally:
+                    escape_link.unlink(missing_ok=True)
+                    texture_link.unlink(missing_ok=True)
+                    dependency_link.unlink(missing_ok=True)
     if status == 0:
         if render_only:
             print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")

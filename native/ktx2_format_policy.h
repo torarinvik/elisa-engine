@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace elisa::rendering::textures {
 
 enum class KTX2UploadEncoding { Rgba8, Bc1, Bc3, Bc5, Bc7, Unsupported };
@@ -12,6 +14,12 @@ struct KTX2UploadFormats {
     bool bc7 = false;
     bool bc5 = false;
 };
+
+inline bool ktx2_upload_shape_supported(std::uint32_t layers, std::uint32_t faces,
+    std::uint32_t width, std::uint32_t height) {
+    return width > 0 && height > 0 && layers == 0 && (faces == 1 || faces == 6) &&
+        (faces != 6 || width == height);
+}
 
 inline KTX2UploadEncoding choose_ktx2_upload_encoding(bool has_alpha, KTX2UploadFormats formats,
     KTX2TextureUsage usage = KTX2TextureUsage::Color) {

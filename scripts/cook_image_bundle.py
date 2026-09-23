@@ -9,7 +9,8 @@ import struct
 import sys
 import tempfile
 
-from elisa_package import KTX2_IDENTIFIER, parse_texture_arguments, write_image_bundle
+from elisa_package import encoded_image_dimensions, parse_texture_arguments, write_image_bundle
+from ktx2_fixtures import make_ktx2
 from png_image import encode_png
 
 
@@ -19,11 +20,7 @@ def self_test() -> int:
         image = directory / "albedo.png"
         image.write_bytes(encode_png(2, 1, bytes([255, 0, 0, 255, 0, 0, 255, 255])))
         ktx2 = directory / "normal.ktx2"
-        ktx2_bytes = bytearray(108)
-        ktx2_bytes[:12] = KTX2_IDENTIFIER
-        struct.pack_into("<6I", ktx2_bytes, 20, 4, 4, 0, 0, 1, 1)
-        struct.pack_into("<QQQ", ktx2_bytes, 80, 104, 4, 64)
-        ktx2_bytes[104:] = b"KTX!"
+        ktx2_bytes = make_ktx2()
         ktx2.write_bytes(ktx2_bytes)
         truncated_ktx2 = directory / "truncated.ktx2"
         truncated_ktx2.write_bytes(ktx2_bytes[:-1])
@@ -39,13 +36,55 @@ def self_test() -> int:
             path.write_bytes(invalid_header)
             invalid_basis_headers.append((label, path))
         invalid_shapes = []
-        for label, offset, value in (("array", 32, 2), ("cubemap", 36, 6),
+        for label, offset, value in (("array", 32, 2), ("single-layer-array", 32, 1),
+                ("cubemap", 36, 6),
                 ("volume", 28, 1), ("mips", 40, 17)):
             invalid_shape = bytearray(ktx2_bytes)
             struct.pack_into("<I", invalid_shape, offset, value)
             path = directory / f"{label}.ktx2"
             path.write_bytes(invalid_shape)
             invalid_shapes.append((label, path))
+        if any(encoded_image_dimensions(fixture) != (4, 4) for fixture in (
+                make_ktx2(key_values=(("testkey", b"rd"),)),
+                make_ktx2(scheme=1, key_values=(("testkey", b"rd"),),
+                    global_data=b"basis-global"),
+                make_ktx2(levels=(b"BASE", b"MIP!")))):
+            print("image bundle self-test failed: a valid KTX2 metadata or mip layout was rejected",
+                file=sys.stderr)
+            return 1
+
+        def invalid_structure(label: str, fixture: bytes, offset: int,
+                value: int, width: int = 4) -> tuple[str, Path]:
+            malformed = bytearray(fixture)
+            format_code = {2: "<H", 4: "<I", 8: "<Q"}[width]
+            struct.pack_into(format_code, malformed, offset, value)
+            path = directory / f"structure-{label}.ktx2"
+            path.write_bytes(malformed)
+            return label, path
+
+        metadata_fixture = make_ktx2(key_values=(("testkey", b"rd"),))
+        basis_lz_fixture = make_ktx2(scheme=1, key_values=(("testkey", b"rd"),),
+            global_data=b"basis-global")
+        two_level_fixture = make_ktx2(levels=(b"BASE", b"MIP!"))
+        invalid_structures = [
+            invalid_structure("dfd-before-index", ktx2_bytes, 48, 100),
+            invalid_structure("dfd-overflow", ktx2_bytes, 48, 0xFFFFFFFF),
+            invalid_structure("dfd-empty", ktx2_bytes, 52, 0),
+            invalid_structure("dfd-total-size", ktx2_bytes, 104, 43),
+            invalid_structure("dfd-block-size", ktx2_bytes, 114, 39, 2),
+            invalid_structure("type-size", ktx2_bytes, 16, 2),
+            invalid_structure("kvd-offset-without-length", ktx2_bytes, 56, 148),
+            invalid_structure("kvd-out-of-range", metadata_fixture, 60, 0xFFFFFFFF),
+            invalid_structure("kvd-entry-overflow", metadata_fixture, 148, 0xFFFFFFFF),
+            invalid_structure("sgd-length-without-offset", ktx2_bytes, 72, 8, 8),
+            invalid_structure("sgd-out-of-range", basis_lz_fixture, 64, 0xFFFFFFFF, 8),
+            invalid_structure("sgd-misaligned", basis_lz_fixture, 64, 169, 8),
+            invalid_structure("level-overlaps-dfd", ktx2_bytes, 80, 104, 8),
+            invalid_structure("level-index-overflow", ktx2_bytes, 80, 0xFFFFFFFFFFFFFFFF, 8),
+            invalid_structure("level-payload-overflow", ktx2_bytes, 88, 0xFFFFFFFFFFFFFFFF, 8),
+            invalid_structure("uncompressed-size", ktx2_bytes, 96, 3, 8),
+            invalid_structure("overlapping-mips", two_level_fixture, 104, 172, 8),
+        ]
         bundles = []
         for label in ("first", "second"):
             bundle = directory / f"{label}.elpk"
@@ -73,6 +112,8 @@ def self_test() -> int:
                 "--texture", f"basis={path}"]) for label, path in invalid_basis_headers),
             *((f"KTX2 {label} shape", ["--output", str(directory / f"{label}.elpk"),
                 "--texture", f"basis={path}"]) for label, path in invalid_shapes),
+            *((f"KTX2 structure {label}", ["--output", str(directory / f"structure-{label}.elpk"),
+                "--texture", f"basis={path}"]) for label, path in invalid_structures),
             ("escaping dependency", ["--output", str(directory / "escape.elpk"),
                 "--texture", f"albedo={image}", "--dependency", "../shared.elpk"]),
             ("missing image", ["--output", str(directory / "missing.elpk"),

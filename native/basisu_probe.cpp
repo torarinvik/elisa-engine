@@ -1,6 +1,7 @@
 // CPU reference validation for cooked Basis KTX2 textures; runtime format
 // selection and GPU upload are exercised by the Wicked native probe.
 #include "probe_core.h"
+#include "ktx2_format_policy.h"
 
 #include "basisu_transcoder.h"
 
@@ -52,6 +53,24 @@ static bool check_malformed_ktx2_rejected(const std::vector<uint8_t>& valid) {
     return true;
 }
 
+static bool check_ktx2_upload_shapes() {
+    using elisa::rendering::textures::ktx2_upload_shape_supported;
+    return probe::check(ktx2_upload_shape_supported(0, 1, 64, 32),
+            "KTX2 upload accepts a plain 2D texture") &&
+        probe::check(ktx2_upload_shape_supported(0, 6, 64, 64),
+            "KTX2 upload accepts a square cubemap") &&
+        probe::check(!ktx2_upload_shape_supported(1, 1, 64, 32),
+            "KTX2 upload rejects a one-layer array it cannot preserve") &&
+        probe::check(!ktx2_upload_shape_supported(2, 1, 64, 32),
+            "KTX2 upload rejects texture arrays") &&
+        probe::check(!ktx2_upload_shape_supported(0, 6, 64, 32),
+            "KTX2 upload rejects nonsquare cubemaps") &&
+        probe::check(!ktx2_upload_shape_supported(0, 2, 64, 32),
+            "KTX2 upload rejects unsupported face counts") &&
+        probe::check(!ktx2_upload_shape_supported(0, 1, 0, 32),
+            "KTX2 upload rejects empty dimensions");
+}
+
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 5) {
         std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2]]]\n");
@@ -64,6 +83,7 @@ int main(int argc, char** argv) {
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
 
     basist::basisu_transcoder_init();
+    if (!check_ktx2_upload_shapes()) return 1;
     if (!check_malformed_ktx2_rejected(bytes)) return 1;
     basist::ktx2_transcoder transcoder;
     if (!probe::check(transcoder.init(bytes.data(), (uint32_t)bytes.size()), "KTX2 container parses")) {

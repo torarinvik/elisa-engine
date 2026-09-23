@@ -132,9 +132,8 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     const uint32_t layers = transcoder.get_layers();
     const uint32_t faces = transcoder.get_faces();
     const bool is_cubemap = faces == 6;
-    if (!ktx2_upload_check(layers <= 1 && (faces == 1 || is_cubemap),
+    if (!ktx2_upload_check(ktx2_upload_shape_supported(layers, faces, width, height),
         "KTX2 upload is a 2D texture or cubemap")) return resource;
-    if (!ktx2_upload_check(!is_cubemap || width == height, "KTX2 cubemap faces are square")) return resource;
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (!ktx2_upload_check(device != nullptr, "KTX2 upload has a graphics device")) return resource;
     const bool srgb = usage == KTX2TextureUsage::Color && transcoder.is_srgb();

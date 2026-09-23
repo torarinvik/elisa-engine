@@ -27,6 +27,7 @@ import sys
 
 import cook_gltf_geometry
 import cook_gltf_textures
+from ktx2_fixtures import make_ktx2
 from elisa_package import build_package_bytes
 from png_image import encode_png
 
@@ -88,12 +89,7 @@ def padded(data: bytes) -> bytes:
 
 def basis_ktx2(width: int = 4, height: int = 4) -> bytes:
     """Small bounded KTX2 container shape for cooker-boundary tests."""
-    data = bytearray(108)
-    data[:12] = cook_gltf_textures.KTX2_IDENTIFIER
-    struct.pack_into("<6I", data, 20, width, height, 0, 0, 1, 1)
-    struct.pack_into("<QQQ", data, 80, 104, 4, width * height * 4)
-    data[104:] = b"KTX!"
-    return bytes(data)
+    return make_ktx2(width, height)
 
 
 def basis_texture(document: dict) -> None:
