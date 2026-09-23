@@ -120,7 +120,8 @@ inline bool package_path(const std::filesystem::path& root, const std::filesyste
 
 } // namespace lod_chain_detail
 
-inline bool load_lod_geometry_chain(const std::string& manifest_asset_path, LodGeometryChain& chain) {
+inline bool load_lod_geometry_chain(const std::string& manifest_asset_path, LodGeometryChain& chain,
+        probe::BinaryPackageReadCancellationCheck cancellation_check = {}) {
     chain = {};
     std::filesystem::path manifest_path;
     if (!resolve_project_asset_path(manifest_asset_path.c_str(), manifest_path)) {
@@ -149,12 +150,14 @@ inline bool load_lod_geometry_chain(const std::string& manifest_asset_path, LodG
             return false;
         }
         std::string digest;
-        if (!sha256_file(package_path, level.byte_size, digest, chain.error) || digest != level.sha256) {
+        if (!sha256_file(package_path, level.byte_size, digest, chain.error, cancellation_check) ||
+            digest != level.sha256) {
             if (chain.error.empty()) chain.error = "LOD package SHA-256 mismatch";
             return false;
         }
         if (!verify_bundle_dependencies(package_path, chain.error) ||
-            !load_cooked_geometry_asset(package_path.string(), chain.geometry[index], chain.error)) return false;
+            !load_cooked_geometry_asset(package_path.string(), chain.geometry[index], chain.error,
+                cancellation_check)) return false;
         const CookedGeometry& geometry = chain.geometry[index];
         if (!lod_chain_detail::static_geometry(geometry) || geometry.indices.size() / 3 != level.triangles ||
             geometry.positions.size() / 3 != level.vertices ||

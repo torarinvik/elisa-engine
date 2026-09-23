@@ -1,5 +1,5 @@
 #include "fbx_asset_import.h"
-#include "mesh_tangent_frames.h"
+#include "mikktspace_geometry.h"
 #include "meshoptimizer.h"
 
 #include <algorithm>
@@ -323,11 +323,35 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     }
     if (!simplify_geometry(mesh, max_triangles)) return false;
     if (!optimize_vertex_cache(mesh)) return false;
-    if (!elisa::assets::generate_tangent_frames(mesh.positions, mesh.normals, mesh.uvs,
-        mesh.indices, mesh.tangents)) {
+    elisa::assets::MikkGeometry tangent_geometry;
+    if (!elisa::assets::generate_mikktspace_geometry(mesh.positions, mesh.normals, mesh.uvs,
+        mesh.indices, tangent_geometry)) {
         std::fprintf(stderr, "FBX tangent-frame generation failed for the cooked mesh\n");
         return false;
     }
+    std::vector<uint32_t> split_skin_indices;
+    std::vector<float> split_skin_weights;
+    if (!mesh.skin_indices.empty()) {
+        split_skin_indices.reserve(tangent_geometry.source_vertices.size() * 4);
+        split_skin_weights.reserve(tangent_geometry.source_vertices.size() * 4);
+        for (uint32_t source : tangent_geometry.source_vertices) {
+            if (source >= mesh.skin_indices.size() / 4 || source >= mesh.skin_weights.size() / 4) {
+                std::fprintf(stderr, "MikkTSpace seam split returned an invalid skin source vertex\n");
+                return false;
+            }
+            split_skin_indices.insert(split_skin_indices.end(), mesh.skin_indices.begin() + size_t(source) * 4,
+                mesh.skin_indices.begin() + size_t(source) * 4 + 4);
+            split_skin_weights.insert(split_skin_weights.end(), mesh.skin_weights.begin() + size_t(source) * 4,
+                mesh.skin_weights.begin() + size_t(source) * 4 + 4);
+        }
+        mesh.skin_indices.swap(split_skin_indices);
+        mesh.skin_weights.swap(split_skin_weights);
+    }
+    mesh.positions.swap(tangent_geometry.positions);
+    mesh.normals.swap(tangent_geometry.normals);
+    mesh.uvs.swap(tangent_geometry.uvs);
+    mesh.tangents.swap(tangent_geometry.tangents);
+    mesh.indices.swap(tangent_geometry.indices);
     if (!optimize_vertex_fetch(mesh)) return false;
     for (uint32_t index : mesh.indices) {
         if (index >= mesh.positions.size() / 3) {

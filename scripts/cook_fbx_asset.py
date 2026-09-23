@@ -257,10 +257,15 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
 def build_cooker(build_dir: Path) -> Path:
     dependency = ROOT / "dependencies/ufbx"
     meshoptimizer = ROOT / "dependencies/meshoptimizer"
+    mikktspace = ROOT / "dependencies/mikktspace"
     source = dependency / "ufbx.c"
     header = dependency / "ufbx.h"
     if not source.is_file() or not header.is_file():
         raise ValueError("missing pinned ufbx files; run python3 scripts/fetch_dependencies.py")
+    mikktspace_source = mikktspace / "mikktspace.c"
+    mikktspace_header = mikktspace / "mikktspace.h"
+    if not mikktspace_source.is_file() or not mikktspace_header.is_file():
+        raise ValueError("missing pinned MikkTSpace files; run python3 scripts/fetch_dependencies.py")
     simplifier = meshoptimizer / "simplifier.cpp"
     vcache = meshoptimizer / "vcacheoptimizer.cpp"
     analyzer = meshoptimizer / "indexanalyzer.cpp"
@@ -271,12 +276,17 @@ def build_cooker(build_dir: Path) -> Path:
     cc = os.environ.get("CC", "cc")
     cxx = os.environ.get("CXX", "c++")
     object_file = build_dir / "ufbx.o"
+    mikktspace_object_file = build_dir / "mikktspace.o"
     executable = build_dir / "fbx-asset-cooker"
     run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(object_file)])
-    run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer), "-I", str(ROOT / "native"),
+    run([cc, "-std=c99", "-O2", "-I", str(mikktspace), "-c", str(mikktspace_source),
+        "-o", str(mikktspace_object_file)])
+    run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer),
+        "-I", str(mikktspace), "-I", str(ROOT / "native"),
         str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(vcache), str(analyzer),
         str(vfetch), str(indexgenerator),
-        str(meshoptimizer / "allocator.cpp"), str(object_file), "-o", str(executable)])
+        str(meshoptimizer / "allocator.cpp"), str(object_file), str(mikktspace_object_file),
+        "-o", str(executable)])
     return executable
 
 
@@ -377,6 +387,10 @@ def main(arguments: list[str]) -> int:
             directory = Path(temporary)
             cooker = build_cooker(directory)
             if options.self_test:
+                tangent_test = subprocess.run([sys.executable,
+                    str(ROOT / "scripts/test_mikktspace.py")], check=False)
+                if tangent_test.returncode != 0:
+                    return tangent_test.returncode
                 source = ROOT / "test/fixtures/fbx_triangle.fbx"
                 output = directory / "triangle.pkg"
                 fields = cook_one(cooker, source, "test/fixtures/fbx_triangle.fbx", output)

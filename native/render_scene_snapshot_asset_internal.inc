@@ -102,6 +102,12 @@ void touch_snapshot_mesh_asset(RenderSceneService& state, size_t slot) {
     }
 }
 
+bool snapshot_mesh_path_is_lod_manifest(const std::string& path) {
+    constexpr char SUFFIX[] = ".lod.json";
+    return path.size() >= sizeof(SUFFIX) - 1 &&
+        path.compare(path.size() - (sizeof(SUFFIX) - 1), sizeof(SUFFIX) - 1, SUFFIX) == 0;
+}
+
 bool snapshot_texture_asset_in_use(const RenderSceneService& state, size_t slot) {
     if (slot >= MAX_SNAPSHOT_TEXTURE_ASSETS || !state.snapshot_texture_assets[slot].live) return false;
     const SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[slot];
@@ -273,6 +279,32 @@ int32_t install_snapshot_mesh_asset(RenderSceneService& state, uint64_t high, ui
     return ELISA_RENDER_SCENE_OK;
 }
 
+int32_t install_snapshot_lod_chain(RenderSceneService& state, uint64_t high, uint64_t low,
+        std::string requested_path, std::filesystem::path canonical_path,
+        elisa::assets::LodGeometryChain chain) {
+    if (!chain.valid || chain.level_count < 2 || chain.level_count > elisa::assets::MAX_LOD_LEVELS) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    size_t free_slot = MAX_SNAPSHOT_MESH_ASSETS;
+    if (!make_snapshot_mesh_capacity(state, chain.resident_bytes, free_slot)) return ELISA_RENDER_SCENE_CAPACITY;
+    SnapshotMeshAssetSlot& asset = state.snapshot_mesh_assets[free_slot];
+    asset.high = high;
+    asset.low = low;
+    asset.requested_path = std::move(requested_path);
+    asset.canonical_path = std::move(canonical_path);
+    asset.geometry = std::move(chain.geometry[0]);
+    for (size_t index = 1; index < chain.level_count; ++index) {
+        asset.additional_lod_geometry[index - 1] = std::move(chain.geometry[index]);
+    }
+    asset.lod_manifest = std::move(chain.manifest);
+    asset.lod_level_count = chain.level_count;
+    asset.bytes = chain.resident_bytes;
+    asset.last_used = next_snapshot_mesh_use_stamp(state);
+    asset.live = true;
+    state.snapshot_geometry_bytes += asset.bytes;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 int32_t install_snapshot_bundle_texture_asset(RenderSceneService& state, uint64_t high, uint64_t low,
         std::string requested_path, std::filesystem::path canonical_path, std::string section,
         elisa::assets::BundleTexture texture, elisa::rendering::textures::DecodedImage decoded,
@@ -387,12 +419,21 @@ SnapshotAssetLoad load_snapshot_asset(elisa::assets::SerialJobWorker<SnapshotAss
         if (!worker.checkpoint()) return load;
         auto cancellation_check = elisa::assets::package_read_checkpoint(worker);
         if (kind == SnapshotAssetKind::Mesh) {
-            if (!elisa::assets::load_cooked_geometry_asset(
-                    load.canonical_path.string(), load.geometry, load.error,
-                    cancellation_check)) return load;
-            if (!cooked_geometry_bytes(load.geometry, load.bytes) || load.bytes == 0) {
-                load.status = ELISA_RENDER_SCENE_CAPACITY;
-                return load;
+            if (snapshot_mesh_path_is_lod_manifest(path)) {
+                if (!elisa::assets::load_lod_geometry_chain(path, load.lod_chain, cancellation_check)) {
+                    load.error = load.lod_chain.error;
+                    return load;
+                }
+                load.bytes = load.lod_chain.resident_bytes;
+                load.has_lod_chain = true;
+            } else {
+                if (!elisa::assets::load_cooked_geometry_asset(
+                        load.canonical_path.string(), load.geometry, load.error,
+                        cancellation_check)) return load;
+                if (!cooked_geometry_bytes(load.geometry, load.bytes) || load.bytes == 0) {
+                    load.status = ELISA_RENDER_SCENE_CAPACITY;
+                    return load;
+                }
             }
         } else {
             if (!elisa::assets::read_bundle_texture(load.canonical_path, section.c_str(),
@@ -419,6 +460,10 @@ int32_t adopt_snapshot_asset(RenderSceneService& state, const SnapshotAssetReque
         SnapshotAssetLoad& load) {
     if (load.status != ELISA_RENDER_SCENE_OK) return load.status;
     if (request.kind == SnapshotAssetKind::Mesh) {
+        if (load.has_lod_chain) {
+            return install_snapshot_lod_chain(state, request.high, request.low, request.path,
+                std::move(load.canonical_path), std::move(load.lod_chain));
+        }
         return install_snapshot_mesh_asset(state, request.high, request.low, request.path,
             std::move(load.canonical_path), std::move(load.geometry), load.bytes);
     }

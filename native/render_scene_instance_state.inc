@@ -9,6 +9,7 @@ struct InstanceSlot {
     uint64_t material_high = 0;
     uint64_t material_low = 0;
     size_t shared_mesh_slot = NO_SHARED_MESH;
+    size_t snapshot_lod_level = 0;
     std::vector<size_t> snapshot_additional_shared_mesh_slots;
     // Set on a clone: the instance whose mesh and material it draws.
     wi::ecs::Entity shared_source = wi::ecs::INVALID_ENTITY;

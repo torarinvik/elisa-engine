@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
-import shutil
 import shlex
+import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -17,6 +19,8 @@ import bundle_texture_fixtures
 import cook_assets
 import cook_gltf_asset
 import cook_gltf_geometry
+import cook_gltf_lod
+from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 import elisa_build_run
 from elisa_package import write_geometry_package
 import gltf_texture_self_test
@@ -71,7 +75,9 @@ def main() -> int:
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
     render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1"
-    if not render_only:
+    if render_only:
+        (build / "cooked").mkdir(parents=True, exist_ok=True)
+    else:
         ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
         if ktx2_status != 0:
             return ktx2_status
@@ -105,6 +111,34 @@ def main() -> int:
             return subset_status
         subset_directory = build / "cooked/subsets"
         subset_directory.mkdir(parents=True, exist_ok=True)
+        lod_source = cook_gltf_lod.write_test_source(subset_directory)
+        lod_document = json.loads(lod_source.read_text(encoding="utf-8"))
+        lod_document["meshes"][0]["primitives"] = lod_document["meshes"][0]["primitives"][:1]
+        lod_document["materials"] = lod_document["materials"][:1]
+        # The retained half-grid primitive does not use every vertex in the shared
+        # POSITION accessor. Supply a valid normal stream so the cooker does not
+        # attempt to generate normals for those now-unused vertices.
+        lod_buffer = lod_document["buffers"][0]
+        encoded_buffer = lod_buffer["uri"].split(",", 1)[1]
+        buffer_data = bytearray(base64.b64decode(encoded_buffer, validate=True))
+        position_count = lod_document["accessors"][0]["count"]
+        normal_bytes = struct.pack("<3f", 0.0, 0.0, 1.0) * position_count
+        normal_offset = (len(buffer_data) + 3) & ~3
+        buffer_data.extend(b"\0" * (normal_offset - len(buffer_data)))
+        buffer_data.extend(normal_bytes)
+        normal_view = len(lod_document["bufferViews"])
+        lod_document["bufferViews"].append({"buffer": 0, "byteOffset": normal_offset,
+            "byteLength": len(normal_bytes)})
+        normal_accessor = len(lod_document["accessors"])
+        lod_document["accessors"].append({"bufferView": normal_view, "componentType": 5126,
+            "count": position_count, "type": "VEC3"})
+        lod_document["meshes"][0]["primitives"][0]["attributes"]["NORMAL"] = normal_accessor
+        lod_buffer["byteLength"] = len(buffer_data)
+        lod_buffer["uri"] = "data:application/octet-stream;base64," + \
+            base64.b64encode(buffer_data).decode("ascii")
+        lod_source.write_text(json.dumps(lod_document, separators=(",", ":")), encoding="utf-8")
+        cook_lod_chain(lod_source, "test/fixtures/runtime_lod.gltf",
+            subset_directory / "runtime_lod.pkg", parse_lod_ratios("0.5,0.25"))
         subset_status = run([
             sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
             str(ROOT / "test/fixtures/multi_material_panel.gltf"),
@@ -241,7 +275,7 @@ def main() -> int:
             texture_link.unlink(missing_ok=True)
             dependency_link.unlink(missing_ok=True)
     if status == 0:
-        if os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1":
+        if render_only:
             print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")

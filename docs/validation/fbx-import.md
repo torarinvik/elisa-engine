@@ -71,10 +71,12 @@ existing `elisa-cooked-v2` geometry package with source identity and hash,
 float32 positions/normals/UVs/tangents, uint32 indices, bounds, and fixed
 strides. It can simplify through pinned meshoptimizer with `--max-triangles
 COUNT`, compacts unreferenced vertices, and validates lengths, finite values,
-indices, and the runtime reader's 64 MiB package/16 MiB section limits. Tangents
-are generated from the final simplified geometry and checked for unit length,
-normal orthogonality, and handedness. The native reader accepts older cooked
-packages without the optional tangent stream and validates it when present.
+indices, and the runtime reader's 64 MiB package/16 MiB section limits. The
+cooker generates tangents from final simplified geometry with pinned MikkTSpace.
+It duplicates vertices at tangent-frame discontinuities and carries each new
+vertex's source through positions, normals, UVs, and optional skin weights.
+The native reader accepts older cooked packages without the optional tangent
+stream and validates it when present.
 
 Before tangent generation, the cooker also tries meshoptimizer's vertex-cache
 index reorder and compares a 16-entry cache ACMR. It keeps the candidate only
@@ -93,7 +95,10 @@ to 7,815,936 bytes (14.0%) without changing the 97,679-vertex count. The
 analyzer is a cache model, not a GPU timing measurement; package validation
 also checked the remapped skin rows for in-range joints and normalized weights.
 
-`python3 scripts/cook_fbx_asset.py --self-test` passed with a generated
+`python3 scripts/cook_fbx_asset.py --self-test` passed the sanitized mirrored-UV
+MikkTSpace fixture (4 input vertices become 6 while preserving opposite
+handedness across the seam), zero-normal recovery, and deterministic output.
+It then passed with a generated
 512-triangle planar grid simplified to 128 triangles and 97 vertices at 0.00003
 relative error; tangent frames passed unit-length and orthogonality checks, and
 repeated output was byte-identical. The same fixture measures cache ACMR on the

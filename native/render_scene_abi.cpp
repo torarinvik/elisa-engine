@@ -22,6 +22,8 @@
 #include "picking_bridge.h"
 #include "selection_outline_bridge.h"
 #include "render_scene_textures.h"
+#include "lod_geometry_chain.h"
+#include "lod_selection.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
 #include <DirectXMath.h>
@@ -148,6 +150,7 @@ struct RenderSceneService {
     bool initialized = false;
     bool shutdown_hook_registered = false;
 };
+void update_snapshot_lod_selection(RenderSceneService& state);
 #include "render_scene_path.inc"
 RenderSceneService& service() {
     // NativeApplication owns a static host and runs registered hooks while

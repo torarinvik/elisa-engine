@@ -1,6 +1,8 @@
 # Visibility policies are part of the core RenderScene API. Instance handles
 # stay opaque while visibility and occlusion settings remain reusable by every
 # Elisa project.
+# On cooked static LOD chains, lod_bias scales the target pixel error by 2^bias;
+# zero keeps the default one-pixel target.
 include "./render_scene.elisa"
 
 module RenderSceneVisibility:
