@@ -115,6 +115,23 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
         (hierarchy_match ? ANIMATION_HIERARCHY_MATCH : 0);
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_animation_joint_y(
+    int64_t handle, uint32_t joint_index, float expected_y) {
+    if (!std::isfinite(expected_y)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const InstanceSlot& instance = state.instances[slot];
+    if (instance.animation_clips.size() != 2 || instance.joint_entities.size() != 4 ||
+        joint_index >= instance.joint_entities.size() ||
+        instance.animation_clips[0].name != "lift" || instance.animation_clips[1].name != "drop") return 0;
+    const wi::scene::TransformComponent* joint =
+        state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
+    return joint != nullptr && std::abs(joint->translation_local.y - expected_y) < 2.0e-3f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_skin_mesh_relative_root(
     int64_t handle, float expected_world_z) {
     if (!std::isfinite(expected_world_z)) return 0;
