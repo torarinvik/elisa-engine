@@ -104,11 +104,6 @@ def main() -> int:
             return maze_status
         normal_map = build / "cooked/render-scene-normal.png"
         shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
-        # The material-subset test draws the three-strip glTF panel and a skinned
-        # strip split across two material slots.
-        subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py")])
-        if subset_status != 0:
-            return subset_status
         subset_directory = build / "cooked/subsets"
         subset_directory.mkdir(parents=True, exist_ok=True)
         fbx_material_source = subset_directory / "two-material-mesh.fbx"
@@ -134,6 +129,12 @@ def main() -> int:
             "--asset-path", "test/fixtures/two-mesh-scene.fbx",
             "--output", str(subset_directory / "fbx-all-meshes.pkg"), "--all-meshes",
         ])
+        if subset_status != 0:
+            return subset_status
+        # Check the FBX all-mesh package through the same sanitized production
+        # loader used for the glTF placement and subset fixtures.
+        subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py"),
+            "--extra-package", str(subset_directory / "fbx-all-meshes.pkg")])
         if subset_status != 0:
             return subset_status
         subset_status = run([

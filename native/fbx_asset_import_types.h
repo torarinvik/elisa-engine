@@ -63,6 +63,20 @@ struct FbxMaterialData {
     std::array<std::string, 2> surface_texture_sources{};
 };
 
+struct FbxMeshPlacementData {
+    uint32_t mesh = 0;
+    uint32_t node = 0;
+    uint32_t vertex_start = 0;
+    uint32_t vertex_count = 0;
+    uint32_t index_start = 0;
+    uint32_t index_count = 0;
+    uint32_t subset_start = 0;
+    uint32_t subset_count = 0;
+    // Row-major affine 3x4 source geometry-to-world transform. FBX positions
+    // are baked into the cooked stream; this record preserves source identity.
+    std::array<float, 12> transform{};
+};
+
 struct FbxMeshData {
     std::string node_name;
     std::string mesh_name;
@@ -73,6 +87,7 @@ struct FbxMeshData {
     std::vector<float> tangents;
     std::vector<uint32_t> indices;
     std::vector<FbxMeshSubset> subsets;
+    std::vector<FbxMeshPlacementData> mesh_placements;
     std::vector<FbxMaterialData> materials;
     uint32_t material_slots = 1;
     std::vector<std::string> skin_bone_names;

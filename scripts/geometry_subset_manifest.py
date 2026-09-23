@@ -21,6 +21,10 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     inverse_bind_values = None
     uv1_values = None
     slot_names = None
+    mesh_placements = None
+    if len(records) >= 2 and records[-2] == "mesh_placements":
+        mesh_placements = records[-1]
+        records = records[:-2]
     if len(records) >= 2 and records[-2] == "slot_names":
         slot_names = records[-1]
         records = records[:-2]
@@ -66,4 +70,9 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         fields += ["inverse_binds"] + [float32_text(value) for value in inverse_bind_values]
     if uv1_values is not None:
         fields += ["uv1"] + [str(value) for value in uv1_values]
+    if mesh_placements is not None:
+        fields += ["mesh_placements", str(len(mesh_placements))]
+        for placement in mesh_placements:
+            fields += [str(value) for value in placement[:8]]
+            fields += [float32_text(value) for value in placement[8:]]
     return "\t".join(fields)

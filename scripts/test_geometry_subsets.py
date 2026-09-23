@@ -17,6 +17,7 @@ AddressSanitizer and UndefinedBehaviorSanitizer.
 from __future__ import annotations
 
 import base64
+import argparse
 import json
 import os
 from pathlib import Path
@@ -538,6 +539,10 @@ def cases(directory: Path) -> list[tuple]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--extra-package", type=Path,
+        help="also load and compare placement records from a cooked .pkg")
+    options = parser.parse_args()
     compiler = os.environ.get("CXX", "c++")
     if shutil.which(compiler) is None:
         print(f"C++ compiler is unavailable: {compiler}", file=sys.stderr)
@@ -545,7 +550,21 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="elisa-geometry-subsets-") as temporary:
         directory = Path(temporary)
         manifest = []
-        for verdict, name, package, expectation in cases(directory):
+        test_cases = cases(directory)
+        if options.extra_package is not None:
+            package_bytes = options.extra_package.read_bytes()
+            package_fields = dict(line.split("=", 1)
+                for line in package_bytes.decode("ascii").splitlines() if "=" in line)
+            subset_records = list(struct.iter_unpack("<3I",
+                base64.b64decode(package_fields["subsets_b64"], validate=True)))
+            placement_records = list(struct.iter_unpack("<8I12f",
+                base64.b64decode(package_fields["mesh_placements_b64"], validate=True)))
+            package_name = "extra-placement-package.pkg"
+            (directory / package_name).write_bytes(package_bytes)
+            test_cases.append(("accept", package_name, None,
+                (int(package_fields["indices"]), int(package_fields["material_slots"]),
+                    subset_records, "mesh_placements", placement_records)))
+        for verdict, name, package, expectation in test_cases:
             if package is not None:
                 (directory / name).write_bytes(package)
             manifest.append(manifest_line(directory, verdict, name, expectation))

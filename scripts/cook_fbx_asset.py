@@ -692,6 +692,8 @@ def main(arguments: list[str]) -> int:
                 combined_subsets = base64.b64decode(combined_mesh_fields["subsets_b64"], validate=True)
                 combined_indices = struct.unpack("<9I",
                     base64.b64decode(combined_mesh_fields["indices_b64"], validate=True))
+                combined_placements = list(struct.iter_unpack("<8I12f",
+                    base64.b64decode(combined_mesh_fields.get("mesh_placements_b64", ""), validate=True)))
                 if (int(combined_mesh_fields["triangles"]) != 3 or
                         int(combined_mesh_fields["positions"]) != 7 or
                         combined_mesh_fields.get("source_mesh_count") != "2" or
@@ -699,8 +701,17 @@ def main(arguments: list[str]) -> int:
                         combined_mesh_fields.get("subset_count") != "2" or
                         struct.unpack("<6I", combined_subsets) != (0, 3, 0, 3, 6, 1) or
                         not all(index < 3 for index in combined_indices[:3]) or
-                        not all(3 <= index < 7 for index in combined_indices[3:])):
-                    raise ValueError("FBX all-mesh cooking did not combine source geometry and subset ranges")
+                        not all(3 <= index < 7 for index in combined_indices[3:]) or
+                        combined_mesh_fields.get("mesh_count") != "2" or
+                        combined_mesh_fields.get("mesh_placement_count") != "2" or
+                        combined_mesh_fields.get("mesh_placement_stride") != "80" or
+                        len(combined_placements) != 2 or
+                        combined_placements[0][:8] != (0, combined_placements[0][1], 0, 3, 0, 3, 0, 1) or
+                        combined_placements[1][:8] != (1, combined_placements[1][1], 3, 4, 3, 6, 1, 1) or
+                        combined_placements[0][1] == combined_placements[1][1] or
+                        any(not math.isfinite(value) for placement in combined_placements for value in placement[8:]) or
+                        combined_placements[0][8:] == combined_placements[1][8:]):
+                    raise ValueError("FBX all-mesh cooking did not preserve source placements and ranges")
                 valid_package = all_meshes_package.read_text(encoding="ascii")
                 for invalid_count in (0, MAX_SOURCE_MESH_COUNT + 1):
                     invalid_package = directory / f"invalid-source-mesh-count-{invalid_count}.pkg"
