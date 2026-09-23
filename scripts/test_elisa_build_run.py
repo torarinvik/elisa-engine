@@ -231,6 +231,15 @@ class BuildRunCliTests(unittest.TestCase):
             with mock.patch.object(runner, "run_command", return_value=0) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
             self.assertIn("--ignore-material-textures", run.call_args.args[0])
+            config["asset_cooks"][0]["ignore_material_textures"] = False
+            config["asset_cooks"][0]["all_meshes"] = True
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+            self.assertIn("--all-meshes", run.call_args.args[0])
+            config["asset_cooks"][0]["all_meshes"] = "true"
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), config)
+            config["asset_cooks"][0]["all_meshes"] = False
             config["asset_cooks"][0]["ignore_material_textures"] = "true"
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), config)

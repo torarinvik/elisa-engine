@@ -125,14 +125,24 @@ int mesh_selection_test(const std::filesystem::path& path) {
         "exact mesh-name selection chooses a smaller mesh from a multi-mesh scene");
     const auto selected_node = elisa::assets::import_fbx(path, true, "SelectedNode");
     ok &= check(selected_node.ok && selected_node.primary_mesh.mesh_name == "SelectedQuad" &&
-        selected_node.primary_mesh.indices.size() == 6,
-        "exact node-name selection decodes that node's mesh");
+        selected_node.primary_mesh.indices.size() == 6 && selected_node.primary_mesh.bounds_min[0] >= 0.12f &&
+        selected_node.primary_mesh.bounds_max[0] <= 0.14f,
+        "exact node-name selection bakes that node's world translation");
     const auto missing = elisa::assets::import_fbx(path, true, "MissingMesh");
     ok &= check(!missing.ok && missing.error.find("selector did not match") != std::string::npos,
         "missing exact mesh names fail explicitly");
     const auto oversized = elisa::assets::import_fbx(path, true, std::string(513, 'x'));
     ok &= check(!oversized.ok && oversized.error.find("at most 512 bytes") != std::string::npos,
         "oversized mesh selectors are rejected before scene extraction");
+    const auto combined = elisa::assets::import_fbx(path, true, {}, false, true);
+    ok &= check(combined.ok && combined.meshes == 2 && combined.primary_mesh.source_mesh_count == 2 &&
+        combined.primary_mesh.positions.size() == 21 && combined.primary_mesh.indices.size() == 9 &&
+        combined.primary_mesh.material_slots == 2 && combined.primary_mesh.subsets.size() == 2 &&
+        combined.primary_mesh.bounds_min[0] >= 0.0f && combined.primary_mesh.bounds_max[0] <= 14.0f,
+        "all static scene meshes combine with independent ranges and baked transforms");
+    const auto conflicting = elisa::assets::import_fbx(path, true, "SmallTriangle", false, true);
+    ok &= check(!conflicting.ok && conflicting.error.find("cannot be combined") != std::string::npos,
+        "all-mesh import rejects an exact-name selector");
     return ok ? 0 : 1;
 }
 

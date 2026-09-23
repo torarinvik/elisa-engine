@@ -141,7 +141,7 @@ std::string base64(const std::vector<uint8_t>& bytes) {
 
 bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const std::filesystem::path& output, const std::string& source_sha256, size_t max_triangles,
-    const std::string& selected_mesh_name, bool ignore_material_textures) {
+    const std::string& selected_mesh_name, bool ignore_material_textures, bool all_meshes) {
     if (!safe_asset_key(asset_key)) {
         std::fprintf(stderr, "unsafe asset key; use a project-relative path without `..`\n");
         return false;
@@ -151,7 +151,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         return false;
     }
     elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(
-        source, true, selected_mesh_name, ignore_material_textures);
+        source, true, selected_mesh_name, ignore_material_textures, all_meshes);
     if (!asset.ok) {
         std::fprintf(stderr, "FBX cook failed: %s\n", asset.error.c_str());
         return false;
@@ -340,6 +340,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         << "source_sha256=" << source_sha256 << "\n"
         << "triangles=" << mesh.indices.size() / 3 << "\n"
         << "positions=" << mesh.positions.size() / 3 << "\n"
+        << "source_mesh_count=" << mesh.source_mesh_count << "\n"
         << "indices=" << mesh.indices.size() << "\n"
         << "bounds_min=" << mesh.bounds_min[0] << ',' << mesh.bounds_min[1] << ',' << mesh.bounds_min[2] << "\n"
         << "bounds_max=" << mesh.bounds_max[0] << ',' << mesh.bounds_max[1] << ',' << mesh.bounds_max[2] << "\n"
@@ -432,13 +433,14 @@ int main(int argc, char** argv) {
     if (argc < 9 || std::string(argv[1]) != "--source" ||
         std::string(argv[3]) != "--asset-path" || std::string(argv[5]) != "--output" ||
         std::string(argv[7]) != "--sha256") {
-        std::fprintf(stderr, "usage: fbx_asset_cooker --source FILE --asset-path PROJECT_RELATIVE_PATH --output FILE --sha256 HEX [--max-triangles COUNT] [--mesh-name NAME] [--ignore-material-textures]\n");
+        std::fprintf(stderr, "usage: fbx_asset_cooker --source FILE --asset-path PROJECT_RELATIVE_PATH --output FILE --sha256 HEX [--max-triangles COUNT] [--mesh-name NAME | --all-meshes] [--ignore-material-textures]\n");
         return 2;
     }
     size_t max_triangles = 0;
     std::string selected_mesh_name;
     bool saw_triangle_limit = false;
     bool saw_mesh_name = false;
+    bool all_meshes = false;
     bool ignore_material_textures = false;
     for (int argument = 9; argument < argc;) {
         const std::string option = argv[argument];
@@ -447,8 +449,13 @@ int main(int argc, char** argv) {
             ++argument;
             continue;
         }
+        if (option == "--all-meshes" && !all_meshes) {
+            all_meshes = true;
+            ++argument;
+            continue;
+        }
         if (argument + 1 >= argc) {
-            std::fprintf(stderr, "option requires a value: %s\n", option.c_str());
+            std::fprintf(stderr, "FBX cooker option is missing its value: %s\n", option.c_str());
             return 2;
         }
         if (option == "--max-triangles" && !saw_triangle_limit) {
@@ -474,6 +481,10 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
+    if (all_meshes && saw_mesh_name) {
+        std::fprintf(stderr, "--all-meshes cannot be combined with --mesh-name\n");
+        return 2;
+    }
     return cook(argv[2], argv[4], argv[6], argv[8], max_triangles,
-        selected_mesh_name, ignore_material_textures) ? 0 : 1;
+        selected_mesh_name, ignore_material_textures, all_meshes) ? 0 : 1;
 }

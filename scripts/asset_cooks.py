@@ -164,10 +164,17 @@ def asset_cook_command(project: Path, declaration: object,
         if ignore_material_textures and importer != "fbx":
             raise BuildConfigurationError(
                 f"asset_cooks[{index}].ignore_material_textures requires the fbx importer")
+        all_meshes = declaration.get("all_meshes", False)
+        if not isinstance(all_meshes, bool):
+            raise BuildConfigurationError(f"asset_cooks[{index}].all_meshes must be a boolean")
+        if all_meshes and importer != "fbx":
+            raise BuildConfigurationError(f"asset_cooks[{index}].all_meshes requires the fbx importer")
         command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
             "--output", str(output)]
         if ignore_material_textures:
             command.append("--ignore-material-textures")
+        if all_meshes:
+            command.append("--all-meshes")
         if max_triangles is not None:
             command.extend(["--max-triangles", str(max_triangles)])
         animation_source_value = declaration.get("animation_source")

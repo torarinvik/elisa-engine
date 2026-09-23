@@ -110,6 +110,7 @@ module RenderSceneMaterialSubsetNativeTests:
             SKINNED: i64 = 9406
             FBX_SUBSETS: i64 = 9407
             PROBE: i64 = 9409
+            FBX_SCENE: i64 = 9410
 
         const NATIVE_OK: i32 = 0
         const NATIVE_INVALID: i32 = -1
@@ -396,6 +397,19 @@ module RenderSceneMaterialSubsetNativeTests:
             return 7 if not subset_is(Row::FBX_SUBSETS, 1, 3, 3, Paint::RED)
             return 8 if not retire(handle)
             return 9 if unregister_mesh(Mesh::FBX_PANEL) != Code::OK
+            return 10 if register_mesh(Mesh::FBX_PANEL, "build/cooked/subsets/fbx-all-meshes.pkg") != Code::OK
+            return 11 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
+            all_meshes: i32 = stage(Row::FBX_SCENE, Mesh::FBX_PANEL, set_id(Set::BLUE_CENTER), HIDDEN_Y)
+            if all_meshes != NATIVE_OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 12
+            return 13 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
+            scene_handle: i64 = elisa_render_scene_v1_snapshot_result(0)
+            return 14 if scene_handle <= 0 or elisa_render_scene_v1_test_snapshot_subset_count(Row::FBX_SCENE) != 2
+            return 15 if not subset_is(Row::FBX_SCENE, 0, 0, 3, Paint::BLUE)
+            return 16 if not subset_is(Row::FBX_SCENE, 1, 3, 6, Paint::RED)
+            return 17 if not retire(scene_handle)
+            return 18 if unregister_mesh(Mesh::FBX_PANEL) != Code::OK
             0
 
         # Blended subsets cast no shadow; one opaque subset makes the object

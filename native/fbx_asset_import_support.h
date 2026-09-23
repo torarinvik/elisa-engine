@@ -28,6 +28,7 @@ constexpr uint32_t ANIMATION_SAMPLE_RATE = 30;
 constexpr size_t MAX_ANIMATION_SAMPLE_FLOATS = 2'000'000;
 constexpr size_t MAX_MESH_TRIANGLES = 5'000'000;
 constexpr size_t MAX_EXTRACTED_BYTES = size_t(1024) * 1024 * 1024;
+constexpr size_t MAX_FBX_COMBINED_TRIANGLES = 1000000;
 
 inline void fail(FbxImportResult& result, const std::string& message) {
     result.error = message;
