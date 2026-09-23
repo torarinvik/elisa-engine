@@ -28,6 +28,7 @@ MAX_PACKAGE_BYTES = 64 * 1024 * 1024
 MAX_LINE_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024 * 1024
 MAX_MATERIAL_SLOTS = 16
+MAX_SOURCE_MESH_COUNT = 1024
 
 
 def run(command: list[str]) -> None:
@@ -86,6 +87,12 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
     has_rig_format = fields["format"] == "elisa-cooked-v3"
     if fields["source_sha256"] != expected_hash:
         raise ValueError("cooked package source hash does not match the input FBX")
+    try:
+        source_mesh_count = int(fields.get("source_mesh_count", "1"))
+    except ValueError as failure:
+        raise ValueError("cooked package has an invalid source mesh count") from failure
+    if not 1 <= source_mesh_count <= MAX_SOURCE_MESH_COUNT:
+        raise ValueError("cooked package has an unsupported source mesh count")
     if (fields["position_stride"], fields["normal_stride"], fields["uv_stride"],
             fields["tangent_stride"], fields["index_stride"]) != ("12", "12", "8", "16", "4"):
         raise ValueError("cooked package has unsupported geometry strides")
@@ -580,6 +587,8 @@ def main(arguments: list[str]) -> int:
         parser.error("--self-test cannot be combined with source, --asset-path, --output, or cooker options")
     if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
         parser.error("--max-triangles must be in [1, 1000000]")
+    if options.all_meshes and options.mesh_name is not None:
+        parser.error("--all-meshes cannot be combined with --mesh-name")
     if options.dependency and (options.self_test or options.output.suffix.lower() != ".elpk"):
         parser.error("--dependency requires an .elpk output bundle")
 
@@ -603,9 +612,13 @@ def main(arguments: list[str]) -> int:
                     directory / "largest-mesh.pkg")
                 selected_mesh_fields = cook_one(cooker, multi_mesh_source, "self-test/two-mesh-scene.fbx",
                     directory / "selected-mesh.pkg", mesh_name="SmallTriangle")
+                all_meshes_package = directory / "all-meshes.pkg"
                 combined_mesh_fields = cook_one(cooker, multi_mesh_source, "self-test/two-mesh-scene.fbx",
-                    directory / "all-meshes.pkg", all_meshes=True)
-                if int(multi_mesh_fields["triangles"]) != 2 or int(selected_mesh_fields["triangles"]) != 1:
+                    all_meshes_package, all_meshes=True)
+                if (int(multi_mesh_fields["triangles"]) != 2 or
+                        multi_mesh_fields.get("source_mesh_count") != "1" or
+                        int(selected_mesh_fields["triangles"]) != 1 or
+                        selected_mesh_fields.get("source_mesh_count") != "1"):
                     raise ValueError("exact FBX mesh-name selection did not override largest-mesh selection")
                 combined_subsets = base64.b64decode(combined_mesh_fields["subsets_b64"], validate=True)
                 combined_indices = struct.unpack("<9I",
@@ -619,6 +632,19 @@ def main(arguments: list[str]) -> int:
                         not all(index < 3 for index in combined_indices[:3]) or
                         not all(3 <= index < 7 for index in combined_indices[3:])):
                     raise ValueError("FBX all-mesh cooking did not combine source geometry and subset ranges")
+                valid_package = all_meshes_package.read_text(encoding="ascii")
+                for invalid_count in (0, MAX_SOURCE_MESH_COUNT + 1):
+                    invalid_package = directory / f"invalid-source-mesh-count-{invalid_count}.pkg"
+                    invalid_package.write_text(valid_package.replace(
+                        "source_mesh_count=2", f"source_mesh_count={invalid_count}"), encoding="ascii")
+                    try:
+                        parse_package(invalid_package, "self-test/two-mesh-scene.fbx",
+                            source_hash(multi_mesh_source))
+                    except ValueError as failure:
+                        if "source mesh count" not in str(failure):
+                            raise
+                    else:
+                        raise ValueError("FBX package reader accepted an invalid source-mesh count")
                 material_source = directory / "two-material-mesh.fbx"
                 write_two_material_mesh(material_source)
                 material_fields = cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",

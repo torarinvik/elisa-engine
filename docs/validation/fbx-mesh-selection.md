@@ -16,7 +16,10 @@ largest-triangle-mesh default.
   whose default largest mesh has two triangles; its simplification and
   deterministic-output checks also pass. `--all-meshes` combines the two
   source nodes into one 3-triangle geometry stream with two ordered subset
-  ranges and records the source mesh count.
+  ranges and records the source mesh count. Single-mesh packages report one
+  source, and the package reader rejects zero or more than 1024 sources.
+- The SDL3/Metal RenderScene snapshot smoke registers the combined two-node
+  package in Wicked and checks both source ranges against their material slots.
 
 Use `scripts/cook_fbx_asset.py scene.fbx --asset-path assets/scene.fbx
 --output build/selected.pkg --mesh-name MeshName` to select a mesh by its exact
@@ -27,7 +30,7 @@ Use `scripts/cook_fbx_asset.py scene.fbx --asset-path assets/scene.fbx
 --output build/scene.pkg --all-meshes` to combine every static triangle mesh.
 Each node's geometry-to-world transform is baked into its positions. Material
 slots and subset ranges stay distinct across source meshes, with a package-wide
-limit of 16 slots.
+limit of 16 slots and 1024 source mesh nodes.
 
 ## Boundaries
 

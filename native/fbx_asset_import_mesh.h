@@ -601,6 +601,10 @@ inline bool extract_scene_meshes(ufbx_scene& scene, FbxImportResult& result,
         return false;
     }
     if (all_meshes) {
+        if (source_nodes.size() > MAX_FBX_SOURCE_MESH_COUNT) {
+            fail(result, "--all-meshes exceeds the 1024 source-mesh limit");
+            return false;
+        }
         if (scene.anim_stacks.count != 0) {
             fail(result, "--all-meshes currently requires an FBX scene without animation stacks");
             return false;
@@ -620,9 +624,9 @@ inline bool extract_scene_meshes(ufbx_scene& scene, FbxImportResult& result,
     }
     FbxMeshData combined;
     combined.material_slots = 1;
-    combined.source_mesh_count = 0;
     if (all_meshes) {
         combined.material_slots = 0;
+        combined.source_mesh_count = 0;
         for (ufbx_node* node : source_nodes) {
             FbxMeshData extracted;
             if (!extract_mesh_node(scene, node, extracted, result, ignore_textures) ||

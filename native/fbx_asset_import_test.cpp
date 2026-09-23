@@ -125,7 +125,8 @@ int mesh_selection_test(const std::filesystem::path& path) {
         "exact mesh-name selection chooses a smaller mesh from a multi-mesh scene");
     const auto selected_node = elisa::assets::import_fbx(path, true, "SelectedNode");
     ok &= check(selected_node.ok && selected_node.primary_mesh.mesh_name == "SelectedQuad" &&
-        selected_node.primary_mesh.indices.size() == 6 && selected_node.primary_mesh.bounds_min[0] >= 0.12f &&
+        selected_node.primary_mesh.source_mesh_count == 1 && selected_node.primary_mesh.indices.size() == 6 &&
+        selected_node.primary_mesh.bounds_min[0] >= 0.12f &&
         selected_node.primary_mesh.bounds_max[0] <= 0.14f,
         "exact node-name selection bakes that node's world translation");
     const auto missing = elisa::assets::import_fbx(path, true, "MissingMesh");
