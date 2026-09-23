@@ -146,7 +146,7 @@ inline bool append_skin_rig(const ufbx_scene& scene, const ufbx_skin_deformer& s
             return false;
         }
         if (output.animation_clips.size() >= MAX_ANIMATION_CLIPS) {
-            fail(result, "primary FBX asset exceeds the sixteen-clip runtime limit");
+            fail(result, "primary FBX asset exceeds the runtime animation clip limit");
             return false;
         }
 

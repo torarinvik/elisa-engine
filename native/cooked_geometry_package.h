@@ -24,6 +24,7 @@ namespace elisa::assets {
 
 inline constexpr uint32_t MAX_GEOMETRY_SUBSETS = 16;
 inline constexpr uint32_t MAX_GEOMETRY_MATERIAL_SLOTS = 16;
+inline constexpr uint32_t MAX_GEOMETRY_ANIMATION_CLIPS = 24;
 
 struct CookedGeometry {
     std::vector<float> positions;
@@ -457,7 +458,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         }
 
         uint64_t clip_count = 0;
-        if (!detail::parse_count(package, "animation_clips", clip_count) || clip_count > 16) {
+        if (!detail::parse_count(package, "animation_clips", clip_count) ||
+            clip_count > MAX_GEOMETRY_ANIMATION_CLIPS) {
             error = "invalid cooked geometry animation clip count";
             return false;
         }

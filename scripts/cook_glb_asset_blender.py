@@ -4,7 +4,10 @@ import argparse
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import bpy
+from cook_gltf_animation import MAX_CLIPS
 from mathutils import Matrix, Vector
 
 
@@ -257,8 +260,8 @@ def main():
             raise RuntimeError("animation rig is missing GLB joint names: " + ", ".join(missing))
         actions = [action for action in bpy.data.actions
             if action not in previous_actions and action.frame_range[1] - action.frame_range[0] >= 1.0]
-        if not 1 <= len(actions) <= 16:
-            raise RuntimeError(f"animation FBX must provide 1 to 16 non-static clips; found {len(actions)}")
+        if not 1 <= len(actions) <= MAX_CLIPS:
+            raise RuntimeError(f"animation FBX must provide 1 to {MAX_CLIPS} non-static clips; found {len(actions)}")
         names = [clip_name(action) for action in actions]
         if any(not name for name in names) or len(set(names)) != len(names):
             raise RuntimeError("animation FBX has empty or duplicate clip names")
