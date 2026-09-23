@@ -62,7 +62,8 @@ def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
     return len(document["accessors"]) - 1
 
 
-def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES) -> dict:
+def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES,
+        second_animation: bool = False) -> dict:
     document = cook_assets.read_gltf(SOURCE.read_bytes())
     buffer = bytearray(cook_assets.source_bytes(SOURCE.parent, document))
     primitive_counts = [8, 4, 8]
@@ -101,8 +102,6 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
     document["accessors"][input_accessor].update({"min": [0.0], "max": [1.0]})
     output_accessor = _append(document, buffer, struct.pack("<6f", 0.0, 1.0, 0.0, 0.0, 2.0, 0.0),
         5126, "VEC3", 2)
-    document["buffers"][0]["byteLength"] = len(buffer)
-    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
     document["nodes"][0].update({"skin": 0, "translation": [0.0, 0.0, 0.75]})
     document["nodes"] += [{"name": "root", "translation": [2.0, 0.0, 0.0], "children": [2]},
         {"name": "tip", "translation": [0.0, 1.0, 0.0]}]
@@ -122,14 +121,23 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
     document["animations"] = [{"name": "lift", "samplers": [{"input": input_accessor,
         "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
         "target": {"node": 2, "path": "translation"}}]}]
+    if second_animation:
+        drop_output_accessor = _append(document, buffer,
+            struct.pack("<6f", 0.0, 3.0, 0.0, 0.0, 5.0, 0.0), 5126, "VEC3", 2)
+        document["animations"].append({"name": "drop", "samplers": [{"input": input_accessor,
+            "output": drop_output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
+            "target": {"node": 2, "path": "translation"}}]})
+    document["buffers"][0]["byteLength"] = len(buffer)
+    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
     return document
 
 
 def write_package(output: Path,
-        inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES) -> tuple[Path, dict]:
+        inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES,
+        second_animation: bool = False) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-skin-") as temporary:
         source = Path(temporary) / "multi_material_skinned_panel.gltf"
-        source.write_text(json.dumps(generated_document(inverse_bind_matrices), separators=(",", ":")),
+        source.write_text(json.dumps(generated_document(inverse_bind_matrices, second_animation), separators=(",", ":")),
             encoding="utf-8")
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 

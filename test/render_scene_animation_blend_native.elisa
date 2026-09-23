@@ -8,11 +8,15 @@ include "../src/runtime/render_scene_animation_blend.elisa"
 module RenderSceneAnimationBlendNativeTests:
     private:
         const CLIP: cstr = "lift"
+        const NEXT_CLIP: cstr = "drop"
         const FADE: f32 = 0.4
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_blend_weight(
             handle: i64) -> f32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_joint_y(
+            handle: i64, joint_index: u32, expected_y: f32) -> i32
 
         def near(value: f32, expected: f32) -> bool:
             value > expected - 0.002 and value < expected + 0.002
@@ -27,14 +31,18 @@ module RenderSceneAnimationBlendNativeTests:
                 ok: true
                 error failure: false
 
-        def play(handle: RenderScene::InstanceHandle, blend: f32,
+        def play(handle: RenderScene::InstanceHandle, clip: cstr, blend: f32,
             transition: RenderScene::AnimationTransition) -> bool:
-            catch RenderScene::play_animation_blended(handle, CLIP, true, 1.0, blend, transition):
+            catch RenderScene::play_animation_blended(handle, clip, true, 1.0, blend, transition):
                 ok: true
                 error failure: false
 
         def plain() -> RenderScene::AnimationTransition:
             RenderScene::AnimationTransition{eased: false, phase_matched: false,
+                continue_same_clip: false}
+
+        def phase_matched_linear() -> RenderScene::AnimationTransition:
+            RenderScene::AnimationTransition{eased: false, phase_matched: true,
                 continue_same_clip: false}
 
         def retime(handle: RenderScene::InstanceHandle, speed: f32) -> i32:
@@ -54,24 +62,33 @@ module RenderSceneAnimationBlendNativeTests:
             return 4 if retime(rig, 2.0) != 0 or not near(progress(rig), 0.5)
             return 5 if not advance(rig, 0.2) or not near(progress(rig), 0.9)
             # A re-requested clip keeps running and starts no fade.
-            return 6 if not play(rig, FADE, RenderScene::locomotion_transition()) or not near(progress(rig), 0.9)
+            return 6 if not play(rig, CLIP, FADE, RenderScene::locomotion_transition()) or not near(progress(rig), 0.9)
             return 7 if elisa_render_scene_v1_test_animation_blend_weight(raw_rig) >= 0.0
             0
 
         def fade_checks(rig: RenderScene::InstanceHandle) -> i32:
             raw_rig: i64 = RenderScene::native_smoke_handle(rig)
-            # A phase-matched switch starts the new cycle at the old phase and
-            # fades in with a smoothstep: a quarter of the way in, the new
-            # pose weighs 0.15625 rather than 0.25.
+            # Begin both clips at a known phase, despite the cadence change in
+            # the preceding test.
+            return 8 if not play(rig, CLIP, 0.0, plain()) or not near(progress(rig), 0.0)
+            return 9 if not advance(rig, 0.25)
+            # At phase .35, lift is y=1.35 and drop is y=3.70. A smoothstep
+            # fade at .25 duration weighs the new pose by .15625.
             eased: RenderScene::AnimationTransition = RenderScene::AnimationTransition{
                 eased: true, phase_matched: true, continue_same_clip: false}
-            return 8 if not play(rig, FADE, eased) or not near(progress(rig), 0.9)
-            return 9 if not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.0)
-            return 10 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.15625)
-            return 11 if not advance(rig, 0.3) or elisa_render_scene_v1_test_animation_blend_weight(raw_rig) >= 0.0
-            # The plain switch restarts the cycle and fades linearly.
-            return 12 if not play(rig, FADE, plain()) or not near(progress(rig), 0.0)
-            return 13 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.25)
+            return 10 if not play(rig, NEXT_CLIP, FADE, eased) or not near(progress(rig), 0.25)
+            return 11 if not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.0)
+            return 12 if elisa_render_scene_v1_test_animation_joint_y(raw_rig, 3, 1.25) == 0
+            return 13 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.15625)
+            # The blended local joint translation is 1.35 + (3.70 - 1.35) * 0.15625.
+            return 14 if elisa_render_scene_v1_test_animation_joint_y(raw_rig, 3, 1.7171875) == 0
+            return 15 if not advance(rig, 0.3) or elisa_render_scene_v1_test_animation_blend_weight(raw_rig) >= 0.0
+            # Restart lift and compare a phase-matched linear fade between the
+            # same distinct authored clips; at phase .35 its pose is y=1.9375.
+            return 16 if not play(rig, CLIP, 0.0, plain()) or not near(progress(rig), 0.0)
+            return 17 if not advance(rig, 0.25) or not play(rig, NEXT_CLIP, FADE, phase_matched_linear())
+            return 18 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.25)
+            return 19 if elisa_render_scene_v1_test_animation_joint_y(raw_rig, 3, 1.9375) == 0
             0
 
     public:
@@ -86,10 +103,10 @@ module RenderSceneAnimationBlendNativeTests:
             fade_status: i32 = fade_checks(rig)
             return fade_status if fade_status != 0
             # Out-of-range speeds and unskinned instances are refused.
-            return 14 if retime(rig, -1.0) != 1
-            return 15 if retime(box, 1.0) != 1
+            return 20 if retime(rig, -1.0) != 1
+            return 21 if retime(box, 1.0) != 1
             destroyed: bool = catch RenderScene::destroy(rig):
                 ok: true
                 error failure: false
-            return 16 if not destroyed
+            return 22 if not destroyed
             0
