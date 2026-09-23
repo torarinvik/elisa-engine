@@ -65,6 +65,7 @@ struct FbxMaterialData {
 struct FbxMeshData {
     std::string node_name;
     std::string mesh_name;
+    uint32_t source_mesh_count = 1;
     std::vector<float> positions;
     std::vector<float> normals;
     std::vector<float> uvs;

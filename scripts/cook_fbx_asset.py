@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cook one bounded FBX mesh into Elisa's existing cooked geometry package."""
+"""Cook bounded FBX geometry into Elisa's existing cooked geometry package."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ MAX_PACKAGE_BYTES = 64 * 1024 * 1024
 MAX_LINE_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024 * 1024
 MAX_MATERIAL_SLOTS = 16
+MAX_SOURCE_MESH_COUNT = 1024
 
 
 def run(command: list[str]) -> None:
@@ -86,6 +87,12 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
     has_rig_format = fields["format"] == "elisa-cooked-v3"
     if fields["source_sha256"] != expected_hash:
         raise ValueError("cooked package source hash does not match the input FBX")
+    try:
+        source_mesh_count = int(fields.get("source_mesh_count", "1"))
+    except ValueError as failure:
+        raise ValueError("cooked package has an invalid source mesh count") from failure
+    if not 1 <= source_mesh_count <= MAX_SOURCE_MESH_COUNT:
+        raise ValueError("cooked package has an unsupported source mesh count")
     if (fields["position_stride"], fields["normal_stride"], fields["uv_stride"],
             fields["tangent_stride"], fields["index_stride"]) != ("12", "12", "8", "16", "4"):
         raise ValueError("cooked package has unsupported geometry strides")
@@ -524,7 +531,7 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
 
 def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
     max_triangles: int | None = None, mesh_name: str | None = None,
-    report: list[str] | None = None) -> dict[str, str]:
+    all_meshes: bool = False, report: list[str] | None = None) -> dict[str, str]:
     source = source.expanduser().resolve(strict=True)
     if not source.is_file():
         raise ValueError("FBX source must be a regular file")
@@ -544,6 +551,10 @@ def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
         if not mesh_name or len(mesh_name.encode("utf-8")) > 512 or "\0" in mesh_name or "\n" in mesh_name or "\r" in mesh_name:
             raise ValueError("mesh name must be 1 to 512 UTF-8 bytes without line breaks")
         command.extend(["--mesh-name", mesh_name])
+    if all_meshes:
+        if mesh_name is not None:
+            raise ValueError("all meshes cannot be combined with an exact mesh selector")
+        command.append("--all-meshes")
     output_text = run_capture(command)
     if report is not None:
         report.append(output_text)
@@ -557,6 +568,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--output", type=Path, help="destination .pkg or .elpk path")
     parser.add_argument("--max-triangles", type=int, help="simplify output to no more than this many triangles")
     parser.add_argument("--mesh-name", help="select one FBX node or mesh by its exact name")
+    parser.add_argument("--all-meshes", action="store_true",
+        help="combine all static triangle meshes in the FBX scene into one cooked mesh")
     parser.add_argument("--dependency", action="append", default=[], metavar="BUNDLE",
         help="name a bundle this .elpk needs, relative to the output's directory")
     parser.add_argument("--self-test", action="store_true", help="cook and validate the synthetic triangle fixture")
@@ -564,10 +577,12 @@ def main(arguments: list[str]) -> int:
     if not options.self_test and (options.source is None or options.asset_path is None or options.output is None):
         parser.error("source, --asset-path, and --output are required unless --self-test is used")
     if options.self_test and (options.source is not None or options.asset_path is not None or options.output is not None or
-            options.max_triangles is not None or options.mesh_name is not None):
+            options.max_triangles is not None or options.mesh_name is not None or options.all_meshes):
         parser.error("--self-test cannot be combined with source, --asset-path, --output, or cooker options")
     if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
         parser.error("--max-triangles must be in [1, 1000000]")
+    if options.all_meshes and options.mesh_name is not None:
+        parser.error("--all-meshes cannot be combined with --mesh-name")
     if options.dependency and (options.self_test or options.output.suffix.lower() != ".elpk"):
         parser.error("--dependency requires an .elpk output bundle")
 
@@ -591,8 +606,18 @@ def main(arguments: list[str]) -> int:
                     directory / "largest-mesh.pkg")
                 selected_mesh_fields = cook_one(cooker, multi_mesh_source, "self-test/two-mesh-scene.fbx",
                     directory / "selected-mesh.pkg", mesh_name="SmallTriangle")
+                combined_mesh_fields = cook_one(cooker, multi_mesh_source, "self-test/two-mesh-scene.fbx",
+                    directory / "all-meshes.pkg", all_meshes=True)
                 if int(multi_mesh_fields["triangles"]) != 2 or int(selected_mesh_fields["triangles"]) != 1:
                     raise ValueError("exact FBX mesh-name selection did not override largest-mesh selection")
+                combined_subsets = base64.b64decode(combined_mesh_fields["subsets_b64"], validate=True)
+                if (int(combined_mesh_fields["triangles"]) != 3 or
+                        int(combined_mesh_fields["positions"]) != 7 or
+                        combined_mesh_fields.get("source_mesh_count") != "2" or
+                        combined_mesh_fields.get("material_slots") != "2" or
+                        combined_mesh_fields.get("subset_count") != "2" or
+                        struct.unpack("<6I", combined_subsets) != (0, 3, 0, 3, 6, 1)):
+                    raise ValueError("FBX all-mesh cooking did not combine source geometry and subset ranges")
                 material_source = directory / "two-material-mesh.fbx"
                 write_two_material_mesh(material_source)
                 material_fields = cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
@@ -689,7 +714,7 @@ def main(arguments: list[str]) -> int:
                 package_output = options.output.expanduser().resolve()
                 geometry_output = directory / "geometry.pkg"
                 fields = cook_one(cooker, options.source, options.asset_path, geometry_output,
-                    options.max_triangles, options.mesh_name)
+                    options.max_triangles, options.mesh_name, all_meshes=options.all_meshes)
                 if package_output.suffix.lower() == ".elpk":
                     geometry, images = package_fbx_texture_sources(
                         options.source.expanduser().resolve(strict=True), geometry_output.read_bytes(), fields)

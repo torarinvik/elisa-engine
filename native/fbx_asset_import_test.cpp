@@ -133,6 +133,14 @@ int mesh_selection_test(const std::filesystem::path& path) {
     const auto oversized = elisa::assets::import_fbx(path, true, std::string(513, 'x'));
     ok &= check(!oversized.ok && oversized.error.find("at most 512 bytes") != std::string::npos,
         "oversized mesh selectors are rejected before scene extraction");
+    const auto combined = elisa::assets::import_fbx(path, true, {}, true);
+    ok &= check(combined.ok && combined.meshes == 2 && combined.primary_mesh.source_mesh_count == 2 &&
+        combined.primary_mesh.positions.size() == 21 && combined.primary_mesh.indices.size() == 9 &&
+        combined.primary_mesh.material_slots == 2 && combined.primary_mesh.subsets.size() == 2,
+        "all static scene meshes combine with independent triangle ranges");
+    const auto conflicting = elisa::assets::import_fbx(path, true, "SmallTriangle", true);
+    ok &= check(!conflicting.ok && conflicting.error.find("cannot be combined") != std::string::npos,
+        "all-mesh import rejects an exact-name selector");
     return ok ? 0 : 1;
 }
 

@@ -122,6 +122,15 @@ def main() -> int:
         ])
         if subset_status != 0:
             return subset_status
+        fbx_scene_source = subset_directory / "two-mesh-scene.fbx"
+        fbx_test_fixtures.write_two_mesh_scene(fbx_scene_source)
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"), str(fbx_scene_source),
+            "--asset-path", "test/fixtures/two-mesh-scene.fbx",
+            "--output", str(subset_directory / "fbx-all-meshes.pkg"), "--all-meshes",
+        ])
+        if subset_status != 0:
+            return subset_status
         subset_status = run([
             sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
             str(ROOT / "test/fixtures/multi_material_panel.gltf"),

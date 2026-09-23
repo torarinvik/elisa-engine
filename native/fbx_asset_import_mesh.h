@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <vector>
 
@@ -204,30 +205,12 @@ inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& o
     return true;
 }
 
-inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
-    const std::string& selected_name) {
-    ufbx_node* source_node = nullptr;
-    for (size_t index = 0; index < scene.nodes.count; ++index) {
-        ufbx_node* node = scene.nodes.data[index];
-        if (node == nullptr || node->mesh == nullptr || node->mesh->num_triangles == 0) continue;
-        if (!selected_name.empty()) {
-            if (!fbx_name_equals(node->name, selected_name) &&
-                !fbx_name_equals(node->mesh->name, selected_name)) continue;
-            if (source_node != nullptr) {
-                fail(result, "FBX mesh selector is ambiguous; use an exact unique node or mesh name");
-                return false;
-            }
-            source_node = node;
-        } else if (source_node == nullptr || node->mesh->num_triangles > source_node->mesh->num_triangles) {
-            source_node = node;
-        }
-    }
-    if (source_node == nullptr) {
-        fail(result, selected_name.empty() ? "FBX scene has no triangle mesh node" :
-            "FBX mesh selector did not match a triangle mesh name");
+inline bool extract_mesh_node(ufbx_scene& scene, ufbx_node* source_node,
+    FbxMeshData& output, FbxImportResult& result) {
+    if (source_node == nullptr || source_node->mesh == nullptr) {
+        fail(result, "FBX scene mesh node is missing its geometry");
         return false;
     }
-
     ufbx_mesh& mesh = *source_node->mesh;
     if (!mesh.vertex_position.exists || mesh.num_triangles > MAX_MESH_TRIANGLES || mesh.max_face_triangles == 0 ||
         mesh.max_face_triangles > MAX_MESH_TRIANGLES) {
@@ -244,7 +227,6 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
         return false;
     }
 
-    FbxMeshData output;
     output.node_name.assign(source_node->name.data ? source_node->name.data : "",
         source_node->name.length);
     output.mesh_name.assign(mesh.name.data ? mesh.name.data : "", mesh.name.length);
@@ -527,7 +509,126 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
         }
     }
     output.indices = std::move(indices);
-    result.primary_mesh = std::move(output);
+    return true;
+}
+
+inline bool merge_static_mesh(FbxMeshData& target, FbxMeshData&& source,
+    FbxImportResult& result) {
+    const size_t vertex_base = target.positions.size() / 3;
+    const size_t index_base = target.indices.size();
+    const uint32_t material_base = target.material_slots;
+    if (vertex_base > std::numeric_limits<uint32_t>::max() ||
+        index_base > std::numeric_limits<uint32_t>::max() ||
+        source.material_slots == 0 ||
+        material_base > MAX_FBX_MATERIAL_SLOTS - source.material_slots) {
+        fail(result, "combined FBX mesh exceeds the vertex, index, or 16 material-slot limit");
+        return false;
+    }
+    if (!source.skin_indices.empty() || !source.animation_clips.empty() || !source.skin_joints.empty()) {
+        fail(result, "--all-meshes currently supports static FBX scenes without skinning or animation");
+        return false;
+    }
+
+    if (!target.materials.empty() || !source.materials.empty()) {
+        target.materials.resize(target.material_slots);
+        source.materials.resize(source.material_slots);
+        target.materials.insert(target.materials.end(),
+            std::make_move_iterator(source.materials.begin()),
+            std::make_move_iterator(source.materials.end()));
+    }
+    target.positions.insert(target.positions.end(), source.positions.begin(), source.positions.end());
+    target.normals.insert(target.normals.end(), source.normals.begin(), source.normals.end());
+    target.uvs.insert(target.uvs.end(), source.uvs.begin(), source.uvs.end());
+    target.indices.reserve(target.indices.size() + source.indices.size());
+    for (uint32_t index : source.indices) {
+        if (index >= source.positions.size() / 3 || vertex_base + index > std::numeric_limits<uint32_t>::max()) {
+            fail(result, "combined FBX mesh contains an invalid vertex index");
+            return false;
+        }
+        target.indices.push_back(uint32_t(vertex_base + index));
+    }
+    target.subsets.reserve(target.subsets.size() + source.subsets.size());
+    for (const FbxMeshSubset& subset : source.subsets) {
+        if (subset.index_start > source.indices.size() ||
+            subset.index_count > source.indices.size() - subset.index_start ||
+            index_base + subset.index_start > std::numeric_limits<uint32_t>::max()) {
+            fail(result, "combined FBX mesh has an invalid subset range");
+            return false;
+        }
+        target.subsets.push_back({uint32_t(index_base + subset.index_start), subset.index_count,
+            material_base + subset.material_slot});
+    }
+    for (size_t axis = 0; axis < 3; ++axis) {
+        target.bounds_min[axis] = std::min(target.bounds_min[axis], source.bounds_min[axis]);
+        target.bounds_max[axis] = std::max(target.bounds_max[axis], source.bounds_max[axis]);
+    }
+    target.material_slots += source.material_slots;
+    ++target.source_mesh_count;
+    return true;
+}
+
+inline bool extract_scene_meshes(ufbx_scene& scene, FbxImportResult& result,
+    const std::string& selected_name, bool all_meshes = false) {
+    if (all_meshes && !selected_name.empty()) {
+        fail(result, "--all-meshes cannot be combined with an exact mesh selector");
+        return false;
+    }
+    std::vector<ufbx_node*> source_nodes;
+    ufbx_node* largest_node = nullptr;
+    for (size_t index = 0; index < scene.nodes.count; ++index) {
+        ufbx_node* node = scene.nodes.data[index];
+        if (node == nullptr || node->mesh == nullptr || node->mesh->num_triangles == 0) continue;
+        if (!selected_name.empty() && !fbx_name_equals(node->name, selected_name) &&
+            !fbx_name_equals(node->mesh->name, selected_name)) continue;
+        if (!all_meshes && selected_name.empty()) {
+            if (largest_node == nullptr || node->mesh->num_triangles > largest_node->mesh->num_triangles)
+                largest_node = node;
+        } else {
+            if (!all_meshes && !source_nodes.empty()) {
+                fail(result, "FBX mesh selector is ambiguous; use an exact unique node or mesh name");
+                return false;
+            }
+            source_nodes.push_back(node);
+        }
+    }
+    if (selected_name.empty() && !all_meshes && largest_node != nullptr) source_nodes.push_back(largest_node);
+    if (source_nodes.empty()) {
+        fail(result, selected_name.empty() ? "FBX scene has no triangle mesh node" :
+            "FBX mesh selector did not match a triangle mesh name");
+        return false;
+    }
+    if (all_meshes) {
+        if (scene.anim_stacks.count != 0) {
+            fail(result, "--all-meshes currently requires an FBX scene without animation stacks");
+            return false;
+        }
+        size_t triangle_total = 0;
+        for (ufbx_node* node : source_nodes) {
+            const ufbx_mesh& mesh = *node->mesh;
+            if (mesh.skin_deformers.count != 0 ||
+                mesh.num_triangles > MAX_FBX_COMBINED_TRIANGLES - triangle_total) {
+                fail(result, mesh.skin_deformers.count != 0 ?
+                    "--all-meshes currently supports static FBX scenes without skinning or animation" :
+                    "--all-meshes exceeds the one-million-triangle combined geometry limit");
+                return false;
+            }
+            triangle_total += mesh.num_triangles;
+        }
+    }
+    FbxMeshData combined;
+    combined.material_slots = 1;
+    if (all_meshes) {
+        combined.material_slots = 0;
+        combined.source_mesh_count = 0;
+        for (ufbx_node* node : source_nodes) {
+            FbxMeshData extracted;
+            if (!extract_mesh_node(scene, node, extracted, result) ||
+                !merge_static_mesh(combined, std::move(extracted), result)) return false;
+        }
+    } else if (!extract_mesh_node(scene, source_nodes.front(), combined, result)) {
+        return false;
+    }
+    result.primary_mesh = std::move(combined);
     result.primary_mesh_extracted = true;
     return true;
 }

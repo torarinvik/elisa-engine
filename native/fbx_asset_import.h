@@ -1,6 +1,6 @@
 #pragma once
 
-// Bounded FBX parsing and first-mesh normalization for engine-owned cookers.
+// Bounded FBX parsing and mesh normalization for engine-owned cookers.
 // ufbx is fetched and hash-pinned by scripts/fetch_dependencies.py; no FBX or
 // Wicked types escape the engine's native import boundary.
 #include "fbx_asset_import_mesh.h"
@@ -15,14 +15,20 @@
 namespace elisa::assets {
 
 // Parse one FBX into bounded scene metadata and optionally decode its largest
-// triangle mesh, or select one exact node/mesh name. This keeps helper geometry
-// from unexpectedly becoming the cooked asset and lets callers cook a scene's
-// meshes individually while complete multi-mesh scene packaging is developed.
+// triangle mesh, select one exact node/mesh name, or combine every static
+// triangle mesh into one cooked geometry stream. The default avoids helper
+// geometry unexpectedly becoming the cooked asset; all-mesh mode is explicit
+// until node-preserving scene packages are available.
 // Axis and unit conversion happen in ufbx at the import boundary: output
 // positions use metres in Elisa's right-handed +Y-up frame.
 inline FbxImportResult import_fbx(const std::filesystem::path& path,
-    bool decode_first_mesh = true, const std::string& selected_mesh_name = {}) {
+    bool decode_first_mesh = true, const std::string& selected_mesh_name = {},
+    bool all_meshes = false) {
     FbxImportResult result;
+    if (all_meshes && !selected_mesh_name.empty()) {
+        detail::fail(result, "--all-meshes cannot be combined with an exact mesh selector");
+        return result;
+    }
     if (selected_mesh_name.size() > 512 || selected_mesh_name.find('\0') != std::string::npos ||
         selected_mesh_name.find_first_of("\r\n") != std::string::npos) {
         detail::fail(result, "FBX mesh selector must be at most 512 bytes without line breaks");
@@ -104,7 +110,8 @@ inline FbxImportResult import_fbx(const std::filesystem::path& path,
                 double(clip->time_end) - double(clip->time_begin));
         }
     }
-    if (decode_first_mesh && !detail::extract_primary_mesh(*scene, result, selected_mesh_name)) return result;
+    if (decode_first_mesh &&
+        !detail::extract_scene_meshes(*scene, result, selected_mesh_name, all_meshes)) return result;
     result.ok = true;
     return result;
 }
