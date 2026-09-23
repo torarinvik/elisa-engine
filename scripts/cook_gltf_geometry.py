@@ -136,8 +136,8 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
             if "TANGENT" in attributes and "NORMAL" not in attributes:
                 raise ValueError("a TANGENT attribute needs NORMAL")
             has_joints = "JOINTS_0" in attributes
-            if has_joints != ("WEIGHTS_0" in attributes) or has_joints != (skin is not None):
-                raise ValueError("skinned primitives must consistently provide JOINTS_0 and WEIGHTS_0")
+            if has_joints != ("WEIGHTS_0" in attributes):
+                raise ValueError("primitives must provide JOINTS_0 and WEIGHTS_0 together")
             targets = primitive.get("targets", [])
             if not isinstance(targets, list) or len(targets) > MAX_MORPH_TARGETS:
                 raise ValueError(f"runtime geometry cooker accepts at most {MAX_MORPH_TARGETS} morph targets")
@@ -155,9 +155,16 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
     placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes),
         allow_singular_mesh_transforms=skin is not None)
-    placements = [(mesh, matrix) for mesh, _, matrix in placement_records]
+    for mesh_index, node_index, authored_matrix in placement_records:
+        skinned_placement = "skin" in document["nodes"][node_index]
+        if not skinned_placement and cook_gltf_nodes.determinant(authored_matrix) == 0.0:
+            raise ValueError("static mesh placement transforms must be invertible")
+        for primitive in meshes[mesh_index]["primitives"]:
+            has_joints = "JOINTS_0" in primitive.get("attributes", {})
+            if has_joints != skinned_placement:
+                raise ValueError("skinned placements require joint attributes; static placements must omit them")
     scene = cook_gltf_scene.normalize(document, buffer, placement_records)
-    return placements, slot_count, slot_records, slot_images, skin, morph_count, scene
+    return placement_records, slot_count, slot_records, slot_images, skin, morph_count, scene
 
 
 def float_stream(document: dict, buffer: bytes, reference, type_name: str,
@@ -263,13 +270,9 @@ def generated_normals(positions: bytes, vertex_count: int, indices: list[int]) -
 
 
 def normalized_geometry(document: dict, buffer: bytes):
-    # The scene's nodes bake into world space: each mesh placement's
-    # primitives become index subsets bound to their material slots, and
-    # adjacent subsets on one slot merge. Primitives of one placement that
-    # name the same vertex accessors share one copy of those vertices.
-    # Material factors become slot records, and the images their textures
-    # sample become bundle sections. The bounded skin path keeps joint
-    # influences and parent-ordered rest transforms alongside the mesh.
+    # Node transforms bake into placement streams; material subsets and
+    # textures stay grouped. Identical accessors share data within a placement.
+    # Skin streams retain remapped influences and parent-ordered rig transforms.
     placements, slot_count, slot_records, slot_images, skin, morph_count, scene = validate_static_geometry_source(document, buffer)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
@@ -278,11 +281,12 @@ def normalized_geometry(document: dict, buffer: bytes):
         "index_start": None, "index_count": 0, "subset_start": None, "subset_count": 0}
         for _ in placements]
     vertex_total = index_total = 0
-    for placement, (mesh, authored_matrix) in enumerate(placements):
+    for placement, (mesh, node_index, authored_matrix) in enumerate(placements):
         # glTF explicitly ignores the transform of a node that instances a
         # skinned mesh. Keep its metadata for scene queries, but do not bake it
         # into vertex streams, indices, normals, tangents, or morph deltas.
-        matrix = cook_gltf_nodes.IDENTITY if skin is not None else authored_matrix
+        skinned_placement = skin is not None and "skin" in document["nodes"][node_index]
+        matrix = cook_gltf_nodes.IDENTITY if skinned_placement else authored_matrix
         block_for_position: dict = {}
         for primitive in document["meshes"][mesh]["primitives"]:
             if primitive.get("mode", 4) != 4:
@@ -295,14 +299,29 @@ def normalized_geometry(document: dict, buffer: bytes):
                 raise ValueError("primitives that share positions must share every vertex attribute")
             if key not in sources:
                 sources[key] = read_vertices(document, buffer, attributes, targets)
-                if skin is not None and any(index >= len(skin["joints"]) for index in sources[key]["skin_indices"]):
-                    raise ValueError("skin joint index is outside the declared skin")
             block = (placement, key)
             if block not in blocks:
                 vertex_total += sources[key]["count"]
                 if vertex_total > MAX_VERTICES:
                     raise ValueError("position count is empty or exceeds the runtime bound")
-                blocks[block] = {"source": sources[key], "matrix": matrix, "triangles": []}
+                block_skin_indices = []
+                block_skin_weights = []
+                if skin is not None:
+                    palette = skin["placement_palettes"].get(node_index)
+                    if palette is None:
+                        raise ValueError("skinned mesh placement has no normalized palette")
+                    if palette.get("static_binding", False):
+                        block_skin_indices = [palette["palette_offset"]] * (sources[key]["count"] * 4)
+                        block_skin_weights = [value for _ in range(sources[key]["count"])
+                            for value in (1.0, 0.0, 0.0, 0.0)]
+                    else:
+                        source_indices = sources[key]["skin_indices"]
+                        if any(index >= palette["palette_count"] for index in source_indices):
+                            raise ValueError("skin joint index is outside the declared skin")
+                        block_skin_indices = [index + palette["palette_offset"] for index in source_indices]
+                        block_skin_weights = sources[key]["skin_weights"]
+                blocks[block] = {"source": sources[key], "matrix": matrix, "triangles": [],
+                    "skin_indices": block_skin_indices, "skin_weights": block_skin_weights}
             values = read_indices(document, buffer, primitive, sources[key]["count"])
             index_total += len(values)
             if index_total > MAX_INDICES:
@@ -340,8 +359,8 @@ def normalized_geometry(document: dict, buffer: bytes):
             if target["normals"] is not None:
                 morph_normals[morph_index] += cook_gltf_nodes.transform_normal_deltas(target["normals"], matrix)
         if skin is not None:
-            skin_indices += source["skin_indices"]
-            skin_weights += source["skin_weights"]
+            skin_indices += block["skin_indices"]
+            skin_weights += block["skin_weights"]
 
     indices = bytearray()
     subsets = []

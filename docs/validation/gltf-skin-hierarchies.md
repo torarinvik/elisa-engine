@@ -20,22 +20,30 @@ matrices with shear are rejected rather than approximated.
 
 The generated fixture places the mesh and skeleton on sibling branches under
 a translated common parent, inserts a translated helper above the two-joint
-skeleton, then adjusts inverse binds so the bind pose remains unchanged.
-Cooker assertions check the mesh-relative basis, helper rest data, parent
-ordering, real-joint cluster indices, a matrix-authored rotation, an animated
-identity helper, cancellation of shared transforms, a nested helper below the
-mesh node, and a separately rooted skeleton. The sanitized native loader also
-accepts a 65-node rig with two palette bones.
+skeleton, then adjusts inverse binds so the bind pose remains unchanged. A
+second fixture gives two mesh placements separate two-joint skins. The cooker
+combines their rig branches, offsets each placement's joint palette, and
+duplicates animation tracks onto the matching rig nodes. Assertions check the
+mesh-relative basis, helper rest data, parent ordering, real-joint cluster
+indices, a matrix-authored rotation, an animated identity helper, shared
+transform cancellation, nested and separately rooted skeletons, the combined
+palette remap, and a shear-producing mesh-relative basis rejection. A mixed
+fixture adds a static mesh placement; its vertices use a synthetic identity
+bind bone while skinned vertices retain their authored palette. The sanitized
+native loader also accepts a 65-node rig with two palette bones.
 
 ## Validation
 
 - `/opt/homebrew/bin/python3 scripts/gltf_skin_self_test.py` passed.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 97 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer. The new separately rooted package is among the accepted cases.
-- The SDL3/Metal RenderScene smoke compiled and passed the sibling-branch animation submission probe and the separately rooted mesh upload/world-offset assertion. It later returned test status 134 at the overlay-hide pixel check in `test/render_scene_native_main.elisa`; the same status occurred when the cooked skin fixture was temporarily reverted to the previous two-joint hierarchy. The full native gate is therefore not marked green by this run.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 99 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer. The multi-skin and mixed static/skinned packages are among the accepted cases.
+- The SDL3/Metal RenderScene smoke compiled and passed the sibling-branch animation submission probe, the separately rooted mesh upload/world-offset assertion, and the multi-skin and mixed-placement armature probes. It later returned status 134 at the overlay-hide readback in `test/render_scene_native_main.elisa`, after those probes completed. This is the same later failure seen with the earlier two-joint fixture, so the full native gate remains incomplete.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-Multiple skins in one scene remain unsupported. The separately rooted fixture
-now passes cooking, sanitized package loading, and native mesh upload. A
+Multi-skin scenes combine separate rig branches and palettes, bounded by 64
+total palette bones and 256 rig nodes. Mixed static and skinned placements
+are also supported; static placements receive a synthetic identity bind bone,
+which counts toward the palette limit. Morph-weight animation channels remain
+unsupported. A
 dedicated cooker regression combines a 45-degree mesh rotation with
 nonuniform scale, verifies that its mesh-relative basis contains shear, and
 requires a clear rejection instead of an approximate TRS transform.

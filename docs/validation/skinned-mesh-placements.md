@@ -34,13 +34,19 @@ weight before the snapshot is cleared.
 - On 2026-09-23, the SDL3/Metal RenderScene native smoke passed with animated snapshot placement, rollback, pose submission and cleanup coverage. Its separate maze application and packaged-maze stages were skipped because the preceding run had stalled in Metal teardown after the native gate.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-The importer still accepts one glTF skin. It ignores skinned mesh-node
-transforms, as required by glTF, while retaining authored transforms in
-placement metadata. Transformed and animated non-joint ancestors now survive
-as helper rig nodes, including when the skeleton is in a sibling branch under
-a shared scene parent. A synthetic mesh-relative basis accounts for that
-branch offset; the palette still contains only actual skin joints. Multiple
-skins in one scene remain unsupported.
+The importer ignores skinned mesh-node transforms, as required by glTF, while
+retaining authored transforms in placement metadata. Transformed and animated
+non-joint ancestors now survive as helper rig nodes, including when the
+skeleton is in a sibling branch under a shared scene parent. A synthetic
+mesh-relative basis accounts for that branch offset; the palette still
+contains only actual skin joints. Multi-skin scenes combine bounded rig and
+palette branches per placement. Mixed static and skinned placements are also
+supported in one cooked scene: static placements receive full weight on a
+synthetic identity bind bone, while skinned placements keep their own palette
+indices. That bind bone counts toward the 64-bone palette limit; the combined
+rig is limited to 256 nodes. The sanitized package loader accepts both forms,
+and the SDL3/Metal smoke passed their Wicked armature layout probes before
+reaching its existing overlay-hide readback failure (status 134).
 Static snapshot placement uploads are covered in
 [`snapshot-mesh-placements.md`](snapshot-mesh-placements.md). This change does
 not claim performance measurements. The two-placement animation fixture gives
