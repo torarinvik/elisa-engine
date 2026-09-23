@@ -77,7 +77,8 @@ and game transform.
    from each recorded vertex/index/subset range and attach one draw object per
    placement under the public root instance. Direct imported meshes also keep
    independently addressable placement entities. Skinned and morphed snapshot
-   rows still use the flattened compatibility upload.
+   rows also upload per-placement meshes; their root owns the shared armature
+   and pose submissions update every child placement.
 
 The public scene boundary exposes authored child resources without leaking
 Wicked entities. `RenderScene::imported_scene(handle)` returns bounded mesh,
@@ -272,9 +273,10 @@ sign only changes lighting, and the emissive color still dominates.
   [`skinned-mesh-placements.md`](skinned-mesh-placements.md).
 - **Snapshot placement scope.** Static snapshot rows use one cached Wicked
   mesh per placement and a child draw object under the single public root
-  instance. Position transforms are already baked into vertex ranges, so the
-  child follows the root transform at identity local offset. Skinned and
-  morphed snapshot rows still use the flattened compatibility mesh path; see
+  instance. Animated snapshot rows keep per-instance child meshes with their
+  own sliced skin and morph streams, all driven by the root armature. Position
+  transforms are already baked into vertex ranges, so each child follows the
+  root at identity local offset. See
   [`snapshot-mesh-placements.md`](snapshot-mesh-placements.md).
 - **Bounds.** 256 nodes, 256 meshes, 16 primitives per mesh, 16 material
   slots and 16 subsets after merging. The existing vertex and index bounds

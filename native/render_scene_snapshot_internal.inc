@@ -358,6 +358,8 @@ bool snapshot_tint_color_valid(float red, float green, float blue) {
     return channel(red) && channel(green) && channel(blue);
 }
 
+#include "render_scene_snapshot_draw_internal.inc"
+
 wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageRow& row,
     size_t slot, uint64_t generation, int32_t& failure_status) {
     failure_status = ELISA_RENDER_SCENE_BACKEND_FAILED;
@@ -434,67 +436,8 @@ wi::ecs::Entity create_snapshot_entity(RenderSceneService& state, SnapshotStageR
             }
             return entity;
         }
-        entity = state.scene->Entity_CreateCube(name);
-        if (entity == wi::ecs::INVALID_ENTITY) return entity;
-        if (!elisa::rendering::configure_cooked_mesh(*state.scene, entity, mesh_asset.geometry,
-            row.position[0], row.position[1], row.position[2],
-            row.rotation[0], row.rotation[1], row.rotation[2], row.rotation[3],
-            row.scale[0], row.scale[1], row.scale[2],
-            material_asset.base_color[0], material_asset.base_color[1],
-            material_asset.base_color[2], material_asset.base_color[3], &joint_entities)) {
-            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
-            state.scene->Entity_Remove(entity);
-            return wi::ecs::INVALID_ENTITY;
-        }
-        wi::scene::MeshComponent* skinned_mesh = state.scene->meshes.GetComponent(entity);
-        if (skinned_mesh == nullptr || skinned_mesh->subsets.size() != mesh_asset.geometry.subsets.size()) {
-            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
-            state.scene->Entity_Remove(entity);
-            return wi::ecs::INVALID_ENTITY;
-        }
-        for (size_t subset = 0; subset < skinned_mesh->subsets.size(); ++subset) {
-            const uint32_t material_slot = mesh_asset.geometry.subsets[subset].material_slot;
-            if (material_slot >= materials.size() || materials[material_slot] == nullptr ||
-                materials[material_slot]->material_entity == wi::ecs::INVALID_ENTITY) {
-                for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
-                state.scene->Entity_Remove(entity);
-                return wi::ecs::INVALID_ENTITY;
-            }
-            skinned_mesh->subsets[subset].materialID = materials[material_slot]->material_entity;
-        }
-        skinned_mesh->CreateRenderData();
-        wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(entity);
-        wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(entity);
-        if (material == nullptr || object == nullptr) {
-            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
-            state.scene->Entity_Remove(entity);
-            return wi::ecs::INVALID_ENTITY;
-        }
-        material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_PBR;
-        material->SetBaseColor(XMFLOAT4(material_asset.base_color[0], material_asset.base_color[1],
-            material_asset.base_color[2], material_asset.base_color[3]));
-        material->SetRoughness(material_asset.roughness);
-        material->SetMetalness(material_asset.metallic);
-        material->SetEmissiveColor(XMFLOAT4(material_asset.emissive[0], material_asset.emissive[1],
-            material_asset.emissive[2], DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH));
-        material->SetAlphaRef(material_asset.alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK
-            ? material_asset.alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF);
-        material->SetDoubleSided(material_asset.double_sided);
-        material->userBlendMode = material_asset.alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND
-            ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
-        const bool casts_shadow = material_asset.alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND;
-        material->SetCastShadow(casts_shadow);
-        if (!apply_snapshot_material_textures(state, material_asset, *material)) {
-            for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
-            state.scene->Entity_Remove(entity);
-            failure_status = ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-            return wi::ecs::INVALID_ENTITY;
-        }
-        object->SetCastShadow(casts_shadow);
-        row.created_joint_entities = std::move(joint_entities);
-        row.created_skin_joints = mesh_asset.geometry.skin_joints;
-        row.created_animation_clips = mesh_asset.geometry.animation_clips;
-        return entity;
+        return create_animated_snapshot_entity(state, row, mesh_asset, materials,
+            material_asset, name, failure_status, joint_entities);
     } catch (...) {
         for (wi::ecs::Entity joint : joint_entities) state.scene->Entity_Remove(joint);
         if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);

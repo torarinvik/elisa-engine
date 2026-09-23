@@ -1,13 +1,12 @@
-# Static snapshot mesh placements
+# Snapshot mesh placements
 
 **Validated:** 2026-09-23 on macOS 27, SDL3 3.4.16, and Wicked Engine 0.72.114.
 
-Snapshot rows for static cooked geometry now preserve placement boundaries in
-the native renderer. Each row still has one public instance handle and one
-root transform. The root draws placement zero; every later placement gets a
-child Wicked object with its own shared mesh. The cooker has already baked
-placement transforms into the vertex streams, so child objects use identity
-local offsets and follow the root transform.
+Snapshot rows preserve cooked placement boundaries in the native renderer.
+Each row still has one public instance handle and one root transform. The root
+draws placement zero; every later placement gets a child Wicked object. The
+cooker has already baked static placement transforms into vertex streams, so
+static child objects use identity local offsets and follow the root transform.
 
 Each cached mesh is keyed by mesh ID, material ID, and placement index. Its
 uploader copies only that placement's vertex and index ranges, rebases indices
@@ -16,13 +15,21 @@ placement's index range. The material slot on every clipped subset remains the
 one authored by the cooked geometry. Per-row tint values are copied to all
 placement objects when a snapshot commits.
 
-Mesh references and child objects participate in the snapshot transaction.
+Static mesh references and all child objects participate in the snapshot transaction.
 Commit retains all new shared meshes before retiring old rows, allowing a row
 to replace itself while reusing the same cached placement meshes. Retire and
 destroy remove placement children and release every shared-mesh reference. If
 staging succeeds but commit fails, rollback removes every created child and
 discards meshes that have no committed references. Instances with snapshot
 placement children cannot be cloned through the single-mesh clone path.
+
+Animated geometry uses independent per-instance meshes so separate snapshot
+instances cannot share a mutable armature or morph weights. The root placement
+creates the armature and joint entities; later placements slice their own
+vertex, index, subset, skin-influence, and morph-target ranges and point at the
+root armature. The animation submission bridge includes snapshot children when
+it submits a pose, applying shared bones and morph weights across the full
+placement group.
 
 ## Validation
 
@@ -32,16 +39,25 @@ placement children cannot be cloned through the single-mesh clone path.
 - An injected failure after one created row verifies that a failed two-row
   commit restores the instance, object, and shared-mesh counts to their
   starting values.
+- The animated snapshot case injects rollback after creating a skinned root
+  and child, then retries. It verifies both placements, submits a bone and
+  morph pose through the animation ABI, checks the child receives the same
+  armature and morph weight, and confirms clearing removes the full group.
 - `scripts/test_geometry_subsets.py` passed 95 sanitized loader cases.
 - `scripts/gltf_hierarchy_self_test.py` passed.
 - `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, and
   `git diff --check` passed.
-- The SDL3/Metal native RenderScene and packaged-maze stages passed on the
-  isolated engine. The maze ran in a sandbox denying checkout access; missing,
-  escaping, corrupted, and dependency-invalid bundles failed asset
-  registration, and restoring the valid bundle returned exit 0. This rerun
-  supersedes the earlier run where the packaged stage did not finish.
+- The static-placement revision's SDL3/Metal native RenderScene and packaged-
+  maze stages passed on the isolated engine. The maze ran in a sandbox denying
+  checkout access; missing, escaping, corrupted, and dependency-invalid bundles
+  failed asset registration, and restoring the valid bundle returned exit 0.
+- With animated per-placement upload in `3f83c4b`, the SDL3/Metal native
+  RenderScene smoke passed, including the animated snapshot case. The app and
+  packaged-maze stages were not rerun because the separate app teardown stalled
+  in Metal `waitUntilSignaledValue` after the native gate; validate those stages
+  against this merge before treating it as complete.
 
-Skinned and morphed snapshot rows continue using the flattened compatibility
-upload. Multiple skins per scene and non-identity skinned mesh-node transforms
-also remain unsupported. This slice does not claim performance measurements.
+Multiple skins per scene and transformed non-joint ancestors of joint nodes
+remain unsupported. Skinned mesh-node transforms are retained as metadata and
+ignored by cooked streams as required by glTF. This slice does not claim
+performance measurements.

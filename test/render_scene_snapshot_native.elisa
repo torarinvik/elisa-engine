@@ -22,6 +22,12 @@ module RenderSceneSnapshotNativeTests:
             REMOVED_INDEX: usize = 100
             PROBE_RENDER_ID: i64 = 50000
 
+        struct SnapshotAnimationPose:
+            bones: f32[64 * 16]
+            morphs: f32[32]
+            bone_count: mutable u32
+            morph_count: mutable u32
+
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_fail_after_creates(created_count: i32) -> i32
 
@@ -53,6 +59,23 @@ module RenderSceneSnapshotNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_object_count() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_placement_count(render_id: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_submission(handle: i64,
+            expected_x: f32, expected_morph: f32, expected_pending: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_submit_animation_pose(handle: i64,
+            submission: mutable SnapshotAnimationPose&) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_complete_animation_pose(handle: i64) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_instance_tint(render_id: i64,
@@ -158,6 +181,10 @@ module RenderSceneSnapshotNativeTests:
             return 4 if register_test_mesh(9701) != 0
             return 5 if register_test_mesh(704) != 0
             return 6 if register_test_mesh(705) != 0
+            return 7 if catch RenderScene::register_snapshot_mesh_asset(
+                Assets::AssetId{high: 700, low: 706}, "build/cooked/subsets/morphed-skinned.pkg"):
+                ok: 0
+                error failure: 1
             material: Material::Material = Material::Material{
                 base_color: Assets::AssetId{high: 0, low: 0},
                 normal: Assets::AssetId{high: 0, low: 0},
@@ -228,8 +255,8 @@ module RenderSceneSnapshotNativeTests:
             0
 
         def unregister_test_snapshot_assets() -> i32:
-            mesh_ids: u64[6] = [701, 703, 702, 9701, 704, 705]
-            for index in 0..<6 |mesh_ids|:
+            mesh_ids: u64[7] = [701, 703, 702, 9701, 704, 705, 706]
+            for index in 0..<7 |mesh_ids|:
                 removed: bool = catch RenderScene::unregister_snapshot_mesh_asset(
                     Assets::AssetId{high: 700, low: mesh_ids[index]}):
                     ok: true
@@ -504,5 +531,60 @@ module RenderSceneSnapshotNativeTests:
                 ok: true
                 error failure: false
             return 93 if not cleared or RenderScene::instance_count() != 3 or elisa_render_scene_v1_test_snapshot_shared_mesh_count() != 0
+
+            # Animated snapshot placements retain their own cooked streams but
+            # submit skin and morph state through the root instance's armature.
+            animated_gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 121
+            animated_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            animated_presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+            animated_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+            return 122 if bind_world_render(&animated_bindings, world, animated_gameplay,
+                9001, render_visual(706), Geometry::transform_identity()) != 0
+            return 123 if bind_world_render(&animated_bindings, world, animated_gameplay,
+                9002, render_visual(701), Geometry::transform_identity()) != 0
+            return 124 if extract_world_render(world, &animated_bindings, &animated_snapshot) != 0
+            objects_before_animated: u64 = elisa_render_scene_v1_test_object_count()
+            return 125 if elisa_render_scene_v1_test_snapshot_fail_after_creates(1) != 0
+            failed_animated_sync: i32 = sync_snapshot(&animated_presenter, animated_snapshot)
+            rollback_bindings_clean: bool = RenderSnapshotScene::binding_count(animated_presenter) == 0
+            rollback_instances_clean: bool = RenderScene::instance_count() == 3
+            rollback_objects_clean: bool = elisa_render_scene_v1_test_object_count() == objects_before_animated
+            rollback_native_clean: bool = rollback_instances_clean and rollback_objects_clean
+            rollback_clean: bool = failed_animated_sync == 1 and rollback_bindings_clean and rollback_native_clean
+            return 126 if not rollback_clean
+            return 127 if sync_snapshot(&animated_presenter, animated_snapshot) != 0
+            animated_handle: i64 = elisa_render_scene_v1_snapshot_result(0)
+            animated_placements_ready: bool = elisa_render_scene_v1_test_snapshot_placement_count(9001) == 2
+            return 128 if animated_handle <= 0 or not animated_placements_ready
+            pose: mutable SnapshotAnimationPose = zeroed
+            pose.bones[0] <- 1.0
+            pose.bones[5] <- 1.0
+            pose.bones[10] <- 1.0
+            pose.bones[12] <- 2.0
+            pose.bones[15] <- 1.0
+            pose.bones[16] <- 1.0
+            pose.bones[21] <- 1.0
+            pose.bones[26] <- 1.0
+            pose.bones[31] <- 1.0
+            pose.bone_count <- 2
+            pose.morph_count <- 1
+            submit_animated: i32 = elisa_render_scene_v1_submit_animation_pose(
+                animated_handle, &pose)
+            animated_pose_ready: bool = elisa_render_scene_v1_test_animation_submission(
+                animated_handle, 2.0, 0.0, 1) == 15
+            return 129 if submit_animated != 0 or not animated_pose_ready
+            complete_animated: i32 = elisa_render_scene_v1_complete_animation_pose(animated_handle)
+            animated_pose_completed: bool = elisa_render_scene_v1_test_animation_submission(
+                animated_handle, 2.0, 0.0, 0) == 15
+            return 130 if complete_animated != 0 or not animated_pose_completed
+            animated_cleared: bool = catch RenderSnapshotScene::clear(&animated_presenter):
+                ok: true
+                error failure: false
+            animated_instances_clean: bool = RenderScene::instance_count() == 3
+            animated_objects_clean: bool = elisa_render_scene_v1_test_object_count() == objects_before_animated
+            animated_resources_clean: bool = animated_instances_clean and animated_objects_clean
+            return 131 if not animated_cleared or not animated_resources_clean
             return 74 if unregister_test_snapshot_assets() != 0
             0

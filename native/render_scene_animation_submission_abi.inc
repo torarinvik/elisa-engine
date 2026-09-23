@@ -4,12 +4,17 @@ bool ensure_animation_submission(RenderSceneService& state, size_t slot) {
     if (instance.animation_submission.owner != 0) return true;
     if (state.scene->armatures.GetComponent(instance.entity) == nullptr ||
         state.scene->meshes.GetComponent(instance.entity) == nullptr) return false;
-    if (instance.imported_mesh_entities.size() + 1 > probe::AnimationSubmissionBridge::MAX_MESHES) return false;
+    const size_t placement_count = instance.imported_mesh_entities.size() +
+        instance.snapshot_placement_entities.size();
+    if (placement_count + 1 > probe::AnimationSubmissionBridge::MAX_MESHES) return false;
     std::array<wi::ecs::Entity, probe::AnimationSubmissionBridge::MAX_MESHES> meshes{};
     meshes[0] = instance.entity;
-    std::copy(instance.imported_mesh_entities.begin(), instance.imported_mesh_entities.end(), meshes.begin() + 1);
+    auto next_mesh = std::copy(instance.imported_mesh_entities.begin(),
+        instance.imported_mesh_entities.end(), meshes.begin() + 1);
+    std::copy(instance.snapshot_placement_entities.begin(),
+        instance.snapshot_placement_entities.end(), next_mesh);
     const probe::NativeAnimationHandle handle = state.animation_submission->create(
-        instance.entity, meshes.data(), uint32_t(instance.imported_mesh_entities.size() + 1));
+        instance.entity, meshes.data(), uint32_t(placement_count + 1));
     if (handle.owner == 0) return false;
     instance.animation_submission = handle;
     return true;
@@ -71,8 +76,10 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     const InstanceSlot& instance = state.instances[slot];
     const wi::scene::ArmatureComponent* armature = state.scene->armatures.GetComponent(instance.entity);
     const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(instance.entity);
+    const auto& placements = instance.snapshot_placement_entities.empty()
+        ? instance.imported_mesh_entities : instance.snapshot_placement_entities;
     if (armature == nullptr || armature->boneCollection.empty() || mesh == nullptr ||
-        instance.imported_mesh_entities.size() != 1 || mesh->vertex_positions.size() != 12 ||
+        placements.size() != 1 || mesh->vertex_positions.size() != 12 ||
         mesh->indices.size() != 18 || mesh->subsets.size() != 3 || mesh->vertex_boneindices.size() != 12) return 0;
     const wi::scene::TransformComponent* bone = state.scene->transforms.GetComponent(armature->boneCollection[0]);
     if (bone == nullptr) return 0;
@@ -82,7 +89,7 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
         ? std::abs(expected_morph) < 1.0e-5f
         : std::abs(mesh->morph_targets[0].weight - expected_morph) < 1.0e-5f;
     const wi::scene::MeshComponent* placement =
-        state.scene->meshes.GetComponent(instance.imported_mesh_entities[0]);
+        state.scene->meshes.GetComponent(placements[0]);
     const bool placement_match = placement != nullptr && placement->armatureID == instance.entity &&
         placement->vertex_positions.size() == 12 && placement->indices.size() == 18 &&
         placement->subsets.size() == 3 && placement->vertex_boneindices.size() == 12 &&
