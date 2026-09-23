@@ -16,9 +16,13 @@ largest-triangle-mesh default.
   whose default largest mesh has two triangles; its simplification and
   deterministic-output checks also pass. `--all-meshes` combines the two
   source nodes into one 3-triangle geometry stream with two ordered subset
-  ranges and records the source mesh count.
-- The SDL3/Metal RenderScene snapshot smoke registers the combined two-node
-  package in Wicked and checks both source ranges against their material slots.
+  ranges. The package also contains two 80-byte placement records with source
+  node IDs, post-cook vertex/index/subset ranges, and normalized world transforms.
+- The production reader's AddressSanitizer/UndefinedBehaviorSanitizer test loaded
+  the cooked two-mesh package and matched both placement records exactly:
+  `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py --extra-package build/cooked/subsets/fbx-two-mesh-placement.pkg`
+  passed with 120 cases and no failures. The SDL3/Metal smoke now runs this
+  loader check on its freshly cooked FBX package.
 
 Use `scripts/cook_fbx_asset.py scene.fbx --asset-path assets/scene.fbx
 --output build/selected.pkg --mesh-name MeshName` to select a mesh by its exact
@@ -29,12 +33,16 @@ Use `scripts/cook_fbx_asset.py scene.fbx --asset-path assets/scene.fbx
 --output build/scene.pkg --all-meshes` to combine every static triangle mesh.
 Each node's geometry-to-world transform is baked into its positions. Material
 slots and subset ranges stay distinct across source meshes, with a package-wide
-limit of 16 slots.
+limit of 16 slots. Placement records retain the FBX scene node index and the
+same world transform as metadata. Vertex and index ranges are recalculated
+after simplification, tangent seam splitting, and meshoptimizer remapping.
 
 ## Boundaries
 
-All-mesh mode currently rejects skinned or animated scenes and combines static
-nodes into one render mesh; it does not preserve separate node identities,
-hierarchy, or per-node runtime transforms. Use `--mesh-name` for a single
-skinned mesh. The existing largest-mesh behavior remains the default when both
-selection options are omitted.
+All-mesh mode currently rejects skinned or animated scenes and bakes static
+nodes into one geometry stream. Placement metadata preserves each source node's
+identity and ranges, but the source hierarchy and local-space geometry are not
+retained; placement transforms are descriptive because the same transforms are
+already baked into positions. Use `--mesh-name` for a single skinned mesh. The
+existing largest-mesh behavior remains the default when both selection options
+are omitted.

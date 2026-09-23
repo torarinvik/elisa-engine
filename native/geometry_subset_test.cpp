@@ -91,16 +91,19 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     const size_t lights = marker("lights");
     const size_t inverse_binds = marker("inverse_binds");
     const size_t uv1 = marker("uv1");
+    const size_t mesh_placements = marker("mesh_placements");
     const size_t end = std::min({materials, sections, slot_names, animations, morphs, cameras, lights,
-        inverse_binds, uv1});
+        inverse_binds, uv1, mesh_placements});
     const size_t material_end = std::min({sections, slot_names, animations, morphs, cameras, lights,
-        inverse_binds, uv1});
-    const size_t section_end = std::min({slot_names, animations, morphs, cameras, lights, inverse_binds, uv1});
+        inverse_binds, uv1, mesh_placements});
+    const size_t section_end = std::min({slot_names, animations, morphs, cameras, lights,
+        inverse_binds, uv1, mesh_placements});
     if (materials == fields.size() ? !geometry.slot_materials.empty()
                                    : !check_slot_materials(fields, materials + 1, material_end, geometry)) return false;
     if (sections == fields.size() ? !geometry.texture_sections.empty() || !geometry.texture_checksums.empty()
                                   : !check_sections(fields, sections + 1, section_end, geometry)) return false;
-    const size_t slot_names_end = std::min({animations, morphs, cameras, lights, inverse_binds, uv1});
+    const size_t slot_names_end = std::min({animations, morphs, cameras, lights,
+        inverse_binds, uv1, mesh_placements});
     if (slot_names == fields.size() ? !geometry.slot_material_names.empty()
                                     : !check_slot_names(fields, slot_names + 1, slot_names_end, geometry)) return false;
     if (animations == fields.size() ? !geometry.animation_clips.empty()
@@ -114,7 +117,7 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     if (inverse_binds == fields.size()) {
         if (!geometry.skin_inverse_bind_matrices.empty()) return false;
     } else {
-        const size_t inverse_bind_end = std::min(uv1, fields.size());
+        const size_t inverse_bind_end = std::min({uv1, mesh_placements, fields.size()});
         if (inverse_bind_end <= inverse_binds ||
             geometry.skin_inverse_bind_matrices.size() != inverse_bind_end - inverse_binds - 1) return false;
         for (size_t component = 0; component < geometry.skin_inverse_bind_matrices.size(); ++component) {
@@ -125,12 +128,30 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     }
     if (uv1 == fields.size()) {
         if (!geometry.uv1s.empty() || !geometry.uv1_source.empty()) return false;
-    } else if (fields.size() - uv1 != 6 ||
+    } else if (std::min(mesh_placements, fields.size()) - uv1 != 6 ||
         geometry.uv1s.size() != std::stoul(fields[uv1 + 1]) * 2 ||
         geometry.uv1_source != fields[uv1 + 2] ||
         geometry.uv1_generation_resolution != std::stoul(fields[uv1 + 3]) ||
         geometry.uv1_generation_padding != std::stoul(fields[uv1 + 4]) ||
         geometry.uv1_chart_count != std::stoul(fields[uv1 + 5])) return false;
+    if (mesh_placements != fields.size()) {
+        const size_t count = std::stoul(fields[mesh_placements + 1]);
+        if (geometry.mesh_count != count || geometry.mesh_placements.size() != count ||
+            fields.size() - mesh_placements != 2 + count * 20) return false;
+        for (size_t index = 0; index < count; ++index) {
+            const auto& actual = geometry.mesh_placements[index];
+            const size_t offset = mesh_placements + 2 + index * 20;
+            const uint32_t integers[8] = {actual.mesh, actual.node, actual.vertex_start,
+                actual.vertex_count, actual.index_start, actual.index_count,
+                actual.subset_start, actual.subset_count};
+            for (size_t field = 0; field < 8; ++field) {
+                if (integers[field] != std::stoul(fields[offset + field])) return false;
+            }
+            for (size_t component = 0; component < actual.transform.size(); ++component) {
+                if (actual.transform[component] != std::stof(fields[offset + 8 + component])) return false;
+            }
+        }
+    }
     if (end < 4 || (end - 4) % 3 != 0) return false;
     if (geometry.indices.size() != std::stoul(fields[2]) ||
         geometry.material_slots != std::stoul(fields[3]) ||

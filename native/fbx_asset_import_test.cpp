@@ -138,6 +138,23 @@ int mesh_selection_test(const std::filesystem::path& path) {
         combined.primary_mesh.positions.size() == 21 && combined.primary_mesh.indices.size() == 9 &&
         combined.primary_mesh.material_slots == 2 && combined.primary_mesh.subsets.size() == 2,
         "all static scene meshes combine with independent triangle ranges");
+    ok &= check(combined.primary_mesh.mesh_placements.size() == 2 &&
+        combined.primary_mesh.mesh_placements[0].mesh == 0 &&
+        combined.primary_mesh.mesh_placements[0].vertex_start == 0 &&
+        combined.primary_mesh.mesh_placements[0].vertex_count == 3 &&
+        combined.primary_mesh.mesh_placements[0].index_start == 0 &&
+        combined.primary_mesh.mesh_placements[0].index_count == 3 &&
+        combined.primary_mesh.mesh_placements[0].subset_start == 0 &&
+        combined.primary_mesh.mesh_placements[0].subset_count == 1 &&
+        combined.primary_mesh.mesh_placements[1].mesh == 1 &&
+        combined.primary_mesh.mesh_placements[1].vertex_start == 3 &&
+        combined.primary_mesh.mesh_placements[1].vertex_count == 4 &&
+        combined.primary_mesh.mesh_placements[1].index_start == 3 &&
+        combined.primary_mesh.mesh_placements[1].index_count == 6 &&
+        combined.primary_mesh.mesh_placements[1].subset_start == 1 &&
+        combined.primary_mesh.mesh_placements[1].subset_count == 1 &&
+        combined.primary_mesh.mesh_placements[0].node != combined.primary_mesh.mesh_placements[1].node,
+        "all-mesh import retains source nodes and disjoint mesh, vertex, index, and subset ranges");
     const auto conflicting = elisa::assets::import_fbx(path, true, "SmallTriangle", true);
     ok &= check(!conflicting.ok && conflicting.error.find("cannot be combined") != std::string::npos,
         "all-mesh import rejects an exact-name selector");

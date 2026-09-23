@@ -680,13 +680,27 @@ def main(arguments: list[str]) -> int:
                 if int(multi_mesh_fields["triangles"]) != 2 or int(selected_mesh_fields["triangles"]) != 1:
                     raise ValueError("exact FBX mesh-name selection did not override largest-mesh selection")
                 combined_subsets = base64.b64decode(combined_mesh_fields["subsets_b64"], validate=True)
+                combined_placements = list(struct.iter_unpack("<8I12f",
+                    base64.b64decode(combined_mesh_fields.get("mesh_placements_b64", ""), validate=True)))
+                source_transform = (0.009999999776482582, 0.0, 0.0, 0.0,
+                    0.0, 0.009999999776482582, 0.0, 0.0,
+                    0.0, 0.0, 0.009999999776482582, 0.0)
                 if (int(combined_mesh_fields["triangles"]) != 3 or
                         int(combined_mesh_fields["positions"]) != 7 or
                         combined_mesh_fields.get("source_mesh_count") != "2" or
                         combined_mesh_fields.get("material_slots") != "2" or
                         combined_mesh_fields.get("subset_count") != "2" or
+                        combined_mesh_fields.get("mesh_count") != "2" or
+                        combined_mesh_fields.get("mesh_placement_count") != "2" or
+                        combined_mesh_fields.get("mesh_placement_stride") != "80" or
+                        len(combined_placements) != 2 or
+                        combined_placements[0][:8] != (0, combined_placements[0][1], 0, 3, 0, 3, 0, 1) or
+                        combined_placements[1][:8] != (1, combined_placements[1][1], 3, 4, 3, 6, 1, 1) or
+                        combined_placements[0][1] == combined_placements[1][1] or
+                        combined_placements[0][8:] != source_transform or
+                        combined_placements[1][8:] != source_transform or
                         struct.unpack("<6I", combined_subsets) != (0, 3, 0, 3, 6, 1)):
-                    raise ValueError("FBX all-mesh cooking did not combine source geometry and subset ranges")
+                    raise ValueError("FBX all-mesh cooking did not preserve source placements and ranges")
                 material_source = directory / "two-material-mesh.fbx"
                 write_two_material_mesh(material_source)
                 material_fields = cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",

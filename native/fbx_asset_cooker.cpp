@@ -67,6 +67,100 @@ std::vector<uint8_t> index_bytes(const std::vector<uint32_t>& values) {
     return bytes;
 }
 
+std::vector<uint8_t> mesh_placement_bytes(
+    const std::vector<elisa::assets::FbxMeshPlacementData>& placements) {
+    std::vector<uint8_t> bytes;
+    bytes.reserve(placements.size() * 80);
+    for (const auto& placement : placements) {
+        append_u32_le(bytes, placement.mesh);
+        append_u32_le(bytes, placement.node);
+        append_u32_le(bytes, placement.vertex_start);
+        append_u32_le(bytes, placement.vertex_count);
+        append_u32_le(bytes, placement.index_start);
+        append_u32_le(bytes, placement.index_count);
+        append_u32_le(bytes, placement.subset_start);
+        append_u32_le(bytes, placement.subset_count);
+        for (float value : placement.transform) {
+            uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
+            append_u32_le(bytes, bits);
+        }
+    }
+    return bytes;
+}
+
+bool finalize_mesh_placements(elisa::assets::FbxMeshData& mesh) {
+    if (mesh.mesh_placements.empty()) return true;
+    if (mesh.mesh_placements.size() != mesh.source_mesh_count ||
+        mesh.mesh_placements.size() > 256) {
+        std::fprintf(stderr, "FBX placement records do not match the source mesh count\n");
+        return false;
+    }
+    uint64_t next_vertex = 0;
+    uint64_t next_index = 0;
+    uint64_t next_subset = 0;
+    for (size_t placement_index = 0; placement_index < mesh.mesh_placements.size(); ++placement_index) {
+        auto& placement = mesh.mesh_placements[placement_index];
+        if (placement.mesh != placement_index || placement.node >= 256 ||
+            placement.subset_start != next_subset || placement.subset_count == 0 ||
+            uint64_t(placement.subset_start) + placement.subset_count > mesh.subsets.size()) {
+            std::fprintf(stderr, "FBX cooker received an invalid source mesh placement\n");
+            return false;
+        }
+        const auto& first_subset = mesh.subsets[placement.subset_start];
+        if (first_subset.index_start != next_index) {
+            std::fprintf(stderr, "FBX placement subsets do not partition the index stream\n");
+            return false;
+        }
+        placement.index_start = first_subset.index_start;
+        uint64_t index_count = 0;
+        for (size_t subset_index = placement.subset_start;
+            subset_index < size_t(placement.subset_start) + placement.subset_count; ++subset_index) {
+            const auto& subset = mesh.subsets[subset_index];
+            if (subset.index_start != next_index + index_count || subset.index_count == 0 ||
+                uint64_t(subset.index_start) + subset.index_count > mesh.indices.size()) {
+                std::fprintf(stderr, "FBX placement contains an invalid material subset range\n");
+                return false;
+            }
+            index_count += subset.index_count;
+        }
+        if (index_count == 0 || index_count > std::numeric_limits<uint32_t>::max() ||
+            uint64_t(placement.index_start) + index_count > mesh.indices.size()) {
+            std::fprintf(stderr, "FBX placement index range exceeds the cooked stream\n");
+            return false;
+        }
+        placement.index_count = uint32_t(index_count);
+        uint32_t minimum = std::numeric_limits<uint32_t>::max();
+        uint32_t maximum = 0;
+        for (size_t offset = placement.index_start;
+            offset < size_t(placement.index_start) + placement.index_count; ++offset) {
+            const uint32_t index = mesh.indices[offset];
+            if (index >= mesh.positions.size() / 3) {
+                std::fprintf(stderr, "FBX placement references an out-of-range vertex\n");
+                return false;
+            }
+            minimum = std::min(minimum, index);
+            maximum = std::max(maximum, index);
+        }
+        if (minimum != next_vertex || uint64_t(maximum) + 1 < minimum ||
+            uint64_t(maximum) + 1 - minimum > std::numeric_limits<uint32_t>::max()) {
+            std::fprintf(stderr, "FBX cooker could not retain contiguous per-mesh vertex ranges\n");
+            return false;
+        }
+        placement.vertex_start = minimum;
+        placement.vertex_count = uint32_t(uint64_t(maximum) + 1 - minimum);
+        next_vertex += placement.vertex_count;
+        next_index += placement.index_count;
+        next_subset += placement.subset_count;
+    }
+    if (next_vertex != mesh.positions.size() / 3 || next_index != mesh.indices.size() ||
+        next_subset != mesh.subsets.size()) {
+        std::fprintf(stderr, "FBX placement ranges do not cover the cooked geometry streams\n");
+        return false;
+    }
+    return true;
+}
+
 std::vector<uint8_t> skin_name_bytes(const std::vector<std::string>& names) {
     std::vector<uint8_t> bytes;
     for (const std::string& name : names) {
@@ -201,11 +295,13 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
             return false;
         }
     }
+    if (!finalize_mesh_placements(mesh)) return false;
     const std::vector<uint8_t> positions = float_bytes(mesh.positions);
     const std::vector<uint8_t> normals = float_bytes(mesh.normals);
     const std::vector<uint8_t> uvs = float_bytes(mesh.uvs);
     const std::vector<uint8_t> tangents = float_bytes(mesh.tangents);
     const std::vector<uint8_t> indices = index_bytes(mesh.indices);
+    const std::vector<uint8_t> mesh_placements = mesh_placement_bytes(mesh.mesh_placements);
     std::vector<uint32_t> subset_words;
     subset_words.reserve(mesh.subsets.size() * 3);
     uint32_t next_subset_index = 0;
@@ -293,6 +389,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t tangents_encoded = base64_size(tangents.size());
     const size_t indices_encoded = base64_size(indices.size());
     const size_t subsets_encoded = base64_size(subset_bytes.size());
+    const size_t mesh_placements_encoded = base64_size(mesh_placements.size());
     const size_t slot_materials_encoded = base64_size(slot_materials.size());
     const size_t slot_material_names_encoded = base64_size(slot_material_names_bytes.size());
     const size_t texture_source_names_encoded = base64_size(texture_source_names_bytes.size());
@@ -320,7 +417,8 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
     const size_t max_payload = MAX_LINE_BYTES - 14;
     if (positions_encoded > max_payload || normals_encoded > max_payload ||
         uvs_encoded > max_payload || tangents_encoded > max_payload || indices_encoded > max_payload ||
-        subsets_encoded > max_payload || slot_materials_encoded > max_payload ||
+        subsets_encoded > max_payload || mesh_placements_encoded > max_payload ||
+        slot_materials_encoded > max_payload ||
         slot_material_names_encoded > max_payload ||
         (has_texture_sources && (texture_source_names_encoded > max_payload ||
             slot_texture_sources_encoded > max_payload ||
@@ -332,7 +430,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "FBX geometry exceeds the cooked package line limit; simplify or split the source asset\n");
         return false;
     }
-    const size_t metadata_budget = 2048 + asset_key.size();
+    const size_t metadata_budget = 2048 + asset_key.size() + mesh_placements_encoded;
     if (positions_encoded > MAX_PACKAGE_BYTES - metadata_budget ||
         normals_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded ||
         uvs_encoded > MAX_PACKAGE_BYTES - metadata_budget - positions_encoded - normals_encoded ||
@@ -363,6 +461,12 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         << "uvs_b64=" << base64(uvs) << "\n"
         << "tangents_b64=" << base64(tangents) << "\n"
         << "indices_b64=" << base64(indices) << "\n";
+    if (!mesh.mesh_placements.empty()) {
+        package << "mesh_count=" << mesh.mesh_placements.size() << "\n"
+            << "mesh_placement_count=" << mesh.mesh_placements.size() << "\n"
+            << "mesh_placement_stride=80\n"
+            << "mesh_placements_b64=" << base64(mesh_placements) << "\n";
+    }
     if (!mesh.materials.empty()) {
         package << "slot_material_stride=48\n"
             << "slot_materials_b64=" << base64(slot_materials) << "\n"
