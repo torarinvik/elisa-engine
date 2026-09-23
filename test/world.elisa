@@ -320,7 +320,7 @@ module World::Tests:
         0
 
     def run() -> i32:
-        world: World =
+        world: mutable World =
             catch World():
                 value: value
                 error failure: invalid_world()
