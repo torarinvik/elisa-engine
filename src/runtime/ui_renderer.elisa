@@ -10,7 +10,9 @@ include "../ui/style.elisa"
 module UiRenderer:
     private:
         const module Bounds:
-            MAX_ROWS: usize = 8
+            # Match Ui::Menu's capacity so a retained canvas can represent a
+            # complete settings page while keeping smaller menus cheap.
+            MAX_ROWS: usize = 24
             MIN_FONT_SIZE: i32 = 8
             MAX_FONT_SIZE: i32 = 128
 

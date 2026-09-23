@@ -9,9 +9,10 @@ module RenderSceneUiNativeTests:
 
         def create_fixture() -> Fixture error[RenderScene::RenderSceneError]:
             menu: mutable Ui::Menu = Ui::Menu(24, 36)
-            _ = Ui::menu_add_labeled(&menu, 1, true, "START")
-            _ = Ui::menu_add_labeled(&menu, 2, false, "LOCKED")
-            _ = Ui::menu_add_labeled(&menu, 3, true, "QUIT")
+            for index in 0..<18 |menu|:
+                enabled: bool = index != 1
+                label: cstr = "START" if index == 0 else "LOCKED" if index == 1 else "SETTING"
+                _ = Ui::menu_add_labeled(&menu, index.i64() + 1, enabled, label)
             _ = Ui::menu_set_visible(&menu, 2)
             theme: UiStyle::Theme = UiStyle::theme_default()
             background: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(
@@ -21,29 +22,23 @@ module RenderSceneUiNativeTests:
                 24.0, 36.0, 160.0, 20.0,
                 RenderScene::Color{red: 1.0, green: 0.5, blue: 0.0, alpha: 0.2})
             canvas: mutable UiRenderer::MenuCanvas = UiRenderer::MenuCanvas(background, focus)
-            first: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "START", 30.0, 36.0, 14,
-                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
-            second: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "LOCKED", 30.0, 56.0, 14,
-                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
-            third: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "QUIT", 30.0, 76.0, 14,
-                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
-            _ = UiRenderer::menu_canvas_add_label(&canvas, first)
-            _ = UiRenderer::menu_canvas_add_label(&canvas, second)
-            _ = UiRenderer::menu_canvas_add_label(&canvas, third)
+            for index in 0..<18 |canvas|:
+                label: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                    "SETTING", 30.0, 36.0 + index.f32() * 20.0, 14,
+                    RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
+                _ = UiRenderer::menu_canvas_add_label(&canvas, label)
             try UiRenderer::sync_menu(&canvas, &menu, &theme, 160, 14)
             Fixture{menu: menu, theme: theme, canvas: canvas}
 
         def review_focus_and_scroll(fixture: mutable Fixture&) -> i32:
             return 1 if not UiRenderer::menu_canvas_valid(&fixture.canvas, &fixture.menu)
-            return 2 if not Ui::focus_next(&fixture.menu) or fixture.menu.focus != 2 or fixture.menu.scroll != 1
+            return 2 if UiRenderer::menu_canvas_label_count(&fixture.canvas) != 18
+            return 3 if not Ui::focus_next(&fixture.menu) or fixture.menu.focus != 2 or fixture.menu.scroll != 1
             scrolled: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
                 &fixture.menu, &fixture.theme, 160, 14):
                 ok: 0
-                error failure: 3
-            return 4 if scrolled != 0
+                error failure: 4
+            return 5 if scrolled != 0
             # Repositioning and restyling the retained view must be reflected
             # without recreating its native handles.
             fixture.menu.y <- 100
@@ -51,16 +46,24 @@ module RenderSceneUiNativeTests:
             moved: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
                 &fixture.menu, &fixture.theme, 280, 14):
                 ok: 0
-                error failure: 5
-            return 6 if moved != 0
+                error failure: 6
+            return 7 if moved != 0
+            # A full settings page also fits inside the renderer's bounded
+            # layout and retains one label per item.
+            _ = Ui::menu_set_visible(&fixture.menu, 18)
+            full_page: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
+                &fixture.menu, &fixture.theme, 280, 14):
+                ok: 0
+                error failure: 8
+            return 9 if full_page != 0
             for frame in 0..<3:
                 return 12 if Application::pump() != Application::PumpStatus.Running
             invalid: i32 = catch UiRenderer::sync_menu(&fixture.canvas,
                 &fixture.menu, &fixture.theme, 160, 32):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
-                error failure: 2
-            return 7 if invalid != 1
+                error failure: 10
+            return 11 if invalid != 1
             0
 
         def destroy_fixture(fixture: mutable Fixture&) -> i32:

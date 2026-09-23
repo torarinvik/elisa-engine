@@ -7,7 +7,8 @@
 module Ui:
     private:
         const module Tune:
-            MAX_ITEMS: usize = 8
+            # Leave room for full settings pages, not only compact front menus.
+            MAX_ITEMS: usize = 24
             ROW_HEIGHT: i64 = 20
 
     public:

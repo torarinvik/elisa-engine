@@ -20,11 +20,11 @@ using AssetCatalogue
 # the scroll offset.
 def ui_scroll_test() -> i32:
     menu: mutable Ui::Menu = Ui::Menu(0, 0)
-    for action in 1..<9 |menu|:
+    for action in 1..<19 |menu|:
         _ = Ui::menu_add(&menu, action.i64(), true)
-    return 76 if not Ui::menu_valid(&menu) or item_count(&menu) != 8
+    return 76 if not Ui::menu_valid(&menu) or item_count(&menu) != 18
     duplicate_action: mutable Ui::Menu = menu
-    duplicate_action.items[7] <- Ui::Item{action: 1, enabled: true, label: "DUPLICATE"}
+    duplicate_action.items[17] <- Ui::Item{action: 1, enabled: true, label: "DUPLICATE"}
     return 89 if Ui::menu_valid(&duplicate_action)
     return 77 if not Ui::menu_set_visible(&menu, 3) or Ui::visible_rows(&menu) != 3 or Ui::scroll_offset(&menu) != 0
     Ui::focus_next(&menu)
@@ -32,15 +32,13 @@ def ui_scroll_test() -> i32:
     Ui::focus_next(&menu)
     return 78 if menu.focus != 3 or Ui::scroll_offset(&menu) != 1
     return 79 if Ui::visible_action(&menu, 0) != 2 or Ui::visible_action(&menu, 2) != 4
-    Ui::focus_next(&menu)
-    Ui::focus_next(&menu)
-    Ui::focus_next(&menu)
-    Ui::focus_next(&menu)
-    return 80 if menu.focus != 7 or Ui::scroll_offset(&menu) != 5 or Ui::visible_action(&menu, 2) != 8
-    return 81 if Ui::hit_test(&menu, 0) != 5 or Ui::hit_test(&menu, 60) != -1 or not Ui::menu_valid(&menu)
+    for step in 0..<14 |menu|:
+        Ui::focus_next(&menu)
+    return 80 if menu.focus != 17 or Ui::scroll_offset(&menu) != 15 or Ui::visible_action(&menu, 2) != 18
+    return 81 if Ui::hit_test(&menu, 0) != 15 or Ui::hit_test(&menu, 60) != -1 or not Ui::menu_valid(&menu)
     # Row height is style data: changing it moves the hit-test boundaries.
     return 82 if not Ui::menu_set_row_height(&menu, 40) or Ui::menu_row_height(&menu) != 40 or not Ui::menu_valid(&menu)
-    return 83 if Ui::hit_test(&menu, 20) != 5 or Ui::hit_test(&menu, 40) != 6
+    return 83 if Ui::hit_test(&menu, 20) != 15 or Ui::hit_test(&menu, 40) != 16
     return 84 if Ui::menu_set_row_height(&menu, 0)
     labeled: mutable Ui::Menu = Ui::Menu(0, 0)
     return 85 if not Ui::menu_add_labeled(&labeled, 9, true, "PLAY")

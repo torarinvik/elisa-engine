@@ -18,12 +18,19 @@ ELISA_COMPILER_BIN=/Users/torarinvikbjarko/.elisac/elisac-stage1 \
 ```
 
 The ordinary Elisa main compiled to an archive and linked with the native
-backend. It ran three frames and passed menu construction, disabled-item focus
+backend. It ran three frames and passed construction, disabled-item focus
 skipping, scroll adjustment, relayout and restyling, invalid font-size
-rejection, and destruction of every retained text and panel handle. The
-`scripts/check.elisascript` full gate also exited successfully after this
-integration. `scripts/check_module_hygiene.py` and
-`scripts/check_dependency_manifest.py` passed.
+rejection, and destruction of every retained text and panel handle. The menu
+model and renderer canvas now hold up to 24 items; the native smoke renders an
+18-item page through both its scrolled window and its full-page layout. The
+targeted maze-game fixture also passes 18-item focus traversal, scrolling and
+hit testing. `scripts/check_module_hygiene.py` and
+`scripts/check_source_length.py` passed.
+
+The current full `scripts/check.elisascript` invocation returned
+`runtime: Time` while compiling its unrelated `test/world.elisa` fixture. The
+focused maze-game fixture and UI native smoke were compiled and run separately
+and exited 0; the full suite result is therefore not claimed for this update.
 
 The broader `scripts/render_scene_native_smoke.py` cooked and linked, but its
 full render-scene app exited 134 immediately after Wicked logged creation of
