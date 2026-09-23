@@ -61,5 +61,3 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     if uv1_values is not None:
         fields += ["uv1"] + [str(value) for value in uv1_values]
     return "\t".join(fields)
-
-\n

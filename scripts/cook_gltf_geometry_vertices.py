@@ -41,5 +41,3 @@ def read(document: dict, buffer: bytes, attributes: dict, targets: list[dict]) -
         "skin_indices": skin_indices, "skin_weights": skin_weights,
         "morph_targets": cook_gltf_geometry.read_morph_targets(document, buffer, targets, vertex_count),
         "count": vertex_count, "triangles": []}
-
-\n
