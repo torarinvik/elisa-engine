@@ -44,6 +44,13 @@ matrices, and rig-less bind data; the ASan/UBSan loader suite passed 95 cases
 with no failures. The live native probe reads the tip's Wicked
 inverse-bind palette entries after `RenderScene::create_mesh`; the coordinate
 probe separately checks inverse-bind and submitted-pose matrix reflections.
+The two-placement fixture gives its second skinned mesh node a translation,
+rotation, and nonuniform scale. Cooker checks prove the authored placement
+transform remains in scene metadata while positions, indices, normals,
+tangents, skin streams, and morph streams stay unchanged. A zero-scale variant
+is also accepted with the same cooked geometry. The SDL3/Metal animation smoke
+checks that both uploaded Wicked placement meshes have the same source vertex
+positions.
 
 ```sh
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
@@ -59,6 +66,10 @@ checkout's current uncommitted source fails its seed build in
 was used only for this engine smoke; no compiler source or product was changed
 as part of this work.
 
-One skin per glTF scene and identity transforms on skinned mesh nodes remain
-the current cooker limits. Full per-placement snapshot registration also
-remains open under A05.
+The cooker now ignores the world transform of each skinned mesh node while
+preserving it in placement metadata, including a zero scale. This follows the
+[glTF 2.0 skinning rules](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#skins),
+which apply joint transforms and ignore the skinned mesh node's transform.
+Transformed non-joint ancestors of joint nodes remain unsupported because the
+runtime rig currently serializes only joint transforms. One skin per scene and
+per-placement skinned or morphed snapshot uploads also remain open under A05.

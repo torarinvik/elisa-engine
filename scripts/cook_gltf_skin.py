@@ -146,6 +146,35 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
     skeleton = skin.get("skeleton")
     if skeleton is not None and (type(skeleton) is not int or skeleton not in joint_set):
         raise ValueError("skin skeleton must name one of its joints")
+
+    # The runtime rebuilds only skin joints under the instance root. Preserve
+    # that coordinate basis by refusing transformed non-joint ancestors, whose
+    # transforms contribute to global joint poses but are not in the rig data.
+    source_parents = [None] * len(nodes)
+    for parent_index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            raise ValueError("every skin node must be an object")
+        children = node.get("children", [])
+        if not isinstance(children, list):
+            raise ValueError("skin node children must be a list")
+        for child in children:
+            if type(child) is not int or not 0 <= child < len(nodes):
+                raise ValueError("skin node child index is out of range")
+            if child == parent_index or source_parents[child] is not None:
+                raise ValueError("a skin node must have at most one parent")
+            source_parents[child] = parent_index
+    for joint_index in joints:
+        ancestor = source_parents[joint_index]
+        visited_ancestors = set()
+        while ancestor is not None:
+            if ancestor in visited_ancestors:
+                raise ValueError("skin joint hierarchy contains a cycle")
+            visited_ancestors.add(ancestor)
+            if (ancestor not in joint_set and
+                    cook_gltf_nodes.local_matrix(nodes[ancestor]) != cook_gltf_nodes.IDENTITY):
+                raise ValueError("transformed non-joint ancestors of skin joints are unsupported")
+            ancestor = source_parents[ancestor]
+
     inverse_bind_matrices = _read_inverse_bind(document, buffer, skin, len(joints))
 
     parents: dict[int, int | None] = {node: None for node in joints}

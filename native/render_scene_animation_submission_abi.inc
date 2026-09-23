@@ -89,10 +89,19 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
         placement->morph_targets.size() == mesh->morph_targets.size() &&
         (placement->morph_targets.empty() ? std::abs(expected_morph) < 1.0e-5f :
             std::abs(placement->morph_targets[0].weight - expected_morph) < 1.0e-5f);
+    bool placement_vertices_match = placement != nullptr && placement->vertex_positions.size() ==
+        mesh->vertex_positions.size();
+    for (size_t vertex = 0; placement_vertices_match && vertex < mesh->vertex_positions.size(); ++vertex) {
+        const XMFLOAT3& root_position = mesh->vertex_positions[vertex];
+        const XMFLOAT3& child_position = placement->vertex_positions[vertex];
+        placement_vertices_match = root_position.x == child_position.x && root_position.y == child_position.y &&
+            root_position.z == child_position.z;
+    }
     const bool pending_match = state.animation_submission->pending(instance.animation_submission) ==
         (expected_pending != 0);
     return (bone_match ? ANIMATION_BONE_MATCH : 0) | (morph_match ? ANIMATION_MORPH_MATCH : 0) |
-        (placement_match ? ANIMATION_PLACEMENT_MATCH : 0) | (pending_match ? ANIMATION_PENDING_MATCH : 0);
+        (placement_match && placement_vertices_match ? ANIMATION_PLACEMENT_MATCH : 0) |
+        (pending_match ? ANIMATION_PENDING_MATCH : 0);
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_animation_instances(

@@ -266,8 +266,9 @@ sign only changes lighting, and the emissive color still dominates.
 
 - **Placement ranges.** Direct `create_mesh` imports upload independent
   placement entities for static, skinned, and morphed geometry. Placements in
-  one skinned instance share one armature; skinned node transforms remain
-  identity, and multiple skins per scene remain unsupported. See
+  one skinned instance share one armature. The cooker ignores transforms on
+  skinned mesh nodes as required by glTF; transformed non-joint ancestors of
+  joint nodes and multiple skins per scene remain unsupported. See
   [`skinned-mesh-placements.md`](skinned-mesh-placements.md).
 - **Snapshot placement scope.** Static snapshot rows use one cached Wicked
   mesh per placement and a child draw object under the single public root
