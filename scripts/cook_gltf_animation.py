@@ -11,7 +11,7 @@ import cook_assets
 import cook_gltf_nodes
 
 SAMPLE_RATE = 30
-MAX_CLIPS = 16
+MAX_CLIPS = 24
 MAX_FRAMES = 3601
 MAX_DURATION = (MAX_FRAMES - 1) / SAMPLE_RATE
 ANIMATION_KEYS = {"name", "samplers", "channels"}

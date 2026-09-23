@@ -9,7 +9,8 @@ inline bool parse_geometry_animations(const probe::PackageIndex& package,
     const auto count_section = package.sections.find("animation_clips");
     if (count_section == package.sections.end()) return true;
     uint64_t clip_count = 0;
-    if (!parse_count(package, "animation_clips", clip_count) || clip_count > 16) {
+    if (!parse_count(package, "animation_clips", clip_count) ||
+        clip_count > MAX_GEOMETRY_ANIMATION_CLIPS) {
         error = "invalid cooked geometry animation clip count";
         return false;
     }

@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 
-from elisa_package import build_package_bytes, write_package
+from elisa_package import MAX_SECTIONS, build_package_bytes, write_package
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,10 +62,26 @@ def main(arguments: list[str]) -> int:
             not rejects(lambda: build_package_bytes({"mesh": b"data"}, ("../base.elpk",))):
         print("ELPK writer accepted an invalid section or dependency", file=sys.stderr)
         return 1
+    wide_sections = {f"section_{index:04d}": bytes([index & 0xFF])
+        for index in range(MAX_SECTIONS - 1)}
+    if len(build_package_bytes(wide_sections)) == 0 or not rejects(lambda:
+            build_package_bytes({**wide_sections, "section_overflow": b"x"})):
+        print("ELPK writer accepted an invalid section count", file=sys.stderr)
+        return 1
+
+    def legacy_package(section_count: int) -> bytes:
+        return b"".join(f"field_{index:03d}=x\n".encode("ascii")
+            for index in range(section_count))
 
     with tempfile.TemporaryDirectory(prefix="elisa-elpk-test-") as temporary:
         package = Path(temporary) / "assets.elpk"
         write_package(package, sections, dependencies)
+        wide_package = Path(temporary) / "wide.elpk"
+        write_package(wide_package, wide_sections)
+        legacy_package_path = Path(temporary) / "many-sections.pkg"
+        legacy_package_path.write_bytes(legacy_package(135))
+        excess_legacy_package_path = Path(temporary) / "too-many-sections.pkg"
+        excess_legacy_package_path.write_bytes(legacy_package(MAX_SECTIONS + 1))
         executable = Path(temporary) / "package-format-test"
         command = [compiler, "-std=c++17", "-O2", "-I", str(ROOT / "native"),
             "-I", "/opt/homebrew/include", "-L", os.environ.get("ZSTD_LIBRARY_DIR", "/opt/homebrew/lib"),
@@ -75,7 +91,8 @@ def main(arguments: list[str]) -> int:
         if built.returncode != 0:
             print(built.stderr or built.stdout, file=sys.stderr)
             return built.returncode
-        checked = subprocess.run([str(executable), str(package)], capture_output=True,
+        checked = subprocess.run([str(executable), str(package), str(wide_package),
+            str(legacy_package_path), str(excess_legacy_package_path)], capture_output=True,
             text=True, check=False)
         if checked.returncode != 0:
             print(checked.stderr or checked.stdout, file=sys.stderr)

@@ -213,7 +213,7 @@ per-subset bound rejects it.
   four float32 influences per vertex, and up to 16 material subsets. Authored
   inverse-bind matrices are retained in palette order. Sampled LINEAR, STEP,
   and CUBICSPLINE TRS and morph-weight channels become fixed 30 Hz clips (up to
-  sixteen clips and 3,601 frames per clip); LINEAR quaternion keys use spherical
+  twenty-four clips and 3,601 frames per clip); LINEAR quaternion keys use spherical
   interpolation, and quaternion outputs are normalized. Morph outputs accept
   float32 or normalized 8/16-bit accessors. Mesh and node defaults are kept per
   placement, and weight channels work for skinned and unskinned meshes. Dense

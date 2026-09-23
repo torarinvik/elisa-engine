@@ -24,7 +24,7 @@ using BinaryPackageReadCancellationCheck = std::function<bool(size_t, size_t)>;
 struct PackageIndex {
     static constexpr size_t MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
     static constexpr size_t MAX_LINE_BYTES = 16 * 1024 * 1024;
-    static constexpr size_t MAX_SECTIONS = 128;
+    static constexpr size_t MAX_SECTIONS = 256;
 
     std::map<std::string, std::string> sections;
     bool valid = false;

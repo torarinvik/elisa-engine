@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cooked_geometry_limits.h"
 #include "fbx_asset_import_types.h"
 #include "ufbx.h"
 
@@ -22,7 +23,7 @@ constexpr size_t MAX_SCENE_BONES = 4096;
 constexpr size_t MAX_SCENE_MATERIALS = 1024;
 constexpr size_t MAX_ANIMATION_STACKS = 256;
 constexpr size_t MAX_SKIN_JOINTS = 64;
-constexpr size_t MAX_ANIMATION_CLIPS = 16;
+constexpr size_t MAX_ANIMATION_CLIPS = MAX_GEOMETRY_ANIMATION_CLIPS;
 constexpr uint32_t ANIMATION_SAMPLE_RATE = 30;
 constexpr size_t MAX_ANIMATION_SAMPLE_FLOATS = 2'000'000;
 constexpr size_t MAX_MESH_TRIANGLES = 5'000'000;
