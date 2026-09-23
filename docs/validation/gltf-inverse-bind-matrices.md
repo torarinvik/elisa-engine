@@ -66,10 +66,12 @@ checkout's current uncommitted source fails its seed build in
 was used only for this engine smoke; no compiler source or product was changed
 as part of this work.
 
-The cooker now ignores the world transform of each skinned mesh node while
+The cooker ignores the world transform of each skinned mesh node while
 preserving it in placement metadata, including a zero scale. This follows the
 [glTF 2.0 skinning rules](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#skins),
 which apply joint transforms and ignore the skinned mesh node's transform.
-Transformed non-joint ancestors of joint nodes remain unsupported because the
-runtime rig currently serializes only joint transforms. One skin per scene and
-per-placement skinned or morphed snapshot uploads also remain open under A05.
+Transformed and animated non-joint ancestors below the mesh-space root are now
+preserved in the rig; their details and limits are recorded in
+[`gltf-skin-hierarchies.md`](gltf-skin-hierarchies.md). Multiple skins in one
+scene remain unsupported, and independent skeleton branches and non-identity
+skinned placement transforms still need end-to-end coverage.

@@ -15,6 +15,7 @@ import cook_gltf_animation
 import cook_gltf_nodes
 
 MAX_JOINTS = 64
+MAX_RIG_NODES = cook_gltf_nodes.MAX_NODES
 GLTF_IDENTITY_MATRIX = (
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -35,7 +36,52 @@ def _accessor(document: dict, index: int, type_name: str, label: str) -> dict:
 
 def _rest_transform(node: dict, label: str) -> tuple[float, ...]:
     if "matrix" in node:
-        raise ValueError(f"{label} matrix joints are unsupported; use TRS transforms")
+        matrix = cook_gltf_nodes.local_matrix(node)
+        columns = [
+            (matrix[0], matrix[4], matrix[8]),
+            (matrix[1], matrix[5], matrix[9]),
+            (matrix[2], matrix[6], matrix[10]),
+        ]
+        scales = [math.sqrt(sum(value * value for value in column)) for column in columns]
+        if any(not math.isfinite(scale) or scale <= 1.0e-12 for scale in scales):
+            raise ValueError(f"{label} matrix must have nonzero scale")
+        if cook_gltf_nodes.determinant(matrix) < 0.0:
+            scales[0] = -scales[0]
+        rotation = [[matrix[row * 4 + column] / scales[column] for column in range(3)]
+            for row in range(3)]
+        orthogonality = (
+            sum(rotation[row][0] * rotation[row][1] for row in range(3)),
+            sum(rotation[row][0] * rotation[row][2] for row in range(3)),
+            sum(rotation[row][1] * rotation[row][2] for row in range(3)),
+        )
+        if any(abs(value) > 1.0e-5 for value in orthogonality):
+            raise ValueError(f"{label} matrix contains shear")
+        trace = rotation[0][0] + rotation[1][1] + rotation[2][2]
+        if trace > 0.0:
+            factor = math.sqrt(trace + 1.0) * 2.0
+            quaternion = ((rotation[2][1] - rotation[1][2]) / factor,
+                (rotation[0][2] - rotation[2][0]) / factor,
+                (rotation[1][0] - rotation[0][1]) / factor, factor * 0.25)
+        elif rotation[0][0] > rotation[1][1] and rotation[0][0] > rotation[2][2]:
+            factor = math.sqrt(1.0 + rotation[0][0] - rotation[1][1] - rotation[2][2]) * 2.0
+            quaternion = (factor * 0.25, (rotation[0][1] + rotation[1][0]) / factor,
+                (rotation[0][2] + rotation[2][0]) / factor,
+                (rotation[2][1] - rotation[1][2]) / factor)
+        elif rotation[1][1] > rotation[2][2]:
+            factor = math.sqrt(1.0 + rotation[1][1] - rotation[0][0] - rotation[2][2]) * 2.0
+            quaternion = ((rotation[0][1] + rotation[1][0]) / factor, factor * 0.25,
+                (rotation[1][2] + rotation[2][1]) / factor,
+                (rotation[0][2] - rotation[2][0]) / factor)
+        else:
+            factor = math.sqrt(1.0 + rotation[2][2] - rotation[0][0] - rotation[1][1]) * 2.0
+            quaternion = ((rotation[0][2] + rotation[2][0]) / factor,
+                (rotation[1][2] + rotation[2][1]) / factor, factor * 0.25,
+                (rotation[1][0] - rotation[0][1]) / factor)
+        quaternion_length = math.sqrt(sum(value * value for value in quaternion))
+        if not math.isfinite(quaternion_length) or quaternion_length <= 1.0e-12:
+            raise ValueError(f"{label} matrix has an invalid rotation")
+        quaternion = tuple(value / quaternion_length for value in quaternion)
+        return (matrix[3], matrix[7], matrix[11], *quaternion, *scales)
     translation = cook_gltf_nodes.finite_numbers(node.get("translation", [0.0, 0.0, 0.0]), 3, label)
     rotation = cook_gltf_nodes.finite_numbers(node.get("rotation", [0.0, 0.0, 0.0, 1.0]), 4, label)
     length = math.sqrt(sum(value * value for value in rotation))
@@ -147,9 +193,6 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
     if skeleton is not None and (type(skeleton) is not int or skeleton not in joint_set):
         raise ValueError("skin skeleton must name one of its joints")
 
-    # The runtime rebuilds only skin joints under the instance root. Preserve
-    # that coordinate basis by refusing transformed non-joint ancestors, whose
-    # transforms contribute to global joint poses but are not in the rig data.
     source_parents = [None] * len(nodes)
     for parent_index, node in enumerate(nodes):
         if not isinstance(node, dict):
@@ -163,6 +206,29 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
             if child == parent_index or source_parents[child] is not None:
                 raise ValueError("a skin node must have at most one parent")
             source_parents[child] = parent_index
+    # Skin transforms are evaluated relative to the first skinned mesh node.
+    # Ancestors shared by that node and the skeleton cancel from the palette;
+    # only the branch below the mesh-space root belongs in its local rig.
+    mesh_root = next((index for index, node in enumerate(nodes)
+        if isinstance(node, dict) and node.get("skin") == 0), None)
+    mesh_space_ancestors = set()
+    ancestor = mesh_root
+    while ancestor is not None:
+        mesh_space_ancestors.add(ancestor)
+        ancestor = source_parents[ancestor]
+    animations = document.get("animations", [])
+    animated_nodes = set()
+    for animation in animations if isinstance(animations, list) else []:
+        if not isinstance(animation, dict):
+            continue
+        channels = animation.get("channels", [])
+        for channel in channels if isinstance(channels, list) else []:
+            target = channel.get("target") if isinstance(channel, dict) else None
+            node_index = target.get("node") if isinstance(target, dict) else None
+            if type(node_index) is int:
+                animated_nodes.add(node_index)
+
+    rig_nodes = set(joints)
     for joint_index in joints:
         ancestor = source_parents[joint_index]
         visited_ancestors = set()
@@ -170,25 +236,22 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
             if ancestor in visited_ancestors:
                 raise ValueError("skin joint hierarchy contains a cycle")
             visited_ancestors.add(ancestor)
-            if (ancestor not in joint_set and
-                    cook_gltf_nodes.local_matrix(nodes[ancestor]) != cook_gltf_nodes.IDENTITY):
-                raise ValueError("transformed non-joint ancestors of skin joints are unsupported")
+            if (ancestor not in joint_set and ancestor not in mesh_space_ancestors and
+                    (cook_gltf_nodes.local_matrix(nodes[ancestor]) != cook_gltf_nodes.IDENTITY or
+                     ancestor in animated_nodes)):
+                rig_nodes.add(ancestor)
             ancestor = source_parents[ancestor]
+    if len(rig_nodes) > MAX_RIG_NODES:
+        raise ValueError(f"skin rig hierarchy exceeds {MAX_RIG_NODES} nodes")
 
     inverse_bind_matrices = _read_inverse_bind(document, buffer, skin, len(joints))
 
-    parents: dict[int, int | None] = {node: None for node in joints}
-    parent_seen = {node: False for node in joints}
-    for parent_index, node in enumerate(nodes):
-        if not isinstance(node, dict):
-            raise ValueError("every glTF node must be an object")
-        for child in node.get("children", []):
-            if child in joint_set:
-                if parent_seen[child]:
-                    raise ValueError("skin joints have more than one parent")
-                parent_seen[child] = True
-                parents[child] = parent_index if parent_index in joint_set else None
-
+    parents: dict[int, int | None] = {}
+    for node_index in rig_nodes:
+        ancestor = source_parents[node_index]
+        while ancestor is not None and ancestor not in rig_nodes:
+            ancestor = source_parents[ancestor]
+        parents[node_index] = ancestor
     ordered: list[int] = []
     visiting: set[int] = set()
     visited: set[int] = set()
@@ -216,7 +279,7 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
         parent = parents[node_index]
         name = node.get("name", f"joint_{node_index}")
         if not isinstance(name, str) or not name:
-            raise ValueError("skin joint names must be nonempty strings")
+            raise ValueError("skin rig node names must be nonempty strings")
         rig_joints.append({"name": name, "parent": -1 if parent is None else ordered_index[parent],
             "rest": _rest_transform(node, f"skin joint {node_index}")})
     animation_clips = cook_gltf_animation.normalize(document, buffer, ordered_index,
