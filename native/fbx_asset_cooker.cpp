@@ -300,7 +300,8 @@ std::string base64(const std::vector<uint8_t>& bytes) {
 }
 
 bool cook(const std::filesystem::path& source, const std::string& asset_key,
-    const std::filesystem::path& output, const std::string& source_sha256, size_t max_triangles) {
+    const std::filesystem::path& output, const std::string& source_sha256, size_t max_triangles,
+    const std::string& selected_mesh_name) {
     if (!safe_asset_key(asset_key)) {
         std::fprintf(stderr, "unsafe asset key; use a project-relative path without `..`\n");
         return false;
@@ -309,7 +310,7 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
         std::fprintf(stderr, "source SHA-256 must be 64 lowercase hexadecimal characters\n");
         return false;
     }
-    elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(source, true);
+    elisa::assets::FbxImportResult asset = elisa::assets::import_fbx(source, true, selected_mesh_name);
     if (!asset.ok) {
         std::fprintf(stderr, "FBX cook failed: %s\n", asset.error.c_str());
         return false;
@@ -509,22 +510,38 @@ bool cook(const std::filesystem::path& source, const std::string& asset_key,
 } // namespace
 
 int main(int argc, char** argv) {
-    if ((argc != 9 && argc != 11) || std::string(argv[1]) != "--source" ||
+    if (argc < 9 || (argc - 9) % 2 != 0 || std::string(argv[1]) != "--source" ||
         std::string(argv[3]) != "--asset-path" || std::string(argv[5]) != "--output" ||
         std::string(argv[7]) != "--sha256") {
-        std::fprintf(stderr, "usage: fbx_asset_cooker --source FILE --asset-path PROJECT_RELATIVE_PATH --output FILE --sha256 HEX [--max-triangles COUNT]\n");
+        std::fprintf(stderr, "usage: fbx_asset_cooker --source FILE --asset-path PROJECT_RELATIVE_PATH --output FILE --sha256 HEX [--max-triangles COUNT] [--mesh-name NAME]\n");
         return 2;
     }
     size_t max_triangles = 0;
-    if (argc == 11) {
-        char* end = nullptr;
-        const unsigned long long value = std::strtoull(argv[10], &end, 10);
-        if (std::string(argv[9]) != "--max-triangles" || end == argv[10] || *end != '\0' ||
-            value == 0 || value > 1000000) {
-            std::fprintf(stderr, "max triangles must be an integer in [1, 1000000]\n");
+    std::string selected_mesh_name;
+    bool saw_triangle_limit = false;
+    bool saw_mesh_name = false;
+    for (int argument = 9; argument < argc; argument += 2) {
+        const std::string option = argv[argument];
+        if (option == "--max-triangles" && !saw_triangle_limit) {
+            char* end = nullptr;
+            const unsigned long long value = std::strtoull(argv[argument + 1], &end, 10);
+            if (end == argv[argument + 1] || *end != '\0' || value == 0 || value > 1000000) {
+                std::fprintf(stderr, "max triangles must be an integer in [1, 1000000]\n");
+                return 2;
+            }
+            max_triangles = size_t(value);
+            saw_triangle_limit = true;
+        } else if (option == "--mesh-name" && !saw_mesh_name) {
+            selected_mesh_name = argv[argument + 1];
+            if (selected_mesh_name.empty() || selected_mesh_name.size() > 512) {
+                std::fprintf(stderr, "mesh name must contain 1 to 512 bytes\n");
+                return 2;
+            }
+            saw_mesh_name = true;
+        } else {
+            std::fprintf(stderr, "unknown or duplicate FBX cooker option: %s\n", option.c_str());
             return 2;
         }
-        max_triangles = size_t(value);
     }
-    return cook(argv[2], argv[4], argv[6], argv[8], max_triangles) ? 0 : 1;
+    return cook(argv[2], argv[4], argv[6], argv[8], max_triangles, selected_mesh_name) ? 0 : 1;
 }

@@ -18,6 +18,7 @@ import tempfile
 
 import cook_gltf_animation
 from elisa_package import write_geometry_package
+from fbx_test_fixtures import write_two_mesh_scene
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -341,7 +342,8 @@ def write_grid_fixture(path: Path, cells_per_side: int) -> None:
 
 
 def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
-    max_triangles: int | None = None, report: list[str] | None = None) -> dict[str, str]:
+    max_triangles: int | None = None, mesh_name: str | None = None,
+    report: list[str] | None = None) -> dict[str, str]:
     source = source.expanduser().resolve(strict=True)
     if not source.is_file():
         raise ValueError("FBX source must be a regular file")
@@ -357,6 +359,10 @@ def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
         if isinstance(max_triangles, bool) or not 1 <= max_triangles <= 1000000:
             raise ValueError("max triangles must be an integer in [1, 1000000]")
         command.extend(["--max-triangles", str(max_triangles)])
+    if mesh_name is not None:
+        if not mesh_name or len(mesh_name.encode("utf-8")) > 512 or "\0" in mesh_name or "\n" in mesh_name or "\r" in mesh_name:
+            raise ValueError("mesh name must be 1 to 512 UTF-8 bytes without line breaks")
+        command.extend(["--mesh-name", mesh_name])
     output_text = run_capture(command)
     if report is not None:
         report.append(output_text)
@@ -369,14 +375,16 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--asset-path", help="project-relative identity recorded in the cooked package")
     parser.add_argument("--output", type=Path, help="destination .pkg or .elpk path")
     parser.add_argument("--max-triangles", type=int, help="simplify output to no more than this many triangles")
+    parser.add_argument("--mesh-name", help="select one FBX node or mesh by its exact name")
     parser.add_argument("--dependency", action="append", default=[], metavar="BUNDLE",
         help="name a bundle this .elpk needs, relative to the output's directory")
     parser.add_argument("--self-test", action="store_true", help="cook and validate the synthetic triangle fixture")
     options = parser.parse_args(arguments)
     if not options.self_test and (options.source is None or options.asset_path is None or options.output is None):
         parser.error("source, --asset-path, and --output are required unless --self-test is used")
-    if options.self_test and (options.source is not None or options.asset_path is not None or options.output is not None or options.max_triangles is not None):
-        parser.error("--self-test cannot be combined with source, --asset-path, --output, or --max-triangles")
+    if options.self_test and (options.source is not None or options.asset_path is not None or options.output is not None or
+            options.max_triangles is not None or options.mesh_name is not None):
+        parser.error("--self-test cannot be combined with source, --asset-path, --output, or cooker options")
     if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
         parser.error("--max-triangles must be in [1, 1000000]")
     if options.dependency and (options.self_test or options.output.suffix.lower() != ".elpk"):
@@ -396,6 +404,14 @@ def main(arguments: list[str]) -> int:
                 fields = cook_one(cooker, source, "test/fixtures/fbx_triangle.fbx", output)
                 if int(fields["triangles"]) != 1 or int(fields["positions"]) != 3:
                     raise ValueError("triangle fixture package counts do not match")
+                multi_mesh_source = directory / "two-mesh-scene.fbx"
+                write_two_mesh_scene(multi_mesh_source)
+                multi_mesh_fields = cook_one(cooker, multi_mesh_source, "self-test/two-mesh-scene.fbx",
+                    directory / "largest-mesh.pkg")
+                selected_mesh_fields = cook_one(cooker, multi_mesh_source, "self-test/two-mesh-scene.fbx",
+                    directory / "selected-mesh.pkg", mesh_name="SmallTriangle")
+                if int(multi_mesh_fields["triangles"]) != 2 or int(selected_mesh_fields["triangles"]) != 1:
+                    raise ValueError("exact FBX mesh-name selection did not override largest-mesh selection")
                 grid_source = directory / "grid.fbx"
                 cache_output = directory / "grid-cache.pkg"
                 grid_output = directory / "grid.pkg"
@@ -431,14 +447,15 @@ def main(arguments: list[str]) -> int:
                         raise ValueError("planar UV fixture did not produce the expected +X tangent frame")
                 if grid_fields != repeat_fields or grid_output.read_bytes() != repeat_output.read_bytes():
                     raise ValueError("simplified grid package output is not deterministic")
-                print(f"FBX cooker self-test passed: triangle package plus {original_triangles} -> "
+                print(f"FBX cooker self-test passed: triangle and selected-mesh packages plus {original_triangles} -> "
                     f"{grid_triangles} deterministic simplified grid triangles; vertex-cache ACMR "
                     f"{cache_report.group(1)} -> {cache_report.group(2)}; vertex-fetch bytes "
                     f"{fetch_report.group(1)} -> {fetch_report.group(2)}")
             else:
                 package_output = options.output
                 geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output
-                fields = cook_one(cooker, options.source, options.asset_path, geometry_output, options.max_triangles)
+                fields = cook_one(cooker, options.source, options.asset_path, geometry_output,
+                    options.max_triangles, options.mesh_name)
                 if package_output.suffix.lower() == ".elpk":
                     write_geometry_package(package_output, geometry_output.read_bytes(),
                         dependencies=options.dependency)

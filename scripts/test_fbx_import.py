@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 
+import fbx_test_fixtures
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +53,9 @@ def main() -> int:
             compile_command.extend(zstd_flags)
         run(compile_command)
         run([str(test_binary), "--fixture", str(ROOT / "test/fixtures/fbx_triangle.fbx")])
+        multi_mesh_fixture = build / "two-mesh-scene.fbx"
+        fbx_test_fixtures.write_two_mesh_scene(multi_mesh_fixture)
+        run([str(test_binary), "--mesh-selection", str(multi_mesh_fixture)])
         if args.assets_root is not None:
             asset_root = args.assets_root.expanduser().resolve()
             run([str(test_binary), "--assets-root", str(asset_root)])
