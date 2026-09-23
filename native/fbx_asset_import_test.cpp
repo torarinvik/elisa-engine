@@ -116,6 +116,26 @@ int fixture_test(const std::filesystem::path& path) {
     return ok ? 0 : 1;
 }
 
+int mesh_selection_test(const std::filesystem::path& path) {
+    bool ok = true;
+    const auto selected_mesh = elisa::assets::import_fbx(path, true, "SmallTriangle");
+    ok &= check(selected_mesh.ok && selected_mesh.meshes == 2 && selected_mesh.triangles == 3 &&
+        selected_mesh.primary_mesh.mesh_name == "SmallTriangle" &&
+        selected_mesh.primary_mesh.indices.size() == 3,
+        "exact mesh-name selection chooses a smaller mesh from a multi-mesh scene");
+    const auto selected_node = elisa::assets::import_fbx(path, true, "SelectedNode");
+    ok &= check(selected_node.ok && selected_node.primary_mesh.mesh_name == "SelectedQuad" &&
+        selected_node.primary_mesh.indices.size() == 6,
+        "exact node-name selection decodes that node's mesh");
+    const auto missing = elisa::assets::import_fbx(path, true, "MissingMesh");
+    ok &= check(!missing.ok && missing.error.find("selector did not match") != std::string::npos,
+        "missing exact mesh names fail explicitly");
+    const auto oversized = elisa::assets::import_fbx(path, true, std::string(513, 'x'));
+    ok &= check(!oversized.ok && oversized.error.find("at most 512 bytes") != std::string::npos,
+        "oversized mesh selectors are rejected before scene extraction");
+    return ok ? 0 : 1;
+}
+
 int decode_mesh(const std::filesystem::path& path) {
     const auto asset = elisa::assets::import_fbx(path, true);
     if (!asset.ok) {
@@ -276,6 +296,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--fixture") {
         return fixture_test(argv[2]);
     }
+    if (argc == 3 && std::string(argv[1]) == "--mesh-selection") {
+        return mesh_selection_test(argv[2]);
+    }
     if (argc == 3 && std::string(argv[1]) == "--assets-root") {
         return supplied_assets_test(argv[2]);
     }
@@ -286,9 +309,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--cooked-skin") {
         return cooked_skin_test(argv[2]);
     }
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --assets-root DIR | --decode FILE | --cooked-skin FILE\n");
 #else
-    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --assets-root DIR | --decode FILE\n");
+    std::fprintf(stderr, "usage: fbx_asset_import_test --fixture FILE | --mesh-selection FILE | --assets-root DIR | --decode FILE\n");
 #endif
     return 2;
 }

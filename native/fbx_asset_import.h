@@ -15,13 +15,19 @@
 namespace elisa::assets {
 
 // Parse one FBX into bounded scene metadata and optionally decode its largest
-// triangle mesh as a primary mesh. This explicit selection avoids treating tiny
-// helper geometry as the character; multi-mesh scene cooking remains a later
-// step. Axis and unit conversion happen in ufbx at the import boundary: output
+// triangle mesh, or select one exact node/mesh name. This keeps helper geometry
+// from unexpectedly becoming the cooked asset and lets callers cook a scene's
+// meshes individually while complete multi-mesh scene packaging is developed.
+// Axis and unit conversion happen in ufbx at the import boundary: output
 // positions use metres in Elisa's right-handed +Y-up frame.
 inline FbxImportResult import_fbx(const std::filesystem::path& path,
-    bool decode_first_mesh = true) {
+    bool decode_first_mesh = true, const std::string& selected_mesh_name = {}) {
     FbxImportResult result;
+    if (selected_mesh_name.size() > 512 || selected_mesh_name.find('\0') != std::string::npos ||
+        selected_mesh_name.find_first_of("\r\n") != std::string::npos) {
+        detail::fail(result, "FBX mesh selector must be at most 512 bytes without line breaks");
+        return result;
+    }
     std::error_code file_error;
     const uintmax_t file_bytes = std::filesystem::file_size(path, file_error);
     if (file_error || file_bytes == 0 || file_bytes > detail::MAX_FILE_BYTES) {
@@ -97,7 +103,7 @@ inline FbxImportResult import_fbx(const std::filesystem::path& path,
                 double(clip->time_end) - double(clip->time_begin));
         }
     }
-    if (decode_first_mesh && !detail::extract_primary_mesh(*scene, result)) return result;
+    if (decode_first_mesh && !detail::extract_primary_mesh(*scene, result, selected_mesh_name)) return result;
     result.ok = true;
     return result;
 }

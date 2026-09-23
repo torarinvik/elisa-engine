@@ -25,17 +25,32 @@ inline ufbx_vec3 face_normal(ufbx_vec3 a, ufbx_vec3 b, ufbx_vec3 c) {
     return ufbx_vec3{ufbx_real(x / length), ufbx_real(y / length), ufbx_real(z / length)};
 }
 
-inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result) {
+inline bool fbx_name_equals(ufbx_string name, const std::string& selected_name) {
+    return name.data != nullptr && name.length == selected_name.size() &&
+        std::equal(name.data, name.data + name.length, selected_name.begin());
+}
+
+inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
+    const std::string& selected_name) {
     ufbx_node* source_node = nullptr;
     for (size_t index = 0; index < scene.nodes.count; ++index) {
         ufbx_node* node = scene.nodes.data[index];
-        if (node != nullptr && node->mesh != nullptr && node->mesh->num_triangles != 0 &&
-            (source_node == nullptr || node->mesh->num_triangles > source_node->mesh->num_triangles)) {
+        if (node == nullptr || node->mesh == nullptr || node->mesh->num_triangles == 0) continue;
+        if (!selected_name.empty()) {
+            if (!fbx_name_equals(node->name, selected_name) &&
+                !fbx_name_equals(node->mesh->name, selected_name)) continue;
+            if (source_node != nullptr) {
+                fail(result, "FBX mesh selector is ambiguous; use an exact unique node or mesh name");
+                return false;
+            }
+            source_node = node;
+        } else if (source_node == nullptr || node->mesh->num_triangles > source_node->mesh->num_triangles) {
             source_node = node;
         }
     }
     if (source_node == nullptr) {
-        fail(result, "FBX scene has no triangle mesh node");
+        fail(result, selected_name.empty() ? "FBX scene has no triangle mesh node" :
+            "FBX mesh selector did not match a triangle mesh name");
         return false;
     }
 
