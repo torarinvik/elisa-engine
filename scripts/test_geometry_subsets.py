@@ -218,10 +218,31 @@ def cases(directory: Path) -> list[tuple]:
     lod_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(lod_sections["slot_materials_b64"])))
     lod_triangles = int(lod_sections["triangles"])
     lod_indices = int(lod_sections["indices"])
+    lod_vertex_count = int(lod_sections["positions"])
+    lod_positions = base64.b64decode(lod_sections["positions_b64"])
+    lod_normals = base64.b64decode(lod_sections["normals_b64"])
+    lod_uvs = base64.b64decode(lod_sections["uvs_b64"])
+    lod_tangents = base64.b64decode(lod_sections["tangents_b64"])
+    lod_index_stream = base64.b64decode(lod_sections["indices_b64"])
+    lod_placements = list(struct.iter_unpack("<8I12f",
+        base64.b64decode(lod_sections["mesh_placements_b64"])))
+    source_placement_counts = cook_gltf_geometry.placed_counts(
+        cook_assets.read_gltf(lod_source.read_bytes()))
     if (lod_triangles <= 0 or lod_triangles >= 2304 or lod_indices != lod_triangles * 3 or
             [subset[2] for subset in lod_subsets] != [0, 1, 0, 1] or
-            "0.500" not in cooked_lod.stdout):
-        raise RuntimeError("static LOD cooker did not satisfy its source, triangle, or error limits")
+            "0.500" not in cooked_lod.stdout or "attribute bytes=" not in cooked_lod.stdout or
+            lod_vertex_count >= source_placement_counts["positions"] or
+            len(lod_positions) != lod_vertex_count * 12 or len(lod_normals) != lod_vertex_count * 12 or
+            len(lod_uvs) != lod_vertex_count * 8 or len(lod_tangents) != lod_vertex_count * 16 or
+            len(lod_index_stream) != lod_indices * 4 or len(lod_placements) != 2 or
+            any(placement[2] + placement[3] > lod_vertex_count or
+                placement[4] + placement[5] > lod_indices for placement in lod_placements)):
+        raise RuntimeError("static LOD cooker did not satisfy its compaction, attribute, or range limits")
+    for placement in lod_placements:
+        _, _, vertex_start, vertex_count, index_start, index_count, _, _, *_ = placement
+        placement_indices = struct.unpack_from(f"<{index_count}I", lod_index_stream, index_start * 4)
+        if any(index < vertex_start or index >= vertex_start + vertex_count for index in placement_indices):
+            raise RuntimeError("static LOD cooker remapped indices outside a placement's compacted vertices")
 
     def morph_variant(old: bytes, new: bytes) -> bytes:
         if old not in morph:

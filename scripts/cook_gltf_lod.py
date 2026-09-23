@@ -110,6 +110,65 @@ def _placement_chunks(geometry: dict) -> list[tuple[int, int, int, int]]:
     return chunks
 
 
+def _compact_placement_vertices(geometry: dict, placements: list[dict],
+        indices: bytes) -> tuple[dict[str, bytes], bytes]:
+    """Compact each placement independently and remap all static vertex streams."""
+    source_vertex_count = geometry["vertex_count"]
+    source_placements = geometry["scene"]["mesh_placements"]
+    if len(placements) != len(source_placements):
+        raise ValueError("LOD placement metadata changed during vertex compaction")
+    strides = {"positions": 12, "normals": 12, "uvs": 8, "tangents": 16}
+    source_streams = {}
+    for name, stride in strides.items():
+        stream = geometry.get(name, b"")
+        if name == "positions" or stream:
+            if len(stream) != source_vertex_count * stride:
+                raise ValueError(f"LOD {name} stream has an invalid vertex stride")
+            source_streams[name] = stream
+    compacted = {name: bytearray() for name in source_streams}
+    remapped_indices = bytearray(indices)
+    total_vertices = 0
+    source_vertex_ranges = []
+    for source, placement in zip(source_placements, placements):
+        vertex_start = source.get("vertex_start", 0)
+        vertex_count = source.get("vertex_count", source_vertex_count)
+        index_start = placement["index_start"]
+        index_count = placement["index_count"]
+        if (type(vertex_start) is not int or type(vertex_count) is not int or
+                vertex_start < 0 or vertex_count <= 0 or vertex_start > source_vertex_count or
+                vertex_count > source_vertex_count - vertex_start or index_count <= 0 or
+                index_start < 0 or index_count > len(indices) // INDEX.size - index_start):
+            raise ValueError("LOD placement has invalid vertex or index ranges")
+        if any(vertex_start < end and start < vertex_start + vertex_count
+                for start, end in source_vertex_ranges):
+            raise ValueError("LOD source placements share vertex ranges")
+        source_vertex_ranges.append((vertex_start, vertex_start + vertex_count))
+        index_offset = index_start * INDEX.size
+        index_bytes = indices[index_offset:index_offset + index_count * INDEX.size]
+        used_vertices = sorted({index for (index,) in
+            struct.iter_unpack("<I", index_bytes)})
+        if any(index < vertex_start or index >= vertex_start + vertex_count
+                for index in used_vertices):
+            raise ValueError("LOD placement references a vertex outside its source range")
+        new_start = total_vertices
+        remap = {}
+        for old_index in used_vertices:
+            remap[old_index] = total_vertices
+            for name, stream in source_streams.items():
+                stride = strides[name]
+                byte_start = old_index * stride
+                compacted[name] += stream[byte_start:byte_start + stride]
+            total_vertices += 1
+        for offset in range(index_offset, index_offset + index_count * INDEX.size, INDEX.size):
+            old_index = INDEX.unpack_from(remapped_indices, offset)[0]
+            struct.pack_into("<I", remapped_indices, offset, remap[old_index])
+        placement["vertex_start"] = new_start
+        placement["vertex_count"] = len(used_vertices)
+    if total_vertices == 0 or total_vertices > source_vertex_count:
+        raise ValueError("LOD vertex compaction produced an invalid vertex total")
+    return {name: bytes(stream) for name, stream in compacted.items()}, bytes(remapped_indices)
+
+
 def simplify_geometry(geometry: dict, ratio: float) -> tuple[dict, dict]:
     """Simplify each placement/material intersection without changing vertex streams."""
     if type(ratio) not in (int, float) or not math.isfinite(ratio) or not 0.0 < ratio < 1.0:
@@ -120,6 +179,8 @@ def simplify_geometry(geometry: dict, ratio: float) -> tuple[dict, dict]:
     positions = geometry["positions"]
     indices = geometry["indices"]
     vertex_count = geometry["vertex_count"]
+    source_attribute_bytes = sum(len(geometry.get(name, b""))
+        for name in ("positions", "normals", "uvs", "tangents"))
     chunks = _placement_chunks(geometry)
     index_count = len(indices) // INDEX.size
     if (vertex_count <= 0 or vertex_count > MAX_VERTICES or
@@ -200,12 +261,19 @@ def simplify_geometry(geometry: dict, ratio: float) -> tuple[dict, dict]:
         placement["subset_count"] = len(overlaps)
     if len(subsets) > 16:
         raise ValueError("simplified LOD exceeds the runtime material-subset limit")
-    geometry["indices"] = bytes(output_indices)
+    compacted_streams, remapped_indices = _compact_placement_vertices(
+        geometry, placement_records, bytes(output_indices))
+    geometry.update(compacted_streams)
+    geometry["indices"] = remapped_indices
+    geometry["vertex_count"] = len(compacted_streams["positions"]) // 12
     geometry["index_count"] = len(output_indices) // INDEX.size
     geometry["subsets"] = subsets
     geometry["scene"]["mesh_placements"] = placement_records
+    attribute_bytes = sum(len(stream) for stream in compacted_streams.values())
     report = {"source_triangles": source_triangles, "target_triangles": target_triangles,
-        "triangles": actual_triangles, "maximum_error": maximum_error, "ratio": float(ratio)}
+        "triangles": actual_triangles, "maximum_error": maximum_error, "ratio": float(ratio),
+        "source_vertices": vertex_count, "vertices": geometry["vertex_count"],
+        "source_attribute_bytes": source_attribute_bytes, "attribute_bytes": attribute_bytes}
     return geometry, report
 
 
@@ -216,10 +284,17 @@ def test_fixture() -> dict:
 
     side = 25
     positions = bytearray()
+    normals = bytearray()
+    uvs = bytearray()
+    tangents = bytearray()
     for y in range(side):
         for x in range(side):
             z = math.sin(x * 0.3) * math.cos(y * 0.2) * 0.1
-            positions += struct.pack("<3f", float(x), float(y), z)
+            position = (float(x), float(y), z)
+            positions += struct.pack("<3f", *position)
+            normals += struct.pack("<3f", *position)
+            uvs += struct.pack("<2f", float(x), float(y))
+            tangents += struct.pack("<4f", *position, 1.0)
     left, right = [], []
     for y in range(side - 1):
         for x in range(side - 1):
@@ -233,7 +308,8 @@ def test_fixture() -> dict:
     right = [index for triangle in right for index in triangle]
     indices = left + right
     first_count = len(left)
-    return {"positions": bytes(positions), "indices": struct.pack(f"<{len(indices)}I", *indices),
+    return {"positions": bytes(positions), "normals": bytes(normals), "uvs": bytes(uvs),
+        "tangents": bytes(tangents), "indices": struct.pack(f"<{len(indices)}I", *indices),
         "vertex_count": side * side, "subsets": [(0, first_count, 0), (first_count, len(right), 1)],
         "scene": {"mesh_placements": [{"mesh": 0, "node": 0, "vertex_start": 0,
             "vertex_count": side * side, "index_start": 0, "index_count": len(indices),
@@ -283,8 +359,21 @@ def self_test() -> int:
     if (first["indices"] != second["indices"] or report != repeated or
             report["triangles"] >= report["source_triangles"] or
             len(first["subsets"]) != 2 or [subset[2] for subset in first["subsets"]] != [0, 1] or
-            first["scene"]["mesh_placements"][0]["index_count"] != first["index_count"]):
+            first["scene"]["mesh_placements"][0]["index_count"] != first["index_count"] or
+            first["vertex_count"] >= source["vertex_count"] or
+            first["scene"]["mesh_placements"][0]["vertex_count"] != first["vertex_count"]):
         print("glTF LOD self-test failed: simplification was not deterministic or crossed material ranges", file=sys.stderr)
+        return 1
+    compacted_positions = list(struct.iter_unpack("<3f", first["positions"]))
+    compacted_normals = list(struct.iter_unpack("<3f", first["normals"]))
+    compacted_uvs = list(struct.iter_unpack("<2f", first["uvs"]))
+    compacted_tangents = list(struct.iter_unpack("<4f", first["tangents"]))
+    if (len(compacted_positions) != first["vertex_count"] or
+            compacted_normals != compacted_positions or
+            compacted_uvs != [row[:2] for row in compacted_positions] or
+            compacted_tangents != [(*row, 1.0) for row in compacted_positions] or
+            any(index >= first["vertex_count"] for (index,) in struct.iter_unpack("<I", first["indices"]))):
+        print("glTF LOD self-test failed: compacted vertex attributes or remapped indices diverged", file=sys.stderr)
         return 1
     vertex_count = source["vertex_count"]
     original_indices = list(struct.iter_unpack("<I", source["indices"]))
@@ -292,6 +381,8 @@ def self_test() -> int:
         *(index + vertex_count for (index,) in original_indices))
     first_index_count = len(source["indices"]) // INDEX.size
     duplicated = {**source, "positions": source["positions"] * 2,
+        "normals": source["normals"] * 2, "uvs": source["uvs"] * 2,
+        "tangents": source["tangents"] * 2,
         "vertex_count": vertex_count * 2, "indices": duplicated_indices,
         "subsets": source["subsets"] + [(start + first_index_count, count, slot)
             for start, count, slot in source["subsets"]],
@@ -301,10 +392,23 @@ def self_test() -> int:
                 "index_start": first_index_count, "index_count": first_index_count,
                 "subset_start": 2, "subset_count": 2, "transform": ()}]}}
     placed, placed_report = simplify_geometry(duplicated, 0.5)
+    first_placement, second_placement = placed["scene"]["mesh_placements"]
+    first_indices = list(struct.iter_unpack("<I", placed["indices"][
+        first_placement["index_start"] * INDEX.size:
+        (first_placement["index_start"] + first_placement["index_count"]) * INDEX.size]))
+    second_indices = list(struct.iter_unpack("<I", placed["indices"][
+        second_placement["index_start"] * INDEX.size:
+        (second_placement["index_start"] + second_placement["index_count"]) * INDEX.size]))
     if (len(placed["subsets"]) != 4 or placed_report["triangles"] * 2 != placed_report["source_triangles"] or
             any(row["index_count"] != placed["scene"]["mesh_placements"][0]["index_count"]
                 for row in placed["scene"]["mesh_placements"]) or
-            [row[2] for row in placed["subsets"]] != [0, 1, 0, 1]):
+            [row[2] for row in placed["subsets"]] != [0, 1, 0, 1] or
+            first_placement["vertex_start"] != 0 or
+            second_placement["vertex_start"] != first_placement["vertex_count"] or
+            any(index[0] < first_placement["vertex_start"] or index[0] >=
+                first_placement["vertex_start"] + first_placement["vertex_count"] for index in first_indices) or
+            any(index[0] < second_placement["vertex_start"] or index[0] >=
+                second_placement["vertex_start"] + second_placement["vertex_count"] for index in second_indices)):
         print("glTF LOD self-test failed: a simplification range crossed a placement boundary", file=sys.stderr)
         return 1
     try:
@@ -344,5 +448,7 @@ def self_test() -> int:
             print("glTF LOD self-test failed: native cooker accepted malformed indices or targets", file=sys.stderr)
             return 1
     print(f"glTF LOD self-test passed: {report['source_triangles']} -> {report['triangles']} triangles, "
+        f"{report['source_vertices']} -> {report['vertices']} vertices, "
+        f"attributes {report['source_attribute_bytes']} -> {report['attribute_bytes']} bytes; "
         f"two material subsets retained; max error {report['maximum_error']:.5f}; malformed packets rejected")
     return 0

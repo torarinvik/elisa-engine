@@ -30,7 +30,9 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     triangles = geometry["index_count"] // 3
     if (source_counts["triangles"] <= 0 or triangles <= 0 or triangles > source_counts["triangles"] or
             (simplify_ratio is None and triangles != source_counts["triangles"]) or
-            geometry["index_count"] % 3 != 0 or geometry["vertex_count"] != source_counts["positions"] or
+            geometry["index_count"] % 3 != 0 or
+            geometry["vertex_count"] > source_counts["positions"] or
+            (simplify_ratio is None and geometry["vertex_count"] != source_counts["positions"]) or
             cook_assets.normalized_counts(document)["bounds"] is None):
         raise ValueError("normalized geometry does not match the declared source counts")
     source_digest = hashlib.sha256(data).hexdigest()

@@ -326,7 +326,10 @@ def main(arguments: list[str]) -> int:
         print(f"cooked {options.asset_path} -> {output} ({reduction}, {result['positions']} vertices)")
         if result["lod"] is not None:
             print(f"LOD ratio={result['lod']['ratio']:.3f}, "
-                f"max relative error={result['lod']['maximum_error']:.5f}")
+                f"max relative error={result['lod']['maximum_error']:.5f}, "
+                f"vertices={result['lod']['vertices']}/{result['lod']['source_vertices']}, "
+                f"attribute bytes={result['lod']['attribute_bytes']}/"
+                f"{result['lod']['source_attribute_bytes']}")
     except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError, AttributeError) as failure:
         print(f"glTF cooking failed: {failure}", file=sys.stderr)
         return 1
