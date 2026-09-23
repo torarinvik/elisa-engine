@@ -127,8 +127,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
         error failure: 18
     stage <- 50 + stale_body_status
     raise PhysicsRuntime::PhysicsError.BackendFailure if stale_body_status != 0
-    stage <- 6
+    stage <- 18
     initial_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
+    try PhysicsAppProbe::render_frames_do_not_step_physics(world, falling, initial_position)
     tick: mutable u64 = 0
     stage <- 7
     tick <- try PhysicsAppProbe::fixed_step_pair(world)
