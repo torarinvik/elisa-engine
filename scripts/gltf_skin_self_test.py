@@ -13,6 +13,7 @@ import tempfile
 import cook_assets
 import cook_gltf_animation
 import cook_gltf_geometry
+import cook_gltf_nodes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,7 +93,10 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
     document["nodes"][0].update({"children": [1], "skin": 0})
     document["nodes"] += [{"name": "root", "translation": [2.0, 0.0, 0.0], "children": [2]},
         {"name": "tip", "translation": [0.0, 1.0, 0.0]}]
-    document["nodes"].append({"name": "second_panel_placement", "mesh": 0, "skin": 0})
+    document["nodes"].append({"name": "second_panel_placement", "mesh": 0, "skin": 0,
+        "translation": [3.0, 0.0, 0.0],
+        "rotation": [0.0, 0.3826834323650898, 0.0, 0.9238795325112867],
+        "scale": [2.0, 1.0, 0.5]})
     document["scenes"][document["scene"]]["nodes"].append(3)
     skin = {"name": "panel_rig", "joints": [1, 2], "skeleton": 1}
     if inverse_bind is not None:
@@ -136,6 +140,55 @@ def inverse_bind_defaults_self_test(temporary: Path) -> int:
     return 0
 
 
+def skinned_mesh_transform_self_test(temporary: Path) -> int:
+    """Skinned node transforms remain metadata and never alter mesh streams."""
+    document = generated_document()
+    document["nodes"][3].pop("translation")
+    document["nodes"][3].pop("rotation")
+    document["nodes"][3].pop("scale")
+    buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
+        json.dumps(document, separators=(",", ":")).encode("utf-8")))
+    baseline = cook_gltf_geometry.normalized_geometry(document, buffer)
+
+    transformed = deepcopy(document)
+    transformed["nodes"][3].update({"translation": [1.25, -0.5, 2.0],
+        "rotation": [0.0, 0.3826834323650898, 0.0, 0.9238795325112867],
+        "scale": [1.5, 0.75, 2.0]})
+    transformed_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
+        json.dumps(transformed, separators=(",", ":")).encode("utf-8")))
+    cooked = cook_gltf_geometry.normalized_geometry(transformed, transformed_buffer)
+    unchanged_streams = ("positions", "normals", "tangents", "uvs", "indices", "skin",
+        "skin_indices", "skin_weights", "morph_targets")
+    if any(cooked[key] != baseline[key] for key in unchanged_streams):
+        print("glTF skin self-test failed: skinned mesh node transform changed cooked geometry",
+            file=sys.stderr)
+        return 1
+    expected_transform = cook_gltf_nodes.local_matrix(transformed["nodes"][3])
+    if cooked["scene"]["mesh_placements"][1]["transform"] != expected_transform:
+        print("glTF skin self-test failed: ignored mesh transform was lost from placement metadata",
+            file=sys.stderr)
+        return 1
+    collapsed = deepcopy(document)
+    collapsed["nodes"][3]["scale"] = [0.0, 1.0, 1.0]
+    collapsed_buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
+        json.dumps(collapsed, separators=(",", ":")).encode("utf-8")))
+    collapsed_geometry = cook_gltf_geometry.normalized_geometry(collapsed, collapsed_buffer)
+    if any(collapsed_geometry[key] != baseline[key] for key in unchanged_streams):
+        print("glTF skin self-test failed: ignored zero-scale mesh transform changed cooked geometry",
+            file=sys.stderr)
+        return 1
+    collapsed_source = Path(temporary) / "zero-scale-skinned-node.gltf"
+    collapsed_source.write_text(json.dumps(collapsed, separators=(",", ":")), encoding="utf-8")
+    try:
+        cook_gltf_geometry.cook_geometry_package(collapsed_source, ASSET_PATH,
+            Path(temporary) / "zero-scale-skinned-node.pkg")
+    except (ValueError, KeyError, IndexError, TypeError) as error:
+        print(f"glTF skin self-test failed: ignored zero-scale node was rejected: {error}",
+            file=sys.stderr)
+        return 1
+    return 0
+
+
 def animation_limit_self_test(temporary: Path) -> int:
     """Keep the glTF normalizer, package writer, and native limit aligned."""
     document = generated_document()
@@ -170,6 +223,8 @@ def self_test(temporary: Path) -> int:
         return 1
     if inverse_bind_defaults_self_test(temporary) != 0:
         return 1
+    if skinned_mesh_transform_self_test(temporary) != 0:
+        return 1
     first, result = write_package(temporary / "first.pkg")
     second, second_result = write_package(temporary / "second.pkg")
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
@@ -199,9 +254,9 @@ def self_test(temporary: Path) -> int:
     camera["cameras"] = [{"type": "perspective"}]
     camera["nodes"][0]["camera"] = 0
     rejected.append(("camera", camera))
-    transformed = deepcopy(document)
-    transformed["nodes"][0]["translation"] = [1.0, 0.0, 0.0]
-    rejected.append(("skinned mesh transform", transformed))
+    transformed_joint_ancestor = deepcopy(document)
+    transformed_joint_ancestor["nodes"][0]["translation"] = [1.0, 0.0, 0.0]
+    rejected.append(("transformed non-joint skin ancestor", transformed_joint_ancestor))
     missing_weights = deepcopy(document)
     missing_weights["meshes"][0]["primitives"][0]["attributes"].pop("WEIGHTS_0")
     rejected.append(("missing weights", missing_weights))

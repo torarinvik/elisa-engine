@@ -73,7 +73,8 @@ def determinant(m: tuple) -> float:
     return m[0] * c[0] + m[1] * c[1] + m[2] * c[2]
 
 
-def mesh_placement_records(document: dict, mesh_count: int) -> list[tuple[int, int, tuple]]:
+def mesh_placement_records(document: dict, mesh_count: int, *,
+        allow_singular_mesh_transforms: bool = False) -> list[tuple[int, int, tuple]]:
     """Return (mesh index, node index, world matrix) for each mesh node.
 
     Records retain the source identities that the flattened geometry stream
@@ -124,9 +125,9 @@ def mesh_placement_records(document: dict, mesh_count: int) -> list[tuple[int, i
         world = multiply(parent_world, locals_[index])
         if "mesh" in nodes[index]:
             if not all(math.isfinite(value) for value in world):
-                raise ValueError("node transforms must be finite and invertible")
+                raise ValueError("node transforms must be finite")
             det = determinant(world)
-            if not math.isfinite(det) or det == 0.0:
+            if not math.isfinite(det) or (det == 0.0 and not allow_singular_mesh_transforms):
                 raise ValueError("node transforms must be finite and invertible")
             placements.append((nodes[index]["mesh"], index, world))
         pending.extend((child, world) for child in reversed(nodes[index].get("children", [])))
@@ -138,9 +139,11 @@ def mesh_placement_records(document: dict, mesh_count: int) -> list[tuple[int, i
     return placements
 
 
-def mesh_placements(document: dict, mesh_count: int) -> list[tuple[int, tuple]]:
+def mesh_placements(document: dict, mesh_count: int, *,
+        allow_singular_mesh_transforms: bool = False) -> list[tuple[int, tuple]]:
     """Return the legacy (mesh index, world matrix) view used by baking."""
-    return [(mesh, world) for mesh, _, world in mesh_placement_records(document, mesh_count)]
+    return [(mesh, world) for mesh, _, world in mesh_placement_records(document, mesh_count,
+        allow_singular_mesh_transforms=allow_singular_mesh_transforms)]
 
 
 def packed_float3(values: tuple) -> bytes:

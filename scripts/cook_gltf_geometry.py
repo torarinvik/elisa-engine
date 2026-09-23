@@ -153,10 +153,9 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple[list
     if any(len(primitive.get("targets", [])) != morph_count for primitive in every_primitive):
         raise ValueError("all runtime primitives must use the same morph target count")
     slot_count, slot_records, slot_images = material_slots(document, every_primitive)
-    placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes))
+    placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes),
+        allow_singular_mesh_transforms=skin is not None)
     placements = [(mesh, matrix) for mesh, _, matrix in placement_records]
-    if skin is not None and any(matrix != cook_gltf_nodes.IDENTITY for _, matrix in placements):
-        raise ValueError("skinned mesh node transforms must be identity; put the pose in its joints")
     scene = cook_gltf_scene.normalize(document, buffer, placement_records)
     return placements, slot_count, slot_records, slot_images, skin, morph_count, scene
 
@@ -279,7 +278,11 @@ def normalized_geometry(document: dict, buffer: bytes):
         "index_start": None, "index_count": 0, "subset_start": None, "subset_count": 0}
         for _ in placements]
     vertex_total = index_total = 0
-    for placement, (mesh, matrix) in enumerate(placements):
+    for placement, (mesh, authored_matrix) in enumerate(placements):
+        # glTF explicitly ignores the transform of a node that instances a
+        # skinned mesh. Keep its metadata for scene queries, but do not bake it
+        # into vertex streams, indices, normals, tangents, or morph deltas.
+        matrix = cook_gltf_nodes.IDENTITY if skin is not None else authored_matrix
         block_for_position: dict = {}
         for primitive in document["meshes"][mesh]["primitives"]:
             if primitive.get("mode", 4) != 4:
@@ -381,10 +384,11 @@ def normalized_geometry(document: dict, buffer: bytes):
             for index, placement in enumerate(scene["mesh_placements"])]}}
 
 
-def placed_counts(document: dict) -> dict:
+def placed_counts(document: dict, *, skinned: bool = False) -> dict:
     """Triangles and positions summed over node placements, counting a
     POSITION accessor once per placement, recounted from the accessors."""
-    placements = cook_gltf_nodes.mesh_placements(document, len(document["meshes"]))
+    placements = cook_gltf_nodes.mesh_placements(document, len(document["meshes"]),
+        allow_singular_mesh_transforms=skinned)
     accessors = document["accessors"]
     triangles = positions = 0
     for mesh, _ in placements:
@@ -532,7 +536,7 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     geometry = normalized_geometry(document, cook_assets.source_bytes(source_path.parent, document))
     if geometry["images"] and not allow_textures:
         raise ValueError("material textures need an .elpk bundle output")
-    counts = placed_counts(document)
+    counts = placed_counts(document, skinned=geometry["skin"] is not None)
     if (counts["triangles"] <= 0 or geometry["index_count"] != counts["triangles"] * 3 or
             geometry["vertex_count"] != counts["positions"] or
             cook_assets.normalized_counts(document)["bounds"] is None):

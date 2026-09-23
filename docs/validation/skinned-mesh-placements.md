@@ -25,9 +25,13 @@ morph weights before and after pose completion.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON_BIN=/opt/homebrew/bin/python3 ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" CXX=/opt/homebrew/opt/llvm/bin/clang++ elisascript scripts/wicked_probe.elisascript build` passed, including the application lifecycle, SDL3/Metal render, and packaged-maze gates.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-The importer still accepts one glTF skin and requires identity transforms on
-skinned mesh nodes. Multiple rigs in one scene and per-placement skinned or
-morphed snapshot uploads remain unsupported. Static snapshot placement uploads
-are covered separately in
+The importer still accepts one glTF skin. It ignores skinned mesh-node
+transforms, as required by glTF, while retaining the authored transforms in
+placement metadata. Transformed non-joint ancestors of joint nodes are rejected
+because the runtime rig does not preserve those nodes. Multiple rigs in one
+scene and per-placement skinned or morphed snapshot uploads remain unsupported.
+Static snapshot placement uploads are covered separately in
 [`snapshot-mesh-placements.md`](snapshot-mesh-placements.md). This change does
-not claim performance measurements.
+not claim performance measurements. The two-placement animation fixture now
+gives its second skinned mesh node a nonidentity transform, and the native
+smoke confirms its uploaded positions match the first placement.
