@@ -2,6 +2,7 @@
 
 // Plain normalized FBX import data shared by the engine's offline import stages.
 #include <cstdint>
+#include <array>
 #include <limits>
 #include <string>
 #include <vector>
@@ -45,6 +46,17 @@ struct FbxMeshSubset {
     uint32_t material_slot = 0;
 };
 
+struct FbxMaterialData {
+    std::string name;
+    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    float metallic = 0.0f;
+    float roughness = 1.0f;
+    std::array<float, 3> emissive{};
+    float alpha_cutoff = 0.5f;
+    uint32_t alpha_mode = 0;
+    bool double_sided = false;
+};
+
 struct FbxMeshData {
     std::string node_name;
     std::string mesh_name;
@@ -54,6 +66,7 @@ struct FbxMeshData {
     std::vector<float> tangents;
     std::vector<uint32_t> indices;
     std::vector<FbxMeshSubset> subsets;
+    std::vector<FbxMaterialData> materials;
     uint32_t material_slots = 1;
     std::vector<std::string> skin_bone_names;
     std::vector<uint32_t> skin_indices;

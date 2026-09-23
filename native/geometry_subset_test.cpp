@@ -62,6 +62,21 @@ bool check_sections(const std::vector<std::string>& fields, size_t first, size_t
     return true;
 }
 
+bool check_slot_names(const std::vector<std::string>& fields, size_t first, size_t end,
+    const elisa::assets::CookedGeometry& geometry) {
+    if (geometry.slot_material_names.size() != end - first) return false;
+    static constexpr char HEX[] = "0123456789abcdef";
+    for (size_t slot = 0; slot < geometry.slot_material_names.size(); ++slot) {
+        std::string encoded;
+        for (unsigned char byte : geometry.slot_material_names[slot]) {
+            encoded.push_back(HEX[byte >> 4]);
+            encoded.push_back(HEX[byte & 15]);
+        }
+        if (encoded != fields[first + slot]) return false;
+    }
+    return true;
+}
+
 bool check_accepted(const std::vector<std::string>& fields, const elisa::assets::CookedGeometry& geometry) {
     if (fields.size() < 4) return false;
     const auto marker = [&fields](const char* name) {
@@ -69,19 +84,25 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     };
     const size_t materials = marker("materials");
     const size_t sections = marker("sections");
+    const size_t slot_names = marker("slot_names");
     const size_t animations = marker("animations");
     const size_t morphs = marker("morphs");
     const size_t cameras = marker("cameras");
     const size_t lights = marker("lights");
     const size_t inverse_binds = marker("inverse_binds");
     const size_t uv1 = marker("uv1");
-    const size_t end = std::min({materials, sections, animations, morphs, cameras, lights, inverse_binds, uv1});
-    const size_t material_end = std::min({sections, animations, morphs, cameras, lights, inverse_binds, uv1});
-    const size_t section_end = std::min({animations, morphs, cameras, lights, inverse_binds, uv1});
+    const size_t end = std::min({materials, sections, slot_names, animations, morphs, cameras, lights,
+        inverse_binds, uv1});
+    const size_t material_end = std::min({sections, slot_names, animations, morphs, cameras, lights,
+        inverse_binds, uv1});
+    const size_t section_end = std::min({slot_names, animations, morphs, cameras, lights, inverse_binds, uv1});
     if (materials == fields.size() ? !geometry.slot_materials.empty()
                                    : !check_slot_materials(fields, materials + 1, material_end, geometry)) return false;
     if (sections == fields.size() ? !geometry.texture_sections.empty() || !geometry.texture_checksums.empty()
                                   : !check_sections(fields, sections + 1, section_end, geometry)) return false;
+    const size_t slot_names_end = std::min({animations, morphs, cameras, lights, inverse_binds, uv1});
+    if (slot_names == fields.size() ? !geometry.slot_material_names.empty()
+                                    : !check_slot_names(fields, slot_names + 1, slot_names_end, geometry)) return false;
     if (animations == fields.size() ? !geometry.animation_clips.empty()
                                     : geometry.animation_clips.size() != std::stoul(fields[animations + 1])) return false;
     if (morphs == fields.size() ? !geometry.morph_targets.empty()

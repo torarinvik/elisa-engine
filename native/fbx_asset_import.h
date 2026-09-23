@@ -40,6 +40,7 @@ inline FbxImportResult import_fbx(const std::filesystem::path& path,
     ufbx_load_opts options{};
     options.strict = true;
     options.generate_missing_normals = true;
+    options.use_blender_pbr_material = true;
     options.ignore_embedded = true;
     options.load_external_files = false;
     options.node_depth_limit = 256;

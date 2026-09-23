@@ -32,6 +32,87 @@ inline bool fbx_name_equals(ufbx_string name, const std::string& selected_name) 
         std::equal(name.data, name.data + name.length, selected_name.begin());
 }
 
+inline bool fbx_unit_scalar(const ufbx_material_map& map, float fallback, float& value) {
+    const double source = map.has_value ? double(map.value_real) : double(fallback);
+    if (!std::isfinite(source) || source < 0.0 || source > 1.0) return false;
+    value = float(source);
+    return std::isfinite(value);
+}
+
+inline bool fbx_unit_color(const ufbx_material_map& map, const ufbx_material_map& fallback_map,
+    const std::array<float, 4>& fallback, std::array<float, 4>& value) {
+    const ufbx_material_map& source = map.has_value ? map : fallback_map;
+    value = fallback;
+    if (!source.has_value) return true;
+    if (source.value_components < 3 || source.value_components > 4) return false;
+    const double channels[4] = {double(source.value_vec4.x), double(source.value_vec4.y),
+        double(source.value_vec4.z), source.value_components == 4 ? double(source.value_vec4.w) : 1.0};
+    for (size_t channel = 0; channel < 4; ++channel) {
+        if (!std::isfinite(channels[channel]) || channels[channel] < 0.0 || channels[channel] > 1.0) return false;
+        value[channel] = float(channels[channel]);
+    }
+    return true;
+}
+
+inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& output,
+    FbxImportResult& result) {
+    if (source.textures.count != 0) {
+        fail(result, "FBX material textures are not supported by this cooker yet");
+        return false;
+    }
+    if (source.name.length > 256 || (source.name.length != 0 && source.name.data == nullptr)) {
+        fail(result, "FBX material name exceeds the 256-byte limit");
+        return false;
+    }
+    output.name.assign(source.name.data ? source.name.data : "", source.name.length);
+    if (output.name.find('\0') != std::string::npos) {
+        fail(result, "FBX material name contains a null byte");
+        return false;
+    }
+
+    constexpr std::array<float, 4> WHITE{1.0f, 1.0f, 1.0f, 1.0f};
+    const ufbx_material_map& base_factor = source.pbr.base_factor.has_value
+        ? source.pbr.base_factor : source.fbx.diffuse_factor;
+    float base_multiplier = 1.0f;
+    if (!fbx_unit_scalar(base_factor, 1.0f, base_multiplier) ||
+        !fbx_unit_color(source.pbr.base_color, source.fbx.diffuse_color, WHITE, output.base_color)) {
+        fail(result, "FBX material base-color factors must be finite and in [0, 1]");
+        return false;
+    }
+    for (size_t channel = 0; channel < 3; ++channel) output.base_color[channel] *= base_multiplier;
+
+    if (!fbx_unit_scalar(source.pbr.metalness, 0.0f, output.metallic) ||
+        !fbx_unit_scalar(source.pbr.roughness, 1.0f, output.roughness)) {
+        fail(result, "FBX metallic and roughness factors must be finite and in [0, 1]");
+        return false;
+    }
+    constexpr std::array<float, 4> BLACK{0.0f, 0.0f, 0.0f, 1.0f};
+    const ufbx_material_map& emission_factor = source.pbr.emission_factor.has_value
+        ? source.pbr.emission_factor : source.fbx.emission_factor;
+    const ufbx_material_map& emission_color = source.pbr.emission_color.has_value
+        ? source.pbr.emission_color : source.fbx.emission_color;
+    float emission_multiplier = 1.0f;
+    std::array<float, 4> emission{};
+    if (!fbx_unit_scalar(emission_factor, 1.0f, emission_multiplier) ||
+        !fbx_unit_color(emission_color, source.fbx.emission_color, BLACK, emission)) {
+        fail(result, "FBX emissive factors must be finite and in [0, 1]");
+        return false;
+    }
+    for (size_t channel = 0; channel < 3; ++channel) {
+        output.emissive[channel] = emission[channel] * emission_multiplier;
+    }
+
+    float transparency = 0.0f;
+    if (!fbx_unit_scalar(source.fbx.transparency_factor, 0.0f, transparency)) {
+        fail(result, "FBX transparency factor must be finite and in [0, 1]");
+        return false;
+    }
+    output.base_color[3] *= 1.0f - transparency;
+    output.alpha_mode = output.base_color[3] < 1.0f ? 2u : 0u;
+    output.double_sided = source.features.double_sided.enabled;
+    return true;
+}
+
 inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
     const std::string& selected_name) {
     ufbx_node* source_node = nullptr;
@@ -84,6 +165,24 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
         return false;
     }
     output.material_slots = uint32_t(std::max<size_t>(1, material_count));
+    if (material_count != 0) {
+        const bool node_materials = source_node->materials.count != 0;
+        const ufbx_material_list& materials = node_materials ? source_node->materials : mesh.materials;
+        if (materials.count != material_count) {
+            fail(result, "FBX mesh material slots do not match their material records");
+            return false;
+        }
+        output.materials.reserve(material_count);
+        for (const ufbx_material* material : materials) {
+            if (material == nullptr) {
+                fail(result, "FBX mesh contains a missing material record");
+                return false;
+            }
+            FbxMaterialData extracted;
+            if (!extract_fbx_material(*material, extracted, result)) return false;
+            output.materials.push_back(std::move(extracted));
+        }
+    }
     std::vector<FbxVertex> corners;
     std::vector<FbxSkinInfluence> skin_corners;
     std::vector<uint32_t> triangle_material_slots;

@@ -18,6 +18,7 @@ import tempfile
 
 import cook_gltf_animation
 from elisa_package import write_geometry_package
+from fbx_material_cooker_self_test import validate_material_package
 from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
 
 
@@ -143,6 +144,39 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             next_index += count
         if next_index != index_count:
             raise ValueError("cooked package material subsets do not cover the index stream")
+    slot_material_fields = {"slot_material_stride", "slot_materials_b64", "slot_material_names_b64"}
+    present_slot_material_fields = slot_material_fields.intersection(fields)
+    if present_slot_material_fields and present_slot_material_fields != slot_material_fields:
+        raise ValueError("cooked package has incomplete FBX material records")
+    if present_slot_material_fields:
+        if not present_subset_fields or fields["slot_material_stride"] != "48":
+            raise ValueError("cooked package has unsupported FBX material slots or stride")
+        material_data = decode("slot_materials_b64")
+        if len(material_data) != material_slots * 48:
+            raise ValueError("cooked package FBX material count does not match its slots")
+        for slot in range(material_slots):
+            record = struct.unpack_from("<10f2I", material_data, slot * 48)
+            if (not all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in record[:10]) or
+                    record[10] > 2 or record[11] & ~1):
+                raise ValueError("cooked package contains out-of-range FBX material factors")
+        names_data = decode("slot_material_names_b64")
+        offset = 0
+        for _ in range(material_slots):
+            if len(names_data) - offset < 4:
+                raise ValueError("cooked package FBX material-name stream is truncated")
+            (length,) = struct.unpack_from("<I", names_data, offset)
+            offset += 4
+            if length > 256 or length > len(names_data) - offset:
+                raise ValueError("cooked package FBX material name exceeds its limit")
+            try:
+                name = names_data[offset:offset + length].decode("utf-8", errors="strict")
+            except UnicodeDecodeError as failure:
+                raise ValueError("cooked package FBX material name is not UTF-8") from failure
+            if "\0" in name:
+                raise ValueError("cooked package FBX material name contains a null byte")
+            offset += length
+        if offset != len(names_data):
+            raise ValueError("cooked package FBX material-name stream has trailing bytes")
     skin_fields = {"skin_bones", "skin_indices_stride", "skin_weights_stride",
         "skin_indices_b64", "skin_weights_b64", "skin_names_b64"}
     present_skin_fields = skin_fields.intersection(fields)
@@ -468,6 +502,7 @@ def main(arguments: list[str]) -> int:
                         material_fields.get("subset_count") != "2" or
                         struct.unpack("<6I", material_subsets) != (0, 3, 0, 3, 3, 1)):
                     raise ValueError("FBX cooker did not preserve its two polygon material subsets")
+                validate_material_package(material_fields)
                 try:
                     cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
                         directory / "under-budget.pkg", max_triangles=1)

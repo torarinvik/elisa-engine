@@ -20,6 +20,10 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     light_count = None
     inverse_bind_values = None
     uv1_values = None
+    slot_names = None
+    if len(records) >= 2 and records[-2] == "slot_names":
+        slot_names = records[-1]
+        records = records[:-2]
     if len(records) >= 6 and records[-6] == "uv1":
         uv1_values = records[-5:]
         records = records[:-6]
@@ -48,6 +52,8 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         fields.append("sections")
         for name, checksum in records[1]:
             fields += [name, str(checksum)]
+    if slot_names is not None:
+        fields += ["slot_names"] + [name.encode("utf-8").hex() for name in slot_names]
     if animation_count is not None:
         fields += ["animations", str(animation_count)]
     if morph_count is not None:

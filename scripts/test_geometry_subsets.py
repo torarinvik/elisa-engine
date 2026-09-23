@@ -54,6 +54,8 @@ UNSAMPLED = "cooked texture image is never sampled"
 NEEDS_TEXTURE = "cooked slot material lacks the texture it needs"
 NEEDS_BUNDLE = "cooked slot textures need an ELPK bundle"
 MISSING_SECTION = "cooked slot texture section is missing from its bundle"
+MATERIAL_NAMES = "invalid cooked slot material names"
+MATERIAL_NAME = "invalid cooked slot material name"
 # Base color, metallic, roughness, emissive, alpha cutoff, alpha mode, flags.
 GLASS = (0.0, 0.0, 0.08, 0.5, 0.0, 0.9, 0.0, 0.0, 1.0, 0.5, 2, 0)
 PAINT = (0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, 0, 1)
@@ -84,7 +86,8 @@ def encoded(format_string: str, values) -> str:
 def strip_package(triangles: int, subsets=None, slots: int | None = None,
         record_count: int | None = None, stride: str = "12", omit: tuple[str, ...] = (),
         skinned: bool = False, materials=None, material_stride: str = "48", textures=None,
-        texture_count: int | None = None, texture_stride: str = "20") -> bytes:
+        texture_count: int | None = None, texture_stride: str = "20", material_names=None,
+        material_name_payload: bytes | None = None) -> bytes:
     """A row of `triangles` separate triangles with optional subset, slot
     material, and slot texture records. `textures` is (section names, one
     five-reference record per slot). Four-reference callers leave occlusion
@@ -115,6 +118,13 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
                 b"".join(struct.pack("<10f2I", *record) for record in materials)).decode("ascii"),
         }
         lines += [line for key, line in records.items() if key not in omit]
+    if material_names is not None or material_name_payload is not None:
+        names_data = material_name_payload
+        if names_data is None:
+            names_data = b"".join(struct.pack("<I", len(name.encode("utf-8"))) + name.encode("utf-8")
+                for name in material_names)
+        if "slot_material_names_b64" not in omit:
+            lines.append("slot_material_names_b64=" + base64.b64encode(names_data).decode("ascii"))
     if textures is not None:
         names, references = textures
         references = [tuple(record) + (0,) if len(record) == 4 else tuple(record) for record in references]
@@ -430,11 +440,31 @@ def cases(directory: Path) -> list[tuple]:
             (6, 1, [(0, 6, 0)])),
         ("accept", "materials.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT]),
             (6, 2, two, [GLASS, PAINT])),
+        ("accept", "material-names.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_names=["First", "Second"]),
+            (6, 2, two, [GLASS, PAINT], "slot_names", ["First", "Second"])),
         ("accept", "single-material.pkg", strip_package(2, [(0, 6, 0)], 1, materials=[PAINT]),
             (6, 1, [(0, 6, 0)], [PAINT])),
         ("accept", "material-bounds.pkg", strip_package(2, two, 2, materials=[ZEROS, ONES]),
             (6, 2, two, [ZEROS, ONES])),
         ("reject", "materials-without-subsets.pkg", strip_package(2, materials=[PAINT]), MATERIAL_RECORDS),
+        ("reject", "material-names-without-materials.pkg", strip_package(2, two, 2,
+            material_name_payload=b""), MATERIAL_NAMES),
+        ("reject", "material-names-truncated.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=b"\x04\x00"), MATERIAL_NAMES),
+        ("reject", "material-name-too-long.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=struct.pack("<I", 257) + b"a" * 257 +
+                struct.pack("<I", 0)), MATERIAL_NAME),
+        ("reject", "material-name-invalid-utf8.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=struct.pack("<I", 2) + b"\xc0\xaf" +
+                struct.pack("<I", 0)), MATERIAL_NAME),
+        ("reject", "material-name-nul.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_name_payload=struct.pack("<I", 1) + b"\0" +
+                struct.pack("<I", 0)), MATERIAL_NAME),
+        ("reject", "material-names-trailing.pkg", strip_package(2, two, 2,
+            materials=[GLASS, PAINT], material_names=["First", "Second"],
+            material_name_payload=struct.pack("<I", 1) + b"a" + struct.pack("<I", 1) + b"b" + b"x"),
+            MATERIAL_NAMES),
         ("accept", "skinned-materials.pkg", strip_package(2, [(0, 6, 0)], 1, skinned=True, materials=[PAINT]),
             (6, 1, [(0, 6, 0)], [PAINT])),
         ("reject", "material-stride.pkg", strip_package(2, two, 2, materials=[GLASS, PAINT],

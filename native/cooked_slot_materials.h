@@ -42,6 +42,30 @@ struct CookedSlotMaterial {
 
 namespace detail {
 
+inline bool valid_utf8(const std::string& value) {
+    size_t index = 0;
+    while (index < value.size()) {
+        const uint8_t first = uint8_t(value[index]);
+        if (first <= 0x7f) {
+            ++index;
+            continue;
+        }
+        const size_t count = first >= 0xc2 && first <= 0xdf ? 2 :
+            first >= 0xe0 && first <= 0xef ? 3 : first >= 0xf0 && first <= 0xf4 ? 4 : 0;
+        if (count == 0 || count > value.size() - index) return false;
+        uint32_t codepoint = first & (count == 2 ? 0x1f : count == 3 ? 0x0f : 0x07);
+        for (size_t byte = 1; byte < count; ++byte) {
+            const uint8_t continuation = uint8_t(value[index + byte]);
+            if ((continuation & 0xc0) != 0x80) return false;
+            codepoint = (codepoint << 6) | (continuation & 0x3f);
+        }
+        if ((count == 3 && codepoint < 0x800) || (count == 4 && codepoint < 0x10000) ||
+            (codepoint >= 0xd800 && codepoint <= 0xdfff) || codepoint > 0x10ffff) return false;
+        index += count;
+    }
+    return true;
+}
+
 // Slot material records are both present or both absent and need explicit
 // subset records. Each 48-byte record holds ten factors in [0, 1] (base
 // color, metallic, roughness, emissive, alpha cutoff), the alpha mode, and
@@ -79,6 +103,26 @@ inline bool parse_slot_materials(const probe::PackageIndex& package, uint32_t ma
         material.double_sided = (record[11] & SLOT_MATERIAL_DOUBLE_SIDED) != 0;
         material.occlusion = (record[11] & SLOT_MATERIAL_OCCLUSION) != 0;
         materials.push_back(material);
+    }
+    return true;
+}
+
+inline bool parse_slot_material_names(const probe::PackageIndex& package, uint32_t material_slots,
+    const std::vector<CookedSlotMaterial>& materials, std::vector<std::string>& names,
+    std::string& error) {
+    const auto found = package.sections.find("slot_material_names_b64");
+    if (found == package.sections.end()) return true;
+    std::vector<uint8_t> bytes;
+    if (materials.size() != material_slots ||
+        !decode_base64(found->second, bytes) || !decode_names(bytes, material_slots, names)) {
+        error = "invalid cooked slot material names";
+        return false;
+    }
+    for (const std::string& name : names) {
+        if (name.size() > 256 || name.find('\0') != std::string::npos || !valid_utf8(name)) {
+            error = "invalid cooked slot material name";
+            return false;
+        }
     }
     return true;
 }

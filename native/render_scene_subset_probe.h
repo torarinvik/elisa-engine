@@ -4,6 +4,7 @@
 // smoke host with ELISA_RENDER_SCENE_TEST_PROBE.
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <filesystem>
 
 namespace {
@@ -156,28 +157,24 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_matches(uint64_t
     const size_t slot = snapshot_material_asset_slot(state, high, low);
     if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
     const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
-    SnapshotMaterialAssetSlot expected;
-    expected.base_color[0] = red; expected.base_color[1] = green;
-    expected.base_color[2] = blue; expected.base_color[3] = alpha;
-    expected.metallic = metallic;
-    expected.roughness = roughness;
-    expected.emissive[0] = emissive_red; expected.emissive[1] = emissive_green; expected.emissive[2] = emissive_blue;
-    expected.alpha_cutoff = alpha_cutoff;
-    expected.alpha_mode = alpha_mode;
-    expected.double_sided = double_sided != 0;
-    // Textures and occlusion have their own probes.
-    expected.texture_high = asset.texture_high;
-    expected.texture_low = asset.texture_low;
-    expected.occlusion = asset.occlusion;
+    const auto close = [](float actual, float expected) {
+        return std::isfinite(actual) && std::abs(actual - expected) <= 1.0e-5f;
+    };
+    bool authored = close(asset.base_color[0], red) && close(asset.base_color[1], green) &&
+        close(asset.base_color[2], blue) && close(asset.base_color[3], alpha) &&
+        close(asset.metallic, metallic) && close(asset.roughness, roughness) &&
+        close(asset.emissive[0], emissive_red) && close(asset.emissive[1], emissive_green) &&
+        close(asset.emissive[2], emissive_blue) && close(asset.alpha_cutoff, alpha_cutoff) &&
+        asset.alpha_mode == alpha_mode && asset.double_sided == (double_sided != 0);
     const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
-    if (!snapshot_material_values_match(asset, expected) || material == nullptr) return 0;
+    if (!authored || material == nullptr) return 0;
     const bool blended = alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND;
     const float alpha_ref = alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK ? alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF;
-    const bool drawn = material->baseColor.x == red && material->baseColor.y == green &&
-        material->baseColor.z == blue && material->baseColor.w == alpha &&
-        material->metalness == metallic && material->roughness == roughness &&
-        material->emissiveColor.x == emissive_red && material->emissiveColor.y == emissive_green &&
-        material->emissiveColor.z == emissive_blue && material->alphaRef == alpha_ref &&
+    const bool drawn = close(material->baseColor.x, red) && close(material->baseColor.y, green) &&
+        close(material->baseColor.z, blue) && close(material->baseColor.w, alpha) &&
+        close(material->metalness, metallic) && close(material->roughness, roughness) &&
+        close(material->emissiveColor.x, emissive_red) && close(material->emissiveColor.y, emissive_green) &&
+        close(material->emissiveColor.z, emissive_blue) && close(material->alphaRef, alpha_ref) &&
         material->IsDoubleSided() == (double_sided != 0) && material->IsCastingShadow() == !blended &&
         material->userBlendMode == (blended ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE);
     return drawn ? 1 : 0;

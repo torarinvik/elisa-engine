@@ -1,8 +1,7 @@
-# Native A05 coverage for glTF material factors cooked into mesh slots. The
-# panel fixture authors a dim, blue-emissive center and a red-emissive edge;
-# its glass variant makes the center blended, single-sided glass. Registering
-# a mesh's cooked materials must reproduce those factors exactly, and a failed
-# whole-mesh registration must leave no material, set, or staged slot behind.
+# Native A05 coverage for glTF and FBX material factors cooked into mesh slots.
+# The glTF panel covers opaque and blended materials; the FBX fixture covers
+# converted diffuse, Phong roughness, emissive, and transparency factors.
+# Registration must reproduce cooked factors, and failed sets must roll back.
 # scripts/render_scene_native_smoke.py cooks both panels under
 # build/cooked/subsets.
 include "../src/runtime/application.elisa"
@@ -76,6 +75,7 @@ module RenderSceneCookedMaterialNativeTests:
             TILE: u64 = 3
             SKINNED: u64 = 4
             PENDING: u64 = 5
+            FBX: u64 = 6
             ABSENT: u64 = 99
 
         const module Paint:
@@ -84,11 +84,14 @@ module RenderSceneCookedMaterialNativeTests:
             GLASS: u64 = 3
             FRESH: u64 = 4
             SPARE: u64 = 5
+            FBX_FIRST: u64 = 6
+            FBX_SECOND: u64 = 7
 
         const module Set:
             PANEL: u64 = 1
             GLASS: u64 = 2
             SCRATCH: u64 = 3
+            FBX: u64 = 4
 
         const module Code:
             OK: i32 = 0
@@ -231,6 +234,14 @@ module RenderSceneCookedMaterialNativeTests:
             elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
                 0.08, 0.0, 0.0, 1.0, 0.25, 0.75, 1.0, 0.0, 0.0, 0.5, ALPHA_OPAQUE, 1) == 1
 
+        def is_fbx_first(paint: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                0.16, 0.32, 0.48, 0.75, 0.0, 0.434315, 0.3, 0.2, 0.1, 0.5, ALPHA_BLEND, 0) == 1
+
+        def is_fbx_second(paint: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_material_matches(Ids::MATERIALS, paint,
+                0.7, 0.2, 0.1, 1.0, 0.0, 0.65359, 0.0, 0.0, 0.0, 0.5, ALPHA_OPAQUE, 0) == 1
+
         def set_count() -> u64:
             elisa_render_scene_v1_test_snapshot_material_set_count()
 
@@ -275,15 +286,17 @@ module RenderSceneCookedMaterialNativeTests:
             return 2 if register_mesh(Mesh::GLASS, "build/cooked/subsets/glass_panel.pkg") != Code::OK
             return 3 if register_mesh(Mesh::TILE, "examples/maze/assets/maze_tile.elpk") != Code::OK
             return 4 if register_mesh(Mesh::SKINNED, "build/cooked/subsets/skinned.pkg") != Code::OK
+            return 5 if register_mesh(Mesh::FBX, "build/cooked/subsets/fbx-two-material.pkg") != Code::OK
             0
 
         # Meshes whose source declared no materials cook none.
         def counts() -> i32:
             return 1 if material_count(mesh_id(Mesh::PANEL)) != 2 or material_count(mesh_id(Mesh::GLASS)) != 2
             return 2 if material_count(mesh_id(Mesh::TILE)) != 0 or material_count(mesh_id(Mesh::SKINNED)) != 0
-            return 3 if material_count(mesh_id(Mesh::ABSENT)) != Count::LOAD_FAILED
-            return 4 if material_count(Assets::AssetId{high: 0, low: 0}) != Count::INVALID
-            return 5 if elisa_render_scene_v1_snapshot_mesh_material_count(0, 0) != NATIVE_INVALID
+            return 3 if material_count(mesh_id(Mesh::FBX)) != 2
+            return 4 if material_count(mesh_id(Mesh::ABSENT)) != Count::LOAD_FAILED
+            return 5 if material_count(Assets::AssetId{high: 0, low: 0}) != Count::INVALID
+            return 6 if elisa_render_scene_v1_snapshot_mesh_material_count(0, 0) != NATIVE_INVALID
             0
 
         # A slot registers as an ordinary material. The same slot again is a
@@ -323,6 +336,8 @@ module RenderSceneCookedMaterialNativeTests:
             return 5 if register_cooked(Mesh::GLASS, set_id(Set::GLASS), Paint::GLASS, Paint::EDGE, 0) != Code::OK
             return 6 if not is_center(Paint::GLASS, 0.5, ALPHA_BLEND, 0) or is_center(Paint::GLASS, 1.0, ALPHA_OPAQUE, 1)
             return 7 if set_count() != sets + 2
+            return 8 if register_cooked(Mesh::FBX, set_id(Set::FBX), Paint::FBX_FIRST, Paint::FBX_SECOND, 0) != Code::OK
+            return 9 if not is_fbx_first(Paint::FBX_FIRST) or not is_fbx_second(Paint::FBX_SECOND)
             0
 
         # Every failure leaves no new material or set behind, even after
@@ -398,12 +413,12 @@ module RenderSceneCookedMaterialNativeTests:
             0
 
         def cleanup() -> i32:
-            return 1 if unregister_set(set_id(Set::PANEL)) != Code::OK or unregister_set(set_id(Set::GLASS)) != Code::OK
-            paints: u64[3] = [Paint::CENTER, Paint::EDGE, Paint::GLASS]
-            for index in 0..<3 |paints|:
+            return 1 if unregister_set(set_id(Set::PANEL)) != Code::OK or unregister_set(set_id(Set::GLASS)) != Code::OK or unregister_set(set_id(Set::FBX)) != Code::OK
+            paints: u64[5] = [Paint::CENTER, Paint::EDGE, Paint::GLASS, Paint::FBX_FIRST, Paint::FBX_SECOND]
+            for index in 0..<5 |paints|:
                 return 2 if unregister_material(paints[index]) != Code::OK
-            mesh_lows: u64[4] = [Mesh::PANEL, Mesh::GLASS, Mesh::TILE, Mesh::SKINNED]
-            for index in 0..<4 |mesh_lows|:
+            mesh_lows: u64[5] = [Mesh::PANEL, Mesh::GLASS, Mesh::TILE, Mesh::SKINNED, Mesh::FBX]
+            for index in 0..<5 |mesh_lows|:
                 return 3 if unregister_mesh(mesh_lows[index]) != Code::OK
             0
 
