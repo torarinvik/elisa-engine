@@ -19,7 +19,7 @@ module RenderSceneAnimationSubmissionNativeTests:
         const INVERSE_BIND_Y_COLUMN: u32 = 1
         const EXPECTED_WICKED_INVERSE_BIND_X: f32 = 2.0
         const EXPECTED_WICKED_INVERSE_BIND_Y: f32 = -1.0
-        const SEPARATE_ROOT_WICKED_Z: f32 = 0.5
+        const SEPARATE_ROOT_WICKED_Z: f32 = -0.5
         const ANIMATION_STATE_MATCH_ALL: i32 = 31
         const ANIMATION_STATE_ERROR_BASE: i32 = 40
 

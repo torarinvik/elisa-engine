@@ -21,6 +21,7 @@ module RenderSceneSnapshotNativeTests:
             TINTED_OFFSET: i64 = 1
             REMOVED_INDEX: usize = 100
             PROBE_RENDER_ID: i64 = 50000
+            ANIMATION_STATE_MATCH_ALL: i32 = 31
 
         struct SnapshotAnimationPose:
             bones: f32[64 * 16]
@@ -573,11 +574,11 @@ module RenderSceneSnapshotNativeTests:
             submit_animated: i32 = elisa_render_scene_v1_submit_animation_pose(
                 animated_handle, &pose)
             animated_pose_ready: bool = elisa_render_scene_v1_test_animation_submission(
-                animated_handle, 2.0, 0.0, 1) == 15
+                animated_handle, 2.0, 0.0, 1) == Stress::ANIMATION_STATE_MATCH_ALL
             return 129 if submit_animated != 0 or not animated_pose_ready
             complete_animated: i32 = elisa_render_scene_v1_complete_animation_pose(animated_handle)
             animated_pose_completed: bool = elisa_render_scene_v1_test_animation_submission(
-                animated_handle, 2.0, 0.0, 0) == 15
+                animated_handle, 2.0, 0.0, 0) == Stress::ANIMATION_STATE_MATCH_ALL
             return 130 if complete_animated != 0 or not animated_pose_completed
             animated_cleared: bool = catch RenderSnapshotScene::clear(&animated_presenter):
                 ok: true

@@ -29,6 +29,14 @@ def main() -> int:
         source = cook_gltf_lod.write_test_source(directory)
         manifest_path, levels = cook_lod_chain(source, "test/lod-grid.gltf",
             directory / "grid.pkg", parse_lod_ratios("0.5,0.25"))
+        unused_source = cook_gltf_lod.write_test_source_with_unused_vertices(directory)
+        _, unused_levels = cook_lod_chain(unused_source, "test/lod-grid-unused.gltf",
+            directory / "unused.pkg", parse_lod_ratios("0.5"))
+        source_positions = cook_gltf_lod.test_fixture()["vertex_count"] * 2
+        if (len(unused_levels) != 2 or unused_levels[0]["triangles"] <= 0 or
+                unused_levels[0]["vertices"] <= 0 or unused_levels[0]["vertices"] >= source_positions):
+            print("LOD cooker did not compact unreferenced source vertices", file=sys.stderr)
+            return 1
         original = json.loads(manifest_path.read_text(encoding="utf-8"))
         rejected_paths = []
 

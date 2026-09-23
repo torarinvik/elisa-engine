@@ -349,6 +349,33 @@ def write_test_source(directory: Path) -> Path:
     return path
 
 
+def write_test_source_with_unused_vertices(directory: Path) -> Path:
+    """Keep the position accessor intact while retaining only its first primitive."""
+    path = write_test_source(directory)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["meshes"][0]["primitives"] = document["meshes"][0]["primitives"][:1]
+    document["materials"] = document["materials"][:1]
+    buffer_data = bytearray(base64.b64decode(
+        document["buffers"][0]["uri"].split(",", 1)[1], validate=True))
+    position_count = document["accessors"][0]["count"]
+    normal_data = struct.pack("<3f", 0.0, 0.0, 1.0) * position_count
+    normal_offset = (len(buffer_data) + 3) & ~3
+    buffer_data.extend(b"\0" * (normal_offset - len(buffer_data)))
+    buffer_data.extend(normal_data)
+    normal_view = len(document["bufferViews"])
+    document["bufferViews"].append({"buffer": 0, "byteOffset": normal_offset,
+        "byteLength": len(normal_data)})
+    normal_accessor = len(document["accessors"])
+    document["accessors"].append({"bufferView": normal_view, "componentType": 5126,
+        "count": position_count, "type": "VEC3"})
+    document["meshes"][0]["primitives"][0]["attributes"]["NORMAL"] = normal_accessor
+    document["buffers"][0]["byteLength"] = len(buffer_data)
+    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + \
+        base64.b64encode(buffer_data).decode("ascii")
+    path.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+    return path
+
+
 def self_test() -> int:
     """Exercise deterministic simplification over two materials and one placement."""
     import sys

@@ -3,12 +3,10 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import shlex
 import shutil
-import struct
 import subprocess
 import sys
 import tempfile
@@ -111,32 +109,7 @@ def main() -> int:
             return subset_status
         subset_directory = build / "cooked/subsets"
         subset_directory.mkdir(parents=True, exist_ok=True)
-        lod_source = cook_gltf_lod.write_test_source(subset_directory)
-        lod_document = json.loads(lod_source.read_text(encoding="utf-8"))
-        lod_document["meshes"][0]["primitives"] = lod_document["meshes"][0]["primitives"][:1]
-        lod_document["materials"] = lod_document["materials"][:1]
-        # The retained half-grid primitive does not use every vertex in the shared
-        # POSITION accessor. Supply a valid normal stream so the cooker does not
-        # attempt to generate normals for those now-unused vertices.
-        lod_buffer = lod_document["buffers"][0]
-        encoded_buffer = lod_buffer["uri"].split(",", 1)[1]
-        buffer_data = bytearray(base64.b64decode(encoded_buffer, validate=True))
-        position_count = lod_document["accessors"][0]["count"]
-        normal_bytes = struct.pack("<3f", 0.0, 0.0, 1.0) * position_count
-        normal_offset = (len(buffer_data) + 3) & ~3
-        buffer_data.extend(b"\0" * (normal_offset - len(buffer_data)))
-        buffer_data.extend(normal_bytes)
-        normal_view = len(lod_document["bufferViews"])
-        lod_document["bufferViews"].append({"buffer": 0, "byteOffset": normal_offset,
-            "byteLength": len(normal_bytes)})
-        normal_accessor = len(lod_document["accessors"])
-        lod_document["accessors"].append({"bufferView": normal_view, "componentType": 5126,
-            "count": position_count, "type": "VEC3"})
-        lod_document["meshes"][0]["primitives"][0]["attributes"]["NORMAL"] = normal_accessor
-        lod_buffer["byteLength"] = len(buffer_data)
-        lod_buffer["uri"] = "data:application/octet-stream;base64," + \
-            base64.b64encode(buffer_data).decode("ascii")
-        lod_source.write_text(json.dumps(lod_document, separators=(",", ":")), encoding="utf-8")
+        lod_source = cook_gltf_lod.write_test_source_with_unused_vertices(subset_directory)
         cook_lod_chain(lod_source, "test/fixtures/runtime_lod.gltf",
             subset_directory / "runtime_lod.pkg", parse_lod_ratios("0.5,0.25"))
         subset_status = run([
