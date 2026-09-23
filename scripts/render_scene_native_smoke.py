@@ -70,102 +70,111 @@ def main() -> int:
 
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
-    ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
-    if ktx2_status != 0:
-        return ktx2_status
-    cooked_mesh = build / "cooked/render-scene-triangle.elpk"
-    status = run([
-        sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"),
-        str(ROOT / "test/fixtures/fbx_triangle.fbx"),
-        "--asset-path", "test/fixtures/fbx_triangle.fbx",
-        "--output", str(cooked_mesh),
-    ])
-    if status != 0:
-        return status
-    package_status = run([
-        sys.executable, str(ROOT / "scripts/test_elisa_package.py"), str(cooked_mesh),
-    ])
-    if package_status != 0:
-        return package_status
-    # The maze snapshot test registers the same tile and texture bundles that
-    # the project runner cooks from elisa.project.json.
-    maze_project = ROOT / "examples/maze"
-    maze_config = json.loads((maze_project / "elisa.project.json").read_text(encoding="utf-8"))
-    maze_status = elisa_build_run.cook_declared_assets(maze_project, maze_config)
-    if maze_status != 0:
-        return maze_status
-    normal_map = build / "cooked/render-scene-normal.png"
-    shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
-    # The material-subset test draws the three-strip glTF panel and a skinned
-    # strip split across two material slots.
-    subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py")])
-    if subset_status != 0:
-        return subset_status
-    subset_directory = build / "cooked/subsets"
-    subset_directory.mkdir(parents=True, exist_ok=True)
-    subset_status = run([
-        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
-        str(ROOT / "test/fixtures/multi_material_panel.gltf"),
-        "--asset-path", "test/fixtures/multi_material_panel.gltf",
-        "--output", str(subset_directory / "panel.elpk"),
-    ])
-    if subset_status != 0:
-        return subset_status
-    (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
-        2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
-    gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg")
-    gltf_skin_self_test.write_separate_root_package(
-        subset_directory / "separate-root-skinned.pkg")
-    gltf_skin_self_test.write_multi_skin_package(
-        subset_directory / "multi-skin-panel.pkg")
-    gltf_skin_self_test.write_mixed_skin_package(
-        subset_directory / "mixed-skin-panel.pkg")
-    gltf_morph_self_test.write_animated_package(
-        subset_directory / "animated-morph-panel.pkg")
-    gltf_scene_self_test.write_package(subset_directory / "scene-metadata.pkg")
-    # The cooked-material test also registers a variant whose center slot is
-    # blended, single-sided glass. Its buffer is embedded, so the copy cooks
-    # anywhere.
-    glass = cook_assets.read_gltf((ROOT / "test/fixtures/multi_material_panel.gltf").read_bytes())
-    cook_gltf_asset.make_glass(glass)
-    glass_source = subset_directory / "glass_panel.gltf"
-    glass_source.write_text(json.dumps(glass, indent=2) + "\n", encoding="utf-8")
-    cook_gltf_geometry.cook_geometry_package(
-        glass_source, "build/cooked/subsets/glass_panel.gltf", subset_directory / "glass_panel.pkg")
-    # The node-hierarchy test draws a static glTF scene baked into one mesh.
-    subset_status = run([
-        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
-        str(ROOT / "test/fixtures/node_hierarchy_panel.gltf"),
-        "--asset-path", "test/fixtures/node_hierarchy_panel.gltf",
-        "--output", str(subset_directory / "hierarchy.elpk"),
-    ])
-    if subset_status != 0:
-        return subset_status
-    # The cooked-texture test draws the textured panel from its bundle. The
-    # variant swaps the first two images; the test rewrites a copy of the
-    # bundle into it after loading the copy's mesh.
-    textured = subset_directory / "textured.elpk"
-    subset_status = run([
-        sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
-        str(gltf_texture_self_test.SOURCE), "--asset-path", gltf_texture_self_test.ASSET_PATH,
-        "--output", str(textured),
-    ])
-    if subset_status != 0:
-        return subset_status
-    shutil.copyfile(textured, subset_directory / "textured_rewrite.elpk")
-    textured_package, _ = cook_gltf_geometry.cook_geometry_package(gltf_texture_self_test.SOURCE,
-        gltf_texture_self_test.ASSET_PATH, subset_directory / "textured.pkg", allow_textures=True)
-    variant = dict(gltf_texture_self_test.SECTIONS)
-    variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
-    write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
+    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1"
+    if not render_only:
+        ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
+        if ktx2_status != 0:
+            return ktx2_status
+        cooked_mesh = build / "cooked/render-scene-triangle.elpk"
+        status = run([
+            sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"),
+            str(ROOT / "test/fixtures/fbx_triangle.fbx"),
+            "--asset-path", "test/fixtures/fbx_triangle.fbx",
+            "--output", str(cooked_mesh),
+        ])
+        if status != 0:
+            return status
+        package_status = run([
+            sys.executable, str(ROOT / "scripts/test_elisa_package.py"), str(cooked_mesh),
+        ])
+        if package_status != 0:
+            return package_status
+        # The maze snapshot test registers the same tile and texture bundles that
+        # the project runner cooks from elisa.project.json.
+        maze_project = ROOT / "examples/maze"
+        maze_config = json.loads((maze_project / "elisa.project.json").read_text(encoding="utf-8"))
+        maze_status = elisa_build_run.cook_declared_assets(maze_project, maze_config)
+        if maze_status != 0:
+            return maze_status
+        normal_map = build / "cooked/render-scene-normal.png"
+        shutil.copyfile(ROOT / "backends/coordinate_reference.png", normal_map)
+        # The material-subset test draws the three-strip glTF panel and a skinned
+        # strip split across two material slots.
+        subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py")])
+        if subset_status != 0:
+            return subset_status
+        subset_directory = build / "cooked/subsets"
+        subset_directory.mkdir(parents=True, exist_ok=True)
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+            str(ROOT / "test/fixtures/multi_material_panel.gltf"),
+            "--asset-path", "test/fixtures/multi_material_panel.gltf",
+            "--output", str(subset_directory / "panel.elpk"),
+        ])
+        if subset_status != 0:
+            return subset_status
+        (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
+            2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
+        gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg")
+        gltf_skin_self_test.write_separate_root_package(
+            subset_directory / "separate-root-skinned.pkg")
+        gltf_skin_self_test.write_multi_skin_package(
+            subset_directory / "multi-skin-panel.pkg")
+        gltf_skin_self_test.write_mixed_skin_package(
+            subset_directory / "mixed-skin-panel.pkg")
+        gltf_morph_self_test.write_animated_package(
+            subset_directory / "animated-morph-panel.pkg")
+        gltf_scene_self_test.write_package(subset_directory / "scene-metadata.pkg")
+        # The cooked-material test also registers a variant whose center slot is
+        # blended, single-sided glass. Its buffer is embedded, so the copy cooks
+        # anywhere.
+        glass = cook_assets.read_gltf((ROOT / "test/fixtures/multi_material_panel.gltf").read_bytes())
+        cook_gltf_asset.make_glass(glass)
+        glass_source = subset_directory / "glass_panel.gltf"
+        glass_source.write_text(json.dumps(glass, indent=2) + "\n", encoding="utf-8")
+        cook_gltf_geometry.cook_geometry_package(
+            glass_source, "build/cooked/subsets/glass_panel.gltf", subset_directory / "glass_panel.pkg")
+        # The node-hierarchy test draws a static glTF scene baked into one mesh.
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+            str(ROOT / "test/fixtures/node_hierarchy_panel.gltf"),
+            "--asset-path", "test/fixtures/node_hierarchy_panel.gltf",
+            "--output", str(subset_directory / "hierarchy.elpk"),
+        ])
+        if subset_status != 0:
+            return subset_status
+        # The cooked-texture test draws the textured panel from its bundle. The
+        # variant swaps the first two images; the test rewrites a copy of the
+        # bundle into it after loading the copy's mesh.
+        textured = subset_directory / "textured.elpk"
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+            str(gltf_texture_self_test.SOURCE), "--asset-path", gltf_texture_self_test.ASSET_PATH,
+            "--output", str(textured),
+        ])
+        if subset_status != 0:
+            return subset_status
+        shutil.copyfile(textured, subset_directory / "textured_rewrite.elpk")
+        textured_package, _ = cook_gltf_geometry.cook_geometry_package(gltf_texture_self_test.SOURCE,
+            gltf_texture_self_test.ASSET_PATH, subset_directory / "textured.pkg", allow_textures=True)
+        variant = dict(gltf_texture_self_test.SECTIONS)
+        variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
+        write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
     archive = build / "render-scene-native-smoke.a"
     executable = build / "render-scene-native-smoke"
+    native_main = Path(os.environ.get(
+        "ELISA_RENDER_SCENE_NATIVE_MAIN",
+        ROOT / "test/render_scene_native_main.elisa",
+    )).resolve()
+    if not native_main.is_file():
+        print(f"native smoke main does not exist: {native_main}", file=sys.stderr)
+        return 2
     status = run([
         compiler, "-emit", "c-archive", "-o", str(archive),
-        str(ROOT / "test/render_scene_native_main.elisa"),
+        str(native_main),
     ])
     if status != 0:
         return status
@@ -232,6 +241,9 @@ def main() -> int:
             texture_link.unlink(missing_ok=True)
             dependency_link.unlink(missing_ok=True)
     if status == 0:
+        if os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1":
+            print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")
+            return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([
             sys.executable, str(ROOT / "scripts/elisa_build_run.py"), "run",

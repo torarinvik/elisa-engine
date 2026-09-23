@@ -12,7 +12,7 @@ module RenderSceneAnimationBlendNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_blend_weight(
-            handle: RenderScene::InstanceHandle) -> f32
+            handle: i64) -> f32
 
         def near(value: f32, expected: f32) -> bool:
             value > expected - 0.002 and value < expected + 0.002
@@ -44,6 +44,7 @@ module RenderSceneAnimationBlendNativeTests:
                 error failure: 2
 
         def phase_checks(rig: RenderScene::InstanceHandle) -> i32:
+            raw_rig: i64 = RenderScene::native_smoke_handle(rig)
             started: bool = catch RenderScene::play_animation(rig, CLIP, true, 1.0, 0.0):
                 ok: true
                 error failure: false
@@ -54,22 +55,23 @@ module RenderSceneAnimationBlendNativeTests:
             return 5 if not advance(rig, 0.2) or not near(progress(rig), 0.9)
             # A re-requested clip keeps running and starts no fade.
             return 6 if not play(rig, FADE, RenderScene::locomotion_transition()) or not near(progress(rig), 0.9)
-            return 7 if elisa_render_scene_v1_test_animation_blend_weight(rig) >= 0.0
+            return 7 if elisa_render_scene_v1_test_animation_blend_weight(raw_rig) >= 0.0
             0
 
         def fade_checks(rig: RenderScene::InstanceHandle) -> i32:
+            raw_rig: i64 = RenderScene::native_smoke_handle(rig)
             # A phase-matched switch starts the new cycle at the old phase and
             # fades in with a smoothstep: a quarter of the way in, the new
             # pose weighs 0.15625 rather than 0.25.
             eased: RenderScene::AnimationTransition = RenderScene::AnimationTransition{
                 eased: true, phase_matched: true, continue_same_clip: false}
             return 8 if not play(rig, FADE, eased) or not near(progress(rig), 0.9)
-            return 9 if not near(elisa_render_scene_v1_test_animation_blend_weight(rig), 0.0)
-            return 10 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(rig), 0.15625)
-            return 11 if not advance(rig, 0.3) or elisa_render_scene_v1_test_animation_blend_weight(rig) >= 0.0
+            return 9 if not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.0)
+            return 10 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.15625)
+            return 11 if not advance(rig, 0.3) or elisa_render_scene_v1_test_animation_blend_weight(raw_rig) >= 0.0
             # The plain switch restarts the cycle and fades linearly.
             return 12 if not play(rig, FADE, plain()) or not near(progress(rig), 0.0)
-            return 13 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(rig), 0.25)
+            return 13 if not advance(rig, 0.1) or not near(elisa_render_scene_v1_test_animation_blend_weight(raw_rig), 0.25)
             0
 
     public:

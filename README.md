@@ -308,10 +308,25 @@ pass, used for panels and rows while a host paints the rectangles.
 `src/ui/menu.elisa` is the engine-owned menu model: a fixed-height vertical
 list with focus navigation that skips disabled rows, a visible window that
 scrolls to keep the focused row on screen, pointer hit testing that accounts for
-the scroll offset, and activation returning an action id the game maps to its
-own flow. No text and no
-rendering live in the model; `examples/maze/menu.elisa` decides which actions
-each game state offers, so the model never learns the game's rules.
+the scroll offset, activation returning an action id the game maps to its own
+flow, and optional static labels added with `menu_add_labeled`. The model still
+does not know game rules.
+
+`src/runtime/ui_renderer.elisa` connects that model and `UiLayout`/`UiStyle` to
+the existing RenderScene screen-space panels and text handles. `UiRenderer::MenuCanvas`
+retains one text handle per item plus a background and focus-band panel;
+`sync_menu` applies positions, colors, visibility, scrolling and labels as the
+menu changes. `test/render_scene_ui_native.elisa` exercises this path against
+Wicked, including disabled-row focus, scrolling and cleanup. Run the focused
+macOS render gate with
+`ELISA_RENDER_SCENE_NATIVE_MAIN=test/ui_renderer_native_main.elisa`
+and `ELISA_RENDER_SCENE_RENDER_ONLY=1` when using
+`scripts/render_scene_native_smoke.py`.
+
+This first adapter uses pixel coordinates and the existing default font. It
+does not yet provide font selection, backend text measurement, automatic
+wrapping, clipping or DPI-aware scaling; those remain part of the reusable UI
+renderer work.
 
 `src/runtime/save.elisa` stores portable save blobs as a magic marker, a
 format version, a field count, and plain i64 fields, rejecting a blob whose

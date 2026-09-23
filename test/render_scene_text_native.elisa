@@ -1,3 +1,5 @@
+include "./render_scene_ui_native.elisa"
+
 module RenderSceneTextNativeTests:
     public:
         def exercise(handle: RenderScene::OverlayTextHandle) -> i32:
@@ -59,4 +61,6 @@ module RenderSceneTextNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 122 if invalid_text_position != 1
+            ui_updates: i32 = RenderSceneUiNativeTests::exercise()
+            return 149 + ui_updates if ui_updates != 0
             0
