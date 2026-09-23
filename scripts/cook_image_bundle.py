@@ -48,7 +48,8 @@ def self_test() -> int:
                 make_ktx2(key_values=(("testkey", b"rd"),)),
                 make_ktx2(scheme=1, key_values=(("testkey", b"rd"),),
                     global_data=b"basis-global"),
-                make_ktx2(levels=(b"BASE", b"MIP!")))):
+                make_ktx2(levels=(bytes(16), bytes(16))),
+                make_ktx2(levels=(bytes(16), bytes(16), bytes(16))))):
             print("image bundle self-test failed: a valid KTX2 metadata or mip layout was rejected",
                 file=sys.stderr)
             return 1
@@ -65,7 +66,8 @@ def self_test() -> int:
         metadata_fixture = make_ktx2(key_values=(("testkey", b"rd"),))
         basis_lz_fixture = make_ktx2(scheme=1, key_values=(("testkey", b"rd"),),
             global_data=b"basis-global")
-        two_level_fixture = make_ktx2(levels=(b"BASE", b"MIP!"))
+        two_level_fixture = make_ktx2(levels=(bytes(16), bytes(16)))
+        one_pixel_two_levels = make_ktx2(1, 1, levels=(bytes(16), bytes(16)))
         invalid_structures = [
             invalid_structure("dfd-before-index", ktx2_bytes, 48, 100),
             invalid_structure("dfd-overflow", ktx2_bytes, 48, 0xFFFFFFFF),
@@ -80,11 +82,34 @@ def self_test() -> int:
             invalid_structure("sgd-out-of-range", basis_lz_fixture, 64, 0xFFFFFFFF, 8),
             invalid_structure("sgd-misaligned", basis_lz_fixture, 64, 169, 8),
             invalid_structure("level-overlaps-dfd", ktx2_bytes, 80, 104, 8),
+            invalid_structure("level-misaligned", ktx2_bytes, 80, 148, 8),
             invalid_structure("level-index-overflow", ktx2_bytes, 80, 0xFFFFFFFFFFFFFFFF, 8),
             invalid_structure("level-payload-overflow", ktx2_bytes, 88, 0xFFFFFFFFFFFFFFFF, 8),
             invalid_structure("uncompressed-size", ktx2_bytes, 96, 3, 8),
-            invalid_structure("overlapping-mips", two_level_fixture, 104, 172, 8),
+            invalid_structure("overlapping-mips", two_level_fixture, 104,
+                struct.unpack_from("<Q", two_level_fixture, 80)[0], 8),
+            invalid_structure("UASTC-BasisLZ-scheme", ktx2_bytes, 44, 1),
+            invalid_structure("ETC1S-non-BasisLZ-scheme", basis_lz_fixture, 44, 2),
         ]
+        excess_mips = directory / "structure-mip-count-exceeds-dimensions.ktx2"
+        excess_mips.write_bytes(one_pixel_two_levels)
+        invalid_structures.append(("mip-count-exceeds-dimensions", excess_mips))
+        wrong_level_order = bytearray(two_level_fixture)
+        first_level_offset = struct.unpack_from("<Q", wrong_level_order, 80)[0]
+        second_level_offset = struct.unpack_from("<Q", wrong_level_order, 104)[0]
+        struct.pack_into("<Q", wrong_level_order, 80, second_level_offset)
+        struct.pack_into("<Q", wrong_level_order, 104, first_level_offset)
+        wrong_level_order_path = directory / "structure-level-order.ktx2"
+        wrong_level_order_path.write_bytes(wrong_level_order)
+        invalid_structures.append(("level-order", wrong_level_order_path))
+        trailing_payload_path = directory / "structure-trailing-data.ktx2"
+        trailing_payload_path.write_bytes(ktx2_bytes + bytes(4))
+        invalid_structures.append(("trailing-data", trailing_payload_path))
+        nonzero_mip_padding = bytearray(ktx2_bytes)
+        nonzero_mip_padding[148] = 1
+        mip_padding_path = directory / "structure-mip-padding.ktx2"
+        mip_padding_path.write_bytes(nonzero_mip_padding)
+        invalid_structures.append(("nonzero-mip-padding", mip_padding_path))
         bundles = []
         for label in ("first", "second"):
             bundle = directory / f"{label}.elpk"

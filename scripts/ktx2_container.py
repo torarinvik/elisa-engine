@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import struct
 
 
@@ -59,7 +60,7 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
     if (type_size != 1 or
             not 1 <= width <= MAX_KTX2_DIMENSION or not 1 <= height <= MAX_KTX2_DIMENSION or
             depth != 0 or layers != 0 or faces != 1 or not 1 <= levels <= MAX_KTX2_LEVELS or
-            scheme not in (0, 1, 2)):
+            levels > max(width, height).bit_length() or scheme not in (0, 1, 2)):
         return None
 
     level_index_end = 80 + levels * 24
@@ -76,13 +77,18 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
         return None
     dfd_model = data[dfd_offset + 12]
     if vk_format == 0:
-        if dfd_model not in (KTX2_ETC1S_DFD_MODEL, KTX2_UASTC_LDR_4X4_DFD_MODEL):
+        if ((dfd_model == KTX2_ETC1S_DFD_MODEL and (scheme != 1 or dfd_length != 60)) or
+                (dfd_model == KTX2_UASTC_LDR_4X4_DFD_MODEL and
+                    (scheme not in (0, 2) or dfd_length != 44 or
+                        data[dfd_offset + 16:dfd_offset + 20] != bytes((3, 3, 0, 0)) or
+                        data[dfd_offset + 20:dfd_offset + 28] != bytes((16, 0, 0, 0, 0, 0, 0, 0)))) or
+                dfd_model not in (KTX2_ETC1S_DFD_MODEL, KTX2_UASTC_LDR_4X4_DFD_MODEL)):
             return None
     elif (vk_format != KTX2_UASTC_HDR_4X4_VK_FORMAT or
             dfd_model != KTX2_UASTC_HDR_4X4_DFD_MODEL or scheme != 2 or dfd_length != 44 or
             data[dfd_offset + 14] != 1 or
             data[dfd_offset + 16:dfd_offset + 20] != bytes((3, 3, 0, 0)) or
-            data[dfd_offset + 20] != 16):
+            data[dfd_offset + 20:dfd_offset + 28] != bytes((16, 0, 0, 0, 0, 0, 0, 0))):
         # Admit only Basis UASTC HDR 4x4: linear ASTC HDR blocks, Zstandard
         # supercompression, one 16-byte block per 4x4 texel footprint.
         return None
@@ -110,19 +116,40 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
         return None
 
     level_ranges: list[tuple[int, int]] = []
+    level_offsets: list[int] = []
+    level_lengths: list[int] = []
+    level_alignment = math.lcm(4, data[dfd_offset + 20]) if scheme == 0 else 1
     for level in range(levels):
         offset, byte_length, uncompressed_length = struct.unpack_from("<3Q", data, 80 + level * 24)
+        mip_width = max(1, width >> level)
+        mip_height = max(1, height >> level)
+        expected_uastc_length = ((mip_width + 3) // 4) * ((mip_height + 3) // 4) * 16
         if (offset < metadata_end or offset > len(data) or byte_length == 0 or
-                byte_length > len(data) - offset):
+                byte_length > len(data) - offset or offset % level_alignment):
             return None
         if ((scheme in (0, 2) and uncompressed_length == 0) or
                 (scheme == 0 and uncompressed_length != byte_length) or
-                (scheme == 1 and uncompressed_length != 0)):
+                (scheme == 1 and uncompressed_length != 0) or
+                (scheme in (0, 2) and uncompressed_length != expected_uastc_length)):
             return None
+        level_offsets.append(offset)
+        level_lengths.append(byte_length)
         level_ranges.append((offset, offset + byte_length))
 
+    first_level_offset = ((metadata_end + level_alignment - 1) // level_alignment) * level_alignment
+    if (level_offsets[-1] != first_level_offset or
+            any(data[metadata_end:first_level_offset])):
+        return None
+    for level in range(levels - 2, -1, -1):
+        previous_end = level_offsets[level + 1] + level_lengths[level + 1]
+        expected_offset = ((previous_end + level_alignment - 1) // level_alignment) * level_alignment
+        if (level_offsets[level] != expected_offset or
+                any(data[previous_end:expected_offset])):
+            return None
     level_ranges.sort()
     if any(level_ranges[index][0] < level_ranges[index - 1][1]
             for index in range(1, len(level_ranges))):
+        return None
+    if level_ranges[-1][1] != len(data):
         return None
     return width, height
