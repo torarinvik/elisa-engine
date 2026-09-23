@@ -19,7 +19,7 @@ import tempfile
 import cook_gltf_animation
 from elisa_package import encoded_image_dimensions, write_geometry_package
 from fbx_material_cooker_self_test import validate_material_package
-from fbx_surface_texture import decode_png_rgba, pack_surface_maps
+from fbx_surface_texture import decode_png_rgba, infer_alpha_mode, pack_surface_maps
 from fbx_surface_texture_self_test import validate_surface_texture_decoder
 from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
 from png_image import encode_png
@@ -433,6 +433,19 @@ def package_fbx_texture_sources(source: Path, geometry_package: bytes,
     if {reference for reference in all_source_references if reference} != set(range(1, len(source_images) + 1)):
         raise ValueError("FBX package contains an unused texture source image")
 
+    material_records = bytearray(base64.b64decode(fields["slot_materials_b64"], validate=True))
+    if len(material_records) != material_slots * 48:
+        raise ValueError("FBX alpha policy does not match its material slots")
+    for slot in range(material_slots):
+        base_color_reference = direct_references[slot * 5]
+        if not base_color_reference:
+            continue
+        mode_offset = slot * 48 + 40
+        (current_mode,) = struct.unpack_from("<I", material_records, mode_offset)
+        inferred_mode = infer_alpha_mode(source_images[base_color_reference - 1], current_mode)
+        if inferred_mode != current_mode:
+            struct.pack_into("<I", material_records, mode_offset, inferred_mode)
+
     images: dict[str, bytes] = {}
     image_indices: dict[bytes, int] = {}
     runtime_references = [0] * (material_slots * 5)
@@ -474,13 +487,14 @@ def package_fbx_texture_sources(source: Path, geometry_package: bytes,
     texture_names = b"".join(struct.pack("<I", len(name.encode("ascii"))) + name.encode("ascii")
         for name in images)
     runtime_fields = {
+        "slot_materials_b64": base64.b64encode(material_records).decode("ascii"),
         "texture_count": str(len(images)),
         "texture_names_b64": base64.b64encode(texture_names).decode("ascii"),
         "slot_texture_stride": "20",
         "slot_textures_b64": base64.b64encode(references).decode("ascii"),
     }
     source_fields = {"texture_source_count", "texture_source_names_b64", "slot_texture_sources_b64",
-        "slot_surface_texture_sources_b64"}
+        "slot_surface_texture_sources_b64", "slot_materials_b64"}
     lines = [line for line in geometry_package.decode("ascii").splitlines()
         if line.partition("=")[0] not in source_fields]
     lines.extend(f"{key}={value}" for key, value in runtime_fields.items())
@@ -750,11 +764,15 @@ def main(arguments: list[str]) -> int:
                     raise ValueError("FBX cooker did not retain its base-color texture binding")
                 bundled_geometry, bundled_images = package_fbx_texture_sources(
                     texture_source, (directory / "textured-fbx-geometry.pkg").read_bytes(), texture_fields)
+                textured_runtime_fields = dict(line.split("=", 1)
+                    for line in bundled_geometry.decode("ascii").splitlines())
+                textured_runtime_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(
+                    textured_runtime_fields["slot_materials_b64"], validate=True)))
                 if (list(bundled_images) != ["fbx_image_0"] or
                         bundled_images["fbx_image_0"] != (texture_directory / "albedo.png").read_bytes() or
                         b"texture_source_" in bundled_geometry or b"texture_count=1" not in bundled_geometry or
-                        base64.b64decode(dict(line.split("=", 1) for line in bundled_geometry.decode().splitlines())[
-                            "slot_textures_b64"], validate=True) != expected_refs):
+                        base64.b64decode(textured_runtime_fields["slot_textures_b64"], validate=True) != expected_refs or
+                        textured_runtime_materials[0][10] != 2):
                     raise ValueError("FBX external texture was not converted to a packaged image slot")
                 write_geometry_package(directory / "textured-fbx.elpk", bundled_geometry, bundled_images)
                 ignored_texture_fields = cook_one(cooker, texture_source,
@@ -764,6 +782,31 @@ def main(arguments: list[str]) -> int:
                 if "texture_source_count" in ignored_texture_fields:
                     raise ValueError("explicitly ignored FBX textures leaked into the cooked package")
 
+
+                cutout_directory = directory / "cutout-fbx"
+                cutout_directory.mkdir()
+                cutout_source = cutout_directory / "two-material-cutout.fbx"
+                cutout_image = encode_png(2, 1,
+                    bytes((220, 80, 40, 0, 40, 80, 220, 255)))
+                (cutout_directory / "cutout.png").write_bytes(cutout_image)
+                write_two_material_mesh(cutout_source, "cutout.png", transparency_factor=0.0)
+                cutout_fields = cook_one(cooker, cutout_source,
+                    "self-test/cutout-fbx/two-material-cutout.fbx",
+                    directory / "cutout-fbx-geometry.pkg")
+                raw_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(
+                    cutout_fields["slot_materials_b64"], validate=True)))
+                if raw_materials[0][10] != 0:
+                    raise ValueError("opaque FBX alpha factors were classified before reading their base-color image")
+                bundled_cutout, cutout_images = package_fbx_texture_sources(
+                    cutout_source, (directory / "cutout-fbx-geometry.pkg").read_bytes(), cutout_fields)
+                cutout_runtime_fields = dict(line.split("=", 1)
+                    for line in bundled_cutout.decode("ascii").splitlines())
+                cutout_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(
+                    cutout_runtime_fields["slot_materials_b64"], validate=True)))
+                if (cutout_materials[0][10] != 1 or cutout_materials[0][9] != 0.5 or
+                        cutout_materials[1][10] != 0 or cutout_images != {"fbx_image_0": cutout_image}):
+                    raise ValueError("binary FBX base-color alpha did not become a masked runtime material")
+                write_geometry_package(directory / "cutout-fbx.elpk", bundled_cutout, cutout_images)
 
                 surface_directory = directory / "surface-textured-fbx"
                 surface_directory.mkdir()

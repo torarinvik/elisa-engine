@@ -35,7 +35,8 @@ def write_two_mesh_scene(path: Path) -> None:
 
 
 def write_two_material_mesh(path: Path, base_color_texture: str | None = None,
-    roughness_texture: str | None = None, metalness_texture: str | None = None) -> None:
+    roughness_texture: str | None = None, metalness_texture: str | None = None,
+    transparency_factor: float = 0.25) -> None:
     """Write two triangles in one mesh with separate polygon material slots."""
     texture_roles = [(1105, base_color_texture, "DiffuseColor"),
         (1106, roughness_texture, "Roughness"), (1107, metalness_texture, "Metalness")]
@@ -91,7 +92,7 @@ def write_two_material_mesh(path: Path, base_color_texture: str | None = None,
         'P: "DiffuseFactor", "Number", "", "A", 0.8 '
         'P: "Shininess", "Number", "", "A", 32 '
         'P: "EmissiveColor", "Color", "", "A", 0.3,0.2,0.1 '
-        'P: "TransparencyFactor", "Number", "", "A", 0.25 ' +
+        f'P: "TransparencyFactor", "Number", "", "A", {transparency_factor} ' +
         ('P: "3dsMax|ClassIDa", "int", "Integer", "", 943849874 '
             'P: "3dsMax|ClassIDb", "int", "Integer", "", 1174294043 '
             'P: "3dsMax|main|roughness", "Number", "", "A", 0.5 '

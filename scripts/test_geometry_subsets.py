@@ -39,6 +39,7 @@ import gltf_scene_self_test
 import gltf_skin_self_test
 import gltf_texture_self_test
 import test_geometry_uv1
+from png_image import encode_png
 from geometry_subset_manifest import manifest_line
 
 
@@ -542,6 +543,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--extra-package", type=Path,
         help="also load and compare placement records from a cooked .pkg")
+    parser.add_argument("--fbx-cutout-package", type=Path,
+        help="also load a cooked FBX ELPK cutout material and its base-color image")
     options = parser.parse_args()
     compiler = os.environ.get("CXX", "c++")
     if shutil.which(compiler) is None:
@@ -564,6 +567,23 @@ def main() -> int:
             test_cases.append(("accept", package_name, None,
                 (int(package_fields["indices"]), int(package_fields["material_slots"]),
                     subset_records, "mesh_placements", placement_records)))
+        if options.fbx_cutout_package is not None:
+            cutout_image = encode_png(2, 1, bytes((220, 80, 40, 0, 40, 80, 220, 255)))
+            cutout_materials = [
+                (0.1600000113248825, 0.320000022649765, 0.48000001907348633, 1.0, 0.0,
+                    0.4343145787715912, 0.30000001192092896, 0.20000000298023224,
+                    0.10000000149011612, 0.5,
+                    1, 0, 1, 0, 0, 0, 0),
+                (0.699999988079071, 0.20000000298023224, 0.10000000149011612, 1.0,
+                    0.0, 0.6535898447036743, 0.0, 0.0, 0.0, 0.5,
+                    0, 0, 0, 0, 0, 0, 0),
+            ]
+            package_name = "fbx-cutout-material.elpk"
+            shutil.copyfile(options.fbx_cutout_package, directory / package_name)
+            test_cases.append(("accept", package_name, None,
+                (6, 2, [(0, 3, 0), (3, 3, 1)], cutout_materials,
+                    [("fbx_image_0", zlib.crc32(cutout_image) & 0xFFFFFFFF)],
+                    "slot_names", ["First", "Second"])))
         for verdict, name, package, expectation in test_cases:
             if package is not None:
                 (directory / name).write_bytes(package)

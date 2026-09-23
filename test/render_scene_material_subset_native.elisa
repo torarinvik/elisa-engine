@@ -22,7 +22,6 @@ module RenderSceneMaterialSubsetNativeTests:
         extern elisa_render_scene_v1_test_snapshot_subset_matches(render_id: i64, subset: u32,
             index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
 
-        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_placement_subset_matches(render_id: i64,
             placement_index: u32, subset: u32, index_offset: u32, index_count: u32,
             material_high: u64, material_low: u64) -> i32

@@ -131,10 +131,24 @@ def main() -> int:
         ])
         if subset_status != 0:
             return subset_status
+        fbx_cutout_source = subset_directory / "two-material-cutout.fbx"
+        (subset_directory / "fbx-cutout.png").write_bytes(encode_png(2, 1,
+            bytes((220, 80, 40, 0, 40, 80, 220, 255))))
+        fbx_test_fixtures.write_two_material_mesh(fbx_cutout_source, "fbx-cutout.png",
+            transparency_factor=0.0)
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_fbx_asset.py"), str(fbx_cutout_source),
+            "--asset-path", "test/fixtures/two-material-cutout.fbx",
+            "--output", str(subset_directory / "fbx-cutout.elpk"),
+        ])
+        if subset_status != 0:
+            return subset_status
         # Check the FBX all-mesh package through the same sanitized production
-        # loader used for the glTF placement and subset fixtures.
+        # loader used for the glTF placement and subset fixtures. Also validate
+        # inferred cutout mode against the packaged base-color image.
         subset_status = run([sys.executable, str(ROOT / "scripts/test_geometry_subsets.py"),
-            "--extra-package", str(subset_directory / "fbx-all-meshes.pkg")])
+            "--extra-package", str(subset_directory / "fbx-all-meshes.pkg"),
+            "--fbx-cutout-package", str(subset_directory / "fbx-cutout.elpk")])
         if subset_status != 0:
             return subset_status
         subset_status = run([
