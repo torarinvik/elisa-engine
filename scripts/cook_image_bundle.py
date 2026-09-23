@@ -68,6 +68,13 @@ def self_test() -> int:
             global_data=b"basis-global")
         two_level_fixture = make_ktx2(levels=(bytes(16), bytes(16)))
         one_pixel_two_levels = make_ktx2(1, 1, levels=(bytes(16), bytes(16)))
+        zero_plane_uastc = bytearray(make_ktx2(scheme=2, levels=(bytes(16),)))
+        zero_plane_dfd = struct.unpack_from("<I", zero_plane_uastc, 48)[0]
+        zero_plane_uastc[zero_plane_dfd + 20:zero_plane_dfd + 28] = bytes(8)
+        if encoded_image_dimensions(bytes(zero_plane_uastc)) != (4, 4):
+            print("image bundle self-test failed: a valid legacy UASTC DFD was rejected",
+                file=sys.stderr)
+            return 1
         invalid_structures = [
             invalid_structure("dfd-before-index", ktx2_bytes, 48, 100),
             invalid_structure("dfd-overflow", ktx2_bytes, 48, 0xFFFFFFFF),
@@ -90,6 +97,8 @@ def self_test() -> int:
                 struct.unpack_from("<Q", two_level_fixture, 80)[0], 8),
             invalid_structure("UASTC-BasisLZ-scheme", ktx2_bytes, 44, 1),
             invalid_structure("ETC1S-non-BasisLZ-scheme", basis_lz_fixture, 44, 2),
+            invalid_structure("uncompressed-UASTC-zero-plane", ktx2_bytes,
+                struct.unpack_from("<I", ktx2_bytes, 48)[0] + 20, 0, 8),
         ]
         excess_mips = directory / "structure-mip-count-exceeds-dimensions.ktx2"
         excess_mips.write_bytes(one_pixel_two_levels)

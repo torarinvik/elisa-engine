@@ -77,12 +77,16 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
         return None
     dfd_model = data[dfd_offset + 12]
     if vk_format == 0:
-        if ((dfd_model == KTX2_ETC1S_DFD_MODEL and (scheme != 1 or dfd_length != 60)) or
-                (dfd_model == KTX2_UASTC_LDR_4X4_DFD_MODEL and
-                    (scheme not in (0, 2) or dfd_length != 44 or
-                        data[dfd_offset + 16:dfd_offset + 20] != bytes((3, 3, 0, 0)) or
-                        data[dfd_offset + 20:dfd_offset + 28] != bytes((16, 0, 0, 0, 0, 0, 0, 0)))) or
-                dfd_model not in (KTX2_ETC1S_DFD_MODEL, KTX2_UASTC_LDR_4X4_DFD_MODEL)):
+        block_dimensions = data[dfd_offset + 16:dfd_offset + 20]
+        bytes_per_plane = data[dfd_offset + 20:dfd_offset + 28]
+        expected_plane = bytes((16, 0, 0, 0, 0, 0, 0, 0))
+        valid_plane = ((scheme == 0 and bytes_per_plane == expected_plane) or
+            (scheme == 2 and bytes_per_plane in (bytes(8), expected_plane)))
+        uastc_ldr = (dfd_model == KTX2_UASTC_LDR_4X4_DFD_MODEL and
+            dfd_length == 44 and scheme in (0, 2) and
+            block_dimensions == bytes((3, 3, 0, 0)) and valid_plane)
+        etc1s = dfd_model == KTX2_ETC1S_DFD_MODEL and scheme == 1 and dfd_length == 60
+        if not (uastc_ldr or etc1s):
             return None
     elif (vk_format != KTX2_UASTC_HDR_4X4_VK_FORMAT or
             dfd_model != KTX2_UASTC_HDR_4X4_DFD_MODEL or scheme != 2 or dfd_length != 44 or
