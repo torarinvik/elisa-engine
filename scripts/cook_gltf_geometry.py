@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import math
 from pathlib import Path
 import struct
 
 import cook_assets
 import cook_gltf_animation
+import cook_gltf_meshopt
+import cook_gltf_lod
 import cook_gltf_nodes
 import cook_gltf_scene
 import cook_gltf_skin
@@ -22,7 +23,6 @@ MAX_MATERIAL_SLOTS = 16
 MAX_VERTICES = 2_000_000
 MAX_INDICES = 15_000_000
 MAX_MORPH_TARGETS = 32
-
 
 # Render scene alpha modes. Alpha masking needs a base-color texture.
 ALPHA_MODES = {"OPAQUE": 0, "MASK": 1, "BLEND": 2}
@@ -275,7 +275,7 @@ def generated_normals(positions: bytes, vertex_count: int, indices: list[int]) -
     return bytes(packed)
 
 
-def normalized_geometry(document: dict, buffer: bytes):
+def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | None = None):
     # Node transforms bake into placement streams; material subsets and
     # textures stay grouped. Identical accessors share data within a placement.
     # Skin streams retain remapped influences and parent-ordered rig transforms.
@@ -400,7 +400,7 @@ def normalized_geometry(document: dict, buffer: bytes):
     if any(target["normals"] is not None for target in morph_targets) and any(
             target["normals"] is None for target in morph_targets):
         raise ValueError("all morph targets must provide normals or none may provide them")
-    return {"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents), "uvs": bytes(uvs),
+    geometry = {"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents), "uvs": bytes(uvs),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
@@ -409,7 +409,11 @@ def normalized_geometry(document: dict, buffer: bytes):
         "skin_indices": skin_indices, "skin_weights": skin_weights,
         "morph_targets": morph_targets, "scene": {**scene, "mesh_placements": [
             {**placement, **placement_ranges[index]}
-            for index, placement in enumerate(scene["mesh_placements"])]}}
+            for index, placement in enumerate(scene["mesh_placements"]) ]}}
+    if simplify_ratio is not None:
+        geometry, lod_report = cook_gltf_lod.simplify_geometry(geometry, simplify_ratio)
+        geometry["lod_report"] = lod_report
+    return cook_gltf_meshopt.optimize_geometry(geometry)
 
 
 def placed_counts(document: dict, *, skinned: bool = False) -> dict:
@@ -542,59 +546,7 @@ def scene_lines(geometry: dict) -> list[str]:
 
 
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
-        allow_textures: bool = False) -> tuple[Path, dict]:
-    """Write the mesh package. A textured source cooks only when the caller
-    will bundle the returned images beside it."""
-    asset_path = safe_asset_path(asset_path)
-    source_path = source_path.expanduser().resolve(strict=True)
-    if not source_path.is_file() or source_path.stat().st_size == 0 or source_path.stat().st_size > cook_assets.MAX_DOCUMENT_BYTES:
-        raise ValueError("glTF source is not a regular file within the 64 MiB source bound")
-    data = source_path.read_bytes()
-    document = cook_assets.read_gltf(data)
-    geometry = normalized_geometry(document, cook_assets.source_bytes(source_path.parent, document))
-    if geometry["images"] and not allow_textures:
-        raise ValueError("material textures need an .elpk bundle output")
-    counts = placed_counts(document, skinned=geometry["skin"] is not None)
-    if (counts["triangles"] <= 0 or geometry["index_count"] != counts["triangles"] * 3 or
-            geometry["vertex_count"] != counts["positions"] or
-            cook_assets.normalized_counts(document)["bounds"] is None):
-        raise ValueError("normalized geometry does not match the declared source counts")
-    digest = hashlib.sha256(data).hexdigest()
-    output_path = output_path.expanduser().resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        "format=" + ("elisa-cooked-v3" if geometry["skin"] is not None or geometry["animation_clips"]
-            else "elisa-cooked-v2"),
-        f"source={asset_path}",
-        f"source_sha256={digest}",
-        f"triangles={counts['triangles']}",
-        f"positions={geometry['vertex_count']}",
-        f"indices={geometry['index_count']}",
-        "position_stride=12",
-        "normal_stride=12",
-        "uv_stride=8",
-        "index_stride=4",
-        *subset_lines(geometry),
-        *tangent_lines(geometry),
-        *skin_lines(geometry),
-        *cook_gltf_animation.package_lines(geometry["animation_clips"],
-            0 if geometry["skin"] is None else len(geometry["skin"]["joints"]),
-            len(geometry["scene"]["mesh_placements"]), len(geometry["morph_targets"])),
-        *morph_lines(geometry),
-        *scene_lines(geometry),
-        "positions_b64=" + base64.b64encode(geometry["positions"]).decode("ascii"),
-        "normals_b64=" + base64.b64encode(geometry["normals"]).decode("ascii"),
-        "uvs_b64=" + base64.b64encode(geometry["uvs"]).decode("ascii"),
-        "indices_b64=" + base64.b64encode(geometry["indices"]).decode("ascii"),
-    ]
-    package_bytes = ("\n".join(lines) + "\n").encode("utf-8")
-    if len(package_bytes) > 64 * 1024 * 1024:
-        raise ValueError("cooked geometry package exceeds the 64 MiB runtime limit")
-    output_path.write_bytes(package_bytes)
-    return output_path, {"triangles": counts["triangles"], "positions": geometry["vertex_count"],
-        "indices": geometry["index_count"], "subsets": len(geometry["subsets"]),
-        "material_slots": geometry["material_slots"],
-        "slot_materials": len(geometry["slot_materials"]) // SLOT_MATERIAL_STRIDE, "source_sha256": digest,
-        "images": dict(geometry["images"]), "morph_targets": len(geometry.get("morph_targets", [])),
-        "cameras": len(geometry.get("scene", {}).get("cameras", [])),
-        "lights": len(geometry.get("scene", {}).get("lights", []))}
+        allow_textures: bool = False, simplify_ratio: float | None = None) -> tuple[Path, dict]:
+    import cook_gltf_package
+    return cook_gltf_package.cook_geometry_package(source_path, asset_path, output_path,
+        allow_textures, simplify_ratio)

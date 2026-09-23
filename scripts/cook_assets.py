@@ -180,9 +180,10 @@ def normalized_geometry(document: dict, buffer: bytes):
     return normalize_geometry(document, buffer)
 
 
-def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path) -> tuple[Path, dict]:
+def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
+        simplify_ratio: float | None = None) -> tuple[Path, dict]:
     from cook_gltf_geometry import cook_geometry_package as cook_package
-    return cook_package(source_path, asset_path, output_path)
+    return cook_package(source_path, asset_path, output_path, simplify_ratio=simplify_ratio)
 
 
 def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> Path:
