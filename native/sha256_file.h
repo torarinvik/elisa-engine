@@ -116,7 +116,7 @@ inline bool sha256_file(const std::filesystem::path& path, uint64_t expected_byt
         if (count > 0) {
             hash.update(buffer.data(), static_cast<size_t>(count));
             processed += static_cast<size_t>(count);
-            if (cancellation_check && !cancellation_check(processed, static_cast<size_t>(expected_bytes))) {
+            if (cancellation_check && cancellation_check(processed, static_cast<size_t>(expected_bytes))) {
                 error = "SHA-256 file read cancelled";
                 return false;
             }

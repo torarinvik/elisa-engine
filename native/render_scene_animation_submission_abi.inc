@@ -57,7 +57,7 @@ extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle)
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 constexpr float ANIMATION_BONE_BOUND_RADIUS = 1.0f;
-constexpr float SKIN_ANCESTOR_WICKED_Z = 0.25f;
+constexpr float SKIN_ANCESTOR_WICKED_Z = -0.25f;
 enum AnimationStateProbeMatch : int32_t {
     ANIMATION_BONE_MATCH = 1 << 0,
     ANIMATION_MORPH_MATCH = 1 << 1,
@@ -186,7 +186,8 @@ extern "C" int32_t elisa_render_scene_v1_test_morph_animation_weights(
     const InstanceSlot& instance = state.instances[slot];
     const wi::scene::MeshComponent* first = state.scene->meshes.GetComponent(instance.entity);
     if (!instance.skin_joints.empty() || instance.joint_entities.size() != 0 ||
-        instance.animation_clips.size() != 1 || instance.animation_clip < 0 ||
+        instance.animation_clips.size() != 1 || instance.animation_clip < -1 ||
+        instance.animation_clip >= int32_t(instance.animation_clips.size()) ||
         first == nullptr || first->morph_targets.size() != 1 ||
         instance.imported_mesh_entities.size() != 1) return 0;
     const wi::scene::MeshComponent* second =

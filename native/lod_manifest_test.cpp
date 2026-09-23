@@ -43,6 +43,21 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "valid LOD chain rejected: %s\n", chain.error.c_str());
         return 1;
     }
+    const auto keep_reading = [](size_t, size_t) { return false; };
+    elisa::assets::LodGeometryChain continued;
+    if (!elisa::assets::load_lod_geometry_chain(
+            manifest_path.filename().generic_string(), continued, keep_reading)) {
+        std::fprintf(stderr, "non-cancelled LOD reads stopped: %s\n", continued.error.c_str());
+        return 1;
+    }
+    const auto cancel_read = [](size_t, size_t) { return true; };
+    elisa::assets::LodGeometryChain cancelled;
+    if (elisa::assets::load_lod_geometry_chain(
+            manifest_path.filename().generic_string(), cancelled, cancel_read) ||
+        cancelled.error != "SHA-256 file read cancelled") {
+        std::fprintf(stderr, "cancelled LOD hash read was not stopped: %s\n", cancelled.error.c_str());
+        return 1;
+    }
     size_t rejected_count = 0;
     for (int index = 2; index < argc; ++index) {
         if (std::string(argv[index]) == "--reject-chain") {

@@ -50,7 +50,7 @@ native loader also accepts a 65-node rig with two palette bones.
   normalized 8-bit outputs, cubic weights, per-placement defaults, and an
   unskinned morph-only clip.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 100 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer. The multi-skin, mixed static/skinned, and unskinned animated-morph packages are among the accepted cases.
-- The SDL3/Metal RenderScene smoke compiled and passed the sibling-branch animation submission probe, the separately rooted mesh upload/world-offset assertion, and the multi-skin and mixed-placement armature probes. It later returned status 134 at the overlay-hide readback in `test/render_scene_native_main.elisa`, after those probes completed. This is the same later failure seen with the earlier two-joint fixture, so the full native gate remains incomplete.
+- The full SDL3/Metal RenderScene smoke passed the sibling-branch animation submission probe, separately rooted mesh upload/world-offset assertion, multi-skin and mixed-placement armature probes, plus the later overlay-hide readback. The Elisa-owned maze app and packaged-maze stages also passed; the package ran with checkout access denied and rejected missing, escaping, corrupted, and dependency-invalid bundles.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
 Multi-skin scenes combine separate rig branches and palettes, bounded by 64
