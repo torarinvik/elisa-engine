@@ -16,6 +16,71 @@ KTX2_UASTC_HDR_4X4_DFD_MODEL = 167
 MAX_KTX2_DIMENSION = 4096
 MAX_KTX2_LEVELS = 16
 _DFD_LENGTHS = (44, 60)
+_DFD_SAMPLE_BYTES = 16
+_DFD_BASE_BYTES = 28
+_DFD_PRIMARIES_BT709 = 1
+_DFD_TRANSFER_LINEAR = 1
+_DFD_TRANSFER_SRGB = 2
+_UASTC_CHANNELS = {0, 3, 4, 5, 6}
+_ETC1S_CHANNEL_PAIRS = {(0,), (0, 15), (3,), (3, 4)}
+
+
+def _sample(data: bytes, dfd_offset: int, index: int) -> tuple[int, int, int, bytes, int, int]:
+    offset = dfd_offset + _DFD_BASE_BYTES + index * _DFD_SAMPLE_BYTES
+    bit_offset, bit_length, channel_type = struct.unpack_from("<HBB", data, offset)
+    position = data[offset + 4:offset + 8]
+    lower, upper = struct.unpack_from("<II", data, offset + 8)
+    return bit_offset, bit_length, channel_type, position, lower, upper
+
+
+def _valid_dfd(data: bytes, offset: int, length: int, vk_format: int,
+        scheme: int) -> bool:
+    if (length not in _DFD_LENGTHS or offset + length > len(data) or
+            data[offset + 4:offset + 8] != bytes(4) or
+            struct.unpack_from("<HH", data, offset + 8) != (2, length - 4)):
+        return False
+    model, primaries, transfer, flags = data[offset + 12:offset + 16]
+    dimensions = data[offset + 16:offset + 20]
+    planes = data[offset + 20:offset + 28]
+    if (primaries != _DFD_PRIMARIES_BT709 or
+            transfer not in (_DFD_TRANSFER_LINEAR, _DFD_TRANSFER_SRGB) or flags != 0 or
+            dimensions != bytes((3, 3, 0, 0))):
+        return False
+    sample_count = (length - _DFD_BASE_BYTES) // _DFD_SAMPLE_BYTES
+    if vk_format == 0 and model == KTX2_UASTC_LDR_4X4_DFD_MODEL:
+        if (length != 44 or scheme not in (0, 2) or
+                any(planes[1:]) or
+                (scheme == 0 and planes[0] != 16) or
+                (scheme == 2 and planes[0] not in (0, 16))):
+            return False
+        bit_offset, bit_length, channel_type, position, lower, upper = _sample(data, offset, 0)
+        return (sample_count == 1 and bit_offset == 0 and bit_length == 127 and
+            channel_type in _UASTC_CHANNELS and position == bytes(4) and
+            lower == 0 and upper == 0xFFFFFFFF)
+    if vk_format == 0 and model == KTX2_ETC1S_DFD_MODEL:
+        expected_planes = (8, 8) if sample_count == 2 else (8, 0)
+        if (scheme != 1 or sample_count not in (1, 2) or
+                (length == 44) != (sample_count == 1) or
+                any(planes[2:]) or tuple(planes[:2]) not in (expected_planes, (0, 0))):
+            return False
+        channels: list[int] = []
+        for index in range(sample_count):
+            bit_offset, bit_length, channel_type, position, lower, upper = _sample(data, offset, index)
+            channel = channel_type & 0x0F
+            if (bit_offset != index * 64 or bit_length != 63 or
+                    channel_type != channel or position != bytes(4) or
+                    lower != 0 or upper != 0xFFFFFFFF):
+                return False
+            channels.append(channel)
+        return tuple(channels) in _ETC1S_CHANNEL_PAIRS
+    if (vk_format != KTX2_UASTC_HDR_4X4_VK_FORMAT or
+            model != KTX2_UASTC_HDR_4X4_DFD_MODEL or scheme != 2 or
+            transfer != _DFD_TRANSFER_LINEAR or length != 44 or
+            any(planes[1:]) or planes[0] not in (0, 16) or sample_count != 1):
+        return False
+    bit_offset, bit_length, channel_type, position, lower, upper = _sample(data, offset, 0)
+    return (bit_offset == 0 and bit_length == 127 and channel_type == 0x80 and
+        position == bytes(4) and lower == 0 and upper == 0x3F800000)
 
 
 def _valid_key_values(data: bytes, start: int, length: int) -> bool:
@@ -68,33 +133,12 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
         return None
     dfd_offset, dfd_length, kvd_offset, kvd_length, sgd_offset, sgd_length = \
         struct.unpack_from("<4I2Q", data, 48)
-    if (dfd_offset != level_index_end or dfd_offset & 3 or dfd_length not in _DFD_LENGTHS or
+    if (dfd_offset != level_index_end or dfd_offset & 3 or
             dfd_length > len(data) - dfd_offset):
         return None
     dfd_end = dfd_offset + dfd_length
     if (struct.unpack_from("<I", data, dfd_offset)[0] != dfd_length or
-            struct.unpack_from("<H", data, dfd_offset + 10)[0] != dfd_length - 4):
-        return None
-    dfd_model = data[dfd_offset + 12]
-    if vk_format == 0:
-        block_dimensions = data[dfd_offset + 16:dfd_offset + 20]
-        bytes_per_plane = data[dfd_offset + 20:dfd_offset + 28]
-        expected_plane = bytes((16, 0, 0, 0, 0, 0, 0, 0))
-        valid_plane = ((scheme == 0 and bytes_per_plane == expected_plane) or
-            (scheme == 2 and bytes_per_plane in (bytes(8), expected_plane)))
-        uastc_ldr = (dfd_model == KTX2_UASTC_LDR_4X4_DFD_MODEL and
-            dfd_length == 44 and scheme in (0, 2) and
-            block_dimensions == bytes((3, 3, 0, 0)) and valid_plane)
-        etc1s = dfd_model == KTX2_ETC1S_DFD_MODEL and scheme == 1 and dfd_length == 60
-        if not (uastc_ldr or etc1s):
-            return None
-    elif (vk_format != KTX2_UASTC_HDR_4X4_VK_FORMAT or
-            dfd_model != KTX2_UASTC_HDR_4X4_DFD_MODEL or scheme != 2 or dfd_length != 44 or
-            data[dfd_offset + 14] != 1 or
-            data[dfd_offset + 16:dfd_offset + 20] != bytes((3, 3, 0, 0)) or
-            data[dfd_offset + 20:dfd_offset + 28] != bytes((16, 0, 0, 0, 0, 0, 0, 0))):
-        # Admit only Basis UASTC HDR 4x4: linear ASTC HDR blocks, Zstandard
-        # supercompression, one 16-byte block per 4x4 texel footprint.
+            not _valid_dfd(data, dfd_offset, dfd_length, vk_format, scheme)):
         return None
 
     if kvd_length == 0:

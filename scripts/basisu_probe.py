@@ -13,6 +13,7 @@ Usage:
 """
 
 import math
+import struct
 import subprocess
 import sys
 import tempfile
@@ -66,12 +67,36 @@ def main() -> int:
         print("basisu probe: the cooker produced no KTX2", file=sys.stderr)
         return cook.returncode if cook.returncode != 0 else 1
 
-    normal = ENGINE_ROOT / "build/cooked/maze_tile_normal.ktx2"
-    hdr = ENGINE_ROOT / "build/cooked/maze_tile_hdr.ktx2"
     basisu = cook_assets.basisu_executable(ENGINE_ROOT)
     if basisu is None:
         print("basisu probe: the pinned Basis encoder is unavailable", file=sys.stderr)
         return 2
+    etc1s_profiles = (
+        ("opaque", ENGINE_ROOT / "examples/maze/assets/maze_wall.png", 44),
+        ("alpha", ENGINE_ROOT / "test/fixtures/glyph_atlas.png", 60),
+    )
+    for label, source, expected_dfd_length in etc1s_profiles:
+        output = ENGINE_ROOT / f"build/cooked/maze_tile_etc1s_{label}.ktx2"
+        result = subprocess.run([basisu, "-ktx2", "-output_file", str(output), str(source)],
+            capture_output=True, text=True, check=False)
+        relay(result)
+        if result.returncode != 0 or not output.is_file():
+            print(f"basisu probe: could not cook ETC1S {label} profile", file=sys.stderr)
+            return result.returncode if result.returncode != 0 else 1
+        payload = output.read_bytes()
+        try:
+            dimensions = encoded_image_dimensions(payload)
+        except ValueError as error:
+            print(f"basisu probe: cooker rejected real ETC1S {label} output: {error}",
+                file=sys.stderr)
+            return 1
+        dfd_length = struct.unpack_from("<I", payload, 52)[0]
+        if dimensions[0] < 1 or dimensions[1] < 1 or dfd_length != expected_dfd_length:
+            print(f"basisu probe: ETC1S {label} DFD sample count was unexpected", file=sys.stderr)
+            return 1
+    print("Basis Universal validated opaque and alpha ETC1S DFD profiles.")
+    normal = ENGINE_ROOT / "build/cooked/maze_tile_normal.ktx2"
+    hdr = ENGINE_ROOT / "build/cooked/maze_tile_hdr.ktx2"
     normal_pixels = bytes((96, 192, 232, 255)) * 16
     with tempfile.TemporaryDirectory(prefix="elisa-basisu-normal-") as workdir:
         source = Path(workdir) / "normal.png"
