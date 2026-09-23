@@ -588,6 +588,8 @@ def main() -> int:
         if f"{len(manifest)} cases, 0 failed" not in checked.stdout:
             print("geometry subset loader test did not run every case", file=sys.stderr)
             return 1
+        if subprocess.run([sys.executable, str(ROOT / "scripts/test_lod_manifest.py")]).returncode != 0:
+            return 1
     return 0
 
 
