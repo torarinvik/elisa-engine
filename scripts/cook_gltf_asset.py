@@ -14,6 +14,7 @@ import tempfile
 import cook_assets
 import cook_gltf_geometry
 from cook_gltf_meshopt import self_test as meshopt_self_test
+from cook_gltf_lod import self_test as lod_self_test
 from elisa_package import parse_texture_arguments, write_geometry_package
 from gltf_hierarchy_self_test import hierarchy_self_test
 from gltf_morph_self_test import self_test as morph_self_test
@@ -30,6 +31,9 @@ def self_test() -> int:
     meshopt_status = meshopt_self_test()
     if meshopt_status != 0:
         return meshopt_status
+    lod_status = lod_self_test()
+    if lod_status != 0:
+        return lod_status
     source = ROOT / "examples/maze/assets/maze_tile.gltf"
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-cooker-") as temporary:
         first = Path(temporary) / "first.pkg"
@@ -287,6 +291,8 @@ def main(arguments: list[str]) -> int:
         help="add a PNG, JPEG or bounded 2D KTX2 image as a named .elpk section")
     parser.add_argument("--dependency", action="append", default=[], metavar="BUNDLE",
         help="name a bundle this .elpk needs, relative to the output's directory")
+    parser.add_argument("--simplify-ratio", type=float,
+        help="cook a static LOD variant at this fraction of each placement/material triangle count")
     parser.add_argument("--self-test", action="store_true", help="cook the authored maze mesh twice")
     options = parser.parse_args(arguments)
     if options.self_test:
@@ -302,7 +308,8 @@ def main(arguments: list[str]) -> int:
         if options.output.suffix.lower() == ".elpk":
             with tempfile.TemporaryDirectory(prefix="elisa-gltf-bundle-") as temporary:
                 geometry_path, result = cook_gltf_geometry.cook_geometry_package(
-                    options.source, options.asset_path, Path(temporary) / "geometry.pkg", allow_textures=True)
+                    options.source, options.asset_path, Path(temporary) / "geometry.pkg",
+                    allow_textures=True, simplify_ratio=options.simplify_ratio)
                 images = result["images"]
                 if images.keys() & textures.keys():
                     raise ValueError("--texture names a section the source's material images use")
@@ -312,9 +319,14 @@ def main(arguments: list[str]) -> int:
             output = options.output.expanduser().resolve()
         else:
             output, result = cook_assets.cook_geometry_package(
-                options.source, options.asset_path, options.output)
-        print(f"cooked {options.asset_path} -> {output} "
-            f"({result['triangles']} triangles, {result['positions']} vertices)")
+                options.source, options.asset_path, options.output,
+                simplify_ratio=options.simplify_ratio)
+        reduction = (f"{result['triangles']}/{result['source_triangles']} triangles"
+            if result["lod"] is not None else f"{result['triangles']} triangles")
+        print(f"cooked {options.asset_path} -> {output} ({reduction}, {result['positions']} vertices)")
+        if result["lod"] is not None:
+            print(f"LOD ratio={result['lod']['ratio']:.3f}, "
+                f"max relative error={result['lod']['maximum_error']:.5f}")
     except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError, AttributeError) as failure:
         print(f"glTF cooking failed: {failure}", file=sys.stderr)
         return 1

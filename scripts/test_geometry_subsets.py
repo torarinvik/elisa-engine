@@ -29,6 +29,7 @@ import zlib
 
 import cook_assets
 import cook_gltf_geometry
+import cook_gltf_lod
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
 import gltf_morph_self_test
@@ -205,6 +206,22 @@ def cases(directory: Path) -> list[tuple]:
     listed_materials = [MASKED + (2, 0, 0, 0, 0), SURFACED + (2, 0, 1, 0, 0)]
     listed_sections = [(name, zlib.crc32(data)) for name, data in listed.items()]
     plain = [GLASS, PAINT]
+    lod_source = cook_gltf_lod.write_test_source(directory)
+    lod_path = directory / "simplified-lod.pkg"
+    cooked_lod = subprocess.run([sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+        str(lod_source), "--asset-path", "test/lod-grid.gltf", "--output", str(lod_path),
+        "--simplify-ratio", "0.5"], capture_output=True, text=True, check=False)
+    if cooked_lod.returncode != 0:
+        raise RuntimeError(cooked_lod.stderr or cooked_lod.stdout or "LOD CLI fixture cook failed")
+    lod_sections = dict(line.split("=", 1) for line in lod_path.read_text(encoding="ascii").splitlines())
+    lod_subsets = list(struct.iter_unpack("<3I", base64.b64decode(lod_sections["subsets_b64"])))
+    lod_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(lod_sections["slot_materials_b64"])))
+    lod_triangles = int(lod_sections["triangles"])
+    lod_indices = int(lod_sections["indices"])
+    if (lod_triangles <= 0 or lod_triangles >= 2304 or lod_indices != lod_triangles * 3 or
+            [subset[2] for subset in lod_subsets] != [0, 1, 0, 1] or
+            "0.500" not in cooked_lod.stdout):
+        raise RuntimeError("static LOD cooker did not satisfy its source, triangle, or error limits")
 
     def morph_variant(old: bytes, new: bytes) -> bytes:
         if old not in morph:
@@ -269,6 +286,7 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "panel.pkg", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", "panel.elpk", None, (18, 2, panel_subsets, PANEL_MATERIALS)),
         ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
+        ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),
         ("accept", "hierarchy.pkg", None, (24, 3, gltf_hierarchy_self_test.SUBSETS, HIERARCHY_MATERIALS)),
         ("accept", "alternating.pkg", None, (96, 3, alternating_subsets, HIERARCHY_MATERIALS)),
         ("accept", "legacy.pkg", strip_package(2), (6, 1, [(0, 6, 0)])),
