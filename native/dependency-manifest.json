@@ -72,6 +72,24 @@
       ]
     },
     {
+      "name": "MikkTSpace",
+      "kind": "file",
+      "path_default": "dependencies/mikktspace",
+      "artifacts": [
+        {"path": "mikktspace.c", "sha256": "de87e74107df766ce68108801262bd8d53899414236b59810509a8fc2a51e288"},
+        {"path": "mikktspace.h", "sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0"}
+      ]
+    },
+    {
+      "name": "xatlas",
+      "kind": "file",
+      "path_default": "dependencies/xatlas",
+      "artifacts": [
+        {"path": "xatlas.cpp", "sha256": "0ed0283aad005c94738cb0cc4612dba264379d29dea5b3c9b242f2d4752d5df4"},
+        {"path": "xatlas.h", "sha256": "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd"}
+      ]
+    },
+    {
       "name": "basisu",
       "kind": "git",
       "path_default": "dependencies/basisu",

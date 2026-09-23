@@ -94,6 +94,31 @@ PINNED = {
         "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e",
         "meshoptimizer/indexgenerator.cpp",
     ),
+    # Offline mesh authoring stages. Pin source files by immutable upstream commit.
+    "mikktspace_source": (
+        "3e895b49d05ea07e4c2133156cfa94369e19e409",
+        "https://raw.githubusercontent.com/mmikk/MikkTSpace/3e895b49d05ea07e4c2133156cfa94369e19e409/mikktspace.c",
+        "de87e74107df766ce68108801262bd8d53899414236b59810509a8fc2a51e288",
+        "mikktspace/mikktspace.c",
+    ),
+    "mikktspace_header": (
+        "3e895b49d05ea07e4c2133156cfa94369e19e409",
+        "https://raw.githubusercontent.com/mmikk/MikkTSpace/3e895b49d05ea07e4c2133156cfa94369e19e409/mikktspace.h",
+        "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0",
+        "mikktspace/mikktspace.h",
+    ),
+    "xatlas_source": (
+        "f700c7790aaa030e794b52ba7791a05c085faf0c",
+        "https://raw.githubusercontent.com/jpcy/xatlas/f700c7790aaa030e794b52ba7791a05c085faf0c/source/xatlas/xatlas.cpp",
+        "0ed0283aad005c94738cb0cc4612dba264379d29dea5b3c9b242f2d4752d5df4",
+        "xatlas/xatlas.cpp",
+    ),
+    "xatlas_header": (
+        "f700c7790aaa030e794b52ba7791a05c085faf0c",
+        "https://raw.githubusercontent.com/jpcy/xatlas/f700c7790aaa030e794b52ba7791a05c085faf0c/source/xatlas/xatlas.h",
+        "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd",
+        "xatlas/xatlas.h",
+    ),
 }
 
 
