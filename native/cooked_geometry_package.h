@@ -596,6 +596,5 @@ inline bool load_cooked_geometry_asset(const std::string& path, CookedGeometry& 
 }
 
 } // namespace elisa::assets
-
 #include "cooked_geometry_morphs.h"
 #include "cooked_geometry_scene.h"

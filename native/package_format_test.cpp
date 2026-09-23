@@ -7,7 +7,7 @@
 #include <vector>
 
 int main(int argc, char** argv) {
-    if (argc != 2) return 2;
+    if (argc != 5) return 2;
     const probe::BinaryPackageIndex index = probe::read_binary_package_index(argv[1]);
     if (!index.valid || index.sections.size() < 2) return 3;
     const auto mesh = std::find_if(index.sections.begin(), index.sections.end(),
@@ -39,6 +39,14 @@ int main(int argc, char** argv) {
         ? std::vector<std::string>{}
         : std::vector<std::string>{"base.elpk", "foundation.elpk"};
     if (!manifest.valid || manifest.dependencies != expected_dependencies) return 8;
+
+    const probe::BinaryPackageIndex many_sections = probe::read_binary_package_index(argv[2]);
+    if (!many_sections.valid || many_sections.sections.size() != probe::PackageIndex::MAX_SECTIONS) return 10;
+    const probe::PackageIndex many_legacy_sections = probe::read_package_index(argv[3]);
+    if (!many_legacy_sections.valid || many_legacy_sections.sections.size() != 135) return 11;
+    const probe::PackageIndex excess_legacy_sections = probe::read_package_index(argv[4]);
+    if (excess_legacy_sections.valid || excess_legacy_sections.error != "invalid or duplicate section") return 12;
+
     std::puts("Native ELPK reader accepted deterministic compressed bundle.");
     return 0;
 }
