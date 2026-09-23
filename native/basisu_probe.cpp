@@ -72,8 +72,8 @@ static bool check_ktx2_upload_shapes() {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 5) {
-        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2]]]\n");
+    if (argc < 2 || argc > 6) {
+        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2 [hdr.ktx2]]]]\n");
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
             "alpha KTX2 transcodes to one BC3 block")) return 1;
         std::fprintf(stdout, "basisu alpha transcode: first_alpha=%u\n", (unsigned)alpha_rgba[3]);
     }
-    if (argc == 5) {
+    if (argc >= 5) {
         std::ifstream normal_input(argv[4], std::ios::binary);
         if (!probe::check(normal_input.good(), "KTX2 normal-map file readable")) return 1;
         const std::vector<uint8_t> normal_bytes(
@@ -202,6 +202,37 @@ int main(int argc, char** argv) {
             "BC5 retains authored normal-map X and Y channels")) return 1;
         std::fprintf(stdout, "basisu normal BC5 transcode: xy=%u,%u\n",
             (unsigned)bc5_pixels[0].r, (unsigned)bc5_pixels[0].g);
+    }
+    if (argc == 6) {
+        std::ifstream hdr_input(argv[5], std::ios::binary);
+        if (!probe::check(hdr_input.good(), "KTX2 HDR file readable")) return 1;
+        const std::vector<uint8_t> hdr_bytes(
+            (std::istreambuf_iterator<char>(hdr_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder hdr;
+        if (!probe::check(hdr.init(hdr_bytes.data(), static_cast<uint32_t>(hdr_bytes.size())) &&
+            hdr.get_width() == 4 && hdr.get_height() == 4 && hdr.is_hdr() &&
+            hdr.get_has_alpha() == 0 && !hdr.is_srgb(),
+            "KTX2 retains linear HDR metadata")) return 1;
+        if (!probe::check(hdr.start_transcoding(), "KTX2 HDR starts transcoding")) return 1;
+        std::vector<uint16_t> rgba_half(4 * 4 * 4);
+        if (!probe::check(hdr.transcode_image_level(
+            0, 0, 0, rgba_half.data(), 4 * 4,
+            basist::transcoder_texture_format::cTFRGBA_HALF, 0, 4, 4),
+            "HDR KTX2 transcodes to half-float RGBA")) return 1;
+        bool preserves_values_above_one = false;
+        for (size_t index = 0; index < rgba_half.size(); ++index) {
+            if (index % 4 != 3 && rgba_half[index] > 0x3C00u) {
+                preserves_values_above_one = true;
+                break;
+            }
+        }
+        if (!probe::check(preserves_values_above_one,
+            "HDR half-float pixels preserve values above one")) return 1;
+        uint8_t bc6h_block[16] = {};
+        if (!probe::check(hdr.transcode_image_level(
+            0, 0, 0, bc6h_block, 1, basist::transcoder_texture_format::cTFBC6H, 0, 1),
+            "HDR KTX2 transcodes to BC6H")) return 1;
+        std::fprintf(stdout, "basisu HDR transcode: bc6h=1 rgba16f_dynamic_range=1\n");
     }
     return 0;
 }

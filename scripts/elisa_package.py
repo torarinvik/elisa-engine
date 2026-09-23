@@ -11,7 +11,8 @@ import tempfile
 from typing import Mapping, Sequence
 import zlib
 
-from ktx2_container import KTX2_IDENTIFIER, ktx2_dimensions as _ktx2_dimensions
+from ktx2_container import (KTX2_IDENTIFIER, KTX2_UASTC_HDR_4X4_VK_FORMAT,
+    ktx2_dimensions as _ktx2_dimensions)
 
 HEADER_BYTES = 32
 ENTRY_BYTES = 48
@@ -198,7 +199,8 @@ def encoded_image_dimensions(data: bytes) -> tuple[int, int]:
     elif len(data) >= 4 and data[:2] == b"\xff\xd8":
         dimensions = _jpeg_dimensions(data)
     elif len(data) >= 12 and data[:12] == KTX2_IDENTIFIER:
-        if len(data) >= 48 and (struct.unpack_from("<I", data, 12)[0] != 0 or
+        if len(data) >= 48 and (struct.unpack_from("<I", data, 12)[0] not in
+                (0, KTX2_UASTC_HDR_4X4_VK_FORMAT) or
                 struct.unpack_from("<I", data, 44)[0] not in (0, 1, 2)):
             raise ValueError("KTX2 image must use a Basis Universal KTX2 payload")
         dimensions = _ktx2_dimensions(data)

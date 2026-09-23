@@ -6,6 +6,12 @@ import struct
 
 
 KTX2_IDENTIFIER = b"\xabKTX 20\xbb\r\n\x1a\n"
+KTX2_ETC1S_DFD_MODEL = 163
+KTX2_UASTC_LDR_4X4_DFD_MODEL = 166
+# Pinned Basis Universal writes UASTC HDR 4x4 using Vulkan's ASTC HDR 4x4
+# format ID and the matching UASTC HDR DFD model.
+KTX2_UASTC_HDR_4X4_VK_FORMAT = 1000066000
+KTX2_UASTC_HDR_4X4_DFD_MODEL = 167
 MAX_KTX2_DIMENSION = 4096
 MAX_KTX2_LEVELS = 16
 _DFD_LENGTHS = (44, 60)
@@ -50,7 +56,7 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
         return None
     vk_format, type_size = struct.unpack_from("<2I", data, 12)
     width, height, depth, layers, faces, levels, scheme = struct.unpack_from("<7I", data, 20)
-    if (vk_format != 0 or type_size != 1 or
+    if (type_size != 1 or
             not 1 <= width <= MAX_KTX2_DIMENSION or not 1 <= height <= MAX_KTX2_DIMENSION or
             depth != 0 or layers != 0 or faces != 1 or not 1 <= levels <= MAX_KTX2_LEVELS or
             scheme not in (0, 1, 2)):
@@ -67,6 +73,18 @@ def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
     dfd_end = dfd_offset + dfd_length
     if (struct.unpack_from("<I", data, dfd_offset)[0] != dfd_length or
             struct.unpack_from("<H", data, dfd_offset + 10)[0] != dfd_length - 4):
+        return None
+    dfd_model = data[dfd_offset + 12]
+    if vk_format == 0:
+        if dfd_model not in (KTX2_ETC1S_DFD_MODEL, KTX2_UASTC_LDR_4X4_DFD_MODEL):
+            return None
+    elif (vk_format != KTX2_UASTC_HDR_4X4_VK_FORMAT or
+            dfd_model != KTX2_UASTC_HDR_4X4_DFD_MODEL or scheme != 2 or dfd_length != 44 or
+            data[dfd_offset + 14] != 1 or
+            data[dfd_offset + 16:dfd_offset + 20] != bytes((3, 3, 0, 0)) or
+            data[dfd_offset + 20] != 16):
+        # Admit only Basis UASTC HDR 4x4: linear ASTC HDR blocks, Zstandard
+        # supercompression, one 16-byte block per 4x4 texel footprint.
         return None
 
     if kvd_length == 0:

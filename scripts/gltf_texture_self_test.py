@@ -29,7 +29,8 @@ import cook_gltf_geometry
 import cook_gltf_textures
 import cook_gltf_mikktspace
 from ktx2_fixtures import make_ktx2
-from elisa_package import build_package_bytes
+from elisa_package import build_package_bytes, encoded_image_dimensions
+from ktx2_container import KTX2_UASTC_HDR_4X4_DFD_MODEL, KTX2_UASTC_HDR_4X4_VK_FORMAT
 from png_image import encode_png
 
 
@@ -91,6 +92,17 @@ def padded(data: bytes) -> bytes:
 def basis_ktx2(width: int = 4, height: int = 4) -> bytes:
     """Small bounded KTX2 container shape for cooker-boundary tests."""
     return make_ktx2(width, height)
+
+
+def basis_hdr_ktx2() -> bytes:
+    """Small UASTC HDR 4x4 KTX2 profile for image-package boundary tests."""
+    data = bytearray(make_ktx2(scheme=2, levels=(bytes(16),)))
+    dfd_offset = struct.unpack_from("<I", data, 48)[0]
+    struct.pack_into("<I", data, 12, KTX2_UASTC_HDR_4X4_VK_FORMAT)
+    data[dfd_offset + 12:dfd_offset + 17] = bytes((KTX2_UASTC_HDR_4X4_DFD_MODEL, 1, 1, 0, 3))
+    data[dfd_offset + 17:dfd_offset + 20] = bytes((3, 0, 0))
+    data[dfd_offset + 20] = 16
+    return bytes(data)
 
 
 def basis_texture(document: dict) -> None:
@@ -350,6 +362,28 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     """`cook_main` is the asset cooker's command line."""
     if not SOURCE.is_file() or SOURCE.read_text(encoding="utf-8") != fixture_text():
         return fail("test/fixtures/textured_panel.gltf is not what --write-fixture writes")
+    try:
+        hdr_dimensions = encoded_image_dimensions(basis_hdr_ktx2())
+    except ValueError as error:
+        return fail(f"the bounded image cooker rejected UASTC HDR KTX2: {error}")
+    if hdr_dimensions != (4, 4):
+        return fail("UASTC HDR KTX2 did not preserve its validated dimensions")
+    malformed_hdr = bytearray(basis_hdr_ktx2())
+    malformed_hdr[struct.unpack_from("<I", malformed_hdr, 48)[0] + 12] = 166
+    try:
+        encoded_image_dimensions(bytes(malformed_hdr))
+    except ValueError:
+        pass
+    else:
+        return fail("the bounded image cooker accepted an HDR vkFormat with an LDR DFD")
+    unsupported_hdr = bytearray(basis_ktx2())
+    unsupported_hdr[struct.unpack_from("<I", unsupported_hdr, 48)[0] + 12] = 168
+    try:
+        encoded_image_dimensions(bytes(unsupported_hdr))
+    except ValueError:
+        pass
+    else:
+        return fail("the bounded image cooker accepted an unimplemented UASTC HDR 6x6 profile")
     document = textured_panel()
     buffer = base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1])
     geometry = cook_gltf_geometry.normalized_geometry(document, buffer)

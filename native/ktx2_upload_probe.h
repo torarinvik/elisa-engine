@@ -45,7 +45,8 @@ inline bool check_ktx2_bounded_reader(const std::filesystem::path& directory) {
 }
 
 inline bool check_ktx2_format_policy() {
-    const KTX2UploadFormats all{true, true, true, true, true};
+    const KTX2UploadFormats all{true, true, true, true, true, true, true};
+    const KTX2UploadFormats hdr{false, false, false, false, false, true, true};
     return check(choose_ktx2_upload_encoding(false, all) == KTX2UploadEncoding::Bc1,
             "opaque KTX2 prefers BC1") &&
         check(choose_ktx2_upload_encoding(true, all) == KTX2UploadEncoding::Bc7,
@@ -65,7 +66,27 @@ inline bool check_ktx2_format_policy() {
                 KTX2TextureUsage::NormalData) == KTX2UploadEncoding::Unsupported,
             "normal data rejects missing safe formats") &&
         check(choose_ktx2_upload_encoding(true, {}) == KTX2UploadEncoding::Unsupported,
-            "KTX2 rejects missing safe fallback");
+            "KTX2 rejects missing safe fallback") &&
+        check(choose_ktx2_upload_encoding(false, hdr, KTX2TextureUsage::Color, true) ==
+                KTX2UploadEncoding::Bc6h,
+            "HDR KTX2 prefers BC6H without losing range") &&
+        check(choose_ktx2_upload_encoding(true, hdr, KTX2TextureUsage::Color, true) ==
+                KTX2UploadEncoding::Rgba16Float,
+            "HDR alpha data falls back to half-float RGBA") &&
+        check(choose_ktx2_upload_encoding(false, {false, false, false, false, false, false, true},
+                KTX2TextureUsage::Color, true) == KTX2UploadEncoding::Rgba16Float,
+            "HDR KTX2 uses a half-float fallback without BC6H") &&
+        check(choose_ktx2_upload_encoding(false, {true, false, false, false, false},
+                KTX2TextureUsage::Color, true) == KTX2UploadEncoding::Unsupported,
+            "HDR KTX2 never falls back to range-losing RGBA8") &&
+        check(choose_ktx2_upload_encoding(false, hdr, KTX2TextureUsage::NormalData, true) ==
+                KTX2UploadEncoding::Unsupported,
+            "HDR color encoding is not reused for normal data") &&
+        check(ktx2_wicked_format(KTX2UploadEncoding::Bc6h, false) ==
+                wi::graphics::Format::BC6H_UF16 &&
+            ktx2_wicked_format(KTX2UploadEncoding::Rgba16Float, false) ==
+                wi::graphics::Format::R16G16B16A16_FLOAT,
+            "HDR upload maps to Wicked's BC6H or RGBA16F formats");
 }
 
 inline bool check_ktx2_cubemap_upload(const std::filesystem::path& path) {
@@ -114,10 +135,23 @@ inline bool check_ktx2_normal_data_upload(const std::filesystem::path& path) {
         "KTX2 normal data uses a two-channel BC5 or four-channel RGBA format");
 }
 
+inline bool check_ktx2_hdr_upload(const std::filesystem::path& path) {
+    if (!check(std::filesystem::is_regular_file(path), "KTX2 HDR artifact present")) return false;
+    const wi::Resource resource = load_ktx2_texture_resource(path.lexically_normal().string());
+    const KTX2UploadFormats supported = query_ktx2_upload_formats(wi::graphics::GetDevice(), false);
+    const KTX2UploadEncoding expected = choose_ktx2_upload_encoding(
+        false, supported, KTX2TextureUsage::Color, true);
+    return check(resource.IsValid() && resource.GetTexture().IsValid() &&
+        (expected == KTX2UploadEncoding::Bc6h || expected == KTX2UploadEncoding::Rgba16Float) &&
+        resource.GetTexture().GetDesc().format == ktx2_wicked_format(expected, false),
+        "KTX2 HDR uploads to BC6H or a range-preserving RGBA16F fallback");
+}
+
 inline bool check_ktx2_upload_fixtures(const std::filesystem::path& cooked_directory) {
     return check_ktx2_bounded_reader(cooked_directory) && check_ktx2_format_policy() &&
         check_ktx2_color_upload(cooked_directory / "maze_tile_tex.ktx2") &&
         check_ktx2_normal_data_upload(cooked_directory / "maze_tile_normal.ktx2") &&
+        check_ktx2_hdr_upload(cooked_directory / "maze_tile_hdr.ktx2") &&
         check_ktx2_cubemap_upload(cooked_directory / "maze_tile_cube.ktx2") &&
         check_ktx2_alpha_upload(cooked_directory / "maze_tile_alpha.ktx2");
 }
