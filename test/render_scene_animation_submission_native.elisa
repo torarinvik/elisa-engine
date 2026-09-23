@@ -33,6 +33,14 @@ module RenderSceneAnimationSubmissionNativeTests:
         extern elisa_render_scene_v1_test_skin_mesh_relative_root(
             handle: RenderScene::InstanceHandle, expected_world_z: f32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_multi_skin_layout(
+            handle: RenderScene::InstanceHandle) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_mixed_skin_layout(
+            handle: RenderScene::InstanceHandle) -> i32
+
     public:
         def exercise() -> i32:
             mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -161,6 +169,28 @@ module RenderSceneAnimationSubmissionNativeTests:
                 ok: 0
                 error failure: 1
             return 28 if separate_destroyed != 0
+            multi_skin: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/multi-skin-panel.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 29
+            return 30 if Application::pump() != Application::PumpStatus.Running
+            return 31 if elisa_render_scene_v1_test_multi_skin_layout(multi_skin) != 1
+            multi_skin_destroyed: i32 = catch RenderScene::destroy(multi_skin):
+                ok: 0
+                error failure: 1
+            return 32 if multi_skin_destroyed != 0
+            mixed_skin: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/mixed-skin-panel.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 33
+            return 34 if Application::pump() != Application::PumpStatus.Running
+            return 35 if elisa_render_scene_v1_test_mixed_skin_layout(mixed_skin) != 1
+            mixed_skin_destroyed: i32 = catch RenderScene::destroy(mixed_skin):
+                ok: 0
+                error failure: 1
+            return 36 if mixed_skin_destroyed != 0
             0
 
 module RenderSceneImportedSceneNativeTests:

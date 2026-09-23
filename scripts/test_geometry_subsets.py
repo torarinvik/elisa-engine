@@ -164,6 +164,10 @@ def cases(directory: Path) -> list[tuple]:
     skin_metadata = skin_path.read_bytes()
     separate_skin_path, _ = gltf_skin_self_test.write_separate_root_package(
         directory / "separate-root-skinned.pkg")
+    multi_skin_path, _ = gltf_skin_self_test.write_multi_skin_package(
+        directory / "multi-skin-panel.pkg")
+    mixed_skin_path, _ = gltf_skin_self_test.write_mixed_skin_package(
+        directory / "mixed-skin-panel.pkg")
     large_skin_path, _ = gltf_skin_self_test.write_large_rig_package(
         directory / "large-skinned-rig.pkg", 65)
     default_skin_path, _ = gltf_skin_self_test.write_package(directory / "default-skinned-panel.pkg", None)
@@ -277,6 +281,15 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "separate-root-skinned.pkg", separate_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+        ("accept", "multi-skin-panel.pkg", multi_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds",
+            gltf_skin_self_test.INVERSE_BIND_MATRICES +
+                gltf_skin_self_test.SECOND_INVERSE_BIND_MATRICES)),
+        ("accept", "mixed-skin-panel.pkg", mixed_skin_path.read_bytes(),
+            (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
+            "animations", 1, "morphs", 1, "inverse_binds",
+            gltf_skin_self_test.INVERSE_BIND_MATRICES + gltf_skin_self_test.GLTF_IDENTITY_MATRIX)),
         ("accept", "large-skinned-rig.pkg", large_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),

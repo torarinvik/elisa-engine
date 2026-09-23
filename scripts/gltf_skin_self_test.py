@@ -30,6 +30,12 @@ TIP_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
     -2.0, -1.0, 0.25, 1.0)
 INVERSE_BIND_MATRICES = ROOT_INVERSE_BIND + TIP_INVERSE_BIND
+SECOND_INVERSE_BIND_MATRICES = (
+    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0, -2.0, 0.0, 0.0, 1.0,
+    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0, -2.0, -1.0, 0.0, 1.0,
+)
 GLTF_IDENTITY_MATRIX = (1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
@@ -130,6 +136,58 @@ def write_separate_root_package(output: Path) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-separate-skin-root-") as temporary:
         source = Path(temporary) / "separate_root_skinned_panel.gltf"
         source.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+
+
+def multi_skin_document() -> dict:
+    """Create two mesh placements with distinct two-joint skins."""
+    document = generated_document()
+    buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
+    second_inverse_accessor = _append(document, buffer,
+        struct.pack("<32f", *SECOND_INVERSE_BIND_MATRICES), 5126, "MAT4", 2)
+    document["buffers"][0]["byteLength"] = len(buffer)
+    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
+    second_mesh = document["nodes"][3]
+    second_mesh.pop("rotation")
+    second_mesh.pop("scale")
+    second_mesh["translation"] = [0.0, 0.0, 0.0]
+    second_mesh["skin"] = 1
+    document["nodes"] += [{"name": "second_skin_root", "translation": [2.0, 0.0, 0.0],
+        "children": [7]}, {"name": "second_skin_tip", "translation": [0.0, 1.0, 0.0]}]
+    document["nodes"][5]["children"] = [0, 4, 3, 6]
+    document["scenes"][0]["nodes"] = [5]
+    document["skins"].append({"name": "second_rig", "joints": [6, 7], "skeleton": 6,
+        "inverseBindMatrices": second_inverse_accessor})
+    return document
+
+
+def write_multi_skin_package(output: Path) -> tuple[Path, dict]:
+    with tempfile.TemporaryDirectory(prefix="elisa-gltf-multi-skin-") as temporary:
+        source = Path(temporary) / "multi_skin_panel.gltf"
+        source.write_text(json.dumps(multi_skin_document(), separators=(",", ":")), encoding="utf-8")
+        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+
+
+def mixed_skin_document() -> dict:
+    """Create one skinned and one static placement in a single scene."""
+    document = generated_document()
+    static_mesh = deepcopy(document["meshes"][0])
+    for primitive in static_mesh["primitives"]:
+        primitive["attributes"].pop("JOINTS_0")
+        primitive["attributes"].pop("WEIGHTS_0")
+    document["meshes"].append(static_mesh)
+    static_node = document["nodes"][3]
+    static_node["mesh"] = 1
+    static_node.pop("skin")
+    document["nodes"][5]["children"] = [0, 4, 3]
+    document["scenes"][0]["nodes"] = [5]
+    return document
+
+
+def write_mixed_skin_package(output: Path) -> tuple[Path, dict]:
+    with tempfile.TemporaryDirectory(prefix="elisa-gltf-mixed-skin-") as temporary:
+        source = Path(temporary) / "mixed_skin_panel.gltf"
+        source.write_text(json.dumps(mixed_skin_document(), separators=(",", ":")), encoding="utf-8")
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 
@@ -295,6 +353,53 @@ def self_test(temporary: Path) -> int:
         print("glTF skin self-test failed: separate-root basis was not preserved in the package",
             file=sys.stderr)
         return 1
+    multi_skin_package, _ = write_multi_skin_package(temporary / "multi-skin.pkg")
+    multi_skin_sections = dict(line.split("=", 1)
+        for line in multi_skin_package.read_text(encoding="utf-8").splitlines())
+    multi_skin_parents = struct.unpack("<6i",
+        base64.b64decode(multi_skin_sections["skin_joint_parents_b64"]))
+    multi_skin_clusters = struct.unpack("<4I",
+        base64.b64decode(multi_skin_sections["skin_cluster_joints_b64"]))
+    multi_skin_indices = struct.unpack("<96I",
+        base64.b64decode(multi_skin_sections["skin_indices_b64"]))
+    multi_skin_weights = struct.unpack("<96f",
+        base64.b64decode(multi_skin_sections["skin_weights_b64"]))
+    active_indices = [multi_skin_indices[index * 4] for index in range(24)]
+    if (multi_skin_sections.get("skin_bones") != "4" or
+            multi_skin_sections.get("skin_joints") != "6" or
+            multi_skin_parents != (-1, 0, 1, 2, -1, 4) or
+            multi_skin_clusters != (2, 3, 4, 5) or
+            any(active_indices[index] not in (0, 1) for index in range(12)) or
+            any(active_indices[index] not in (2, 3) for index in range(12, 24)) or
+            any(multi_skin_weights[index * 4] != 1.0 for index in range(24)) or
+            multi_skin_sections.get("animation_0_frames") != "31" or
+            len(base64.b64decode(multi_skin_sections["animation_0_samples_b64"])) != 6 * 31 * 40):
+        print("glTF skin self-test failed: multi-skin rig, palette remap, or animation was not combined",
+            file=sys.stderr)
+        return 1
+    mixed_skin_package, _ = write_mixed_skin_package(temporary / "mixed-skin.pkg")
+    mixed_skin_sections = dict(line.split("=", 1)
+        for line in mixed_skin_package.read_text(encoding="utf-8").splitlines())
+    mixed_skin_parents = struct.unpack("<5i",
+        base64.b64decode(mixed_skin_sections["skin_joint_parents_b64"]))
+    mixed_skin_clusters = struct.unpack("<3I",
+        base64.b64decode(mixed_skin_sections["skin_cluster_joints_b64"]))
+    mixed_skin_indices = struct.unpack("<96I",
+        base64.b64decode(mixed_skin_sections["skin_indices_b64"]))
+    mixed_skin_weights = struct.unpack("<96f",
+        base64.b64decode(mixed_skin_sections["skin_weights_b64"]))
+    if (mixed_skin_sections.get("skin_bones") != "3" or
+            mixed_skin_sections.get("skin_joints") != "5" or
+            mixed_skin_parents != (-1, 0, 1, 2, -1) or
+            mixed_skin_clusters != (2, 3, 4) or
+            any(mixed_skin_indices[index * 4] not in (0, 1) for index in range(12)) or
+            any(mixed_skin_indices[index * 4] != 2 for index in range(12, 24)) or
+            any(mixed_skin_weights[index * 4] != 1.0 for index in range(24)) or
+            mixed_skin_sections.get("animation_0_frames") != "31" or
+            len(base64.b64decode(mixed_skin_sections["animation_0_samples_b64"])) != 5 * 31 * 40):
+        print("glTF skin self-test failed: static placement did not retain its bind-space palette",
+            file=sys.stderr)
+        return 1
     document = generated_document()
     buffer = cook_assets.source_bytes(Path(temporary), cook_assets.read_gltf(
         json.dumps(document, separators=(",", ":")).encode("utf-8")))
@@ -398,7 +503,10 @@ def self_test(temporary: Path) -> int:
     rejected.append(("sheared skin ancestor matrix", shear))
     duplicate_skin = deepcopy(document)
     duplicate_skin["skins"].append(deepcopy(duplicate_skin["skins"][0]))
-    rejected.append(("multiple skins", duplicate_skin))
+    rejected.append(("unused skin", duplicate_skin))
+    singular_static_placement = mixed_skin_document()
+    singular_static_placement["nodes"][3]["scale"] = [0.0, 1.0, 1.0]
+    rejected.append(("singular static placement in a mixed scene", singular_static_placement))
     singular_inverse_bind = deepcopy(document)
     singular_buffer = bytearray(buffer)
     inverse_accessor = singular_inverse_bind["accessors"][singular_inverse_bind["skins"][0]["inverseBindMatrices"]]

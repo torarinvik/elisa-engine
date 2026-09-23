@@ -131,6 +131,50 @@ extern "C" int32_t elisa_render_scene_v1_test_skin_mesh_relative_root(
     return bone != nullptr && std::abs(bone->world.m[3][2] - expected_world_z) < 1.0e-5f ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_multi_skin_layout(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const InstanceSlot& instance = state.instances[slot];
+    const wi::scene::ArmatureComponent* armature = state.scene->armatures.GetComponent(instance.entity);
+    const wi::scene::MeshComponent* first = state.scene->meshes.GetComponent(instance.entity);
+    if (armature == nullptr || first == nullptr || instance.skin_joints.size() != 6 ||
+        armature->boneCollection.size() != 4 || instance.imported_mesh_entities.size() != 1 ||
+        first->armatureID != instance.entity || first->vertex_boneindices.size() != 12 ||
+        first->vertex_boneweights.size() != 12) return 0;
+    const wi::scene::MeshComponent* second =
+        state.scene->meshes.GetComponent(instance.imported_mesh_entities[0]);
+    if (second == nullptr || second->armatureID != instance.entity ||
+        second->vertex_boneindices.size() != 12 || second->vertex_boneweights.size() != 12) return 0;
+    return first->vertex_boneindices[0].x == 0 && first->vertex_boneindices[6].x == 1 &&
+        second->vertex_boneindices[0].x == 2 && second->vertex_boneindices[6].x == 3 &&
+        first->vertex_boneweights[0].x > 0.99f && second->vertex_boneweights[0].x > 0.99f ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_mixed_skin_layout(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const InstanceSlot& instance = state.instances[slot];
+    const wi::scene::ArmatureComponent* armature = state.scene->armatures.GetComponent(instance.entity);
+    const wi::scene::MeshComponent* skinned = state.scene->meshes.GetComponent(instance.entity);
+    if (armature == nullptr || skinned == nullptr || instance.skin_joints.size() != 5 ||
+        armature->boneCollection.size() != 3 || instance.imported_mesh_entities.size() != 1 ||
+        skinned->armatureID != instance.entity || skinned->vertex_boneindices.size() != 12 ||
+        skinned->vertex_boneweights.size() != 12) return 0;
+    const wi::scene::MeshComponent* fixed =
+        state.scene->meshes.GetComponent(instance.imported_mesh_entities[0]);
+    if (fixed == nullptr || fixed->armatureID != instance.entity ||
+        fixed->vertex_boneindices.size() != 12 || fixed->vertex_boneweights.size() != 12) return 0;
+    return skinned->vertex_boneindices[0].x == 0 && skinned->vertex_boneindices[6].x == 1 &&
+        fixed->vertex_boneindices[0].x == 2 && fixed->vertex_boneindices[6].x == 2 &&
+        skinned->vertex_boneweights[0].x > 0.99f && fixed->vertex_boneweights[0].x > 0.99f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_animation_instances(
     int64_t first_handle, float first_x, int64_t second_handle, float second_x,
     int32_t expected_pending) {

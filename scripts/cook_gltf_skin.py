@@ -164,8 +164,8 @@ def read_influences(document: dict, buffer: bytes, attributes: dict,
     return joints, weights
 
 
-def normalize(document: dict, buffer: bytes) -> dict | None:
-    """Return rig metadata, or None for an unskinned document."""
+def _normalize_single(document: dict, buffer: bytes) -> dict | None:
+    """Normalize one glTF skin into a parent-ordered runtime rig."""
     skins = document.get("skins", [])
     nodes = document.get("nodes", [])
     if not isinstance(nodes, list):
@@ -350,4 +350,119 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
         [joint["rest"] for joint in rig_joints])
     return {"bone_names": [rig_joints[source_ordered_index[node]]["name"] for node in joints],
         "joints": rig_joints, "cluster_joints": cluster_joints,
-        "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips}
+        "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips,
+        "source_node_indices": source_ordered_index,
+        "placement_palettes": {mesh_node: {"palette_offset": 0, "palette_count": len(joints)}
+            for mesh_node in (index for index, node in enumerate(nodes)
+                if isinstance(node, dict) and node.get("skin") == 0)}}
+
+
+def normalize(document: dict, buffer: bytes) -> dict | None:
+    """Return a combined bounded rig, or None for an unskinned document.
+
+    Multi-skin scenes receive one rig branch per skinned mesh placement. That
+    keeps each joint hierarchy relative to its own mesh while letting the
+    runtime use one armature and palette for the cooked scene package.
+    """
+    skins = document.get("skins", [])
+    if not isinstance(skins, list) or not skins:
+        return _normalize_single(document, buffer)
+    nodes = document.get("nodes", [])
+    has_static_mesh = isinstance(nodes, list) and any(isinstance(node, dict) and
+        "mesh" in node and "skin" not in node for node in nodes)
+    if len(skins) == 1 and not has_static_mesh:
+        return _normalize_single(document, buffer)
+    return _normalize_scene_skins(document, buffer)
+
+
+def _normalize_scene_skins(document: dict, buffer: bytes) -> dict:
+    """Combine skin rigs and static bind nodes for one cooked scene package."""
+    skins = document.get("skins", [])
+    nodes = document.get("nodes", [])
+    if (not isinstance(nodes, list) or not nodes or len(skins) > MAX_JOINTS or
+            any(not isinstance(node, dict) for node in nodes) or
+            any(not isinstance(skin, dict) for skin in skins)):
+        raise ValueError(f"runtime glTF cooker accepts 1 to {MAX_JOINTS} valid skins")
+
+    mesh_nodes = [(index, node) for index, node in enumerate(nodes) if "mesh" in node]
+    skin_placements: dict[int, list[int]] = {index: [] for index in range(len(skins))}
+    skinned_nodes = []
+    static_nodes = []
+    for node_index, node in mesh_nodes:
+        skin_index = node.get("skin")
+        if skin_index is None:
+            static_nodes.append((node_index, node))
+            continue
+        if type(skin_index) is not int or not 0 <= skin_index < len(skins):
+            raise ValueError("skinned mesh placement must reference a declared skin")
+        skin_placements[skin_index].append(node_index)
+        skinned_nodes.append((node_index, node))
+    if (not skinned_nodes or any(not placements for placements in skin_placements.values()) or
+            not mesh_nodes):
+        raise ValueError("every declared skin in a cooked scene must be used by a mesh placement")
+    if any("skin" in node and "mesh" not in node for node in nodes):
+        raise ValueError("only mesh nodes may reference a skin")
+
+    bone_names: list[str] = []
+    joints: list[dict] = []
+    cluster_joints: list[int] = []
+    inverse_bind_matrices: list[float] = []
+    source_node_indices: dict[int, list[int]] = {}
+    placement_palettes: dict[int, dict[str, int]] = {}
+    for node_index, node in skinned_nodes:
+        skin_index = node["skin"]
+        rig_document = dict(document)
+        rig_document["skins"] = [skins[skin_index]]
+        rig_document["animations"] = []
+        rig_document["nodes"] = [dict(value) for value in nodes]
+        for other_index, other in enumerate(rig_document["nodes"]):
+            if other_index == node_index:
+                other["skin"] = 0
+            elif "mesh" in other:
+                other.pop("mesh", None)
+                other.pop("skin", None)
+            else:
+                other.pop("skin", None)
+        rig = _normalize_single(rig_document, buffer)
+        if rig is None:
+            raise ValueError("skinned mesh placement did not produce a rig")
+
+        palette_offset = len(bone_names)
+        if palette_offset + len(rig["bone_names"]) > MAX_JOINTS:
+            raise ValueError(f"combined skin palette exceeds {MAX_JOINTS} bones")
+        rig_offset = len(joints)
+        prefix = f"placement_{node_index}_skin_{skin_index}::"
+        bone_names.extend(prefix + name for name in rig["bone_names"])
+        for joint in rig["joints"]:
+            parent = joint["parent"]
+            joints.append({"name": prefix + joint["name"],
+                "parent": -1 if parent < 0 else rig_offset + parent, "rest": joint["rest"]})
+        cluster_joints.extend(rig_offset + value for value in rig["cluster_joints"])
+        inverse_bind_matrices.extend(rig["inverse_bind_matrices"])
+        for source_node, rig_index in rig["source_node_indices"].items():
+            source_node_indices.setdefault(source_node, []).append(rig_offset + rig_index)
+        placement_palettes[node_index] = {
+            "palette_offset": palette_offset, "palette_count": len(rig["bone_names"])}
+
+    if static_nodes:
+        if len(bone_names) >= MAX_JOINTS:
+            raise ValueError(f"combined skin palette exceeds {MAX_JOINTS} bones")
+        joint_index = len(joints)
+        palette_index = len(bone_names)
+        bind_name = "static_bind_space"
+        rest = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+        bone_names.append(bind_name)
+        joints.append({"name": bind_name, "parent": -1, "rest": rest})
+        cluster_joints.append(joint_index)
+        inverse_bind_matrices.extend(GLTF_IDENTITY_MATRIX)
+        for node_index, _ in static_nodes:
+            placement_palettes[node_index] = {
+                "palette_offset": palette_index, "palette_count": 1, "static_binding": True}
+
+    if len(joints) > MAX_RIG_NODES:
+        raise ValueError(f"combined skin rig exceeds {MAX_RIG_NODES} nodes")
+    animation_clips = cook_gltf_animation.normalize(document, buffer, source_node_indices,
+        [joint["rest"] for joint in joints])
+    return {"bone_names": bone_names, "joints": joints, "cluster_joints": cluster_joints,
+        "inverse_bind_matrices": inverse_bind_matrices, "animation_clips": animation_clips,
+        "source_node_indices": source_node_indices, "placement_palettes": placement_palettes}

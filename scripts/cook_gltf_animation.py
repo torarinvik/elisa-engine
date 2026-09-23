@@ -91,7 +91,7 @@ def _track(document: dict, buffer: bytes, sampler: dict, path: str,
     return times, values, interpolation
 
 
-def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int],
+def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int | list[int]],
         rest: list[tuple[float, ...]]) -> list[dict]:
     animations = document.get("animations", [])
     if not animations:
@@ -129,10 +129,17 @@ def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int],
             path = target.get("path")
             if type(node) is not int or node not in ordered_index or path not in ("translation", "rotation", "scale"):
                 raise ValueError(f"{channel_label} must target a skin rig-node TRS path")
-            key = (ordered_index[node], path)
-            if key in tracks:
+            rig_indices = ordered_index[node]
+            if type(rig_indices) is int:
+                rig_indices = [rig_indices]
+            if not rig_indices or any(type(index) is not int or not 0 <= index < len(rest)
+                    for index in rig_indices):
+                raise ValueError(f"{channel_label} targets an invalid skin rig node")
+            if any((index, path) in tracks for index in rig_indices):
                 raise ValueError(f"{channel_label} duplicates a skin rig-node TRS track")
-            tracks[key] = _track(document, buffer, samplers[sampler_index], path, channel_label)
+            track = _track(document, buffer, samplers[sampler_index], path, channel_label)
+            for rig_index in rig_indices:
+                tracks[(rig_index, path)] = track
         duration = max(track[0][-1] for track in tracks.values())
         if not math.isfinite(duration) or duration <= 0.0 or duration > MAX_DURATION:
             raise ValueError(f"{label} duration exceeds the bounded runtime range")
