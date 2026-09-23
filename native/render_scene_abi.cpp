@@ -162,6 +162,10 @@ struct RenderSceneService {
     bool shutdown_hook_registered = false;
 };
 void update_snapshot_lod_selection(RenderSceneService& state);
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+void lod_gpu_timing_begin_render();
+void lod_gpu_timing_end_render();
+#endif
 #include "render_scene_path.inc"
 RenderSceneService& service() {
     // NativeApplication owns a static host and runs registered hooks while
