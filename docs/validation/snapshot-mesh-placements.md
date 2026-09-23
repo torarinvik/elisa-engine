@@ -52,10 +52,12 @@ placement group.
   checkout access; missing, escaping, corrupted, and dependency-invalid bundles
   failed asset registration, and restoring the valid bundle returned exit 0.
 - With animated per-placement upload in `3f83c4b`, the SDL3/Metal native
-  RenderScene smoke passed, including the animated snapshot case. The app and
-  packaged-maze stages were not rerun because the separate app teardown stalled
-  in Metal `waitUntilSignaledValue` after the native gate; validate those stages
-  against this merge before treating it as complete.
+  RenderScene smoke passed, including the animated snapshot case. An earlier
+  app teardown stalled in Metal `waitUntilSignaledValue` after the native gate,
+  so the app and packaged-maze stages were rerun after merging; both passed.
+  The packaged maze ran in the checkout-denying sandbox, rejected missing,
+  escaping, corrupted and dependency-invalid bundles, then returned exit 0 when
+  the valid bundle was restored.
 
 Multiple skins per scene and transformed non-joint ancestors of joint nodes
 remain unsupported. Skinned mesh-node transforms are retained as metadata and
