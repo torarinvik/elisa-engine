@@ -324,7 +324,7 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
             positions.extend((str(x), str(y), "0"))
             uvs.extend((str(x / cells_per_side), str(y / cells_per_side)))
     polygon_indices = []
-    polygon_materials = []
+    material_assignments = []
     for y in range(cells_per_side):
         for x in range(cells_per_side):
             top_left = y * (cells_per_side + 1) + x
@@ -335,23 +335,24 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
                     (top_left, bottom_right, bottom_left)):
                 polygon_indices.extend(str(index) for index in triangle[:-1])
                 polygon_indices.append(str(-triangle[-1] - 1))
-                if two_materials:
-                    polygon_materials.append("0" if x < cells_per_side // 2 else "1")
+                material_assignments.append(str(int(x >= cells_per_side // 2) if two_materials else 0))
 
-    definitions = ('Definitions: { Version: 100 Count: 4 '
-        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } '
-        'ObjectType: "Material" { Count: 2 } }\n' if two_materials else
-        'Definitions: { Version: 100 Count: 2 '
-        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } }\n')
-    material_layer = (f'LayerElementMaterial: 0 {{ Version: 101 Name: "" '
-        f'MappingInformationType: "ByPolygon" ReferenceInformationType: "IndexToDirect" '
-        f'Materials: *{len(polygon_materials)} {{ a: {",".join(polygon_materials)} }} }} '
-        if two_materials else "")
-    layer_material_ref = (' LayerElement: { Type: "LayerElementMaterial" TypedIndex: 0 }'
-        if two_materials else "")
-    material_objects = ('Material: 1003, "Material::First", "" { Version: 102 } '
-        'Material: 1004, "Material::Second", "" { Version: 102 } ' if two_materials else "")
-    material_connections = (' C: "OO",1003,1002 C: "OO",1004,1002' if two_materials else "")
+    material_layer = ""
+    material_objects = ""
+    material_connections = ""
+    material_definition = ""
+    definition_count = 2
+    if two_materials:
+        definition_count = 4
+        material_definition = 'ObjectType: "Material" { Count: 2 } '
+        material_layer = (
+            f'LayerElementMaterial: 0 {{ Version: 101 Name: "" MappingInformationType: "ByPolygon" '
+            f'ReferenceInformationType: "IndexToDirect" Materials: *{len(material_assignments)} {{ a: '
+            f'{",".join(material_assignments)} }} }} ')
+        material_objects = (
+            'Material: 1103, "Material::First", "" { Version: 102 } '
+            'Material: 1104, "Material::Second", "" { Version: 102 } ')
+        material_connections = ' C: "OO",1103,1002 C: "OO",1104,1002'
 
     path.write_text(
         '; FBX 7.4.0 project file\n'
@@ -364,23 +365,21 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
         'P: "CoordAxis", "int", "Integer", "", 0 '
         'P: "CoordAxisSign", "int", "Integer", "", 1 '
         'P: "UnitScaleFactor", "double", "Number", "", 1 } }\n'
-        + definitions
-        +
+        f'Definitions: {{ Version: 100 Count: {definition_count} '
+        'ObjectType: "Geometry" { Count: 1 } ObjectType: "Model" { Count: 1 } '
+        + material_definition + '}\n'
         'Objects: { '
         f'Geometry: 1001, "Geometry::Grid", "Mesh" {{ '
         f'GeometryVersion: 124 Vertices: *{vertex_count * 3} {{ a: '
         f'{",".join(positions)} }} '
         f'PolygonVertexIndex: *{len(polygon_indices)} {{ a: '
-        f'{",".join(polygon_indices)} }} '
+        f'{",".join(polygon_indices)} }} {material_layer}'
         f'LayerElementUV: 0 {{ Version: 101 Name: "UVMap" '
         f'MappingInformationType: "ByVertice" ReferenceInformationType: "Direct" '
         f'UV: *{len(uvs)} {{ a: {",".join(uvs)} }} }} '
-        + material_layer
-        + f'Layer: 0 {{ Version: 100 LayerElement: {{ Type: "LayerElementUV" TypedIndex: 0 }}{layer_material_ref} }} }} '
-        + 'Model: 1002, "Model::Grid", "Mesh" { Version: 232 } '
-        + material_objects
-        + '}\n'
-        + f'Connections: {{ C: "OO",1001,1002 C: "OO",1002,0{material_connections} }}\n'
+        'Layer: 0 { Version: 100 LayerElement: { Type: "LayerElementUV" TypedIndex: 0 } } } '
+        f'Model: 1002, "Model::Grid", "Mesh" {{ Version: 232 }} {material_objects}}}\n'
+        f'Connections: {{ C: "OO",1001,1002 C: "OO",1002,0{material_connections} }}\n'
         'Takes: { Current: "" }\n',
         encoding="ascii")
 
@@ -467,27 +466,12 @@ def main(arguments: list[str]) -> int:
                     raise ValueError("FBX cooker did not preserve its two polygon material subsets")
                 try:
                     cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
-                        directory / "under-budget.pkg", 1)
+                        directory / "under-budget.pkg", max_triangles=1)
                 except subprocess.CalledProcessError as failure:
                     if "at least one triangle per FBX material subset" not in (failure.stderr or ""):
                         raise
                 else:
                     raise ValueError("FBX simplification accepted fewer triangles than material subsets")
-                material_grid_source = directory / "two-material-grid.fbx"
-                material_grid_output = directory / "two-material-grid.pkg"
-                write_grid_fixture(material_grid_source, 16, two_materials=True)
-                material_grid_fields = cook_one(cooker, material_grid_source,
-                    "self-test/two-material-grid.fbx", material_grid_output, 128)
-                simplified_subsets = struct.unpack("<6I",
-                    base64.b64decode(material_grid_fields["subsets_b64"], validate=True))
-                first_start, first_count, first_slot, second_start, second_count, second_slot = simplified_subsets
-                if (int(material_grid_fields["triangles"]) > 128 or
-                        int(material_grid_fields.get("material_slots", "0")) != 2 or
-                        int(material_grid_fields.get("subset_count", "0")) != 2 or
-                        (first_start, first_slot, second_start, second_slot) != (0, 0, first_count, 1) or
-                        first_count == 0 or second_count == 0 or (first_count + second_count) % 3 != 0 or
-                        first_count + second_count != int(material_grid_fields["indices"])):
-                    raise ValueError("FBX simplification did not preserve exact material subset ranges")
                 grid_source = directory / "grid.fbx"
                 cache_output = directory / "grid-cache.pkg"
                 grid_output = directory / "grid.pkg"
@@ -523,7 +507,20 @@ def main(arguments: list[str]) -> int:
                         raise ValueError("planar UV fixture did not produce the expected +X tangent frame")
                 if grid_fields != repeat_fields or grid_output.read_bytes() != repeat_output.read_bytes():
                     raise ValueError("simplified grid package output is not deterministic")
-                print(f"FBX cooker self-test passed: triangle and selected-mesh packages plus {original_triangles} -> "
+                material_grid_source = directory / "material-grid.fbx"
+                write_grid_fixture(material_grid_source, 8, two_materials=True)
+                material_grid_fields = cook_one(cooker, material_grid_source,
+                    "self-test/material-grid.fbx", directory / "material-grid.pkg", max_triangles=64)
+                material_grid_subsets = base64.b64decode(material_grid_fields["subsets_b64"], validate=True)
+                subset_words = struct.unpack("<6I", material_grid_subsets)
+                if (int(material_grid_fields["triangles"]) != 64 or
+                        material_grid_fields.get("material_slots") != "2" or
+                        material_grid_fields.get("subset_count") != "2" or
+                        subset_words[0] != 0 or subset_words[2] != 0 or
+                        subset_words[3] != subset_words[1] or subset_words[4] == 0 or subset_words[5] != 1 or
+                        subset_words[1] + subset_words[4] != int(material_grid_fields["indices"])):
+                    raise ValueError("simplification did not preserve the two material subset partitions")
+                print(f"FBX cooker self-test passed: mesh selection and material subsets plus {original_triangles} -> "
                     f"{grid_triangles} deterministic simplified grid triangles; vertex-cache ACMR "
                     f"{cache_report.group(1)} -> {cache_report.group(2)}; vertex-fetch bytes "
                     f"{fetch_report.group(1)} -> {fetch_report.group(2)}")

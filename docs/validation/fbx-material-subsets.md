@@ -1,33 +1,16 @@
 # FBX polygon material subsets
 
 **Date:** 2026-09-23  
-**Scope:** Preserve per-polygon FBX material-slot assignments in normalized
-cooked geometry, including when unskinned meshes are simplified.
+**Scope:** Preserve polygon material assignments as cooked index subsets so FBX meshes use the existing snapshot material-set path.
 
-## Checks and results
+## Behavior
 
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_fbx_import.py`
-  passed. The synthetic two-material FBX imports as two ordered, contiguous
-  index subsets with material slots 0 and 1.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/cook_fbx_asset.py --self-test`
-  passed. The cooker emits and validates the two material subsets, rejects a
-  triangle budget smaller than the number of subsets, and simplifies a 512-
-  triangle two-material grid to 128 triangles while preserving both subset
-  ranges. The one-material deterministic simplification and mesh optimization
-  checks also pass.
-- The full SDL3/Metal native render-scene smoke passed after the cooker began
-  emitting subset metadata, including package loading, actual Wicked rendering,
-  and packaged-maze runs with checkout access denied.
-- Module hygiene, dependency-manifest, source-length, Python compilation, and
-  `git diff --check` gates passed.
+The bounded ufbx importer reads each face's material slot, groups triangles by slot, and emits an ordered subset partition. It accepts at most 16 slots and rejects invalid face assignments. Tangent generation and vertex-fetch remapping preserve the partition. Vertex-cache optimization runs per subset, and static-mesh simplification allocates its triangle budget across subsets and simplifies each slot independently; the budget must retain at least one triangle per non-empty subset. Skin simplification remains rejected.
 
-A cooked mesh has at most 16 material slots and 16 non-empty subsets. Each subset
-is an exact ordered partition of the index stream. Simplification allocates at
-least one triangle to every source subset, then simplifies each independently;
-vertex-cache optimization never crosses subset boundaries.
+The cooker writes the existing `material_slots`, `subset_count`, `subset_stride=12`, and `subsets_b64` package fields. The production package reader already validates this format, and snapshot rows can bind the imported mesh through the regular `SnapshotMaterialSet` API. Slot factors, names, textures, and automatic FBX material registration are not included yet; applications provide materials in the source node's slot order.
 
-## Boundaries
+## Validation
 
-The package preserves which polygons refer to which slot, but this step does not
-extract FBX material factors, connect external textures, or cook all meshes in a
-scene. Callers still provide resolved materials for the package's slots.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_fbx_import.py` passed. Its deterministic FBX fixture assigns two polygons to distinct materials and checks exact subset ranges and slot indices.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/cook_fbx_asset.py --self-test` passed. It validates the two-slot cooked package and simplifies a planar 128-triangle, two-material grid to 64 triangles while preserving both exact index partitions. It also rejects a triangle budget below the number of non-empty subsets.
+- The SDL3/Metal RenderScene subset smoke loads a cooked FBX package, assigns a two-entry material set, and checks that each Wicked subset resolves to the expected slot material.
