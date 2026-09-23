@@ -41,6 +41,7 @@ inline bool geometry_bytes(const CookedGeometry& geometry, size_t& bytes) {
     if (!add_bytes(geometry.positions.size(), sizeof(float), total) ||
         !add_bytes(geometry.normals.size(), sizeof(float), total) ||
         !add_bytes(geometry.uvs.size(), sizeof(float), total) ||
+        !add_bytes(geometry.uv1s.size(), sizeof(float), total) ||
         !add_bytes(geometry.tangents.size(), sizeof(float), total) ||
         !add_bytes(geometry.indices.size(), sizeof(uint32_t), total) ||
         !add_bytes(geometry.subsets.size(), sizeof(CookedGeometry::Subset), total) ||

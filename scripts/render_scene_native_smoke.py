@@ -109,6 +109,15 @@ def main() -> int:
             return subset_status
         subset_directory = build / "cooked/subsets"
         subset_directory.mkdir(parents=True, exist_ok=True)
+        subset_status = run([
+            sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+            str(ROOT / "test/fixtures/multi_material_panel.gltf"),
+            "--asset-path", "test/fixtures/multi_material_panel.gltf",
+            "--generate-lightmap-uv", "--lightmap-resolution", "128", "--lightmap-padding", "4",
+            "--output", str(subset_directory / "uv1.pkg"),
+        ])
+        if subset_status != 0:
+            return subset_status
         lod_source = cook_gltf_lod.write_test_source_with_unused_vertices(subset_directory)
         cook_lod_chain(lod_source, "test/fixtures/runtime_lod.gltf",
             subset_directory / "runtime_lod.pkg", parse_lod_ratios("0.5,0.25"))

@@ -38,7 +38,6 @@ using MazeGame
 using MazeTrace
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
-@callconv(c)
 extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
@@ -408,7 +407,8 @@ def exercise_render_scene() -> i32:
         value: value
         error failure: return 61
     return 62 if RenderScene::instance_count() != 4
-    return 79 if RenderSceneImportedSceneNativeTests::exercise() != 0
+    return 79 if (RenderSceneImportedSceneNativeTests::exercise() != 0 or
+        RenderSceneImportedSceneNativeTests::exercise_uv1() != 0)
     initial_animation_progress: f32 = catch RenderScene::animation_progress(cooked_mesh):
         value: value
         error failure: return 76

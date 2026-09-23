@@ -117,7 +117,7 @@ def _compact_placement_vertices(geometry: dict, placements: list[dict],
     source_placements = geometry["scene"]["mesh_placements"]
     if len(placements) != len(source_placements):
         raise ValueError("LOD placement metadata changed during vertex compaction")
-    strides = {"positions": 12, "normals": 12, "uvs": 8, "tangents": 16}
+    strides = {"positions": 12, "normals": 12, "uvs": 8, "uv1s": 8, "tangents": 16}
     source_streams = {}
     for name, stride in strides.items():
         stream = geometry.get(name, b"")
@@ -180,7 +180,7 @@ def simplify_geometry(geometry: dict, ratio: float) -> tuple[dict, dict]:
     indices = geometry["indices"]
     vertex_count = geometry["vertex_count"]
     source_attribute_bytes = sum(len(geometry.get(name, b""))
-        for name in ("positions", "normals", "uvs", "tangents"))
+        for name in ("positions", "normals", "uvs", "uv1s", "tangents"))
     chunks = _placement_chunks(geometry)
     index_count = len(indices) // INDEX.size
     if (vertex_count <= 0 or vertex_count > MAX_VERTICES or

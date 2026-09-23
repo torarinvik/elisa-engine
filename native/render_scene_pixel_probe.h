@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -361,6 +362,22 @@ extern "C" uint64_t elisa_render_scene_v1_test_mesh_count(void) {
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
     return state.scene->meshes.GetCount();
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_mesh_has_uv1(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(state.instances[slot].entity);
+    if (mesh == nullptr || mesh->vertex_positions.empty() ||
+        mesh->vertex_uvset_1.size() != mesh->vertex_positions.size()) return 0;
+    for (const XMFLOAT2& uv : mesh->vertex_uvset_1) {
+        if (!std::isfinite(uv.x) || !std::isfinite(uv.y) ||
+            uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return 0;
+    }
+    return 1;
 }
 
 extern "C" uint64_t elisa_render_scene_v1_test_object_count(void) {

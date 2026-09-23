@@ -64,6 +64,7 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
     if (!add_geometry_bytes(geometry.positions.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.normals.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.uvs.size(), sizeof(float), total) ||
+        !add_geometry_bytes(geometry.uv1s.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.tangents.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.indices.size(), sizeof(uint32_t), total) ||
         !add_geometry_bytes(geometry.skin_indices.size(), sizeof(uint32_t), total) ||
@@ -118,6 +119,7 @@ bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity ent
     if (mesh == nullptr || geometry.subsets.empty() || geometry.positions.empty() || geometry.positions.size() % 3 != 0 ||
         geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
+        (!geometry.uv1s.empty() && geometry.uv1s.size() != geometry.positions.size() / 3 * 2) ||
         (!geometry.tangents.empty() && geometry.tangents.size() != geometry.positions.size() / 3 * 4) ||
         !cooked_geometry_is_static(geometry) || geometry.indices.empty() || geometry.indices.size() % 3 != 0 ||
         geometry.indices.size() > std::numeric_limits<uint32_t>::max()) return false;
@@ -150,11 +152,15 @@ bool configure_shared_snapshot_mesh(wi::scene::Scene& scene, wi::ecs::Entity ent
     mesh->vertex_normals.resize(vertex_count);
     mesh->vertex_tangents.resize(geometry.tangents.empty() ? 0 : vertex_count);
     mesh->vertex_uvset_0.resize(vertex_count);
+    mesh->vertex_uvset_1.resize(geometry.uv1s.empty() ? 0 : vertex_count);
     for (size_t index = 0; index < mesh->vertex_positions.size(); ++index) {
         const size_t source = vertex_start + index;
         mesh->vertex_positions[index] = elisa::rendering::cooked_vector(geometry.positions, source);
         mesh->vertex_normals[index] = elisa::rendering::cooked_vector(geometry.normals, source);
         mesh->vertex_uvset_0[index] = XMFLOAT2(geometry.uvs[source * 2], geometry.uvs[source * 2 + 1]);
+        if (!geometry.uv1s.empty()) {
+            mesh->vertex_uvset_1[index] = XMFLOAT2(geometry.uv1s[source * 2], geometry.uv1s[source * 2 + 1]);
+        }
         if (!geometry.tangents.empty()) {
             mesh->vertex_tangents[index] = elisa::rendering::cooked_tangent(geometry.tangents, source);
         }

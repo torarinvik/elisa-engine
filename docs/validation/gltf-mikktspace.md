@@ -24,6 +24,6 @@ cooking, and retain vertex-aligned runtime streams when tangent seams split.
 
 Authored glTF tangents retain their existing transform-and-handedness path.
 Generated tangent splits remap positions, normals, UVs, morph deltas, and skin
-influences together; cooked vertex limits are checked after splitting. xatlas
-lightmap UV generation, UV1 package/runtime metadata, and mirrored-normal-map
-render captures remain open.
+influences together; cooked vertex limits are checked after splitting. For
+lightmap UV generation, see [`gltf-lightmap-uv.md`](gltf-lightmap-uv.md).
+Mirrored-normal-map render captures remain open.

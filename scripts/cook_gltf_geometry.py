@@ -128,7 +128,8 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
             attributes = primitive.get("attributes", {})
             if not isinstance(attributes, dict) or any(type(value) is not int for value in attributes.values()):
                 raise ValueError("primitive attributes must name accessors by index")
-            if set(attributes) - {"POSITION", "NORMAL", "TANGENT", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0"}:
+            if set(attributes) - {"POSITION", "NORMAL", "TANGENT", "TEXCOORD_0", "TEXCOORD_1",
+                    "JOINTS_0", "WEIGHTS_0"}:
                 raise ValueError("runtime geometry cooker encountered an unsupported vertex attribute")
             if "TANGENT" in attributes and "NORMAL" not in attributes:
                 raise ValueError("a TANGENT attribute needs NORMAL")
@@ -204,35 +205,8 @@ def read_morph_targets(document: dict, buffer: bytes, targets: list[dict], verte
 
 
 def read_vertices(document: dict, buffer: bytes, attributes: dict, targets: list[dict]) -> dict:
-    if "POSITION" not in attributes:
-        raise ValueError("triangle primitive is missing positions or indices")
-    accessors = document.get("accessors", [])
-    position_index = attributes["POSITION"]
-    if type(position_index) is not int or not 0 <= position_index < len(accessors):
-        raise ValueError("position accessor index out of range")
-    vertex_count = accessors[position_index]["count"]
-    if vertex_count <= 0 or vertex_count > MAX_VERTICES:
-        raise ValueError("position count is empty or exceeds the runtime bound")
-    positions = float_stream(document, buffer, position_index, "VEC3", None, "positions")
-    if len(positions) != vertex_count * 12:
-        raise ValueError("position data is malformed or non-finite")
-    normals = None
-    if "NORMAL" in attributes:
-        normals = float_stream(document, buffer, attributes["NORMAL"], "VEC3", vertex_count, "normals")
-    tangents = None
-    if "TANGENT" in attributes:
-        tangents = float_stream(document, buffer, attributes["TANGENT"], "VEC4", vertex_count, "tangents")
-    uvs = bytes(vertex_count * 8)
-    if "TEXCOORD_0" in attributes:
-        uvs = float_stream(document, buffer, attributes["TEXCOORD_0"], "VEC2", vertex_count, "UVs")
-    skin_indices = skin_weights = None
-    if "JOINTS_0" in attributes:
-        skin_indices, skin_weights = cook_gltf_skin.read_influences(document, buffer, attributes, vertex_count)
-    return {"positions": positions, "normals": normals, "tangents": tangents, "uvs": uvs,
-        "skin_indices": skin_indices, "skin_weights": skin_weights,
-        "morph_targets": read_morph_targets(document, buffer, targets, vertex_count),
-        "count": vertex_count, "triangles": []}
-
+    import cook_gltf_geometry_vertices
+    return cook_gltf_geometry_vertices.read(document, buffer, attributes, targets)
 
 def read_indices(document: dict, buffer: bytes, primitive: dict, vertex_count: int) -> list[int]:
     accessors = document.get("accessors", [])
@@ -285,7 +259,9 @@ def remap_components(values: list, components: int, source_vertices: list[int]) 
         for component in range(components)]
 
 
-def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | None = None):
+def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | None = None,
+        generate_lightmap_uv: bool = False, lightmap_resolution: int = 1024,
+        lightmap_padding: int = 4):
     # Node transforms bake into placement streams; material subsets and
     # textures stay grouped. Identical accessors share data within a placement.
     # Skin streams retain remapped influences and parent-ordered rig transforms.
@@ -347,7 +323,9 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
             blocks[block]["triangles"].extend(values)
             placed.append((placement, block, values, primitive.get("material", 0)))
 
+    has_uv1 = any(source["uv1s"] is not None for source in sources.values())
     positions, normals, tangents, uvs = bytearray(), bytearray(), bytearray(), bytearray()
+    uv1s = bytearray()
     morph_positions = [bytearray() for _ in range(morph_count)]
     morph_normals = [bytearray() for _ in range(morph_count)]
     skin_indices: list[int] = []
@@ -378,6 +356,8 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
             normals += tangent_geometry["normals"]
             tangents += tangent_geometry["tangents"]
             uvs += tangent_geometry["uvs"]
+            if has_uv1:
+                uv1s += remap_stream(source["uv1s"] or bytes(source["count"] * 8), 8, source_vertices)
         else:
             block["remapped_indices"] = None
             block["cooked_vertex_count"] = source["count"]
@@ -386,6 +366,8 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
             tangents += gltf_tangent_frames.transformed(
                 source["tangents"], transformed_normals, matrix)
             uvs += source["uvs"]
+            if has_uv1:
+                uv1s += source["uv1s"] or bytes(source["count"] * 8)
             source_vertices = list(range(source["count"]))
         vertex_count = block["cooked_vertex_count"]
         if len(positions) // 12 > MAX_VERTICES:
@@ -445,7 +427,8 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
     if any(target["normals"] is not None for target in morph_targets) and any(
             target["normals"] is None for target in morph_targets):
         raise ValueError("all morph targets must provide normals or none may provide them")
-    geometry = {"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents), "uvs": bytes(uvs),
+    geometry = {"positions": bytes(positions), "normals": bytes(normals), "tangents": bytes(tangents),
+        "uvs": bytes(uvs), "uv1s": bytes(uv1s),
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_textures": slot_textures, "images": images,
@@ -455,9 +438,14 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
         "morph_targets": morph_targets, "scene": {**scene, "mesh_placements": [
             {**placement, **placement_ranges[index]}
             for index, placement in enumerate(scene["mesh_placements"]) ]}}
+    if has_uv1:
+        geometry["uv1_metadata"] = {"source": "gltf"}
     if simplify_ratio is not None:
         geometry, lod_report = cook_gltf_lod.simplify_geometry(geometry, simplify_ratio)
         geometry["lod_report"] = lod_report
+    if generate_lightmap_uv:
+        import cook_gltf_lightmap_uv
+        geometry = cook_gltf_lightmap_uv.remap_geometry(geometry, lightmap_resolution, lightmap_padding)
     return cook_gltf_meshopt.optimize_geometry(geometry)
 
 
@@ -591,7 +579,9 @@ def scene_lines(geometry: dict) -> list[str]:
 
 
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
-        allow_textures: bool = False, simplify_ratio: float | None = None) -> tuple[Path, dict]:
+        allow_textures: bool = False, simplify_ratio: float | None = None,
+        generate_lightmap_uv: bool = False, lightmap_resolution: int = 1024,
+        lightmap_padding: int = 4) -> tuple[Path, dict]:
     import cook_gltf_package
     return cook_gltf_package.cook_geometry_package(source_path, asset_path, output_path,
-        allow_textures, simplify_ratio)
+        allow_textures, simplify_ratio, generate_lightmap_uv, lightmap_resolution, lightmap_padding)

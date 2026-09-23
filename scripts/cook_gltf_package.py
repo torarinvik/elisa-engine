@@ -29,7 +29,9 @@ def position_extent(positions: bytes) -> float:
 
 
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
-        allow_textures: bool = False, simplify_ratio: float | None = None) -> tuple[Path, dict]:
+        allow_textures: bool = False, simplify_ratio: float | None = None,
+        generate_lightmap_uv: bool = False, lightmap_resolution: int = 1024,
+        lightmap_padding: int = 4) -> tuple[Path, dict]:
     """Write a geometry package; textured sources require a containing bundle."""
     asset_path = geometry_cooker.safe_asset_path(asset_path)
     source_path = source_path.expanduser().resolve(strict=True)
@@ -41,7 +43,8 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     source_counts = geometry_cooker.placed_counts(document,
         skinned=any("skin" in node for node in document.get("nodes", [])))
     geometry = geometry_cooker.normalized_geometry(document,
-        cook_assets.source_bytes(source_path.parent, document), simplify_ratio)
+        cook_assets.source_bytes(source_path.parent, document), simplify_ratio,
+        generate_lightmap_uv, lightmap_resolution, lightmap_padding)
     if geometry["images"] and not allow_textures:
         raise ValueError("material textures need an .elpk bundle output")
     triangles = geometry["index_count"] // 3
@@ -71,14 +74,23 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         "uvs_b64=" + base64.b64encode(geometry["uvs"]).decode("ascii"),
         "indices_b64=" + base64.b64encode(geometry["indices"]).decode("ascii"),
     ]
+    if geometry["uv1s"]:
+        metadata = geometry["uv1_metadata"]
+        lines += ["uv1_stride=8", "uv1_source=" + metadata["source"]]
+        if metadata["source"] == "xatlas":
+            lines += ["uv1_generator_revision=f700c7790aaa030e794b52ba7791a05c085faf0c",
+                f"uv1_resolution={metadata['resolution']}", f"uv1_padding={metadata['padding']}",
+                f"uv1_chart_count={metadata['chart_count']}"]
+        lines.append("uv1s_b64=" + base64.b64encode(geometry["uv1s"]).decode("ascii"))
     package_bytes = ("\n".join(lines) + "\n").encode("utf-8")
     if len(package_bytes) > 64 * 1024 * 1024:
         raise ValueError("cooked geometry package exceeds the 64 MiB runtime limit")
     output_path.write_bytes(package_bytes)
-    attribute_bytes = sum(len(geometry[name]) for name in ("positions", "normals", "uvs", "tangents"))
+    attribute_bytes = sum(len(geometry[name]) for name in
+        ("positions", "normals", "uvs", "uv1s", "tangents"))
     return output_path, {"triangles": triangles, "source_triangles": source_counts["triangles"],
         "positions": geometry["vertex_count"], "indices": geometry["index_count"],
-        "attribute_bytes": attribute_bytes,
+        "attribute_bytes": attribute_bytes, "lightmap_uv": geometry.get("uv1_metadata"),
         "position_extent": position_extent(geometry["positions"]),
         "subsets": len(geometry["subsets"]), "material_slots": geometry["material_slots"],
         "slot_materials": len(geometry["slot_materials"]) // geometry_cooker.SLOT_MATERIAL_STRIDE,
