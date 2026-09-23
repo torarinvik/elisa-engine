@@ -36,5 +36,6 @@ accepts a 65-node rig with two palette bones.
 
 Multiple skins in one scene remain unsupported. The separately rooted fixture
 now passes cooking, sanitized package loading, and native mesh upload. A
-mesh-relative basis that would contain shear is rejected by the cooker, but
-that specific transform combination still needs a dedicated regression case.
+dedicated cooker regression combines a 45-degree mesh rotation with
+nonuniform scale, verifies that its mesh-relative basis contains shear, and
+requires a clear rejection instead of an approximate TRS transform.

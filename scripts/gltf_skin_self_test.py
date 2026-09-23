@@ -332,6 +332,22 @@ def self_test(temporary: Path) -> int:
             file=sys.stderr)
         return 1
 
+    sheared_basis = deepcopy(document)
+    sheared_basis["nodes"][0].update({
+        "rotation": [0.0, 0.3826834323650898, 0.0, 0.9238795325112867],
+        "scale": [2.0, 1.0, 1.0],
+    })
+    try:
+        normalized_skin(sheared_basis)
+    except ValueError as error:
+        if "shear" not in str(error):
+            print(f"glTF skin self-test failed: sheared mesh-relative basis failed for another reason: {error}",
+                file=sys.stderr)
+            return 1
+    else:
+        print("glTF skin self-test failed: accepted a sheared mesh-relative basis", file=sys.stderr)
+        return 1
+
     matrix_ancestor = deepcopy(document)
     matrix_ancestor["nodes"][4].pop("translation")
     matrix_ancestor["nodes"][4]["matrix"] = [0.0, 1.0, 0.0, 0.0,
