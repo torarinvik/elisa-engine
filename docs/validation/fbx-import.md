@@ -75,6 +75,10 @@ indices, and the runtime reader's 64 MiB package/16 MiB section limits. The
 cooker generates tangents from final simplified geometry with pinned MikkTSpace.
 It duplicates vertices at tangent-frame discontinuities and carries each new
 vertex's source through positions, normals, UVs, and optional skin weights.
+Zero-area geometry or UV triangles are excluded from MikkTSpace and receive a
+stable orthogonal tangent fallback; missing normals are recovered from adjacent
+faces or assigned a finite fallback for isolated/degenerate vertices. This keeps
+large reduced props cookable without passing degenerate charts into MikkTSpace.
 The native reader accepts older cooked packages without the optional tangent
 stream and validates it when present.
 
@@ -97,7 +101,8 @@ also checked the remapped skin rows for in-range joints and normalized weights.
 
 `python3 scripts/cook_fbx_asset.py --self-test` passed the sanitized mirrored-UV
 MikkTSpace fixture (4 input vertices become 6 while preserving opposite
-handedness across the seam), zero-normal recovery, and deterministic output.
+handedness across the seam), zero-normal recovery, degenerate geometry/UV
+handling, unreferenced control points, and deterministic output.
 It then passed with a generated
 512-triangle planar grid simplified to 128 triangles and 97 vertices at 0.00003
 relative error; tangent frames passed unit-length and orthogonality checks, and
