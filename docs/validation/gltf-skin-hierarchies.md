@@ -30,11 +30,11 @@ accepts a 65-node rig with two palette bones.
 ## Validation
 
 - `/opt/homebrew/bin/python3 scripts/gltf_skin_self_test.py` passed.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 96 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer.
-- The SDL3/Metal RenderScene smoke compiled and passed the sibling-branch animation submission probe, including its expected Wicked-space helper transform. It later returned test status 134 at the overlay-hide pixel check in `test/render_scene_native_main.elisa`; the same status occurred when the cooked skin fixture was temporarily reverted to the previous two-joint hierarchy. The full native gate is therefore not marked green by this run.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed: 97 loader cases, 0 failures, under AddressSanitizer and UndefinedBehaviorSanitizer. The new separately rooted package is among the accepted cases.
+- The SDL3/Metal RenderScene smoke compiled and passed the sibling-branch animation submission probe and the separately rooted mesh upload/world-offset assertion. It later returned test status 134 at the overlay-hide pixel check in `test/render_scene_native_main.elisa`; the same status occurred when the cooked skin fixture was temporarily reverted to the previous two-joint hierarchy. The full native gate is therefore not marked green by this run.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-Multiple skins in one scene remain unsupported. The sibling-branch fixture
-validates the mesh-relative basis through native animation submission, while
-separately rooted skeletons and shear-producing relative bases currently have
-cooker-level acceptance/rejection coverage only.
+Multiple skins in one scene remain unsupported. The separately rooted fixture
+now passes cooking, sanitized package loading, and native mesh upload. A
+mesh-relative basis that would contain shear is rejected by the cooker, but
+that specific transform combination still needs a dedicated regression case.

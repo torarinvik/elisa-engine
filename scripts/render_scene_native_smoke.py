@@ -113,6 +113,8 @@ def main() -> int:
     (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
         2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
     gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg")
+    gltf_skin_self_test.write_separate_root_package(
+        subset_directory / "separate-root-skinned.pkg")
     gltf_scene_self_test.write_package(subset_directory / "scene-metadata.pkg")
     # The cooked-material test also registers a variant whose center slot is
     # blended, single-sided glass. Its buffer is embedded, so the copy cooks
