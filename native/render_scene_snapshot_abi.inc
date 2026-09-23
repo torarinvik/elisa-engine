@@ -348,6 +348,19 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_mesh_asset(
     }
     const int32_t claim = claim_snapshot_asset_id(state, SnapshotAssetKind::Mesh, high, low);
     if (claim != ELISA_RENDER_SCENE_OK) return claim;
+    if (snapshot_mesh_path_is_lod_manifest(package_path)) {
+        elisa::assets::LodGeometryChain chain;
+        try {
+            if (!elisa::assets::load_lod_geometry_chain(package_path, chain)) {
+                std::fprintf(stderr, "Elisa snapshot LOD chain load failed: %s\n", chain.error.c_str());
+                return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+            }
+        } catch (...) {
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+        return install_snapshot_lod_chain(state, high, low, package_path,
+            std::move(resolved_path), std::move(chain));
+    }
     elisa::assets::CookedGeometry geometry;
     std::string load_error;
     try {

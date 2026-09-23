@@ -17,6 +17,8 @@ import bundle_texture_fixtures
 import cook_assets
 import cook_gltf_asset
 import cook_gltf_geometry
+import cook_gltf_lod
+from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 import elisa_build_run
 from elisa_package import write_geometry_package
 import gltf_texture_self_test
@@ -103,6 +105,9 @@ def main() -> int:
         return subset_status
     subset_directory = build / "cooked/subsets"
     subset_directory.mkdir(parents=True, exist_ok=True)
+    lod_source = cook_gltf_lod.write_test_source(subset_directory)
+    cook_lod_chain(lod_source, "test/fixtures/runtime_lod.gltf",
+        subset_directory / "runtime_lod.pkg", parse_lod_ratios("0.5,0.25"))
     subset_status = run([
         sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
         str(ROOT / "test/fixtures/multi_material_panel.gltf"),

@@ -244,6 +244,14 @@ extern "C" uint64_t elisa_render_scene_v1_test_snapshot_mesh_assets(void) {
     return live;
 }
 
+extern "C" uint32_t elisa_render_scene_v1_test_snapshot_mesh_lod_count(uint64_t high, uint64_t low) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const size_t slot = snapshot_mesh_asset_slot(state, high, low);
+    return slot < MAX_SNAPSHOT_MESH_ASSETS ?
+        uint32_t(state.snapshot_mesh_assets[slot].lod_level_count) : 0;
+}
+
 extern "C" uint64_t elisa_render_scene_v1_test_snapshot_geometry_bytes(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

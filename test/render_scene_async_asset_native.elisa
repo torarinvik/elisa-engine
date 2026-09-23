@@ -28,6 +28,9 @@ module RenderSceneAsyncAssetNativeTests:
         extern elisa_render_scene_v1_test_snapshot_mesh_assets() -> u64
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_mesh_lod_count(high: u64, low: u64) -> u32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_geometry_bytes() -> u64
 
         @callconv(c)
@@ -100,6 +103,9 @@ module RenderSceneAsyncAssetNativeTests:
         def mesh_path() -> cstr:
             "build/cooked/dependencies/mesh.elpk"
 
+        def lod_mesh_path() -> cstr:
+            "build/cooked/subsets/runtime_lod.lod.json"
+
         def missing_dependency_mesh_path() -> cstr:
             "build/cooked/dependencies/mesh-missing.elpk"
 
@@ -166,6 +172,30 @@ module RenderSceneAsyncAssetNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: Code::INVALID
                 RenderScene::RenderSceneError.AssetLoadFailure: Code::LOAD_FAILED
                 error failure: Code::OTHER
+
+        def register_lod_chain() -> i32:
+            prior_bytes: u64 = geometry_bytes()
+            status: i32 = register_mesh(99, lod_mesh_path())
+            return 71 if status != Code::OK
+            return 72 if elisa_render_scene_v1_test_snapshot_mesh_lod_count(
+                Ids::MESHES, 99) != 3
+            return 73 if geometry_bytes() <= prior_bytes
+            return 74 if unregister_mesh(99) != Code::OK
+            return 75 if geometry_bytes() != prior_bytes
+            0
+
+        def request_lod_chain() -> i32:
+            prior_bytes: u64 = geometry_bytes()
+            base: u64 = started()
+            done: u64 = finished()
+            return 76 if request_mesh(98, lod_mesh_path()) != Code::OK
+            return 77 if not wait_for(base + 1, done + 1)
+            return 78 if pump_assets() != 1 or mesh_state(98) != Code::RESIDENT
+            return 79 if elisa_render_scene_v1_test_snapshot_mesh_lod_count(
+                Ids::MESHES, 98) != 3 or geometry_bytes() <= prior_bytes
+            return 80 if unregister_mesh(98) != Code::OK
+            return 81 if geometry_bytes() != prior_bytes
+            0
 
         def unregister_texture(low: u64) -> i32:
             catch RenderScene::unregister_snapshot_texture_asset(texture_id(low)):
@@ -394,6 +424,10 @@ module RenderSceneAsyncAssetNativeTests:
 
     public:
         def exercise() -> i32:
+            lod_chain_status: i32 = register_lod_chain()
+            return lod_chain_status if lod_chain_status != 0
+            async_lod_chain_status: i32 = request_lod_chain()
+            return async_lod_chain_status if async_lod_chain_status != 0
             base: u64 = started()
             done: u64 = finished()
             baseline_bytes: u64 = geometry_bytes()

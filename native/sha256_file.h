@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include "virtual_package.h"
+
 namespace elisa::assets {
 
 class Sha256 {
@@ -95,7 +97,8 @@ private:
 };
 
 inline bool sha256_file(const std::filesystem::path& path, uint64_t expected_bytes,
-        std::string& digest, std::string& error) {
+        std::string& digest, std::string& error,
+        probe::BinaryPackageReadCancellationCheck cancellation_check = {}) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) { error = "SHA-256 file could not be opened"; return false; }
     const std::streampos end = input.tellg();
@@ -106,10 +109,18 @@ inline bool sha256_file(const std::filesystem::path& path, uint64_t expected_byt
     input.seekg(0);
     Sha256 hash;
     std::array<uint8_t, 64 * 1024> buffer{};
+    size_t processed = 0;
     while (input) {
         input.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
         const std::streamsize count = input.gcount();
-        if (count > 0) hash.update(buffer.data(), static_cast<size_t>(count));
+        if (count > 0) {
+            hash.update(buffer.data(), static_cast<size_t>(count));
+            processed += static_cast<size_t>(count);
+            if (cancellation_check && !cancellation_check(processed, static_cast<size_t>(expected_bytes))) {
+                error = "SHA-256 file read cancelled";
+                return false;
+            }
+        }
     }
     if (!input.eof()) { error = "SHA-256 file read failed"; return false; }
     digest = hash.finish();

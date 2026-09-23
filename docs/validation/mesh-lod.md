@@ -21,8 +21,10 @@ schema and validates level order, relative package names, hashes, sizes, and
 error budgets. `native/lod_geometry_chain.h` resolves every sibling under the
 project root, verifies its exact SHA-256 and byte size, checks static geometry
 counts, and requires stable placement, material-subset, texture, camera, and
-light layouts across levels. `RenderScene` does not yet consume the chain or
-switch levels at runtime.
+light layouts across levels. Snapshot mesh registration and asynchronous
+requests now accept `.lod.json`, retain all verified levels, and account for
+their combined resident bytes. Snapshot draws still use full detail; screen
+error selection and per-object mesh switching remain.
 
 Static simplification runs independently inside each placement/material
 intersection, locks topological borders, and caps normalized geometric error
@@ -38,4 +40,5 @@ Validation on 2026-09-23:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_glb_static_cook.py` passed: Blender and the production FBX cooker reduced 3,042 input triangles to 55 triangles and 37 vertices under the 64-triangle limit.
 - `python3 scripts/check_module_hygiene.py`, `python3 scripts/check_dependency_manifest.py`, `/opt/homebrew/bin/python3 scripts/check_source_length.py`, and `git diff --check` passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_ALLOW_STALE_STAGE1=1 ELISA_COMPILER_BIN=/Users/torarinvikbjarko/.elisac/elisac-stage1 ELISA_RUNTIME_OBJ="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/build/runtime/elisacore_runtime.o" PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/check.elisascript` passed on this tree, including Elisa tests, both proof replays, and reproducible release packaging.
-- The focused SDL3/Metal `scripts/render_scene_native_smoke.py` previously exited 134 during Wicked initialization, before reporting render groups. Visual LOD selection and performance measurements remain unverified.
+- `scripts/render_scene_native_smoke.py` compiled and linked the LOD-enabled RenderScene service and Elisa regression test, then exited 134 just after Wicked initialization while allocating its first 256 MiB Metal buffer. The new sync/async chain residency assertions therefore did not report a result on this OS run.
+- Visual LOD selection, mesh switching, quality review, and render-cost measurements remain unverified.
