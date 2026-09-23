@@ -6,6 +6,7 @@
 # build/cooked/dependencies.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene_assets.elisa"
+include "../src/math/geometry.elisa"
 
 module RenderSceneAsyncAssetNativeTests:
     private:
@@ -35,6 +36,12 @@ module RenderSceneAsyncAssetNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_lod_level(handle: i64) -> u32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_refresh_snapshot_lod_selection() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_lod_triangles(handle: i64) -> u64
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_geometry_bytes() -> u64
@@ -187,12 +194,50 @@ module RenderSceneAsyncAssetNativeTests:
                 Ids::MESHES, 99) != 3
             handle: i64 = commit_mesh_row(99, 9392)
             return 73 if handle <= 0 or elisa_render_scene_v1_test_snapshot_lod_level(handle) != 0
+            far_lod_status: i32 = camera_lod_matches(handle, 30.0, 2, 288)
+            return far_lod_status if far_lod_status != 0
+            middle_lod_status: i32 = camera_lod_matches(handle, 22.3, 1, 576)
+            return middle_lod_status if middle_lod_status != 0
+            near_lod_status: i32 = camera_lod_matches(handle, 21.5, 0, 1152)
+            return near_lod_status if near_lod_status != 0
+            restore_projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: 1
+            restore_view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 21.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}):
+                ok: 0
+                error failure: 1
+            return 89 if restore_projection != 0 or restore_view != 0
+            return 90 if elisa_render_scene_v1_test_select_snapshot_lod(handle, 0) != Code::OK
             return 74 if elisa_render_scene_v1_test_select_snapshot_lod(handle, 2) != Code::OK
             return 75 if elisa_render_scene_v1_test_snapshot_lod_level(handle) != 2
             return 76 if elisa_render_scene_v1_test_select_snapshot_lod(handle, 0) != Code::OK or elisa_render_scene_v1_test_snapshot_lod_level(handle) != 0
             return 77 if not retire_mesh_row(handle)
             return 78 if geometry_bytes() <= prior_bytes or unregister_mesh(99) != Code::OK
             return 79 if geometry_bytes() != prior_bytes
+            0
+
+        def camera_lod_matches(handle: i64, eye_z: f32,
+            expected_level: u32, expected_triangles: u64) -> i32:
+            perspective: i32 = catch RenderScene::set_camera_perspective(1.0, 0.1, 500.0):
+                ok: 0
+                error failure: 1
+            if perspective != 0:
+                return 1
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 0.0, z: eye_z},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            if view != 0 or elisa_render_scene_v1_test_refresh_snapshot_lod_selection() != Code::OK:
+                return 2
+            actual_level: u32 = elisa_render_scene_v1_test_snapshot_lod_level(handle)
+            return 10 + actual_level if actual_level != expected_level
+            actual_triangles: u64 = elisa_render_scene_v1_test_snapshot_lod_triangles(handle)
+            return 20 if actual_triangles != expected_triangles
             0
 
         def request_lod_chain() -> i32:

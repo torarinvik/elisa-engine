@@ -71,6 +71,11 @@ def main(arguments: darray[sview]) -> i64:
     cook_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/cook_assets.py")), str(root)])
     if cook_status != 0:
         return cook_status
+    if phase == "all" or phase == "build" or phase == "texture":
+        basisu_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/basisu_probe.py"))])
+        if basisu_status != 0:
+            return basisu_status
 
     _ = create_directories(root.joinpath("build"))
     cxx: sview = get_environment_or("CXX", "clang++")

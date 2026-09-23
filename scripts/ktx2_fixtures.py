@@ -14,6 +14,8 @@ def make_ktx2(width: int = 4, height: int = 4, *, scheme: int = 0,
     dfd = bytearray(44)
     struct.pack_into("<I", dfd, 0, len(dfd))
     struct.pack_into("<HH", dfd, 8, 2, len(dfd) - 4)
+    dfd[12:20] = bytes((166, 1, 1, 0, 3, 3, 0, 0))
+    dfd[20] = 16
     kvd = bytearray()
     for key, value in key_values:
         entry = key.encode("utf-8") + b"\0" + value

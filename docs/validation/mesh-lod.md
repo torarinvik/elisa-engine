@@ -27,8 +27,9 @@ their combined resident bytes. `native/lod_selection.h` selects the coarsest
 level whose projected cumulative error fits a one-pixel budget, scaled by
 `2^lod_bias`, with a 10% switching hysteresis. The RenderPath reevaluates
 static snapshot rows against the active camera each frame and switches all
-placements together through shared meshes. The Metal smoke currently aborts
-before reporting these runtime checks.
+placements together through shared meshes. The native Metal regression invokes
+the same camera-driven selection update and verifies the generated chain at
+far, medium, and near distances: 288, 576, and 1,152 selected triangles.
 
 Static simplification runs independently inside each placement/material
 intersection, locks topological borders, and caps normalized geometric error
@@ -44,5 +45,5 @@ Validation on 2026-09-23:
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/test_glb_static_cook.py` passed: Blender and the production FBX cooker reduced 3,042 input triangles to 55 triangles and 37 vertices under the 64-triangle limit.
 - `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, `/opt/homebrew/bin/python3 scripts/check_dependency_manifest.py`, `/opt/homebrew/bin/python3 scripts/check_source_length.py`, Python syntax checks, and `git diff --check` passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_ALLOW_STALE_STAGE1=1 ELISA_COMPILER_BIN=/Users/torarinvikbjarko/.elisac/elisac-stage1 ELISA_RUNTIME_OBJ="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/build/runtime/elisacore_runtime.o" PYTHON_BIN=/opt/homebrew/bin/python3 elisascript scripts/check.elisascript` passed on this tree, including Elisa tests, both proof replays, and reproducible release packaging.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py` cooked its runtime LOD fixture, compiled the Elisa regression archive, and built and linked the SDL3/Metal executable. Running it exited 134 immediately after Wicked initialized and logged creation of its first 256 MiB Metal buffer, before sync/async chain residency assertions reported a result. Re-running the binary directly reproduced exit 134.
-- Native selection tests cover fine/coarse thresholds and hysteresis. Live camera-driven selection, rendered quality review, and render-cost measurements remain unverified because the Metal smoke aborts during Wicked startup.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=/Users/torarinvikbjarko/.elisac/elisac-stage1 ELISA_RUNTIME_OBJ="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/build/runtime/elisacore_runtime.o" PYTHON_BIN=/opt/homebrew/bin/python3 /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py` passed on 2026-09-23. It regenerated the three-level LOD fixture, passed the SDL3/Metal native tests, rendered the maze, and passed packaged execution with checkout access denied plus missing, escaping, corrupt, and invalid-dependency bundle checks.
+- The live selector chose level 2 at camera distance 30, level 1 at 22.3, and level 0 at 21.5 for the 640x400 perspective test viewport. Each choice also matched the selected mesh's 288/576/1,152 triangle count. Visual quality review and GPU frame-time comparisons remain open; triangle counts measure submitted geometry, not GPU time.

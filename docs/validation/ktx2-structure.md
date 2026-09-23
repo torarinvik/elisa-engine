@@ -15,9 +15,11 @@ into geometry or image bundles. The accepted layout follows the official
   including cooking the KTX2 material fixture into its bundle.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3
   scripts/basisu_probe.py` passed the CPU Basis color, cubemap, alpha, and
-  normal-map transcodes. Its upload-shape policy checks accept ordinary 2D and
-  square cubemap shapes while rejecting arrays, invalid face counts, and empty
-  dimensions.
+  normal-map transcodes and the generated UASTC HDR 4x4 profile. The bounded
+  cooker admits that exact HDR vkFormat/DFD/block/transfer/supercompression
+  combination and rejects a mismatched LDR DFD. Its upload-shape policy checks
+  accept ordinary 2D and square cubemap shapes while rejecting arrays, invalid
+  face counts, and empty dimensions.
 - `/opt/homebrew/bin/python3 scripts/test_geometry_subsets.py` passed with 104
   cases and zero failures.
 - `scripts/check_module_hygiene.py`, `scripts/check_dependency_manifest.py`,
@@ -27,9 +29,8 @@ into geometry or image bundles. The accepted layout follows the official
 
 The Python boundary checks section bounds and ordering, DFD declared/block
 sizes, KVD entry bounds, UTF-8 keys, sorting, uniqueness and padding, SGD
-alignment and scheme, and non-overlapping mip ranges. They do not validate all
-semantic DFD fields; the native Basis transcoder remains responsible for that
-before decoding. The native Metal texture-upload assertions remain unverified:
-the broader RenderScene smoke aborts with exit 134 after Wicked creates its
-first 256 MiB GPU buffer, before it reaches texture upload. HDR and additional
-GPU-compressed output formats remain unsupported by this change.
+alignment and scheme, and non-overlapping mip ranges. It validates only the
+semantic DFD fields needed to admit the supported UASTC HDR 4x4 profile; the
+native Basis transcoder remains responsible for other payload semantics before
+decoding. The separate HDR note records real Metal BC6H upload evidence and
+remaining hardware limits: [`ktx2-hdr.md`](ktx2-hdr.md).

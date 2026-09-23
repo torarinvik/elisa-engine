@@ -4,7 +4,7 @@
 
 namespace elisa::rendering::textures {
 
-enum class KTX2UploadEncoding { Rgba8, Bc1, Bc3, Bc5, Bc7, Unsupported };
+enum class KTX2UploadEncoding { Rgba8, Rgba16Float, Bc1, Bc3, Bc5, Bc6h, Bc7, Unsupported };
 enum class KTX2TextureUsage { Color, NormalData };
 
 struct KTX2UploadFormats {
@@ -13,6 +13,8 @@ struct KTX2UploadFormats {
     bool bc3 = false;
     bool bc7 = false;
     bool bc5 = false;
+    bool bc6h = false;
+    bool rgba16f = false;
 };
 
 inline bool ktx2_upload_shape_supported(std::uint32_t layers, std::uint32_t faces,
@@ -22,7 +24,12 @@ inline bool ktx2_upload_shape_supported(std::uint32_t layers, std::uint32_t face
 }
 
 inline KTX2UploadEncoding choose_ktx2_upload_encoding(bool has_alpha, KTX2UploadFormats formats,
-    KTX2TextureUsage usage = KTX2TextureUsage::Color) {
+    KTX2TextureUsage usage = KTX2TextureUsage::Color, bool hdr = false) {
+    if (hdr) {
+        if (usage != KTX2TextureUsage::Color) return KTX2UploadEncoding::Unsupported;
+        if (!has_alpha && formats.bc6h) return KTX2UploadEncoding::Bc6h;
+        return formats.rgba16f ? KTX2UploadEncoding::Rgba16Float : KTX2UploadEncoding::Unsupported;
+    }
     if (usage == KTX2TextureUsage::NormalData) {
         if (formats.bc5) return KTX2UploadEncoding::Bc5;
         return formats.rgba8 ? KTX2UploadEncoding::Rgba8 : KTX2UploadEncoding::Unsupported;

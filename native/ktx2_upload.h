@@ -75,6 +75,8 @@ inline KTX2UploadFormats query_ktx2_upload_formats(wi::graphics::GraphicsDevice*
             ktx2_format_supported(device, wi::graphics::Format::BC3_UNORM),
             ktx2_format_supported(device, wi::graphics::Format::BC7_UNORM),
             ktx2_format_supported(device, wi::graphics::Format::BC5_UNORM),
+            ktx2_format_supported(device, wi::graphics::Format::BC6H_UF16),
+            ktx2_format_supported(device, wi::graphics::Format::R16G16B16A16_FLOAT),
         };
         cache.srgb = {
             ktx2_format_supported(device, wi::graphics::Format::R8G8B8A8_UNORM_SRGB),
@@ -82,6 +84,8 @@ inline KTX2UploadFormats query_ktx2_upload_formats(wi::graphics::GraphicsDevice*
             ktx2_format_supported(device, wi::graphics::Format::BC3_UNORM_SRGB),
             ktx2_format_supported(device, wi::graphics::Format::BC7_UNORM_SRGB),
             ktx2_format_supported(device, wi::graphics::Format::BC5_UNORM),
+            cache.linear.bc6h,
+            cache.linear.rgba16f,
         };
     }
     return srgb ? cache.srgb : cache.linear;
@@ -92,7 +96,9 @@ inline basist::transcoder_texture_format ktx2_basis_format(KTX2UploadEncoding en
     case KTX2UploadEncoding::Bc1: return basist::transcoder_texture_format::cTFBC1_RGB;
     case KTX2UploadEncoding::Bc3: return basist::transcoder_texture_format::cTFBC3_RGBA;
     case KTX2UploadEncoding::Bc5: return basist::transcoder_texture_format::cTFBC5_RG;
+    case KTX2UploadEncoding::Bc6h: return basist::transcoder_texture_format::cTFBC6H;
     case KTX2UploadEncoding::Bc7: return basist::transcoder_texture_format::cTFBC7_RGBA;
+    case KTX2UploadEncoding::Rgba16Float: return basist::transcoder_texture_format::cTFRGBA_HALF;
     default: return basist::transcoder_texture_format::cTFRGBA32;
     }
 }
@@ -105,8 +111,12 @@ inline wi::graphics::Format ktx2_wicked_format(KTX2UploadEncoding encoding, bool
         return srgb ? wi::graphics::Format::BC3_UNORM_SRGB : wi::graphics::Format::BC3_UNORM;
     case KTX2UploadEncoding::Bc5:
         return wi::graphics::Format::BC5_UNORM;
+    case KTX2UploadEncoding::Bc6h:
+        return wi::graphics::Format::BC6H_UF16;
     case KTX2UploadEncoding::Bc7:
         return srgb ? wi::graphics::Format::BC7_UNORM_SRGB : wi::graphics::Format::BC7_UNORM;
+    case KTX2UploadEncoding::Rgba16Float:
+        return wi::graphics::Format::R16G16B16A16_FLOAT;
     default:
         return srgb ? wi::graphics::Format::R8G8B8A8_UNORM_SRGB : wi::graphics::Format::R8G8B8A8_UNORM;
     }
@@ -114,6 +124,16 @@ inline wi::graphics::Format ktx2_wicked_format(KTX2UploadEncoding encoding, bool
 
 inline uint32_t ktx2_block_bytes(KTX2UploadEncoding encoding) {
     return encoding == KTX2UploadEncoding::Bc1 ? 8u : 16u;
+}
+
+inline bool ktx2_encoding_is_compressed(KTX2UploadEncoding encoding) {
+    return encoding == KTX2UploadEncoding::Bc1 || encoding == KTX2UploadEncoding::Bc3 ||
+        encoding == KTX2UploadEncoding::Bc5 || encoding == KTX2UploadEncoding::Bc6h ||
+        encoding == KTX2UploadEncoding::Bc7;
+}
+
+inline uint32_t ktx2_pixel_bytes(KTX2UploadEncoding encoding) {
+    return encoding == KTX2UploadEncoding::Rgba16Float ? 8u : 4u;
 }
 
 inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
@@ -136,10 +156,11 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
         "KTX2 upload is a 2D texture or cubemap")) return resource;
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (!ktx2_upload_check(device != nullptr, "KTX2 upload has a graphics device")) return resource;
-    const bool srgb = usage == KTX2TextureUsage::Color && transcoder.is_srgb();
+    const bool hdr = transcoder.is_hdr();
+    const bool srgb = !hdr && usage == KTX2TextureUsage::Color && transcoder.is_srgb();
     const KTX2UploadFormats supported_formats = query_ktx2_upload_formats(device, srgb);
     const KTX2UploadEncoding encoding = choose_ktx2_upload_encoding(
-        transcoder.get_has_alpha() != 0, supported_formats, usage);
+        transcoder.get_has_alpha() != 0, supported_formats, usage, hdr);
     if (!ktx2_upload_check(encoding != KTX2UploadEncoding::Unsupported,
         "KTX2 upload has a supported native texture format")) return resource;
     if (!ktx2_upload_check(transcoder.start_transcoding(), "KTX2 upload starts transcoding")) return resource;
@@ -148,8 +169,9 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     std::vector<std::vector<uint8_t>> mip_bytes(subresource_count);
     std::vector<wi::graphics::SubresourceData> init_data(subresource_count);
     size_t decoded_bytes = 0;
-    const bool is_compressed = encoding != KTX2UploadEncoding::Rgba8;
+    const bool is_compressed = ktx2_encoding_is_compressed(encoding);
     const uint32_t block_bytes = is_compressed ? ktx2_block_bytes(encoding) : 0;
+    const uint32_t pixel_bytes = ktx2_pixel_bytes(encoding);
     const basist::transcoder_texture_format basis_format = ktx2_basis_format(encoding);
     // Basis recommends finishing all faces at one mip before changing levels
     // (especially for Zstd). Store each result in Wicked's slice-major order.
@@ -168,8 +190,8 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
             const size_t blocks_x = (mip_width + 3u) / 4u;
             const size_t blocks_y = (mip_height + 3u) / 4u;
             const size_t output_units = is_compressed ? blocks_x * blocks_y : pixel_count;
-            const size_t mip_size = output_units * (is_compressed ? block_bytes : 4u);
-            const size_t row_pitch = is_compressed ? blocks_x * block_bytes : mip_width * 4u;
+            const size_t mip_size = output_units * (is_compressed ? block_bytes : pixel_bytes);
+            const size_t row_pitch = is_compressed ? blocks_x * block_bytes : mip_width * pixel_bytes;
             if (!ktx2_upload_check(output_units <= UINT32_MAX && mip_size <= MAX_DECODED_BYTES - decoded_bytes,
                 "KTX2 upload decoded budget")) return resource;
             mip_bytes[subresource].resize(mip_size);

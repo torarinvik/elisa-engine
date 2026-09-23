@@ -12,12 +12,14 @@ Usage:
   python3 scripts/basisu_probe.py
 """
 
+import math
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import cook_assets
+from elisa_package import encoded_image_dimensions
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 BASISU = ENGINE_ROOT / "dependencies/basisu"
@@ -27,6 +29,20 @@ MARKER = "basisu transcode:"
 def relay(result: subprocess.CompletedProcess) -> None:
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
+
+
+def write_hdr_fixture(path: Path) -> None:
+    """Write a compact RGBE image with channel values above linear white."""
+    pixels = bytearray(b"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 4 +X 4\n")
+    for y in range(4):
+        for x in range(4):
+            rgb = (0.5 + x * 1.5, 0.5 + y * 2.0, 0.25 + (x + y) * 0.75)
+            maximum = max(rgb)
+            exponent = math.floor(math.log2(maximum)) + 1 if maximum > 0.0 else 0
+            scale = 256.0 / (2 ** exponent) if exponent else 0.0
+            pixels.extend(max(0, min(255, int(channel * scale))) for channel in rgb)
+            pixels.append(exponent + 128 if exponent else 0)
+    path.write_bytes(pixels)
 
 
 def main() -> int:
@@ -51,6 +67,7 @@ def main() -> int:
         return cook.returncode if cook.returncode != 0 else 1
 
     normal = ENGINE_ROOT / "build/cooked/maze_tile_normal.ktx2"
+    hdr = ENGINE_ROOT / "build/cooked/maze_tile_hdr.ktx2"
     basisu = cook_assets.basisu_executable(ENGINE_ROOT)
     if basisu is None:
         print("basisu probe: the pinned Basis encoder is unavailable", file=sys.stderr)
@@ -59,14 +76,32 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="elisa-basisu-normal-") as workdir:
         source = Path(workdir) / "normal.png"
         source.write_bytes(cook_assets.write_png(4, 4, normal_pixels))
+        hdr_source = Path(workdir) / "range.hdr"
+        write_hdr_fixture(hdr_source)
         normal_result = subprocess.run([
             basisu, "-ktx2", "-uastc", "-normal_map", "-separate_rg_to_color_alpha",
             "-linear", str(source), "-output_file", str(normal),
+        ], capture_output=True, text=True, check=False)
+        hdr_result = subprocess.run([
+            basisu, "-ktx2", "-hdr", "-uastc_level", "0", str(hdr_source),
+            "-output_file", str(hdr),
         ], capture_output=True, text=True, check=False)
     relay(normal_result)
     if normal_result.returncode != 0 or not normal.is_file():
         print("basisu probe: could not cook the two-channel normal-map fixture", file=sys.stderr)
         return normal_result.returncode if normal_result.returncode != 0 else 1
+    relay(hdr_result)
+    if hdr_result.returncode != 0 or not hdr.is_file():
+        print("basisu probe: could not cook the HDR fixture", file=sys.stderr)
+        return hdr_result.returncode if hdr_result.returncode != 0 else 1
+    try:
+        hdr_dimensions = encoded_image_dimensions(hdr.read_bytes())
+    except ValueError as error:
+        print(f"basisu probe: image cooker rejected the HDR fixture: {error}", file=sys.stderr)
+        return 1
+    if hdr_dimensions != (4, 4):
+        print("basisu probe: image cooker returned incorrect HDR dimensions", file=sys.stderr)
+        return 1
 
     build = ENGINE_ROOT / "build"
     zstd_object = build / "basisu-zstd.o"
@@ -94,7 +129,7 @@ def main() -> int:
         print("basisu probe: compile failed", file=sys.stderr)
         return compile_result.returncode if compile_result.returncode != 0 else 1
 
-    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha), str(normal)],
+    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha), str(normal), str(hdr)],
         capture_output=True, text=True, check=False)
     relay(run)
     if run.returncode != 0 or MARKER not in run.stdout:
@@ -109,7 +144,10 @@ def main() -> int:
     if "basisu normal BC5 transcode:" not in run.stdout:
         print("basisu probe: BC5 did not preserve both normal-map channels", file=sys.stderr)
         return 1
-    print("Basis Universal validated color, cubemap, alpha, and two-channel normal-map fixtures.")
+    if "basisu HDR transcode:" not in run.stdout:
+        print("basisu probe: HDR dynamic range was not verified", file=sys.stderr)
+        return 1
+    print("Basis Universal validated color, cubemap, alpha, normal-map, and HDR fixtures.")
     return 0
 
 
