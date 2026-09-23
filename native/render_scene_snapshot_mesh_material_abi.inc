@@ -15,6 +15,29 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_mesh_material_count(uint64_t m
     return status == ELISA_RENDER_SCENE_OK ? int32_t(mesh->geometry.slot_materials.size()) : status;
 }
 
+// Copies one cooked material-slot name as UTF-8 bytes without a terminator.
+// Names are optional in cooked packages; an unnamed slot succeeds with length 0.
+extern "C" int32_t elisa_render_scene_v1_snapshot_mesh_material_name(
+    uint64_t mesh_high, uint64_t mesh_low, uint32_t slot,
+    uint8_t* name_bytes, uint32_t name_capacity, uint32_t* name_length) {
+    if (name_bytes == nullptr || name_length == nullptr) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const SnapshotMeshAssetSlot* mesh = nullptr;
+    const int32_t status = cooked_mesh_asset(state, mesh_high, mesh_low, mesh);
+    if (status != ELISA_RENDER_SCENE_OK) return status;
+    if (slot >= mesh->geometry.slot_materials.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    static const std::string empty_name;
+    const std::string& name = mesh->geometry.slot_material_names.empty()
+        ? empty_name : mesh->geometry.slot_material_names[slot];
+    *name_length = uint32_t(name.size());
+    if (name.size() > name_capacity) return ELISA_RENDER_SCENE_CAPACITY;
+    if (!name.empty()) std::memcpy(name_bytes, name.data(), name.size());
+    return ELISA_RENDER_SCENE_OK;
+}
+
 // The number of bundle images the cooked slot materials of resident mesh
 // `high:low` sample.
 extern "C" int32_t elisa_render_scene_v1_snapshot_mesh_texture_count(uint64_t mesh_high, uint64_t mesh_low) {

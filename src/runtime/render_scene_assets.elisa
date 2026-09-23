@@ -75,6 +75,11 @@ extend RenderScene:
         extern elisa_render_scene_v1_snapshot_mesh_material_count(mesh_high: u64, mesh_low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_snapshot_mesh_material_name(mesh_high: u64, mesh_low: u64,
+            slot: u32, name_bytes: mutable u8&, name_capacity: u32,
+            name_length: mutable u32&) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_snapshot_mesh_placement_count(
             mesh_high: u64, mesh_low: u64) -> i32
 
@@ -133,7 +138,17 @@ extend RenderScene:
     public:
         # A cooked mesh has at most this many material slots.
         const MAX_SNAPSHOT_MATERIAL_SLOTS: usize = 16
+        const MAX_SNAPSHOT_MATERIAL_NAME_BYTES: usize = 256
         const SNAPSHOT_MESH_PLACEMENT_COMPONENTS: usize = 12
+
+        # UTF-8 bytes for one cooked slot name. `length` excludes any terminator;
+        # zero means the source name is empty or absent.
+        struct SnapshotMeshMaterialName:
+            bytes: u8[RenderScene::MAX_SNAPSHOT_MATERIAL_NAME_BYTES]
+            length: usize
+
+        def SnapshotMeshMaterialName() -> SnapshotMeshMaterialName:
+            SnapshotMeshMaterialName{bytes: zeroed, length: 0}
 
         # One registered material for each material slot of a multi-material
         # mesh, in slot order.
@@ -271,6 +286,19 @@ extend RenderScene:
             if count < 0:
                 try check_status(count)
             count.u32()
+
+        # Copies one cooked material-slot name into bounded UTF-8 storage.
+        # Packages without authored names return an empty byte sequence.
+        def snapshot_mesh_material_name(mesh: Assets::AssetId, slot: u32,
+            name: mutable SnapshotMeshMaterialName&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Assets::asset_id_valid(mesh)
+            bytes: mutable u8[RenderScene::MAX_SNAPSHOT_MATERIAL_NAME_BYTES] = zeroed
+            length: mutable u32 = 0
+            status: i32 = elisa_render_scene_v1_snapshot_mesh_material_name(
+                mesh.high, mesh.low, slot, &bytes[0], RenderScene::MAX_SNAPSHOT_MATERIAL_NAME_BYTES.u32(), &length)
+            if status < 0:
+                try check_status(status)
+            name <- RenderScene::SnapshotMeshMaterialName{bytes: bytes, length: length.usize()}
 
         # The number of source mesh/node placements retained by a resident
         # cooked mesh. A legacy flattened package reports zero.
