@@ -43,7 +43,7 @@ placement group.
   and child, then retries. It verifies both placements, submits a bone and
   morph pose through the animation ABI, checks the child receives the same
   armature and morph weight, and confirms clearing removes the full group.
-- `scripts/test_geometry_subsets.py` passed 95 sanitized loader cases.
+- `scripts/test_geometry_subsets.py` passed 104 sanitized loader cases.
 - `scripts/gltf_hierarchy_self_test.py` passed.
 - `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, and
   `git diff --check` passed.
@@ -51,15 +51,13 @@ placement group.
   maze stages passed on the isolated engine. The maze ran in a sandbox denying
   checkout access; missing, escaping, corrupted, and dependency-invalid bundles
   failed asset registration, and restoring the valid bundle returned exit 0.
-- With animated per-placement upload in `3f83c4b`, the SDL3/Metal native
-  RenderScene smoke passed, including the animated snapshot case. An earlier
-  app teardown stalled in Metal `waitUntilSignaledValue` after the native gate,
-  so the app and packaged-maze stages were rerun after merging; both passed.
-  The packaged maze ran in the checkout-denying sandbox, rejected missing,
-  escaping, corrupted and dependency-invalid bundles, then returned exit 0 when
-  the valid bundle was restored.
+- The full SDL3/Metal native smoke passed, including the animated snapshot case,
+  later overlay-hide readback, and async LOD adoption. The Elisa-owned maze app
+  and packaged-maze stages passed; the package ran in a checkout-denying sandbox,
+  rejected missing, escaping, corrupted and dependency-invalid bundles, then
+  returned exit 0 when the valid bundle was restored.
 
-Multiple skins per scene and transformed non-joint ancestors of joint nodes
-remain unsupported. Skinned mesh-node transforms are retained as metadata and
-ignored by cooked streams as required by glTF. This slice does not claim
-performance measurements.
+Multiple skins per scene and transformed helper ancestors are supported within
+the documented rig bounds. Skinned mesh-node transforms are retained as
+metadata and ignored by cooked streams as required by glTF. This slice does not
+claim performance measurements.
