@@ -311,7 +311,6 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
             total_sample_floats += sample_floats
     return fields
 
-
 def build_cooker(build_dir: Path) -> Path:
     dependency = ROOT / "dependencies/ufbx"
     meshoptimizer = ROOT / "dependencies/meshoptimizer"
@@ -424,7 +423,7 @@ def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = Fa
 
 def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
     max_triangles: int | None = None, mesh_name: str | None = None,
-    report: list[str] | None = None) -> dict[str, str]:
+    report: list[str] | None = None, ignore_material_textures: bool = False) -> dict[str, str]:
     source = source.expanduser().resolve(strict=True)
     if not source.is_file():
         raise ValueError("FBX source must be a regular file")
@@ -444,6 +443,8 @@ def cook_one(cooker: Path, source: Path, asset_path: str, output: Path,
         if not mesh_name or len(mesh_name.encode("utf-8")) > 512 or "\0" in mesh_name or "\n" in mesh_name or "\r" in mesh_name:
             raise ValueError("mesh name must be 1 to 512 UTF-8 bytes without line breaks")
         command.extend(["--mesh-name", mesh_name])
+    if ignore_material_textures:
+        command.append("--ignore-material-textures")
     output_text = run_capture(command)
     if report is not None:
         report.append(output_text)
@@ -457,6 +458,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--output", type=Path, help="destination .pkg or .elpk path")
     parser.add_argument("--max-triangles", type=int, help="simplify output to no more than this many triangles")
     parser.add_argument("--mesh-name", help="select one FBX node or mesh by its exact name")
+    parser.add_argument("--ignore-material-textures", action="store_true",
+        help="ignore FBX image references when the application supplies textures separately")
     parser.add_argument("--dependency", action="append", default=[], metavar="BUNDLE",
         help="name a bundle this .elpk needs, relative to the output's directory")
     parser.add_argument("--self-test", action="store_true", help="cook and validate the synthetic triangle fixture")
@@ -464,7 +467,7 @@ def main(arguments: list[str]) -> int:
     if not options.self_test and (options.source is None or options.asset_path is None or options.output is None):
         parser.error("source, --asset-path, and --output are required unless --self-test is used")
     if options.self_test and (options.source is not None or options.asset_path is not None or options.output is not None or
-            options.max_triangles is not None or options.mesh_name is not None):
+            options.max_triangles is not None or options.mesh_name is not None or options.ignore_material_textures):
         parser.error("--self-test cannot be combined with source, --asset-path, --output, or cooker options")
     if options.max_triangles is not None and not 1 <= options.max_triangles <= 1000000:
         parser.error("--max-triangles must be in [1, 1000000]")
@@ -503,6 +506,20 @@ def main(arguments: list[str]) -> int:
                         struct.unpack("<6I", material_subsets) != (0, 3, 0, 3, 3, 1)):
                     raise ValueError("FBX cooker did not preserve its two polygon material subsets")
                 validate_material_package(material_fields)
+                textured_source = directory / "two-material-mesh-textured.fbx"
+                write_two_material_mesh(textured_source, with_texture_reference=True)
+                try:
+                    cook_one(cooker, textured_source, "self-test/textured-material-mesh.fbx",
+                        directory / "textured-default.pkg")
+                except subprocess.CalledProcessError as failure:
+                    if "FBX material textures are not supported" not in (failure.stderr or ""):
+                        raise
+                else:
+                    raise ValueError("FBX cooker accepted material textures without an explicit policy")
+                ignored_texture_fields = cook_one(cooker, textured_source,
+                    "self-test/textured-material-mesh.fbx", directory / "textured-ignored.pkg",
+                    ignore_material_textures=True)
+                validate_material_package(ignored_texture_fields)
                 try:
                     cook_one(cooker, material_source, "self-test/two-material-mesh.fbx",
                         directory / "under-budget.pkg", max_triangles=1)
@@ -567,7 +584,8 @@ def main(arguments: list[str]) -> int:
                 package_output = options.output
                 geometry_output = directory / "geometry.pkg" if package_output.suffix.lower() == ".elpk" else package_output
                 fields = cook_one(cooker, options.source, options.asset_path, geometry_output,
-                    options.max_triangles, options.mesh_name)
+                    options.max_triangles, options.mesh_name,
+                    ignore_material_textures=options.ignore_material_textures)
                 if package_output.suffix.lower() == ".elpk":
                     write_geometry_package(package_output, geometry_output.read_bytes(),
                         dependencies=options.dependency)

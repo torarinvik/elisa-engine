@@ -21,7 +21,8 @@ namespace elisa::assets {
 // Axis and unit conversion happen in ufbx at the import boundary: output
 // positions use metres in Elisa's right-handed +Y-up frame.
 inline FbxImportResult import_fbx(const std::filesystem::path& path,
-    bool decode_first_mesh = true, const std::string& selected_mesh_name = {}) {
+    bool decode_first_mesh = true, const std::string& selected_mesh_name = {},
+    bool ignore_material_textures = false) {
     FbxImportResult result;
     if (selected_mesh_name.size() > 512 || selected_mesh_name.find('\0') != std::string::npos ||
         selected_mesh_name.find_first_of("\r\n") != std::string::npos) {
@@ -104,7 +105,8 @@ inline FbxImportResult import_fbx(const std::filesystem::path& path,
                 double(clip->time_end) - double(clip->time_begin));
         }
     }
-    if (decode_first_mesh && !detail::extract_primary_mesh(*scene, result, selected_mesh_name)) return result;
+    if (decode_first_mesh && !detail::extract_primary_mesh(
+        *scene, result, selected_mesh_name, ignore_material_textures)) return result;
     result.ok = true;
     return result;
 }

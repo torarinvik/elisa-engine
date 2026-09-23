@@ -33,9 +33,9 @@ def write_two_mesh_scene(path: Path) -> None:
         encoding="ascii")
 
 
-def write_two_material_mesh(path: Path) -> None:
-    """Write two triangles in one mesh with separate polygon material slots."""
-    path.write_text(
+def write_two_material_mesh(path: Path, with_texture_reference: bool = False) -> None:
+    """Write two material slots, optionally with one external image reference."""
+    contents = (
         '; FBX 7.4.0 project file\n'
         'FBXHeaderExtension: { FBXHeaderVersion: 1003 FBXVersion: 7400 }\n'
         'GlobalSettings: { Version: 1000 Properties70: { '
@@ -67,5 +67,21 @@ def write_two_material_mesh(path: Path) -> None:
         'P: "Shininess", "Number", "", "A", 12 } } }\n'
         'Connections: { C: "OO",1101,1102 C: "OO",1102,0 '
         'C: "OO",1103,1102 C: "OO",1104,1102 }\n'
-        'Takes: { Current: "" }\n',
-        encoding="ascii")
+        'Takes: { Current: "" }\n'
+    )
+    if with_texture_reference:
+        contents = contents.replace("Definitions: { Version: 100 Count: 4 ",
+            "Definitions: { Version: 100 Count: 5 ", 1)
+        contents = contents.replace('ObjectType: "Material" { Count: 2 } }',
+            'ObjectType: "Material" { Count: 2 } ObjectType: "Texture" { Count: 1 } }', 1)
+        object_end = contents.index("\nConnections:")
+        objects = contents[:object_end].rstrip()
+        if not objects.endswith("}"):
+            raise ValueError("textured FBX fixture has no object-container terminator")
+        texture = ('Texture: 1105, "Texture::DiffuseColor", "TextureVideoClip" { '
+            'Type: "TextureVideoClip" Version: 202 TextureName: "DiffuseColor" '
+            'FileName: "external.png" RelativeFilename: "external.png" }')
+        contents = objects[:-1] + " " + texture + " }" + contents[object_end:]
+        contents = contents.replace('C: "OO",1103,1102 C: "OO",1104,1102 }',
+            'C: "OO",1103,1102 C: "OO",1104,1102 C: "OP",1105,1103,"DiffuseColor" }', 1)
+    path.write_text(contents, encoding="ascii")

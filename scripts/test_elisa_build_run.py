@@ -226,6 +226,14 @@ class BuildRunCliTests(unittest.TestCase):
             config["asset_cooks"][0]["max_triangles"] = True
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), config)
+            config["asset_cooks"][0]["max_triangles"] = 120000
+            config["asset_cooks"][0]["ignore_material_textures"] = True
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+            self.assertIn("--ignore-material-textures", run.call_args.args[0])
+            config["asset_cooks"][0]["ignore_material_textures"] = "true"
+            with self.assertRaises(runner.BuildConfigurationError):
+                runner.cook_declared_assets(project.resolve(), config)
 
     def test_declared_gltf_cook_uses_runtime_geometry_cooker(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa glTF asset cook ") as temporary_directory:

@@ -157,8 +157,17 @@ def asset_cook_command(project: Path, declaration: object,
             raise BuildConfigurationError(f"asset_cooks[{index}].max_triangles must be an integer in [1, 1000000]")
         if importer == "gltf" and max_triangles is not None:
             raise BuildConfigurationError(f"asset_cooks[{index}] gltf importer does not accept max_triangles")
+        ignore_material_textures = declaration.get("ignore_material_textures", False)
+        if not isinstance(ignore_material_textures, bool):
+            raise BuildConfigurationError(
+                f"asset_cooks[{index}].ignore_material_textures must be a boolean")
+        if ignore_material_textures and importer != "fbx":
+            raise BuildConfigurationError(
+                f"asset_cooks[{index}].ignore_material_textures requires the fbx importer")
         command = [sys.executable, str(cooker), str(source), "--asset-path", asset_path,
             "--output", str(output)]
+        if ignore_material_textures:
+            command.append("--ignore-material-textures")
         if max_triangles is not None:
             command.extend(["--max-triangles", str(max_triangles)])
         animation_source_value = declaration.get("animation_source")

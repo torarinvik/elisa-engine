@@ -55,8 +55,8 @@ inline bool fbx_unit_color(const ufbx_material_map& map, const ufbx_material_map
 }
 
 inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& output,
-    FbxImportResult& result) {
-    if (source.textures.count != 0) {
+    FbxImportResult& result, bool ignore_textures = false) {
+    if (source.textures.count != 0 && !ignore_textures) {
         fail(result, "FBX material textures are not supported by this cooker yet");
         return false;
     }
@@ -114,7 +114,7 @@ inline bool extract_fbx_material(const ufbx_material& source, FbxMaterialData& o
 }
 
 inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
-    const std::string& selected_name) {
+    const std::string& selected_name, bool ignore_textures) {
     ufbx_node* source_node = nullptr;
     for (size_t index = 0; index < scene.nodes.count; ++index) {
         ufbx_node* node = scene.nodes.data[index];
@@ -179,7 +179,7 @@ inline bool extract_primary_mesh(ufbx_scene& scene, FbxImportResult& result,
                 return false;
             }
             FbxMaterialData extracted;
-            if (!extract_fbx_material(*material, extracted, result)) return false;
+            if (!extract_fbx_material(*material, extracted, result, ignore_textures)) return false;
             output.materials.push_back(std::move(extracted));
         }
     }
