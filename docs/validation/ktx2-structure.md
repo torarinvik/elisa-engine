@@ -64,7 +64,12 @@ mappings keep the normal device format-selection path. Nonidentity mappings
 use linear RGBA8, or RGBA16F for HDR, then remap each decoded mip before Wicked
 uploads it. For sRGB color data, the fallback first converts RGB samples to
 linear values and uploads to UNORM; this preserves the texture-sampling result
-when a mapping moves alpha into a color channel. The native fixtures verify
-`ra01` for normal X/Y split across red/alpha and `ar01` for alpha plus sRGB red;
-Metal readback checks the reordered bytes and linearized red value. Other GPU
-backends remain unverified.
+when a mapping moves alpha into a color channel. It also reads standard
+[`KTXorientation` metadata](https://github.khronos.org/KTX-Specification/ktxspec.v2.html#_ktxorientation),
+defaults missing values to `rd`, and flips decoded 2D pixels for leftward S or
+upward T axes to keep Wicked's right/down sampling convention. Cubemaps with
+non-`rd` orientation are rejected because KTX requires that layout. The native
+fixtures verify `ra01` for normal X/Y split across red/alpha and `ar01` for
+alpha plus sRGB red; the latter also requests `ru`, and Metal readback verifies
+the vertical flip and linearized red value. Other GPU backends remain
+unverified.

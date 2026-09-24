@@ -105,7 +105,10 @@ def main() -> int:
         source = Path(workdir) / "normal.png"
         source.write_bytes(cook_assets.write_png(4, 4, normal_pixels))
         color_source = Path(workdir) / "color.png"
-        color_source.write_bytes(cook_assets.write_png(4, 4, bytes((128, 64, 32, 192)) * 16))
+        color_pixels = b"".join(
+            bytes((128, 64, 32, 192) if y < 2 else (160, 96, 48, 128)) * 4
+            for y in range(4))
+        color_source.write_bytes(cook_assets.write_png(4, 4, color_pixels))
         hdr_source = Path(workdir) / "range.hdr"
         write_hdr_fixture(hdr_source)
         normal_result = subprocess.run([
@@ -142,8 +145,9 @@ def main() -> int:
         print("basisu probe: could not cook the sRGB swizzle fixture", file=sys.stderr)
         return color_result.returncode if color_result.returncode != 0 else 1
     try:
-        color_swizzled.write_bytes(with_key_value(
-            color_swizzled.read_bytes(), "KTXswizzle", b"ar01\0"))
+        color_payload = with_key_value(
+            color_swizzled.read_bytes(), "KTXswizzle", b"ar01\0")
+        color_swizzled.write_bytes(with_key_value(color_payload, "KTXorientation", b"ru\0"))
     except ValueError as error:
         print(f"basisu probe: could not tag the sRGB channel swizzle: {error}", file=sys.stderr)
         return 1

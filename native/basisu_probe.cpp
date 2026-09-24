@@ -271,12 +271,18 @@ int main(int argc, char** argv) {
             (*swizzle)[0] == 'a' && (*swizzle)[1] == 'r' && (*swizzle)[2] == '0' &&
             (*swizzle)[3] == '1' && (*swizzle)[4] == 0 && (*swizzle)[5] == 0,
             "KTX2 sRGB channel mapping is explicit")) return 1;
+        const basisu::uint8_vec* orientation = color.find_key("KTXorientation");
+        if (!probe::check(orientation != nullptr && orientation->size() == 4 &&
+            (*orientation)[0] == 'r' && (*orientation)[1] == 'u' &&
+            (*orientation)[2] == 0 && (*orientation)[3] == 0,
+            "KTX2 texture orientation is explicit")) return 1;
         if (!probe::check(color.start_transcoding(), "KTX2 swizzled sRGB starts transcoding")) return 1;
         uint8_t rgba[4 * 4 * 4] = {};
         if (!probe::check(color.transcode_image_level(0, 0, 0, rgba, 4 * 4,
             basist::transcoder_texture_format::cTFRGBA32, 0, 4, 4),
             "KTX2 swizzled sRGB transcodes to RGBA")) return 1;
-        if (!probe::check(rgba[0] >= 115 && rgba[0] <= 145 && rgba[3] >= 175 && rgba[3] <= 210,
+        if (!probe::check(rgba[0] >= 115 && rgba[0] <= 145 && rgba[3] >= 175 && rgba[3] <= 210 &&
+            rgba[4 * 4 * 3] >= 150 && rgba[4 * 4 * 3] <= 175,
             "KTX2 source retains authored encoded red and alpha")) return 1;
         std::fprintf(stdout, "basisu swizzled sRGB transcode: encoded=%u alpha=%u\n",
             (unsigned)rgba[0], (unsigned)rgba[3]);

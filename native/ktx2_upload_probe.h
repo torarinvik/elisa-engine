@@ -159,6 +159,11 @@ inline bool check_ktx2_swizzled_srgb_upload(const std::filesystem::path& path) {
     if (!check(transcoder.init(encoded.data(), static_cast<uint32_t>(encoded.size())) &&
         transcoder.is_srgb() && transcoder.get_has_alpha() != 0,
         "KTX2 swizzled sRGB fixture has encoded color and alpha")) return false;
+    const basisu::uint8_vec* orientation = transcoder.find_key("KTXorientation");
+    if (!check(orientation != nullptr && orientation->size() == 4 &&
+        (*orientation)[0] == 'r' && (*orientation)[1] == 'u' &&
+        (*orientation)[2] == 0 && (*orientation)[3] == 0,
+        "KTX2 fixture requests a vertical texture-axis flip")) return false;
 
     const wi::Resource resource = load_ktx2_texture_resource(encoded, KTX2TextureUsage::Color);
     if (!check(resource.IsValid() && resource.GetTexture().IsValid() &&
@@ -167,9 +172,9 @@ inline bool check_ktx2_swizzled_srgb_upload(const std::filesystem::path& path) {
     wi::vector<uint8_t> pixels;
     if (!check(wi::helper::saveTextureToMemory(resource.GetTexture(), pixels) &&
         pixels.size() >= 4u * 4u * 4u, "swizzled sRGB texture reads back")) return false;
-    return check(pixels[0] >= 175 && pixels[0] <= 210 &&
-        pixels[1] >= 40 && pixels[1] <= 75 && pixels[2] == 0 && pixels[3] == 255,
-        "swizzled sRGB values match sampled alpha and linear red");
+    return check(pixels[0] >= 110 && pixels[0] <= 145 &&
+        pixels[1] >= 70 && pixels[1] <= 110 && pixels[2] == 0 && pixels[3] == 255,
+        "orientation flip and sRGB swizzle preserve the source sample");
 }
 
 inline bool check_ktx2_cubemap_upload(const std::filesystem::path& path) {
