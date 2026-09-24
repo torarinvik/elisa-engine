@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <mutex>
 
@@ -18,7 +19,7 @@ constexpr uint32_t NO_TARGET = std::numeric_limits<uint32_t>::max();
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3 };
 enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
-enum class Operation : int32_t { ClearColor = 0, CopyColor = 1, ClearDepth = 2 };
+enum class Operation : int32_t { ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3 };
 
 struct Resource {
     uint32_t id = 0;
@@ -71,7 +72,7 @@ public:
     int32_t set_resource(uint32_t index, const Resource& resource) {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!staging_.building || index >= staging_.resource_count ||
-            resource.id == 0 || resource.samples != 1 ||
+            resource.id == 0 || !known_sample_count(resource.samples) ||
             (resource.size_mode != SizeMode::Fixed && resource.size_mode != SizeMode::PrimaryInternal) ||
             (resource.lifetime != Lifetime::Imported && resource.lifetime != Lifetime::Persistent &&
                 resource.lifetime != Lifetime::Transient) ||
@@ -82,11 +83,12 @@ public:
             (resource.size_mode == SizeMode::PrimaryInternal &&
                 (resource.width != 0 || resource.height != 0)) ||
             (resource.lifetime == Lifetime::Imported &&
-                (!resource.initialized || resource.target != NO_TARGET)) ||
+                (!resource.initialized || resource.target != NO_TARGET || resource.samples != 1)) ||
             (resource.lifetime != Lifetime::Imported &&
                 (resource.initialized && resource.lifetime == Lifetime::Transient)) ||
             (resource.format == Format::Depth32 && resource.lifetime == Lifetime::Persistent &&
                 resource.initialized) ||
+            (resource.format == Format::Depth32 && resource.samples != 1) ||
             (resource.lifetime != Lifetime::Imported && resource.target >= MAX_TARGETS)) {
             return INVALID_ARGUMENT;
         }
@@ -103,11 +105,12 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if (!staging_.building || index >= staging_.pass_count || pass.id == 0 ||
             (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
-                pass.operation != Operation::ClearDepth) ||
+                pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
-            (pass.operation == Operation::CopyColor && pass.source_id == 0)) {
+            ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor) &&
+                pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
         for (uint32_t previous = 0; previous < staging_.pass_count; ++previous) {
@@ -155,6 +158,7 @@ public:
         last_status_ = OK;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         depth_clear_count_ = 0;
+        color_resolve_count_ = 0;
         fail_next_allocation_ = false;
         fail_pass_index_ = NO_TARGET;
         suspend_next_frame_ = false;
@@ -192,6 +196,11 @@ public:
     uint64_t depth_clear_count_for_test() const {
         std::lock_guard<std::mutex> guard(mutex_);
         return depth_clear_count_;
+    }
+
+    uint64_t color_resolve_count_for_test() const {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return color_resolve_count_;
     }
 #endif
 
@@ -282,7 +291,28 @@ public:
                     last_status_ = INVALID_ARGUMENT;
                     return;
                 }
-                copy_color(*source, *destination, command_list);
+                if (pass.operation == Operation::CopyColor) {
+                    if (source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    if (!copy_color(*source, *destination, command_list)) {
+                        last_status_ = BACKEND_FAILED;
+                        return;
+                    }
+                } else {
+                    if (source->GetDesc().sample_count <= 1 || destination->GetDesc().sample_count != 1) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    if (!resolve_color(*source, *destination, command_list)) {
+                        last_status_ = BACKEND_FAILED;
+                        return;
+                    }
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+                    ++color_resolve_count_;
+#endif
+                }
             }
         }
         const uint32_t output_index = resource_index(active_, active_.output_id);
@@ -315,6 +345,10 @@ private:
     static bool known_format(Format format) {
         return format == Format::Rgba8 || format == Format::Rgba16Float ||
             format == Format::Depth32 || format == Format::R11G11B10Float;
+    }
+
+    static bool known_sample_count(uint32_t samples) {
+        return samples == 1 || samples == 2 || samples == 4 || samples == 8;
     }
 
     static wi::graphics::Format native_format(Format format) {
@@ -366,7 +400,7 @@ private:
             if (destination == NO_TARGET || config.resources[destination].lifetime == Lifetime::Imported) return false;
             if (pass.operation == Operation::ClearColor && config.resources[destination].format == Format::Depth32) return false;
             if (pass.operation == Operation::ClearDepth && config.resources[destination].format != Format::Depth32) return false;
-            if (pass.operation == Operation::CopyColor) {
+            if (pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor) {
                 const uint32_t source = resource_index(config, pass.source_id);
                 if (source == NO_TARGET || source == destination || !initialized[source]) return false;
                 const Resource& source_desc = config.resources[source];
@@ -374,7 +408,11 @@ private:
                 if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32) return false;
                 if (source_desc.size_mode != destination_desc.size_mode ||
                     source_desc.width != destination_desc.width || source_desc.height != destination_desc.height ||
-                    source_desc.format != destination_desc.format || source_desc.samples != destination_desc.samples) return false;
+                    source_desc.format != destination_desc.format) return false;
+                if (pass.operation == Operation::CopyColor &&
+                    (source_desc.samples != 1 || destination_desc.samples != 1)) return false;
+                if (pass.operation == Operation::ResolveColor &&
+                    (source_desc.samples <= 1 || destination_desc.samples != 1)) return false;
             }
             initialized[destination] = true;
         }
@@ -416,7 +454,7 @@ private:
                 : wi::graphics::BindFlag::RENDER_TARGET | wi::graphics::BindFlag::SHADER_RESOURCE;
             desc.width = resource.size_mode == SizeMode::PrimaryInternal ? width : resource.width;
             desc.height = resource.size_mode == SizeMode::PrimaryInternal ? height : resource.height;
-            desc.sample_count = 1;
+            desc.sample_count = resource.samples;
             desc.layout = depth ? wi::graphics::ResourceState::DEPTHSTENCIL : wi::graphics::ResourceState::SHADER_RESOURCE;
             if (depth) {
                 desc.clear.depth_stencil.depth = 1.0f;
@@ -431,7 +469,7 @@ private:
             const bool created = resource.lifetime == Lifetime::Persistent && resource.initialized
                 ? device->CreateTextureZeroed(&desc, &texture)
                 : device->CreateTexture(&desc, nullptr, &texture);
-            if (!created || !texture.IsValid()) return false;
+            if (!created || !texture.IsValid() || texture.GetDesc().sample_count != resource.samples) return false;
         }
         targets_.swap(candidate);
         internal_width_ = width;
@@ -451,9 +489,10 @@ private:
         return texture->IsValid() ? texture : nullptr;
     }
 
-    static void copy_color(wi::graphics::Texture& source, wi::graphics::Texture& destination,
+    static bool copy_color(wi::graphics::Texture& source, wi::graphics::Texture& destination,
         wi::graphics::CommandList command_list) {
         wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+        if (device == nullptr) return false;
         const wi::graphics::ResourceState source_layout = source.GetDesc().layout;
         const wi::graphics::ResourceState destination_layout = destination.GetDesc().layout;
         device->Barrier(wi::graphics::GPUBarrier::Image(&source, source_layout,
@@ -465,6 +504,21 @@ private:
             wi::graphics::ResourceState::COPY_SRC, source_layout), command_list);
         device->Barrier(wi::graphics::GPUBarrier::Image(&destination,
             wi::graphics::ResourceState::COPY_DST, destination_layout), command_list);
+        return true;
+    }
+
+    static bool resolve_color(wi::graphics::Texture& source, wi::graphics::Texture& destination,
+        wi::graphics::CommandList command_list) {
+        wi::graphics::RenderPassImage images[] = {
+            wi::graphics::RenderPassImage::RenderTarget(&source,
+                wi::graphics::RenderPassImage::LoadOp::LOAD),
+            wi::graphics::RenderPassImage::Resolve(&destination),
+        };
+        wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+        if (device == nullptr) return false;
+        device->RenderPassBegin(images, static_cast<uint32_t>(std::size(images)), command_list);
+        device->RenderPassEnd(command_list);
+        return true;
     }
 
     mutable std::mutex mutex_;
@@ -482,6 +536,7 @@ private:
     bool suspend_next_frame_ = false;
     bool last_fallback_preserved_ = false;
     uint64_t depth_clear_count_ = 0;
+    uint64_t color_resolve_count_ = 0;
 #endif
 };
 

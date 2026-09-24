@@ -28,17 +28,20 @@ if its transient slot would be overwritten by a resource used after the output's
 first access, the runtime gives the output its own slot through composition.
 
 The native executor currently accepts one imported primary scene-color image,
-single-sample color targets in RGBA8, RGBA16F, or Wicked's R11G11B10F main
-format, single-sample D32 depth targets, and fixed or primary-internal extents.
-Its operations are transparent black `ClearColor`, depth-one `ClearDepth`, and
-exact `CopyColor`. A depth target can be cleared and transiently aliased, but
+color targets in RGBA8, RGBA16F, or Wicked's R11G11B10F main format, D32 depth
+targets, and fixed or primary-internal extents. Color sample counts 1, 2, 4,
+and 8 are accepted only when Wicked creates the exact requested count; depth
+targets and imported scene color remain single-sampled. Operations are
+transparent black `ClearColor`, depth-one `ClearDepth`, exact single-sample
+`CopyColor`, and `ResolveColor` from a multisampled color target to a compatible
+single-sample target. A depth target can be cleared and transiently aliased, but
 cannot be sampled or selected for composition. The executor allocates targets
 on the render thread, maps transient resources sharing a planner slot to the
 same Wicked texture, and selects the configured color output as the path's
 postprocess result. Persistent initialized color targets are zeroed at
-allocation; initialized persistent depth targets are rejected.
-Multisampling, multiple imports, arbitrary shader callbacks, and load/store
-variants are rejected by the native boundary.
+allocation; initialized persistent depth targets are rejected. Multiple
+imports, arbitrary shader callbacks, and load/store variants are rejected by
+the native boundary.
 
 The SDL3/Metal native smoke builds a two-pass graph: clear transient resource 2,
 then copy imported scene color to resource 3. The planner proves that the two
@@ -53,8 +56,10 @@ execution count unchanged, and recover on the next frame. Existing rendered
 image comparisons still pass. Target allocation is repeated when internal
 resolution changes. A test-only zero-resolution injection checks suspended
 status, unchanged execution count, retained fallback, and recovery on the next
-frame. A third graph clears a transient D32 target between color passes and
-checks native execution plus the retained scene output. The native test also
+frame. A third graph clears a transient D32 target and a four-sample color
+target, resolves the color target, and confirms the resolved output stays
+black. A later pass deliberately shares its planner slot, so this also checks
+that the selected resolve output remains live through composition. The native test also
 injects SDL3 minimized/restored events through the
 application queue: minimize returns the host's suspended status without
 advancing the frame or graph, keeps the last rendered output, and restore runs
