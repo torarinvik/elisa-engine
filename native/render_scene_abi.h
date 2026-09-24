@@ -79,6 +79,13 @@ int32_t elisa_render_scene_v1_update_camera(
 int32_t elisa_render_scene_v1_activate_camera(int64_t handle);
 int32_t elisa_render_scene_v1_activate_default_camera(void);
 int32_t elisa_render_scene_v1_destroy_camera(int64_t handle);
+// Render a secondary camera into the pixel rectangle and composite it over
+// the primary view. Rectangles use framebuffer pixels and update intervals
+// are in seconds.
+int32_t elisa_render_scene_v1_set_camera_viewport(
+    int64_t handle, int32_t x, int32_t y, int32_t width, int32_t height,
+    float update_interval);
+int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle);
 int64_t elisa_render_scene_v1_create(
     int32_t primitive,
     float px, float py, float pz,

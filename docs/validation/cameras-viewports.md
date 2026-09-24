@@ -17,8 +17,17 @@ extend beyond the framebuffer are rejected. `Camera::bounds_visible` also tests
 a world-space AABB against the transformed perspective or orthographic frustum;
 it builds a conservative camera-space box so camera rotation and nonuniform
 scale cannot cull visible geometry. The portable test covers near/far and
-side-plane cases. Render-to-texture and multi-camera render scheduling remain
-native R03 work.
+side-plane cases. `RenderScene::set_camera_viewport` configures a secondary
+camera to render through Wicked's existing per-camera render-to-texture pass
+and composites its image into a checked framebuffer-pixel rectangle over the
+primary view. The viewport dimensions also set that camera's render resolution
+and aspect ratio; a bounded update interval can throttle it. Clearing the
+viewport releases the target and stops composition. The SDL3/Metal smoke
+rejects a rectangle extending beyond the framebuffer, then renders and
+composites a valid right-half view and verifies the target and composition
+count before checking that cleanup stops composition. A viewport camera cannot
+become the full-screen active camera until its viewport is cleared; clearing
+restores the camera's saved projection dimensions.
 
 The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
 orthographic camera components, applies a 2x viewport scale, resizes a
@@ -36,5 +45,7 @@ against the transformed bounds of every mesh placement. It leaves the current
 shared mesh untouched while all placements are offscreen, then selects the
 appropriate level on the first visible frame. The native asset smoke verifies
 both the deferred offscreen case and the visible transition. Multiple
-`RenderPath3D` scheduling remains open; Wicked continues to cull scene draws
-through its own visibility path.
+The camera-component pass supplies a lightweight secondary view. Dedicated
+`RenderPath3D` pipelines per camera, with independent full post-processing and
+primary-view layout, remain open; Wicked continues to cull scene draws through
+its own visibility path.

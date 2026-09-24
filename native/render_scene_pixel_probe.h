@@ -331,6 +331,31 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_render_target_matches(
     return live == (expected_live != 0) ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_camera_viewport_matches(
+    int32_t x, int32_t y, int32_t width, int32_t height, int32_t expected_composed_count) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    bool configured = false;
+    for (const RenderCameraSlot& slot : state.cameras) {
+        if (!slot.live || !slot.viewport_enabled || slot.viewport_x != x || slot.viewport_y != y ||
+            slot.viewport_width != width || slot.viewport_height != height) continue;
+        const wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(slot.entity);
+        configured = camera != nullptr && camera->render_to_texture.resolution.x == uint32_t(width) &&
+            camera->render_to_texture.resolution.y == uint32_t(height) &&
+            camera->render_to_texture.rendertarget_render.IsValid();
+        if (configured) break;
+    }
+    return configured && state.camera_viewports_composed == size_t(expected_composed_count) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_camera_viewport_count_matches(int32_t expected_count) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    return state.initialized && on_owner_thread(state) && expected_count >= 0 &&
+        state.camera_viewports_composed == size_t(expected_count) ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_instances_share_mesh(int64_t first, int64_t second) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

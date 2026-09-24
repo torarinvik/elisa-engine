@@ -3,6 +3,7 @@
 #include "wiHelper.h"
 #include "wiApplication.h"
 #include "wiGraphics.h"
+#include "wiImage.h"
 #include "wiJobSystem.h"
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
@@ -77,6 +78,10 @@ struct RenderLightSlot {
 struct RenderCameraSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
+    int32_t viewport_x = 0, viewport_y = 0;
+    int32_t viewport_width = 0, viewport_height = 0;
+    int32_t camera_width = 0, camera_height = 0;
+    bool viewport_enabled = false;
     bool live = false;
 };
 struct OverlayTextMeasureCacheEntry {
@@ -128,6 +133,7 @@ struct RenderSceneService {
     SnapshotAssetRequests snapshot_asset_requests;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
+    size_t camera_viewports_composed = 0;
     uint64_t snapshot_test_transaction_api_calls = 0;
     uint64_t snapshot_test_last_transaction_api_calls = 0;
 #endif
@@ -343,6 +349,7 @@ void reset_unlocked(RenderSceneService& state) {
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     state.snapshot_test_transaction_api_calls = 0;
     state.snapshot_test_last_transaction_api_calls = 0;
+    state.camera_viewports_composed = 0;
 #endif
     state.snapshot_rows = {};
     state.snapshot_retire_handles = {};

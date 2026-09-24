@@ -34,6 +34,11 @@
         @callconv(c)
         extern elisa_render_scene_v1_destroy_camera(handle: i64) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_camera_viewport(handle: i64, x: i32, y: i32,
+            width: i32, height: i32, update_interval: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_camera_viewport(handle: i64) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_create(primitive: i32, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32,
             red: f32, green: f32, blue: f32, alpha: f32) -> i64
