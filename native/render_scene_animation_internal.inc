@@ -1,5 +1,9 @@
 // Private implementation fragment: internal animation sampling and pose submission.
 void clear_animation_state(InstanceSlot& instance) {
+    instance.displayed_joint_pose.clear();
+    instance.interrupted_joint_pose.clear();
+    instance.displayed_morph_pose.clear();
+    instance.interrupted_morph_pose.clear();
     instance.animation_clip = -1;
     instance.previous_animation_clip = -1;
     instance.animation_time = 0.0f;
@@ -11,6 +15,21 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.blend_eased = false;
     instance.animation_loop = true;
     instance.previous_animation_loop = true;
+}
+
+// Capture the actual displayed mixture before replacing its destination.
+// A zero-duration request remains an explicit cut. Otherwise do not shorten
+// an unfinished recovery just because the next destination has a short fade.
+float preserve_interrupted_pose(InstanceSlot& instance, float requested_seconds) {
+    const float remaining = instance.blend_duration - instance.blend_elapsed;
+    if (requested_seconds > 0.0f && remaining > 0.0f) {
+        instance.interrupted_joint_pose = instance.displayed_joint_pose;
+        instance.interrupted_morph_pose = instance.displayed_morph_pose;
+        return std::max(requested_seconds, remaining);
+    }
+    instance.interrupted_joint_pose.clear();
+    instance.interrupted_morph_pose.clear();
+    return requested_seconds;
 }
 
 int32_t find_animation_clip(const InstanceSlot& instance, const char* requested_name) {
@@ -122,6 +141,7 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
         // Smoothstep removes the velocity jump at both ends of a linear fade.
         if (instance.blend_eased) blend = blend * blend * (3.0f - 2.0f * blend);
     }
+    instance.displayed_joint_pose.resize(instance.joint_entities.size() * 10);
     for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
         float current[10]{};
         float previous[10]{};
@@ -129,12 +149,17 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
         sample_animation_pose(instance, instance.animation_clip, instance.animation_time,
             instance.animation_loop, joint_index, current);
         if (blend < 1.0f) {
-            sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
-                instance.previous_animation_loop, joint_index, previous);
+            if (instance.interrupted_joint_pose.size() == instance.joint_entities.size() * 10) {
+                std::copy_n(instance.interrupted_joint_pose.data() + joint_index * 10, 10, previous);
+            } else {
+                sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
+                    instance.previous_animation_loop, joint_index, previous);
+            }
             interpolate_transform(previous, current, blend, pose);
         } else {
             std::copy(std::begin(current), std::end(current), pose);
         }
+        std::copy_n(pose, 10, instance.displayed_joint_pose.data() + joint_index * 10);
         wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
         if (transform == nullptr) return false;
         if (instance.skin_joints[joint_index].parent_index < 0) {
@@ -160,6 +185,7 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     const bool has_morph_tracks = std::any_of(instance.animation_clips.begin(), instance.animation_clips.end(),
         [](const auto& clip) { return !clip.morph_weights.empty(); });
     if (morph_count > 0 && has_morph_tracks) {
+        instance.displayed_morph_pose.resize(placement_count * morph_count);
         for (size_t placement = 0; placement < placement_count; ++placement) {
             const wi::ecs::Entity entity = placement == 0 ? instance.entity : children[placement - 1];
             wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(entity);
@@ -169,12 +195,15 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
                     instance.animation_time, instance.animation_loop, placement, target, placement_count, morph_count);
                 float weight = current;
                 if (blend < 1.0f) {
-                    const float previous = sample_animation_morph_weight(instance, instance.previous_animation_clip,
+                    const float previous = instance.interrupted_morph_pose.size() == placement_count * morph_count
+                        ? instance.interrupted_morph_pose[placement * morph_count + target]
+                        : sample_animation_morph_weight(instance, instance.previous_animation_clip,
                         instance.previous_animation_time, instance.previous_animation_loop, placement, target,
                         placement_count, morph_count);
                     weight = previous + (current - previous) * blend;
                 }
                 if (!std::isfinite(weight)) return false;
+                instance.displayed_morph_pose[placement * morph_count + target] = weight;
                 mesh->morph_targets[target].weight = weight;
             }
         }
