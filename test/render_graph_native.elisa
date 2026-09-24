@@ -5,6 +5,8 @@ include "../src/runtime/render_scene.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
+    const RETIREMENT_TARGET_DIMENSION: u32 = 1024
+    const RETIREMENT_MIN_BYTES: u64 = 8 * 1024 * 1024
 
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_fail_next_allocation() -> i32
@@ -22,6 +24,12 @@ module RenderGraphNativeTests:
     extern elisa_render_scene_v1_render_graph_test_depth_clear_count() -> u64
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_color_resolve_count() -> u64
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_device_memory_usage() -> u64
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_retirement_frame_count() -> u32
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_wait_for_gpu() -> i32
 
     def primary_color(id: u32, lifetime: RenderGraph::Lifetime,
             initialized: bool) -> RenderGraph::ResourceDescriptor:
@@ -212,6 +220,99 @@ module RenderGraphNativeTests:
         result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
         return 80 if result != RenderGraphRuntime::CONFIGURE_OK
         0
+
+    def configure_retirement_graph() -> i32:
+        graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+        _ = catch RenderGraph::add_resource(&graph, primary_color(1,
+                RenderGraph::Lifetime.Imported, true)):
+            ok: 0
+            error failure: return 91
+        _ = catch RenderGraph::add_resource(&graph, RenderGraph::ResourceDescriptor{
+                id: 2,
+                size_mode: RenderGraph::SizeMode.Fixed,
+                width: RETIREMENT_TARGET_DIMENSION,
+                height: RETIREMENT_TARGET_DIMENSION,
+                format: RenderGraph::Format.Rgba16Float,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Transient,
+                initialized: false,
+            }):
+            ok: 0
+            error failure: return 92
+        _ = catch RenderGraph::add_resource(&graph, RenderGraph::ResourceDescriptor{
+                id: 3,
+                size_mode: RenderGraph::SizeMode.Fixed,
+                width: RETIREMENT_TARGET_DIMENSION,
+                height: RETIREMENT_TARGET_DIMENSION,
+                format: RenderGraph::Format.Rgba16Float,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Transient,
+                initialized: false,
+            }):
+            ok: 0
+            error failure: return 93
+        _ = catch RenderGraph::add_resource(&graph, primary_color(4,
+                RenderGraph::Lifetime.Transient, false)):
+            ok: 0
+            error failure: return 94
+        _ = catch RenderGraph::add_pass(&graph, 10):
+            ok: 0
+            error failure: return 95
+        _ = catch RenderGraph::add_pass(&graph, 20):
+            ok: 0
+            error failure: return 96
+        _ = catch RenderGraph::add_pass(&graph, 30):
+            ok: 0
+            error failure: return 97
+        _ = catch RenderGraph::write(&graph, 10, 2):
+            ok: 0
+            error failure: return 98
+        _ = catch RenderGraph::read(&graph, 20, 2):
+            ok: 0
+            error failure: return 99
+        _ = catch RenderGraph::write(&graph, 20, 3):
+            ok: 0
+            error failure: return 100
+        _ = catch RenderGraph::read(&graph, 30, 1):
+            ok: 0
+            error failure: return 101
+        _ = catch RenderGraph::write(&graph, 30, 4):
+            ok: 0
+            error failure: return 102
+        _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+            ok: 0
+            error failure: return 103
+        _ = catch RenderGraph::add_dependency(&graph, 20, 30):
+            ok: 0
+            error failure: return 104
+        plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+            value: value
+            error failure: return 105
+        return 106 if plan.transient_slot_count != 3
+        configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+        configuration.output_resource_id <- 4
+        configuration.operation_count <- 3
+        configuration.operations[0] <- RenderGraphRuntime::PassOperation{
+            pass_id: 10,
+            kind: RenderGraphRuntime::OperationKind.ClearColor,
+            source_resource_id: 0,
+            destination_resource_id: 2,
+        }
+        configuration.operations[1] <- RenderGraphRuntime::PassOperation{
+            pass_id: 20,
+            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 2,
+            destination_resource_id: 3,
+        }
+        configuration.operations[2] <- RenderGraphRuntime::PassOperation{
+            pass_id: 30,
+            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 1,
+            destination_resource_id: 4,
+        }
+        result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
+        return 107 if result != RenderGraphRuntime::CONFIGURE_OK
+        0
     public:
         def exercise() -> i32:
             return 1 if configure_clear_copy_graph(3) != SUCCESS
@@ -296,4 +397,24 @@ module RenderGraphNativeTests:
             for attempt in 0..<2:
                 return 18 if Application::pump() != Application::PumpStatus.Running
             return 19 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() < before_restore
+            retirement_setup: i32 = configure_retirement_graph()
+            return 200 + retirement_setup if retirement_setup != 0
+            memory_before: u64 = elisa_render_scene_v1_render_graph_test_device_memory_usage()
+            return 201 if Application::pump() != Application::PumpStatus.Running
+            return 202 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+            memory_first: u64 = elisa_render_scene_v1_render_graph_test_device_memory_usage()
+            return 203 if memory_first < memory_before + RETIREMENT_MIN_BYTES
+            retirement_reconfigure: i32 = configure_retirement_graph()
+            return 204 + retirement_reconfigure if retirement_reconfigure != 0
+            return 205 if Application::pump() != Application::PumpStatus.Running
+            memory_pending: u64 = elisa_render_scene_v1_render_graph_test_device_memory_usage()
+            return 206 if memory_pending < memory_first + RETIREMENT_MIN_BYTES
+            retirement_frames: u32 = elisa_render_scene_v1_render_graph_test_retirement_frame_count()
+            for attempt in 0..<retirement_frames:
+                return 207 if Application::pump() != Application::PumpStatus.Running
+            return 208 if elisa_render_scene_v1_render_graph_test_wait_for_gpu() != 1
+            memory_retired: u64 = elisa_render_scene_v1_render_graph_test_device_memory_usage()
+            return 209 if memory_pending <= memory_retired or memory_pending - memory_retired < RETIREMENT_MIN_BYTES
+            return 210 if configure_clear_copy_graph(3) != SUCCESS
+            return 211 if Application::pump() != Application::PumpStatus.Running
             0

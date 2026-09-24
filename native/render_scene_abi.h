@@ -371,6 +371,9 @@ uint64_t elisa_render_scene_v1_render_graph_execution_count(void);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(void);
 uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(void);
+uint64_t elisa_render_scene_v1_render_graph_test_device_memory_usage(void);
+uint32_t elisa_render_scene_v1_render_graph_test_retirement_frame_count(void);
+int32_t elisa_render_scene_v1_render_graph_test_wait_for_gpu(void);
 #endif
 int64_t elisa_render_scene_v1_create_light(
     int32_t kind,
