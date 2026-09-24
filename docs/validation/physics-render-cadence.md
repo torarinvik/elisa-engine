@@ -10,10 +10,13 @@ wall-clock time. It checks that each run ends on committed tick 60, that the
 body has settled onto the floor, and that every `Application::pump()` leaves
 the managed tick and body pose unchanged.
 
-Both final frames are saved from Wicked's SDL3/Metal backbuffer and compared
-byte for byte. On the validated macOS host, both are 640x480 RGBA PNGs and are
-identical. The smoke stores them at:
+Frames at physics ticks 30 and 60 are saved from Wicked's SDL3/Metal backbuffer
+and compared byte for byte between the 30 Hz and 120 Hz presentation runs. On
+the validated macOS host, both pairs are 640x480 RGBA PNGs and are identical.
+The smoke stores them at:
 
+- `build/validation/physics-render-cadence/physics-30hz-mid.png`
+- `build/validation/physics-render-cadence/physics-120hz-mid.png`
 - `build/validation/physics-render-cadence/physics-30hz.png`
 - `build/validation/physics-render-cadence/physics-120hz.png`
 
@@ -24,7 +27,7 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scri
 ```
 
 The full application smoke passed, including the existing lifecycle and failure
-cleanup clients plus the new two-cadence Jolt/Wicked client. This is native
-SDL3/Metal evidence for macOS. It checks equal-duration final rendered output
-and render-owned stepping, but does not yet prove pixel equivalence at every
-intermediate frame or the clock-to-hierarchy path used by a full game session.
+cleanup clients plus the two-cadence Jolt/Wicked client. This is native
+SDL3/Metal evidence for macOS. It checks matching midpoint and final renders
+at equal physics ticks, plus render-owned stepping. It does not compare every
+intermediate frame or exercise the full game-session clock-to-hierarchy path.

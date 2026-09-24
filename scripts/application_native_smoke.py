@@ -42,7 +42,9 @@ def main() -> int:
         ]
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
-        for capture_name in ("physics-30hz.png", "physics-120hz.png"):
+        for capture_name in (
+                "physics-30hz.png", "physics-120hz.png",
+                "physics-30hz-mid.png", "physics-120hz-mid.png"):
             (physics_captures / capture_name).unlink(missing_ok=True)
         native_test = project / "user-data-native-test"
         native_command = [
@@ -76,6 +78,8 @@ def main() -> int:
             environment["ELISA_SMOKE_SCREENSHOT_PATH"] = str(screenshot)
             environment["ELISA_PHYSICS_30HZ_CAPTURE_PATH"] = str(physics_captures / "physics-30hz.png")
             environment["ELISA_PHYSICS_120HZ_CAPTURE_PATH"] = str(physics_captures / "physics-120hz.png")
+            environment["ELISA_PHYSICS_30HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-30hz-mid.png")
+            environment["ELISA_PHYSICS_120HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-120hz-mid.png")
             status = subprocess.run(command, env=environment, check=False).returncode
             if status == 0 and name == "application-native-smoke":
                 header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
@@ -83,25 +87,31 @@ def main() -> int:
                     print("Native application smoke did not write a PNG screenshot.", file=sys.stderr)
                     return 1
             if status == 0 and name == "physics-render-capture-smoke":
-                captures = [physics_captures / "physics-30hz.png",
-                    physics_captures / "physics-120hz.png"]
-                image_data = []
-                image_sizes = []
-                for cadence_path in captures:
-                    data = cadence_path.read_bytes() if cadence_path.exists() else b""
-                    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
-                        print(f"Physics render cadence smoke did not write a valid {cadence_path.name} PNG.", file=sys.stderr)
+                capture_pairs = (
+                    ("midpoint", physics_captures / "physics-30hz-mid.png",
+                        physics_captures / "physics-120hz-mid.png"),
+                    ("final", physics_captures / "physics-30hz.png",
+                        physics_captures / "physics-120hz.png"),
+                )
+                for label, thirty_path, one_twenty_path in capture_pairs:
+                    image_data = []
+                    image_sizes = []
+                    for cadence_path in (thirty_path, one_twenty_path):
+                        data = cadence_path.read_bytes() if cadence_path.exists() else b""
+                        if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                            print(f"Physics render cadence smoke did not write a valid {cadence_path.name} PNG.", file=sys.stderr)
+                            return 1
+                        image_sizes.append((int.from_bytes(data[16:20], "big"),
+                            int.from_bytes(data[20:24], "big")))
+                        image_data.append(data)
+                    if (image_sizes[0][0] <= 0 or image_sizes[0][1] <= 0 or
+                            image_sizes[0] != image_sizes[1]):
+                        print(f"Physics {label} captures have invalid or mismatched dimensions.", file=sys.stderr)
                         return 1
-                    image_sizes.append((int.from_bytes(data[16:20], "big"),
-                        int.from_bytes(data[20:24], "big")))
-                    image_data.append(data)
-                if image_sizes[0][0] <= 0 or image_sizes[0][1] <= 0 or image_sizes[0] != image_sizes[1]:
-                    print("Physics cadence captures have invalid or mismatched dimensions.", file=sys.stderr)
-                    return 1
-                if image_data[0] != image_data[1]:
-                    print("30 Hz and 120 Hz physics-to-Wicked captures differ.", file=sys.stderr)
-                    return 1
-                print(f"Physics-to-Wicked captures match exactly at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
+                    if image_data[0] != image_data[1]:
+                        print(f"30 Hz and 120 Hz physics-to-Wicked {label} captures differ.", file=sys.stderr)
+                        return 1
+                    print(f"Physics-to-Wicked {label} captures match exactly at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
             if status != 0:
                 print(f"Native application smoke {name} failed with status {status}.", file=sys.stderr)
                 return status
