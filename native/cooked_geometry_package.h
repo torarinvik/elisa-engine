@@ -259,7 +259,7 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
                 sizeof(suffix) - 1, suffix) == 0) {
             if (section.first != "positions_meshopt_b64" && section.first != "normals_meshopt_b64" &&
                 section.first != "uvs_meshopt_b64" && section.first != "tangents_meshopt_b64" &&
-                section.first != "indices_meshopt_b64") {
+                section.first != "uv1s_meshopt_b64" && section.first != "indices_meshopt_b64") {
                 error = "unsupported meshoptimizer cooked geometry stream";
                 return false;
             }

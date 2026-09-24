@@ -72,11 +72,11 @@ def self_test() -> int:
                 sections.get("index_stride") != "4"):
             print("glTF cooker self-test failed: runtime streams are incomplete", file=sys.stderr)
             return 1
-        compressed_fields = [name for name in ("positions", "normals", "uvs", "tangents", "indices")
+        compressed_fields = [name for name in ("positions", "normals", "uvs", "tangents", "uv1s", "indices")
             if f"{name}_meshopt_b64" in sections]
         if (bool(compressed_fields) != (sections.get("meshopt_codec") == "meshoptimizer-v1.2") or
                 any(f"{name}_b64" in sections and f"{name}_meshopt_b64" in sections
-                    for name in ("positions", "normals", "uvs", "tangents", "indices"))):
+                    for name in ("positions", "normals", "uvs", "tangents", "uv1s", "indices"))):
             print("glTF cooker self-test failed: compressed stream fields are inconsistent", file=sys.stderr)
             return 1
         document = cook_assets.read_gltf(source.read_bytes())

@@ -57,6 +57,9 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     if geometry["tangents"]:
         raw_streams.append(("tangents", VERTEX_STREAM, geometry["vertex_count"], 16,
             geometry["tangents"]))
+    if geometry["uv1s"]:
+        raw_streams.append(("uv1s", VERTEX_STREAM, geometry["vertex_count"], 8,
+            geometry["uv1s"]))
     encoded_streams = encode_streams(raw_streams)
     compressed_streams = {}
     for name, _kind, _count, _stride, raw in raw_streams:
@@ -98,7 +101,6 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
             lines += ["uv1_generator_revision=f700c7790aaa030e794b52ba7791a05c085faf0c",
                 f"uv1_resolution={metadata['resolution']}", f"uv1_padding={metadata['padding']}",
                 f"uv1_chart_count={metadata['chart_count']}"]
-        lines.append("uv1s_b64=" + base64.b64encode(geometry["uv1s"]).decode("ascii"))
     package_bytes = ("\n".join(lines) + "\n").encode("utf-8")
     if len(package_bytes) > 64 * 1024 * 1024:
         raise ValueError("cooked geometry package exceeds the 64 MiB runtime limit")

@@ -7,8 +7,10 @@ import json
 from pathlib import Path
 import struct
 
+import cook_assets
 import cook_gltf_geometry
 import gltf_skin_self_test
+from cook_gltf_meshopt_streams import VERTEX_STREAM, encode_streams
 
 
 def cases(directory: Path, panel_source: Path, panel_materials: list, panel_subsets: list,
@@ -18,6 +20,12 @@ def cases(directory: Path, panel_source: Path, panel_materials: list, panel_subs
         panel_source, "test/fixtures/multi_material_panel.gltf", directory / "uv1.pkg",
         generate_lightmap_uv=True, lightmap_resolution=128, lightmap_padding=4)
     atlas_sections = dict(line.split("=", 1) for line in atlas_path.read_text(encoding="ascii").splitlines())
+    if "uv1s_meshopt_b64" not in atlas_sections or "uv1s_b64" in atlas_sections:
+        raise RuntimeError("generated UV1 fixture did not select its smaller lossless encoding")
+    atlas_document = cook_assets.read_gltf(panel_source.read_bytes())
+    atlas_stream_geometry = cook_gltf_geometry.normalized_geometry(atlas_document,
+        cook_assets.source_bytes(panel_source.parent, atlas_document), generate_lightmap_uv=True,
+        lightmap_resolution=128, lightmap_padding=4)
     authored_metadata = {"uv1_generator_revision", "uv1_resolution", "uv1_padding", "uv1_chart_count"}
     authored_lines = []
     for line in atlas_path.read_text(encoding="ascii").splitlines():
@@ -49,6 +57,23 @@ def cases(directory: Path, panel_source: Path, panel_materials: list, panel_subs
             lines.append(prefix + value)
         return ("\n".join(lines) + "\n").encode("ascii")
 
+    def invalid_encoded_atlas() -> bytes:
+        invalid_uvs = struct.pack("<2f", 1.5, 0.5) + atlas_stream_geometry["uv1s"][8:]
+        vertex_count = atlas_stream_geometry["vertex_count"]
+        encoded = encode_streams([("uv1s", VERTEX_STREAM, vertex_count, 8,
+            invalid_uvs)])
+        lines = [line for line in atlas_path.read_text(encoding="ascii").splitlines()
+            if line.partition("=")[0] not in ("uv1s_b64", "uv1s_meshopt_b64")]
+        if not any(line.startswith("meshopt_codec=") for line in lines):
+            lines.append("meshopt_codec=meshoptimizer-v1.2")
+        lines.append("uv1s_meshopt_b64=" + base64.b64encode(encoded["uv1s"]).decode("ascii"))
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    def atlas_without_uv1_data() -> bytes:
+        lines = [line for line in atlas_path.read_text(encoding="ascii").splitlines()
+            if line.partition("=")[0] not in ("uv1s_b64", "uv1s_meshopt_b64")]
+        return ("\n".join(lines) + "\n").encode("ascii")
+
     return [
         ("accept", atlas_path.name, None, (18, 2, panel_subsets, panel_materials,
             "uv1", atlas_geometry["positions"], "xatlas", 128, 4,
@@ -60,7 +85,7 @@ def cases(directory: Path, panel_source: Path, panel_materials: list, panel_subs
             "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES,
             "uv1", skinned_geometry["positions"], "xatlas", 128, 4,
             int(skinned_sections["uv1_chart_count"]))),
-        ("reject", "uv1-no-data.pkg", mutate_atlas_field("uv1s_b64", None),
+        ("reject", "uv1-no-data.pkg", atlas_without_uv1_data(),
             "incomplete cooked geometry UV1 stream"),
         ("reject", "uv1-stride.pkg", mutate_atlas_field("uv1_stride", "16"),
             "invalid cooked geometry UV1 stream"),
@@ -68,8 +93,8 @@ def cases(directory: Path, panel_source: Path, panel_materials: list, panel_subs
             "unknown cooked geometry UV1 source"),
         ("reject", "uv1-revision.pkg", mutate_atlas_field("uv1_generator_revision", "unknown"),
             "invalid cooked geometry UV1 atlas metadata"),
-        ("reject", "uv1-atlas-range.pkg", mutate_atlas_field("uv1s_b64",
-            base64.b64encode(struct.pack("<2f", 1.5, 0.5) +
-                base64.b64decode(atlas_sections["uv1s_b64"])[8:]).decode("ascii")),
+        ("reject", "uv1-atlas-range.pkg", invalid_encoded_atlas(),
             "cooked geometry UV1 atlas coordinates are outside [0, 1]"),
+        ("reject", "uv1-corrupt-encoded.pkg", mutate_atlas_field("uv1s_meshopt_b64", "AA=="),
+            "invalid cooked geometry UV1 stream"),
     ]
