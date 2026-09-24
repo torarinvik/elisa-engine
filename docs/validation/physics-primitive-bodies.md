@@ -30,9 +30,11 @@ set/get, impulse response, and the not-ready state.
 
 `test/physics_primitives_probe.elisa` verifies invalid dimensions, falling
 sphere/capsule/zero-cylinder bodies, two bodies sharing one sphere shape,
-in-use shape destruction rejection, final release, and stale-handle rejection.
-The application probe verifies velocity and impulse behavior; the session probe
-exercises the public service routes.
+in-use shape destruction rejection, final release, stale-handle rejection, and
+native body-table exhaustion after filling all 64 slots. The host then shuts
+down the saturated world, creates a fresh world, and successfully creates and
+destroys another body. The application probe verifies velocity and impulse
+behavior; the session probe exercises the public service routes.
 
 Validation on 2026-09-24:
 
