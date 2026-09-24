@@ -106,6 +106,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_set_sun_shadows(enabled: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_sun_shadow_bias(receiver_depth_bias: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_sun_cascade_distances(near_end: f32,
             middle_end: f32, far_end: f32) -> i32
         @callconv(c)

@@ -10,6 +10,8 @@ module RenderSceneEnvironmentNativeTests:
         extern elisa_render_scene_v1_test_sun_cascade_distances_match(
             near_end: f32, middle_end: f32, far_end: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_test_sun_shadow_bias_matches(expected_bias: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_test_sky_map_matches(
             width: u32, height: u32, rotation_radians: f32) -> i32
         @callconv(c)
@@ -63,6 +65,16 @@ module RenderSceneEnvironmentNativeTests:
                 error failure: 1
             return 49 if (cascade_status != 0 or
                 elisa_render_scene_v1_test_sun_cascade_distances_match(10.0, 100.0, 400.0) != 1)
+            invalid_shadow_bias: i32 = catch RenderScene::set_sun_shadow_bias(0.02):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 57 if invalid_shadow_bias != 1
+            shadow_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(0.001):
+                ok: 0
+                error failure: 1
+            return 58 if (shadow_bias_status != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(0.001) != 1)
             invalid_sky_path: i32 = catch RenderScene::set_sky_map("../outside.png", 0.5):
                 ok: 0
                 RenderScene::RenderSceneError.AssetLoadFailure: 1

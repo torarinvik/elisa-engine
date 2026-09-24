@@ -329,6 +329,10 @@ module RenderScene:
                 scale_u, scale_v, offset_u, offset_v))
         def set_sun_shadows(enabled: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_sun_shadows(1 if enabled else 0))
+        # Positive reverse-Z receiver bias reduces shadow acne; negative
+        # values tighten contact but can reintroduce self-shadowing.
+        def set_sun_shadow_bias(receiver_depth_bias: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_sun_shadow_bias(receiver_depth_bias))
         # Cascade ends are world-space distances from the active camera and
         # must increase while remaining inside its far clip plane.
         def set_sun_cascade_distances(near_end: f32, middle_end: f32,

@@ -38,6 +38,11 @@ checks decreasing splits, splits past the camera range, and a valid 10/100/400
 distance configuration against the active primary camera's 1,000-unit far
 plane.
 
-Shadow raster bias remains open: Wicked bakes the current bias into cached
-render-pass pipelines, so runtime control requires an upstream pipeline
-variant and rebuild path rather than changing a light field.
+`RenderScene::set_sun_shadow_bias` configures a per-sun receiver comparison
+offset in normalized reverse-Z depth, bounded to `[-0.01, 0.01]`. Wicked packs
+it into directional-light shader data and applies it to the depth comparison,
+so it takes effect at runtime without rebuilding pipelines. Positive values
+reduce acne and can increase light leaks; zero preserves the existing
+hard-coded rasterizer bias. Rasterizer constant/slope bias remains at Wicked's
+format-specific defaults because those values are baked into cached pipelines.
+The native gate checks range rejection and the packed value used by the shader.

@@ -105,6 +105,19 @@ extern "C" int32_t elisa_render_scene_v1_test_sun_cascade_distances_match(
         close(sun->cascade_distances[2], far_end) ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_sun_shadow_bias_matches(float expected_bias) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun == nullptr || sun->type != wi::scene::LightComponent::DIRECTIONAL ||
+        std::fabs(sun->shadow_bias - expected_bias) >= 0.000001f) return 0;
+    ShaderEntity shader_entity = {};
+    shader_entity.SetShadowBias(sun->shadow_bias);
+    const float encoded_bias = XMConvertHalfToFloat(uint16_t(shader_entity.remap & 0xFFFFu));
+    return std::fabs(encoded_bias - expected_bias) < 0.0001f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_sky_map_matches(
     uint32_t width, uint32_t height, float rotation_radians) {
     RenderSceneService& state = service();
