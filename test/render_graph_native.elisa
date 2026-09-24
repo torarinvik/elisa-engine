@@ -18,6 +18,8 @@ module RenderGraphNativeTests:
     extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
     @callconv(c)
     extern elisa_application_v1_test_set_minimized(minimized: i32) -> i32
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_depth_clear_count() -> u64
 
     def primary_color(id: u32, lifetime: RenderGraph::Lifetime,
             initialized: bool) -> RenderGraph::ResourceDescriptor:
@@ -32,67 +34,153 @@ module RenderGraphNativeTests:
             initialized: initialized,
         }
 
-    public:
-        def configure_clear_copy_graph(output_id: u32) -> i32:
-            graph: mutable RenderGraph::Graph = RenderGraph::Graph()
-            _ = catch RenderGraph::add_resource(&graph, primary_color(1,
-                    RenderGraph::Lifetime.Imported, true)):
-                ok: 0
-                error failure: return 1
-            _ = catch RenderGraph::add_resource(&graph, primary_color(2,
-                    RenderGraph::Lifetime.Transient, false)):
-                ok: 0
-                error failure: return 2
-            _ = catch RenderGraph::add_resource(&graph, primary_color(3,
-                    RenderGraph::Lifetime.Transient, false)):
-                ok: 0
-                error failure: return 3
-            _ = catch RenderGraph::add_pass(&graph, 10):
-                ok: 0
-                error failure: return 4
-            _ = catch RenderGraph::add_pass(&graph, 20):
-                ok: 0
-                error failure: return 5
-            _ = catch RenderGraph::write(&graph, 10, 2):
-                ok: 0
-                error failure: return 6
-            _ = catch RenderGraph::read(&graph, 20, 1):
-                ok: 0
-                error failure: return 7
-            _ = catch RenderGraph::write(&graph, 20, 3):
-                ok: 0
-                error failure: return 8
-            _ = catch RenderGraph::add_dependency(&graph, 10, 20):
-                ok: 0
-                error failure: return 9
-            plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
-                value: value
-                error failure: return 10
-            return 11 if plan.transient_slot_count != 1 or plan.alias_slots[1] != plan.alias_slots[2]
-            configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
-            configuration.output_resource_id <- output_id
-            configuration.operation_count <- 2
-            configuration.operations[0] <- RenderGraphRuntime::PassOperation{
-                pass_id: 10,
-                kind: RenderGraphRuntime::OperationKind.ClearColor,
-                source_resource_id: 0,
-                destination_resource_id: 2,
-            }
-            configuration.operations[1] <- RenderGraphRuntime::PassOperation{
-                pass_id: 20,
-                kind: RenderGraphRuntime::OperationKind.CopyColor,
-                source_resource_id: 1,
-                destination_resource_id: 3,
-            }
-            invalid_configuration: mutable RenderGraphRuntime::Configuration = configuration
-            invalid_configuration.operations[1].source_resource_id <- 3
-            invalid_status: i32 = RenderGraphRuntime::configure(graph, plan,
-                invalid_configuration)
-            return 12 if invalid_status != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
-            result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
-            return 13 if result != RenderGraphRuntime::CONFIGURE_OK
-            0
+    def configure_clear_copy_graph(output_id: u32) -> i32:
+        graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+        _ = catch RenderGraph::add_resource(&graph, primary_color(1,
+                RenderGraph::Lifetime.Imported, true)):
+            ok: 0
+            error failure: return 1
+        _ = catch RenderGraph::add_resource(&graph, primary_color(2,
+                RenderGraph::Lifetime.Transient, false)):
+            ok: 0
+            error failure: return 2
+        _ = catch RenderGraph::add_resource(&graph, primary_color(3,
+                RenderGraph::Lifetime.Transient, false)):
+            ok: 0
+            error failure: return 3
+        _ = catch RenderGraph::add_pass(&graph, 10):
+            ok: 0
+            error failure: return 4
+        _ = catch RenderGraph::add_pass(&graph, 20):
+            ok: 0
+            error failure: return 5
+        _ = catch RenderGraph::write(&graph, 10, 2):
+            ok: 0
+            error failure: return 6
+        _ = catch RenderGraph::read(&graph, 20, 1):
+            ok: 0
+            error failure: return 7
+        _ = catch RenderGraph::write(&graph, 20, 3):
+            ok: 0
+            error failure: return 8
+        _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+            ok: 0
+            error failure: return 9
+        plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+            value: value
+            error failure: return 10
+        return 11 if plan.transient_slot_count != 1 or plan.alias_slots[1] != plan.alias_slots[2]
+        configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+        configuration.output_resource_id <- output_id
+        configuration.operation_count <- 2
+        configuration.operations[0] <- RenderGraphRuntime::PassOperation{
+            pass_id: 10,
+            kind: RenderGraphRuntime::OperationKind.ClearColor,
+            source_resource_id: 0,
+            destination_resource_id: 2,
+        }
+        configuration.operations[1] <- RenderGraphRuntime::PassOperation{
+            pass_id: 20,
+            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 1,
+            destination_resource_id: 3,
+        }
+        invalid_configuration: mutable RenderGraphRuntime::Configuration = configuration
+        invalid_configuration.operations[1].source_resource_id <- 3
+        invalid_status: i32 = RenderGraphRuntime::configure(graph, plan,
+            invalid_configuration)
+        return 12 if invalid_status != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
+        return 13 if result != RenderGraphRuntime::CONFIGURE_OK
+        0
 
+    def configure_depth_graph() -> i32:
+        graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+        _ = catch RenderGraph::add_resource(&graph, primary_color(1,
+                RenderGraph::Lifetime.Imported, true)):
+            ok: 0
+            error failure: return 61
+        _ = catch RenderGraph::add_resource(&graph, RenderGraph::ResourceDescriptor{
+                id: 2,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: RenderGraph::Format.Depth32,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Transient,
+                initialized: false,
+            }):
+            ok: 0
+            error failure: return 62
+        _ = catch RenderGraph::add_resource(&graph, primary_color(3,
+                RenderGraph::Lifetime.Transient, false)):
+            ok: 0
+            error failure: return 63
+        _ = catch RenderGraph::add_resource(&graph, primary_color(4,
+                RenderGraph::Lifetime.Transient, false)):
+            ok: 0
+            error failure: return 64
+        _ = catch RenderGraph::add_pass(&graph, 10):
+            ok: 0
+            error failure: return 65
+        _ = catch RenderGraph::add_pass(&graph, 20):
+            ok: 0
+            error failure: return 66
+        _ = catch RenderGraph::add_pass(&graph, 30):
+            ok: 0
+            error failure: return 67
+        _ = catch RenderGraph::write(&graph, 10, 2):
+            ok: 0
+            error failure: return 68
+        _ = catch RenderGraph::write(&graph, 20, 3):
+            ok: 0
+            error failure: return 69
+        _ = catch RenderGraph::read(&graph, 30, 1):
+            ok: 0
+            error failure: return 70
+        _ = catch RenderGraph::write(&graph, 30, 4):
+            ok: 0
+            error failure: return 71
+        _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+            ok: 0
+            error failure: return 72
+        _ = catch RenderGraph::add_dependency(&graph, 20, 30):
+            ok: 0
+            error failure: return 73
+        plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+            value: value
+            error failure: return 74
+        return 75 if plan.transient_slot_count != 2 or plan.alias_slots[2] != plan.alias_slots[3]
+        configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+        configuration.output_resource_id <- 4
+        configuration.operation_count <- 3
+        configuration.operations[0] <- RenderGraphRuntime::PassOperation{
+            pass_id: 10,
+            kind: RenderGraphRuntime::OperationKind.ClearDepth,
+            source_resource_id: 0,
+            destination_resource_id: 2,
+        }
+        configuration.operations[1] <- RenderGraphRuntime::PassOperation{
+            pass_id: 20,
+            kind: RenderGraphRuntime::OperationKind.ClearColor,
+            source_resource_id: 0,
+            destination_resource_id: 3,
+        }
+        configuration.operations[2] <- RenderGraphRuntime::PassOperation{
+            pass_id: 30,
+            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 1,
+            destination_resource_id: 4,
+        }
+        invalid_depth_configuration: mutable RenderGraphRuntime::Configuration = configuration
+        invalid_depth_configuration.operations[1].kind <- RenderGraphRuntime::OperationKind.ClearDepth
+        invalid_depth_status: i32 = RenderGraphRuntime::configure(graph, plan,
+            invalid_depth_configuration)
+        return 76 if invalid_depth_status != RenderGraphRuntime::CONFIGURE_NATIVE_REJECTED
+        result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
+        return 77 if result != RenderGraphRuntime::CONFIGURE_OK
+        0
+    public:
         def exercise() -> i32:
             return 1 if configure_clear_copy_graph(3) != SUCCESS
             for attempt in 0..<2:
@@ -122,6 +210,12 @@ module RenderGraphNativeTests:
             return 58 if not Application::saw_restore(restored_info) or Application::is_minimized(restored_info) or Application::is_suspended(restored_info)
             return 59 if Application::frame_count() != before_platform_suspend_frames + 1 or RenderGraphRuntime::execution_count() <= before_platform_suspend_graph_frames
             return 60 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+            depth_clears_before: u64 = elisa_render_scene_v1_render_graph_test_depth_clear_count()
+            depth_graph_status: i32 = configure_depth_graph()
+            return 81 + depth_graph_status if depth_graph_status != 0
+            return 78 if Application::pump() != Application::PumpStatus.Running
+            return 79 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_render_graph_test_depth_clear_count() != depth_clears_before + 1
+            return 80 if elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             clear_output_status: i32 = configure_clear_copy_graph(2)
             return 43 if clear_output_status != SUCCESS
             return 44 if Application::pump() != Application::PumpStatus.Running

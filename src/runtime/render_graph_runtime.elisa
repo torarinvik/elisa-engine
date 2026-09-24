@@ -41,7 +41,9 @@ module RenderGraphRuntime:
         def native_bool(value: bool) -> i32:
             1 if value else 0
         def native_operation(kind: OperationKind) -> i32:
-            0 if kind == OperationKind.ClearColor else 1
+            return 0 if kind == OperationKind.ClearColor
+            return 1 if kind == OperationKind.CopyColor
+            2
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             for index in 0..<plan.resource_count:
@@ -50,11 +52,13 @@ module RenderGraphRuntime:
                     index, &descriptor)
                 declared: RenderGraph::ResourceAccess = RenderGraph::access_if_known(graph, operation.pass_id, descriptor.id)
                 expected: mutable RenderGraph::ResourceAccess = RenderGraph::ResourceAccess.None
-                if operation.kind == OperationKind.ClearColor:
+                if operation.kind == OperationKind.ClearColor or operation.kind == OperationKind.ClearDepth:
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                else:
+                elif operation.kind == OperationKind.CopyColor:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
+                else:
+                    return false
                 return false if declared != expected
             true
         def prepare_output_plan(graph: RenderGraph::Graph&,
@@ -102,6 +106,7 @@ module RenderGraphRuntime:
         enum OperationKind:
             ClearColor
             CopyColor
+            ClearDepth
         struct PassOperation:
             pass_id: u32
             kind: OperationKind

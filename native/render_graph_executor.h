@@ -18,7 +18,7 @@ constexpr uint32_t NO_TARGET = std::numeric_limits<uint32_t>::max();
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3 };
 enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
-enum class Operation : int32_t { ClearColor = 0, CopyColor = 1 };
+enum class Operation : int32_t { ClearColor = 0, CopyColor = 1, ClearDepth = 2 };
 
 struct Resource {
     uint32_t id = 0;
@@ -75,7 +75,7 @@ public:
             (resource.size_mode != SizeMode::Fixed && resource.size_mode != SizeMode::PrimaryInternal) ||
             (resource.lifetime != Lifetime::Imported && resource.lifetime != Lifetime::Persistent &&
                 resource.lifetime != Lifetime::Transient) ||
-            !known_format(resource.format) || resource.format == Format::Depth32 ||
+            !known_format(resource.format) ||
             (resource.size_mode == SizeMode::Fixed &&
                 (resource.width == 0 || resource.height == 0 ||
                  resource.width > 16384 || resource.height > 16384)) ||
@@ -85,6 +85,8 @@ public:
                 (!resource.initialized || resource.target != NO_TARGET)) ||
             (resource.lifetime != Lifetime::Imported &&
                 (resource.initialized && resource.lifetime == Lifetime::Transient)) ||
+            (resource.format == Format::Depth32 && resource.lifetime == Lifetime::Persistent &&
+                resource.initialized) ||
             (resource.lifetime != Lifetime::Imported && resource.target >= MAX_TARGETS)) {
             return INVALID_ARGUMENT;
         }
@@ -100,9 +102,11 @@ public:
     int32_t set_pass(uint32_t index, const Pass& pass) {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!staging_.building || index >= staging_.pass_count || pass.id == 0 ||
-            (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor) ||
+            (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
+                pass.operation != Operation::ClearDepth) ||
             pass.destination_id == 0 ||
-            (pass.operation == Operation::ClearColor && pass.source_id != 0) ||
+            ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
+                pass.source_id != 0) ||
             (pass.operation == Operation::CopyColor && pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -150,6 +154,7 @@ public:
         executions_ = 0;
         last_status_ = OK;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+        depth_clear_count_ = 0;
         fail_next_allocation_ = false;
         fail_pass_index_ = NO_TARGET;
         suspend_next_frame_ = false;
@@ -182,6 +187,11 @@ public:
     bool last_fallback_preserved_for_test() const {
         std::lock_guard<std::mutex> guard(mutex_);
         return last_fallback_preserved_;
+    }
+
+    uint64_t depth_clear_count_for_test() const {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return depth_clear_count_;
     }
 #endif
 
@@ -241,15 +251,31 @@ public:
             }
             if (pass.operation == Operation::ClearColor) {
                 wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
-                if (device == nullptr) {
+                if (device == nullptr || destination->GetDesc().format == native_format(Format::Depth32)) {
                     last_status_ = BACKEND_FAILED;
                     return;
                 }
                 device->RenderPassBegin(destination, command_list, true);
                 device->RenderPassEnd(command_list);
+            } else if (pass.operation == Operation::ClearDepth) {
+                wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+                if (device == nullptr || destination->GetDesc().format != native_format(Format::Depth32)) {
+                    last_status_ = BACKEND_FAILED;
+                    return;
+                }
+                const wi::graphics::RenderPassImage depth =
+                    wi::graphics::RenderPassImage::DepthStencil(destination,
+                        wi::graphics::RenderPassImage::LoadOp::CLEAR);
+                device->RenderPassBegin(&depth, 1, command_list);
+                device->RenderPassEnd(command_list);
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+                ++depth_clear_count_;
+#endif
             } else {
                 wi::graphics::Texture* source = texture_for(pass.source_id, imported_index, imported);
                 if (source == nullptr || source == destination ||
+                    source->GetDesc().format == native_format(Format::Depth32) ||
+                    destination->GetDesc().format == native_format(Format::Depth32) ||
                     source->GetDesc().format != destination->GetDesc().format ||
                     source->GetDesc().width != destination->GetDesc().width ||
                     source->GetDesc().height != destination->GetDesc().height) {
@@ -295,6 +321,7 @@ private:
         switch (format) {
         case Format::Rgba8: return wi::graphics::Format::R8G8B8A8_UNORM;
         case Format::Rgba16Float: return wi::graphics::Format::R16G16B16A16_FLOAT;
+        case Format::Depth32: return wi::graphics::Format::D32_FLOAT;
         case Format::R11G11B10Float: return wi::graphics::Format::R11G11B10_FLOAT;
         default: return wi::graphics::Format::UNKNOWN;
         }
@@ -332,16 +359,19 @@ private:
         }
         if (imported_count != 1) return false;
         const uint32_t output_index = resource_index(config, config.output_id);
-        if (output_index == NO_TARGET) return false;
+        if (output_index == NO_TARGET || config.resources[output_index].format == Format::Depth32) return false;
         for (uint32_t index = 0; index < config.pass_count; ++index) {
             const Pass& pass = config.passes[index];
             const uint32_t destination = resource_index(config, pass.destination_id);
             if (destination == NO_TARGET || config.resources[destination].lifetime == Lifetime::Imported) return false;
+            if (pass.operation == Operation::ClearColor && config.resources[destination].format == Format::Depth32) return false;
+            if (pass.operation == Operation::ClearDepth && config.resources[destination].format != Format::Depth32) return false;
             if (pass.operation == Operation::CopyColor) {
                 const uint32_t source = resource_index(config, pass.source_id);
                 if (source == NO_TARGET || source == destination || !initialized[source]) return false;
                 const Resource& source_desc = config.resources[source];
                 const Resource& destination_desc = config.resources[destination];
+                if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32) return false;
                 if (source_desc.size_mode != destination_desc.size_mode ||
                     source_desc.width != destination_desc.width || source_desc.height != destination_desc.height ||
                     source_desc.format != destination_desc.format || source_desc.samples != destination_desc.samples) return false;
@@ -380,15 +410,23 @@ private:
             if (resource.lifetime == Lifetime::Imported || candidate[resource.target].IsValid()) continue;
             wi::graphics::TextureDesc desc;
             desc.format = native_format(resource.format);
-            desc.bind_flags = wi::graphics::BindFlag::RENDER_TARGET | wi::graphics::BindFlag::SHADER_RESOURCE;
+            const bool depth = resource.format == Format::Depth32;
+            desc.bind_flags = depth
+                ? wi::graphics::BindFlag::DEPTH_STENCIL | wi::graphics::BindFlag::SHADER_RESOURCE
+                : wi::graphics::BindFlag::RENDER_TARGET | wi::graphics::BindFlag::SHADER_RESOURCE;
             desc.width = resource.size_mode == SizeMode::PrimaryInternal ? width : resource.width;
             desc.height = resource.size_mode == SizeMode::PrimaryInternal ? height : resource.height;
             desc.sample_count = 1;
-            desc.layout = wi::graphics::ResourceState::SHADER_RESOURCE;
-            desc.clear.color[0] = 0.0f;
-            desc.clear.color[1] = 0.0f;
-            desc.clear.color[2] = 0.0f;
-            desc.clear.color[3] = 0.0f;
+            desc.layout = depth ? wi::graphics::ResourceState::DEPTHSTENCIL : wi::graphics::ResourceState::SHADER_RESOURCE;
+            if (depth) {
+                desc.clear.depth_stencil.depth = 1.0f;
+                desc.clear.depth_stencil.stencil = 0;
+            } else {
+                desc.clear.color[0] = 0.0f;
+                desc.clear.color[1] = 0.0f;
+                desc.clear.color[2] = 0.0f;
+                desc.clear.color[3] = 0.0f;
+            }
             wi::graphics::Texture& texture = candidate[resource.target];
             const bool created = resource.lifetime == Lifetime::Persistent && resource.initialized
                 ? device->CreateTextureZeroed(&desc, &texture)
@@ -443,6 +481,7 @@ private:
     uint32_t fail_pass_index_ = NO_TARGET;
     bool suspend_next_frame_ = false;
     bool last_fallback_preserved_ = false;
+    uint64_t depth_clear_count_ = 0;
 #endif
 };
 
