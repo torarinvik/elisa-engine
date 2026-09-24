@@ -13,5 +13,9 @@ foreign handles cannot update another bridge.
 The native gate exercises create, update, mask and blend alpha policy,
 base-color texture-slot binding, validation, foreign-owner rejection, and
 unload. The authored goal material consumes a real Basis/KTX2 GPU resource
-(with the KTX1 upload retained as a structural probe); authored glTF material
-import remains follow-up R04 work.
+(with the KTX1 upload retained as a structural probe). Authored glTF material
+factors and base-color, normal, metallic-roughness, emissive and occlusion
+images are cooked into mesh bundles, registered against Wicked materials,
+and rendered by the SDL3/Metal smoke. See
+[`cooked-material-textures.md`](cooked-material-textures.md) and
+[`gltf-mikktspace.md`](gltf-mikktspace.md) for the fixture and tangent evidence.

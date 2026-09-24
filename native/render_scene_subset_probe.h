@@ -82,6 +82,32 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_subset_count(int64_t rend
     return mesh == nullptr ? -1 : int32_t(mesh->subsets.size());
 }
 
+// 1 when authored cooker tangents reached Wicked as finite, normalized,
+// normal-orthogonal frames with the expected Elisa-to-Wicked X reflection.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_tangent_frames(
+    int64_t render_id, uint32_t expected_vertex_count) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id);
+    if (mesh == nullptr || expected_vertex_count == 0 ||
+        mesh->vertex_positions.size() != expected_vertex_count ||
+        mesh->vertex_normals.size() != expected_vertex_count ||
+        mesh->vertex_tangents.size() != expected_vertex_count) return 0;
+    constexpr float FRAME_TOLERANCE = 0.002f;
+    for (size_t vertex = 0; vertex < expected_vertex_count; ++vertex) {
+        const XMFLOAT3& normal = mesh->vertex_normals[vertex];
+        const XMFLOAT4& tangent = mesh->vertex_tangents[vertex];
+        const float length = std::sqrt(tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z);
+        const float dot = normal.x * tangent.x + normal.y * tangent.y + normal.z * tangent.z;
+        if (!std::isfinite(length) || !std::isfinite(dot) || !std::isfinite(tangent.w) ||
+            std::abs(length - 1.0f) > FRAME_TOLERANCE || std::abs(dot) > FRAME_TOLERANCE ||
+            std::abs(std::abs(tangent.w) - 1.0f) > FRAME_TOLERANCE) return 0;
+    }
+    const XMFLOAT4& first = mesh->vertex_tangents.front();
+    return first.x < -0.99f && std::abs(first.y) < FRAME_TOLERANCE &&
+        std::abs(first.z) < FRAME_TOLERANCE ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_placement_subset_count(
     int64_t render_id, uint32_t placement_index) {
     RenderSceneService& state = service();

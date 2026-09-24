@@ -15,6 +15,11 @@ cooking, and retain vertex-aligned runtime streams when tangent seams split.
   two sides of a mirrored seam, stable remapped positions/normals/UVs, and
   matching morph deltas for duplicated vertices. The skinned fixture verifies
   that seam-split vertices retain their exact joint indices and weights.
+- The SDL3/Metal render-scene smoke now checks the textured panel's 16 cooked
+  tangent frames after snapshot upload into Wicked. Every frame is finite,
+  normalized, orthogonal to its uploaded normal, and has a valid handedness;
+  the first known +X Elisa tangent arrives as -X in Wicked space. The same
+  scene renders its authored cutout, lit, and emissive material strips.
 - `/opt/homebrew/bin/python3 scripts/check_dependency_manifest.py` passed;
   MikkTSpace is pinned and remains outside the runtime link. The glTF helper
   builds only for offline cooking and caches the binary against source hashes
@@ -26,4 +31,4 @@ Authored glTF tangents retain their existing transform-and-handedness path.
 Generated tangent splits remap positions, normals, UVs, morph deltas, and skin
 influences together; cooked vertex limits are checked after splitting. For
 lightmap UV generation, see [`gltf-lightmap-uv.md`](gltf-lightmap-uv.md).
-Mirrored-normal-map render captures remain open.
+An image reference dedicated to a mirrored normal map remains open.
