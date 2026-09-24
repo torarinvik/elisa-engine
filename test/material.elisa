@@ -28,6 +28,8 @@ def main() -> i32:
         shadow_resolution: 1024,
         rectangle_width: 0.0,
         rectangle_height: 0.0,
+        volumetrics_enabled: false,
+        volumetric_boost: 0.0,
     }
     return 9 if not Lighting::light_valid(light)
     light.range <- 0.0
@@ -63,6 +65,9 @@ def main() -> i32:
     return 21 if Lighting::light_valid(rectangle)
     rectangle.rectangle_width <- 1000001.0
     return 22 if Lighting::light_valid(rectangle)
+    rectangle.rectangle_width <- 3.0
+    rectangle.volumetric_boost <- 9.0
+    return 23 if Lighting::light_valid(rectangle)
     environment: Lighting::Environment = Lighting::Environment{
         sun_color: Geometry::Vec3{x: 1.0, y: 0.95, z: 0.8},
         sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},

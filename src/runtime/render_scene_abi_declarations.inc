@@ -143,14 +143,16 @@
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
             intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
             casts_shadow: i32, shadow_resolution: i32,
-            rectangle_width: f32, rectangle_height: f32) -> i64
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i64
         @callconv(c)
         extern elisa_render_scene_v1_update_light(handle: i64, kind: i32,
             red: f32, green: f32, blue: f32,
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
             intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
             casts_shadow: i32, shadow_resolution: i32,
-            rectangle_width: f32, rectangle_height: f32) -> i32
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_destroy_light(handle: i64) -> i32
         @callconv(c)

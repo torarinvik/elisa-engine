@@ -12,7 +12,8 @@ module RenderSceneLightingNativeTests:
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
             intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
             casts_shadow: i32, shadow_resolution: i32,
-            rectangle_width: f32, rectangle_height: f32) -> i32
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_light_count() -> i32
 
@@ -30,7 +31,8 @@ module RenderSceneLightingNativeTests:
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
                 1 if light.casts_shadow else 0, light.shadow_resolution,
-                light.rectangle_width, light.rectangle_height) == 1
+                light.rectangle_width, light.rectangle_height,
+                1 if light.volumetrics_enabled else 0, light.volumetric_boost) == 1
 
     public:
         def exercise() -> i32:
@@ -47,6 +49,8 @@ module RenderSceneLightingNativeTests:
                 shadow_resolution: 0,
                 rectangle_width: 0.0,
                 rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
             }):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
@@ -66,6 +70,8 @@ module RenderSceneLightingNativeTests:
                 shadow_resolution: 512,
                 rectangle_width: 0.0,
                 rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
             }
             point_handle: RenderScene::LightHandle = catch RenderScene::create_light(point):
                 value: value
@@ -80,6 +86,8 @@ module RenderSceneLightingNativeTests:
             moved.range <- 18.0
             moved.casts_shadow <- false
             moved.shadow_resolution <- 256
+            moved.volumetrics_enabled <- true
+            moved.volumetric_boost <- 1.5
             _ = catch RenderScene::update_light(point_handle, moved):
                 ok: 0
                 error failure: return 124
@@ -98,6 +106,8 @@ module RenderSceneLightingNativeTests:
                 shadow_resolution: 0,
                 rectangle_width: 0.0,
                 rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
             }
             spot_handle: RenderScene::LightHandle = catch RenderScene::create_light(spot):
                 value: value
@@ -118,6 +128,8 @@ module RenderSceneLightingNativeTests:
                 shadow_resolution: 256,
                 rectangle_width: 3.0,
                 rectangle_height: 1.5,
+                volumetrics_enabled: true,
+                volumetric_boost: 2.0,
             }
             area_handle: RenderScene::LightHandle = catch RenderScene::create_light(area):
                 value: value
@@ -128,6 +140,7 @@ module RenderSceneLightingNativeTests:
             area_moved.rectangle_width <- 4.0
             area_moved.rectangle_height <- 2.0
             area_moved.shadow_resolution <- 128
+            area_moved.volumetric_boost <- 3.0
             _ = catch RenderScene::update_light(area_handle, area_moved):
                 ok: 0
                 error failure: return 135

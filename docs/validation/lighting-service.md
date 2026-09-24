@@ -41,6 +41,10 @@ Rectangular area lights carry positive width and height in world units, orient
 their local −Z emission axis, and map those dimensions into Wicked's rectangle
 light component. The SDL3/Metal smoke creates and updates one, checking its live
 dimensions and the transformed emission axis.
+Each light can also enable Wicked's volumetric scattering pass and set a
+per-light contribution boost from 0 through 8. The portable descriptor test
+rejects values outside that range; the native smoke verifies the enable flag
+and boost after both create and update.
 
 `RenderScene::set_sky_map` loads a project-relative color asset into Wicked's
 static sky path, accepting equirectangular images with a 2:1 aspect ratio or

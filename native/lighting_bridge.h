@@ -28,6 +28,8 @@ struct NativeLightDesc {
     int32_t shadow_resolution = 0;
     float rectangle_width = 0.0f;
     float rectangle_height = 0.0f;
+    bool volumetrics_enabled = false;
+    float volumetric_boost = 0.0f;
 };
 
 struct NativeEnvironmentDesc {
@@ -60,6 +62,7 @@ public:
     static constexpr int32_t MIN_SHADOW_RESOLUTION = 16;
     static constexpr int32_t MAX_SHADOW_RESOLUTION = 2048;
     static constexpr float MAX_RECTANGLE_DIMENSION = 1000000.0f;
+    static constexpr float MAX_VOLUMETRIC_BOOST = 8.0f;
 
     explicit LightingBridge(wi::scene::Scene& scene)
         : scene_(scene), owner_(reinterpret_cast<uintptr_t>(this)) {}
@@ -121,6 +124,8 @@ public:
             close(light->length, desc.kind == NativeLightKind::Rectangle ? desc.rectangle_width : 0.0f) &&
             close(light->height, desc.kind == NativeLightKind::Rectangle ? desc.rectangle_height : 0.0f) &&
             light->IsCastingShadow() == desc.cast_shadow &&
+            light->IsVolumetricsEnabled() == desc.volumetrics_enabled &&
+            close(light->volumetric_boost, desc.volumetric_boost) &&
             light->forced_shadow_resolution == (desc.shadow_resolution == 0 ? -1 : desc.shadow_resolution);
     }
 
@@ -229,7 +234,8 @@ private:
             std::isfinite(desc.intensity) && desc.intensity >= 0.0f &&
             std::isfinite(desc.range) && desc.range > 0.0f && std::isfinite(desc.outer_cone) &&
             std::isfinite(desc.inner_cone) && valid_spot_cone && valid_shadow_resolution(desc.shadow_resolution) &&
-            valid_rectangle_size;
+            valid_rectangle_size && std::isfinite(desc.volumetric_boost) && desc.volumetric_boost >= 0.0f &&
+            desc.volumetric_boost <= MAX_VOLUMETRIC_BOOST;
     }
 
     static bool valid_shadow_resolution(int32_t resolution) {
@@ -294,6 +300,8 @@ private:
         light->SetType(light_type(desc.kind));
         light->SetCastShadow(desc.cast_shadow);
         light->forced_shadow_resolution = desc.shadow_resolution == 0 ? -1 : desc.shadow_resolution;
+        light->SetVolumetricsEnabled(desc.volumetrics_enabled);
+        light->volumetric_boost = desc.volumetric_boost;
     }
 
     uint32_t free_light() const { for (uint32_t i = 0; i < MAX_LIGHTS; ++i) if (!lights_[i].live) return i; return MAX_LIGHTS; }

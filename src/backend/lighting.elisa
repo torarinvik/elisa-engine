@@ -10,6 +10,7 @@ module Lighting:
             MIN_SHADOW_RESOLUTION: i32 = 16
             MAX_SHADOW_RESOLUTION: i32 = 2048
             MAX_AREA_LIGHT_DIMENSION: f32 = 1000000.0
+            MAX_VOLUMETRIC_BOOST: f32 = 8.0
 
         def finite(value: f32) -> bool:
             value == value and value >= -Limits::MAX_FINITE_PARAMETER and value <= Limits::MAX_FINITE_PARAMETER
@@ -43,6 +44,9 @@ module Lighting:
             # Rectangle lights require positive dimensions; other kinds require both values to be zero.
             rectangle_width: f32
             rectangle_height: f32
+            volumetrics_enabled: bool
+            # Scales this light's contribution to the volumetric fog pass.
+            volumetric_boost: f32
 
         struct Environment:
             sun_color: Geometry::Vec3
@@ -65,6 +69,7 @@ module Lighting:
             return false if light.rectangle_width < 0.0 or light.rectangle_height < 0.0 or light.rectangle_width > Limits::MAX_AREA_LIGHT_DIMENSION or light.rectangle_height > Limits::MAX_AREA_LIGHT_DIMENSION
             return false if light.kind == LightKind.Rectangle and (light.rectangle_width <= 0.0 or light.rectangle_height <= 0.0)
             return false if light.kind != LightKind.Rectangle and (light.rectangle_width != 0.0 or light.rectangle_height != 0.0)
+            return false if not finite(light.volumetric_boost) or light.volumetric_boost < 0.0 or light.volumetric_boost > Limits::MAX_VOLUMETRIC_BOOST
             true
 
         def environment_valid(environment: Environment) -> bool:
