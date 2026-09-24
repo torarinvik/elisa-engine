@@ -145,7 +145,7 @@ def main() -> int:
             status = subprocess.run(command, env=environment, check=False).returncode
             if status == 0 and name == "application-native-smoke":
                 header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
-                if header != b"\x89PNG\r\n\x1a\n":
+                if header != PNG_SIGNATURE:
                     print("Native application smoke did not write a PNG screenshot.", file=sys.stderr)
                     return 1
             if status == 0 and name == "physics-render-capture-smoke":
@@ -156,7 +156,8 @@ def main() -> int:
                         physics_captures / "physics-120hz.png"),
                 )
                 for label, thirty_path, one_twenty_path in capture_pairs:
-                    image_pixels = []
+                    image_data = []
+                    image_bytes = []
                     image_sizes = []
                     for cadence_path in (thirty_path, one_twenty_path):
                         data = cadence_path.read_bytes() if cadence_path.exists() else b""
@@ -171,13 +172,17 @@ def main() -> int:
                             print(f"Physics cadence capture {cadence_path.name} is visually empty.", file=sys.stderr)
                             return 1
                         image_sizes.append((width, height))
-                        image_pixels.append(pixels)
+                        image_data.append(pixels)
+                        image_bytes.append(data)
                     if (image_sizes[0][0] <= 0 or image_sizes[0][1] <= 0 or
                             image_sizes[0] != image_sizes[1]):
                         print(f"Physics {label} captures have invalid or mismatched dimensions.", file=sys.stderr)
                         return 1
-                    if image_pixels[0] != image_pixels[1]:
-                        print(f"30 Hz and 120 Hz physics-to-Wicked {label} captures differ.", file=sys.stderr)
+                    if image_bytes[0] != image_bytes[1]:
+                        print(f"30 Hz and 120 Hz physics-to-Wicked {label} PNGs differ byte-for-byte.", file=sys.stderr)
+                        return 1
+                    if image_data[0] != image_data[1]:
+                        print(f"30 Hz and 120 Hz physics-to-Wicked {label} pixels differ.", file=sys.stderr)
                         return 1
                     print(f"Physics-to-Wicked {label} captures match pixel-for-pixel at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
             if status != 0:

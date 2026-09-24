@@ -227,6 +227,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         PhysicsRuntime::PhysicsError.Capacity: 141 + physics_stage
         PhysicsRuntime::PhysicsError.InvalidHandle: 151 + physics_stage
         PhysicsRuntime::PhysicsError.StaleWorld: 161 + physics_stage
+        PhysicsRuntime::PhysicsError.BodyNotReady: 169 + physics_stage
         PhysicsRuntime::PhysicsError.BackendFailure: 171 + physics_stage
         error failure: 118
     return physics_result if physics_result != 0

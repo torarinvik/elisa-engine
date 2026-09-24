@@ -41,7 +41,14 @@ void shutdown_world() {
     state.pending_contact_dropped = 0;
     for (BodySlot& body : state.bodies) {
         body.entity = wi::ecs::INVALID_ENTITY;
+        body.shape_slot = INVALID_SHAPE_SLOT;
+        body.shape_generation = 0;
         body.live = false;
+    }
+    for (ShapeSlot& shape : state.shapes) {
+        shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
+        shape.body_references = 0;
+        shape.live = false;
     }
     state.tick = 0;
     state.initialized = false;
@@ -123,6 +130,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 #endif
 
 #include "physics_create_body_abi.inc"
+#include "physics_reusable_shape_abi.inc"
 #include "physics_body_motion_abi.inc"
 
 extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
@@ -408,8 +416,22 @@ extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
     PhysicsService& state = physics_service();
     BodySlot* body = resolve_body(state, slot, body_generation);
     if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    ShapeSlot* referenced_shape = nullptr;
+    if (body->shape_slot != INVALID_SHAPE_SLOT) {
+        if (body->shape_slot >= MAX_SHAPES) return ELISA_PHYSICS_BACKEND_FAILURE;
+        ShapeSlot& shape = state.shapes[body->shape_slot];
+        if (!shape.live || shape.generation != body->shape_generation || shape.body_references == 0) {
+            return ELISA_PHYSICS_BACKEND_FAILURE;
+        }
+        referenced_shape = &shape;
+    }
     state.scene->Entity_Remove(body->entity);
     body->entity = wi::ecs::INVALID_ENTITY;
+    if (referenced_shape != nullptr) {
+        --referenced_shape->body_references;
+        body->shape_slot = INVALID_SHAPE_SLOT;
+        body->shape_generation = 0;
+    }
     body->live = false;
     return ELISA_PHYSICS_OK;
 }

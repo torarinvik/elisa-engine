@@ -79,6 +79,11 @@ module PhysicsAppProbe:
             raise PhysicsRuntime::PhysicsError.BackendFailure if stale_body_status != 0
             stage <- 18
             initial_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
+            not_ready_velocity: i32 = catch PhysicsRuntime::body_linear_velocity(world, falling):
+                value: 1
+                PhysicsRuntime::PhysicsError.BodyNotReady: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if not_ready_velocity != 0
             try PhysicsAppProbe::render_frames_do_not_step_physics(world, falling, initial_position)
             tick: mutable u64 = 0
             stage <- 7

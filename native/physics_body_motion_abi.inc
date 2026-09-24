@@ -15,7 +15,7 @@ int32_t resolve_dynamic_rigidbody(PhysicsService& state, uint32_t slot,
     result = state.scene->rigidbodies.GetComponent(body->entity);
     if (result == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
     if (result->mass <= 0.0f || result->IsKinematic()) return ELISA_PHYSICS_INVALID_ARGUMENT;
-    if (result->physicsobject == nullptr) return ELISA_PHYSICS_INVALID_STATE;
+    if (result->physicsobject == nullptr) return ELISA_PHYSICS_BODY_NOT_READY;
     return ELISA_PHYSICS_OK;
 }
 

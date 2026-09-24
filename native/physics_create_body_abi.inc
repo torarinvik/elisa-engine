@@ -118,6 +118,9 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         } else if (shape == ELISA_PHYSICS_SHAPE_SPHERE) {
             entity = state.scene->Entity_CreateSphere(body_name, UNIT_SHAPE_RADIUS,
                 CAPSULE_RADIAL_SEGMENTS, CAPSULE_RADIAL_SEGMENTS);
+        } else if (dimension_y == ZERO_DIMENSION) {
+            entity = state.scene->Entity_CreateSphere(body_name, UNIT_SHAPE_RADIUS,
+                CAPSULE_RADIAL_SEGMENTS, CAPSULE_RADIAL_SEGMENTS);
         } else {
             entity = create_capsule_proxy(*state.scene, body_name, dimension_y / dimension_x);
         }
@@ -146,10 +149,16 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         } else if (shape == ELISA_PHYSICS_SHAPE_SPHERE) {
             rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::SPHERE;
             rigidbody.sphere.radius = UNIT_SHAPE_RADIUS;
+        } else if (dimension_y == ZERO_DIMENSION) {
+            // A zero-length capsule is a sphere in Jolt; match its query proxy.
+            rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::SPHERE;
+            rigidbody.sphere.radius = UNIT_SHAPE_RADIUS;
         } else {
             rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::CAPSULE;
             rigidbody.capsule.radius = UNIT_SHAPE_RADIUS;
-            rigidbody.capsule.height = dimension_y / dimension_x;
+            // Wicked interprets capsule.height as the full cylinder length;
+            // Elisa's dimensions.y is its half-height.
+            rigidbody.capsule.height = 2.0f * dimension_y / dimension_x;
         }
         rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
         rigidbody.SetSensor(sensor == SENSOR_ENABLED);

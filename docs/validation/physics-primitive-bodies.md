@@ -1,42 +1,44 @@
-# Typed Jolt primitive bodies
+# Primitive physics bodies and reusable shapes
 
-**Status:** box, sphere, and capsule creation, plus dynamic linear velocity and
-impulse controls, passed the SDL3/Metal native smokes on macOS. P02 remains
-open.
+**Status:** direct box, sphere, and capsule bodies and shared primitive-shape
+handles pass the SDL3/Metal native smoke on macOS. P02 remains open.
 
-`PhysicsRuntime::BodyDesc` now selects `BodyShape.Box`, `BodyShape.Sphere`, or
-`BodyShape.Capsule`. Box `dimensions` are half-extents. Sphere uses `x` as its
+`PhysicsRuntime::BodyDesc` selects `BodyShape.Box`, `BodyShape.Sphere`, or
+`BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its
 radius. Capsule uses `x` as its radius and `y` as the half-height of its
-straight cylindrical section. Sphere and capsule reject nonzero unused fields.
-The existing `elisa_physics_v1_create_box` C entry remains as a compatibility
-wrapper for native clients.
+straight cylindrical section. Unused sphere/capsule dimensions must be zero.
+The ABI keeps Wicked and Jolt types private. Zero-cylinder capsules map to
+spheres because Jolt rejects zero-height capsules. Direct bodies scale unit
+shapes and keep scene-query proxy geometry aligned with their physics shape.
 
-The adapter maps unit Jolt shapes through the transform scale using Wicked's
-actual Jolt integration rules. It builds matching scene-query geometry, primes
-the submitted transform before the first physics update, and keeps native
-Wicked/Jolt types behind the flat ABI. The capsule query mesh is a bounded
-16-segment, 8-step-per-hemisphere proxy.
+For shared primitives, create a world-scoped `ShapeHandle` with
+`PhysicsRuntime::shape_create`, then create bodies using
+`body_create_with_shape` and `BodyInstanceDesc`. `RuntimeServices::Session`
+exposes the corresponding affine service operations. Shapes are generation
+checked; `shape_destroy` reports `PhysicsError.ShapeInUse` while any body uses
+the shape. Destroy the bodies first, then the shape. Shutdown releases all
+native shape resources and invalidates their handles. Each body retains its own
+transform and scene-query proxy while sharing the precomputed Jolt shape.
 
-`test/physics_primitives_probe.elisa` rejects a zero-radius sphere, creates
-falling sphere and capsule bodies, advances nine 30 Hz steps, checks both moved
-under gravity, then destroys them. The standalone application entry is
-`test/physics_primitives_native.elisa`.
+Dynamic bodies expose checked linear-velocity read/write and impulse operations
+through both `PhysicsRuntime` and `RuntimeServices`. Static and kinematic bodies
+reject those operations. Before the first fixed step creates the native body,
+they report `PhysicsError.BodyNotReady`. Velocity components must be finite and
+no larger than 10,000 units/s; impulse components must be finite and no larger
+than 10,000,000 units. The probes verify static-body rejection, velocity
+set/get, impulse response, and the not-ready state.
 
-Dynamic bodies also expose checked linear velocity read/write and impulse
-operations through both `PhysicsRuntime` and the session-routed
-`RuntimeServices` API. Static and kinematic bodies reject these operations;
-the body must have entered the Jolt simulation at least once before velocity
-can be read or changed. Vectors are required to be finite and are bounded to
-10,000 units/s for velocity and 10,000,000 units per impulse component. The
-physics application probe verifies static-body rejection, set/get behavior,
-and an impulse changing velocity. The runtime-services probe exercises the
-same controls through an open session.
+`test/physics_primitives_probe.elisa` verifies invalid dimensions, falling
+sphere/capsule/zero-cylinder bodies, two bodies sharing one sphere shape,
+in-use shape destruction rejection, final release, and stale-handle rejection.
+The application probe verifies velocity and impulse behavior; the session probe
+exercises the public service routes.
 
-Validation:
+Validation on 2026-09-24:
 
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/elisa_build_run.py run --project build/physics-smoke --main "$PWD/test/physics_primitives_native.elisa" --output "$PWD/build/physics-primitives-smoke" --wicked-build ../WickedEngine/build-elisa-sdl3 --native-test-probes` exited 0.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` passed all four native entries: primitive bodies, render cadence, application lifecycle, and failure cleanup. Midpoint and final PNG pairs decode to identical 640x480 RGBA pixels. Artifacts: `build/validation/physics-render-cadence/physics-30hz-mid.png`, `physics-120hz-mid.png`, `physics-30hz.png`, and `physics-120hz.png`.
-- During diagnosis, exit code 185 was traced to the application physics fixture: it required a ground-contact event after eight fixed steps, before the falling box had reached the ground. Starting that test body at y=0.7 gives the contact enough time to occur while it still overlaps the sensor. The full gate now reaches and passes the subsequent silent-audio fallback checks.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` passed all four entries: primitive bodies, render cadence, application lifecycle, and failure cleanup. The 30 Hz and 120 Hz midpoint/final captures match at 640x480.
+- `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-This slice does not add reusable native shape handles, mesh or compound
-cooking, collision layers, or mass-property controls.
+The native registry currently supports reusable box, sphere, and capsule shapes.
+It does not yet support cooked mesh or compound shapes, broadphase layers, or
+custom mass properties.

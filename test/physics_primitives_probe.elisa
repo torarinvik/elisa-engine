@@ -6,6 +6,9 @@ module PhysicsPrimitiveProbe:
         const module Fixture:
             SPHERE_X: f32 = 8.0
             CAPSULE_X: f32 = 11.0
+            ZERO_CAPSULE_X: f32 = 14.0
+            SHARED_SPHERE_A_X: f32 = 18.0
+            SHARED_SPHERE_B_X: f32 = 21.0
             START_HEIGHT: f32 = 4.0
             DROP_THRESHOLD: f32 = 3.8
             SPHERE_RADIUS: f32 = 0.4
@@ -50,6 +53,37 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                 })
+            zero_capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Capsule,
+                    position: Geometry::Vec3{x: Fixture::ZERO_CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                })
+            shared_sphere: PhysicsRuntime::ShapeHandle = try PhysicsRuntime::shape_create(world,
+                PhysicsRuntime::BodyShape.Sphere,
+                Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0})
+            shared_a: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                }, shared_sphere)
+            shared_b: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_B_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                }, shared_sphere)
+            in_use_status: i32 = catch PhysicsRuntime::shape_destroy(world, shared_sphere):
+                value: 1
+                PhysicsRuntime::PhysicsError.ShapeInUse: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if in_use_status != 0
             tick: mutable u64 = 0
             starting_tick: u64 = PhysicsRuntime::committed_tick(world)
             stage <- 3
@@ -62,13 +96,39 @@ module PhysicsPrimitiveProbe:
             stage <- 6
             capsule_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, capsule)
             stage <- 7
-            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_position.y >= Fixture::DROP_THRESHOLD
+            zero_capsule_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, zero_capsule)
             stage <- 8
-            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_position.y >= Fixture::DROP_THRESHOLD
+            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_position.y >= Fixture::DROP_THRESHOLD
             stage <- 9
-            try PhysicsRuntime::body_destroy(world, sphere)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_position.y >= Fixture::DROP_THRESHOLD
             stage <- 10
+            raise PhysicsRuntime::PhysicsError.BackendFailure if zero_capsule_position.y >= Fixture::DROP_THRESHOLD
+            stage <- 11
+            shared_a_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_a)
+            shared_b_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_b)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if shared_a_position.y >= Fixture::DROP_THRESHOLD or shared_b_position.y >= Fixture::DROP_THRESHOLD
+            try PhysicsRuntime::body_destroy(world, sphere)
             try PhysicsRuntime::body_destroy(world, capsule)
+            try PhysicsRuntime::body_destroy(world, zero_capsule)
+            try PhysicsRuntime::body_destroy(world, shared_a)
+            in_use_after_one: i32 = catch PhysicsRuntime::shape_destroy(world, shared_sphere):
+                value: 1
+                PhysicsRuntime::PhysicsError.ShapeInUse: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if in_use_after_one != 0
+            try PhysicsRuntime::body_destroy(world, shared_b)
+            try PhysicsRuntime::shape_destroy(world, shared_sphere)
+            stale_shape_status: i32 = catch PhysicsRuntime::body_create_with_shape(world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                }, shared_sphere):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidHandle: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if stale_shape_status != 0
 
         def run(world: mutable PhysicsRuntime::World&,
             stage: mutable i32&) -> i32:
@@ -80,5 +140,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::PhysicsError.Capacity: 141 + stage
                 PhysicsRuntime::PhysicsError.InvalidHandle: 151 + stage
                 PhysicsRuntime::PhysicsError.StaleWorld: 161 + stage
+                PhysicsRuntime::PhysicsError.ShapeInUse: 166 + stage
+                PhysicsRuntime::PhysicsError.BodyNotReady: 169 + stage
                 PhysicsRuntime::PhysicsError.BackendFailure: 171 + stage
                 error failure: 118

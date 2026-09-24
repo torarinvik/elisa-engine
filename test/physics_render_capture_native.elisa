@@ -136,7 +136,6 @@ module PhysicsRenderCapture:
                 RenderScene::Color{red: 0.12, green: 0.78, blue: 1.0, alpha: 1.0}):
                 value: value
                 error failure: return 5
-
             for _ in 0..<3:
                 return 16 if Application::pump() != Application::PumpStatus.Running
             pipeline_wait: i32 = catch RenderScene::wait_for_pipelines(30000):
