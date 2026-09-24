@@ -1,0 +1,230 @@
+include "../src/backend/render_graph.elisa"
+
+def texture(id: u32, lifetime: RenderGraph::Lifetime,
+        initialized: bool) -> RenderGraph::ResourceDescriptor:
+    RenderGraph::ResourceDescriptor{
+        id: id,
+        width: 320,
+        height: 200,
+        format: RenderGraph::Format.Rgba16Float,
+        samples: 1,
+        lifetime: lifetime,
+        initialized: initialized,
+    }
+
+def main() -> i32:
+    graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&graph, texture(1,
+        RenderGraph::Lifetime.Imported, true)):
+        ok: 0
+        error failure: return 1
+    _ = catch RenderGraph::add_resource(&graph, texture(2,
+        RenderGraph::Lifetime.Transient, false)):
+        ok: 0
+        error failure: return 2
+    _ = catch RenderGraph::add_resource(&graph, texture(3,
+        RenderGraph::Lifetime.Transient, false)):
+        ok: 0
+        error failure: return 3
+    _ = catch RenderGraph::add_pass(&graph, 10):
+        ok: 0
+        error failure: return 4
+    _ = catch RenderGraph::add_pass(&graph, 20):
+        ok: 0
+        error failure: return 5
+    _ = catch RenderGraph::add_pass(&graph, 30):
+        ok: 0
+        error failure: return 6
+    _ = catch RenderGraph::add_pass(&graph, 40):
+        ok: 0
+        error failure: return 7
+    _ = catch RenderGraph::read(&graph, 10, 1):
+        ok: 0
+        error failure: return 8
+    _ = catch RenderGraph::write(&graph, 10, 2):
+        ok: 0
+        error failure: return 9
+    _ = catch RenderGraph::read(&graph, 20, 2):
+        ok: 0
+        error failure: return 10
+    _ = catch RenderGraph::write(&graph, 30, 3):
+        ok: 0
+        error failure: return 11
+    _ = catch RenderGraph::read(&graph, 40, 3):
+        ok: 0
+        error failure: return 12
+    _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+        ok: 0
+        error failure: return 13
+    _ = catch RenderGraph::add_dependency(&graph, 20, 30):
+        ok: 0
+        error failure: return 14
+    _ = catch RenderGraph::add_dependency(&graph, 30, 40):
+        ok: 0
+        error failure: return 15
+    plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+        value: value
+        error failure: return 16
+    return 17 if plan.pass_count != 4 or plan.resource_count != 3
+    return 18 if plan.pass_ids[0] != 10 or plan.pass_ids[1] != 20 or plan.pass_ids[2] != 30 or plan.pass_ids[3] != 40
+    return 60 if plan.resource_ids[0] != 1 or plan.resource_ids[1] != 2 or plan.resource_ids[2] != 3
+    return 19 if plan.first_use[1] != 0 or plan.last_use[1] != 1 or plan.first_use[2] != 2 or plan.last_use[2] != 3
+    return 20 if plan.alias_slots[1] != plan.alias_slots[2] or plan.transient_slot_count != 1 or plan.alias_slots[0] != RenderGraph::NO_TRANSIENT_ALIAS_SLOT
+
+    invalid_descriptor: mutable RenderGraph::Graph = RenderGraph::Graph()
+    invalid_texture: RenderGraph::ResourceDescriptor = texture(1,
+        RenderGraph::Lifetime.Transient, false)
+    invalid_texture.width <- 0
+    _ = catch RenderGraph::add_resource(&invalid_descriptor, invalid_texture):
+        ok: 0
+        RenderGraph::GraphError.InvalidDescriptor: 0
+        error failure: return 21
+    duplicate: i32 = catch RenderGraph::add_resource(&graph, texture(1,
+        RenderGraph::Lifetime.Imported, true)):
+        ok: 0
+        RenderGraph::GraphError.DuplicateResource: 1
+        error failure: 2
+    return 22 if duplicate != 1
+    duplicate_pass: i32 = catch RenderGraph::add_pass(&graph, 10):
+        ok: 0
+        RenderGraph::GraphError.DuplicatePass: 1
+        error failure: 2
+    return 23 if duplicate_pass != 1
+    duplicate_access: i32 = catch RenderGraph::read(&graph, 10, 1):
+        ok: 0
+        RenderGraph::GraphError.DuplicateAccess: 1
+        error failure: 2
+    return 24 if duplicate_access != 1
+
+    cycle: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&cycle, texture(1,
+        RenderGraph::Lifetime.Imported, true)):
+        ok: 0
+        error failure: return 25
+    _ = catch RenderGraph::add_pass(&cycle, 10):
+        ok: 0
+        error failure: return 26
+    _ = catch RenderGraph::add_pass(&cycle, 20):
+        ok: 0
+        error failure: return 27
+    _ = catch RenderGraph::read(&cycle, 10, 1):
+        ok: 0
+        error failure: return 28
+    _ = catch RenderGraph::add_dependency(&cycle, 10, 20):
+        ok: 0
+        error failure: return 29
+    _ = catch RenderGraph::add_dependency(&cycle, 20, 10):
+        ok: 0
+        error failure: return 30
+    cycle_result: i32 = catch RenderGraph::compile(&cycle):
+        value: 0
+        RenderGraph::GraphError.DependencyCycle: 1
+        error failure: 2
+    return 31 if cycle_result != 1
+
+    read_before_write: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&read_before_write, texture(2,
+        RenderGraph::Lifetime.Transient, false)):
+        ok: 0
+        error failure: return 32
+    _ = catch RenderGraph::add_pass(&read_before_write, 10):
+        ok: 0
+        error failure: return 33
+    _ = catch RenderGraph::add_pass(&read_before_write, 20):
+        ok: 0
+        error failure: return 34
+    _ = catch RenderGraph::read(&read_before_write, 10, 2):
+        ok: 0
+        error failure: return 35
+    _ = catch RenderGraph::write(&read_before_write, 20, 2):
+        ok: 0
+        error failure: return 36
+    _ = catch RenderGraph::add_dependency(&read_before_write, 10, 20):
+        ok: 0
+        error failure: return 37
+    read_result: i32 = catch RenderGraph::compile(&read_before_write):
+        value: 0
+        RenderGraph::GraphError.ReadBeforeWrite: 1
+        error failure: 2
+    return 38 if read_result != 1
+
+    readwrite: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&readwrite, texture(1,
+        RenderGraph::Lifetime.Persistent, true)):
+        ok: 0
+        error failure: return 38
+    _ = catch RenderGraph::add_pass(&readwrite, 10):
+        ok: 0
+        error failure: return 39
+    _ = catch RenderGraph::read(&readwrite, 10, 1):
+        ok: 0
+        error failure: return 40
+    _ = catch RenderGraph::write(&readwrite, 10, 1):
+        ok: 0
+        error failure: return 41
+    hazard_result: i32 = catch RenderGraph::compile(&readwrite):
+        value: 0
+        RenderGraph::GraphError.ReadWriteHazard: 1
+        error failure: 2
+    return 43 if hazard_result != 1
+
+    writers: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&writers, texture(2,
+        RenderGraph::Lifetime.Transient, false)):
+        ok: 0
+        error failure: return 43
+    _ = catch RenderGraph::add_pass(&writers, 10):
+        ok: 0
+        error failure: return 44
+    _ = catch RenderGraph::add_pass(&writers, 20):
+        ok: 0
+        error failure: return 45
+    _ = catch RenderGraph::write(&writers, 10, 2):
+        ok: 0
+        error failure: return 46
+    _ = catch RenderGraph::write(&writers, 20, 2):
+        ok: 0
+        error failure: return 47
+    writer_result: i32 = catch RenderGraph::compile(&writers):
+        value: 0
+        RenderGraph::GraphError.UnorderedHazard: 1
+        error failure: 2
+    return 49 if writer_result != 1
+
+    ordered_writers: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&ordered_writers, texture(2,
+        RenderGraph::Lifetime.Transient, false)):
+        ok: 0
+        error failure: return 50
+    _ = catch RenderGraph::add_pass(&ordered_writers, 10):
+        ok: 0
+        error failure: return 51
+    _ = catch RenderGraph::add_pass(&ordered_writers, 20):
+        ok: 0
+        error failure: return 52
+    _ = catch RenderGraph::write(&ordered_writers, 10, 2):
+        ok: 0
+        error failure: return 53
+    _ = catch RenderGraph::write(&ordered_writers, 20, 2):
+        ok: 0
+        error failure: return 54
+    _ = catch RenderGraph::add_dependency(&ordered_writers, 10, 20):
+        ok: 0
+        error failure: return 55
+    ordered_plan: RenderGraph::Plan = catch RenderGraph::compile(&ordered_writers):
+        value: value
+        error failure: return 56
+    return 57 if ordered_plan.first_use[0] != 0 or ordered_plan.last_use[0] != 1
+
+    capacity: mutable RenderGraph::Graph = RenderGraph::Graph()
+    for index in 0..<RenderGraph::MAX_PASSES:
+        _ = catch RenderGraph::add_pass(&capacity, index.u32() + 1):
+            ok: 0
+            error failure: return 58
+    capacity_result: i32 = catch RenderGraph::add_pass(&capacity,
+        RenderGraph::MAX_PASSES.u32() + 1):
+        ok: 0
+        RenderGraph::GraphError.Capacity: 1
+        error failure: 2
+    return 59 if capacity_result != 1
+    0
