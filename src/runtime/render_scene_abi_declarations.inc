@@ -3,6 +3,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_initialize(width: i32, height: i32, vertical_size: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_wait_for_pipelines(timeout_milliseconds: u32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_resize(width: i32, height: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_render_target(width: i32, height: i32, update_interval: f32) -> i32

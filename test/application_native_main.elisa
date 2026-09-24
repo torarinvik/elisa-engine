@@ -3,6 +3,7 @@
 # The generic application builder injects src/runtime/public.elisa before this
 # entry point, so this smoke exercises the same import surface as a game.
 include "./physics_app_probe.elisa"
+include "./physics_primitives_probe.elisa"
 include "./runtime_services_probe.elisa"
 include "./user_data_probe.elisa"
 using Capabilities
@@ -67,8 +68,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     ground: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Static,
+            shape: PhysicsRuntime::BodyShape.Box,
             position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
-            half_extents: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
+            dimensions: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
             mass: 0.0,
             sensor: false,
         })
@@ -76,8 +78,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     falling: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Dynamic,
-            position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
-            half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+            shape: PhysicsRuntime::BodyShape.Box,
+            position: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+            dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
             mass: 1.0,
             sensor: false,
         })
@@ -85,8 +88,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     trigger: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Static,
+            shape: PhysicsRuntime::BodyShape.Box,
             position: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
-            half_extents: Geometry::Vec3{x: 1.0, y: 0.75, z: 1.0},
+            dimensions: Geometry::Vec3{x: 1.0, y: 0.75, z: 1.0},
             mass: 0.0,
             sensor: true,
         })
@@ -94,8 +98,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     disposable: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Kinematic,
+            shape: PhysicsRuntime::BodyShape.Box,
             position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
-            half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+            dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
             mass: 0.0,
             sensor: false,
         })
@@ -424,8 +429,11 @@ def check_startup_requirements(config: Application::Config) -> i32:
         PhysicsRuntime::PhysicsError.StaleWorld: 161 + physics_stage
         PhysicsRuntime::PhysicsError.BackendFailure: 171 + physics_stage
         error failure: 118
-    physics_shutdown_ok: bool = Application::shutdown()
     return physics_result if physics_result != 0
+    primitive_stage: mutable i32 = 0
+    primitive_result: i32 = PhysicsPrimitiveProbe::run(&physics_world, &primitive_stage)
+    return primitive_result if primitive_result != 0
+    physics_shutdown_ok: bool = Application::shutdown()
     return 101 if not physics_shutdown_ok
     closed_physics_status: i32 = catch PhysicsRuntime::fixed_step(&physics_world,
         PhysicsAppProbe::FIXED_STEP_SECONDS):

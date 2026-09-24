@@ -49,8 +49,9 @@ module WorldPhysics:
             body: PhysicsRuntime::BodyHandle = try RuntimeServices::physics_body_create(session,
                 PhysicsRuntime::BodyDesc{
                     kind: kind,
+                    shape: PhysicsRuntime::BodyShape.Box,
                     position: transform.position,
-                    half_extents: scaled_extents,
+                    dimensions: scaled_extents,
                     mass: mass,
                     sensor: false,
                 })

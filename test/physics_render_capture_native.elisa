@@ -24,16 +24,18 @@ module PhysicsRenderCapture:
             floor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
-                    half_extents: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
+                    dimensions: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
                     mass: 0.0,
                     sensor: false,
                 })
             body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
-                    half_extents: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
+                    dimensions: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
                     mass: 1.0,
                     sensor: false,
                 })
@@ -97,6 +99,11 @@ module PhysicsRenderCapture:
                 hidden: true,
             }
             return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            uninitialized_wait: i32 = catch RenderScene::wait_for_pipelines(1000):
+                ok: 0
+                RenderScene::RenderSceneError.NotInitialized: 1
+                error failure: 2
+            return 14 if uninitialized_wait != 1
             init_scene: i32 = catch RenderScene::initialize(320, 240, 8.0):
                 ok: 0
                 error failure: 1
@@ -129,6 +136,14 @@ module PhysicsRenderCapture:
                 RenderScene::Color{red: 0.12, green: 0.78, blue: 1.0, alpha: 1.0}):
                 value: value
                 error failure: return 5
+
+            for _ in 0..<3:
+                return 16 if Application::pump() != Application::PumpStatus.Running
+            pipeline_wait: i32 = catch RenderScene::wait_for_pipelines(30000):
+                ok: 0
+                RenderScene::RenderSceneError.TimedOut: 1
+                error failure: 2
+            return 15 if pipeline_wait != 0
 
             thirty_path: cstr = Application::environment_value("ELISA_PHYSICS_30HZ_CAPTURE_PATH")
             one_twenty_path: cstr = Application::environment_value("ELISA_PHYSICS_120HZ_CAPTURE_PATH")

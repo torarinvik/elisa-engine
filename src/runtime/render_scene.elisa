@@ -15,6 +15,7 @@ module RenderScene:
             BATCH_ACTIVE: i32 = -10
             ASSET_PENDING: i32 = -11
             NO_HIT: i32 = -12
+            TIMED_OUT: i32 = -13
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
             NORMAL: i32 = 1
@@ -36,6 +37,7 @@ module RenderScene:
             raise RenderSceneError.BatchActive if status == NativeStatus::BATCH_ACTIVE
             raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.NoHit if status == NativeStatus::NO_HIT
+            raise RenderSceneError.TimedOut if status == NativeStatus::TIMED_OUT
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
     public:
         const MAX_INSTANCES: usize = 512
@@ -124,9 +126,14 @@ module RenderScene:
             # A snapshot row or material names an asset that is still loading.
             AssetPending
             NoHit
+            TimedOut
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1
             try check_status(elisa_render_scene_v1_initialize(width, height, orthographic_height))
+        # Wait for Wicked's background pipeline compilation during startup or capture.
+        # Do not call this from a frame loop.
+        def wait_for_pipelines(timeout_milliseconds: u32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_wait_for_pipelines(timeout_milliseconds))
         def InstanceBatch() -> InstanceBatch:
             InstanceBatch{handles: zeroed, count: 0}
         def batch_append(batch: mutable InstanceBatch&, handle: InstanceHandle) -> void error[RenderSceneError]:

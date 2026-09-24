@@ -24,6 +24,7 @@ enum {
     // An asset named by a snapshot row or material is still loading.
     ELISA_RENDER_SCENE_ASSET_PENDING = -11,
     ELISA_RENDER_SCENE_NO_HIT = -12,
+    ELISA_RENDER_SCENE_TIMED_OUT = -13,
 };
 
 // elisa_render_scene_v1_snapshot_asset_state results; a failed request
@@ -53,6 +54,7 @@ enum {
 
 uint32_t elisa_render_scene_abi_version(void);
 int32_t elisa_render_scene_v1_initialize(int32_t width, int32_t height, float vertical_size);
+int32_t elisa_render_scene_v1_wait_for_pipelines(uint32_t timeout_milliseconds);
 int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
 int32_t elisa_render_scene_v1_set_camera_render_target(
     int32_t width, int32_t height, float update_interval);

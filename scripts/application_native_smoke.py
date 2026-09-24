@@ -11,10 +11,71 @@ import subprocess
 import sys
 import tempfile
 import wave
+import zlib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_MINIMUM_LENGTH = 45
+PNG_RGBA8_HEADER = bytes((8, 6, 0, 0, 0))
+PNG_FILTER_NONE = 0
+MIN_VISIBLE_CAPTURE_PIXELS = 1000
+MIN_VISIBLE_CHANNEL_VALUE = 16
+
+
+def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
+    if len(data) < PNG_MINIMUM_LENGTH or data[:8] != PNG_SIGNATURE:
+        return None
+    offset = 8
+    width = height = 0
+    compressed = bytearray()
+    saw_header = False
+    saw_end = False
+    while offset + 12 <= len(data):
+        chunk_size = int.from_bytes(data[offset:offset + 4], "big")
+        chunk_type = data[offset + 4:offset + 8]
+        payload_start = offset + 8
+        payload_end = payload_start + chunk_size
+        chunk_end = payload_end + 4
+        if chunk_end > len(data):
+            return None
+        payload = data[payload_start:payload_end]
+        expected_crc = int.from_bytes(data[payload_end:chunk_end], "big")
+        if zlib.crc32(chunk_type + payload) & 0xFFFFFFFF != expected_crc:
+            return None
+        if chunk_type == b"IHDR":
+            if saw_header or len(payload) != 13:
+                return None
+            width = int.from_bytes(payload[0:4], "big")
+            height = int.from_bytes(payload[4:8], "big")
+            if payload[8:] != PNG_RGBA8_HEADER:
+                return None
+            saw_header = True
+        elif chunk_type == b"IDAT":
+            compressed.extend(payload)
+        elif chunk_type == b"IEND":
+            saw_end = chunk_size == 0
+            offset = chunk_end
+            break
+        offset = chunk_end
+    if not saw_header or not saw_end or offset != len(data) or width <= 0 or height <= 0:
+        return None
+    try:
+        scanlines = zlib.decompress(compressed)
+    except zlib.error:
+        return None
+    row_stride = width * 4 + 1
+    if len(scanlines) != row_stride * height:
+        return None
+    pixels = bytearray(width * height * 4)
+    for row in range(height):
+        source_start = row * row_stride
+        if scanlines[source_start] != PNG_FILTER_NONE:
+            return None
+        target_start = row * width * 4
+        pixels[target_start:target_start + width * 4] = scanlines[source_start + 1:source_start + row_stride]
+    return width, height, bytes(pixels)
 
 
 def main() -> int:
@@ -36,8 +97,9 @@ def main() -> int:
             "hidden": True,
         }
         projects = [
-            ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
+            ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
+            ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
         ]
         physics_captures = ROOT / "build/validation/physics-render-cadence"
@@ -94,24 +156,30 @@ def main() -> int:
                         physics_captures / "physics-120hz.png"),
                 )
                 for label, thirty_path, one_twenty_path in capture_pairs:
-                    image_data = []
+                    image_pixels = []
                     image_sizes = []
                     for cadence_path in (thirty_path, one_twenty_path):
                         data = cadence_path.read_bytes() if cadence_path.exists() else b""
-                        if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                        decoded = decode_capture_png(data)
+                        if decoded is None:
                             print(f"Physics render cadence smoke did not write a valid {cadence_path.name} PNG.", file=sys.stderr)
                             return 1
-                        image_sizes.append((int.from_bytes(data[16:20], "big"),
-                            int.from_bytes(data[20:24], "big")))
-                        image_data.append(data)
+                        width, height, pixels = decoded
+                        colored_pixels = sum(1 for index in range(0, len(pixels), 4)
+                            if max(pixels[index:index + 3]) > MIN_VISIBLE_CHANNEL_VALUE)
+                        if colored_pixels < MIN_VISIBLE_CAPTURE_PIXELS:
+                            print(f"Physics cadence capture {cadence_path.name} is visually empty.", file=sys.stderr)
+                            return 1
+                        image_sizes.append((width, height))
+                        image_pixels.append(pixels)
                     if (image_sizes[0][0] <= 0 or image_sizes[0][1] <= 0 or
                             image_sizes[0] != image_sizes[1]):
                         print(f"Physics {label} captures have invalid or mismatched dimensions.", file=sys.stderr)
                         return 1
-                    if image_data[0] != image_data[1]:
+                    if image_pixels[0] != image_pixels[1]:
                         print(f"30 Hz and 120 Hz physics-to-Wicked {label} captures differ.", file=sys.stderr)
                         return 1
-                    print(f"Physics-to-Wicked {label} captures match exactly at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
+                    print(f"Physics-to-Wicked {label} captures match pixel-for-pixel at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
             if status != 0:
                 print(f"Native application smoke {name} failed with status {status}.", file=sys.stderr)
                 return status

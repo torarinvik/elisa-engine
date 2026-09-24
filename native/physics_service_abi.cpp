@@ -122,70 +122,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 }
 #endif
 
-extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
-    float position_x, float position_y, float position_z,
-    float half_x, float half_y, float half_z, float mass,
-    int32_t sensor,
-    uint32_t* slot, uint64_t* body_generation) {
-    if (slot == nullptr || body_generation == nullptr ||
-        kind < ELISA_PHYSICS_BODY_STATIC || kind > ELISA_PHYSICS_BODY_DYNAMIC ||
-        (sensor != 0 && sensor != 1) ||
-        !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
-        std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
-        std::fabs(position_z) > MAX_POSITION || !std::isfinite(half_x) ||
-        !std::isfinite(half_y) || !std::isfinite(half_z) || half_x <= 0.0f ||
-        half_y <= 0.0f || half_z <= 0.0f || half_x > MAX_HALF_EXTENT ||
-        half_y > MAX_HALF_EXTENT || half_z > MAX_HALF_EXTENT || !std::isfinite(mass) ||
-        mass < 0.0f || mass > MAX_MASS ||
-        (kind == ELISA_PHYSICS_BODY_DYNAMIC && mass <= 0.0f)) {
-        return ELISA_PHYSICS_INVALID_ARGUMENT;
-    }
-    const int32_t status = require_world(world_generation);
-    if (status != ELISA_PHYSICS_OK) return status;
-    PhysicsService& state = physics_service();
-    uint32_t free_slot = MAX_BODIES;
-    for (uint32_t index = 0; index < MAX_BODIES; ++index) {
-        if (!state.bodies[index].live) { free_slot = index; break; }
-    }
-    if (free_slot == MAX_BODIES) return ELISA_PHYSICS_CAPACITY;
-    BodySlot& body_slot = state.bodies[free_slot];
-    if (body_slot.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
-
-    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
-    try {
-        // Keep managed boxes represented in Wicked's scene query BVH as well as
-        // in Jolt, so public ray/shape queries see the same entity.
-        entity = state.scene->Entity_CreateCube("elisa_physics_body_" + std::to_string(free_slot));
-        if (entity == wi::ecs::INVALID_ENTITY) return ELISA_PHYSICS_BACKEND_FAILURE;
-        wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
-        if (transform == nullptr) {
-            state.scene->Entity_Remove(entity);
-            return ELISA_PHYSICS_BACKEND_FAILURE;
-        }
-        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
-        const ElisaTransformPayload authored{{position_x, position_y, position_z},
-            {0.0f, 0.0f, 0.0f, 1.0f}, {half_x, half_y, half_z}};
-        if (!probe::submit_elisa_transform(&profile, &authored, transform)) {
-            state.scene->Entity_Remove(entity);
-            return ELISA_PHYSICS_INVALID_ARGUMENT;
-        }
-        wi::scene::RigidBodyPhysicsComponent& rigidbody = state.scene->rigidbodies.Create(entity);
-        rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
-        rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? 0.0f : mass;
-        rigidbody.box.halfextents = XMFLOAT3(half_x, half_y, half_z);
-        rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
-        rigidbody.SetSensor(sensor != 0);
-        body_slot.entity = entity;
-        ++body_slot.generation;
-        body_slot.live = true;
-    } catch (...) {
-        if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
-        return ELISA_PHYSICS_BACKEND_FAILURE;
-    }
-    *slot = free_slot;
-    *body_generation = body_slot.generation;
-    return ELISA_PHYSICS_OK;
-}
+#include "physics_create_body_abi.inc"
 
 extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
     float delta_seconds, uint64_t* tick) {

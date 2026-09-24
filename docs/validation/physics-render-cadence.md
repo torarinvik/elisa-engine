@@ -13,6 +13,10 @@ the managed tick and body pose unchanged.
 Frames at physics ticks 30 and 60 are saved from Wicked's SDL3/Metal backbuffer
 and compared byte for byte between the 30 Hz and 120 Hz presentation runs. On
 the validated macOS host, both pairs are 640x480 RGBA PNGs and are identical.
+The client checks that pipeline waiting rejects an uninitialized render scene,
+then waits for Wicked's background shader compilation to become idle before
+capturing. The wait is bounded and reports a timeout through the public Elisa
+error union.
 The smoke stores them at:
 
 - `build/validation/physics-render-cadence/physics-30hz-mid.png`
@@ -26,8 +30,10 @@ Validation command from the engine root:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py
 ```
 
-The full application smoke passed, including the existing lifecycle and failure
-cleanup clients plus the two-cadence Jolt/Wicked client. This is native
-SDL3/Metal evidence for macOS. It checks matching midpoint and final renders
-at equal physics ticks, plus render-owned stepping. It does not compare every
-intermediate frame or exercise the full game-session clock-to-hierarchy path.
+The latest aggregate smoke passed the focused physics primitive client and this
+two-cadence Jolt/Wicked client, then stopped in the later application-wide smoke
+with exit status 185 at the silent-audio fallback voice-count assertion. The
+focused cadence executable exits successfully, and its midpoint and final PNGs
+match byte for byte. This is native SDL3/Metal evidence for macOS. It does not
+compare every intermediate frame or exercise the full game-session
+clock-to-hierarchy path.
