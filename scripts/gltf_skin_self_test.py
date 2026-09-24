@@ -143,6 +143,24 @@ def write_package(output: Path,
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 
+def write_root_motion_package(output: Path) -> tuple[Path, dict]:
+    """Cook a minimal skinned clip whose root translates on all three axes."""
+    document = generated_document()
+    buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
+    time_accessor = document["animations"][0]["samplers"][0]["input"]
+    output_accessor = _append(document, buffer,
+        struct.pack("<6f", 2.0, 0.0, 0.0, 4.0, 5.0, 6.0), 5126, "VEC3", 2)
+    document["animations"] = [{"name": "root-motion", "samplers": [{"input": time_accessor,
+        "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
+        "target": {"node": 1, "path": "translation"}}]}]
+    document["buffers"][0]["byteLength"] = len(buffer)
+    document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
+    with tempfile.TemporaryDirectory(prefix="elisa-gltf-root-motion-") as temporary:
+        source = Path(temporary) / "root_motion_skinned_panel.gltf"
+        source.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+
+
 def write_separate_root_package(output: Path) -> tuple[Path, dict]:
     """Cook the same skinned mesh with a skeleton on an independent scene root."""
     document = generated_document()

@@ -132,6 +132,23 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_joint_y(
     return joint != nullptr && std::abs(joint->translation_local.y - expected_y) < 2.0e-3f ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_animation_root_pose(
+    int64_t handle, float expected_x, float expected_y, float expected_z) {
+    if (!std::isfinite(expected_x) || !std::isfinite(expected_y) || !std::isfinite(expected_z)) return 0;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const InstanceSlot& instance = state.instances[slot];
+    if (instance.root_motion_mode != 1 || instance.root_motion_joint < 0 ||
+        instance.displayed_joint_pose.size() != instance.joint_entities.size() * 10) return 0;
+    const float* root = instance.displayed_joint_pose.data() + size_t(instance.root_motion_joint) * 10;
+    return std::abs(root[0] - expected_x) < 2.0e-3f &&
+        std::abs(root[1] - expected_y) < 2.0e-3f &&
+        std::abs(root[2] - expected_z) < 2.0e-3f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_skin_mesh_relative_root(
     int64_t handle, float expected_world_z) {
     if (!std::isfinite(expected_world_z)) return 0;

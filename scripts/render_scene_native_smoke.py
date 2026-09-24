@@ -176,6 +176,8 @@ def main() -> int:
         (subset_directory / "skinned.pkg").write_bytes(geometry_subset_cases.strip_package(
             2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
         gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg", second_animation=True)
+        gltf_skin_self_test.write_root_motion_package(
+            subset_directory / "root-motion-skinned.pkg")
         gltf_skin_self_test.write_separate_root_package(
             subset_directory / "separate-root-skinned.pkg")
         gltf_skin_self_test.write_multi_skin_package(

@@ -289,6 +289,10 @@ int32_t elisa_render_scene_v1_play_animation_blended(
 int32_t elisa_render_scene_v1_set_animation_speed(int64_t handle, float speed);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);
+int32_t elisa_render_scene_v1_set_animation_root_motion(
+    int64_t handle, int32_t mode, const char* root_joint_name);
+int32_t elisa_render_scene_v1_consume_animation_root_motion(
+    int64_t handle, float* delta_x, float* delta_y, float* delta_z);
 float elisa_render_scene_v1_animation_progress(int64_t handle);
 enum {
     ELISA_RENDER_SCENE_MAX_ANIMATION_BONES = 64u,
@@ -303,6 +307,10 @@ typedef struct ElisaRenderSceneAnimationSubmission {
 } ElisaRenderSceneAnimationSubmission;
 int32_t elisa_render_scene_v1_submit_animation_pose(
     int64_t handle, const ElisaRenderSceneAnimationSubmission* submission);
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+int32_t elisa_render_scene_v1_test_animation_root_pose(
+    int64_t handle, float expected_x, float expected_y, float expected_z);
+#endif
 int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle);
 int64_t elisa_render_scene_v1_create_effect_emitter(
     float px, float py, float pz, uint32_t max_particles,
