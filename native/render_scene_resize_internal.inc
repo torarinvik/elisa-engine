@@ -49,8 +49,14 @@ int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height
         resized.slot->viewport_y = resized.y;
         resized.slot->viewport_width = resized.width;
         resized.slot->viewport_height = resized.height;
-        resized.camera->render_to_texture.resolution =
-            XMUINT2(uint32_t(resized.width), uint32_t(resized.height));
+        if (resized.slot->pipeline != nullptr) {
+            resized.slot->pipeline->init(uint32_t(resized.width), uint32_t(resized.height),
+                state.path->dpi);
+            resized.slot->pipeline->scaling = state.path->scaling;
+            resized.slot->render_pending = true;
+            resized.slot->rendered = false;
+            resized.slot->update_elapsed = 0.0f;
+        }
         if (resized.camera->IsOrtho()) {
             resized.camera->CreateOrtho(float(resized.width), float(resized.height),
                 resized.camera->zNearP, resized.camera->zFarP,

@@ -206,8 +206,8 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_activate_default_camera())
         def destroy_camera(handle: CameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_camera(handle.native_value))
-        # Render a camera into a framebuffer-pixel rectangle over the primary
-        # view. Wicked schedules the camera render in its normal camera pass.
+        # Render a camera through its own RenderPath3D into a framebuffer-pixel
+        # rectangle over the primary view. Its post-process profile is separate.
         def set_camera_viewport(handle: CameraHandle, x: i32, y: i32,
             width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_viewport(

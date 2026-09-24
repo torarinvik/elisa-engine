@@ -88,8 +88,7 @@ bool valid_quality_profile(const ElisaRenderSceneQualityProfile* profile) {
         !(profile->temporal_aa != 0 && profile->upscaler == ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2);
 }
 
-int32_t apply_quality_profile_locked(RenderSceneService& state,
-    const ElisaRenderSceneQualityProfile& profile) {
+probe::NativePostProcessDesc quality_description(const ElisaRenderSceneQualityProfile& profile) {
     probe::NativePostProcessDesc desc;
     desc.tonemap = static_cast<probe::NativeTonemap>(profile.tonemap);
     desc.upscaler = static_cast<probe::NativeUpscaler>(profile.upscaler);
@@ -102,7 +101,13 @@ int32_t apply_quality_profile_locked(RenderSceneService& state,
     desc.screen_space_reflections = profile.screen_space_reflections != 0;
     desc.fog = profile.fog != 0;
     desc.depth_effects = profile.depth_effects != 0;
-    const probe::PostProcessApply result = probe::PostProcessBridge(*state.path).apply(desc, false);
+    return desc;
+}
+
+int32_t apply_quality_profile_locked(RenderSceneService& state,
+    const ElisaRenderSceneQualityProfile& profile) {
+    const probe::PostProcessApply result =
+        probe::PostProcessBridge(*state.path).apply(quality_description(profile), false);
     return result == probe::PostProcessApply::Invalid ?
         ELISA_RENDER_SCENE_INVALID_ARGUMENT : ELISA_RENDER_SCENE_OK;
 }
@@ -145,6 +150,52 @@ extern "C" int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
             sun->shadow_bias = sun_shadow_receiver_bias;
         }
     }
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_apply_camera_quality_profile(
+    int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
+    int32_t shadow_quality, float sun_shadow_receiver_bias) {
+    if (!valid_quality_profile(profile) ||
+        !elisa::render_scene_effects::valid_shadow_quality(shadow_quality) ||
+        !std::isfinite(sun_shadow_receiver_bias) ||
+        std::fabs(sun_shadow_receiver_bias) >
+            elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot_index = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, camera_handle, slot_index)) {
+        return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    }
+    RenderCameraSlot& slot = state.cameras[slot_index];
+    if (!slot.viewport_enabled || slot.pipeline == nullptr) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+
+    const bool temporal_aa = wi::renderer::GetTemporalAAEnabled();
+    const bool fog = state.scene->weather.IsHeightFog();
+    const wi::renderer::Tonemap primary_tonemap = state.path->getTonemap();
+    const float primary_scale = state.path->resolutionScale;
+    const probe::PostProcessApply result = probe::PostProcessBridge(*slot.pipeline).apply(
+        quality_description(*profile), false);
+    wi::renderer::SetTemporalAAEnabled(temporal_aa);
+    state.scene->weather.SetHeightFog(fog);
+    if (result == probe::PostProcessApply::Invalid) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    slot.primary_temporal_aa_at_profile_set = temporal_aa;
+    slot.primary_fog_at_profile_set = fog;
+    slot.primary_tonemap_at_profile_set = primary_tonemap;
+    slot.primary_scale_at_profile_set = primary_scale;
+    slot.primary_shadow_quality_at_profile_set = state.shadow_quality;
+    slot.primary_sun_shadow_receiver_bias_at_profile_set = state.sun_shadow_receiver_bias;
+    slot.profile_temporal_aa = profile->temporal_aa != 0;
+    slot.profile_fog = profile->fog != 0;
+    slot.profile_shadow_quality = shadow_quality;
+    slot.profile_sun_shadow_receiver_bias = sun_shadow_receiver_bias;
+    slot.quality_profile_set = true;
+    slot.render_pending = true;
+    slot.update_elapsed = 0.0f;
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -245,5 +296,46 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_profile_matches(
         state.path->getSSREnabled() == (screen_space_reflections != 0) &&
         state.path->getDepthOfFieldEnabled() == (depth_effects != 0) &&
         fog_matches ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_camera_quality_profile_matches(
+    int32_t tonemap, int32_t bloom, float threshold,
+    int32_t fxaa, int32_t ambient_occlusion, int32_t reflections,
+    int32_t depth_effects, float render_scale, int32_t shadow_quality,
+    float sun_shadow_receiver_bias) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr ||
+        state.scene == nullptr) return 0;
+    const RenderCameraSlot* selected = nullptr;
+    for (const RenderCameraSlot& candidate : state.cameras) {
+        if (candidate.live && candidate.viewport_enabled && candidate.quality_profile_set &&
+            candidate.pipeline != nullptr) {
+            selected = &candidate;
+            break;
+        }
+    }
+    if (selected == nullptr) return 0;
+    const RenderCameraSlot& slot = *selected;
+    const wi::renderer::Tonemap expected = tonemap == 0 ? wi::renderer::Tonemap::Reinhard :
+        tonemap == 1 ? wi::renderer::Tonemap::ACES : wi::renderer::Tonemap::Uchimura;
+    return slot.pipeline->getTonemap() == expected &&
+        slot.pipeline->getBloomEnabled() == (bloom != 0) &&
+        std::fabs(slot.pipeline->getBloomThreshold() - threshold) < 0.000001f &&
+        slot.pipeline->getFXAAEnabled() == (fxaa != 0) &&
+        slot.pipeline->getAOEnabled() == (ambient_occlusion != 0) &&
+        slot.pipeline->getSSREnabled() == (reflections != 0) &&
+        slot.pipeline->getDepthOfFieldEnabled() == (depth_effects != 0) &&
+        std::fabs(slot.pipeline->resolutionScale - render_scale) < 0.000001f &&
+        slot.profile_shadow_quality == shadow_quality &&
+        std::fabs(slot.profile_sun_shadow_receiver_bias - sun_shadow_receiver_bias) < 0.000001f &&
+        !slot.profile_temporal_aa && !slot.profile_fog &&
+        wi::renderer::GetTemporalAAEnabled() == slot.primary_temporal_aa_at_profile_set &&
+        state.scene->weather.IsHeightFog() == slot.primary_fog_at_profile_set &&
+        state.path->getTonemap() == slot.primary_tonemap_at_profile_set &&
+        std::fabs(state.path->resolutionScale - slot.primary_scale_at_profile_set) < 0.000001f &&
+        state.shadow_quality == slot.primary_shadow_quality_at_profile_set &&
+        std::fabs(state.sun_shadow_receiver_bias -
+            slot.primary_sun_shadow_receiver_bias_at_profile_set) < 0.000001f ? 1 : 0;
 }
 #endif

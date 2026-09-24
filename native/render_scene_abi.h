@@ -353,6 +353,9 @@ int32_t elisa_render_scene_v1_apply_quality_profile(
 int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
     const ElisaRenderSceneQualityProfile* profile,
     int32_t shadow_quality, float sun_shadow_receiver_bias);
+int32_t elisa_render_scene_v1_apply_camera_quality_profile(
+    int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
+    int32_t shadow_quality, float sun_shadow_receiver_bias);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_set_visibility_policy(
     int64_t handle, float draw_distance, float lod_bias, uint32_t layer_mask, int32_t renderable);

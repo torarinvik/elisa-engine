@@ -71,19 +71,7 @@ constexpr size_t MAX_OVERLAY_TEXT_MEASURE_CACHE_ENTRIES = 256;
 #include "render_scene_text_internal.inc"
 #include "render_scene_panel_internal.inc"
 #include "render_scene_instance_state.inc"
-struct RenderLightSlot {
-    probe::NativeLightHandle native{};
-    bool live = false;
-};
-struct RenderCameraSlot {
-    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
-    uint64_t generation = 0;
-    int32_t viewport_x = 0, viewport_y = 0;
-    int32_t viewport_width = 0, viewport_height = 0;
-    int32_t camera_width = 0, camera_height = 0;
-    bool viewport_enabled = false;
-    bool live = false;
-};
+#include "render_scene_camera_state.inc"
 struct OverlayTextMeasureCacheEntry {
     uint64_t requested_frame = 0;
     uint64_t last_used_frame = 0;
@@ -319,6 +307,10 @@ void reset_unlocked(RenderSceneService& state) {
     for (InstanceSlot& instance : state.instances) clear_instance_pick_bindings(state, instance);
     state.selection.reset();
     state.picking.reset();
+    for (RenderCameraSlot& camera : state.cameras) {
+        if (camera.pipeline != nullptr) camera.pipeline->Stop();
+        camera.pipeline.reset();
+    }
     if (state.path != nullptr) {
         state.path->ClearFonts();
         state.path->scene = nullptr;

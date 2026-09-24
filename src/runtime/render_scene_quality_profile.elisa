@@ -27,12 +27,15 @@ extend RenderScene:
             profile: mutable NativeQualityProfile&, shadow_quality: i32,
             sun_shadow_receiver_bias: f32) -> i32
 
-    public:
-        def apply_quality_profile(profile: Quality::Profile&) -> void error[RenderSceneError]:
-            raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
+        @callconv(c)
+        extern elisa_render_scene_v1_apply_camera_quality_profile(camera_handle: i64,
+            profile: mutable NativeQualityProfile&, shadow_quality: i32,
+            sun_shadow_receiver_bias: f32) -> i32
+
+        def native_profile(profile: Quality::Profile) -> NativeQualityProfile:
             tonemap: i32 = 0 if profile.tonemap == Quality::Tonemap.Reinhard else 1 if profile.tonemap == Quality::Tonemap.Aces else 2
             upscaler: i32 = 0 if profile.upscaler == Quality::Upscaler.None else 1 if profile.upscaler == Quality::Upscaler.Fsr1 else 2
-            native: mutable NativeQualityProfile = NativeQualityProfile{
+            NativeQualityProfile{
                 tonemap: tonemap,
                 upscaler: upscaler,
                 render_scale: profile.render_scale,
@@ -45,6 +48,11 @@ extend RenderScene:
                 fog: 1 if profile.fog else 0,
                 depth_effects: 1 if profile.depth_effects else 0,
             }
+
+    public:
+        def apply_quality_profile(profile: Quality::Profile&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
+            native: mutable NativeQualityProfile = native_profile(profile)
             shadow_quality: i32 =
                 match profile.shadow_quality:
                     Quality::ShadowQuality.Low: 0
@@ -52,3 +60,14 @@ extend RenderScene:
                     Quality::ShadowQuality.High: 2
             try check_status(elisa_render_scene_v1_apply_quality_profile_with_shadow(
                 &native, shadow_quality, profile.sun_shadow_receiver_bias))
+        def set_camera_quality_profile(handle: CameraHandle,
+            profile: Quality::Profile&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
+            native: mutable NativeQualityProfile = native_profile(profile)
+            shadow_quality: i32 =
+                match profile.shadow_quality:
+                    Quality::ShadowQuality.Low: 0
+                    Quality::ShadowQuality.Medium: 1
+                    Quality::ShadowQuality.High: 2
+            try check_status(elisa_render_scene_v1_apply_camera_quality_profile(
+                handle.native_value, &native, shadow_quality, profile.sun_shadow_receiver_bias))

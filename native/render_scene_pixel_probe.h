@@ -340,10 +340,11 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_viewport_matches(
     for (const RenderCameraSlot& slot : state.cameras) {
         if (!slot.live || !slot.viewport_enabled || slot.viewport_x != x || slot.viewport_y != y ||
             slot.viewport_width != width || slot.viewport_height != height) continue;
-        const wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(slot.entity);
-        configured = camera != nullptr && camera->render_to_texture.resolution.x == uint32_t(width) &&
-            camera->render_to_texture.resolution.y == uint32_t(height) &&
-            camera->render_to_texture.rendertarget_render.IsValid();
+        if (slot.pipeline == nullptr) continue;
+        const wi::graphics::Texture& output = slot.pipeline->GetRenderResult3D();
+        configured = output.IsValid() &&
+            output.desc.width == uint32_t(float(width) * slot.pipeline->resolutionScale) &&
+            output.desc.height == uint32_t(float(height) * slot.pipeline->resolutionScale);
         if (configured) break;
     }
     return configured && state.camera_viewports_composed == size_t(expected_composed_count) ? 1 : 0;

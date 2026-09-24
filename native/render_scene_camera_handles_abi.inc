@@ -175,6 +175,8 @@ extern "C" int32_t elisa_render_scene_v1_destroy_camera(int64_t handle) {
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     if (state.camera_entity == state.cameras[slot].entity) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();
+    state.cameras[slot].pipeline.reset();
     state.scene->Entity_Remove(state.cameras[slot].entity);
     state.cameras[slot].entity = wi::ecs::INVALID_ENTITY;
     state.cameras[slot].live = false;
@@ -203,15 +205,33 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_viewport(
     if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
 
     RenderCameraSlot& camera_slot = state.cameras[slot];
+    std::unique_ptr<wi::RenderPath3D> new_pipeline;
+    if (camera_slot.pipeline == nullptr) {
+        try {
+            new_pipeline = std::make_unique<wi::RenderPath3D>();
+            new_pipeline->scene = state.scene.get();
+            new_pipeline->camera = camera;
+            new_pipeline->setSceneUpdateEnabled(false);
+            new_pipeline->init(uint32_t(width), uint32_t(height), state.path->dpi);
+            new_pipeline->scaling = state.path->scaling;
+        } catch (...) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+    }
     camera_slot.viewport_x = x;
     camera_slot.viewport_y = y;
     camera_slot.viewport_width = width;
     camera_slot.viewport_height = height;
+    camera_slot.update_interval = update_interval;
+    camera_slot.update_elapsed = 0.0f;
+    camera_slot.render_pending = true;
+    camera_slot.rendered = false;
     camera_slot.viewport_enabled = true;
-    camera->render_to_texture.resolution = XMUINT2(uint32_t(width), uint32_t(height));
-    camera->render_to_texture.sample_count = 1;
-    camera->render_to_texture.update_interval = update_interval;
-    camera->render_to_texture.time_accumulator = 0.0f;
+    if (new_pipeline != nullptr) camera_slot.pipeline = std::move(new_pipeline);
+    camera_slot.pipeline->scene = state.scene.get();
+    camera_slot.pipeline->camera = camera;
+    camera_slot.pipeline->init(uint32_t(width), uint32_t(height), state.path->dpi);
+    camera_slot.pipeline->scaling = state.path->scaling;
     if (camera->IsOrtho()) {
         camera->CreateOrtho(float(width), float(height), camera->zNearP, camera->zFarP,
             camera->ortho_vertical_size);
@@ -231,12 +251,16 @@ extern "C" int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle) {
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
     if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    camera->render_to_texture = {};
+    if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();
+    state.cameras[slot].pipeline.reset();
     state.cameras[slot].viewport_enabled = false;
+    state.cameras[slot].render_pending = false;
+    state.cameras[slot].rendered = false;
     state.cameras[slot].viewport_x = 0;
     state.cameras[slot].viewport_y = 0;
     state.cameras[slot].viewport_width = 0;
     state.cameras[slot].viewport_height = 0;
+    state.cameras[slot].quality_profile_set = false;
     if (camera->IsOrtho()) {
         camera->CreateOrtho(float(state.cameras[slot].camera_width),
             float(state.cameras[slot].camera_height), camera->zNearP, camera->zFarP,
