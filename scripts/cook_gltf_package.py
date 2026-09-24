@@ -11,7 +11,7 @@ import struct
 import cook_assets
 import cook_gltf_animation
 import cook_gltf_geometry as geometry_cooker
-from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, encode_streams
+from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, encode_stream_batches
 
 
 def position_extent(positions: bytes) -> float:
@@ -60,7 +60,20 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     if geometry["uv1s"]:
         raw_streams.append(("uv1s", VERTEX_STREAM, geometry["vertex_count"], 8,
             geometry["uv1s"]))
-    encoded_streams = encode_streams(raw_streams)
+    if geometry["skin"] is not None:
+        raw_streams.extend([
+            ("skin_indices", VERTEX_STREAM, geometry["vertex_count"], 16,
+                struct.pack(f"<{len(geometry['skin_indices'])}I", *geometry["skin_indices"])),
+            ("skin_weights", VERTEX_STREAM, geometry["vertex_count"], 16,
+                struct.pack(f"<{len(geometry['skin_weights'])}f", *geometry["skin_weights"])),
+        ])
+    for index, target in enumerate(geometry["morph_targets"]):
+        raw_streams.append((f"morph_{index}_positions", VERTEX_STREAM,
+            geometry["vertex_count"], 12, target["positions"]))
+        if target["normals"] is not None:
+            raw_streams.append((f"morph_{index}_normals", VERTEX_STREAM,
+                geometry["vertex_count"], 12, target["normals"]))
+    encoded_streams = encode_stream_batches(raw_streams)
     compressed_streams = {}
     for name, _kind, _count, _stride, raw in raw_streams:
         encoded = encoded_streams[name]
@@ -85,11 +98,12 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         *(["meshopt_codec=meshoptimizer-v1.2"] if compressed_streams else []),
         *geometry_cooker.subset_lines(geometry),
         *(["tangent_stride=16"] if geometry["tangents"] else []),
-        *geometry_cooker.skin_lines(geometry),
+        *geometry_cooker.skin_lines(geometry, include_vertex_streams=False),
         *cook_gltf_animation.package_lines(geometry["animation_clips"],
             0 if geometry["skin"] is None else len(geometry["skin"]["joints"]),
             len(geometry["scene"]["mesh_placements"]), len(geometry["morph_targets"])),
-        *geometry_cooker.morph_lines(geometry), *geometry_cooker.scene_lines(geometry),
+        *geometry_cooker.morph_lines(geometry, include_vertex_streams=False),
+        *geometry_cooker.scene_lines(geometry),
         *[f"{name}_{'meshopt_' if name in compressed_streams else ''}b64=" +
             base64.b64encode(compressed_streams.get(name, data)).decode("ascii")
             for name, _kind, _count, _stride, data in raw_streams],

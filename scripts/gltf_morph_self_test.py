@@ -12,6 +12,7 @@ import tempfile
 
 import cook_assets
 import cook_gltf_geometry
+from cooked_meshopt_test_stream import decode_vertex_stream
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,13 +113,23 @@ def self_test(temporary: Path) -> int:
     first, result = write_package(temporary / "first.pkg")
     second, second_result = write_package(temporary / "second.pkg")
     sections = dict(line.split("=", 1) for line in first.read_text(encoding="utf-8").splitlines())
+    position_encodings = sum(name in sections for name in
+        ("morph_0_positions_b64", "morph_0_positions_meshopt_b64"))
+    normal_encodings = sum(name in sections for name in
+        ("morph_0_normals_b64", "morph_0_normals_meshopt_b64"))
+    morph_positions = decode_vertex_stream(sections, "morph_0_positions", 12, 12)
+    morph_normals = decode_vertex_stream(sections, "morph_0_normals", 12, 12)
     if (result != second_result or first.read_bytes() != second.read_bytes() or
             result["positions"] != 12 or result["morph_targets"] != 1 or
             sections.get("morph_targets") != "1" or sections.get("morph_target_position_stride") != "12" or
             sections.get("morph_target_normal_stride") != "12" or
-            len(base64.b64decode(sections.get("morph_0_positions_b64", ""))) != 12 * 12 or
-            len(base64.b64decode(sections.get("morph_0_normals_b64", ""))) != 12 * 12):
+            position_encodings != 1 or normal_encodings != 1 or
+            "morph_0_positions_meshopt_b64" not in sections or
+            "morph_0_normals_meshopt_b64" not in sections):
         print("glTF morph self-test failed: package is unstable or incomplete", file=sys.stderr)
+        return 1
+    if len(morph_positions) != 12 * 12 or len(morph_normals) != 12 * 12:
+        print("glTF morph self-test failed: morph streams changed while encoding", file=sys.stderr)
         return 1
     animated_path, _ = write_animated_package(temporary / "animated.pkg")
     animated = dict(line.split("=", 1) for line in animated_path.read_text(encoding="utf-8").splitlines())

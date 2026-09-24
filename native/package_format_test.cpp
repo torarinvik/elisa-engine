@@ -6,8 +6,12 @@
 #include <string>
 #include <vector>
 
+namespace {
+constexpr int FULL_FIXTURE_ARGUMENT_COUNT = 5;
+} // namespace
+
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 5) return 2;
+    if (argc != 2 && argc != FULL_FIXTURE_ARGUMENT_COUNT) return 2;
     const probe::BinaryPackageIndex index = probe::read_binary_package_index(argv[1]);
     if (!index.valid || index.sections.size() < 2) return 3;
     const auto mesh = std::find_if(index.sections.begin(), index.sections.end(),
@@ -33,7 +37,7 @@ int main(int argc, char** argv) {
         geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
         geometry.indices.empty() || geometry.indices.size() % 3 != 0) return 9;
-    if (geometry.positions.size() == 9 &&
+    if (argc == FULL_FIXTURE_ARGUMENT_COUNT && geometry.positions.size() == 9 &&
         (geometry.positions[0] != 0.0f || geometry.positions[3] != 1.0f ||
             geometry.positions[7] != 1.0f || geometry.normals[2] != 1.0f ||
             geometry.indices != std::vector<uint32_t>{0, 1, 2})) return 13;
@@ -44,7 +48,7 @@ int main(int argc, char** argv) {
         : std::vector<std::string>{"base.elpk", "foundation.elpk"};
     if (!manifest.valid || manifest.dependencies != expected_dependencies) return 8;
 
-    if (argc == 5) {
+    if (argc == FULL_FIXTURE_ARGUMENT_COUNT) {
         const probe::BinaryPackageIndex many_sections = probe::read_binary_package_index(argv[2]);
         if (!many_sections.valid || many_sections.sections.size() != probe::PackageIndex::MAX_SECTIONS) return 10;
         const probe::PackageIndex many_legacy_sections = probe::read_package_index(argv[3]);

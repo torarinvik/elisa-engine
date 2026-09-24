@@ -22,6 +22,7 @@ import gltf_morph_self_test
 import gltf_scene_self_test
 import gltf_skin_self_test
 import gltf_texture_self_test
+import geometry_subset_deformation_cases
 import test_geometry_uv1
 
 
@@ -302,11 +303,6 @@ def cases(directory: Path) -> list[tuple]:
     if not lod_chain_manifest.is_file() or len(lod_chain_accepts) != 3:
         raise RuntimeError("static LOD chain cook did not publish its complete manifest and package set")
 
-    def morph_variant(old: bytes, new: bytes) -> bytes:
-        if old not in morph:
-            raise RuntimeError("morph fixture mutation did not find its field")
-        return morph.replace(old, new, 1)
-
     def scene_variant(old: bytes, new: bytes) -> bytes:
         if old not in scene_metadata:
             raise RuntimeError("scene fixture mutation did not find its field")
@@ -397,7 +393,7 @@ def cases(directory: Path) -> list[tuple]:
             "invalid cooked geometry index stream"),
         ("reject", "meshopt-corrupt-tangent.pkg", meshopt_variant("tangents_meshopt_b64", "AA=="),
             "invalid cooked geometry tangent stream"),
-        ("reject", "meshopt-unknown-stream.pkg", meshopt_variant("morph_0_positions_meshopt_b64", "AA=="),
+        ("reject", "meshopt-unknown-stream.pkg", meshopt_variant("unknown_meshopt_b64", "AA=="),
             "unsupported meshoptimizer cooked geometry stream"),
         ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),
         *lod_chain_accepts,
@@ -452,6 +448,7 @@ def cases(directory: Path) -> list[tuple]:
         ("reject", "skin-inverse-bind-singular.pkg", skin_field("skin_inverse_bind_matrices_b64",
             base64.b64encode(struct.pack("<32f", 0.0, *gltf_skin_self_test.INVERSE_BIND_MATRICES[1:])).decode("ascii")),
             "invalid cooked geometry inverse bind matrix"),
+        *geometry_subset_deformation_cases.cases(morph, skin_field),
         ("accept", "morphed-panel.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
             "morphs", 1)),
         ("accept", "scene-metadata.pkg", None, (18, 2, [(0, 6, 1), (6, 6, 0), (12, 6, 1)], PANEL_MATERIALS,
@@ -470,12 +467,10 @@ def cases(directory: Path) -> list[tuple]:
             "index is out of range"),
         ("reject", "hierarchy-placement-partition.pkg", hierarchy_record_variant(16, 6),
             "do not partition the streams"),
-        ("reject", "morph-missing-position.pkg", morph_variant(
-            b"morph_0_positions_b64=", b"morph_0_position_b64="), "morph position stream"),
-        ("reject", "morph-stride.pkg", morph_variant(
-            b"morph_target_position_stride=12", b"morph_target_position_stride=16"), "morph metadata"),
-        ("reject", "morph-empty.pkg", morph_variant(
-            b"morph_targets=1", b"morph_targets=0"), "morph metadata"),
+        ("reject", "morph-stride.pkg", morph.replace(
+            b"morph_target_position_stride=12", b"morph_target_position_stride=16", 1), "morph metadata"),
+        ("reject", "morph-empty.pkg", morph.replace(b"morph_targets=1", b"morph_targets=0", 1),
+            "morph metadata"),
         ("reject", "gap.pkg", strip_package(3, [(0, 3, 0), (6, 3, 0)], 1), PARTITION),
         ("reject", "overlap.pkg", strip_package(3, [(0, 6, 0), (3, 6, 1)], 2), PARTITION),
         ("reject", "split-triangle.pkg", strip_package(2, [(0, 4, 0), (4, 2, 1)], 2), PARTITION),

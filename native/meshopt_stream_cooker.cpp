@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace {
@@ -44,7 +45,28 @@ bool fail(const char* message) {
     return false;
 }
 
-bool run() {
+bool triangle_round_trip_preserves_winding(const std::vector<uint8_t>& source,
+    const std::vector<uint8_t>& decoded, size_t offset) {
+    const uint32_t a = read_u32(source, offset);
+    const uint32_t b = read_u32(source, offset + 4);
+    const uint32_t c = read_u32(source, offset + 8);
+    const uint32_t x = read_u32(decoded, offset);
+    const uint32_t y = read_u32(decoded, offset + 4);
+    const uint32_t z = read_u32(decoded, offset + 8);
+    return (x == a && y == b && z == c) || (x == b && y == c && z == a) ||
+        (x == c && y == a && z == b);
+}
+
+bool index_round_trip_preserves_winding(const std::vector<uint8_t>& source,
+    const std::vector<uint8_t>& decoded) {
+    if (source.size() != decoded.size() || source.size() % 12 != 0) return false;
+    for (size_t offset = 0; offset < source.size(); offset += 12) {
+        if (!triangle_round_trip_preserves_winding(source, decoded, offset)) return false;
+    }
+    return true;
+}
+
+bool run(bool decode_mode) {
     std::vector<uint8_t> input;
     std::array<char, 64u * 1024u> block{};
     while (std::cin) {
@@ -73,7 +95,8 @@ bool run() {
         offset += STREAM_RECORD_BYTES;
         if ((stream.kind != VERTEX_STREAM && stream.kind != INDEX_STREAM) || stream.count == 0 ||
             stream.stride == 0 || size_t(stream.count) > std::numeric_limits<size_t>::max() / stream.stride ||
-            size_t(stream.count) * stream.stride != byte_count || byte_count > input.size() - offset ||
+            (!decode_mode && size_t(stream.count) * stream.stride != byte_count) ||
+            (decode_mode && byte_count == 0) || byte_count > input.size() - offset ||
             byte_count > MAX_PACKET_BYTES) return fail("stream dimensions exceed their bounds");
         if (stream.kind == INDEX_STREAM && stream.stride != sizeof(uint32_t)) {
             return fail("index streams must use 32-bit indices");
@@ -83,18 +106,56 @@ bool run() {
         if (stream.kind == VERTEX_STREAM && stream.vertex_count != stream.count) {
             return fail("vertex stream count is inconsistent");
         }
-        stream.source.assign(input.begin() + offset, input.begin() + offset + byte_count);
+        if (decode_mode) {
+            stream.encoded.assign(input.begin() + offset, input.begin() + offset + byte_count);
+        } else {
+            stream.source.assign(input.begin() + offset, input.begin() + offset + byte_count);
+        }
         offset += byte_count;
     }
     if (offset != input.size()) return fail("packet contains trailing bytes");
 
-    for (Stream& stream : streams) {
+    for (size_t stream_index = 0; stream_index < streams.size(); ++stream_index) {
+        Stream& stream = streams[stream_index];
+        if (decode_mode) {
+            const bool decoded = stream.kind == VERTEX_STREAM
+                ? elisa::assets::detail::decode_meshopt_vertex_stream(stream.encoded.data(),
+                    stream.encoded.size(), stream.count, stream.stride, stream.source)
+                : elisa::assets::detail::decode_meshopt_index_stream(stream.encoded.data(),
+                    stream.encoded.size(), stream.count, stream.source);
+            if (!decoded) return fail("meshoptimizer rejected an encoded stream");
+            continue;
+        }
         const bool encoded = stream.kind == VERTEX_STREAM
             ? elisa::assets::detail::encode_meshopt_vertex_stream(stream.source.data(),
                 stream.count, stream.stride, stream.encoded)
             : elisa::assets::detail::encode_meshopt_index_stream(stream.source.data(),
                 stream.count, stream.vertex_count, stream.encoded);
         if (!encoded) return fail("meshoptimizer rejected a stream");
+        std::vector<uint8_t> decoded;
+        const bool round_trip = stream.kind == VERTEX_STREAM
+            ? elisa::assets::detail::decode_meshopt_vertex_stream(stream.encoded.data(),
+                stream.encoded.size(), stream.count, stream.stride, decoded)
+            : elisa::assets::detail::decode_meshopt_index_stream(stream.encoded.data(),
+                stream.encoded.size(), stream.count, decoded);
+        const bool preserves_data = stream.kind == VERTEX_STREAM
+            ? decoded == stream.source
+            : index_round_trip_preserves_winding(stream.source, decoded);
+        if (!round_trip || !preserves_data) {
+            size_t mismatch = 0;
+            if (stream.kind == VERTEX_STREAM) {
+                while (mismatch < decoded.size() && mismatch < stream.source.size() &&
+                    decoded[mismatch] == stream.source[mismatch]) ++mismatch;
+            } else {
+                for (; mismatch + 12 <= decoded.size(); mismatch += 12) {
+                    if (!triangle_round_trip_preserves_winding(stream.source, decoded, mismatch)) break;
+                }
+            }
+            std::fprintf(stderr, "meshoptimizer stream %zu kind %u round-trip mismatch at byte %zu "
+                "(decoded %zu, source %zu)\n", stream_index, stream.kind, mismatch,
+                decoded.size(), stream.source.size());
+            return fail("meshoptimizer stream failed lossless round-trip");
+        }
     }
 
     std::vector<uint8_t> output;
@@ -102,17 +163,18 @@ bool run() {
     append_u32(output, stream_count);
     append_u32(output, 0);
     for (const Stream& stream : streams) {
+        const std::vector<uint8_t>& payload = decode_mode ? stream.source : stream.encoded;
         if (output.size() > MAX_PACKET_BYTES - STREAM_RECORD_BYTES ||
-            stream.encoded.size() > UINT32_MAX ||
-            stream.encoded.size() > MAX_PACKET_BYTES - output.size() - STREAM_RECORD_BYTES) {
+            payload.size() > UINT32_MAX ||
+            payload.size() > MAX_PACKET_BYTES - output.size() - STREAM_RECORD_BYTES) {
             return fail("encoded streams exceed the packet bound");
         }
         append_u32(output, stream.kind);
         append_u32(output, stream.count);
         append_u32(output, stream.stride);
-        append_u32(output, static_cast<uint32_t>(stream.encoded.size()));
+        append_u32(output, static_cast<uint32_t>(payload.size()));
         append_u32(output, stream.vertex_count);
-        output.insert(output.end(), stream.encoded.begin(), stream.encoded.end());
+        output.insert(output.end(), payload.begin(), payload.end());
     }
     std::cout.write(reinterpret_cast<const char*>(output.data()),
         static_cast<std::streamsize>(output.size()));
@@ -121,6 +183,8 @@ bool run() {
 
 } // namespace
 
-int main() {
-    return run() ? 0 : 1;
+int main(int argc, char** argv) {
+    const bool decode_mode = argc == 2 && std::string(argv[1]) == "--decode";
+    if (argc > 2 || (argc == 2 && !decode_mode)) return 2;
+    return run(decode_mode) ? 0 : 1;
 }

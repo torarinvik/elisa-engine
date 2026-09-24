@@ -44,10 +44,13 @@ index codec to triangle indices. Each stream uses the encoded representation
 only when it is smaller; mixed raw and encoded streams are supported.
 `meshopt_codec=meshoptimizer-v1.2` identifies the payload format. The bounded
 native reader checks that tag, rejects duplicate, unknown, or corrupt codec
-fields, restores the original little-endian streams, and continues to accept
-earlier raw v2/v3 packages. FBX `.pkg` and textured `.elpk` cooks share the same
+fields, restores vertex bytes exactly, and preserves triangle order and winding
+(the index codec may cyclically rotate a triangle's corners). It continues to
+accept earlier raw v2/v3 packages. FBX `.pkg` and textured `.elpk` cooks share the same
 bounded package encoder. Generated and authored lightmap UV1 streams use the
-same codec; rig and morph payloads remain raw.
+same codec. glTF skin-index, skin-weight, and morph position/normal streams use
+the same store-only-if-smaller codec; rig hierarchy, inverse-bind matrices,
+animation samples, and other metadata remain raw.
 
 Validation on 2026-09-23 and 2026-09-24:
 
@@ -66,3 +69,4 @@ Validation on 2026-09-23 and 2026-09-24:
 - Tangent compression validation: `DEVELOPER_DIR=/Library/Developer/CommandLineTools CXX=/opt/homebrew/opt/llvm/bin/clang++ /opt/homebrew/bin/python3 scripts/cook_gltf_asset.py --self-test` passed and confirms five compressed streams on tangent-bearing maze and textured-panel fixtures. `scripts/test_geometry_subsets.py` passed 127 cases, including a malformed encoded tangent rejection. The FBX self-test passed using matched Homebrew clang/clang++, and the generated two-mesh package plus textured ELPK passed together through the sanitized loader (129 cases, no failures). Raw/encoded fallback and codec-tag validation remain covered.
 - Generated and authored UV1 now follow the same store-only-if-smaller path. The 48-vertex xatlas material-panel fixture stores UV1 in 94 bytes instead of 384, and all six geometry streams together shrink from 744 to 333 bytes. `scripts/test_geometry_subsets.py` verifies generated and authored UV1 through the production decoder, plus rejects missing, corrupt, out-of-range, and invalid-metadata UV1 cases. Its combined sanitized run with both FBX package forms passed 130 cases.
 - The SDL3/Metal render-only smoke passed three times with compressed tangent packages loaded into Wicked. The first run measured LOD0/LOD2 GPU timestamp medians of 2,145/1,617 µs and completed-frame medians of 8,383/8,247 µs; its immediate repeat measured 3,054/2,979 µs and 8,070/8,020 µs. After UV1 support, the third pass measured 3,062/2,983 µs and 8,122/8,156 µs. All captures retained the same LOD image comparison (mean maximum-channel error 0.00276, p95 0.0196). The first timing pass was a large outlier; the later two are similar, but these samples do not establish a repeatable LOD timing improvement. Broader repeats and other hardware remain open.
+- glTF skin influences and morph position/normal deltas now use meshoptimizer v1.2 with raw fallback when the encoded stream is not smaller. The production loader decodes both forms into the same runtime arrays and rejects malformed compressed influence and morph payloads. Deterministic skin/morph cooker fixtures reduce combined mesh streams from 2,352 to 444 bytes and 936 to 293 bytes, respectively. `scripts/cook_gltf_asset.py --self-test` passed; `scripts/test_geometry_subsets.py` passed 135 cases under ASan/UBSan with valid skinned and morphed packages plus corrupt compressed skin/morph cases. The full SDL3/Metal render and packaged-maze smoke passed after regenerating the deformation fixtures. The ELPK test now limits its exact sample-index assertion to the synthetic fixture while still checking real optimized FBX package loading. The FBX cooker self-test, source-length, module-hygiene, Python syntax, and diff checks passed. This does not compress skeleton, inverse-bind, or animation metadata.

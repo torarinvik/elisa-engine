@@ -48,6 +48,20 @@ inline bool decode_geometry_floats(const probe::PackageIndex& package, const cha
     return true;
 }
 
+inline bool decode_geometry_u32(const probe::PackageIndex& package, const char* field,
+    size_t vertex_count, size_t values_per_vertex, std::vector<uint32_t>& output) {
+    if (values_per_vertex == 0 || values_per_vertex > std::numeric_limits<size_t>::max() / 4) return false;
+    std::vector<uint8_t> bytes;
+    if (!decode_geometry_vertex_bytes(package, field, vertex_count, values_per_vertex * 4, bytes)) return false;
+    output.resize(bytes.size() / 4);
+    for (size_t index = 0; index < output.size(); ++index) {
+        const size_t offset = index * 4;
+        output[index] = uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
+            (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
+    }
+    return true;
+}
+
 inline bool decode_geometry_index_bytes(const probe::PackageIndex& package, size_t index_count,
     std::vector<uint8_t>& bytes) {
     const auto raw = package.sections.find("indices_b64");
