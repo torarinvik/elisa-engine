@@ -331,11 +331,19 @@ def main() -> int:
     coarse_lod_capture = build / "render-scene-lod-coarse.png"
     mirrored_normal_capture = build / "render-scene-mirrored-normal.png"
     mirrored_normal_no_occlusion_capture = build / "render-scene-mirrored-normal-no-occlusion.png"
+    clearcoat_baseline_capture = build / "render-scene-clearcoat-baseline.png"
+    clearcoat_coated_capture = build / "render-scene-clearcoat-coated.png"
+    point_light_left_capture = build / "render-scene-point-light-left.png"
+    point_light_right_capture = build / "render-scene-point-light-right.png"
     mirrored_normal_capture.unlink(missing_ok=True)
     mirrored_normal_no_occlusion_capture.unlink(missing_ok=True)
     runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
     runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
         mirrored_normal_no_occlusion_capture)
+    runtime_env["ELISA_CLEARCOAT_BASELINE_CAPTURE"] = str(clearcoat_baseline_capture)
+    runtime_env["ELISA_CLEARCOAT_COATED_CAPTURE"] = str(clearcoat_coated_capture)
+    runtime_env["ELISA_POINT_LIGHT_LEFT_CAPTURE"] = str(point_light_left_capture)
+    runtime_env["ELISA_POINT_LIGHT_RIGHT_CAPTURE"] = str(point_light_right_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -382,7 +390,7 @@ def main() -> int:
             return occlusion_status
     if status == 0:
         if render_only:
-            print("Elisa screen-space UI and glTF normal/AO material references rendered by Wicked; visual checks passed.")
+            print("Elisa screen-space UI and glTF material/light references rendered by Wicked; visual checks passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

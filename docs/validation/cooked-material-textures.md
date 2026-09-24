@@ -185,10 +185,17 @@ materials share the same eight-slot runtime representation.
   It registers all four bundle images, checks the three clearcoat map bindings
   and dimensions, verifies Wicked's clearcoat shader fields, then repeats the
   checks for a hand-registered material and releases each resource. The
-  complete `scripts/render_scene_native_smoke.py` run passed, including the
-  existing render comparisons and packaged-maze checks. This clearcoat case
-  verifies the data path; a dedicated visible clearcoat reference comparison
-  remains open under R04.
+  native test also compares the visible cooked and hand-registered clearcoat
+  against the same painted baseline under a controlled point light. Each
+  comparison requires at least one sampled patch to change mean luminance by
+  0.01 or more. The complete SDL3/Metal render-only smoke passed, including the
+  normal/AO references and LOD comparison. See
+  [`clearcoat-rendering.md`](clearcoat-rendering.md).
+
+The visible comparison exposed a Wicked raster-shader mismatch: clearcoat
+factor and roughness maps replaced the authored scalar values, while the other
+surface path multiplied them. `objectHF.hlsli` now multiplies each map sample
+by its material factor, preserving glTF's scalar-times-texture behavior.
 
 ## Evidence
 

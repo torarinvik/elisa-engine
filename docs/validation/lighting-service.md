@@ -22,6 +22,12 @@ The native gate creates and moves point and spot lights, verifies Wicked transfo
 handle and an invalid probe resolution, applies sky exposure and height fog,
 rejects a zero sun direction, and destroys every probe/light.
 
+The SDL3/Metal render-scene smoke also moves a point light between two positions
+over the same painted panel. It samples the Wicked 3D render result before and
+after `RenderScene::update_light` and requires one of the red/blue patches to
+change mean luminance by at least 0.01. The related clearcoat comparison and
+test limits are documented in [`clearcoat-rendering.md`](clearcoat-rendering.md).
+
 Point-light direction is ignored by the shared descriptor and can be zero.
 The Wicked adapter substitutes a stable downward direction rather than
 normalizing zero. The SDL3/Metal light test creates a zero-direction point
