@@ -30,7 +30,8 @@ import cook_gltf_textures
 import cook_gltf_mikktspace
 from ktx2_fixtures import make_ktx2
 from elisa_package import build_package_bytes, encoded_image_dimensions
-from ktx2_container import KTX2_UASTC_HDR_4X4_DFD_MODEL, KTX2_UASTC_HDR_4X4_VK_FORMAT
+from ktx2_container import (KTX2_UASTC_HDR_4X4_DFD_MODEL, KTX2_UASTC_HDR_4X4_VK_FORMAT,
+    with_key_value)
 from png_image import encode_png
 
 
@@ -370,6 +371,14 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
         return fail(f"the bounded image cooker rejected UASTC HDR KTX2: {error}")
     if hdr_dimensions != (4, 4):
         return fail("UASTC HDR KTX2 did not preserve its validated dimensions")
+    try:
+        swizzled = with_key_value(basis_ktx2(), "KTXswizzle", b"ra01\0")
+        replaced = with_key_value(swizzled, "KTXswizzle", b"rgba\0")
+    except ValueError as error:
+        return fail(f"KTX2 swizzle metadata update failed: {error}")
+    if (encoded_image_dimensions(swizzled) != (4, 4) or
+            encoded_image_dimensions(replaced) != (4, 4) or swizzled == replaced):
+        return fail("KTX2 swizzle metadata did not round-trip through the bounded parser")
     malformed_hdr = bytearray(basis_hdr_ktx2())
     malformed_hdr[struct.unpack_from("<I", malformed_hdr, 48)[0] + 12] = 166
     try:
