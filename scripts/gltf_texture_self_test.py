@@ -264,6 +264,8 @@ ACCEPTED = {
         SLOT_TEXTURES, SECTIONS),
     "default textureInfo factors": (lambda d: [d["materials"][1]["normalTexture"].pop("scale"),
         d["materials"][1]["occlusionTexture"].pop("strength")], SLOT_TEXTURES, SECTIONS),
+    "a non-default positive normal scale": (info(1, "normalTexture", scale=2.0), SLOT_TEXTURES, SECTIONS),
+    "a negative normal scale": (info(1, "normalTexture", scale=-0.75), SLOT_TEXTURES, SECTIONS),
     "an explicit TEXCOORD_0": (info(0, "baseColorTexture", texCoord=0), SLOT_TEXTURES, SECTIONS),
     "an occlusion map from another image": (info(1, "occlusionTexture", index=1),
         SEPARATE_OCCLUSION_TEXTURES, SECTIONS),
@@ -282,10 +284,16 @@ REJECTED = {
     "a texture transform": (info(1, "baseColorTexture", extensions={"KHR_texture_transform": {}}),
         "baseColorTexture has unsupported properties"),
     "a scaled base-color texture": (info(1, "baseColorTexture", scale=1.0), "has unsupported properties"),
-    "a normal scale of 2": (info(1, "normalTexture", scale=2.0), "normalTexture scale must be 1"),
-    "a string normal scale": (info(1, "normalTexture", scale="1"), "normalTexture scale must be 1"),
-    "a boolean normal scale": (info(1, "normalTexture", scale=True), "normalTexture scale must be 1"),
-    "an occlusion strength of 0.5": (info(1, "occlusionTexture", strength=0.5), "strength must be 1"),
+    "a string normal scale": (info(1, "normalTexture", scale="1"), "scale must be finite"),
+    "a boolean normal scale": (info(1, "normalTexture", scale=True), "scale must be finite"),
+    "a NaN normal scale": (info(1, "normalTexture", scale=float("nan")), "scale must be finite"),
+    "an infinite normal scale": (info(1, "normalTexture", scale=float("inf")), "scale must be finite"),
+    "a normal scale outside Wicked's half-float range": (info(1, "normalTexture", scale=65505.0),
+        "must fit Wicked's finite half-float range"),
+    "a huge integer normal scale": (info(1, "normalTexture", scale=10 ** 10000),
+        "must fit Wicked's finite half-float range"),
+    "an occlusion strength of 0.5": (info(1, "occlusionTexture", strength=0.5),
+        "must be 1 until runtime AO strength is supported"),
     "a texture index out of range": (info(1, "baseColorTexture", index=5), "names a missing texture"),
     "a string texture index": (info(1, "baseColorTexture", index="0"), "names a missing texture"),
     "a negative texture index": (info(1, "baseColorTexture", index=-1), "names a missing texture"),
@@ -413,7 +421,7 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     buffer = base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1])
     geometry = cook_gltf_geometry.normalized_geometry(document, buffer)
     if (geometry["slot_materials"] != SLOT_MATERIALS or geometry["slot_textures"] != SLOT_TEXTURES or
-            geometry["images"] != SECTIONS or geometry["vertex_count"] != 16 or
+            geometry["slot_normal_scales"] or geometry["images"] != SECTIONS or geometry["vertex_count"] != 16 or
             geometry["subsets"] != SUBSETS or len(geometry["tangents"]) != 16 * 16):
         return fail("the textured panel cooked the wrong slot records, images or subsets")
     tangent_values = list(struct.iter_unpack("<4f", geometry["tangents"]))
@@ -427,6 +435,15 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
         "slot_texture_stride=20", "slot_textures_b64=" + base64.b64encode(SLOT_TEXTURES).decode("ascii")]
     if lines[-4:] != expected_lines:
         return fail("the textured panel's slot texture lines are wrong")
+    scaled_document = deepcopy(document)
+    info(1, "normalTexture", scale=2.0)(scaled_document)
+    scaled_geometry = cook_gltf_geometry.normalized_geometry(scaled_document, buffer)
+    if scaled_geometry["slot_normal_scales"] != struct.pack("<4f", 1.0, 2.0, 1.0, 1.0):
+        return fail("the glTF cooker did not preserve non-default normal scale per material slot")
+    info(1, "normalTexture", scale=-0.75)(scaled_document)
+    negative_scale_geometry = cook_gltf_geometry.normalized_geometry(scaled_document, buffer)
+    if negative_scale_geometry["slot_normal_scales"] != struct.pack("<4f", 1.0, -0.75, 1.0, 1.0):
+        return fail("the glTF cooker did not preserve a negative normal scale")
 
     # The package lists the images, a bundle carries them, and only a bundle
     # may: a loose package would name sections nothing holds.

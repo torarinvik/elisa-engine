@@ -464,14 +464,14 @@ extern "C" int32_t elisa_render_scene_v1_unregister_snapshot_texture_asset(uint6
     return ELISA_RENDER_SCENE_OK;
 }
 
-extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_parameters(
     uint64_t high, uint64_t low,
     uint64_t base_color_high, uint64_t base_color_low,
     uint64_t normal_high, uint64_t normal_low,
     uint64_t surface_high, uint64_t surface_low,
     uint64_t emissive_high, uint64_t emissive_low,
     float red, float green, float blue, float alpha,
-    float metallic, float roughness,
+    float metallic, float roughness, float normal_scale,
     float emissive_red, float emissive_green, float emissive_blue,
     float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion) {
     SnapshotMaterialAssetSlot values;
@@ -479,6 +479,7 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_o
     values.base_color[2] = blue; values.base_color[3] = alpha;
     values.metallic = metallic;
     values.roughness = roughness;
+    values.normal_scale = normal_scale;
     values.emissive[0] = emissive_red; values.emissive[1] = emissive_green; values.emissive[2] = emissive_blue;
     values.alpha_cutoff = alpha_cutoff;
     values.alpha_mode = alpha_mode;
@@ -497,6 +498,24 @@ extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_o
     if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
     bool created = false;
     return register_snapshot_material_locked(state, high, low, values, created);
+}
+
+extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(
+    uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion) {
+    return elisa_render_scene_v1_register_snapshot_material_asset_with_parameters(
+        high, low, base_color_high, base_color_low, normal_high, normal_low,
+        surface_high, surface_low, emissive_high, emissive_low,
+        red, green, blue, alpha, metallic, roughness, 1.0f,
+        emissive_red, emissive_green, emissive_blue,
+        alpha_cutoff, alpha_mode, double_sided, occlusion);
 }
 
 extern "C" int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_textures(

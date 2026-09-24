@@ -16,7 +16,9 @@ to exactly those images.
    - **Texture info.** It may name `index`, `texCoord`, and `scale` for the
      normal texture or `strength` for occlusion.
      - `texCoord` must be the integer 0.
-     - `scale` and `strength` must be 1.
+     - Normal `scale` is preserved within Wicked's finite half-float range
+       (−65504 to 65504); non-finite and out-of-range values fail. Occlusion
+       `strength` must remain 1 until the runtime exposes that factor.
      - Anything else fails as an unsupported property, including
        `KHR_texture_transform`.
    - **Textures.** A texture may name `source`, `sampler`, `name`, and the
@@ -43,6 +45,10 @@ to exactly those images.
    - **Masks and UVs.** `MASK` is now allowed, but only with a base-color
      texture. A primitive whose material is textured needs `TEXCOORD_0`.
 2. **Package.** Beside the slot material records, a textured mesh holds:
+   - when any material uses a non-default normal scale,
+     `slot_normal_scale_stride=4` and `slot_normal_scales_b64`: one
+     little-endian `f32` per material slot. Older packages omit this sidecar
+     and retain the default scale of 1.
    - `texture_count`: 1–64 images
    - `texture_names_b64`: the image section names, `image_<glTF index>` in
      glTF image order
@@ -56,6 +62,8 @@ to exactly those images.
    `allow_textures=True`.
 3. **Load.** `native/cooked_slot_materials.h` now holds the slot material
    parser and the new `detail::parse_slot_textures`.
+   - The optional normal-scale sidecar must contain one finite in-range value
+     for every material record. Its absence keeps the glTF default of 1.
    - The four keys must all be present or all absent, and they need slot
      material records.
    - The stride must be 20 and the records must fill exactly one per slot.
@@ -147,17 +155,19 @@ checks:
   section
 - an untextured variant cooks no texture keys
 
-Five variants must cook the expected references:
+Eleven variants must cook the expected references:
 - the base-color image also sampled for emission
 - a data URI that names its `mimeType`
 - a sampler with only a name
 - default `scale` and `strength`
+- positive and negative non-default normal scales
 - an explicit `texCoord` 0
 
-Forty-seven variants must fail for the stated reason. They cover:
+Fifty-seven variants must fail for the stated reason. They cover:
 - **UV sets:** a second UV set, or a boolean `texCoord`
-- **Texture info:** a texture transform, a scaled base-color texture, a
-  normal scale of 2, `"1"` or `true`, and an occlusion strength of 0.5
+- **Texture info:** a texture transform, a scaled base-color texture,
+  string, boolean, non-finite or out-of-range normal scales, and an
+  occlusion strength of 0.5
 - **Occlusion:** occlusion from another image, or without a surface image
 - **Indices:** texture indices out of range, negative or strings; a
   non-object texture info; texture sources missing, out of range or negative
@@ -177,7 +187,7 @@ Forty-seven variants must fail for the stated reason. They cover:
 The earlier subset self-test's texture rejections now fail as missing
 textures, because its panel declares none.
 
-**Loader.** `scripts/test_geometry_subsets.py` now runs 74 sanitized cases. An
+**Loader.** `scripts/test_geometry_subsets.py` now runs 141 sanitized cases. An
 accepted case can list each slot's image references and flags and each
 section's name and checksum.
 - **Accepted.**
@@ -287,7 +297,7 @@ Thirty-six cooker mutations ran on a copy of `scripts/` through
 new rejection:
 - a string filter only fails because `"9729" != 9729`, but `9729.0` passes
   without the type check
-- `true` equals 1 as a normal scale
+- boolean `true` passes a Python equality check against numeric scale 1
 - negative texture indices pass an upper-bound-only check
 - negative sources pass the same way
 - a remote URI with `;base64,` passes without the `data:` check
@@ -328,9 +338,10 @@ catches that mutation.
   the same section doesn't satisfy a slot until it is resident, and a slot
   never waits for it: an unresolved image is `AssetLoadFailure`.
 - **Embedded images only.** External image files, unsupported texture
-  extensions such as `KHR_texture_transform`, second UV sets, non-unit normal
-  scales and non-unit occlusion strengths fail. Bundles retain PNG, JPEG or
-  bounded 2D Basis KTX2 data; mip data stays in the KTX2 source.
+  extensions such as `KHR_texture_transform`, second UV sets, normal scales
+  outside Wicked's finite half-float range and non-unit occlusion strengths
+  fail. Bundles retain PNG, JPEG or bounded 2D Basis KTX2 data; mip data
+  stays in the KTX2 source.
 - **Separate occlusion channel policy.** A separate glTF occlusion image is
   retained as a dedicated Wicked `OCCLUSIONMAP`; it is not packed into the
   metallic-roughness surface image. An occlusion texture named alone leaves
@@ -383,3 +394,13 @@ working tree.
   binary.
 - The full `scripts/check.elisascript` suite and the cooker self-test weren't
   rerun, because this change doesn't touch the cooker or the loader.
+
+## Validation on 2026-09-24
+
+The normal-scale sidecar, backend descriptor and Wicked material application
+passed the glTF cooker self-test, the 141-case sanitized geometry-loader test,
+and the Elisa material test. The SDL3/Metal render-scene smoke confirmed that
+the authored scale reaches Wicked and retained visible mirrored-seam shading.
+The test fixture uses `scale=0.75`; the captured luminance contrast was 0.2043
+against a 0.04 image threshold. Non-unit occlusion strength remains unsupported
+until Wicked has a matching runtime field and shader factor.

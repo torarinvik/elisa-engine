@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -21,6 +22,7 @@ inline constexpr size_t SLOT_MATERIAL_OCCLUSION_TEXTURE = 4;
 inline constexpr uint32_t SLOT_MATERIAL_DOUBLE_SIDED = 1;
 inline constexpr uint32_t SLOT_MATERIAL_OCCLUSION = 2;
 inline constexpr uint32_t SLOT_ALPHA_MASK = 1;
+inline constexpr float WICKED_NORMAL_SCALE_LIMIT = 65504.0f;
 
 // glTF factors authored for one material slot. Alpha mode uses the render
 // scene codes: 0 opaque, 1 mask, 2 blend.
@@ -30,6 +32,7 @@ struct CookedSlotMaterial {
     float roughness = 1.0f;
     std::array<float, 3> emissive{};
     float alpha_cutoff = 0.5f;
+    float normal_scale = 1.0f;
     uint32_t alpha_mode = 0;
     bool double_sided = false;
     // The surface image's red channel is ambient occlusion.
@@ -103,6 +106,31 @@ inline bool parse_slot_materials(const probe::PackageIndex& package, uint32_t ma
         material.double_sided = (record[11] & SLOT_MATERIAL_DOUBLE_SIDED) != 0;
         material.occlusion = (record[11] & SLOT_MATERIAL_OCCLUSION) != 0;
         materials.push_back(material);
+    }
+    return true;
+}
+
+// Normal scale is an additive sidecar so older 48-byte material records and
+// FBX packages keep their existing layout and default to the glTF value 1.
+inline bool parse_slot_normal_scales(const probe::PackageIndex& package,
+    std::vector<CookedSlotMaterial>& materials, std::string& error) {
+    const size_t present = package.sections.count("slot_normal_scale_stride") +
+        package.sections.count("slot_normal_scales_b64");
+    if (present == 0) return true;
+    std::vector<uint32_t> words;
+    if (present != 2 || materials.empty() || package.sections.at("slot_normal_scale_stride") != "4" ||
+        !decode_u32(package, "slot_normal_scales_b64", materials.size(), words)) {
+        error = "invalid cooked slot normal scales";
+        return false;
+    }
+    for (size_t slot = 0; slot < materials.size(); ++slot) {
+        float scale = 0.0f;
+        std::memcpy(&scale, &words[slot], sizeof(scale));
+        if (!std::isfinite(scale) || std::abs(scale) > WICKED_NORMAL_SCALE_LIMIT) {
+            error = "cooked slot normal scale is out of range";
+            return false;
+        }
+        materials[slot].normal_scale = scale;
     }
     return true;
 }

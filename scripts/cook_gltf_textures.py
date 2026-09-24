@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import math
 import struct
 
 from elisa_package import KTX2_IDENTIFIER, MAX_SECTION_BYTES, encoded_image_dimensions
@@ -20,6 +21,7 @@ SLOT_TEXTURES = ("baseColorTexture", "normalTexture", "metallicRoughnessTexture"
 PBR_TEXTURES = {"baseColorTexture", "metallicRoughnessTexture"}
 SURFACE = 2
 SLOT_TEXTURE_STRIDE = 20
+WICKED_NORMAL_SCALE_LIMIT = 65504.0
 LINEAR = 9729
 LINEAR_MIPMAP_LINEAR = 9987
 REPEAT = 10497
@@ -43,15 +45,22 @@ def check_sampler(document: dict, reference) -> None:
 
 def texture_image(document: dict, info, label: str, factor: str | None = None) -> int:
     """Return the image a material textureInfo samples. `factor` names the
-    info's scale or strength, which must be 1."""
+    info's normal scale or occlusion strength."""
     allowed = {"index", "texCoord"} | ({factor} if factor else set())
     if not isinstance(info, dict) or set(info) - allowed:
         raise ValueError(f"material {label} has unsupported properties")
     coordinate = info.get("texCoord", 0)
     if type(coordinate) is not int or coordinate != 0:
         raise ValueError(f"material {label} must sample TEXCOORD_0")
-    if factor and factor in info and (type(info[factor]) not in (int, float) or info[factor] != 1):
-        raise ValueError(f"material {label} {factor} must be 1")
+    if factor and factor in info:
+        value = info[factor]
+        if type(value) not in (int, float) or (type(value) is float and not math.isfinite(value)):
+            raise ValueError(f"material {label} {factor} must be finite")
+        if factor == "scale":
+            if abs(value) > WICKED_NORMAL_SCALE_LIMIT:
+                raise ValueError(f"material {label} scale must fit Wicked's finite half-float range")
+        elif not 0.0 <= value <= 1.0:
+            raise ValueError(f"material {label} strength must be in [0, 1]")
     textures = document.get("textures", [])
     index = info.get("index")
     if type(index) is not int or not isinstance(textures, list) or not 0 <= index < len(textures):
@@ -79,9 +88,8 @@ def texture_image(document: dict, info, label: str, factor: str | None = None) -
     return source
 
 
-def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool]:
-    """Return each runtime texture slot's image, or None, and whether
-    occlusion is enabled."""
+def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool, float]:
+    """Return slot images, the AO flag and normal-map strength."""
     images = []
     for key in SLOT_TEXTURES[:4]:
         info = (pbr if key in PBR_TEXTURES else material).get(key)
@@ -89,9 +97,16 @@ def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bo
             texture_image(document, info, key, "scale" if key == "normalTexture" else None))
     if "occlusionTexture" not in material:
         images.append(None)
-        return images, False
-    images.append(texture_image(document, material["occlusionTexture"], "occlusionTexture", "strength"))
-    return images, True
+        occlusion_enabled = False
+    else:
+        images.append(texture_image(document, material["occlusionTexture"], "occlusionTexture", "strength"))
+        occlusion_enabled = True
+        occlusion_strength = material["occlusionTexture"].get("strength", 1.0)
+        if occlusion_strength != 1.0:
+            raise ValueError("material occlusionTexture strength must be 1 until runtime AO strength is supported")
+    normal = material.get("normalTexture")
+    normal_scale = 1.0 if normal is None else normal.get("scale", 1.0)
+    return images, occlusion_enabled, float(normal_scale)
 
 
 def view_bytes(document: dict, buffer: bytes, reference) -> bytes:

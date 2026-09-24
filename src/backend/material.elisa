@@ -3,6 +3,10 @@
 include "../assets/descriptor.elisa"
 
 module Material:
+    private:
+        const module Limits:
+            WICKED_NORMAL_SCALE_LIMIT: f32 = 65504.0
+
     public:
         enum AlphaMode:
             Opaque
@@ -25,6 +29,7 @@ module Material:
             base_color_factor: f32[4]
             metallic_factor: mutable f32
             roughness_factor: mutable f32
+            normal_scale: mutable f32
             emissive_factor: f32[3]
             alpha_cutoff: mutable f32
             alpha_mode: AlphaMode
@@ -40,6 +45,7 @@ module Material:
                 base_color_factor: [1.0, 1.0, 1.0, 1.0],
                 metallic_factor: 0.0,
                 roughness_factor: 1.0,
+                normal_scale: 1.0,
                 emissive_factor: [0.0, 0.0, 0.0],
                 alpha_cutoff: 0.5,
                 alpha_mode: AlphaMode.Opaque,
@@ -68,6 +74,7 @@ module Material:
             true
 
         def material_valid(material: Material&) -> bool:
+            return false if material.normal_scale != material.normal_scale or material.normal_scale < -Limits::WICKED_NORMAL_SCALE_LIMIT or material.normal_scale > Limits::WICKED_NORMAL_SCALE_LIMIT
             return false if material.metallic_factor < 0.0 or material.metallic_factor > 1.0 or material.roughness_factor < 0.0 or material.roughness_factor > 1.0 or material.alpha_cutoff < 0.0 or material.alpha_cutoff > 1.0
             return false if material.alpha_mode == AlphaMode.Mask and not Assets::asset_id_valid(material.base_color)
             true

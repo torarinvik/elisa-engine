@@ -19,6 +19,7 @@ SOURCE_VERTEX_COUNT = 6
 INDEX_COUNT = 12
 NORMAL_TEXTURE_SIZE = 8
 TANGENT_POSITIVE_X_RGBA = (255, 128, 128, 255)
+NORMAL_TEXTURE_SCALE = 0.75
 
 
 def fixture_text() -> str:
@@ -67,7 +68,7 @@ def fixture_text() -> str:
             "baseColorFactor": [0.85, 0.85, 0.85, 1.0],
             "metallicFactor": 0.0,
             "roughnessFactor": 0.9,
-        }, "normalTexture": {"index": 0, "scale": 1.0}}],
+        }, "normalTexture": {"index": 0, "scale": NORMAL_TEXTURE_SCALE}}],
         "textures": [{"source": 0}],
         "images": [{"name": "normal", "bufferView": 4, "mimeType": "image/png"}],
         "buffers": [{"byteLength": len(buffer),

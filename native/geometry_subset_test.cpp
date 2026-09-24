@@ -2,6 +2,7 @@
 // Each tab-separated manifest line is either
 //   accept <path> <index count> <material slots> (<start> <count> <slot>)...
 //          [materials (<10 factors> <alpha mode> <flags> <5 image references>)...]
+//          [normal_scales (<scale>)...]
 //          [sections (<name> <checksum>)...]
 //   reject <path> <expected error text>
 // and the loader must accept with exactly those subsets, slot materials and
@@ -51,6 +52,15 @@ bool check_slot_materials(const std::vector<std::string>& fields, size_t first, 
     return true;
 }
 
+bool check_slot_normal_scales(const std::vector<std::string>& fields, size_t first, size_t end,
+    const elisa::assets::CookedGeometry& geometry) {
+    if (end - first != geometry.slot_materials.size()) return false;
+    for (size_t slot = 0; slot < geometry.slot_materials.size(); ++slot) {
+        if (geometry.slot_materials[slot].normal_scale != std::stof(fields[first + slot])) return false;
+    }
+    return true;
+}
+
 bool check_sections(const std::vector<std::string>& fields, size_t first, size_t end,
     const elisa::assets::CookedGeometry& geometry) {
     if ((end - first) % 2 != 0 || geometry.texture_sections.size() != (end - first) / 2 ||
@@ -83,6 +93,7 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
         return size_t(std::find(fields.begin() + 4, fields.end(), name) - fields.begin());
     };
     const size_t materials = marker("materials");
+    const size_t normal_scales = marker("normal_scales");
     const size_t sections = marker("sections");
     const size_t slot_names = marker("slot_names");
     const size_t animations = marker("animations");
@@ -93,17 +104,23 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     const size_t uv1 = marker("uv1");
     const size_t mesh_placements = marker("mesh_placements");
     const size_t end = std::min({materials, sections, slot_names, animations, morphs, cameras, lights,
-        inverse_binds, uv1, mesh_placements});
+        inverse_binds, uv1, mesh_placements, normal_scales});
     const size_t material_end = std::min({sections, slot_names, animations, morphs, cameras, lights,
-        inverse_binds, uv1, mesh_placements});
+        inverse_binds, uv1, mesh_placements, normal_scales});
     const size_t section_end = std::min({slot_names, animations, morphs, cameras, lights,
-        inverse_binds, uv1, mesh_placements});
+        inverse_binds, uv1, mesh_placements, normal_scales});
     if (materials == fields.size() ? !geometry.slot_materials.empty()
                                    : !check_slot_materials(fields, materials + 1, material_end, geometry)) return false;
+    const size_t normal_scales_end = std::min({sections, slot_names, animations, morphs, cameras, lights,
+        inverse_binds, uv1, mesh_placements, fields.size()});
+    if (normal_scales != fields.size()) {
+        if (!check_slot_normal_scales(fields, normal_scales + 1, normal_scales_end, geometry)) return false;
+    } else if (std::any_of(geometry.slot_materials.begin(), geometry.slot_materials.end(),
+        [](const auto& material) { return material.normal_scale != 1.0f; })) return false;
     if (sections == fields.size() ? !geometry.texture_sections.empty() || !geometry.texture_checksums.empty()
                                   : !check_sections(fields, sections + 1, section_end, geometry)) return false;
     const size_t slot_names_end = std::min({animations, morphs, cameras, lights,
-        inverse_binds, uv1, mesh_placements});
+        inverse_binds, uv1, mesh_placements, normal_scales});
     if (slot_names == fields.size() ? !geometry.slot_material_names.empty()
                                     : !check_slot_names(fields, slot_names + 1, slot_names_end, geometry)) return false;
     if (animations == fields.size() ? !geometry.animation_clips.empty()
@@ -117,7 +134,7 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     if (inverse_binds == fields.size()) {
         if (!geometry.skin_inverse_bind_matrices.empty()) return false;
     } else {
-        const size_t inverse_bind_end = std::min({uv1, mesh_placements, fields.size()});
+        const size_t inverse_bind_end = std::min({uv1, mesh_placements, normal_scales, fields.size()});
         if (inverse_bind_end <= inverse_binds ||
             geometry.skin_inverse_bind_matrices.size() != inverse_bind_end - inverse_binds - 1) return false;
         for (size_t component = 0; component < geometry.skin_inverse_bind_matrices.size(); ++component) {
@@ -128,7 +145,7 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     }
     if (uv1 == fields.size()) {
         if (!geometry.uv1s.empty() || !geometry.uv1_source.empty()) return false;
-    } else if (std::min(mesh_placements, fields.size()) - uv1 != 6 ||
+    } else if (std::min({mesh_placements, normal_scales, fields.size()}) - uv1 != 6 ||
         geometry.uv1s.size() != std::stoul(fields[uv1 + 1]) * 2 ||
         geometry.uv1_source != fields[uv1 + 2] ||
         geometry.uv1_generation_resolution != std::stoul(fields[uv1 + 3]) ||

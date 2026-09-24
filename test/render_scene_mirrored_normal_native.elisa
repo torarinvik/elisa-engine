@@ -22,6 +22,7 @@ module RenderSceneMirroredNormalNativeTests:
         const RIGHT_X: u32 = 650
         const NORMAL_SLOT: i32 = 1
         const NORMAL_MAP_SIZE: u32 = 8
+        const NORMAL_SCALE: f32 = 0.75
         const MINIMUM_LIGHT_CONTRAST: f32 = 0.025
 
         const module Code:
@@ -56,6 +57,9 @@ module RenderSceneMirroredNormalNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_material_texture_size(
             high: u64, low: u64, slot: i32, width: u32, height: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_normal_scale_matches(
+            high: u64, low: u64, expected_scale: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_last_frame_luminance(x_permille: u32, y_permille: u32) -> f32
 
@@ -168,12 +172,14 @@ module RenderSceneMirroredNormalNativeTests:
             return 5 if elisa_render_scene_v1_test_snapshot_material_texture_size(
                 Ids::MATERIALS, MATERIAL, NORMAL_SLOT, NORMAL_MAP_SIZE, NORMAL_MAP_SIZE) != 1
             return 6 if elisa_render_scene_v1_test_snapshot_mirrored_tangent_seam(RENDER_ID) != 1
+            return 7 if elisa_render_scene_v1_test_snapshot_normal_scale_matches(
+                Ids::MATERIALS, MATERIAL, NORMAL_SCALE) != 1
             left: f32 = elisa_render_scene_v1_test_last_frame_luminance(LEFT_X, SAMPLE_Y)
             right: f32 = elisa_render_scene_v1_test_last_frame_luminance(RIGHT_X, SAMPLE_Y)
-            return 7 if left < 0.0 or right < 0.0
-            return 8 if (left - right < MINIMUM_LIGHT_CONTRAST and
+            return 8 if left < 0.0 or right < 0.0
+            return 9 if (left - right < MINIMUM_LIGHT_CONTRAST and
                 right - left < MINIMUM_LIGHT_CONTRAST)
-            return 9 if not Application::save_screenshot(capture)
+            return 10 if not Application::save_screenshot(capture)
             0
 
         def cleanup(handle: i64) -> i32:
