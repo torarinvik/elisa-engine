@@ -2,6 +2,19 @@ include "../src/physics/runtime.elisa"
 include "../src/math/geometry.elisa"
 
 module PhysicsPrimitiveProbe:
+    private:
+        const module Fixture:
+            SPHERE_X: f32 = 8.0
+            CAPSULE_X: f32 = 11.0
+            ZERO_CAPSULE_X: f32 = 14.0
+            START_HEIGHT: f32 = 4.0
+            DROP_THRESHOLD: f32 = 3.8
+            SPHERE_RADIUS: f32 = 0.4
+            CAPSULE_RADIUS: f32 = 0.3
+            CAPSULE_CYLINDER_HALF_HEIGHT: f32 = 0.4
+            FIXED_STEP_SECONDS: f32 = 1.0 / 30.0
+            FIXED_STEPS: i32 = 9
+
     public:
         def exercise(world: mutable PhysicsRuntime::World&,
             stage: mutable i32&) -> void error[PhysicsRuntime::PhysicsError]:
@@ -9,7 +22,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
-                    position: Geometry::Vec3{x: 8.0, y: 4.0, z: 0.0},
+                    position: Geometry::Vec3{x: Fixture::SPHERE_X, y: Fixture::START_HEIGHT, z: 0.0},
                     dimensions: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -23,8 +36,8 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
-                    position: Geometry::Vec3{x: 8.0, y: 4.0, z: 0.0},
-                    dimensions: Geometry::Vec3{x: 0.4, y: 0.0, z: 0.0},
+                    position: Geometry::Vec3{x: Fixture::SPHERE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
                 })
@@ -33,16 +46,25 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Capsule,
-                    position: Geometry::Vec3{x: 11.0, y: 4.0, z: 0.0},
-                    dimensions: Geometry::Vec3{x: 0.3, y: 0.4, z: 0.0},
+                    position: Geometry::Vec3{x: Fixture::CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    dimensions: Geometry::Vec3{x: Fixture::CAPSULE_RADIUS, y: Fixture::CAPSULE_CYLINDER_HALF_HEIGHT, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                })
+            zero_capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Capsule,
+                    position: Geometry::Vec3{x: Fixture::ZERO_CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
                 })
             tick: mutable u64 = 0
             starting_tick: u64 = PhysicsRuntime::committed_tick(world)
             stage <- 3
-            for _ in 0..<9:
-                tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+            for _ in 0..<Fixture::FIXED_STEPS:
+                tick <- try PhysicsRuntime::fixed_step(world, Fixture::FIXED_STEP_SECONDS)
             stage <- 4
             raise PhysicsRuntime::PhysicsError.BackendFailure if tick != starting_tick + 9
             stage <- 5
@@ -50,13 +72,18 @@ module PhysicsPrimitiveProbe:
             stage <- 6
             capsule_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, capsule)
             stage <- 7
-            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_position.y >= 3.8
+            zero_capsule_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, zero_capsule)
             stage <- 8
-            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_position.y >= 3.8
+            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_position.y >= Fixture::DROP_THRESHOLD
             stage <- 9
-            try PhysicsRuntime::body_destroy(world, sphere)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_position.y >= Fixture::DROP_THRESHOLD
             stage <- 10
+            raise PhysicsRuntime::PhysicsError.BackendFailure if zero_capsule_position.y >= Fixture::DROP_THRESHOLD
+            stage <- 11
+            try PhysicsRuntime::body_destroy(world, sphere)
             try PhysicsRuntime::body_destroy(world, capsule)
+            stage <- 12
+            try PhysicsRuntime::body_destroy(world, zero_capsule)
 
         def run(world: mutable PhysicsRuntime::World&,
             stage: mutable i32&) -> i32:

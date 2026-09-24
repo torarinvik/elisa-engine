@@ -16,11 +16,16 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_MINIMUM_LENGTH = 33
+PNG_RGBA8_HEADER = bytes((8, 6, 0, 0, 0))
+PNG_FILTER_NONE = 0
+MIN_VISIBLE_CAPTURE_PIXELS = 1000
+MIN_VISIBLE_CHANNEL_VALUE = 16
 
 
 def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
-    signature = b"\x89PNG\r\n\x1a\n"
-    if len(data) < 33 or data[:8] != signature:
+    if len(data) < PNG_MINIMUM_LENGTH or data[:8] != PNG_SIGNATURE:
         return None
     offset = 8
     width = height = 0
@@ -44,7 +49,7 @@ def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
                 return None
             width = int.from_bytes(payload[0:4], "big")
             height = int.from_bytes(payload[4:8], "big")
-            if payload[8:] != bytes((8, 6, 0, 0, 0)):
+            if payload[8:] != PNG_RGBA8_HEADER:
                 return None
             saw_header = True
         elif chunk_type == b"IDAT":
@@ -66,7 +71,7 @@ def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
     pixels = bytearray(width * height * 4)
     for row in range(height):
         source_start = row * row_stride
-        if scanlines[source_start] != 0:
+        if scanlines[source_start] != PNG_FILTER_NONE:
             return None
         target_start = row * width * 4
         pixels[target_start:target_start + width * 4] = scanlines[source_start + 1:source_start + row_stride]
@@ -92,8 +97,9 @@ def main() -> int:
             "hidden": True,
         }
         projects = [
-            ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
+            ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
+            ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
         ]
         physics_captures = ROOT / "build/validation/physics-render-cadence"
@@ -139,7 +145,7 @@ def main() -> int:
             status = subprocess.run(command, env=environment, check=False).returncode
             if status == 0 and name == "application-native-smoke":
                 header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
-                if header != b"\x89PNG\r\n\x1a\n":
+                if header != PNG_SIGNATURE:
                     print("Native application smoke did not write a PNG screenshot.", file=sys.stderr)
                     return 1
             if status == 0 and name == "physics-render-capture-smoke":
@@ -161,8 +167,8 @@ def main() -> int:
                             return 1
                         width, height, pixels = decoded
                         colored_pixels = sum(1 for index in range(0, len(pixels), 4)
-                            if max(pixels[index:index + 3]) > 16)
-                        if colored_pixels < 1000:
+                            if max(pixels[index:index + 3]) > MIN_VISIBLE_CHANNEL_VALUE)
+                        if colored_pixels < MIN_VISIBLE_CAPTURE_PIXELS:
                             print(f"Physics cadence capture {cadence_path.name} is visually empty.", file=sys.stderr)
                             return 1
                         image_sizes.append((width, height))

@@ -29,11 +29,10 @@ Validation command from the engine root:
 python3 scripts/application_native_smoke.py
 ```
 
-The dedicated Jolt/Wicked cadence client passed on SDL3/Metal. It checks
-matching midpoint and final renders at equal physics ticks, plus render-owned
-step rejection. The aggregate `scripts/application_native_smoke.py` currently
-stops earlier: `RuntimeServicesAudioProbe` returns status 185 because its
-silent-audio voice count is nonzero. The standalone cadence client therefore
-provides the native rendering evidence while that separate audio assertion is
-unresolved. This does not compare every intermediate frame or exercise the full
-game-session clock-to-hierarchy path.
+The standalone primitive and Jolt/Wicked cadence clients pass on SDL3/Metal.
+The cadence client checks matching midpoint and final renders at equal physics
+ticks, plus render-owned step rejection. The aggregate
+`scripts/application_native_smoke.py` then reaches the application-wide test,
+where `RuntimeServicesAudioProbe` returns status 185 because its silent-audio
+voice count is nonzero. This does not compare every intermediate frame or
+exercise the full game-session clock-to-hierarchy path.

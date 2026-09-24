@@ -1,0 +1,35 @@
+include "../src/runtime/application.elisa"
+include "../src/physics/runtime.elisa"
+include "./physics_primitives_probe.elisa"
+
+module PhysicsPrimitivesNative:
+    private:
+        const module Window:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 240
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Physics Primitive Smoke",
+                width: Window::WIDTH,
+                height: Window::HEIGHT,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+                value: value
+                error failure: return 2
+            stage: mutable i32 = 0
+            result: i32 = PhysicsPrimitiveProbe::run(&world, &stage)
+            world_closed: bool = catch PhysicsRuntime::shutdown(&world):
+                ok: true
+                error failure: false
+            application_closed: bool = Application::shutdown()
+            return result if result != 0
+            return 3 if not world_closed
+            return 4 if not application_closed
+            0
+
+def main() -> i32:
+    PhysicsPrimitivesNative::run()

@@ -423,11 +423,11 @@ def check_startup_requirements(config: Application::Config) -> i32:
         PhysicsRuntime::PhysicsError.StaleWorld: 161 + physics_stage
         PhysicsRuntime::PhysicsError.BackendFailure: 171 + physics_stage
         error failure: 118
+    return physics_result if physics_result != 0
     primitive_stage: mutable i32 = 0
     primitive_result: i32 = PhysicsPrimitiveProbe::run(&physics_world, &primitive_stage)
     return primitive_result if primitive_result != 0
     physics_shutdown_ok: bool = Application::shutdown()
-    return physics_result if physics_result != 0
     return 101 if not physics_shutdown_ok
     closed_physics_status: i32 = catch PhysicsRuntime::fixed_step(&physics_world,
         PhysicsAppProbe::FIXED_STEP_SECONDS):
