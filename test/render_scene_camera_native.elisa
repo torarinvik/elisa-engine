@@ -24,6 +24,10 @@ module RenderSceneCameraNativeTests:
         extern elisa_render_scene_v1_test_camera_viewport_count_matches(expected_count: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_primary_viewport_matches(x: i32, y: i32,
+            width: i32, height: i32, expected_enabled: i32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_camera_quality_profile_matches(
             tonemap: i32, bloom: i32, threshold: f32, fxaa: i32,
             ambient_occlusion: i32, reflections: i32, depth_effects: i32,
@@ -200,6 +204,30 @@ module RenderSceneCameraNativeTests:
                 2, 0, 2.0, 0, 0, 0, 1, 0.5, 0, 0.001) != 1
             return 172 if elisa_render_scene_v1_test_camera_viewport_matches(
                 160, 0, 160, 100, 1) != 1
+            invalid_primary_viewport: i32 = catch RenderScene::set_primary_viewport(
+                201, 0, 120, 200):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 173 if invalid_primary_viewport != 1
+            primary_viewport: i32 = catch RenderScene::set_primary_viewport(
+                10, 10, 140, 180):
+                ok: 0
+                error failure: 1
+            return 174 if primary_viewport != 0
+            return 175 if Application::pump() != Application::PumpStatus.Running
+            return 176 if elisa_render_scene_v1_test_primary_viewport_matches(
+                10, 10, 140, 180, 1) != 1
+            primary_center_ray: Geometry::Ray3 = catch RenderScene::camera_ray(80.0, 100.0):
+                value: value
+                error failure: return 177
+            return 178 if (primary_center_ray.direction.y > -0.5 or
+                primary_center_ray.direction.z > -0.5)
+            outside_primary_ray: i32 = catch RenderScene::camera_ray(240.0, 100.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 179 if outside_primary_ray != 1
             viewport_center_ray: Geometry::Ray3 = catch RenderScene::camera_viewport_ray(
                 secondary, 240.0, 50.0):
                 value: value
@@ -221,6 +249,8 @@ module RenderSceneCameraNativeTests:
             return 162 if Application::pump() != Application::PumpStatus.Running
             return 163 if elisa_render_scene_v1_test_camera_viewport_matches(
                 320, 0, 320, 200, 1) != 1
+            return 180 if elisa_render_scene_v1_test_primary_viewport_matches(
+                20, 20, 280, 360, 1) != 1
             scaled_viewport_ray: Geometry::Ray3 = catch RenderScene::camera_viewport_ray(
                 secondary, 480.0, 100.0):
                 value: value
@@ -236,6 +266,15 @@ module RenderSceneCameraNativeTests:
             return 167 if Application::pump() != Application::PumpStatus.Running
             return 168 if elisa_render_scene_v1_test_camera_viewport_matches(
                 160, 0, 160, 100, 1) != 1
+            return 181 if elisa_render_scene_v1_test_primary_viewport_matches(
+                10, 10, 140, 180, 1) != 1
+            clear_primary_viewport: i32 = catch RenderScene::clear_primary_viewport():
+                ok: 0
+                error failure: 1
+            return 182 if clear_primary_viewport != 0
+            return 183 if Application::pump() != Application::PumpStatus.Running
+            return 184 if elisa_render_scene_v1_test_primary_viewport_matches(
+                0, 0, 0, 0, 0) != 1
             clear_viewport: i32 = catch RenderScene::clear_camera_viewport(secondary):
                 ok: 0
                 error failure: 1

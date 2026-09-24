@@ -33,6 +33,15 @@ quality profile, then verifies cleanup stops composition. A viewport camera
 cannot become the full-screen active camera until its viewport is cleared;
 clearing restores the camera's saved projection dimensions.
 
+`RenderScene::set_primary_viewport` gives the main camera a checked
+framebuffer-pixel rectangle and composes its `RenderPath3D` output into that
+region. `RenderScene::camera_ray` uses the rectangle's offset and dimensions and
+rejects pixels outside it. Framebuffer resize scales the primary rectangle as
+well as every secondary view; `clear_primary_viewport` restores full-canvas
+rendering. The SDL3/Metal camera test uses an offset primary rectangle beside a
+throttled secondary view, checks the primary center and outside picking rays,
+resizes both layouts, then verifies the full-canvas state returns.
+
 The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
 orthographic camera components, applies a 2x viewport scale, resizes a
 perspective view, switches an actual `RenderPath3D` between the two cameras,
@@ -47,21 +56,21 @@ coordinates into its viewport; points outside the rectangle fail. The
 SDL3/Metal smoke checks centered rays and out-of-bounds requests for active and
 secondary views.
 
-When the framebuffer resizes, each configured secondary viewport scales its
-pixel rectangle by the old-to-new framebuffer ratio, resizes its independent
-render path, and recreates its projection with the new aspect ratio. The native
-camera test grows from 320x200 to 640x400 and verifies that a (160, 0, 160,
-100) viewport becomes (320, 0, 320, 200), still composes, and still returns a
-finite center ray at (480, 100). Resizing back restores the original rectangle
-and output dimensions. Per-camera quality scaling is included in the output
-size check.
+When the framebuffer resizes, each configured primary and secondary viewport
+scales its pixel rectangle by the old-to-new framebuffer ratio, resizes its
+independent render path, and recreates its projection with the new aspect
+ratio. The native camera test grows from 320x200 to 640x400 and verifies that a
+(160, 0, 160, 100) secondary viewport becomes (320, 0, 320, 200), still
+composes, and still returns a finite center ray at (480, 100). Its offset
+primary rectangle (10, 10, 140, 180) scales to (20, 20, 280, 360). Resizing
+back restores both original rectangles and output dimensions. Per-camera
+quality scaling is included in the output size check.
 
 Automatic static snapshot LOD selection now checks the active Wicked frustum
 against the transformed bounds of every mesh placement. It leaves the current
 shared mesh untouched while all placements are offscreen, then selects the
 appropriate level on the first visible frame. The native asset smoke verifies
-both the deferred offscreen case and the visible transition. Secondary views
-now use dedicated `RenderPath3D` pipelines with per-camera quality profiles;
-the primary view still fills the full canvas, so configurable primary-view
-layout remains open. Wicked continues to cull scene draws through its own
-visibility path.
+both the deferred offscreen case and the visible transition. Primary and
+secondary views use independent `RenderPath3D` output regions; secondary views
+also support per-camera quality profiles. Wicked continues to cull scene draws
+through its own visibility path.

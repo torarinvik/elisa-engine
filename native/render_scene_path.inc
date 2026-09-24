@@ -6,6 +6,14 @@ public:
         : arcs_(arcs), debug_draw_(debug_draw), state_(state) {}
 
     void PreUpdate() override {
+        if (state_ != nullptr && width > 0 && height > 0) {
+            state_->host_canvas_width = width;
+            state_->host_canvas_height = height;
+        }
+        if (state_ != nullptr && state_->primary_viewport.enabled) {
+            width = uint32_t(primary_view_width(*state_));
+            height = uint32_t(primary_view_height(*state_));
+        }
         wi::RenderPath3D::PreUpdate();
         if (state_ == nullptr || state_->scene == nullptr) return;
         for (RenderCameraSlot& slot : state_->cameras) {
@@ -88,7 +96,25 @@ public:
     }
 
     void Compose(wi::graphics::CommandList cmd) const override {
-        wi::RenderPath3D::Compose(cmd);
+        if (state_ != nullptr && state_->primary_viewport.enabled) {
+            wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+            if (device != nullptr) {
+                const wi::graphics::Viewport primary{
+                    float(state_->primary_viewport.x), float(state_->primary_viewport.y),
+                    float(state_->primary_viewport.width), float(state_->primary_viewport.height),
+                    0.0f, 1.0f};
+                device->BindViewports(1, &primary, cmd);
+                wi::RenderPath3D::Compose(cmd);
+                const wi::graphics::Viewport framebuffer{
+                    0.0f, 0.0f,
+                    float(state_->host_canvas_width > 0 ? state_->host_canvas_width : uint32_t(state_->width)),
+                    float(state_->host_canvas_height > 0 ? state_->host_canvas_height : uint32_t(state_->height)),
+                    0.0f, 1.0f};
+                device->BindViewports(1, &framebuffer, cmd);
+            }
+        } else {
+            wi::RenderPath3D::Compose(cmd);
+        }
         if (state_ == nullptr) return;
 
         wi::image::Params image;

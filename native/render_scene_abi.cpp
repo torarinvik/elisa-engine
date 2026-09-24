@@ -99,6 +99,7 @@ struct RenderSceneService {
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<RenderLightSlot, MAX_RENDER_LIGHTS> lights{};
     std::array<RenderCameraSlot, MAX_RENDER_CAMERAS> cameras{};
+    PrimaryViewportState primary_viewport{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::unordered_map<std::string, OverlayTextMeasureCacheEntry> overlay_text_measure_cache;
@@ -144,6 +145,8 @@ struct RenderSceneService {
     std::thread::id owner_thread{};
     int32_t width = 0;
     int32_t height = 0;
+    uint32_t host_canvas_width = 0;
+    uint32_t host_canvas_height = 0;
     float vertical_size = 10.0f;
     float perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
     float camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
@@ -157,6 +160,8 @@ struct RenderSceneService {
     bool shutdown_hook_registered = false;
 };
 void update_snapshot_lod_selection(RenderSceneService& state);
+int32_t primary_view_width(const RenderSceneService& state);
+int32_t primary_view_height(const RenderSceneService& state);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 void lod_gpu_timing_begin_render();
 void lod_gpu_timing_end_render();
@@ -330,6 +335,7 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lights = {};
     state.cameras = {};
+    state.primary_viewport = {};
     for (InstanceSlot& instance : state.instances) clear_snapshot_instance(state, instance);
     state.snapshot_row_count = 0;
     state.snapshot_retire_count = 0;
@@ -373,6 +379,8 @@ void reset_unlocked(RenderSceneService& state) {
     state.owner_thread = std::thread::id{};
     state.width = 0;
     state.height = 0;
+    state.host_canvas_width = 0;
+    state.host_canvas_height = 0;
     state.vertical_size = 10.0f;
     state.perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
     state.camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;

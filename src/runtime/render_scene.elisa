@@ -157,6 +157,14 @@ module RenderScene:
             batch.count
         def resize(width: i32, height: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_resize(width, height))
+        # Restrict the primary 3D camera to a framebuffer-pixel rectangle.
+        # Clearing restores full-canvas rendering.
+        def set_primary_viewport(x: i32, y: i32, width: i32,
+            height: i32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_primary_viewport(
+                x, y, width, height))
+        def clear_primary_viewport() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_primary_viewport())
         def set_camera_render_target(width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_render_target(width, height, update_interval))
         def clear_camera_render_target() -> void error[RenderSceneError]:

@@ -7,6 +7,11 @@
         @callconv(c)
         extern elisa_render_scene_v1_resize(width: i32, height: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_primary_viewport(x: i32, y: i32,
+            width: i32, height: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_primary_viewport() -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_camera_render_target(width: i32, height: i32, update_interval: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_clear_camera_render_target() -> i32

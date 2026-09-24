@@ -27,3 +27,10 @@ struct RenderCameraSlot {
     bool viewport_enabled = false;
     bool live = false;
 };
+struct PrimaryViewportState {
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    bool enabled = false;
+};

@@ -46,7 +46,7 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_orthographic_height(float ve
     if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     state.vertical_size = vertical_size;
     state.perspective_camera = false;
-    state.camera->CreateOrtho(float(state.width), float(state.height),
+    state.camera->CreateOrtho(float(primary_view_width(state)), float(primary_view_height(state)),
         state.camera_near_clip, state.camera_far_clip, vertical_size);
     return ELISA_RENDER_SCENE_OK;
 }
@@ -67,7 +67,7 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_perspective(
     state.camera_near_clip = near_clip;
     state.camera_far_clip = far_clip;
     state.perspective_camera = true;
-    state.camera->CreatePerspective(float(state.width), float(state.height),
+    state.camera->CreatePerspective(float(primary_view_width(state)), float(primary_view_height(state)),
         near_clip, far_clip, vertical_fov_radians);
     return ELISA_RENDER_SCENE_OK;
 }
@@ -106,12 +106,19 @@ extern "C" int32_t elisa_render_scene_v1_camera_ray(
     if (state.camera == nullptr || state.width <= 0 || state.height <= 0) {
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
-    if (screen_x < 0.0f || screen_y < 0.0f ||
-        screen_x > float(state.width) || screen_y > float(state.height)) {
+    const float viewport_x = state.primary_viewport.enabled ?
+        float(state.primary_viewport.x) : 0.0f;
+    const float viewport_y = state.primary_viewport.enabled ?
+        float(state.primary_viewport.y) : 0.0f;
+    const float viewport_width = float(primary_view_width(state));
+    const float viewport_height = float(primary_view_height(state));
+    if (screen_x < viewport_x || screen_y < viewport_y ||
+        screen_x > viewport_x + viewport_width ||
+        screen_y > viewport_y + viewport_height) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
-    const float ndc_x = (screen_x / float(state.width)) * 2.0f - 1.0f;
-    const float ndc_y = 1.0f - (screen_y / float(state.height)) * 2.0f;
+    const float ndc_x = ((screen_x - viewport_x) / viewport_width) * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - ((screen_y - viewport_y) / viewport_height) * 2.0f;
     const XMMATRIX inverse_view_projection = state.camera->GetInvViewProjection();
     const XMVECTOR near_point = XMVector3TransformCoord(
         XMVectorSet(ndc_x, ndc_y, 1.0f, 1.0f), inverse_view_projection);
