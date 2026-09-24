@@ -5,7 +5,7 @@ module RenderSceneLightingNativeTests:
             red: f32, green: f32, blue: f32,
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
             intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
-            casts_shadow: i32) -> i32
+            casts_shadow: i32, shadow_resolution: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_light_count() -> i32
 
@@ -16,7 +16,7 @@ module RenderSceneLightingNativeTests:
                 light.position.x, light.position.y, light.position.z,
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
-                1 if light.casts_shadow else 0) == 1
+                1 if light.casts_shadow else 0, light.shadow_resolution) == 1
 
     public:
         def exercise() -> i32:
@@ -30,6 +30,7 @@ module RenderSceneLightingNativeTests:
                 inner_cone: 0.2,
                 outer_cone: 0.6,
                 casts_shadow: true,
+                shadow_resolution: 0,
             }):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
@@ -46,6 +47,7 @@ module RenderSceneLightingNativeTests:
                 inner_cone: 0.0,
                 outer_cone: 0.0,
                 casts_shadow: true,
+                shadow_resolution: 512,
             }
             point_handle: RenderScene::LightHandle = catch RenderScene::create_light(point):
                 value: value
@@ -59,6 +61,7 @@ module RenderSceneLightingNativeTests:
             moved.intensity <- 3.5
             moved.range <- 18.0
             moved.casts_shadow <- false
+            moved.shadow_resolution <- 256
             _ = catch RenderScene::update_light(point_handle, moved):
                 ok: 0
                 error failure: return 124
@@ -74,6 +77,7 @@ module RenderSceneLightingNativeTests:
                 inner_cone: 0.2,
                 outer_cone: 0.7,
                 casts_shadow: false,
+                shadow_resolution: 0,
             }
             spot_handle: RenderScene::LightHandle = catch RenderScene::create_light(spot):
                 value: value

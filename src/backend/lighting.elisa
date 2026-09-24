@@ -7,9 +7,16 @@ module Lighting:
         const module Limits:
             ZERO_VECTOR_SQUARED: f32 = 0.000001
             MAX_FINITE_PARAMETER: f32 = 1000000000000000000000000000000.0
+            MIN_SHADOW_RESOLUTION: i32 = 16
+            MAX_SHADOW_RESOLUTION: i32 = 2048
 
         def finite(value: f32) -> bool:
             value == value and value >= -Limits::MAX_FINITE_PARAMETER and value <= Limits::MAX_FINITE_PARAMETER
+
+        def shadow_resolution_valid(resolution: i32) -> bool:
+            return true if resolution == 0
+            return false if resolution < Limits::MIN_SHADOW_RESOLUTION or resolution > Limits::MAX_SHADOW_RESOLUTION
+            (resolution & (resolution - 1)) == 0
 
     public:
         enum LightKind:
@@ -29,6 +36,8 @@ module Lighting:
             inner_cone: f32
             outer_cone: f32
             casts_shadow: bool
+            # 0 selects Wicked's automatic resolution; otherwise a power of two from 16 to 2048.
+            shadow_resolution: i32
 
         struct Environment:
             sun_color: Geometry::Vec3
@@ -46,6 +55,7 @@ module Lighting:
             return false if light.color.x < 0.0 or light.color.y < 0.0 or light.color.z < 0.0 or light.intensity < 0.0 or light.range <= 0.0
             return false if light.kind != LightKind.Point and Geometry::vec3_length_squared(light.direction) <= Limits::ZERO_VECTOR_SQUARED
             return false if light.kind == LightKind.Spot and (light.inner_cone < 0.0 or light.outer_cone <= 0.0 or light.inner_cone > light.outer_cone)
+            return false if not shadow_resolution_valid(light.shadow_resolution)
             true
 
         def environment_valid(environment: Environment) -> bool:

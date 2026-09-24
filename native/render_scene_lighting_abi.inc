@@ -10,16 +10,20 @@ bool valid_light_values(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution) {
     if (kind < 0 || kind > 2 || (casts_shadow != 0 && casts_shadow != 1)) return false;
     const float values[] = {red, green, blue, px, py, pz, dx, dy, dz,
         intensity, range, inner_cone, outer_cone};
     for (float value : values) {
         if (!bounded(value)) return false;
     }
+    const bool valid_shadow_resolution = shadow_resolution == 0 ||
+        (shadow_resolution >= 16 && shadow_resolution <= 2048 &&
+            (shadow_resolution & (shadow_resolution - 1)) == 0);
     if (red < 0.0f || red > 1.0f || green < 0.0f || green > 1.0f ||
         blue < 0.0f || blue > 1.0f || intensity < 0.0f || range <= 0.0f ||
-        (kind == 2 && (inner_cone < 0.0f || outer_cone <= 0.0f || inner_cone > outer_cone))) return false;
+        (kind == 2 && (inner_cone < 0.0f || outer_cone <= 0.0f || inner_cone > outer_cone)) ||
+        !valid_shadow_resolution) return false;
     const float direction_squared = dx * dx + dy * dy + dz * dz;
     return std::isfinite(direction_squared) && (kind == 1 || direction_squared > 1.0e-8f);
 }
@@ -30,7 +34,7 @@ probe::NativeLightDesc make_light_desc(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution) {
     probe::NativeLightDesc desc;
     desc.kind = kind == 0 ? probe::NativeLightKind::Directional :
         (kind == 2 ? probe::NativeLightKind::Spot : probe::NativeLightKind::Point);
@@ -42,6 +46,7 @@ probe::NativeLightDesc make_light_desc(
     desc.inner_cone = kind == 2 ? inner_cone : 0.0f;
     desc.outer_cone = kind == 2 ? outer_cone : 0.0f;
     desc.cast_shadow = casts_shadow != 0;
+    desc.shadow_resolution = shadow_resolution;
     return desc;
 }
 
@@ -76,9 +81,9 @@ extern "C" int64_t elisa_render_scene_v1_create_light(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution) {
     if (!valid_light_values(kind, red, green, blue, px, py, pz, dx, dy, dz,
-        intensity, range, inner_cone, outer_cone, casts_shadow)) {
+        intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
@@ -87,7 +92,7 @@ extern "C" int64_t elisa_render_scene_v1_create_light(
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.lighting == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue, px, py, pz,
-        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow);
+        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution);
     const probe::NativeLightHandle native = state.lighting->create_light(desc);
     if (native.owner == 0 || native.slot >= MAX_RENDER_LIGHTS) {
         return ELISA_RENDER_SCENE_CAPACITY;
@@ -102,9 +107,9 @@ extern "C" int32_t elisa_render_scene_v1_update_light(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution) {
     if (!valid_light_values(kind, red, green, blue, px, py, pz, dx, dy, dz,
-        intensity, range, inner_cone, outer_cone, casts_shadow)) {
+        intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
@@ -114,7 +119,7 @@ extern "C" int32_t elisa_render_scene_v1_update_light(
     size_t slot = MAX_RENDER_LIGHTS;
     if (!valid_light_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue, px, py, pz,
-        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow);
+        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution);
     return state.lighting->update_light(state.lights[slot].native, desc) ?
         ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
@@ -138,12 +143,14 @@ extern "C" int32_t elisa_render_scene_v1_test_light_matches(
     int32_t kind,
     float red, float green, float blue,
     float px, float py, float pz, float dx, float dy, float dz,
-    float intensity, float range, float inner_cone, float outer_cone, int32_t casts_shadow) {
+    float intensity, float range, float inner_cone, float outer_cone, int32_t casts_shadow,
+    int32_t shadow_resolution) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.lighting == nullptr) return 0;
     const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue,
-        px, py, pz, dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow);
+        px, py, pz, dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow,
+        shadow_resolution);
     for (const RenderLightSlot& light : state.lights) {
         if (light.live && state.lighting->light_matches(light.native, desc)) return 1;
     }

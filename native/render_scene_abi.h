@@ -312,14 +312,14 @@ int64_t elisa_render_scene_v1_create_light(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow);
+    int32_t casts_shadow, int32_t shadow_resolution);
 int32_t elisa_render_scene_v1_update_light(
     int64_t handle, int32_t kind,
     float red, float green, float blue,
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow);
+    int32_t casts_shadow, int32_t shadow_resolution);
 int32_t elisa_render_scene_v1_destroy_light(int64_t handle);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_ambient_occlusion(int32_t enabled);

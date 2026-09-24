@@ -24,6 +24,7 @@ struct NativeLightDesc {
     float outer_cone = XM_PIDIV4;
     float inner_cone = 0.0f;
     bool cast_shadow = false;
+    int32_t shadow_resolution = 0;
 };
 
 struct NativeEnvironmentDesc {
@@ -105,7 +106,8 @@ public:
             close(light->intensity, desc.intensity) && close(light->range, desc.range) &&
             close(light->innerConeAngle, desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f) &&
             close(light->outerConeAngle, desc.kind == NativeLightKind::Spot ? desc.outer_cone : 0.0f) &&
-            light->IsCastingShadow() == desc.cast_shadow;
+            light->IsCastingShadow() == desc.cast_shadow &&
+            light->forced_shadow_resolution == (desc.shadow_resolution == 0 ? -1 : desc.shadow_resolution);
     }
 
     bool destroy_light(NativeLightHandle handle) {
@@ -206,7 +208,12 @@ private:
             (desc.kind == NativeLightKind::Point || direction_length > 0.0001f) &&
             std::isfinite(desc.intensity) && desc.intensity >= 0.0f &&
             std::isfinite(desc.range) && desc.range > 0.0f && std::isfinite(desc.outer_cone) &&
-            std::isfinite(desc.inner_cone) && valid_spot_cone;
+            std::isfinite(desc.inner_cone) && valid_spot_cone && valid_shadow_resolution(desc.shadow_resolution);
+    }
+
+    static bool valid_shadow_resolution(int32_t resolution) {
+        return resolution == 0 || (resolution >= 16 && resolution <= 2048 &&
+            (resolution & (resolution - 1)) == 0);
     }
 
     static bool valid_resolution(uint32_t resolution) {
@@ -240,6 +247,7 @@ private:
         light->innerConeAngle = desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f;
         light->SetType(light_type(desc.kind));
         light->SetCastShadow(desc.cast_shadow);
+        light->forced_shadow_resolution = desc.shadow_resolution == 0 ? -1 : desc.shadow_resolution;
     }
 
     uint32_t free_light() const { for (uint32_t i = 0; i < MAX_LIGHTS; ++i) if (!lights_[i].live) return i; return MAX_LIGHTS; }
