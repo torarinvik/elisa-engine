@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 import shutil
@@ -12,6 +13,7 @@ import sys
 import tempfile
 
 from elisa_package import MAX_SECTIONS, build_package_bytes, write_package
+from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, encode_streams
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +27,7 @@ def rejects(callable_value) -> bool:
     return False
 
 
-def cooked_triangle_package() -> bytes:
+def cooked_triangle_package(compressed: bool = False) -> bytes:
     def encoded(format_string: str, values: tuple[float, ...] | tuple[int, ...]) -> str:
         import base64
         return base64.b64encode(struct.pack(format_string, *values)).decode("ascii")
@@ -39,6 +41,22 @@ def cooked_triangle_package() -> bytes:
         "uvs_b64=" + encoded("<6f", (0.0, 0.0, 1.0, 0.0, 0.0, 1.0)),
         "indices_b64=" + encoded("<3I", (0, 1, 2)),
     ]
+    if compressed:
+        streams = [
+            ("positions", VERTEX_STREAM, 3, 12, struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)),
+            ("normals", VERTEX_STREAM, 3, 12, struct.pack("<9f", *(0, 0, 1) * 3)),
+            ("uvs", VERTEX_STREAM, 3, 8, struct.pack("<6f", 0, 0, 1, 0, 0, 1)),
+            ("indices", INDEX_STREAM, 3, 4, struct.pack("<3I", 0, 1, 2)),
+        ]
+        encoded_streams = encode_streams(streams)
+        fields = dict(line.split("=", 1) for line in sections)
+        for name, _kind, _count, _stride, raw in streams:
+            if len(encoded_streams[name]) < len(raw):
+                fields.pop(f"{name}_b64")
+                fields[f"{name}_meshopt_b64"] = base64.b64encode(encoded_streams[name]).decode("ascii")
+        if any(key.endswith("_meshopt_b64") for key in fields):
+            fields["meshopt_codec"] = "meshoptimizer-v1.2"
+        sections = [f"{key}={value}" for key, value in fields.items()]
     return ("\n".join(sections) + "\n").encode("ascii")
 
 
@@ -50,7 +68,11 @@ def main(arguments: list[str]) -> int:
     if shutil.which(compiler) is None:
         print(f"C++ compiler is unavailable: {compiler}", file=sys.stderr)
         return 2
-    sections = {"mesh": cooked_triangle_package(), "texture": bytes(range(256))}
+    sections = {"mesh": cooked_triangle_package(compressed=True), "texture": bytes(range(256))}
+    legacy_sections = {"mesh": cooked_triangle_package(), "texture": bytes(range(256))}
+    if b"meshopt_codec=meshoptimizer-v1.2\n" not in sections["mesh"]:
+        print("compressed package fixture did not encode any geometry stream", file=sys.stderr)
+        return 1
     dependencies = ("foundation.elpk", "base.elpk")
     first = build_package_bytes(sections, dependencies)
     second = build_package_bytes(sections, dependencies)
@@ -83,9 +105,13 @@ def main(arguments: list[str]) -> int:
         excess_legacy_package_path = Path(temporary) / "too-many-sections.pkg"
         excess_legacy_package_path.write_bytes(legacy_package(MAX_SECTIONS + 1))
         executable = Path(temporary) / "package-format-test"
+        meshopt = ROOT / "dependencies/meshoptimizer"
         command = [compiler, "-std=c++17", "-O2", "-I", str(ROOT / "native"),
-            "-I", "/opt/homebrew/include", "-L", os.environ.get("ZSTD_LIBRARY_DIR", "/opt/homebrew/lib"),
+            "-I", str(meshopt), "-I", "/opt/homebrew/include",
+            "-L", os.environ.get("ZSTD_LIBRARY_DIR", "/opt/homebrew/lib"),
             str(ROOT / "native/package_format_test.cpp"),
+            str(ROOT / "native/meshopt_stream_codec.cpp"),
+            str(meshopt / "indexcodec.cpp"), str(meshopt / "vertexcodec.cpp"),
             "-lzstd", "-o", str(executable)]
         built = subprocess.run(command, capture_output=True, text=True, check=False)
         if built.returncode != 0:
@@ -98,6 +124,14 @@ def main(arguments: list[str]) -> int:
             print(checked.stderr or checked.stdout, file=sys.stderr)
             return checked.returncode
         print(checked.stdout.strip())
+        legacy_package_path = Path(temporary) / "legacy-mesh.elpk"
+        write_package(legacy_package_path, legacy_sections, dependencies)
+        legacy_check = subprocess.run([str(executable), str(legacy_package_path)],
+            capture_output=True, text=True, check=False)
+        if legacy_check.returncode != 0:
+            print(legacy_check.stderr or legacy_check.stdout, file=sys.stderr)
+            return legacy_check.returncode
+        print("Native ELPK reader accepted the legacy raw cooked mesh stream.")
         if arguments:
             asset = Path(arguments[0]).expanduser().resolve(strict=True)
             asset_check = subprocess.run([str(executable), str(asset)], capture_output=True,

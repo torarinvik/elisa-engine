@@ -1,6 +1,6 @@
 # KTX2 cooker-boundary validation
 
-**Date:** 2026-09-23
+**Date:** 2026-09-24
 **Scope:** Structural validation before bounded Basis KTX2 images are packed
 into geometry or image bundles. The accepted layout follows the official
 [Khronos KTX 2.0 file specification](https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html).
@@ -8,17 +8,22 @@ into geometry or image bundles. The accepted layout follows the official
 ## Checks and results
 
 - `/opt/homebrew/bin/python3 scripts/cook_image_bundle.py --self-test` passed.
-  It accepts metadata, BasisLZ global data, multi-level layouts, and legacy
-  Zstandard UASTC DFDs with a zero bytes-per-plane field; rejects 25 malformed
-  DFD, KVD, SGD, level-index, type-size, scheme/profile,
-  mip-order, alignment, padding, and trailing-data cases; and confirms
-  deterministic bundle output.
+  It accepts metadata, one-sample opaque ETC1S, two-sample alpha and RG ETC1S,
+  BasisLZ global data, multi-level layouts, and legacy supercompressed ETC1S
+  and UASTC DFDs with zero bytes-per-plane fields. It rejects 37 malformed DFD, KVD, SGD,
+  level-index, type-size, scheme/profile, mip-order, alignment, padding, and
+  trailing-data cases, and confirms deterministic bundle output.
 - The boundary rejects impossible mip counts, mismatched UASTC/ETC1S
   supercompression schemes, wrong per-level UASTC block sizes, wrong physical
   mip order, unaligned or non-zero mip padding, and bytes after the final mip.
-  A zero bytes-per-plane field is accepted only for Zstandard-supercompressed
-  UASTC, preserving files written under an earlier KTX2 revision; uncompressed
-  UASTC must declare its 16-byte plane.
+  DFD validation checks the basic descriptor header, supported BT.709
+  primaries and linear/sRGB transfer functions, straight-alpha policy, sample
+  bit ranges and qualifiers, supported UASTC channel IDs, and the valid
+  one- or two-sample ETC1S channel/plane layouts. Premultiplied alpha and
+  unsupported color metadata are rejected until the runtime can preserve them.
+  Zero bytes-per-plane fields are accepted for supercompressed ETC1S and
+  Zstandard UASTC to preserve older KTX2 files; uncompressed UASTC must declare
+  its 16-byte plane.
   Valid uncompressed UASTC levels use the KTX2-required block alignment; valid
   BasisLZ and Zstandard levels retain their scheme-defined byte alignment.
 - `/opt/homebrew/bin/python3 scripts/cook_gltf_asset.py --self-test` passed,
@@ -41,11 +46,10 @@ into geometry or image bundles. The accepted layout follows the official
 
 ## Coverage limits
 
-The Python boundary checks section bounds and ordering, supported scheme/DFD
-pairs, UASTC block dimensions and per-mip byte counts, KVD entry bounds, UTF-8
-keys, sorting, uniqueness and padding, SGD alignment, and exact mip layout.
-It validates only the semantic DFD fields needed to admit the supported UASTC
-HDR 4x4 profile; the native Basis transcoder remains responsible for other
-payload semantics before decoding. The separate HDR note records real Metal
-BC6H upload evidence and remaining hardware limits:
+The Python boundary checks supported Basis DFD profiles and sample records,
+section bounds and ordering, UASTC block dimensions and per-mip byte counts,
+KVD entry bounds, UTF-8 keys, sorting, uniqueness and padding, SGD alignment,
+and exact mip layout. It does not decode the compressed payload; the native
+Basis transcoder validates that content before upload. The separate HDR note
+records real Metal BC6H upload evidence and remaining hardware limits:
 [`ktx2-hdr.md`](ktx2-hdr.md).

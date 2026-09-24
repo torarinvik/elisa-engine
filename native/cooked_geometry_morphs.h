@@ -10,18 +10,25 @@ inline bool parse_geometry_morphs(const probe::PackageIndex& package, CookedGeom
     const auto default_stride = package.sections.find("morph_default_weights_stride");
     const auto default_data = package.sections.find("morph_default_weights_b64");
     const bool has_defaults = default_stride != package.sections.end() || default_data != package.sections.end();
+    const bool has_compressed_morphs = std::any_of(package.sections.begin(), package.sections.end(),
+        [](const auto& section) {
+            size_t target = 0;
+            bool normal = false;
+            return morph_meshopt_stream_field(section.first, target, normal);
+        });
     size_t fields = 0;
     for (const char* key : {"morph_targets", "morph_target_position_stride"})
         fields += package.sections.count(key);
     if (count_section == package.sections.end()) {
-        if (fields != 0 || has_defaults) {
+        if (fields != 0 || has_defaults || has_compressed_morphs) {
             error = "incomplete cooked geometry morph metadata";
             return false;
         }
         return true;
     }
     uint64_t count = 0;
-    if (fields != 2 || !parse_count(package, "morph_targets", count) || count == 0 || count > 32 ||
+    if (fields != 2 || !parse_count(package, "morph_targets", count) || count == 0 ||
+        count > MAX_GEOMETRY_MORPH_TARGETS ||
         package.sections.at("morph_target_position_stride") != "12") {
         error = "invalid cooked geometry morph metadata";
         return false;
@@ -43,23 +50,40 @@ inline bool parse_geometry_morphs(const probe::PackageIndex& package, CookedGeom
     for (size_t index = 0; index < size_t(count); ++index) {
         const std::string prefix = "morph_" + std::to_string(index) + "_";
         const auto positions = package.sections.find(prefix + "positions_b64");
+        const auto encoded_positions = package.sections.find(prefix + "positions_meshopt_b64");
         const auto normals = package.sections.find(prefix + "normals_b64");
-        if (positions == package.sections.end() || (has_normals != (normals != package.sections.end()))) {
+        const auto encoded_normals = package.sections.find(prefix + "normals_meshopt_b64");
+        const bool has_position_data = positions != package.sections.end() ||
+            encoded_positions != package.sections.end();
+        const bool has_normal_data = normals != package.sections.end() ||
+            encoded_normals != package.sections.end();
+        if (!has_position_data || has_normals != has_normal_data) {
             error = "invalid cooked geometry morph position stream";
             return false;
         }
         CookedGeometry::MorphTarget target;
-        if (!decode_floats(package, (prefix + "positions_b64").c_str(), size_t(vertex_count) * 3,
-                target.positions)) {
+        if (!decode_geometry_floats(package, (prefix + "positions").c_str(),
+                size_t(vertex_count), 12, target.positions)) {
             error = "invalid cooked geometry morph position stream";
             return false;
         }
-        if (has_normals && !decode_floats(package, (prefix + "normals_b64").c_str(), size_t(vertex_count) * 3,
-                target.normals)) {
+        if (has_normals && !decode_geometry_floats(package, (prefix + "normals").c_str(),
+                size_t(vertex_count), 12, target.normals)) {
             error = "invalid cooked geometry morph normal stream";
             return false;
         }
         geometry.morph_targets.push_back(std::move(target));
+    }
+    for (const auto& section : package.sections) {
+        size_t target = 0;
+        bool normal = false;
+        if (morph_meshopt_stream_field(section.first, target, normal) &&
+            (target >= count || (normal && !has_normals) ||
+                section.first != "morph_" + std::to_string(target) +
+                    (normal ? "_normals_meshopt_b64" : "_positions_meshopt_b64"))) {
+            error = "invalid cooked geometry morph stream fields";
+            return false;
+        }
     }
     return true;
 }

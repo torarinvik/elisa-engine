@@ -493,13 +493,6 @@ def subset_lines(geometry: dict) -> list[str]:
     return lines + cook_gltf_textures.texture_lines(geometry["slot_textures"], geometry["images"])
 
 
-def tangent_lines(geometry: dict) -> list[str]:
-    if not geometry["tangents"]:
-        return []
-    return ["tangent_stride=16",
-        "tangents_b64=" + base64.b64encode(geometry["tangents"]).decode("ascii")]
-
-
 def _name_bytes(names: list[str]) -> bytes:
     packed = bytearray()
     for name in names:
@@ -510,7 +503,7 @@ def _name_bytes(names: list[str]) -> bytes:
     return bytes(packed)
 
 
-def skin_lines(geometry: dict) -> list[str]:
+def skin_lines(geometry: dict, *, include_vertex_streams: bool = True) -> list[str]:
     skin = geometry["skin"]
     if skin is None:
         return []
@@ -530,8 +523,6 @@ def skin_lines(geometry: dict) -> list[str]:
     joint_names = [joint["name"] for joint in joints]
     lines = [
         f"skin_bones={len(bones)}", "skin_indices_stride=16", "skin_weights_stride=16",
-        "skin_indices_b64=" + base64.b64encode(struct.pack(f"<{len(indices)}I", *indices)).decode("ascii"),
-        "skin_weights_b64=" + base64.b64encode(struct.pack(f"<{len(weights)}f", *weights)).decode("ascii"),
         "skin_names_b64=" + base64.b64encode(_name_bytes(bones)).decode("ascii"),
         f"skin_joints={len(joints)}", "skin_joint_parent_stride=4", "skin_joint_rest_stride=40",
         "skin_joint_parents_b64=" + base64.b64encode(struct.pack(f"<{len(parents)}i", *parents)).decode("ascii"),
@@ -541,6 +532,11 @@ def skin_lines(geometry: dict) -> list[str]:
         "skin_cluster_joints_b64=" + base64.b64encode(
             struct.pack(f"<{len(cluster_joints)}I", *cluster_joints)).decode("ascii"),
     ]
+    if include_vertex_streams:
+        lines[2:2] = [
+            "skin_indices_b64=" + base64.b64encode(struct.pack(f"<{len(indices)}I", *indices)).decode("ascii"),
+            "skin_weights_b64=" + base64.b64encode(struct.pack(f"<{len(weights)}f", *weights)).decode("ascii"),
+        ]
     if inverse_bind_matrices is not None:
         lines += ["skin_inverse_bind_stride=64",
             "skin_inverse_bind_matrices_b64=" + base64.b64encode(
@@ -548,7 +544,7 @@ def skin_lines(geometry: dict) -> list[str]:
     return lines
 
 
-def morph_lines(geometry: dict) -> list[str]:
+def morph_lines(geometry: dict, *, include_vertex_streams: bool = True) -> list[str]:
     targets = geometry.get("morph_targets", [])
     if not targets:
         return []
@@ -566,11 +562,13 @@ def morph_lines(geometry: dict) -> list[str]:
     for index, target in enumerate(targets):
         if len(target["positions"]) != geometry["vertex_count"] * 12:
             raise ValueError("normalized morph position stream does not match the mesh")
-        lines.append(f"morph_{index}_positions_b64=" + base64.b64encode(target["positions"]).decode("ascii"))
+        if include_vertex_streams:
+            lines.append(f"morph_{index}_positions_b64=" + base64.b64encode(target["positions"]).decode("ascii"))
         if has_normals:
             if len(target["normals"]) != geometry["vertex_count"] * 12:
                 raise ValueError("normalized morph normal stream does not match the mesh")
-            lines.append(f"morph_{index}_normals_b64=" + base64.b64encode(target["normals"]).decode("ascii"))
+            if include_vertex_streams:
+                lines.append(f"morph_{index}_normals_b64=" + base64.b64encode(target["normals"]).decode("ascii"))
     return lines
 
 

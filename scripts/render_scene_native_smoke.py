@@ -28,7 +28,7 @@ import gltf_skin_self_test
 import gltf_morph_self_test
 import gltf_scene_self_test
 import packaged_maze_smoke
-import test_geometry_subsets
+import geometry_subset_cases
 
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORKS = [
@@ -171,7 +171,7 @@ def main() -> int:
         ])
         if subset_status != 0:
             return subset_status
-        (subset_directory / "skinned.pkg").write_bytes(test_geometry_subsets.strip_package(
+        (subset_directory / "skinned.pkg").write_bytes(geometry_subset_cases.strip_package(
             2, [(0, 3, 0), (3, 3, 1)], 2, skinned=True))
         gltf_skin_self_test.write_package(subset_directory / "morphed-skinned.pkg", second_animation=True)
         gltf_skin_self_test.write_separate_root_package(
@@ -261,7 +261,8 @@ def main() -> int:
         cxx, "-std=c++17", "-O0", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-DELISA_RENDER_SCENE_TEST_PROBE=1",
-        "-I", str(build), "-I", str(ROOT / "native"), "-I", str(wicked_source),
+        "-I", str(build), "-I", str(ROOT / "native"), "-I", str(ROOT / "dependencies/meshoptimizer"),
+        "-I", str(wicked_source),
         "-I", str(utility), "-I", str(wicked_source / "Utility/metal"),
         "-I", str(wicked_source / "Utility/DirectXMath"),
         "-I", str(sdl_include), "-I", str(sdl_include / "SDL3"),
@@ -270,6 +271,9 @@ def main() -> int:
         "-I", str(basisu_transcoder),
         str(ROOT / "native/application_abi.cpp"),
         str(ROOT / "native/render_scene_abi.cpp"),
+        str(ROOT / "native/meshopt_stream_codec.cpp"),
+        str(ROOT / "dependencies/meshoptimizer/indexcodec.cpp"),
+        str(ROOT / "dependencies/meshoptimizer/vertexcodec.cpp"),
         str(ROOT / "native/elisa_native_fallbacks.cpp"),
         str(ROOT / "native/audio_service_abi.cpp"),
         str(ROOT / "native/miniaudio_implementation.cpp"),
@@ -294,6 +298,15 @@ def main() -> int:
     runtime_env = dict(os.environ)
     runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(wicked_source / "shaders")
     runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)
+    fine_lod_capture = build / "render-scene-lod-fine.png"
+    coarse_lod_capture = build / "render-scene-lod-coarse.png"
+    lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
+    capture_lod_quality = not render_only or lod_fixture_available
+    if capture_lod_quality:
+        fine_lod_capture.unlink(missing_ok=True)
+        coarse_lod_capture.unlink(missing_ok=True)
+        runtime_env["ELISA_LOD_FINE_CAPTURE"] = str(fine_lod_capture)
+        runtime_env["ELISA_LOD_COARSE_CAPTURE"] = str(coarse_lod_capture)
     with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory:
         if render_only:
             status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
@@ -313,6 +326,12 @@ def main() -> int:
                     escape_link.unlink(missing_ok=True)
                     texture_link.unlink(missing_ok=True)
                     dependency_link.unlink(missing_ok=True)
+    if status == 0 and capture_lod_quality:
+        quality_status = run([sys.executable, str(ROOT / "scripts/compare_renders.py"),
+            "lod-quality", str(fine_lod_capture), str(coarse_lod_capture)])
+        if quality_status != 0:
+            print("Same-camera LOD image quality comparison failed.", file=sys.stderr)
+            return quality_status
     if status == 0:
         if render_only:
             print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")

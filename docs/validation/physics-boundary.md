@@ -17,9 +17,9 @@ owner path, rejects dynamic targets, holds a dynamic pose while sleeping for a
 tick, and verifies gravity resumes after wake. The portable policy now also
 exposes an Elisa-owned `StepClock`; `test/physics_policy.elisa` proves that a
 tick can be active only once and commits must be contiguous. The integrated
-SDL3/Metal cadence capture now runs the same real Jolt body for one simulated
-second with 30 and 120 presentation frames. It proves the same committed
-tick and pose, verifies render pumps do not step the body, and compares final
-Wicked backbuffer captures. Details and artifacts are in
-[`physics-render-cadence.md`](physics-render-cadence.md). Intermediate-frame
-pixel equivalence and the full clock-to-hierarchy game path remain P04 work.
+SDL3/Metal cadence capture runs one real Jolt body for one simulated second at
+30 and 120 presentation frames. It checks equal committed ticks and poses,
+verifies that render pumps do not step the body, and compares the final Wicked
+backbuffer captures. See [`physics-render-cadence.md`](physics-render-cadence.md).
+Intermediate-frame equivalence and the full clock-to-hierarchy path remain P04
+work.

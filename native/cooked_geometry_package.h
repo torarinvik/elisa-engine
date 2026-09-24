@@ -6,6 +6,8 @@
 #include "cooked_package_fields.h"
 #include "cooked_geometry_limits.h"
 #include "cooked_slot_materials.h"
+#include "cooked_geometry_meshopt_names.h"
+#include "cooked_geometry_streams.h"
 #include "cooked_geometry_uv1.h"
 #include "virtual_package.h"
 
@@ -249,6 +251,26 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         const auto found = package.sections.find(key);
         return found != package.sections.end() && found->second == expected;
     };
+    const auto meshopt_codec = package.sections.find("meshopt_codec");
+    size_t compressed_stream_count = 0;
+    for (const auto& section : package.sections) {
+        constexpr char suffix[] = "_meshopt_b64";
+        if (section.first.size() >= sizeof(suffix) - 1 &&
+            section.first.compare(section.first.size() - (sizeof(suffix) - 1),
+                sizeof(suffix) - 1, suffix) == 0) {
+            if (!detail::supported_meshopt_stream_field(section.first)) {
+                error = "unsupported meshoptimizer cooked geometry stream";
+                return false;
+            }
+            ++compressed_stream_count;
+        }
+    }
+    if ((compressed_stream_count == 0) != (meshopt_codec == package.sections.end()) ||
+        (meshopt_codec != package.sections.end() &&
+            meshopt_codec->second != "meshoptimizer-v1.2")) {
+        error = "unsupported or inconsistent cooked geometry meshoptimizer codec";
+        return false;
+    }
     if (!stride("position_stride", "12") || !stride("normal_stride", "12") ||
         !stride("uv_stride", "8") || !stride("index_stride", "4")) {
         error = "unsupported cooked geometry strides";
@@ -265,9 +287,9 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         error = "invalid or excessive cooked geometry counts";
         return false;
     }
-    if (!detail::decode_floats(package, "positions_b64", size_t(vertices) * 3, geometry.positions) ||
-        !detail::decode_floats(package, "normals_b64", size_t(vertices) * 3, geometry.normals) ||
-        !detail::decode_floats(package, "uvs_b64", size_t(vertices) * 2, geometry.uvs)) {
+    if (!detail::decode_geometry_floats(package, "positions", size_t(vertices), 12, geometry.positions) ||
+        !detail::decode_geometry_floats(package, "normals", size_t(vertices), 12, geometry.normals) ||
+        !detail::decode_geometry_floats(package, "uvs", size_t(vertices), 8, geometry.uvs)) {
         error = "invalid cooked geometry vertex streams";
         return false;
     }
@@ -277,14 +299,17 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         return false;
     }
     const auto tangent_stride = package.sections.find("tangent_stride");
-    const auto encoded_tangents = package.sections.find("tangents_b64");
-    if ((tangent_stride == package.sections.end()) != (encoded_tangents == package.sections.end())) {
+    const auto raw_tangents = package.sections.find("tangents_b64");
+    const auto encoded_tangents = package.sections.find("tangents_meshopt_b64");
+    const bool has_tangent_data = raw_tangents != package.sections.end() ||
+        encoded_tangents != package.sections.end();
+    if ((tangent_stride == package.sections.end()) != !has_tangent_data) {
         error = "incomplete cooked geometry tangent stream";
         return false;
     }
     if (tangent_stride != package.sections.end()) {
         if (tangent_stride->second != "16" ||
-            !detail::decode_floats(package, "tangents_b64", size_t(vertices) * 4, geometry.tangents)) {
+            !detail::decode_geometry_floats(package, "tangents", size_t(vertices), 16, geometry.tangents)) {
             error = "invalid cooked geometry tangent stream";
             return false;
         }
@@ -304,10 +329,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             }
         }
     }
-    const auto encoded_indices = package.sections.find("indices_b64");
     std::vector<uint8_t> index_bytes;
-    if (encoded_indices == package.sections.end() ||
-        !detail::decode_base64(encoded_indices->second, index_bytes) || index_bytes.size() != size_t(indices) * 4) {
+    if (!detail::decode_geometry_index_bytes(package, size_t(indices), index_bytes)) {
         error = "invalid cooked geometry index stream";
         return false;
     }
@@ -329,16 +352,21 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     const auto skin_index_stride = package.sections.find("skin_indices_stride");
     const auto skin_weight_stride = package.sections.find("skin_weights_stride");
     const auto skin_indices = package.sections.find("skin_indices_b64");
+    const auto encoded_skin_indices = package.sections.find("skin_indices_meshopt_b64");
     const auto skin_weights = package.sections.find("skin_weights_b64");
+    const auto encoded_skin_weights = package.sections.find("skin_weights_meshopt_b64");
     const auto skin_names = package.sections.find("skin_names_b64");
     const auto inverse_bind_stride = package.sections.find("skin_inverse_bind_stride");
     const auto inverse_bind_data = package.sections.find("skin_inverse_bind_matrices_b64");
     const bool has_skin = skin_bones != package.sections.end();
+    const bool has_skin_index_data = skin_indices != package.sections.end() ||
+        encoded_skin_indices != package.sections.end();
+    const bool has_skin_weight_data = skin_weights != package.sections.end() ||
+        encoded_skin_weights != package.sections.end();
     const bool has_inverse_bind = inverse_bind_stride != package.sections.end();
     if ((skin_index_stride != package.sections.end()) != has_skin ||
         (skin_weight_stride != package.sections.end()) != has_skin ||
-        (skin_indices != package.sections.end()) != has_skin ||
-        (skin_weights != package.sections.end()) != has_skin ||
+        has_skin_index_data != has_skin || has_skin_weight_data != has_skin ||
         (skin_names != package.sections.end()) != has_skin ||
         (inverse_bind_data != package.sections.end()) != has_inverse_bind ||
         (has_inverse_bind && !has_skin)) {
@@ -351,8 +379,10 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             bone_count > MAX_GEOMETRY_SKIN_BONES ||
             skin_index_stride->second != "16" || skin_weight_stride->second != "16" ||
             vertices > std::numeric_limits<size_t>::max() / 4 ||
-            !detail::decode_u32(package, "skin_indices_b64", size_t(vertices) * 4, geometry.skin_indices) ||
-            !detail::decode_floats(package, "skin_weights_b64", size_t(vertices) * 4, geometry.skin_weights)) {
+            !detail::decode_geometry_u32(package, "skin_indices", size_t(vertices), 4,
+                geometry.skin_indices) ||
+            !detail::decode_geometry_floats(package, "skin_weights", size_t(vertices), 16,
+                geometry.skin_weights)) {
             error = "invalid cooked geometry skin counts or influence streams";
             return false;
         }

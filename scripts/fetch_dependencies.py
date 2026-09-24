@@ -94,6 +94,18 @@ PINNED = {
         "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e",
         "meshoptimizer/indexgenerator.cpp",
     ),
+    "meshoptimizer_indexcodec": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/indexcodec.cpp",
+        "8648e71f044e0a23622c199f250818a62d68fd05673e2e692167f257de27565f",
+        "meshoptimizer/indexcodec.cpp",
+    ),
+    "meshoptimizer_vertexcodec": (
+        "v1.2",
+        "https://raw.githubusercontent.com/zeux/meshoptimizer/v1.2/src/vertexcodec.cpp",
+        "a3c51e91602c607a82ad0fdc32b089e890e3a3caf7934d82b7a993d64cd683ed",
+        "meshoptimizer/vertexcodec.cpp",
+    ),
     # Offline mesh authoring stages. Pin source files by immutable upstream commit.
     "mikktspace_source": (
         "3e895b49d05ea07e4c2133156cfa94369e19e409",

@@ -162,13 +162,19 @@ The bounded FBX import stage can be checked independently with
 also inspect the supplied WallGame walking, running, and fence FBX sources.
 `python3 scripts/cook_fbx_asset.py --self-test` verifies a normalized geometry
 package, and the tool accepts a source FBX, a project-relative asset key, and
-an output `.pkg` path for real assets. `--max-triangles` applies bounded
+an output `.pkg` path for real assets. Production `.pkg` and textured `.elpk`
+outputs losslessly compress positions, normals, UV0, and indices with pinned
+meshoptimizer v1.2 when each encoded stream is smaller, plus float4 tangents
+when present. glTF cooks also compress optional lightmap UV1, skin influences,
+and morph position/normal deltas when each encoding is smaller; rig hierarchy,
+inverse-bind, and animation metadata stay raw. `--max-triangles` applies bounded
 meshoptimizer simplification for dense meshes. The amazing-labyrinth checkout
 records a 3.08-million-triangle Arc Gate cooked to 12,000 triangles and a
 620 kB package; that source asset is absent here, so the result was not rerun.
 Elisa's `RenderScene::create_mesh`, `set_emissive`, and `set_bloom` APIs load
-and render cooked geometry and drive generic glow effects. Full scene/material cooking,
-skin weights and animation playback remain pending.
+and render static or skinned cooked geometry, and drive generic glow effects.
+Sampled skeletal clips and morph weights are supported; a general animation
+graph and arbitrary scene round-tripping remain future work.
 
 `examples/maze/game.elisa` also publishes its fog-of-war rule
 (`maze_fog_radius`, `maze_cell_visible`), which both hosts render by

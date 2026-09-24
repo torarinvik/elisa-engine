@@ -9,16 +9,27 @@ from ktx2_container import KTX2_IDENTIFIER
 
 def make_ktx2(width: int = 4, height: int = 4, *, scheme: int = 0,
         key_values: tuple[tuple[str, bytes], ...] = (), global_data: bytes = b"",
-        levels: tuple[bytes, ...] | None = None) -> bytes:
+        levels: tuple[bytes, ...] | None = None,
+        etc1s_channels: tuple[int, ...] = (0,)) -> bytes:
     """Build a bounded UASTC or ETC1S KTX2 layout fixture."""
     etc1s = scheme == 1
-    dfd = bytearray(60 if etc1s else 44)
+    if etc1s and etc1s_channels not in ((0,), (0, 15), (3,), (3, 4)):
+        raise ValueError("ETC1S fixtures need one of the supported channel combinations")
+    if not etc1s and etc1s_channels != (0,):
+        raise ValueError("ETC1S channels apply only to BasisLZ fixtures")
+    sample_channels = etc1s_channels if etc1s else (0,)
+    dfd = bytearray(28 + 16 * len(sample_channels))
     struct.pack_into("<I", dfd, 0, len(dfd))
     struct.pack_into("<HH", dfd, 8, 2, len(dfd) - 4)
     dfd[12:20] = bytes((163, 1, 1, 0, 3, 3, 0, 0) if etc1s else
         (166, 1, 1, 0, 3, 3, 0, 0))
-    dfd[20:28] = bytes((8, 8, 0, 0, 0, 0, 0, 0) if etc1s else
-        (16, 0, 0, 0, 0, 0, 0, 0))
+    dfd[20:28] = bytes((8, 8 if len(sample_channels) == 2 else 0, 0, 0, 0, 0, 0, 0)
+        if etc1s else (16, 0, 0, 0, 0, 0, 0, 0))
+    for index, channel in enumerate(sample_channels):
+        sample_offset = 28 + index * 16
+        struct.pack_into("<HBB4BII", dfd, sample_offset,
+            index * 64 if etc1s else 0, 63 if etc1s else 127, channel,
+            0, 0, 0, 0, 0, 0xFFFFFFFF)
     kvd = bytearray()
     for key, value in key_values:
         entry = key.encode("utf-8") + b"\0" + value

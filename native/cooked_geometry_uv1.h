@@ -14,6 +14,7 @@ inline bool parse_geometry_uv1(const probe::PackageIndex& package, uint64_t vert
     uint32_t& charts, std::string& error) {
     const auto stride = package.sections.find("uv1_stride");
     const auto data = package.sections.find("uv1s_b64");
+    const auto encoded_data = package.sections.find("uv1s_meshopt_b64");
     const auto source_field = package.sections.find("uv1_source");
     const auto revision = package.sections.find("uv1_generator_revision");
     const auto resolution_field = package.sections.find("uv1_resolution");
@@ -23,7 +24,8 @@ inline bool parse_geometry_uv1(const probe::PackageIndex& package, uint64_t vert
     const bool has_xatlas_metadata = revision != package.sections.end() ||
         resolution_field != package.sections.end() || padding_field != package.sections.end() ||
         charts_field != package.sections.end();
-    if ((data != package.sections.end()) != has_uv1 ||
+    const bool has_uv1_data = data != package.sections.end() || encoded_data != package.sections.end();
+    if (has_uv1_data != has_uv1 ||
         (source_field != package.sections.end()) != has_uv1) {
         error = "incomplete cooked geometry UV1 stream";
         return false;
@@ -36,7 +38,7 @@ inline bool parse_geometry_uv1(const probe::PackageIndex& package, uint64_t vert
         return true;
     }
     if (stride->second != "8" ||
-        !decode_floats(package, "uv1s_b64", size_t(vertices) * 2, uv1s)) {
+        !decode_geometry_floats(package, "uv1s", size_t(vertices), 8, uv1s)) {
         error = "invalid cooked geometry UV1 stream";
         return false;
     }

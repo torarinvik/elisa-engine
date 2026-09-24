@@ -48,6 +48,9 @@ def self_test() -> int:
                 make_ktx2(key_values=(("testkey", b"rd"),)),
                 make_ktx2(scheme=1, key_values=(("testkey", b"rd"),),
                     global_data=b"basis-global"),
+                make_ktx2(scheme=1, etc1s_channels=(0, 15),
+                    key_values=(("testkey", b"alpha"),), global_data=b"basis-alpha"),
+                make_ktx2(scheme=1, etc1s_channels=(3, 4), global_data=b"basis-rg"),
                 make_ktx2(levels=(bytes(16), bytes(16))),
                 make_ktx2(levels=(bytes(16), bytes(16), bytes(16))))):
             print("image bundle self-test failed: a valid KTX2 metadata or mip layout was rejected",
@@ -57,7 +60,7 @@ def self_test() -> int:
         def invalid_structure(label: str, fixture: bytes, offset: int,
                 value: int, width: int = 4) -> tuple[str, Path]:
             malformed = bytearray(fixture)
-            format_code = {2: "<H", 4: "<I", 8: "<Q"}[width]
+            format_code = {1: "<B", 2: "<H", 4: "<I", 8: "<Q"}[width]
             struct.pack_into(format_code, malformed, offset, value)
             path = directory / f"structure-{label}.ktx2"
             path.write_bytes(malformed)
@@ -66,6 +69,8 @@ def self_test() -> int:
         metadata_fixture = make_ktx2(key_values=(("testkey", b"rd"),))
         basis_lz_fixture = make_ktx2(scheme=1, key_values=(("testkey", b"rd"),),
             global_data=b"basis-global")
+        etc1s_alpha_fixture = make_ktx2(scheme=1, etc1s_channels=(0, 15),
+            global_data=b"basis-alpha")
         two_level_fixture = make_ktx2(levels=(bytes(16), bytes(16)))
         one_pixel_two_levels = make_ktx2(1, 1, levels=(bytes(16), bytes(16)))
         zero_plane_uastc = bytearray(make_ktx2(scheme=2, levels=(bytes(16),)))
@@ -81,6 +86,16 @@ def self_test() -> int:
             invalid_structure("dfd-empty", ktx2_bytes, 52, 0),
             invalid_structure("dfd-total-size", ktx2_bytes, 104, 43),
             invalid_structure("dfd-block-size", ktx2_bytes, 114, 39, 2),
+            invalid_structure("dfd-vendor-or-type", ktx2_bytes, 108, 1),
+            invalid_structure("dfd-color-primaries", ktx2_bytes, 117, 9, 1),
+            invalid_structure("dfd-transfer-function", ktx2_bytes, 118, 3, 1),
+            invalid_structure("dfd-alpha-flags", ktx2_bytes, 119, 1, 1),
+            invalid_structure("dfd-extra-plane", ktx2_bytes, 126, 1, 1),
+            invalid_structure("dfd-sample-bit-length", ktx2_bytes, 134, 126, 1),
+            invalid_structure("dfd-sample-channel", ktx2_bytes, 135, 7, 1),
+            invalid_structure("dfd-sample-qualifier", ktx2_bytes, 135, 0x10, 1),
+            invalid_structure("dfd-sample-position", ktx2_bytes, 136, 1, 1),
+            invalid_structure("dfd-sample-range", ktx2_bytes, 144, 0, 4),
             invalid_structure("type-size", ktx2_bytes, 16, 2),
             invalid_structure("kvd-offset-without-length", ktx2_bytes, 56, 148),
             invalid_structure("kvd-out-of-range", metadata_fixture, 60, 0xFFFFFFFF),
@@ -97,6 +112,10 @@ def self_test() -> int:
                 struct.unpack_from("<Q", two_level_fixture, 80)[0], 8),
             invalid_structure("UASTC-BasisLZ-scheme", ktx2_bytes, 44, 1),
             invalid_structure("ETC1S-non-BasisLZ-scheme", basis_lz_fixture, 44, 2),
+            invalid_structure("ETC1S-invalid-channel-pair", etc1s_alpha_fixture,
+                struct.unpack_from("<I", etc1s_alpha_fixture, 48)[0] + 47, 4, 1),
+            invalid_structure("ETC1S-missing-alpha-plane", etc1s_alpha_fixture,
+                struct.unpack_from("<I", etc1s_alpha_fixture, 48)[0] + 21, 0, 1),
             invalid_structure("UASTC-uncompressed-zero-plane", ktx2_bytes,
                 struct.unpack_from("<I", ktx2_bytes, 48)[0] + 20, 0, 8),
         ]

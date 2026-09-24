@@ -102,6 +102,8 @@ def basis_hdr_ktx2() -> bytes:
     data[dfd_offset + 12:dfd_offset + 17] = bytes((KTX2_UASTC_HDR_4X4_DFD_MODEL, 1, 1, 0, 3))
     data[dfd_offset + 17:dfd_offset + 20] = bytes((3, 0, 0))
     data[dfd_offset + 20] = 16
+    data[dfd_offset + 31] = 0x80
+    struct.pack_into("<I", data, dfd_offset + 40, 0x3F800000)
     return bytes(data)
 
 
@@ -376,6 +378,20 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
         pass
     else:
         return fail("the bounded image cooker accepted an HDR vkFormat with an LDR DFD")
+    hdr_dfd = struct.unpack_from("<I", basis_hdr_ktx2(), 48)[0]
+    for label, relative_offset, value in (
+            ("sample qualifier", 31, 0), ("sample range", 40, 0xFFFFFFFF),
+            ("transfer function", 14, 2)):
+        malformed_profile = bytearray(basis_hdr_ktx2())
+        if relative_offset == 40:
+            struct.pack_into("<I", malformed_profile, hdr_dfd + relative_offset, value)
+        else:
+            malformed_profile[hdr_dfd + relative_offset] = value
+        try:
+            encoded_image_dimensions(bytes(malformed_profile))
+        except ValueError:
+            continue
+        return fail(f"the bounded image cooker accepted an HDR DFD with an invalid {label}")
     unsupported_hdr = bytearray(basis_ktx2())
     unsupported_hdr[struct.unpack_from("<I", unsupported_hdr, 48)[0] + 12] = 168
     try:

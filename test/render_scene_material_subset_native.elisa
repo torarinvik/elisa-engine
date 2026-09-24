@@ -5,6 +5,7 @@
 # cooks the panel and a skinned strip under build/cooked/subsets.
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene_assets.elisa"
+include "./render_scene_fbx_material_native.elisa"
 
 module RenderSceneMaterialSubsetNativeTests:
     private:
@@ -12,34 +13,8 @@ module RenderSceneMaterialSubsetNativeTests:
         extern elisa_render_scene_v1_test_snapshot_subset_count(render_id: i64) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_placement_count(render_id: i64) -> i32
-
-        @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_placement_subset_count(render_id: i64,
-            placement_index: u32) -> i32
-
-        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_subset_matches(render_id: i64, subset: u32,
             index_offset: u32, index_count: u32, material_high: u64, material_low: u64) -> i32
-
-        extern elisa_render_scene_v1_test_snapshot_placement_subset_matches(render_id: i64,
-            placement_index: u32, subset: u32, index_offset: u32, index_count: u32,
-            material_high: u64, material_low: u64) -> i32
-
-        @callconv(c)
-        extern elisa_render_scene_v1_snapshot_mesh_material_name(mesh_high: u64, mesh_low: u64,
-            slot: u32, name_bytes: mutable u8&, name_capacity: u32,
-            name_length: mutable u32&) -> i32
-
-        @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_material_matches(high: u64, low: u64,
-            red: f32, green: f32, blue: f32, alpha: f32, metallic: f32, roughness: f32,
-            emissive_red: f32, emissive_green: f32, emissive_blue: f32, alpha_cutoff: f32,
-            alpha_mode: i32, double_sided: i32) -> i32
-
-        @callconv(c)
-        extern elisa_render_scene_v1_test_snapshot_material_texture_id(high: u64, low: u64,
-            slot_code: i32, texture_high: u64, texture_low: u64) -> i32
 
         @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_casts_shadow(render_id: i64) -> i32
@@ -87,7 +62,6 @@ module RenderSceneMaterialSubsetNativeTests:
             MATERIALS: u64 = 941
             SETS: u64 = 942
             EXTRA_SETS: u64 = 943
-            TEXTURES: u64 = 944
             EXTRA_FIRST: u64 = 1
             EXTRA_END: u64 = 33
 
@@ -95,8 +69,6 @@ module RenderSceneMaterialSubsetNativeTests:
             PANEL: u64 = 1
             TILE: u64 = 2
             SKINNED: u64 = 3
-            FBX_PANEL: u64 = 4
-            FBX_CUTOUT: u64 = 5
 
         const module Paint:
             RED: u64 = 1
@@ -104,7 +76,6 @@ module RenderSceneMaterialSubsetNativeTests:
             GLASS_RED: u64 = 3
             GLASS_BLUE: u64 = 4
             MISSING: u64 = 99
-            FBX_CUTOUT: u64 = 5
 
         # Material sets, listed in slot order: center, then edge.
         const module Set:
@@ -137,37 +108,12 @@ module RenderSceneMaterialSubsetNativeTests:
             MIXED: i64 = 9404
             SINGLE: i64 = 9405
             SKINNED: i64 = 9406
-            FBX_SUBSETS: i64 = 9407
             PROBE: i64 = 9409
-            FBX_SCENE: i64 = 9410
 
         const NATIVE_OK: i32 = 0
         const NATIVE_INVALID: i32 = -1
         const NATIVE_LOAD_FAILED: i32 = -9
         const NATIVE_BATCH_ACTIVE: i32 = -10
-        const NATIVE_CAPACITY: i32 = -5
-        const FIRST_NAME_BYTES: usize = 5
-        const SECOND_NAME_BYTES: usize = 6
-        const SHORT_NAME_BUFFER_BYTES: usize = 1
-        const FIRST_NAME_INITIAL_BYTE: u8 = 70
-        const FIRST_NAME_FINAL_BYTE: u8 = 116
-        const SECOND_NAME_INITIAL_BYTE: u8 = 83
-        const SECOND_NAME_FINAL_BYTE: u8 = 100
-        const CUTOUT_ALPHA_MODE: i32 = 1
-        const CUTOUT_ALPHA_CUTOFF: f32 = 0.5
-        const CUTOUT_BASE_ALPHA: f32 = 1.0
-        const CUTOUT_METALLIC: f32 = 0.0
-        const CUTOUT_DOUBLE_SIDED: i32 = 0
-        const CUTOUT_TEXTURE_ID: u64 = 1
-        const CUTOUT_IMAGE_INDEX: u32 = 0
-        const BASE_COLOR_TEXTURE_SLOT: i32 = 0
-        const CUTOUT_BASE_RED: f32 = 0.16
-        const CUTOUT_BASE_GREEN: f32 = 0.32
-        const CUTOUT_BASE_BLUE: f32 = 0.48
-        const CUTOUT_ROUGHNESS: f32 = 0.43431458
-        const CUTOUT_EMISSIVE_RED: f32 = 0.3
-        const CUTOUT_EMISSIVE_GREEN: f32 = 0.2
-        const CUTOUT_EMISSIVE_BLUE: f32 = 0.1
         const MAX_SNAPSHOT_MATERIAL_SETS: u64 = 32
         const MAX_SET_SLOTS: u32 = 16
         const VISIBLE_Y: f32 = 4.0
@@ -192,52 +138,6 @@ module RenderSceneMaterialSubsetNativeTests:
                 ok: Code::OK
                 error failure: Code::OTHER
 
-        def register_mesh_texture(mesh_low: u64, image_index: u32, texture_low: u64) -> i32:
-            mesh: Assets::AssetId = Assets::AssetId{high: Ids::MESHES, low: mesh_low}
-            texture: Assets::AssetId = Assets::AssetId{high: Ids::TEXTURES, low: texture_low}
-            catch RenderScene::register_snapshot_mesh_texture(mesh, image_index, texture):
-                ok: Code::OK
-                error failure: Code::OTHER
-
-        def unregister_texture(low: u64) -> i32:
-            catch RenderScene::unregister_snapshot_texture_asset(
-                Assets::AssetId{high: Ids::TEXTURES, low: low}):
-                ok: Code::OK
-                error failure: Code::OTHER
-
-        def register_mesh_material(mesh_low: u64, slot: u32, material_low: u64) -> i32:
-            mesh: Assets::AssetId = Assets::AssetId{high: Ids::MESHES, low: mesh_low}
-            catch RenderScene::register_snapshot_mesh_material(mesh, slot, material_id(material_low)):
-                ok: Code::OK
-                error failure: Code::OTHER
-
-        def fbx_material_names_are(mesh: Assets::AssetId) -> bool:
-            first: mutable RenderScene::SnapshotMeshMaterialName = RenderScene::SnapshotMeshMaterialName()
-            first_status: i32 = catch RenderScene::snapshot_mesh_material_name(mesh, 0, &first):
-                ok: Code::OK
-                error failure: Code::OTHER
-            return false if first_status != Code::OK or first.length != FIRST_NAME_BYTES
-            return false if first.bytes[0] != FIRST_NAME_INITIAL_BYTE
-            return false if first.bytes[FIRST_NAME_BYTES - 1] != FIRST_NAME_FINAL_BYTE
-            short_buffer: mutable u8[SHORT_NAME_BUFFER_BYTES] = zeroed
-            required_bytes: mutable u32 = 0
-            short_status: i32 = elisa_render_scene_v1_snapshot_mesh_material_name(
-                mesh.high, mesh.low, 0, &short_buffer[0], SHORT_NAME_BUFFER_BYTES.u32(), &required_bytes)
-            return false if short_status != NATIVE_CAPACITY or required_bytes != FIRST_NAME_BYTES.u32()
-            return false if short_buffer[0] != 0
-            second: mutable RenderScene::SnapshotMeshMaterialName = RenderScene::SnapshotMeshMaterialName()
-            second_status: i32 = catch RenderScene::snapshot_mesh_material_name(mesh, 1, &second):
-                ok: Code::OK
-                error failure: Code::OTHER
-            return false if second_status != Code::OK or second.length != SECOND_NAME_BYTES
-            return false if second.bytes[0] != SECOND_NAME_INITIAL_BYTE
-            return false if second.bytes[SECOND_NAME_BYTES - 1] != SECOND_NAME_FINAL_BYTE
-            true
-
-        # A double-sided emissive paint; glass blends it at half alpha. The
-        # base color is dim and the emission stays at 1 so the ACES tonemap
-        # keeps each hue: brighter pure blue picks up red, and the scene's
-        # ambient light tints a bright base color.
         def register_paint(asset: Assets::AssetId, red: f32, blue: f32, glass: bool) -> i32:
             alpha: f32 = 0.5 if glass else 1.0
             mode: Material::AlphaMode = Material::AlphaMode.Blend if glass else Material::AlphaMode.Opaque
@@ -477,66 +377,6 @@ module RenderSceneMaterialSubsetNativeTests:
 
         # An FBX face-material layer cooks into the same per-slot subset
         # contract used by glTF, so the render ABI needs no importer-specific path.
-        def fbx_material_subsets() -> i32:
-            return 1 if register_mesh(Mesh::FBX_PANEL, "build/cooked/subsets/fbx-two-material.pkg") != Code::OK
-            return 19 if not fbx_material_names_are(Assets::AssetId{high: Ids::MESHES, low: Mesh::FBX_PANEL})
-            return 2 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
-            staged: i32 = stage(Row::FBX_SUBSETS, Mesh::FBX_PANEL, set_id(Set::BLUE_CENTER), HIDDEN_Y)
-            if staged != NATIVE_OK:
-                _ = elisa_render_scene_v1_snapshot_abort()
-                return 3
-            return 4 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
-            handle: i64 = elisa_render_scene_v1_snapshot_result(0)
-            return 5 if handle <= 0 or elisa_render_scene_v1_test_snapshot_subset_count(Row::FBX_SUBSETS) != 2
-            return 6 if not subset_is(Row::FBX_SUBSETS, 0, 0, 3, Paint::BLUE)
-            return 7 if not subset_is(Row::FBX_SUBSETS, 1, 3, 3, Paint::RED)
-            return 8 if not retire(handle)
-            return 9 if unregister_mesh(Mesh::FBX_PANEL) != Code::OK
-            return 10 if register_mesh(Mesh::FBX_PANEL, "build/cooked/subsets/fbx-all-meshes.pkg") != Code::OK
-            return 11 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
-            all_meshes: i32 = stage(Row::FBX_SCENE, Mesh::FBX_PANEL, set_id(Set::BLUE_CENTER), HIDDEN_Y)
-            if all_meshes != NATIVE_OK:
-                _ = elisa_render_scene_v1_snapshot_abort()
-                return 12
-            return 13 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
-            scene_handle: i64 = elisa_render_scene_v1_snapshot_result(0)
-            return 14 if scene_handle <= 0 or elisa_render_scene_v1_test_snapshot_placement_count(Row::FBX_SCENE) != 2
-            return 15 if elisa_render_scene_v1_test_snapshot_placement_subset_count(Row::FBX_SCENE, 0) != 1
-            return 16 if elisa_render_scene_v1_test_snapshot_placement_subset_count(Row::FBX_SCENE, 1) != 1
-            return 17 if elisa_render_scene_v1_test_snapshot_placement_subset_matches(Row::FBX_SCENE,
-                0, 0, 0, 3, Ids::MATERIALS, Paint::BLUE) != 1
-            return 18 if elisa_render_scene_v1_test_snapshot_placement_subset_matches(Row::FBX_SCENE,
-                1, 0, 0, 6, Ids::MATERIALS, Paint::RED) != 1
-            return 19 if not retire(scene_handle)
-            return 20 if unregister_mesh(Mesh::FBX_PANEL) != Code::OK
-            cutout: i32 = fbx_cutout_runtime()
-            return 30 + cutout if cutout != 0
-            0
-
-        # The inferred PNG mask survives cooking, package loading, material
-        # registration, and Wicked's live alpha-test and texture state.
-        def fbx_cutout_runtime() -> i32:
-            return 1 if register_mesh(Mesh::FBX_CUTOUT,
-                "build/cooked/subsets/fbx-cutout.elpk") != Code::OK
-            return 2 if register_mesh_texture(Mesh::FBX_CUTOUT,
-                CUTOUT_IMAGE_INDEX, CUTOUT_TEXTURE_ID) != Code::OK
-            return 3 if register_mesh_material(Mesh::FBX_CUTOUT, 0, Paint::FBX_CUTOUT) != Code::OK
-            return 4 if elisa_render_scene_v1_test_snapshot_material_matches(
-                Ids::MATERIALS, Paint::FBX_CUTOUT,
-                CUTOUT_BASE_RED, CUTOUT_BASE_GREEN, CUTOUT_BASE_BLUE, CUTOUT_BASE_ALPHA, CUTOUT_METALLIC,
-                CUTOUT_ROUGHNESS, CUTOUT_EMISSIVE_RED, CUTOUT_EMISSIVE_GREEN,
-                CUTOUT_EMISSIVE_BLUE, CUTOUT_ALPHA_CUTOFF, CUTOUT_ALPHA_MODE, CUTOUT_DOUBLE_SIDED) != 1
-            return 5 if elisa_render_scene_v1_test_snapshot_material_texture_id(
-                Ids::MATERIALS, Paint::FBX_CUTOUT, BASE_COLOR_TEXTURE_SLOT,
-                Ids::TEXTURES, CUTOUT_TEXTURE_ID) != 1
-            return 6 if unregister_material(Paint::FBX_CUTOUT) != Code::OK
-            return 7 if unregister_texture(1) != Code::OK
-            return 8 if unregister_mesh(Mesh::FBX_CUTOUT) != Code::OK
-            0
-
-        # Blended subsets cast no shadow; one opaque subset makes the object
-        # cast. Skinned subsets use the same slot bindings while retaining a
-        # per-instance armature.
         def committed_rows() -> i32:
             return 1 if elisa_render_scene_v1_snapshot_begin(0) != NATIVE_OK
             glass: i32 = stage(Row::GLASS, Mesh::PANEL, set_id(Set::GLASS), HIDDEN_Y)
@@ -624,8 +464,8 @@ module RenderSceneMaterialSubsetNativeTests:
             return 4 + painted if painted != 0
             registered: i32 = registrations()
             return 10 + registered if registered != 0
-            fbx_subsets: i32 = fbx_material_subsets()
-            return 25 + fbx_subsets if fbx_subsets != 0
+            fbx_status: i32 = RenderSceneFbxMaterialNativeTests::exercise()
+            return fbx_status if fbx_status != 0
             staging: i32 = staging_rejections()
             return 30 + staging if staging != 0
             bounds: i32 = builder_bounds()

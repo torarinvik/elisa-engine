@@ -17,6 +17,7 @@ import cook_gltf_nodes
 import cook_gltf_skin
 import gltf_skin_mikktspace_self_test
 import gltf_animation_self_test
+from cooked_meshopt_test_stream import decode_vertex_stream
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -347,7 +348,9 @@ def self_test(temporary: Path) -> int:
     }
     if (result != second_result or first.read_bytes() != second.read_bytes() or
             any(sections.get(key) != value for key, value in required.items()) or
-            len(base64.b64decode(sections["skin_indices_b64"])) != 24 * 16 or
+            "skin_indices_meshopt_b64" not in sections or
+            "skin_weights_meshopt_b64" not in sections or
+            len(decode_vertex_stream(sections, "skin_indices", 24, 16)) != 24 * 16 or
             len(base64.b64decode(sections["skin_joint_rest_b64"])) != 4 * 40 or
             struct.unpack("<4i", base64.b64decode(sections["skin_joint_parents_b64"])) != (-1, 0, 1, 2) or
             struct.unpack("<2I", base64.b64decode(sections["skin_cluster_joints_b64"])) != (2, 3) or
@@ -379,9 +382,9 @@ def self_test(temporary: Path) -> int:
     multi_skin_clusters = struct.unpack("<4I",
         base64.b64decode(multi_skin_sections["skin_cluster_joints_b64"]))
     multi_skin_indices = struct.unpack("<96I",
-        base64.b64decode(multi_skin_sections["skin_indices_b64"]))
+        decode_vertex_stream(multi_skin_sections, "skin_indices", 24, 16))
     multi_skin_weights = struct.unpack("<96f",
-        base64.b64decode(multi_skin_sections["skin_weights_b64"]))
+        decode_vertex_stream(multi_skin_sections, "skin_weights", 24, 16))
     active_indices = [multi_skin_indices[index * 4] for index in range(24)]
     if (multi_skin_sections.get("skin_bones") != "4" or
             multi_skin_sections.get("skin_joints") != "6" or
@@ -403,9 +406,9 @@ def self_test(temporary: Path) -> int:
     mixed_skin_clusters = struct.unpack("<3I",
         base64.b64decode(mixed_skin_sections["skin_cluster_joints_b64"]))
     mixed_skin_indices = struct.unpack("<96I",
-        base64.b64decode(mixed_skin_sections["skin_indices_b64"]))
+        decode_vertex_stream(mixed_skin_sections, "skin_indices", 24, 16))
     mixed_skin_weights = struct.unpack("<96f",
-        base64.b64decode(mixed_skin_sections["skin_weights_b64"]))
+        decode_vertex_stream(mixed_skin_sections, "skin_weights", 24, 16))
     if (mixed_skin_sections.get("skin_bones") != "3" or
             mixed_skin_sections.get("skin_joints") != "5" or
             mixed_skin_parents != (-1, 0, 1, 2, -1) or

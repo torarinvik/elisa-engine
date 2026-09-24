@@ -10,8 +10,11 @@ wall-clock time. It checks that each run ends on committed tick 60, that the
 body has settled onto the floor, and that every `Application::pump()` leaves
 the managed tick and body pose unchanged.
 
-Both final frames are saved from Wicked's SDL3/Metal backbuffer and compared
-byte for byte. On the validated macOS host, both are 640x480 RGBA PNGs and are
+The smoke pumps initial render frames, then calls the public
+`RenderScene::wait_for_pipelines` API so Wicked finishes asynchronous shader
+compilation before either capture. Both final frames are saved from Wicked's
+SDL3/Metal backbuffer, decoded, checked for visible pixels, and compared pixel
+for pixel. On the validated macOS host, both are 640x480 RGBA PNGs and are
 identical. The smoke stores them at:
 
 - `build/validation/physics-render-cadence/physics-30hz.png`

@@ -68,7 +68,9 @@
         {"path": "indexanalyzer.cpp", "sha256": "bff37aecb10cefa33f3f6a217413c6ac98899c23e6de5282420c60e6baf786ec"},
         {"path": "simplifier.cpp", "sha256": "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc"},
         {"path": "vfetchoptimizer.cpp", "sha256": "aa534bb8150ca27ae229c58a0dc51f85f9acccbc5d4214f4c82edd91fc08e478"},
-        {"path": "indexgenerator.cpp", "sha256": "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e"}
+        {"path": "indexgenerator.cpp", "sha256": "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e"},
+        {"path": "indexcodec.cpp", "sha256": "8648e71f044e0a23622c199f250818a62d68fd05673e2e692167f257de27565f"},
+        {"path": "vertexcodec.cpp", "sha256": "a3c51e91602c607a82ad0fdc32b089e890e3a3caf7934d82b7a993d64cd683ed"}
       ]
     },
     {

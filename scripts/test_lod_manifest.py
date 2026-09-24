@@ -94,9 +94,14 @@ def main() -> int:
         executable = directory / "lod-manifest-test"
         command = [compiler, "-std=c++17", "-O1", "-g", "-fno-omit-frame-pointer",
             "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-            "-I", str(ROOT / "native"), "-I", "/opt/homebrew/include",
+            "-I", str(ROOT / "native"), "-I", str(ROOT / "dependencies/meshoptimizer"),
+            "-I", "/opt/homebrew/include",
             "-L", os.environ.get("ZSTD_LIBRARY_DIR", "/opt/homebrew/lib"),
-            str(ROOT / "native/lod_manifest_test.cpp"), "-lzstd", "-o", str(executable)]
+            str(ROOT / "native/lod_manifest_test.cpp"),
+            str(ROOT / "native/meshopt_stream_codec.cpp"),
+            str(ROOT / "dependencies/meshoptimizer/indexcodec.cpp"),
+            str(ROOT / "dependencies/meshoptimizer/vertexcodec.cpp"),
+            "-lzstd", "-o", str(executable)]
         built = subprocess.run(command, capture_output=True, text=True, check=False)
         if built.returncode != 0:
             print(built.stderr or built.stdout, file=sys.stderr)

@@ -98,6 +98,8 @@ def main() -> int:
         ]
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
+        for capture_name in ("physics-30hz.png", "physics-120hz.png"):
+            (physics_captures / capture_name).unlink(missing_ok=True)
         native_test = project / "user-data-native-test"
         native_command = [
             "clang++", "-std=c++17", "-O0",
