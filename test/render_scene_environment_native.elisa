@@ -34,6 +34,10 @@ module RenderSceneEnvironmentNativeTests:
         def verify_receiver_bias_variant() -> i32:
             baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
             return 95 if baseline < 0.0
+            baseline_capture: cstr = Application::environment_value(
+                "ELISA_SHADOW_RECEIVER_BASELINE_CAPTURE")
+            return 136 if (baseline_capture != "" and
+                not Application::save_screenshot(baseline_capture))
             configured: i32 = catch RenderScene::set_sun_shadow_bias(SHADOW_BIAS_VARIANT):
                 ok: 0
                 error failure: 1
@@ -41,6 +45,10 @@ module RenderSceneEnvironmentNativeTests:
                 elisa_render_scene_v1_test_sun_shadow_bias_matches(SHADOW_BIAS_VARIANT) != 1)
             for frame in 0..<3:
                 return 97 if Application::pump() != Application::PumpStatus.Running
+            variant_capture: cstr = Application::environment_value(
+                "ELISA_SHADOW_RECEIVER_VARIANT_CAPTURE")
+            return 137 if (variant_capture != "" and
+                not Application::save_screenshot(variant_capture))
             change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
             return 98 if change < 0.0
             return 99 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
@@ -112,6 +120,10 @@ module RenderSceneEnvironmentNativeTests:
                     DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS) != 1)
             baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
             return 113 if baseline < 0.0
+            baseline_capture: cstr = Application::environment_value(
+                "ELISA_SHADOW_RASTERIZER_BASELINE_CAPTURE")
+            return 138 if (baseline_capture != "" and
+                not Application::save_screenshot(baseline_capture))
             invalid_slope: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
                 DEFAULT_SHADOW_CONSTANT_BIAS, 16.01):
                 ok: 0
@@ -127,6 +139,10 @@ module RenderSceneEnvironmentNativeTests:
                     VARIANT_SHADOW_CONSTANT_BIAS, VARIANT_SHADOW_SLOPE_BIAS) != 1)
             for frame in 0..<3:
                 return 116 if Application::pump() != Application::PumpStatus.Running
+            variant_capture: cstr = Application::environment_value(
+                "ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE")
+            return 139 if (variant_capture != "" and
+                not Application::save_screenshot(variant_capture))
             change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
             return 117 if change < 0.0
             return 118 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
@@ -190,6 +206,10 @@ module RenderSceneEnvironmentNativeTests:
                 error failure: return 131
             for frame in 0..<3:
                 return 132 if Application::pump() != Application::PumpStatus.Running
+            opaque_capture: cstr = Application::environment_value(
+                "ELISA_LIGHTING_OPAQUE_CAPTURE")
+            return 140 if (opaque_capture != "" and
+                not Application::save_screenshot(opaque_capture))
             opaque_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
             return 133 if opaque_change < 0.0
             return 134 if opaque_change < MINIMUM_LIGHTING_IMAGE_CHANGE

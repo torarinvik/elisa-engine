@@ -356,13 +356,21 @@ def main() -> int:
     lighting_outdoor_capture = build / "render-scene-lighting-outdoor.png"
     lighting_indoor_capture = build / "render-scene-lighting-indoor.png"
     lighting_transparent_capture = build / "render-scene-lighting-transparent.png"
-    mirrored_normal_capture.unlink(missing_ok=True)
-    mirrored_normal_no_occlusion_capture.unlink(missing_ok=True)
-    shadows_disabled_capture.unlink(missing_ok=True)
-    shadows_enabled_capture.unlink(missing_ok=True)
-    lighting_outdoor_capture.unlink(missing_ok=True)
-    lighting_indoor_capture.unlink(missing_ok=True)
-    lighting_transparent_capture.unlink(missing_ok=True)
+    lighting_opaque_capture = build / "render-scene-lighting-opaque.png"
+    shadow_receiver_baseline_capture = build / "render-scene-shadow-receiver-baseline.png"
+    shadow_receiver_variant_capture = build / "render-scene-shadow-receiver-variant.png"
+    shadow_rasterizer_baseline_capture = build / "render-scene-shadow-rasterizer-baseline.png"
+    shadow_rasterizer_variant_capture = build / "render-scene-shadow-rasterizer-variant.png"
+    captures = [mirrored_normal_capture, mirrored_normal_no_occlusion_capture,
+        clearcoat_baseline_capture, clearcoat_coated_capture,
+        point_light_left_capture, point_light_right_capture,
+        shadows_disabled_capture, shadows_enabled_capture,
+        lighting_outdoor_capture, lighting_indoor_capture,
+        lighting_transparent_capture, lighting_opaque_capture,
+        shadow_receiver_baseline_capture, shadow_receiver_variant_capture,
+        shadow_rasterizer_baseline_capture, shadow_rasterizer_variant_capture]
+    for capture in captures:
+        capture.unlink(missing_ok=True)
     runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
     runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
         mirrored_normal_no_occlusion_capture)
@@ -375,6 +383,11 @@ def main() -> int:
     runtime_env["ELISA_LIGHTING_OUTDOOR_CAPTURE"] = str(lighting_outdoor_capture)
     runtime_env["ELISA_LIGHTING_INDOOR_CAPTURE"] = str(lighting_indoor_capture)
     runtime_env["ELISA_LIGHTING_TRANSPARENT_CAPTURE"] = str(lighting_transparent_capture)
+    runtime_env["ELISA_LIGHTING_OPAQUE_CAPTURE"] = str(lighting_opaque_capture)
+    runtime_env["ELISA_SHADOW_RECEIVER_BASELINE_CAPTURE"] = str(shadow_receiver_baseline_capture)
+    runtime_env["ELISA_SHADOW_RECEIVER_VARIANT_CAPTURE"] = str(shadow_receiver_variant_capture)
+    runtime_env["ELISA_SHADOW_RASTERIZER_BASELINE_CAPTURE"] = str(shadow_rasterizer_baseline_capture)
+    runtime_env["ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE"] = str(shadow_rasterizer_variant_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -419,6 +432,16 @@ def main() -> int:
         if occlusion_status != 0:
             print("Occlusion-strength image comparison failed.", file=sys.stderr)
             return occlusion_status
+    if status == 0:
+        lighting_command = [sys.executable,
+            str(ROOT / "scripts/compare_lighting_references.py"),
+            "--capture-dir", str(build)]
+        if os.environ.get("ELISA_UPDATE_LIGHTING_REFERENCES") == "1":
+            lighting_command.append("--update")
+        lighting_status = run(lighting_command)
+        if lighting_status != 0:
+            print("Lighting reference comparison failed.", file=sys.stderr)
+            return lighting_status
     if status == 0:
         if render_only:
             print("Elisa UI, sun shadows, indoor/outdoor lighting, point lights and authored glTF material references rendered by Wicked; visual checks passed.")
