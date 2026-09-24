@@ -298,6 +298,25 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_profile_matches(
         fog_matches ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_temporal_history_resources(
+    float expected_scale, int32_t expected_valid) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr ||
+        !std::isfinite(expected_scale) || expected_scale < 0.25f || expected_scale > 1.0f ||
+        (expected_valid != 0 && expected_valid != 1)) return 0;
+    if (std::fabs(state.path->resolutionScale - expected_scale) >= 0.00001f) return 0;
+    const wi::renderer::TemporalAAResources& history = state.path->temporalAAResources;
+    if (expected_valid == 0) return history.IsValid() ? 0 : 1;
+    if (!history.IsValid()) return 0;
+    const XMUINT2 expected_resolution = state.path->GetInternalResolution();
+    for (const wi::graphics::Texture& texture : history.texture_temporal) {
+        if (!texture.IsValid() || texture.desc.width != expected_resolution.x ||
+            texture.desc.height != expected_resolution.y) return 0;
+    }
+    return 1;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_camera_quality_profile_matches(
     int32_t tonemap, int32_t bloom, float threshold,
     int32_t fxaa, int32_t ambient_occlusion, int32_t reflections,
