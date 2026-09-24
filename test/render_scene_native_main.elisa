@@ -334,7 +334,7 @@ def exercise_render_scene() -> i32:
         break if rendered_geometry != 0
         return 19 if Application::pump() != Application::PumpStatus.Running
         rendered_geometry <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
-    return 20 if rendered_geometry == 0
+    return 20 if rendered_geometry == 0 or RenderSceneQualitySettingsNativeTests::verify_history_transitions() != 0
     restore_render_projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
         ok: 0
         error failure: 1
@@ -562,8 +562,7 @@ def exercise_render_scene() -> i32:
         error failure: 1
     return 24 if shutdown_result != 0
     return 25 if RenderScene::is_initialized() or RenderScene::instance_count() != 0
-    # Reopen the scene, then let Application shutdown invoke the registered
-    # cleanup hook. This catches leaked scenes or active paths on app teardown.
+    # Reopen the scene; application shutdown must clear the registered hook and active path.
     replacement_init: i32 = catch RenderScene::initialize(320, 200, 10.0):
         ok: 0
         error failure: 1

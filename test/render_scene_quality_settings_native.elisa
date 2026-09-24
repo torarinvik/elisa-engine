@@ -20,6 +20,10 @@ module RenderSceneQualitySettingsNativeTests:
             bloom: i32, fxaa: i32, temporal_aa: i32, ambient_occlusion: i32,
             screen_space_reflections: i32, fog: i32, depth_effects: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_temporal_history_resources(
+            expected_scale: f32, expected_valid: i32) -> i32
+
     public:
         def exercise() -> i32:
             tonemap_status: i32 = catch RenderScene::set_tonemap(RenderScene::Tonemap.Uchimura):
@@ -90,4 +94,38 @@ module RenderSceneQualitySettingsNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 117 if invalid_profile != 1
+            0
+
+        def verify_history_transitions() -> i32:
+            return 120 if elisa_render_scene_v1_test_temporal_history_resources(0.75, 1) != 1
+            profile: mutable Quality::Profile = Quality::Profile()
+            profile.tonemap <- Quality::Tonemap.Uchimura
+            profile.render_scale <- 0.5
+            profile.bloom_threshold <- 1.4
+            profile.fxaa <- true
+            profile.temporal_aa <- true
+            profile.ambient_occlusion <- true
+            profile.screen_space_reflections <- true
+            profile.fog <- false
+            profile.depth_effects <- false
+            profile.shadow_quality <- Quality::ShadowQuality.High
+            profile.sun_shadow_receiver_bias <- 0.001
+            half_scale: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                error failure: 1
+            return 121 if half_scale != 0 or Application::pump() != Application::PumpStatus.Running
+            return 122 if elisa_render_scene_v1_test_temporal_history_resources(0.5, 1) != 1
+            profile.temporal_aa <- false
+            temporal_disabled: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                error failure: 1
+            return 123 if temporal_disabled != 0 or Application::pump() != Application::PumpStatus.Running
+            return 124 if elisa_render_scene_v1_test_temporal_history_resources(0.5, 0) != 1
+            profile.temporal_aa <- true
+            profile.render_scale <- 0.75
+            temporal_restored: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                error failure: 1
+            return 125 if temporal_restored != 0 or Application::pump() != Application::PumpStatus.Running
+            return 126 if elisa_render_scene_v1_test_temporal_history_resources(0.75, 1) != 1
             0

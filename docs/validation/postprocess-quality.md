@@ -16,8 +16,10 @@ alongside FSR2, which already owns a temporal reconstruction pass.
 Evidence: the shared Elisa gate runs `test/quality.elisa`; the SDL3/Wicked gate
 calls `probe_postprocess_bridge` and checks both fallback and supported paths,
 including fog and temporal-AA state. The probe restores the original scene
-weather after the check. History-resource resizing and measured GPU/VRAM costs
-remain open R07 work.
+weather after the check. The render-scene smoke also verifies both TAA history
+textures match the active internal resolution after a 0.75-to-0.5 render-scale
+transition, are released when TAA is disabled, and are recreated at the new size
+when TAA is re-enabled. Measured GPU/VRAM costs remain open R07 work.
 
 The public `RenderScene` API also exposes direct SSAO and FXAA toggles for
 applications that manage a scene without the backend profile bridge. The
@@ -39,10 +41,9 @@ and receiver bias before changing native state.
 Low/Medium/High presets select 512/1024/2048-pixel 2D maps and a
 quarter-resolution cube map; profile presets include the same shadow tier.
 
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py` — render-scene API smoke and ordinary native maze smoke exited 0.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — SDL3/Metal render-scene smoke exited 0, including the history-resource transitions and authored lighting/material image checks.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` — full shared suite exited 0; both Elisa Proof suites proved all 23 obligations with certificate replay.
 - `/opt/homebrew/bin/python3 scripts/check_source_length.py`, `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-This verifies setting changes reach Wicked's runtime state; image-difference
-references, history-resource transition validation and measured GPU/VRAM costs
-remain R07 work.
+This verifies setting changes reach Wicked's runtime state; authored image
+references and measured GPU/VRAM costs remain R07 work.
