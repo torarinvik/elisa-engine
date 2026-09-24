@@ -1,8 +1,8 @@
-# Primitive physics bodies and reusable shapes
+# Primitive and mesh physics shapes
 
-**Status:** direct primitive bodies, shared primitive shapes, and cooked convex
-and triangle-mesh shapes pass the SDL3/Metal native smoke on macOS. P02 remains
-open.
+**Status:** direct primitive bodies, shared primitive shapes, caller-array mesh
+shapes, and cooked-asset convex/triangle-mesh shapes pass the SDL3/Metal native
+smoke on macOS. P02 remains open.
 
 `PhysicsRuntime::BodyDesc` selects `BodyShape.Box`, `BodyShape.Sphere`, or
 `BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its
@@ -36,6 +36,15 @@ per world, and 64 MiB of body proxies per world. Missing or unreadable packages
 report `PhysicsError.AssetLoadFailed`; unsupported or degenerate geometry
 reports `InvalidArgument`.
 
+For runtime-generated or procedurally authored geometry, use
+`PhysicsRuntime::shape_create_triangle_mesh` or
+`shape_create_convex_hull` with indexed `Geometry::Vec3` arrays. Both
+constructors validate and copy their inputs before returning, so callers may
+reuse the arrays immediately. The same vertex, index, per-shape, per-world,
+and query-proxy limits apply. `RuntimeServices::Session` exposes both
+constructors as well. Cooking happens at runtime; offline collision cook
+packages and compound shapes remain open work.
+
 Dynamic bodies expose checked linear-velocity read/write and impulse operations
 through both `PhysicsRuntime` and `RuntimeServices`. Static and kinematic bodies
 reject those operations. Before the first fixed step creates the native body,
@@ -51,6 +60,11 @@ native body-table exhaustion after filling all 64 slots. The host then shuts
 down the saturated world, creates a fresh world, and successfully creates and
 destroys another body. The application probe verifies velocity and impulse
 behavior; the session probe exercises the public service routes.
+The array-mesh probe also rejects out-of-range indices and dynamic triangle
+meshes, mutates caller arrays after cooking to verify native copy ownership,
+then steps a convex hull onto a static triangle mesh and checks its settled
+height. It fills and releases the fixed 64-body registry and verifies that the
+next creation returns `PhysicsError.Capacity`.
 `test/physics_mesh_shapes_native.elisa` loads a tetrahedron package through the
 Elisa API, creates a dynamic convex hull and static triangle mesh, verifies that
 dynamic triangle meshes are rejected, and raycasts against the cooked mesh.
@@ -61,5 +75,5 @@ Validation on 2026-09-24:
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
 The native registry now supports reusable box, sphere, capsule, convex-hull, and
-triangle-mesh shapes. Compound shapes, broadphase layers, and custom mass
-properties remain open P02 work.
+triangle-mesh shapes. Compound shapes, broadphase layers, custom mass
+properties, and offline collision cooking remain open P02 work.

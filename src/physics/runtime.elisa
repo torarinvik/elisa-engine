@@ -23,6 +23,8 @@ module PhysicsRuntime:
             SHAPE_CAPSULE: i32 = 2
             MESH_SHAPE_TRIANGLE_MESH: i32 = 3
             MESH_SHAPE_CONVEX_HULL: i32 = 4
+            MAX_MESH_VERTICES: usize = 65536
+            MAX_MESH_INDICES: usize = 196608
 
         const CONTACT_ADDED: i32 = 0
         const CONTACT_PERSISTED: i32 = 1

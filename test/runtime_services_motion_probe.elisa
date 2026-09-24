@@ -45,4 +45,41 @@ module RuntimeServicesMotionProbe:
                 ok: 0
                 error failure: 14
             return 15 if destroy_status != 0
+
+            service_triangle_shape: PhysicsRuntime::ShapeHandle =
+                vertices: Geometry::Vec3[3] = [
+                    Geometry::Vec3{x: -2.0, y: 0.0, z: -2.0},
+                    Geometry::Vec3{x: 2.0, y: 0.0, z: -2.0},
+                    Geometry::Vec3{x: 0.0, y: 0.0, z: 2.0},
+                ]
+                indices: u32[3] = [0, 2, 1]
+                shape: PhysicsRuntime::ShapeHandle = catch RuntimeServices::physics_shape_create_triangle_mesh(
+                    session, &vertices[0], 3, &indices[0], 3):
+                    value: value
+                    error failure: return 16
+                shape
+            service_triangle_release: i32 = catch RuntimeServices::physics_shape_destroy(
+                session, service_triangle_shape):
+                ok: 0
+                error failure: 17
+            return 18 if service_triangle_release != 0
+
+            service_hull_shape: PhysicsRuntime::ShapeHandle =
+                vertices: Geometry::Vec3[4] = [
+                    Geometry::Vec3{x: -0.5, y: 0.0, z: -0.5},
+                    Geometry::Vec3{x: 0.5, y: 0.0, z: -0.5},
+                    Geometry::Vec3{x: 0.0, y: 0.0, z: 0.5},
+                    Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+                ]
+                indices: u32[12] = [0, 1, 3, 1, 2, 3, 2, 0, 3, 0, 2, 1]
+                shape: PhysicsRuntime::ShapeHandle = catch RuntimeServices::physics_shape_create_convex_hull(
+                    session, &vertices[0], 4, &indices[0], 12):
+                    value: value
+                    error failure: return 19
+                shape
+            service_hull_release: i32 = catch RuntimeServices::physics_shape_destroy(
+                session, service_hull_shape):
+                ok: 0
+                error failure: 20
+            return 21 if service_hull_release != 0
             0

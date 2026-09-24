@@ -54,6 +54,12 @@ typedef struct ElisaPhysicsRayHit {
     float distance;
 } ElisaPhysicsRayHit;
 
+typedef struct ElisaPhysicsVec3 {
+    float x;
+    float y;
+    float z;
+} ElisaPhysicsVec3;
+
 typedef struct ElisaPhysicsRayHitBuffer {
     ElisaPhysicsRayHit hits[ELISA_PHYSICS_MAX_QUERY_HITS];
     uint32_t count;
@@ -111,6 +117,10 @@ int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int32_t kind,
     uint32_t* slot, uint64_t* shape_generation);
 int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_generation, int32_t kind,
     const char* asset_path, float scale_x, float scale_y, float scale_z,
+    uint32_t* slot, uint64_t* shape_generation);
+int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation, int32_t kind,
+    const ElisaPhysicsVec3* vertices, uint32_t vertex_count,
+    const uint32_t* indices, uint32_t index_count,
     uint32_t* slot, uint64_t* shape_generation);
 int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     uint32_t slot, uint64_t shape_generation);

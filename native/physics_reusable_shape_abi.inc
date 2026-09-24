@@ -31,6 +31,38 @@ bool valid_mesh_shape_scale(float x, float y, float z) {
         x <= MAX_HALF_EXTENT && y <= MAX_HALF_EXTENT && z <= MAX_HALF_EXTENT;
 }
 
+bool valid_mesh_geometry(int32_t kind, const ElisaPhysicsVec3* vertices,
+    uint32_t vertex_count, const uint32_t* indices, uint32_t index_count) {
+    if (!valid_mesh_shape_kind(kind) || vertices == nullptr || indices == nullptr ||
+        vertex_count < (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ? 4u : 3u) ||
+        vertex_count > MAX_MESH_VERTICES || index_count < 3 ||
+        index_count > MAX_MESH_INDICES || index_count % 3 != 0) return false;
+    for (uint32_t index = 0; index < vertex_count; ++index) {
+        const ElisaPhysicsVec3& vertex = vertices[index];
+        if (!std::isfinite(vertex.x) || !std::isfinite(vertex.y) ||
+            !std::isfinite(vertex.z) || std::fabs(vertex.x) > MAX_HALF_EXTENT ||
+            std::fabs(vertex.y) > MAX_HALF_EXTENT || std::fabs(vertex.z) > MAX_HALF_EXTENT) {
+            return false;
+        }
+    }
+    for (uint32_t index = 0; index < index_count; index += 3) {
+        const uint32_t a = indices[index], b = indices[index + 1], c = indices[index + 2];
+        if (a >= vertex_count || b >= vertex_count || c >= vertex_count ||
+            a == b || b == c || a == c) return false;
+        const double abx = double(vertices[b].x) - vertices[a].x;
+        const double aby = double(vertices[b].y) - vertices[a].y;
+        const double abz = double(vertices[b].z) - vertices[a].z;
+        const double acx = double(vertices[c].x) - vertices[a].x;
+        const double acy = double(vertices[c].y) - vertices[a].y;
+        const double acz = double(vertices[c].z) - vertices[a].z;
+        const double nx = aby * acz - abz * acy;
+        const double ny = abz * acx - abx * acz;
+        const double nz = abx * acy - aby * acx;
+        if (nx * nx + ny * ny + nz * nz <= 1.0e-20) return false;
+    }
+    return true;
+}
+
 bool cooked_geometry_has_non_degenerate_triangle(const elisa::assets::CookedGeometry& geometry) {
     if (geometry.positions.size() < 9 || geometry.positions.size() % 3 != 0 ||
         geometry.indices.size() < 3 || geometry.indices.size() % 3 != 0) return false;
@@ -165,6 +197,98 @@ extern "C" int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int3
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
+    ++shape.generation;
+    shape.live = true;
+    *slot = free_slot;
+    *shape_generation = shape.generation;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
+    int32_t kind, const ElisaPhysicsVec3* vertices, uint32_t vertex_count,
+    const uint32_t* indices, uint32_t index_count, uint32_t* slot,
+    uint64_t* shape_generation) {
+    static_assert(sizeof(ElisaPhysicsVec3) == sizeof(XMFLOAT3),
+        "Elisa mesh positions must stay tightly packed XYZ floats");
+    if (slot == nullptr || shape_generation == nullptr ||
+        !valid_mesh_geometry(kind, vertices, vertex_count, indices, index_count)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const size_t geometry_bytes = size_t(vertex_count) * sizeof(XMFLOAT3) +
+        size_t(index_count) * sizeof(uint32_t);
+    if (geometry_bytes > MAX_MESH_SHAPE_BYTES) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    if (state.mesh_geometry_bytes > MAX_WORLD_MESH_SHAPE_BYTES - geometry_bytes) {
+        return ELISA_PHYSICS_CAPACITY;
+    }
+    uint32_t free_slot = MAX_SHAPES;
+    for (uint32_t index = 0; index < MAX_SHAPES; ++index) {
+        if (!state.shapes[index].live) { free_slot = index; break; }
+    }
+    if (free_slot == MAX_SHAPES) return ELISA_PHYSICS_CAPACITY;
+    ShapeSlot& shape = state.shapes[free_slot];
+    if (shape.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
+
+    try {
+        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+        std::vector<XMFLOAT3> copied_vertices;
+        copied_vertices.reserve(vertex_count);
+        for (uint32_t index = 0; index < vertex_count; ++index) {
+            const ElisaPhysicsVec3& vertex = vertices[index];
+            const XMFLOAT3 wicked = probe::coordinates::to_wicked(vertex.x, vertex.y, vertex.z);
+            const XMFLOAT3 converted(wicked.x * profile.metres_per_unit,
+                wicked.y * profile.metres_per_unit, wicked.z * profile.metres_per_unit);
+            if (!probe::coordinates::finite(converted) ||
+                std::fabs(converted.x) > MAX_HALF_EXTENT ||
+                std::fabs(converted.y) > MAX_HALF_EXTENT ||
+                std::fabs(converted.z) > MAX_HALF_EXTENT) {
+                return ELISA_PHYSICS_INVALID_ARGUMENT;
+            }
+            copied_vertices.push_back(converted);
+        }
+        std::vector<uint32_t> copied_indices;
+        copied_indices.reserve(index_count);
+        for (uint32_t offset = 0; offset < index_count; offset += 3) {
+            copied_indices.push_back(indices[offset]);
+            copied_indices.push_back(indices[offset + 1]);
+            copied_indices.push_back(indices[offset + 2]);
+        }
+
+        wi::scene::MeshComponent source_mesh;
+        source_mesh.vertex_positions.reserve(vertex_count);
+        for (const XMFLOAT3& vertex : copied_vertices) source_mesh.vertex_positions.push_back(vertex);
+        source_mesh.indices.reserve(index_count);
+        for (uint32_t index : copied_indices) source_mesh.indices.push_back(index);
+        wi::scene::MeshComponent::MeshSubset& subset = source_mesh.subsets.emplace_back();
+        subset.indexOffset = 0;
+        subset.indexCount = index_count;
+
+        wi::scene::RigidBodyPhysicsComponent cooked_shape{};
+        cooked_shape.mass = 1.0f;
+        cooked_shape.shape = kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH
+            ? wi::scene::RigidBodyPhysicsComponent::TRIANGLE_MESH
+            : wi::scene::RigidBodyPhysicsComponent::CONVEX_HULL;
+        wi::physics::CreateRigidBodyShape(cooked_shape, XMFLOAT3(1.0f, 1.0f, 1.0f),
+            &source_mesh);
+        if (cooked_shape.physicsobject == nullptr) return ELISA_PHYSICS_BACKEND_FAILURE;
+
+        shape.backend_shape = cooked_shape;
+        shape.mesh_vertices = std::move(copied_vertices);
+        shape.mesh_indices = std::move(copied_indices);
+        shape.mesh_geometry_bytes = geometry_bytes;
+        shape.kind = kind;
+        shape.dimension_x = shape.dimension_y = shape.dimension_z = 0.0f;
+        shape.body_references = 0;
+    } catch (...) {
+        shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
+        std::vector<XMFLOAT3>().swap(shape.mesh_vertices);
+        std::vector<uint32_t>().swap(shape.mesh_indices);
+        shape.mesh_geometry_bytes = 0;
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+    state.mesh_geometry_bytes += geometry_bytes;
     ++shape.generation;
     shape.live = true;
     *slot = free_slot;
