@@ -127,6 +127,10 @@
             fog_red: f32, fog_green: f32, fog_blue: f32,
             fog_start: f32, fog_density: f32, fog_enabled: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_sky_map(asset_path: cstr, rotation_radians: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_sky_map() -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_create_light(kind: i32,
             red: f32, green: f32, blue: f32,
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,

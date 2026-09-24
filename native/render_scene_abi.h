@@ -299,6 +299,8 @@ int32_t elisa_render_scene_v1_set_environment(
     float sky_exposure,
     float fog_red, float fog_green, float fog_blue,
     float fog_start, float fog_density, int32_t fog_enabled);
+int32_t elisa_render_scene_v1_set_sky_map(const char* asset_path, float rotation_radians);
+int32_t elisa_render_scene_v1_clear_sky_map(void);
 int64_t elisa_render_scene_v1_create_light(
     int32_t kind,
     float red, float green, float blue,

@@ -378,6 +378,12 @@ module RenderScene:
                 environment.sky_exposure,
                 environment.fog_color.x, environment.fog_color.y, environment.fog_color.z,
                 environment.fog_start, environment.fog_density, fog_enabled))
+        # Sky maps may be equirectangular 2:1 images or square cubemaps.
+        # Asset paths stay inside the project root and use the color pipeline.
+        def set_sky_map(asset_path: cstr, rotation_radians: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_sky_map(asset_path, rotation_radians))
+        def clear_sky_map() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_sky_map())
         def create_light(light: Lighting::Light) -> LightHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
             kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)

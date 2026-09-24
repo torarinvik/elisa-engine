@@ -1,4 +1,11 @@
 // Private Elisa-owned environment updates for the active Wicked scene.
+namespace {
+constexpr uint32_t MAX_SKY_MAP_EDGE = 8192;
+constexpr uint32_t SKY_LATLONG_ASPECT_NUMERATOR = 2;
+constexpr uint32_t SKY_LATLONG_ASPECT_DENOMINATOR = 1;
+constexpr float MAX_SKY_ROTATION_RADIANS = 1000000.0f;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_environment(
     float sun_direction_x, float sun_direction_y, float sun_direction_z,
     float sun_red, float sun_green, float sun_blue,
@@ -77,6 +84,70 @@ extern "C" int32_t elisa_render_scene_v1_set_environment(
     weather.fogDensity = fog_enabled ? fog_density : 0.0f;
     weather.SetHeightFog(fog_enabled != 0);
     weather.SetOverrideFogColor(fog_enabled != 0);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_sky_map(
+    const char* asset_path, float rotation_radians) {
+    if (!bounded(rotation_radians, MAX_SKY_ROTATION_RADIANS)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    std::filesystem::path resolved_path;
+    if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path)) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.scene == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+
+    wi::Resource resource;
+    try {
+        std::string extension = resolved_path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+            [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        if (extension == ".ktx2") {
+            resource = elisa::rendering::textures::load_ktx2_texture_resource(
+                resolved_path.string(), elisa::rendering::textures::KTX2TextureUsage::Color);
+        } else {
+            resource = wi::resourcemanager::Load(resolved_path.string(),
+                wi::resourcemanager::Flags::IMPORT_BLOCK_COMPRESSED);
+        }
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    if (!resource.IsValid() || !resource.GetTexture().IsValid()) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+
+    const wi::graphics::TextureDesc& description = resource.GetTexture().GetDesc();
+    const bool cube_map = has_flag(description.misc_flags,
+        wi::graphics::ResourceMiscFlag::TEXTURECUBE);
+    if (description.width == 0 || description.height == 0 ||
+        description.width > MAX_SKY_MAP_EDGE || description.height > MAX_SKY_MAP_EDGE ||
+        (cube_map && description.width != description.height) ||
+        (!cube_map && description.width * SKY_LATLONG_ASPECT_DENOMINATOR !=
+            description.height * SKY_LATLONG_ASPECT_NUMERATOR)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+
+    state.scene->weather.skyMap = std::move(resource);
+    state.scene->weather.skyMapName = resolved_path.string();
+    state.scene->weather.sky_rotation = std::remainder(rotation_radians, XM_2PI);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_sky_map(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.scene == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.scene->weather.skyMap = {};
+    state.scene->weather.skyMapName.clear();
+    state.scene->weather.sky_rotation = 0.0f;
     return ELISA_RENDER_SCENE_OK;
 }
 

@@ -104,3 +104,29 @@ extern "C" int32_t elisa_render_scene_v1_test_sun_cascade_distances_match(
         close(sun->cascade_distances[1], middle_end) &&
         close(sun->cascade_distances[2], far_end) ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_sky_map_matches(
+    uint32_t width, uint32_t height, float rotation_radians) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const auto& weather = state.scene->weather;
+    if (!weather.skyMap.IsValid() || !weather.skyMap.GetTexture().IsValid()) return 0;
+    const auto& texture = weather.skyMap.GetTexture();
+    const auto& desc = texture.GetDesc();
+    const std::string& name = weather.skyMapName;
+    const std::string expected_suffix = "/test/fixtures/sky_latlong.png";
+    const bool name_matches = name.size() >= expected_suffix.size() &&
+        name.compare(name.size() - expected_suffix.size(), expected_suffix.size(), expected_suffix) == 0;
+    const float expected_rotation = std::remainder(rotation_radians, XM_2PI);
+    return desc.width == width && desc.height == height && !name.empty() && name_matches &&
+        std::fabs(weather.sky_rotation - expected_rotation) < 0.0001f ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_sky_map_cleared(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    return !state.scene->weather.skyMap.IsValid() && state.scene->weather.skyMapName.empty() &&
+        state.scene->weather.sky_rotation == 0.0f ? 1 : 0;
+}

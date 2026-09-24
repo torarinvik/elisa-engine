@@ -19,8 +19,17 @@ bridge, so a scene unload returns the light count to its baseline.
 alongside the PBR contract.
 The native gate creates and moves point and spot lights, verifies Wicked transform/direction state, rejects a foreign
 handle and an invalid probe resolution, applies sky exposure and height fog,
-rejects a zero sun direction, and destroys every probe/light. Authored sky-map
-loading, shadow-bias policy, and camera/renderer scheduling remain open.
+rejects a zero sun direction, and destroys every probe/light.
+
+`RenderScene::set_sky_map` loads a project-relative color asset into Wicked's
+static sky path, accepting equirectangular images with a 2:1 aspect ratio or
+square cubemaps up to 8,192 pixels per edge. KTX2 assets use Elisa's checked
+color transcoder; other formats use Wicked's resource manager. Rotation is
+wrapped to one turn, and invalid paths, unsupported assets, and incompatible
+dimensions fail without replacing the current sky. `clear_sky_map` releases
+the authored map. The SDL3/Metal gate loads an 8x4 fixture, checks asset and
+rotation state, pumps a frame, rejects a traversal path and a square non-cube
+image, and verifies clearing.
 
 `RenderScene::set_sun_cascade_distances` configures Wicked's three directional
 shadow cascade end distances. Values must strictly increase and the last split
@@ -28,3 +37,7 @@ must fit inside the active camera's far clip. The native environment test
 checks decreasing splits, splits past the camera range, and a valid 10/100/400
 distance configuration against the active primary camera's 1,000-unit far
 plane.
+
+Shadow raster bias remains open: Wicked bakes the current bias into cached
+render-pass pipelines, so runtime control requires an upstream pipeline
+variant and rebuild path rather than changing a light field.
