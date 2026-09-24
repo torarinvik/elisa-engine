@@ -406,6 +406,8 @@ working tree.
 The normal-scale and AO-strength sidecars, backend descriptor and Wicked
 material application passed the glTF cooker self-test, the 150-case sanitized
 geometry-loader test, and the Elisa material test. The SDL3/Metal render-scene
-smoke confirmed both values reach Wicked's shader material and retained visible
-mirrored-seam shading. The fixture uses normal scale 0.75 and AO strength 0.65;
-the captured luminance contrast was 0.2043 against a 0.04 image threshold.
+smoke confirmed both values reach Wicked's shader material. A separate dark AO
+map at strength 0.65 rendered 0.0503 average luminance darkening against its
+zero-strength capture; the mirrored-normal reference measured 0.1041 contrast
+against a 0.04 image threshold. This visual check also exposed and fixed the
+snapshot adapter's missing secondary-occlusion flag for dedicated AO maps.

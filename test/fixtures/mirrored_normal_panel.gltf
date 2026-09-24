@@ -50,7 +50,7 @@
         "scale": 0.75
       },
       "occlusionTexture": {
-        "index": 0,
+        "index": 1,
         "strength": 0.65
       }
     }
@@ -58,6 +58,9 @@
   "textures": [
     {
       "source": 0
+    },
+    {
+      "source": 1
     }
   ],
   "images": [
@@ -65,12 +68,17 @@
       "name": "normal",
       "bufferView": 4,
       "mimeType": "image/png"
+    },
+    {
+      "name": "occlusion",
+      "bufferView": 5,
+      "mimeType": "image/png"
     }
   ],
   "buffers": [
     {
-      "byteLength": 292,
-      "uri": "data:application/octet-stream;base64,AACAvwAAAAAAAIC/AACAvwAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAIC/AACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAABAAIAAAACAAMAAgAFAAQAAgAEAAMAiVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR42mP439DwHx9mGBkKAMTGv4H0w+meAAAAAElFTkSuQmCCAA=="
+      "byteLength": 368,
+      "uri": "data:application/octet-stream;base64,AACAvwAAAAAAAIC/AACAvwAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAIC/AACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAABAAIAAAACAAMAAgAFAAQAAgAEAAMAiVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR42mP439DwHx9mGBkKAMTGv4H0w+meAAAAAElFTkSuQmCCAIlQTkcNChoKAAAADUlIRFIAAAAIAAAACAgGAAAAxA++iwAAABJJREFUeNpjMDY2/o8PM4wMBQBPlGYBuKc7fgAAAABJRU5ErkJgggA="
     }
   ],
   "bufferViews": [
@@ -97,6 +105,11 @@
     {
       "buffer": 0,
       "byteOffset": 216,
+      "byteLength": 75
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 292,
       "byteLength": 75
     }
   ],

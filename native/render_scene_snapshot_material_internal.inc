@@ -84,7 +84,14 @@ int32_t register_snapshot_material_locked(RenderSceneService& state, uint64_t hi
         material->SetAlphaRef(values.alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK
             ? values.alpha_cutoff : OPAQUE_SNAPSHOT_ALPHA_REF);
         material->SetDoubleSided(values.double_sided);
-        material->SetOcclusionEnabled_Primary(values.occlusion);
+        const size_t surface_slot = static_cast<size_t>(elisa::rendering::textures::Slot::Surface);
+        const size_t occlusion_slot = static_cast<size_t>(elisa::rendering::textures::Slot::Occlusion);
+        const bool has_surface_texture = values.texture_high[surface_slot] != 0 ||
+            values.texture_low[surface_slot] != 0;
+        const bool has_occlusion_texture = values.texture_high[occlusion_slot] != 0 ||
+            values.texture_low[occlusion_slot] != 0;
+        material->SetOcclusionEnabled_Primary(values.occlusion && has_surface_texture);
+        material->SetOcclusionEnabled_Secondary(values.occlusion && has_occlusion_texture);
         material->userBlendMode = values.alpha_mode == ELISA_RENDER_SCENE_ALPHA_BLEND
             ? wi::enums::BLENDMODE_ALPHA : wi::enums::BLENDMODE_OPAQUE;
         material->SetCastShadow(values.alpha_mode != ELISA_RENDER_SCENE_ALPHA_BLEND);

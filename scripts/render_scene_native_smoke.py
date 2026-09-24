@@ -319,8 +319,12 @@ def main() -> int:
     fine_lod_capture = build / "render-scene-lod-fine.png"
     coarse_lod_capture = build / "render-scene-lod-coarse.png"
     mirrored_normal_capture = build / "render-scene-mirrored-normal.png"
+    mirrored_normal_no_occlusion_capture = build / "render-scene-mirrored-normal-no-occlusion.png"
     mirrored_normal_capture.unlink(missing_ok=True)
+    mirrored_normal_no_occlusion_capture.unlink(missing_ok=True)
     runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
+    runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
+        mirrored_normal_no_occlusion_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -360,8 +364,14 @@ def main() -> int:
             print("Mirrored-UV normal-map image comparison failed.", file=sys.stderr)
             return normal_status
     if status == 0:
+        occlusion_status = run([sys.executable, str(ROOT / "scripts/compare_occlusion_strength.py"),
+            str(mirrored_normal_capture), str(mirrored_normal_no_occlusion_capture)])
+        if occlusion_status != 0:
+            print("Occlusion-strength image comparison failed.", file=sys.stderr)
+            return occlusion_status
+    if status == 0:
         if render_only:
-            print("Elisa screen-space UI and mirrored-UV normal-map reference rendered by Wicked; visual checks passed.")
+            print("Elisa screen-space UI and glTF normal/AO material references rendered by Wicked; visual checks passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

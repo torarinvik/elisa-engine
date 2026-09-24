@@ -13,7 +13,8 @@ module RenderSceneMirroredNormalNativeTests:
             SETS: u64 = 9403
 
         const MESH: u64 = 1
-        const TEXTURE: u64 = 1
+        const NORMAL_TEXTURE: u64 = 1
+        const OCCLUSION_TEXTURE: u64 = 2
         const MATERIAL: u64 = 1
         const SET: u64 = 1
         const RENDER_ID: i64 = 94001
@@ -21,7 +22,9 @@ module RenderSceneMirroredNormalNativeTests:
         const LEFT_X: u32 = 350
         const RIGHT_X: u32 = 650
         const NORMAL_SLOT: i32 = 1
+        const OCCLUSION_SLOT: i32 = 4
         const NORMAL_MAP_SIZE: u32 = 8
+        const OCCLUSION_MAP_SIZE: u32 = 8
         const NORMAL_SCALE: f32 = 0.75
         const OCCLUSION_STRENGTH: f32 = 0.65
         const MINIMUM_LIGHT_CONTRAST: f32 = 0.025
@@ -65,13 +68,19 @@ module RenderSceneMirroredNormalNativeTests:
         extern elisa_render_scene_v1_test_snapshot_occlusion_strength_matches(
             high: u64, low: u64, expected_strength: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_test_set_snapshot_occlusion_strength(
+            high: u64, low: u64, strength: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_test_last_frame_luminance(x_permille: u32, y_permille: u32) -> f32
 
         def mesh_id() -> Assets::AssetId:
             Assets::AssetId{high: Ids::MESHES, low: MESH}
 
         def texture_id() -> Assets::AssetId:
-            Assets::AssetId{high: Ids::TEXTURES, low: TEXTURE}
+            Assets::AssetId{high: Ids::TEXTURES, low: NORMAL_TEXTURE}
+
+        def occlusion_texture_id() -> Assets::AssetId:
+            Assets::AssetId{high: Ids::TEXTURES, low: OCCLUSION_TEXTURE}
 
         def material_id() -> Assets::AssetId:
             Assets::AssetId{high: Ids::MATERIALS, low: MATERIAL}
@@ -90,10 +99,20 @@ module RenderSceneMirroredNormalNativeTests:
                 ok: Code::OK
                 error failure: Code::OTHER
             return 2 if texture_status != Code::OK
+            occlusion_texture_status: i32 = catch RenderScene::register_snapshot_bundle_texture_asset(
+                occlusion_texture_id(), "build/cooked/subsets/mirrored_normal.elpk", "image_1"):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return 6 if occlusion_texture_status != Code::OK
             linked: i32 = catch RenderScene::register_snapshot_mesh_texture(mesh_id(), 0, texture_id()):
                 ok: Code::OK
                 error failure: Code::OTHER
             return 3 if linked != Code::OK
+            occlusion_linked: i32 = catch RenderScene::register_snapshot_mesh_texture(
+                mesh_id(), 1, occlusion_texture_id()):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return 7 if occlusion_linked != Code::OK
             materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
             appended: i32 = catch RenderScene::snapshot_material_set_append(&materials, material_id()):
                 ok: Code::OK
@@ -105,9 +124,9 @@ module RenderSceneMirroredNormalNativeTests:
 
         def configure_reference() -> i32:
             environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
-                sun_color: Geometry::Vec3{x: 1.5, y: 1.5, z: 1.5},
+                sun_color: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
                 sun_direction: Geometry::Vec3{x: 1.0, y: 1.0, z: 0.0},
-                ambient: Geometry::vec3_zero(),
+                ambient: Geometry::Vec3{x: 0.8, y: 0.8, z: 0.8},
                 sky_exposure: 0.0,
                 fog_color: Geometry::vec3_zero(),
                 fog_start: 0.0,
@@ -166,15 +185,19 @@ module RenderSceneMirroredNormalNativeTests:
             return 0 if elisa_render_scene_v1_snapshot_commit() != Code::OK
             elisa_render_scene_v1_snapshot_result(0)
 
-        def draw_reference(capture: cstr, handle: i64) -> i32:
+        def draw_reference(capture: cstr, no_occlusion_capture: cstr, handle: i64) -> i32:
             return 1 if elisa_render_scene_v1_test_isolate_snapshot_instance(handle, 1) != Code::OK
             return 2 if elisa_render_scene_v1_test_wait_render_pipelines() != Code::OK
             for frame in 0..<4:
                 return 3 if Application::pump() != Application::PumpStatus.Running
             return 4 if elisa_render_scene_v1_test_snapshot_material_texture_id(
-                Ids::MATERIALS, MATERIAL, NORMAL_SLOT, Ids::TEXTURES, TEXTURE) != 1
+                Ids::MATERIALS, MATERIAL, NORMAL_SLOT, Ids::TEXTURES, NORMAL_TEXTURE) != 1
             return 5 if elisa_render_scene_v1_test_snapshot_material_texture_size(
                 Ids::MATERIALS, MATERIAL, NORMAL_SLOT, NORMAL_MAP_SIZE, NORMAL_MAP_SIZE) != 1
+            return 15 if elisa_render_scene_v1_test_snapshot_material_texture_id(
+                Ids::MATERIALS, MATERIAL, OCCLUSION_SLOT, Ids::TEXTURES, OCCLUSION_TEXTURE) != 1
+            return 16 if elisa_render_scene_v1_test_snapshot_material_texture_size(
+                Ids::MATERIALS, MATERIAL, OCCLUSION_SLOT, OCCLUSION_MAP_SIZE, OCCLUSION_MAP_SIZE) != 1
             return 6 if elisa_render_scene_v1_test_snapshot_mirrored_tangent_seam(RENDER_ID) != 1
             return 7 if elisa_render_scene_v1_test_snapshot_normal_scale_matches(
                 Ids::MATERIALS, MATERIAL, NORMAL_SCALE) != 1
@@ -186,6 +209,11 @@ module RenderSceneMirroredNormalNativeTests:
             return 9 if (left - right < MINIMUM_LIGHT_CONTRAST and
                 right - left < MINIMUM_LIGHT_CONTRAST)
             return 10 if not Application::save_screenshot(capture)
+            return 12 if elisa_render_scene_v1_test_set_snapshot_occlusion_strength(
+                Ids::MATERIALS, MATERIAL, 0.0) != 1
+            for frame in 0..<4:
+                return 13 if Application::pump() != Application::PumpStatus.Running
+            return 14 if not Application::save_screenshot(no_occlusion_capture)
             0
 
         def cleanup(handle: i64) -> i32:
@@ -203,6 +231,9 @@ module RenderSceneMirroredNormalNativeTests:
             _ = catch RenderScene::unregister_snapshot_material_asset(material_id()):
                 ok: 0
                 error failure: 1
+            _ = catch RenderScene::unregister_snapshot_texture_asset(occlusion_texture_id()):
+                ok: 0
+                error failure: 1
             _ = catch RenderScene::unregister_snapshot_texture_asset(texture_id()):
                 ok: 0
                 error failure: 1
@@ -215,6 +246,8 @@ module RenderSceneMirroredNormalNativeTests:
         def exercise() -> i32:
             capture: cstr = Application::environment_value("ELISA_MIRRORED_NORMAL_CAPTURE")
             return 1 if capture == ""
+            no_occlusion_capture: cstr = Application::environment_value("ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE")
+            return 2 if no_occlusion_capture == ""
             configured: i32 = configure_reference()
             return 10 + configured if configured != 0
             registered: i32 = register_assets()
@@ -227,7 +260,7 @@ module RenderSceneMirroredNormalNativeTests:
                 _ = cleanup(0)
                 _ = restore_reference()
                 return 30
-            drawn: i32 = draw_reference(capture, handle)
+            drawn: i32 = draw_reference(capture, no_occlusion_capture, handle)
             cleaned: i32 = cleanup(handle)
             restored: i32 = restore_reference()
             return 40 + drawn if drawn != 0

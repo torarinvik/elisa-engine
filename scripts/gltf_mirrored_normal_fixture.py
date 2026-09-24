@@ -18,7 +18,9 @@ PANEL_HALF_EXTENT = 1.0
 SOURCE_VERTEX_COUNT = 6
 INDEX_COUNT = 12
 NORMAL_TEXTURE_SIZE = 8
+OCCLUSION_TEXTURE_SIZE = 8
 TANGENT_POSITIVE_X_RGBA = (255, 128, 128, 255)
+OCCLUSION_RGBA = (51, 51, 51, 255)
 NORMAL_TEXTURE_SCALE = 0.75
 OCCLUSION_STRENGTH = 0.65
 
@@ -41,12 +43,15 @@ def fixture_text() -> str:
     indices = (0, 1, 2, 0, 2, 3, 2, 5, 4, 2, 4, 3)
     normal_map = encode_png(NORMAL_TEXTURE_SIZE, NORMAL_TEXTURE_SIZE,
         bytes(TANGENT_POSITIVE_X_RGBA) * NORMAL_TEXTURE_SIZE * NORMAL_TEXTURE_SIZE)
+    occlusion_map = encode_png(OCCLUSION_TEXTURE_SIZE, OCCLUSION_TEXTURE_SIZE,
+        bytes(OCCLUSION_RGBA) * OCCLUSION_TEXTURE_SIZE * OCCLUSION_TEXTURE_SIZE)
     blocks = (
         b"".join(struct.pack("<3f", *point) for point in positions),
         b"".join(struct.pack("<3f", *normal) for normal in normals),
         b"".join(struct.pack("<2f", *uv) for uv in uvs),
         struct.pack(f"<{INDEX_COUNT}H", *indices),
         normal_map,
+        occlusion_map,
     )
     buffer = bytearray()
     views = []
@@ -70,9 +75,12 @@ def fixture_text() -> str:
             "metallicFactor": 0.0,
             "roughnessFactor": 0.9,
         }, "normalTexture": {"index": 0, "scale": NORMAL_TEXTURE_SCALE},
-            "occlusionTexture": {"index": 0, "strength": OCCLUSION_STRENGTH}}],
-        "textures": [{"source": 0}],
-        "images": [{"name": "normal", "bufferView": 4, "mimeType": "image/png"}],
+            "occlusionTexture": {"index": 1, "strength": OCCLUSION_STRENGTH}}],
+        "textures": [{"source": 0}, {"source": 1}],
+        "images": [
+            {"name": "normal", "bufferView": 4, "mimeType": "image/png"},
+            {"name": "occlusion", "bufferView": 5, "mimeType": "image/png"},
+        ],
         "buffers": [{"byteLength": len(buffer),
             "uri": "data:application/octet-stream;base64," + payload}],
         "bufferViews": views,
