@@ -68,6 +68,9 @@ module RenderScene:
         enum CameraProjection:
             Perspective
             Orthographic
+        enum AnimationRootMotionMode:
+            InPlace
+            Horizontal
         struct Color:
             red: f32
             green: f32
@@ -293,6 +296,23 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_stop_animation(handle.native_value, blend_seconds))
         def advance_animation(handle: InstanceHandle, delta_seconds: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_advance_animation(handle.native_value, delta_seconds))
+        # Horizontal extraction keeps the root joint's entry x/z in the pose
+        # and makes its sampled planar delta available to the entity controller.
+        # Elisa's Y axis remains in the skeleton for authored vertical motion.
+        def set_animation_root_motion(handle: InstanceHandle,
+            mode: AnimationRootMotionMode, root_joint_name: cstr) -> void error[RenderSceneError]:
+            mode_code: i32 = 1 if mode == AnimationRootMotionMode.Horizontal else 0
+            try check_status(elisa_render_scene_v1_set_animation_root_motion(
+                handle.native_value, mode_code, root_joint_name))
+        # Returns and clears the accumulated local-space root delta since the
+        # preceding call. The caller applies its entity rotation and scale.
+        def consume_animation_root_motion(handle: InstanceHandle) -> Geometry::Vec3 error[RenderSceneError]:
+            delta_x: mutable f32 = 0.0
+            delta_y: mutable f32 = 0.0
+            delta_z: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_consume_animation_root_motion(
+                handle.native_value, &delta_x, &delta_y, &delta_z))
+            Geometry::Vec3{x: delta_x, y: delta_y, z: delta_z}
         def animation_progress(handle: InstanceHandle) -> f32 error[RenderSceneError]:
             value: f32 = elisa_render_scene_v1_animation_progress(handle.native_value)
             if value < 0.0:

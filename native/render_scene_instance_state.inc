@@ -41,5 +41,17 @@ struct InstanceSlot {
     bool blend_eased = false;
     bool animation_loop = true;
     bool previous_animation_loop = true;
+    // Optional horizontal root extraction. The displayed root joint remains
+    // at its entry x/z while its sampled motion accumulates for Elisa to apply
+    // to the owning instance transform.
+    int32_t root_motion_mode = 0;
+    int32_t root_motion_joint = -1;
+    float root_motion_anchor_x = 0.0f;
+    float root_motion_anchor_z = 0.0f;
+    float root_motion_previous_x = 0.0f;
+    float root_motion_previous_z = 0.0f;
+    float root_motion_pending_x = 0.0f;
+    float root_motion_pending_z = 0.0f;
+    bool root_motion_previous_valid = false;
     bool live = false;
 };

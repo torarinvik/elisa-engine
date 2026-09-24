@@ -1,0 +1,70 @@
+# Root-motion extraction leaves vertical animation in the root joint, removes
+# horizontal translation from the pose, and reports the matching planar delta.
+include "../src/runtime/render_scene.elisa"
+
+module RenderSceneAnimationRootMotionNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_root_pose(
+            handle: i64, expected_x: f32, expected_y: f32, expected_z: f32) -> i32
+
+        def near(value: f32, expected: f32) -> bool:
+            value > expected - 0.002 and value < expected + 0.002
+
+    public:
+        def exercise() -> i32:
+            rig: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/root-motion-skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 1
+            started: bool = catch RenderScene::play_animation(rig, "root-motion", false, 1.0, 0.0):
+                ok: true
+                error failure: false
+            return 2 if not started
+            enabled: bool = catch RenderScene::set_animation_root_motion(rig,
+                RenderScene::AnimationRootMotionMode.Horizontal, "root"):
+                ok: true
+                error failure: false
+            return 3 if not enabled
+            advanced: bool = catch RenderScene::advance_animation(rig, 0.5):
+                ok: true
+                error failure: false
+            return 4 if not advanced
+            raw_rig: i64 = RenderScene::native_smoke_handle(rig)
+            return 5 if elisa_render_scene_v1_test_animation_root_pose(raw_rig,
+                2.0, 2.5, 0.0) == 0
+            delta: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 6
+            return 7 if not near(delta.x, 1.0) or not near(delta.y, 0.0) or not near(delta.z, 3.0)
+            empty: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 8
+            return 9 if not near(empty.x, 0.0) or not near(empty.z, 0.0)
+            advanced_again: bool = catch RenderScene::advance_animation(rig, 0.25):
+                ok: true
+                error failure: false
+            return 10 if not advanced_again
+            queued: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 11
+            return 12 if not near(queued.x, 0.5) or not near(queued.z, 1.5)
+            advanced_pending: bool = catch RenderScene::advance_animation(rig, 0.1):
+                ok: true
+                error failure: false
+            return 13 if not advanced_pending
+            disabled: bool = catch RenderScene::set_animation_root_motion(rig,
+                RenderScene::AnimationRootMotionMode.InPlace, "root"):
+                ok: true
+                error failure: false
+            return 14 if not disabled
+            after_disable: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 15
+            return 16 if not near(after_disable.x, 0.0) or not near(after_disable.z, 0.0)
+            destroyed: bool = catch RenderScene::destroy(rig):
+                ok: true
+                error failure: false
+            return 17 if not destroyed
+            0

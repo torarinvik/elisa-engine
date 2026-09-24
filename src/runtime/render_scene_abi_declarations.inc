@@ -88,6 +88,12 @@
         @callconv(c)
         extern elisa_render_scene_v1_advance_animation(handle: i64, delta_seconds: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_animation_root_motion(handle: i64,
+            mode: i32, root_joint_name: cstr) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_consume_animation_root_motion(handle: i64,
+            delta_x: mutable f32&, delta_y: mutable f32&, delta_z: mutable f32&) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_animation_progress(handle: i64) -> f32
         @callconv(c)
         extern elisa_render_scene_v1_set_lit_material(handle: i64, roughness: f32, metallic: f32) -> i32

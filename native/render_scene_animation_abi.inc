@@ -176,6 +176,82 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
     return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
 
+// Root extraction is opt-in and instance-local. The root joint stays at its
+// entry x/z while apply_animation_pose accumulates its planar motion for Elisa.
+extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
+    int64_t handle, int32_t mode, const char* root_joint_name) {
+    if (mode != 0 && mode != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    InstanceSlot& instance = state.instances[slot];
+    if (mode == 0) {
+        instance.root_motion_mode = 0;
+        instance.root_motion_joint = -1;
+        instance.root_motion_previous_valid = false;
+        instance.root_motion_pending_x = 0.0f;
+        instance.root_motion_pending_z = 0.0f;
+        return ELISA_RENDER_SCENE_OK;
+    }
+    if (instance.animation_clip < 0 ||
+        instance.animation_clip >= int32_t(instance.animation_clips.size()) ||
+        instance.skin_joints.empty() || instance.joint_entities.size() != instance.skin_joints.size() ||
+        instance.displayed_joint_pose.size() != instance.joint_entities.size() * 10 ||
+        root_joint_name == nullptr) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    size_t name_length = 0;
+    while (name_length <= 1024 && root_joint_name[name_length] != '\0') ++name_length;
+    if (name_length == 0 || name_length > 1024) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    const std::string requested_root(root_joint_name, name_length);
+    int32_t root_joint = -1;
+    for (size_t index = 0; index < instance.skin_joints.size(); ++index) {
+        if (instance.skin_joints[index].name == requested_root) {
+            root_joint = int32_t(index);
+            break;
+        }
+    }
+    if (root_joint < 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    const float* root_pose = instance.displayed_joint_pose.data() + size_t(root_joint) * 10;
+    if (!finite(root_pose[0]) || !finite(root_pose[2])) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    instance.root_motion_mode = mode;
+    instance.root_motion_joint = root_joint;
+    instance.root_motion_anchor_x = root_pose[0];
+    instance.root_motion_anchor_z = root_pose[2];
+    instance.root_motion_previous_x = root_pose[0];
+    instance.root_motion_previous_z = root_pose[2];
+    instance.root_motion_previous_valid = true;
+    instance.root_motion_pending_x = 0.0f;
+    instance.root_motion_pending_z = 0.0f;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_consume_animation_root_motion(
+    int64_t handle, float* delta_x, float* delta_y, float* delta_z) {
+    if (delta_x == nullptr || delta_y == nullptr || delta_z == nullptr) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    InstanceSlot& instance = state.instances[slot];
+    if (!finite(instance.root_motion_pending_x) || !finite(instance.root_motion_pending_z)) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    *delta_x = instance.root_motion_pending_x;
+    *delta_y = 0.0f;
+    *delta_z = instance.root_motion_pending_z;
+    instance.root_motion_pending_x = 0.0f;
+    instance.root_motion_pending_z = 0.0f;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 // Returns the active clip's normalized time so game code can synchronize
 // authored cues (for example footfalls) without duplicating clip durations or
 // adding a native game-specific shim. A handle with no active clip is idle.

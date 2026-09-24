@@ -15,6 +15,15 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.blend_eased = false;
     instance.animation_loop = true;
     instance.previous_animation_loop = true;
+    instance.root_motion_mode = 0;
+    instance.root_motion_joint = -1;
+    instance.root_motion_anchor_x = 0.0f;
+    instance.root_motion_anchor_z = 0.0f;
+    instance.root_motion_previous_x = 0.0f;
+    instance.root_motion_previous_z = 0.0f;
+    instance.root_motion_pending_x = 0.0f;
+    instance.root_motion_pending_z = 0.0f;
+    instance.root_motion_previous_valid = false;
 }
 
 // Capture the actual displayed mixture before replacing its destination.
@@ -158,6 +167,24 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
             interpolate_transform(previous, current, blend, pose);
         } else {
             std::copy(std::begin(current), std::end(current), pose);
+        }
+        if (instance.root_motion_mode == 1 && int32_t(joint_index) == instance.root_motion_joint) {
+            if (!instance.root_motion_previous_valid) {
+                instance.root_motion_anchor_x = pose[0];
+                instance.root_motion_anchor_z = pose[2];
+                instance.root_motion_previous_x = pose[0];
+                instance.root_motion_previous_z = pose[2];
+                instance.root_motion_previous_valid = true;
+            } else {
+                instance.root_motion_pending_x += pose[0] - instance.root_motion_previous_x;
+                instance.root_motion_pending_z += pose[2] - instance.root_motion_previous_z;
+                instance.root_motion_previous_x = pose[0];
+                instance.root_motion_previous_z = pose[2];
+            }
+            // Y is up in Elisa, so preserve the authored get-up lift in the
+            // skeleton and extract only planar travel into the actor transform.
+            pose[0] = instance.root_motion_anchor_x;
+            pose[2] = instance.root_motion_anchor_z;
         }
         std::copy_n(pose, 10, instance.displayed_joint_pose.data() + joint_index * 10);
         wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);

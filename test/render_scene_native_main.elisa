@@ -32,6 +32,7 @@ include "./render_scene_visibility_native.elisa"
 include "./render_scene_mesh_instance_native.elisa"
 include "./render_scene_animation_submission_native.elisa"
 include "./render_scene_animation_blend_native.elisa"
+include "./render_scene_animation_root_motion_native.elisa"
 include "./render_scene_effects_native.elisa"
 using Maze
 using MazeGame
@@ -308,6 +309,8 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(250, mesh_instance_status) if mesh_instance_status != 0
     animation_blend_status: i32 = RenderSceneAnimationBlendNativeTests::exercise(box)
     return elisa_render_scene_v1_test_failed_case(270, animation_blend_status) if animation_blend_status != 0
+    animation_root_motion_status: i32 = RenderSceneAnimationRootMotionNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(271, animation_root_motion_status) if animation_root_motion_status != 0
     bad_color: i32 = catch RenderScene::set_color(box,
         RenderScene::Color{red: 1.0, green: 0.0, blue: 0.0, alpha: 2.0}):
         ok: 0
