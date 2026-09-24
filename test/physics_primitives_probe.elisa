@@ -141,5 +141,6 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::PhysicsError.InvalidHandle: 151 + stage
                 PhysicsRuntime::PhysicsError.StaleWorld: 161 + stage
                 PhysicsRuntime::PhysicsError.ShapeInUse: 166 + stage
+                PhysicsRuntime::PhysicsError.BodyNotReady: 169 + stage
                 PhysicsRuntime::PhysicsError.BackendFailure: 171 + stage
                 error failure: 118

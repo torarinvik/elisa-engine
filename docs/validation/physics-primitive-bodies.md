@@ -38,7 +38,9 @@ through the hidden SDL3/Metal host lifecycle.
 Validation on 2026-09-24:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py` passed `physics-primitives-smoke` and `physics-render-capture-smoke`. Midpoint and final Jolt/Wicked captures match pixel-for-pixel at 640x480 between 30 Hz and 120 Hz presentation.
-- The aggregate runner then returned 185 from the separate application-wide silent-audio voice-count assertion in `RuntimeServicesAudioProbe`; it occurs after both focused physics clients pass.
+- The complete runner passed all four native entries: primitive bodies, render cadence, application lifecycle, and failure cleanup. The application fixture now starts the falling test body at y=0.7 so ordinary ground contact happens within the eight-step smoke window; the same test verifies the sensor contact and removal events.
+- `PhysicsRuntime` and `RuntimeServices::Session` expose bounded linear-velocity reads/writes and impulse application for dynamic bodies. The native application probe checks rejecting velocity on a static body, reads a set velocity, applies an impulse, and observes the resulting velocity increase.
+- Velocity and impulse calls return `PhysicsError.BodyNotReady` until the first fixed step has created the Wicked/Jolt body. The probe checks this explicitly; stale handles, non-dynamic bodies, and out-of-range/non-finite vectors use their own errors.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `python3 scripts/test_elisa_build_run.py` passed. The Python test command ran 13 tests.
 
 The native shape registry currently supports reusable primitive shapes only. It

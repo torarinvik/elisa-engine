@@ -3,7 +3,7 @@ include "../src/runtime/executor.elisa"
 include "./world_audio_probe.elisa"
 include "./runtime_physics_queries_probe.elisa"
 include "./runtime_services_audio_probe.elisa"
-
+include "./runtime_services_motion_probe.elisa"
 @callconv(c)
 extern elisa_audio_v1_test_request_device_recovery() -> i32
 
@@ -456,7 +456,6 @@ module RuntimeServicesProbe:
             return caller_fallback if caller_fallback != 0
             unavailable_device: i32 = RuntimeServicesAudioProbe::unavailable_default_device()
             return unavailable_device if unavailable_device != 0
-
             report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
                 config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
@@ -466,6 +465,8 @@ module RuntimeServicesProbe:
             return 33 if report.services.fallback_count != 2
             return 34 if not RuntimeServices::physics_active(session) or not RuntimeServices::audio_active(session)
             return 118 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
+            motion_status: i32 = RuntimeServicesMotionProbe::run(&session)
+            return motion_status if motion_status != 0
             occupied_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             occupied: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
                 config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
@@ -537,7 +538,6 @@ module RuntimeServicesProbe:
                 ok: 0
                 error failure: 1
             return 128 if replay_stopped != 0
-
             world_audio_status: i32 = WorldAudioProbe::run(session)
             return world_audio_status if world_audio_status != 0
             world_scheduler_status: i32 = world_scheduler_probe(&session)

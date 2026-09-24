@@ -418,6 +418,24 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_body_position(session.physics, body)
 
+        def physics_body_linear_velocity(session: Session&,
+            body: PhysicsRuntime::BodyHandle) -> Geometry::Vec3 error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_linear_velocity(session.physics, body)
+
+        def physics_body_set_linear_velocity(session: Session&,
+            body: PhysicsRuntime::BodyHandle, velocity: Geometry::Vec3) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_set_linear_velocity(session.physics, body, velocity)
+
+        def physics_body_apply_impulse(session: Session&,
+            body: PhysicsRuntime::BodyHandle, impulse: Geometry::Vec3) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_apply_impulse(session.physics, body, impulse)
+
         def physics_body_set_kinematic_target(session: Session&,
             body: PhysicsRuntime::BodyHandle, target: Geometry::Transform) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live

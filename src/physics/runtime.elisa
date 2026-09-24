@@ -13,6 +13,7 @@ module PhysicsRuntime:
             BACKEND_FAILURE: i32 = -6
             STALE_WORLD: i32 = -7
             SHAPE_IN_USE: i32 = -8
+            BODY_NOT_READY: i32 = -9
             BODY_STATIC: i32 = 0
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
@@ -102,10 +103,8 @@ module PhysicsRuntime:
         @callconv(c)
         extern elisa_physics_v1_destroy_body(world_generation: u64,
             slot: u32, body_generation: u64) -> i32
-
         @callconv(c)
         extern elisa_physics_v1_shutdown(world_generation: u64) -> i32
-
         def check_status(status: i32) -> void error[PhysicsError]:
             raise PhysicsError.InvalidArgument if status == Status::INVALID_ARGUMENT
             raise PhysicsError.ApplicationUnavailable if status == Status::INVALID_STATE
@@ -115,8 +114,8 @@ module PhysicsRuntime:
             raise PhysicsError.BackendFailure if status == Status::BACKEND_FAILURE
             raise PhysicsError.StaleWorld if status == Status::STALE_WORLD
             raise PhysicsError.ShapeInUse if status == Status::SHAPE_IN_USE
+            raise PhysicsError.BodyNotReady if status == Status::BODY_NOT_READY
             raise PhysicsError.BackendFailure if status != Status::OK
-
         def kind_code(kind: BodyKind) -> i32:
             match kind:
                 BodyKind.Static:
@@ -125,7 +124,6 @@ module PhysicsRuntime:
                     Status::BODY_KINEMATIC
                 BodyKind.Dynamic:
                     Status::BODY_DYNAMIC
-
         def shape_code(shape: BodyShape) -> i32:
             match shape:
                 BodyShape.Box:
@@ -134,6 +132,7 @@ module PhysicsRuntime:
                     Status::SHAPE_SPHERE
                 BodyShape.Capsule:
                     Status::SHAPE_CAPSULE
+        include "./runtime_body_motion_abi.inc"
 
     public:
         const MAX_CONTACT_EVENTS: usize = 64
@@ -193,6 +192,7 @@ module PhysicsRuntime:
             InvalidHandle
             StaleWorld
             ShapeInUse
+            BodyNotReady
             BackendFailure
 
         struct BodyDesc:
@@ -593,6 +593,8 @@ module PhysicsRuntime:
             return if not world.live
             status: i32 = elisa_physics_v1_shutdown(world.generation)
             try check_status(status)
+
             world.live <- false
 
         include "./runtime_reusable_shapes_api.inc"
+        include "./runtime_body_motion_api.inc"

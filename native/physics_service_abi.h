@@ -17,6 +17,7 @@ enum {
     ELISA_PHYSICS_BACKEND_FAILURE = -6,
     ELISA_PHYSICS_STALE_WORLD = -7,
     ELISA_PHYSICS_SHAPE_IN_USE = -8,
+    ELISA_PHYSICS_BODY_NOT_READY = -9,
 };
 
 enum {
@@ -170,6 +171,15 @@ int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generation, uint32_
     float rotation_x, float rotation_y, float rotation_z, float rotation_w);
 int32_t elisa_physics_v1_destroy_body(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation);
+int32_t elisa_physics_v1_body_linear_velocity(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation,
+    float* velocity_x, float* velocity_y, float* velocity_z);
+int32_t elisa_physics_v1_body_set_linear_velocity(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation,
+    float velocity_x, float velocity_y, float velocity_z);
+int32_t elisa_physics_v1_body_apply_impulse(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation,
+    float impulse_x, float impulse_y, float impulse_z);
 int32_t elisa_physics_v1_shutdown(uint64_t world_generation);
 
 // Called while the Application host is still initialized, before Wicked exits.

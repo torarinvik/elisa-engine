@@ -1,4 +1,7 @@
-# End-to-end native application smoke through the same generated Elisa entry as a game.
+# End-to-end application lifecycle smoke: the generated executable entry is
+# Elisa main; it imports only the public engine module and owns the loop calls.
+# The generic application builder injects src/runtime/public.elisa before this
+# entry point, so this smoke exercises the same import surface as a game.
 include "./physics_app_probe.elisa"
 include "./physics_primitives_probe.elisa"
 include "./runtime_services_probe.elisa"
@@ -34,6 +37,7 @@ def check_native_profile() -> i32:
     return 23 if not backend_limit_supports(profile, BackendLimit.Viewports, 1)
     return 24 if profile.limits.memory_usage_bytes > profile.limits.memory_budget_bytes
     0
+
 def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
     raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::clip_is_empty(AudioRuntime::empty_clip())
     raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::voice_is_empty(AudioRuntime::empty_voice())
@@ -58,205 +62,7 @@ def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
     raise AudioRuntime::AudioError.UnknownStatus if count != 1
     try AudioRuntime::stop(voice)
     0
-def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable i32&) -> i32 error[PhysicsRuntime::PhysicsError]:
-    stage <- 1
-    ground: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
-        PhysicsRuntime::BodyDesc{
-            kind: PhysicsRuntime::BodyKind.Static,
-            shape: PhysicsRuntime::BodyShape.Box,
-            position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
-            dimensions: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
-            mass: 0.0,
-            sensor: false,
-        })
-    stage <- 2
-    falling: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
-        PhysicsRuntime::BodyDesc{
-            kind: PhysicsRuntime::BodyKind.Dynamic,
-            shape: PhysicsRuntime::BodyShape.Box,
-            position: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
-            dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
-            mass: 1.0,
-            sensor: false,
-        })
-    stage <- 3
-    trigger: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
-        PhysicsRuntime::BodyDesc{
-            kind: PhysicsRuntime::BodyKind.Static,
-            shape: PhysicsRuntime::BodyShape.Box,
-            position: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
-            dimensions: Geometry::Vec3{x: 1.0, y: 0.75, z: 1.0},
-            mass: 0.0,
-            sensor: true,
-        })
-    stage <- 4
-    disposable: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
-        PhysicsRuntime::BodyDesc{
-            kind: PhysicsRuntime::BodyKind.Kinematic,
-            shape: PhysicsRuntime::BodyShape.Box,
-            position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
-            dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
-            mass: 0.0,
-            sensor: false,
-        })
-    stage <- 5
-    target: Geometry::Transform = Geometry::Transform{
-        position: Geometry::Vec3{x: 3.0, y: 4.0, z: 0.0},
-        rotation: Geometry::quat_identity(),
-        scale: Geometry::vec3_one(),
-    }
-    try PhysicsRuntime::body_set_kinematic_target(world, disposable, target)
-    target_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, disposable)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if target_position.y < 3.9
-    invalid_target: i32 = catch PhysicsRuntime::body_set_kinematic_target(world, falling, target):
-        value: 1
-        PhysicsRuntime::PhysicsError.InvalidArgument: 0
-        error failure: 2
-    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_target != 0
-    try PhysicsRuntime::body_destroy(world, disposable)
-    stage <- 6
-    stale_body_status: i32 = catch PhysicsRuntime::body_position(world, disposable):
-        value: 1
-        PhysicsRuntime::PhysicsError.InvalidHandle: 0
-        PhysicsRuntime::PhysicsError.InvalidArgument: 11
-        PhysicsRuntime::PhysicsError.ApplicationUnavailable: 12
-        PhysicsRuntime::PhysicsError.WrongThread: 13
-        PhysicsRuntime::PhysicsError.Capacity: 14
-        PhysicsRuntime::PhysicsError.StaleWorld: 16
-        PhysicsRuntime::PhysicsError.BackendFailure: 17
-        error failure: 18
-    stage <- 50 + stale_body_status
-    raise PhysicsRuntime::PhysicsError.BackendFailure if stale_body_status != 0
-    stage <- 18
-    initial_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
-    try PhysicsAppProbe::render_frames_do_not_step_physics(world, falling, initial_position)
-    tick: mutable u64 = 0
-    stage <- 7
-    tick <- try PhysicsAppProbe::fixed_step_pair(world)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if tick != PhysicsAppProbe::PAIR_TICK_COUNT
-    ray: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
-        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
-        PhysicsRuntime::ALL_LAYERS)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not ray.hit or ray.entity == 0 or ray.distance <= 0.0
-    all_rays: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
-    all_ray_status: i32 = catch PhysicsRuntime::raycast_all(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
-        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
-        PhysicsRuntime::ALL_LAYERS, &all_rays):
-        value: value.i32()
-        PhysicsRuntime::PhysicsError.InvalidArgument: 181
-        PhysicsRuntime::PhysicsError.ApplicationUnavailable: 182
-        PhysicsRuntime::PhysicsError.WrongThread: 183
-        PhysicsRuntime::PhysicsError.Capacity: 184
-        PhysicsRuntime::PhysicsError.InvalidHandle: 185
-        PhysicsRuntime::PhysicsError.StaleWorld: 186
-        PhysicsRuntime::PhysicsError.BackendFailure: 187
-        error failure: 188
-    return all_ray_status if all_ray_status >= 181
-    all_ray_count: usize = all_ray_status.usize()
-    raise PhysicsRuntime::PhysicsError.BackendFailure if all_ray_count == 0 or all_rays.count != all_ray_count
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not all_rays.hits[0].hit or all_rays.hits[0].entity == 0
-    raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[0].distance > ray.distance + 0.001
-    for index in 1..<all_ray_count:
-        raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[index].distance + 0.001 < all_rays.hits[index - 1].distance
-    stage <- 71
-    sphere_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::sphere_cast(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
-        10.0, 0.25, PhysicsRuntime::ALL_LAYERS)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not sphere_cast_hit.hit or sphere_cast_hit.entity == 0
-    stage <- 72
-    capsule_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::capsule_cast(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 6.0, z: 0.0},
-        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 0.25, PhysicsRuntime::ALL_LAYERS)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not capsule_cast_hit.hit or capsule_cast_hit.entity == 0
-    stage <- 73
-    sphere_overlap_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::overlap_sphere(world,
-        Geometry::Vec3{x: 0.0, y: 0.5, z: 0.0}, 2.0, PhysicsRuntime::ALL_LAYERS)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not sphere_overlap_hit.hit or sphere_overlap_hit.entity == 0
-    stage <- 74
-    sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
-    sphere_overlap_count: usize = try PhysicsQueries::overlap_sphere_all(world,
-        Geometry::Vec3{x: 0.0, y: 0.5, z: 0.0}, 2.0, PhysicsRuntime::ALL_LAYERS, sphere_overlaps)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_overlap_count == 0 or sphere_overlaps.count != sphere_overlap_count
-    stage <- 75
-    capsule_overlap_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::overlap_capsule(world,
-        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
-        0.5, PhysicsRuntime::ALL_LAYERS)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not capsule_overlap_hit.hit or capsule_overlap_hit.entity == 0
-    stage <- 76
-    capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
-    capsule_overlap_count: usize = try PhysicsQueries::overlap_capsule_all(world,
-        Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
-        2.0, PhysicsRuntime::ALL_LAYERS, capsule_overlaps)
-    raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_overlap_count == 0 or capsule_overlaps.count != capsule_overlap_count
-    stage <- 77
-    invalid_shape: i32 = catch PhysicsQueries::sphere_cast(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
-        10.0, 0.25, PhysicsRuntime::ALL_LAYERS):
-        value: 1
-        PhysicsRuntime::PhysicsError.InvalidArgument: 0
-        error failure: 2
-    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_shape != 0
-    invalid_all_status: i32 = catch PhysicsRuntime::raycast_all(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
-        10.0, PhysicsRuntime::ALL_LAYERS, &all_rays):
-        value: 1
-        PhysicsRuntime::PhysicsError.InvalidArgument: 0
-        error failure: 2
-    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_all_status != 0
-    invalid_ray: i32 = catch PhysicsRuntime::raycast(world,
-        Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
-        Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 10.0,
-        PhysicsRuntime::ALL_LAYERS):
-        value: 1
-        PhysicsRuntime::PhysicsError.InvalidArgument: 0
-        error failure: 2
-    raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_ray != 0
-    stage <- 8
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    stage <- 9
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    stage <- 10
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    stage <- 11
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    stage <- 12
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    stage <- 13
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    stage <- 14
-    final_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, falling)
-    contact_buffer: mutable PhysicsRuntime::ContactBuffer = zeroed
-    dropped_contacts: mutable u32 = 0
-    contact_count: usize = try PhysicsRuntime::poll_contacts(world, &contact_buffer,
-        &dropped_contacts)
-    saw_added: mutable bool = false
-    saw_trigger: mutable bool = false
-    for index in 0..<contact_count:
-        event: PhysicsRuntime::ContactEvent = contact_buffer.events[index]
-        if event.kind == PhysicsRuntime::ContactKind.Added:
-            saw_trigger <- true if event.trigger
-            saw_added <- true if not event.trigger
-    raise PhysicsRuntime::PhysicsError.BackendFailure if contact_count == 0 or not saw_added or not saw_trigger or dropped_contacts != 0
-    stage <- 15
-    try PhysicsRuntime::body_destroy(world, trigger)
-    tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
-    removed_buffer: mutable PhysicsRuntime::ContactBuffer = zeroed
-    removed_dropped: mutable u32 = 0
-    removed_count: usize = try PhysicsRuntime::poll_contacts(world, &removed_buffer,
-        &removed_dropped)
-    saw_removed_trigger: mutable bool = false
-    for index in 0..<removed_count:
-        event: PhysicsRuntime::ContactEvent = removed_buffer.events[index]
-        saw_removed_trigger <- true if event.kind == PhysicsRuntime::ContactKind.Removed and event.trigger
-    raise PhysicsRuntime::PhysicsError.BackendFailure if not saw_removed_trigger or removed_dropped != 0
-    stage <- 16
-    raise PhysicsRuntime::PhysicsError.BackendFailure if tick != 9 or final_position.y >= initial_position.y - 0.05
-    stage <- 17
-    raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != 9
-    _ = ground
-    0
+
 def check_startup_requirements(config: Application::Config) -> i32:
     required: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
         BackendFeature.Input, BackendFeature.Rendering, BackendFeature.NativeWindow,
@@ -413,7 +219,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         value: value
         error failure: return 98
     physics_stage: mutable i32 = 0
-    physics_result: i32 = catch exercise_jolt_physics(&physics_world, &physics_stage):
+    physics_result: i32 = catch PhysicsAppProbe::exercise_jolt_physics(&physics_world, &physics_stage):
         value: value
         PhysicsRuntime::PhysicsError.InvalidArgument: 111 + physics_stage
         PhysicsRuntime::PhysicsError.ApplicationUnavailable: 121 + physics_stage
@@ -421,6 +227,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
         PhysicsRuntime::PhysicsError.Capacity: 141 + physics_stage
         PhysicsRuntime::PhysicsError.InvalidHandle: 151 + physics_stage
         PhysicsRuntime::PhysicsError.StaleWorld: 161 + physics_stage
+        PhysicsRuntime::PhysicsError.BodyNotReady: 169 + physics_stage
         PhysicsRuntime::PhysicsError.BackendFailure: 171 + physics_stage
         error failure: 118
     return physics_result if physics_result != 0
@@ -541,7 +348,8 @@ def exercise_application() -> i32:
     return 2 if first_frame != Application::PumpStatus.Running
     return 3 if Application::frame_count() != 1
     return 17 if Application::uptime_nanos() == 0
-    # Environment reads cover configured values and safe fallbacks.
+    # Environment reads: the runner sets the project width; an unset name
+    # and a non-numeric value fall back; an empty string is never NULL.
     return 182 if Application::environment_integer("ELISA_PROJECT_WIDTH", -1) != 320
     return 183 if Application::environment_integer("ELISA_SMOKE_UNSET_FLAG", 7) != 7
     return 184 if Application::environment_integer("ELISA_PROJECT_TITLE", 9) != 9
@@ -587,7 +395,9 @@ def exercise_application() -> i32:
     return services_status if services_status != 0
     0
 
-# The outer entry closes runtime services after every smoke-body path.
+# The outer entry owns cleanup for every assertion path in the smoke body.
+# This mirrors the host contract: returning early from game code still closes
+# runtime services before the native process exits.
 def main() -> i32:
     return 180 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_missing_shader_root() != 1
     return 181 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_invalid_shader_manifest() != 1
