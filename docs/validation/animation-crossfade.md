@@ -9,6 +9,12 @@ At phase 0.35, the eased transition checks the smoothstep weight 0.15625 and
 the resulting joint translation Y=1.7171875. A second phase-matched linear
 transition checks weight 0.25 and Y=1.9375. The test also verifies the initial
 pose, animation cadence changes, same-clip continuation, and fade completion.
+It then interrupts the linear transition with a shorter fade: the first pose
+stays at Y=1.9375, the interrupted pose is still at Y=1.54375 after 0.15
+seconds, and the original remaining 0.3 seconds are retained until the new
+destination is reached. The native test exercises the joint pose; morph poses
+use the same captured-visible-mixture path but do not yet have a dedicated
+interruption assertion.
 
 Run the complete SDL3/Metal gate on macOS with:
 
