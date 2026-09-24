@@ -57,10 +57,12 @@ def main() -> int:
                 base64.b64decode(package_fields["subsets_b64"], validate=True)))
             placement_records = list(struct.iter_unpack("<8I12f",
                 base64.b64decode(package_fields["mesh_placements_b64"], validate=True)))
+            package_index_count = int(package_fields.get("indices",
+                str(int(package_fields["triangles"]) * 3)))
             package_name = "extra-placement-package.pkg"
             (directory / package_name).write_bytes(package_bytes)
             test_cases.append(("accept", package_name, None,
-                (int(package_fields["indices"]), int(package_fields["material_slots"]),
+                (package_index_count, int(package_fields["material_slots"]),
                     subset_records, "mesh_placements", placement_records)))
         if options.fbx_cutout_package is not None:
             cutout_image = encode_png(2, 1, bytes((220, 80, 40, 0, 40, 80, 220, 255)))

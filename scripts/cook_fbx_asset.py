@@ -18,6 +18,7 @@ import tempfile
 from fbx_cooked_package import MAX_SOURCE_MESH_COUNT, package_fbx_texture_sources, parse_package
 from fbx_material_cooker_self_test import validate_material_package
 from elisa_package import write_geometry_package
+from meshopt_cooked_package import compress_core_geometry
 from fbx_surface_texture import decode_png_rgba
 from fbx_surface_texture_self_test import validate_surface_texture_decoder
 from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
@@ -430,6 +431,11 @@ def main(arguments: list[str]) -> int:
                 cache_fields = cook_one(cooker, grid_source, grid_key, cache_output, report=cache_reports)
                 grid_fields = cook_one(cooker, grid_source, grid_key, grid_output, triangle_budget)
                 repeat_fields = cook_one(cooker, grid_source, grid_key, repeat_output, triangle_budget)
+                compressed_grid, stream_report = compress_core_geometry(grid_output.read_bytes())
+                repeated_compressed_grid, repeated_stream_report = compress_core_geometry(
+                    repeat_output.read_bytes())
+                compressed_grid_fields = dict(line.split("=", 1)
+                    for line in compressed_grid.decode("ascii").splitlines())
                 original_triangles = cells_per_side * cells_per_side * 2
                 if int(cache_fields["triangles"]) != original_triangles:
                     raise ValueError("cache optimization changed the triangle count")
@@ -453,6 +459,14 @@ def main(arguments: list[str]) -> int:
                         raise ValueError("planar UV fixture did not produce the expected +X tangent frame")
                 if grid_fields != repeat_fields or grid_output.read_bytes() != repeat_output.read_bytes():
                     raise ValueError("simplified grid package output is not deterministic")
+                if (compressed_grid != repeated_compressed_grid or stream_report != repeated_stream_report or
+                        stream_report["compressed_streams"] == 0 or
+                        stream_report["stored_bytes"] >= stream_report["raw_bytes"] or
+                        compressed_grid_fields.get("meshopt_codec") != "meshoptimizer-v1.2" or
+                        compressed_grid_fields.get("positions") != grid_fields.get("positions") or
+                        compressed_grid_fields.get("triangles") != grid_fields.get("triangles") or
+                        int(compressed_grid_fields.get("indices", "0")) != grid_triangles * 3):
+                    raise ValueError("meshoptimizer FBX stream compression is not deterministic or lost counts")
                 material_grid_source = directory / "material-grid.fbx"
                 write_grid_fixture(material_grid_source, 8, two_materials=True)
                 material_grid_fields = cook_one(cooker, material_grid_source,
@@ -480,19 +494,24 @@ def main(arguments: list[str]) -> int:
                 if package_output.suffix.lower() == ".elpk":
                     geometry, images = package_fbx_texture_sources(
                         options.source.expanduser().resolve(strict=True), geometry_output.read_bytes(), fields)
+                    geometry, stream_report = compress_core_geometry(geometry)
                     write_geometry_package(package_output, geometry, images,
                         dependencies=options.dependency)
                 elif "texture_source_count" in fields:
                     raise ValueError("FBX external material textures require an .elpk output bundle")
                 else:
+                    geometry, stream_report = compress_core_geometry(geometry_output.read_bytes())
                     package_output.parent.mkdir(parents=True, exist_ok=True)
                     temporary_output = package_output.with_name(package_output.name + ".tmp")
                     try:
-                        temporary_output.write_bytes(geometry_output.read_bytes())
+                        temporary_output.write_bytes(geometry)
                         os.replace(temporary_output, package_output)
                     finally:
                         temporary_output.unlink(missing_ok=True)
                 print(f"FBX package validated: {fields['triangles']} triangles, {fields['positions']} vertices")
+                print(f"meshoptimizer streams: {stream_report['raw_bytes']} -> "
+                    f"{stream_report['stored_bytes']} bytes "
+                    f"({stream_report['compressed_streams']} streams compressed)")
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as failure:
         print(f"FBX cooking failed: {failure}", file=sys.stderr)
         return 1
