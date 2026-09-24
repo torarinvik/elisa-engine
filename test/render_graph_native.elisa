@@ -14,6 +14,8 @@ module RenderGraphNativeTests:
     extern elisa_render_scene_v1_render_graph_test_suspend_next_frame() -> i32
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_fallback_preserved() -> i32
+    @callconv(c)
+    extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
 
     def primary_color(id: u32, lifetime: RenderGraph::Lifetime,
             initialized: bool) -> RenderGraph::ResourceDescriptor:
@@ -29,7 +31,7 @@ module RenderGraphNativeTests:
         }
 
     public:
-        def configure_clear_copy_graph() -> i32:
+        def configure_clear_copy_graph(output_id: u32) -> i32:
             graph: mutable RenderGraph::Graph = RenderGraph::Graph()
             _ = catch RenderGraph::add_resource(&graph, primary_color(1,
                     RenderGraph::Lifetime.Imported, true)):
@@ -66,7 +68,7 @@ module RenderGraphNativeTests:
                 error failure: return 10
             return 11 if plan.transient_slot_count != 1 or plan.alias_slots[1] != plan.alias_slots[2]
             configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
-            configuration.output_resource_id <- 3
+            configuration.output_resource_id <- output_id
             configuration.operation_count <- 2
             configuration.operations[0] <- RenderGraphRuntime::PassOperation{
                 pass_id: 10,
@@ -90,7 +92,7 @@ module RenderGraphNativeTests:
             0
 
         def exercise() -> i32:
-            return 1 if configure_clear_copy_graph() != SUCCESS
+            return 1 if configure_clear_copy_graph(3) != SUCCESS
             for attempt in 0..<2:
                 return 2 if Application::pump() != Application::PumpStatus.Running
             return 3 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() == 0
@@ -102,6 +104,14 @@ module RenderGraphNativeTests:
             return 40 if elisa_render_scene_v1_render_graph_test_fallback_preserved() != 1
             return 41 if Application::pump() != Application::PumpStatus.Running
             return 42 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() <= before_suspension
+            clear_output_status: i32 = configure_clear_copy_graph(2)
+            return 43 if clear_output_status != SUCCESS
+            return 44 if Application::pump() != Application::PumpStatus.Running
+            return 45 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() != 0
+            restore_output_status: i32 = configure_clear_copy_graph(3)
+            return 46 if restore_output_status != SUCCESS
+            return 47 if Application::pump() != Application::PumpStatus.Running
+            return 48 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             before_resize: u64 = RenderGraphRuntime::execution_count()
             resize_down: i32 = catch RenderScene::resize(320, 200):
                 ok: 0

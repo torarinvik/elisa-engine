@@ -57,6 +57,33 @@ module RenderGraphRuntime:
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 return false if declared != expected
             true
+        def prepare_output_plan(graph: RenderGraph::Graph&,
+                plan: RenderGraph::Plan&, output_id: u32,
+                output_plan: mutable RenderGraph::Plan&) -> bool:
+            output_index: mutable usize = RenderGraph::MAX_RESOURCES
+            for index in 0..<plan.resource_count |output_index|:
+                descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+                return false if not RenderGraph::resource_descriptor_at(graph,
+                    index, &descriptor)
+                if descriptor.id == output_id:
+                    output_index <- index
+                    break
+            return false if output_index >= plan.resource_count
+            output_descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+            return false if not RenderGraph::resource_descriptor_at(graph,
+                output_index, &output_descriptor)
+            output_plan <- plan
+            return true if output_descriptor.lifetime != RenderGraph::Lifetime.Transient
+            output_slot: u32 = plan.alias_slots[output_index]
+            overlaps_later_use: mutable bool = false
+            for index in 0..<plan.resource_count |overlaps_later_use|:
+                if index != output_index and plan.alias_slots[index] == output_slot:
+                    overlaps_later_use <- true if plan.last_use[index] >= plan.first_use[output_index]
+            return true if not overlaps_later_use
+            return false if plan.transient_slot_count >= RenderGraph::MAX_RESOURCES
+            output_plan.alias_slots[output_index] <- plan.transient_slot_count.u32()
+            output_plan.transient_slot_count <- output_plan.transient_slot_count + 1
+            true
         def abort_with_status(status: i32) -> i32:
             _ = elisa_render_scene_v1_render_graph_abort()
             status
@@ -100,10 +127,13 @@ module RenderGraphRuntime:
             return INVALID_PLAN if RenderGraph::pass_count(graph) != plan.pass_count
             return INVALID_PLAN if configuration.operation_count != plan.pass_count
             return INVALID_PLAN if configuration.output_resource_id == RenderGraph::INVALID_ID
+            output_plan: mutable RenderGraph::Plan = plan
+            return INVALID_PLAN if not prepare_output_plan(graph, plan,
+                configuration.output_resource_id, &output_plan)
             status: mutable i32 = elisa_render_scene_v1_render_graph_begin(
                 plan.resource_count.u32(), plan.pass_count.u32(), configuration.output_resource_id)
             return NATIVE_REJECTED if status != Native::OK
-            next_target: mutable usize = plan.transient_slot_count
+            next_target: mutable usize = output_plan.transient_slot_count
             for index in 0..<plan.resource_count |next_target|:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 if not RenderGraph::resource_descriptor_at(graph, index, &descriptor):
@@ -112,7 +142,7 @@ module RenderGraphRuntime:
                     return abort_with_status(INVALID_PLAN)
                 target_slot: mutable u32 = Native::NO_TARGET
                 if descriptor.lifetime == RenderGraph::Lifetime.Transient:
-                    target_slot <- plan.alias_slots[index]
+                    target_slot <- output_plan.alias_slots[index]
                     if target_slot == RenderGraph::NO_TRANSIENT_ALIAS_SLOT:
                         return abort_with_status(INVALID_PLAN)
                 elif descriptor.lifetime == RenderGraph::Lifetime.Persistent:
