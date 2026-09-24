@@ -135,7 +135,13 @@ def validate_native_files(paths: dict[str, Path]) -> None:
         raise BuildConfigurationError("Missing native build dependencies:\n  " + details)
 
 
-def validate_wicked_archive_abi(paths: dict[str, Path]) -> int:
+def default_native_compiler() -> str:
+    # The checked-in SDL3 Wicked archives are built with Apple's libc++ ABI.
+    # Prefer Apple's matching compiler even when Homebrew LLVM comes first on PATH.
+    return "/usr/bin/clang++" if sys.platform == "darwin" else "clang++"
+
+
+def validate_wicked_archive_abi(paths: dict[str, Path], compiler: str) -> int:
     libraries = paths["libraries"]
     utility = libraries / "Utility"
     archives = [
@@ -146,7 +152,8 @@ def validate_wicked_archive_abi(paths: dict[str, Path]) -> int:
         libraries / "LUA/libLUA.a",
     ]
     checker = ENGINE_ROOT / "scripts/check_wicked_archive_abi.py"
-    return run_command([sys.executable, str(checker), *(str(path) for path in archives)])
+    return run_command([sys.executable, str(checker), "--compiler", compiler,
+        *(str(path) for path in archives)])
 
 
 def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
@@ -358,14 +365,14 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
     config = load_project_config(project)
     paths = resolve_native_paths(args)
     validate_native_files(paths)
-    abi_status = validate_wicked_archive_abi(paths)
+    cxx = args.cxx or os.environ.get("CXX", default_native_compiler())
+    abi_status = validate_wicked_archive_abi(paths, cxx)
     if abi_status != 0:
         return abi_status, None, None
     status = cook_declared_assets(project, config)
     if status != 0:
         return status, None, None
     compiler = args.compiler or os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
-    cxx = args.cxx or os.environ.get("CXX", "clang++")
 
     with tempfile.TemporaryDirectory(prefix="Elisa application build ", dir=output.parent) as temporary_directory:
         build_dir = Path(temporary_directory)

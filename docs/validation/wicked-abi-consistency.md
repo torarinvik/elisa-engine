@@ -18,10 +18,14 @@ from one consistent toolchain is required before using an optimized archive.
 
 `scripts/check_wicked_archive_abi.py` extracts libc++ ABI tags from demangled
 archive symbols and checks the WickedEngine, Jolt, Utility, FAudio, and LUA
-archives. The ordinary Elisa project runner performs this check before cooking
-declared assets or compiling the game, and the RenderScene smoke repeats it
-before compiling or launching the native test. A missing tag set is an error
-because the checker cannot establish compatibility.
+archives. It also compiles a small probe with the selected native linker
+compiler and compares its ABI tag with the archives. The ordinary Elisa
+project runner performs this check before cooking declared assets or compiling
+the game, and the RenderScene smoke repeats it before compiling or launching
+the native test. On macOS the runner defaults to `/usr/bin/clang++`, matching
+the standard SDL3 Wicked archives even when Homebrew LLVM precedes it on `PATH`;
+an explicit `CXX` or `--cxx` override is still checked. Missing or mixed tag
+sets are errors because compatibility cannot be established.
 Run the complete gate using the consistent SDL3 build:
 
 ```sh

@@ -86,6 +86,13 @@ def write_fake_tools(root: Path) -> tuple[Path, Path, Path]:
 
 
 class BuildRunCliTests(unittest.TestCase):
+    def test_macos_default_native_compiler_matches_wicked_build(self) -> None:
+        runner = __import__("elisa_build_run")
+        with mock.patch.object(runner.sys, "platform", "darwin"):
+            self.assertEqual(runner.default_native_compiler(), "/usr/bin/clang++")
+        with mock.patch.object(runner.sys, "platform", "linux"):
+            self.assertEqual(runner.default_native_compiler(), "clang++")
+
     def test_help_is_available(self) -> None:
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--help"], text=True, capture_output=True, check=False
@@ -160,13 +167,14 @@ class BuildRunCliTests(unittest.TestCase):
             runner = __import__("elisa_build_run")
             paths = {"libraries": wicked_build / "WickedEngine"}
             with mock.patch.object(runner, "run_command", return_value=0) as run:
-                self.assertEqual(runner.validate_wicked_archive_abi(paths), 0)
+                self.assertEqual(runner.validate_wicked_archive_abi(paths, "clang++"), 0)
 
             command = run.call_args.args[0]
             utility = paths["libraries"] / "Utility"
             self.assertEqual(command[0], sys.executable)
             self.assertEqual(command[1], str(SCRIPT.parent / "check_wicked_archive_abi.py"))
-            self.assertEqual(command[2:], [str(path) for path in (
+            self.assertEqual(command[2:4], ["--compiler", "clang++"])
+            self.assertEqual(command[4:], [str(path) for path in (
                 paths["libraries"] / "libWickedEngine.a",
                 paths["libraries"] / "libJolt.a",
                 utility / "libUtility.a",
