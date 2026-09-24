@@ -1,0 +1,278 @@
+# Bounded Elisa-authored render graph contracts and transient lifetime planning.
+module RenderGraph:
+    private:
+        const module Limits:
+            MAX_PASSES: usize = 32
+            MAX_RESOURCES: usize = 64
+            INVALID_ID: u32 = 0
+            MIN_DIMENSION: u32 = 1
+            MAX_DIMENSION: u32 = 16384
+            SINGLE_SAMPLE: u32 = 1
+            DOUBLE_SAMPLE: u32 = 2
+            QUAD_SAMPLE: u32 = 4
+            OCTA_SAMPLE: u32 = 8
+            NO_ALIAS_SLOT: u32 = 4294967295
+
+        struct Resource:
+            descriptor: ResourceDescriptor
+
+        struct Pass:
+            id: u32
+            dependencies: bool[Limits::MAX_PASSES]
+            reads: bool[Limits::MAX_RESOURCES]
+            writes: bool[Limits::MAX_RESOURCES]
+
+        def resource_index(graph: Graph&, resource_id: u32) -> usize:
+            for index in 0..<graph.resource_count |slot: usize = Limits::MAX_RESOURCES| -> slot:
+                break index if graph.resources[index].descriptor.id == resource_id
+
+        def pass_index(graph: Graph&, pass_id: u32) -> usize:
+            for index in 0..<graph.pass_count |slot: usize = Limits::MAX_PASSES| -> slot:
+                break index if graph.passes[index].id == pass_id
+
+        def descriptor_valid(descriptor: ResourceDescriptor) -> bool:
+            dimensions_valid: bool = descriptor.width >= Limits::MIN_DIMENSION and descriptor.height >= Limits::MIN_DIMENSION and descriptor.width <= Limits::MAX_DIMENSION and descriptor.height <= Limits::MAX_DIMENSION
+            samples_valid: bool = descriptor.samples == Limits::SINGLE_SAMPLE or descriptor.samples == Limits::DOUBLE_SAMPLE or descriptor.samples == Limits::QUAD_SAMPLE or descriptor.samples == Limits::OCTA_SAMPLE
+            lifetime_valid: bool =
+                match descriptor.lifetime:
+                    Lifetime.Imported: descriptor.initialized
+                    Lifetime.Persistent: true
+                    Lifetime.Transient: not descriptor.initialized
+            format_valid: bool = descriptor.format == Format.Rgba8 or descriptor.format == Format.Rgba16Float or descriptor.format == Format.Depth32
+            dimensions_valid and samples_valid and lifetime_valid and format_valid
+
+        def descriptors_compatible(left: ResourceDescriptor,
+                right: ResourceDescriptor) -> bool:
+            left.width == right.width and left.height == right.height and left.format == right.format and left.samples == right.samples
+
+        def happens_before(graph: Graph&, before: usize, after: usize) -> bool:
+            reached: mutable bool[Limits::MAX_PASSES] = zeroed
+            reached[before] <- true
+            for step in 0..<graph.pass_count |reached|:
+                for later in 0..<graph.pass_count |reached|:
+                    for earlier in 0..<graph.pass_count |reached|:
+                        reached[later] <- true if reached[earlier] and graph.passes[later].dependencies[earlier]
+            reached[after]
+
+    public:
+        const MAX_PASSES: usize = Limits::MAX_PASSES
+        const MAX_RESOURCES: usize = Limits::MAX_RESOURCES
+        const NO_TRANSIENT_ALIAS_SLOT: u32 = Limits::NO_ALIAS_SLOT
+        const INVALID_ID: u32 = Limits::INVALID_ID
+
+        enum Lifetime:
+            Imported
+            Persistent
+            Transient
+
+        enum Format:
+            Rgba8
+            Rgba16Float
+            Depth32
+
+        enum GraphError:
+            Capacity
+            InvalidDescriptor
+            DuplicateResource
+            DuplicatePass
+            UnknownResource
+            UnknownPass
+            DuplicateAccess
+            DuplicateDependency
+            SelfDependency
+            DependencyCycle
+            ReadWriteHazard
+            UnorderedHazard
+            ImportedWrite
+            ReadBeforeWrite
+            MissingWriter
+            UnusedResource
+
+        struct ResourceDescriptor:
+            id: u32
+            width: u32
+            height: u32
+            format: Format
+            samples: u32
+            lifetime: Lifetime
+            initialized: bool
+
+        affine struct Graph:
+            private:
+                resources: mutable Resource[Limits::MAX_RESOURCES]
+                resource_count: mutable usize
+                passes: mutable Pass[Limits::MAX_PASSES]
+                pass_count: mutable usize
+
+        struct Plan:
+            pass_ids: mutable u32[Limits::MAX_PASSES]
+            pass_count: usize
+            resource_ids: u32[Limits::MAX_RESOURCES]
+            first_use: usize[Limits::MAX_RESOURCES]
+            last_use: usize[Limits::MAX_RESOURCES]
+            alias_slots: mutable u32[Limits::MAX_RESOURCES]
+            resource_count: usize
+            transient_slot_count: mutable usize
+
+        def Graph() -> Graph:
+            Graph{
+                resources: zeroed,
+                resource_count: 0,
+                passes: zeroed,
+                pass_count: 0,
+            }
+
+        def resource_count(graph: Graph&) -> usize:
+            graph.resource_count
+
+        def pass_count(graph: Graph&) -> usize:
+            graph.pass_count
+
+        def add_resource(graph: mutable Graph&,
+                descriptor: ResourceDescriptor) -> void error[GraphError]:
+            raise GraphError.InvalidDescriptor if descriptor.id == Limits::INVALID_ID or not descriptor_valid(descriptor)
+            raise GraphError.DuplicateResource if resource_index(graph, descriptor.id) < Limits::MAX_RESOURCES
+            raise GraphError.Capacity if graph.resource_count >= Limits::MAX_RESOURCES
+            graph.resources[graph.resource_count] <- Resource{descriptor: descriptor}
+            graph.resource_count <- graph.resource_count + 1
+
+        def add_pass(graph: mutable Graph&, id: u32) -> void error[GraphError]:
+            raise GraphError.InvalidDescriptor if id == Limits::INVALID_ID
+            raise GraphError.DuplicatePass if pass_index(graph, id) < Limits::MAX_PASSES
+            raise GraphError.Capacity if graph.pass_count >= Limits::MAX_PASSES
+            graph.passes[graph.pass_count] <- Pass{
+                id: id,
+                dependencies: zeroed,
+                reads: zeroed,
+                writes: zeroed,
+            }
+            graph.pass_count <- graph.pass_count + 1
+
+        def add_dependency(graph: mutable Graph&, before_id: u32,
+                after_id: u32) -> void error[GraphError]:
+            before: usize = pass_index(graph, before_id)
+            after: usize = pass_index(graph, after_id)
+            raise GraphError.UnknownPass if before >= Limits::MAX_PASSES or after >= Limits::MAX_PASSES
+            raise GraphError.SelfDependency if before == after
+            raise GraphError.DuplicateDependency if graph.passes[after].dependencies[before]
+            graph.passes[after].dependencies[before] <- true
+
+        def read(graph: mutable Graph&, pass_id: u32,
+                resource_id: u32) -> void error[GraphError]:
+            pass_slot: usize = pass_index(graph, pass_id)
+            resource: usize = resource_index(graph, resource_id)
+            raise GraphError.UnknownPass if pass_slot >= Limits::MAX_PASSES
+            raise GraphError.UnknownResource if resource >= Limits::MAX_RESOURCES
+            raise GraphError.DuplicateAccess if graph.passes[pass_slot].reads[resource]
+            graph.passes[pass_slot].reads[resource] <- true
+
+        def write(graph: mutable Graph&, pass_id: u32,
+                resource_id: u32) -> void error[GraphError]:
+            pass_slot: usize = pass_index(graph, pass_id)
+            resource: usize = resource_index(graph, resource_id)
+            raise GraphError.UnknownPass if pass_slot >= Limits::MAX_PASSES
+            raise GraphError.UnknownResource if resource >= Limits::MAX_RESOURCES
+            raise GraphError.DuplicateAccess if graph.passes[pass_slot].writes[resource]
+            graph.passes[pass_slot].writes[resource] <- true
+
+        def compile(graph: Graph&) -> Plan error[GraphError]:
+            raise GraphError.InvalidDescriptor if graph.pass_count == 0 or graph.resource_count == 0
+            processed: mutable bool[Limits::MAX_PASSES] = zeroed
+            order: mutable usize[Limits::MAX_PASSES] = zeroed
+            for step in 0..<graph.pass_count |processed, order|:
+                candidate: mutable usize = Limits::MAX_PASSES
+                for index in 0..<graph.pass_count |candidate|:
+                    if not processed[index]:
+                        ready: mutable bool = true
+                        for dependency in 0..<graph.pass_count |ready|:
+                            ready <- false if graph.passes[index].dependencies[dependency] and not processed[dependency]
+                        if ready:
+                            candidate <- index
+                            break
+                raise GraphError.DependencyCycle if candidate >= Limits::MAX_PASSES
+                processed[candidate] <- true
+                order[step] <- candidate
+
+            writers: mutable usize[Limits::MAX_RESOURCES] = zeroed
+            for pass_slot in 0..<graph.pass_count |writers|:
+                for resource in 0..<graph.resource_count |writers|:
+                    pass_reads: bool = graph.passes[pass_slot].reads[resource]
+                    pass_writes: bool = graph.passes[pass_slot].writes[resource]
+                    raise GraphError.ReadWriteHazard if pass_reads and pass_writes
+                    if pass_writes:
+                        writers[resource] <- writers[resource] + 1
+            for first_pass in 0..<graph.pass_count:
+                for second_pass in 0..<graph.pass_count:
+                    if first_pass != second_pass:
+                        ordered: bool = happens_before(graph, first_pass, second_pass) or happens_before(graph, second_pass, first_pass)
+                        for resource in 0..<graph.resource_count:
+                            first_writes: bool = graph.passes[first_pass].writes[resource]
+                            second_writes: bool = graph.passes[second_pass].writes[resource]
+                            conflicts: bool = (first_writes or second_writes) and (graph.passes[first_pass].reads[resource] or first_writes) and (graph.passes[second_pass].reads[resource] or second_writes)
+                            raise GraphError.UnorderedHazard if conflicts and not ordered
+
+            initialized: mutable bool[Limits::MAX_RESOURCES] = zeroed
+            first_seen: mutable bool[Limits::MAX_RESOURCES] = zeroed
+            used: mutable bool[Limits::MAX_RESOURCES] = zeroed
+            first_use: mutable usize[Limits::MAX_RESOURCES] = zeroed
+            last_use: mutable usize[Limits::MAX_RESOURCES] = zeroed
+            for resource in 0..<graph.resource_count |initialized|:
+                initialized[resource] <- graph.resources[resource].descriptor.initialized
+                if graph.resources[resource].descriptor.lifetime == Lifetime.Imported:
+                    raise GraphError.ImportedWrite if writers[resource] != 0
+            for position in 0..<graph.pass_count |initialized, first_seen, used, first_use, last_use|:
+                pass_slot: usize = order[position]
+                for resource in 0..<graph.resource_count |initialized, first_seen, used, first_use, last_use|:
+                    reads: bool = graph.passes[pass_slot].reads[resource]
+                    writes: bool = graph.passes[pass_slot].writes[resource]
+                    if reads or writes:
+                        if not first_seen[resource]:
+                            first_seen[resource] <- true
+                            first_use[resource] <- position
+                        used[resource] <- true
+                        last_use[resource] <- position
+                        raise GraphError.ReadBeforeWrite if reads and not initialized[resource]
+                        initialized[resource] <- true if writes
+            for resource in 0..<graph.resource_count |used|:
+                descriptor: ResourceDescriptor = graph.resources[resource].descriptor
+                raise GraphError.UnusedResource if not used[resource]
+                raise GraphError.MissingWriter if descriptor.lifetime == Lifetime.Transient and writers[resource] == 0
+                raise GraphError.MissingWriter if not descriptor.initialized and writers[resource] == 0
+
+            resource_ids: mutable u32[Limits::MAX_RESOURCES] = zeroed
+            for resource in 0..<graph.resource_count |resource_ids|:
+                resource_ids[resource] <- graph.resources[resource].descriptor.id
+            plan: mutable Plan = Plan{
+                pass_ids: zeroed,
+                pass_count: graph.pass_count,
+                resource_ids: resource_ids,
+                first_use: first_use,
+                last_use: last_use,
+                alias_slots: zeroed,
+                resource_count: graph.resource_count,
+                transient_slot_count: 0,
+            }
+            slot_representatives: mutable usize[Limits::MAX_RESOURCES] = zeroed
+            slot_last_use: mutable usize[Limits::MAX_RESOURCES] = zeroed
+            for position in 0..<graph.pass_count |plan, slot_representatives, slot_last_use|:
+                pass_index_at_position: usize = order[position]
+                plan.pass_ids[position] <- graph.passes[pass_index_at_position].id
+                for resource in 0..<graph.resource_count |plan, slot_representatives, slot_last_use|:
+                    descriptor: ResourceDescriptor = graph.resources[resource].descriptor
+                    if descriptor.lifetime == Lifetime.Transient and first_use[resource] == position:
+                        slot: mutable usize = 0
+                        for candidate in 0..<plan.transient_slot_count |slot|:
+                            representative: ResourceDescriptor = graph.resources[
+                                slot_representatives[candidate]].descriptor
+                            if slot_last_use[candidate] < first_use[resource] and descriptors_compatible(descriptor, representative):
+                                slot <- candidate
+                                break
+                            slot <- plan.transient_slot_count
+                        if slot == plan.transient_slot_count:
+                            slot_representatives[slot] <- resource
+                            plan.transient_slot_count <- plan.transient_slot_count + 1
+                        plan.alias_slots[resource] <- u32(slot)
+                        slot_last_use[slot] <- last_use[resource]
+                    if descriptor.lifetime != Lifetime.Transient:
+                        plan.alias_slots[resource] <- Limits::NO_ALIAS_SLOT
+            plan

@@ -30,8 +30,6 @@ def godot_path() -> sview:
         if is_file(path(candidate)) and is_executable(path(candidate)):
             return candidate
     ""
-# Status-only process calls discard output. Relay both captured streams so tool
-# diagnostics remain visible, including when a child exits unsuccessfully.
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
     result: ProcessCapture =
         empty_input: sview = ""
@@ -40,9 +38,7 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
     _ = write_stderr(result.stderr)
     result.exit_status
 def rejects_owner_violation(compiler: sview, source: sview, output: sview, privacy: bool = false) -> bool:
-    # A compiler crash leaves a nonzero status and an empty diagnostic. Retry
-    # only that case once; a changed non-empty diagnostic is not retried, so a
-    # real contract change still fails.
+    # Retry only empty compiler crashes; preserve changed diagnostics as real failures.
     for attempt in 0..<2:
         rejection: ProcessCapture =
             empty_input: sview = ""
@@ -76,8 +72,7 @@ def main(arguments: darray[sview]) -> i64:
         eprint("Build elisa-proof or set ELISA_PROOF_BIN to its executable path.")
         return 2
     _ = create_directories(root.joinpath("build"))
-    # A failed later step must not leave an older success report looking current.
-    _ = root.joinpath("build/entity-id-proof.json").unlink()
+    _ = root.joinpath("build/entity-id-proof.json").unlink() # Clear stale reports before checks.
     _ = root.joinpath("build/world-proof.json").unlink()
     _ = root.joinpath("build/validation.json").unlink()
     test_binary: sview = str(root.joinpath("build/entity-id-test"))
@@ -362,6 +357,11 @@ def main(arguments: darray[sview]) -> i64:
     return quality_status if quality_status != 0
     quality_status <- run_visible(quality_binary, [])
     return quality_status if quality_status != 0
+    graph_test_binary: sview = str(root.joinpath("build/render-graph-test"))
+    graph_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", graph_test_binary, str(root.joinpath("test/render_graph.elisa"))])
+    return graph_status if graph_status != 0
+    graph_status <- run_visible(graph_test_binary, [])
+    return graph_status if graph_status != 0
     replay_binary: sview = str(root.joinpath("build/replay-test"))
     replay_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", replay_binary, str(root.joinpath("test/replay.elisa"))])
     return replay_status if replay_status != 0
