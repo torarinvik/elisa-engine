@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace elisa_physics_internal {
 
@@ -18,17 +19,26 @@ constexpr uint32_t MAX_BODIES = 64;
 constexpr uint32_t MAX_SHAPES = 64;
 constexpr uint32_t INVALID_SHAPE_SLOT = MAX_SHAPES;
 constexpr size_t MAX_CONTACT_EVENTS = ELISA_PHYSICS_MAX_CONTACT_EVENTS;
+constexpr uint32_t MAX_MESH_VERTICES = 65536;
+constexpr uint32_t MAX_MESH_INDICES = 196608;
+constexpr size_t MAX_MESH_SHAPE_BYTES = 8u * 1024u * 1024u;
+constexpr size_t MAX_WORLD_MESH_SHAPE_BYTES = 32u * 1024u * 1024u;
+constexpr size_t MAX_WORLD_MESH_PROXY_BYTES = 64u * 1024u * 1024u;
 
 struct BodySlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
     uint64_t shape_generation = 0;
     uint32_t shape_slot = INVALID_SHAPE_SLOT;
+    size_t mesh_proxy_geometry_bytes = 0;
     bool live = false;
 };
 
 struct ShapeSlot {
     wi::scene::RigidBodyPhysicsComponent backend_shape{};
+    std::vector<XMFLOAT3> mesh_vertices;
+    std::vector<uint32_t> mesh_indices;
+    size_t mesh_geometry_bytes = 0;
     float dimension_x = 0.0f;
     float dimension_y = 0.0f;
     float dimension_z = 0.0f;
@@ -48,6 +58,8 @@ struct PhysicsService {
     probe::PhysicsContactQueue contact_queue;
     size_t pending_contact_count = 0;
     size_t pending_contact_dropped = 0;
+    size_t mesh_geometry_bytes = 0;
+    size_t mesh_proxy_geometry_bytes = 0;
     uint64_t world_generation = 0;
     uint64_t tick = 0;
     bool initialized = false;

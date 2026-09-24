@@ -400,6 +400,22 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_shape_create(session.physics, shape, dimensions)
 
+        def physics_shape_create_triangle_mesh(session: Session&,
+            vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
+            index_count: usize) -> PhysicsRuntime::ShapeHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_shape_create_triangle_mesh(session.physics,
+                vertices, vertex_count, indices, index_count)
+
+        def physics_shape_create_convex_hull(session: Session&,
+            vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
+            index_count: usize) -> PhysicsRuntime::ShapeHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_shape_create_convex_hull(session.physics,
+                vertices, vertex_count, indices, index_count)
+
         def physics_shape_destroy(session: Session&,
             shape: PhysicsRuntime::ShapeHandle) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live

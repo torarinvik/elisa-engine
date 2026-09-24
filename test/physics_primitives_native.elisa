@@ -22,12 +22,19 @@ module PhysicsPrimitivesNative:
                 error failure: return 2
             stage: mutable i32 = 0
             result: i32 = PhysicsPrimitiveProbe::run(&world, &stage)
-            return result if result != 0
-            capacity_result: i32 = PhysicsPrimitiveProbe::capacity(&world)
+            mesh_result: mutable i32 = 0
+            mesh_stage: mutable i32 = 0
+            capacity_result: mutable i32 = 0
+            if result == 0:
+                mesh_result <- PhysicsPrimitiveProbe::mesh_shapes(&world, &mesh_stage)
+                if mesh_result == 0:
+                    capacity_result <- PhysicsPrimitiveProbe::capacity(&world)
             world_closed: bool = catch PhysicsRuntime::shutdown(&world):
                 ok: true
                 error failure: false
             application_closed: bool = Application::shutdown()
+            return result if result != 0
+            return 30 + mesh_result if mesh_result != 0
             return 5 if capacity_result != 0
             return 3 if not world_closed
             return 4 if not application_closed

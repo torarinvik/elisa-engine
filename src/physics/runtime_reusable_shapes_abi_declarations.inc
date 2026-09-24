@@ -1,6 +1,14 @@
+        const SHAPE_TRIANGLE_MESH: i32 = 3
+        const SHAPE_CONVEX_HULL: i32 = 4
+
         @callconv(c)
         extern elisa_physics_v1_create_shape(world_generation: u64, kind: i32,
             dimension_x: f32, dimension_y: f32, dimension_z: f32,
+            slot: mutable u32&, shape_generation: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_physics_v1_create_mesh_shape(world_generation: u64, kind: i32,
+            vertices: Geometry::Vec3&, vertex_count: u32, indices: u32&, index_count: u32,
             slot: mutable u32&, shape_generation: mutable u64&) -> i32
 
         @callconv(c)

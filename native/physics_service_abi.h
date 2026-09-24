@@ -30,7 +30,17 @@ enum {
     ELISA_PHYSICS_SHAPE_BOX = 0,
     ELISA_PHYSICS_SHAPE_SPHERE = 1,
     ELISA_PHYSICS_SHAPE_CAPSULE = 2,
+    ELISA_PHYSICS_SHAPE_TRIANGLE_MESH = 3,
+    ELISA_PHYSICS_SHAPE_CONVEX_HULL = 4,
 };
+
+// Elisa-owned position record for mesh cooking. Kept flat and independent of
+// Wicked's XMFLOAT3 so mesh data never crosses the ABI as a vendor type.
+typedef struct ElisaPhysicsVec3 {
+    float x;
+    float y;
+    float z;
+} ElisaPhysicsVec3;
 
 enum {
     ELISA_PHYSICS_CONTACT_ADDED = 0,
@@ -105,6 +115,10 @@ int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int32_t kind,
     float dimension_x, float dimension_y, float dimension_z,
+    uint32_t* slot, uint64_t* shape_generation);
+int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation, int32_t kind,
+    const ElisaPhysicsVec3* vertices, uint32_t vertex_count,
+    const uint32_t* indices, uint32_t index_count,
     uint32_t* slot, uint64_t* shape_generation);
 int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     uint32_t slot, uint64_t shape_generation);
