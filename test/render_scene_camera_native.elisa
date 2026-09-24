@@ -184,6 +184,28 @@ module RenderSceneCameraNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 160 if outside_viewport_ray != 1
+            grow_viewport_framebuffer: i32 = catch RenderScene::resize(640, 400):
+                ok: 0
+                error failure: 1
+            return 161 if grow_viewport_framebuffer != 0
+            return 162 if Application::pump() != Application::PumpStatus.Running
+            return 163 if elisa_render_scene_v1_test_camera_viewport_matches(
+                320, 0, 320, 200, 1) != 1
+            scaled_viewport_ray: Geometry::Ray3 = catch RenderScene::camera_viewport_ray(
+                secondary, 480.0, 100.0):
+                value: value
+                error failure: return 164
+            return 165 if (not Geometry::vec3_is_finite(scaled_viewport_ray.origin) or
+                not Geometry::vec3_is_finite(scaled_viewport_ray.direction) or
+                Geometry::vec3_length(scaled_viewport_ray.direction) < 0.999 or
+                Geometry::vec3_length(scaled_viewport_ray.direction) > 1.001)
+            restore_viewport_framebuffer: i32 = catch RenderScene::resize(320, 200):
+                ok: 0
+                error failure: 1
+            return 166 if restore_viewport_framebuffer != 0
+            return 167 if Application::pump() != Application::PumpStatus.Running
+            return 168 if elisa_render_scene_v1_test_camera_viewport_matches(
+                160, 0, 160, 100, 1) != 1
             clear_viewport: i32 = catch RenderScene::clear_camera_viewport(secondary):
                 ok: 0
                 error failure: 1

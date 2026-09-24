@@ -43,6 +43,14 @@ coordinates into its viewport; points outside the rectangle fail. The
 SDL3/Metal smoke checks centered rays and out-of-bounds requests for active and
 secondary views.
 
+When the framebuffer resizes, each configured secondary viewport scales its
+pixel rectangle by the old-to-new framebuffer ratio, updates its render target
+resolution, and recreates its projection with the new aspect ratio. The native
+camera test grows from 320x200 to 640x400 and verifies that a (160, 0, 160,
+100) viewport becomes (320, 0, 320, 200), still composes, and still returns a
+finite center ray at (480, 100). Resizing back restores the original rectangle
+and target dimensions.
+
 Automatic static snapshot LOD selection now checks the active Wicked frustum
 against the transformed bounds of every mesh placement. It leaves the current
 shared mesh untouched while all placements are offscreen, then selects the

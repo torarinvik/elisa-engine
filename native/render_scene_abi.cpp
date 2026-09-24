@@ -407,21 +407,7 @@ void on_application_shutdown(void* context) {
         std::fprintf(stderr, "render scene shutdown exception at stage %d\n", stage);
     }
 }
-int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height) {
-    if (!valid_viewport(width, height)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    if (state.perspective_camera) {
-        state.camera->CreatePerspective(float(width), float(height),
-            state.camera_near_clip, state.camera_far_clip, state.perspective_fov);
-    } else {
-        state.camera->CreateOrtho(float(width), float(height),
-            state.camera_near_clip, state.camera_far_clip, state.vertical_size);
-    }
-    apply_camera_look_at(state);
-    state.width = width;
-    state.height = height;
-    return ELISA_RENDER_SCENE_OK;
-}
+#include "render_scene_resize_internal.inc"
 int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
