@@ -6,6 +6,7 @@
 int main() {
     using namespace probe;
     if (keyboard_key_code(SDLK_A) != KEY_A || keyboard_key_code(SDLK_H) != KEY_H || keyboard_key_code(SDLK_V) != KEY_V ||
+        keyboard_key_code(SDLK_LCTRL) != KEY_LEFT_CONTROL || keyboard_key_code(SDLK_RCTRL) != KEY_RIGHT_CONTROL ||
         keyboard_key_code(SDLK_C) != KEY_C || keyboard_key_code(SDLK_TAB) != KEY_TAB ||
         keyboard_key_code(SDLK_3) != KEY_DIGIT_3 ||
         keyboard_key_code(SDLK_LEFT) != KEY_ARROW_LEFT ||
