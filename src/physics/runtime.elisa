@@ -12,6 +12,7 @@ module PhysicsRuntime:
             INVALID_HANDLE: i32 = -5
             BACKEND_FAILURE: i32 = -6
             STALE_WORLD: i32 = -7
+            SHAPE_IN_USE: i32 = -8
             BODY_STATIC: i32 = 0
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
@@ -33,6 +34,8 @@ module PhysicsRuntime:
             dimension_x: f32, dimension_y: f32, dimension_z: f32, mass: f32,
             sensor: i32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
+
+        include "./runtime_reusable_shapes_abi_declarations.inc"
 
         @callconv(c)
         extern elisa_physics_v1_fixed_step(world_generation: u64,
@@ -111,6 +114,7 @@ module PhysicsRuntime:
             raise PhysicsError.InvalidHandle if status == Status::INVALID_HANDLE
             raise PhysicsError.BackendFailure if status == Status::BACKEND_FAILURE
             raise PhysicsError.StaleWorld if status == Status::STALE_WORLD
+            raise PhysicsError.ShapeInUse if status == Status::SHAPE_IN_USE
             raise PhysicsError.BackendFailure if status != Status::OK
 
         def kind_code(kind: BodyKind) -> i32:
@@ -188,6 +192,7 @@ module PhysicsRuntime:
             Capacity
             InvalidHandle
             StaleWorld
+            ShapeInUse
             BackendFailure
 
         struct BodyDesc:
@@ -589,3 +594,5 @@ module PhysicsRuntime:
             status: i32 = elisa_physics_v1_shutdown(world.generation)
             try check_status(status)
             world.live <- false
+
+        include "./runtime_reusable_shapes_api.inc"

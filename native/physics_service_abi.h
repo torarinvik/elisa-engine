@@ -16,6 +16,7 @@ enum {
     ELISA_PHYSICS_INVALID_HANDLE = -5,
     ELISA_PHYSICS_BACKEND_FAILURE = -6,
     ELISA_PHYSICS_STALE_WORLD = -7,
+    ELISA_PHYSICS_SHAPE_IN_USE = -8,
 };
 
 enum {
@@ -101,6 +102,15 @@ int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor,
     uint32_t* slot, uint64_t* body_generation);
+int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int32_t kind,
+    float dimension_x, float dimension_y, float dimension_z,
+    uint32_t* slot, uint64_t* shape_generation);
+int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
+    uint32_t slot, uint64_t shape_generation);
+int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_generation, int32_t kind,
+    float position_x, float position_y, float position_z, float mass, int32_t sensor,
+    uint32_t shape_slot, uint64_t shape_generation,
+    uint32_t* body_slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_seconds,
     uint64_t* tick);
 int32_t elisa_physics_v1_raycast(uint64_t world_generation,

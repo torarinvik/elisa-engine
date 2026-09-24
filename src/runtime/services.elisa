@@ -394,6 +394,25 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_body_create(session.physics, description)
 
+        def physics_shape_create(session: Session&, shape: PhysicsRuntime::BodyShape,
+            dimensions: Geometry::Vec3) -> PhysicsRuntime::ShapeHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_shape_create(session.physics, shape, dimensions)
+
+        def physics_shape_destroy(session: Session&,
+            shape: PhysicsRuntime::ShapeHandle) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_shape_destroy(session.physics, shape)
+
+        def physics_body_create_with_shape(session: Session&,
+            description: PhysicsRuntime::BodyInstanceDesc,
+            shape: PhysicsRuntime::ShapeHandle) -> PhysicsRuntime::BodyHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_create_with_shape(session.physics, description, shape)
+
         def physics_body_position(session: Session&, body: PhysicsRuntime::BodyHandle) -> Geometry::Vec3 error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)

@@ -156,7 +156,9 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         } else {
             rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::CAPSULE;
             rigidbody.capsule.radius = UNIT_SHAPE_RADIUS;
-            rigidbody.capsule.height = dimension_y / dimension_x;
+            // Wicked interprets capsule.height as the full cylinder length;
+            // Elisa's dimensions.y is its half-height.
+            rigidbody.capsule.height = 2.0f * dimension_y / dimension_x;
         }
         rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
         rigidbody.SetSensor(sensor == SENSOR_ENABLED);

@@ -15,11 +15,26 @@
 namespace elisa_physics_internal {
 
 constexpr uint32_t MAX_BODIES = 64;
+constexpr uint32_t MAX_SHAPES = 64;
+constexpr uint32_t INVALID_SHAPE_SLOT = MAX_SHAPES;
 constexpr size_t MAX_CONTACT_EVENTS = ELISA_PHYSICS_MAX_CONTACT_EVENTS;
 
 struct BodySlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
+    uint64_t shape_generation = 0;
+    uint32_t shape_slot = INVALID_SHAPE_SLOT;
+    bool live = false;
+};
+
+struct ShapeSlot {
+    wi::scene::RigidBodyPhysicsComponent backend_shape{};
+    float dimension_x = 0.0f;
+    float dimension_y = 0.0f;
+    float dimension_z = 0.0f;
+    uint64_t generation = 0;
+    uint32_t body_references = 0;
+    int32_t kind = ELISA_PHYSICS_SHAPE_BOX;
     bool live = false;
 };
 
@@ -28,6 +43,7 @@ struct PhysicsService {
     std::unique_ptr<probe::PhysicsQueryBridge> query_bridge;
     std::unique_ptr<probe::PhysicsContactQueueListener> contact_listener;
     std::array<BodySlot, MAX_BODIES> bodies{};
+    std::array<ShapeSlot, MAX_SHAPES> shapes{};
     std::array<probe::PhysicsContactEvent, MAX_CONTACT_EVENTS> pending_contacts{};
     probe::PhysicsContactQueue contact_queue;
     size_t pending_contact_count = 0;
