@@ -122,22 +122,31 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 }
 #endif
 
-extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
+extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
+    int32_t shape,
     float position_x, float position_y, float position_z,
-    float half_x, float half_y, float half_z, float mass,
+    float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor,
     uint32_t* slot, uint64_t* body_generation) {
     if (slot == nullptr || body_generation == nullptr ||
         kind < ELISA_PHYSICS_BODY_STATIC || kind > ELISA_PHYSICS_BODY_DYNAMIC ||
+        shape < ELISA_PHYSICS_SHAPE_BOX || shape > ELISA_PHYSICS_SHAPE_CAPSULE ||
         (sensor != 0 && sensor != 1) ||
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
-        std::fabs(position_z) > MAX_POSITION || !std::isfinite(half_x) ||
-        !std::isfinite(half_y) || !std::isfinite(half_z) || half_x <= 0.0f ||
-        half_y <= 0.0f || half_z <= 0.0f || half_x > MAX_HALF_EXTENT ||
-        half_y > MAX_HALF_EXTENT || half_z > MAX_HALF_EXTENT || !std::isfinite(mass) ||
+        std::fabs(position_z) > MAX_POSITION || !std::isfinite(dimension_x) ||
+        !std::isfinite(dimension_y) || !std::isfinite(dimension_z) ||
+        dimension_x <= 0.0f || dimension_x > MAX_HALF_EXTENT ||
+        dimension_y < 0.0f || dimension_y > MAX_HALF_EXTENT ||
+        dimension_z < 0.0f || dimension_z > MAX_HALF_EXTENT || !std::isfinite(mass) ||
         mass < 0.0f || mass > MAX_MASS ||
         (kind == ELISA_PHYSICS_BODY_DYNAMIC && mass <= 0.0f)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if ((shape == ELISA_PHYSICS_SHAPE_BOX && (dimension_y <= 0.0f || dimension_z <= 0.0f)) ||
+        (shape == ELISA_PHYSICS_SHAPE_SPHERE && (dimension_y != 0.0f || dimension_z != 0.0f)) ||
+        (shape == ELISA_PHYSICS_SHAPE_CAPSULE && (dimension_z != 0.0f ||
+            dimension_x + dimension_y > MAX_HALF_EXTENT))) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     const int32_t status = require_world(world_generation);
@@ -153,9 +162,12 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     try {
-        // Keep managed boxes represented in Wicked's scene query BVH as well as
-        // in Jolt, so public ray/shape queries see the same entity.
-        entity = state.scene->Entity_CreateCube("elisa_physics_body_" + std::to_string(free_slot));
+        // Managed bodies also need a scene mesh for Wicked's scene query BVH.
+        // Its local unit geometry follows the same dimensions as the Jolt shape.
+        const std::string body_name = "elisa_physics_body_" + std::to_string(free_slot);
+        entity = shape == ELISA_PHYSICS_SHAPE_BOX
+            ? state.scene->Entity_CreateCube(body_name)
+            : state.scene->Entity_CreateSphere(body_name, 1.0f, 16, 16);
         if (entity == wi::ecs::INVALID_ENTITY) return ELISA_PHYSICS_BACKEND_FAILURE;
         wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
         if (transform == nullptr) {
@@ -163,16 +175,37 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
             return ELISA_PHYSICS_BACKEND_FAILURE;
         }
         const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+        XMFLOAT3 render_scale(dimension_x, dimension_y, dimension_z);
+        if (shape == ELISA_PHYSICS_SHAPE_SPHERE) {
+            render_scale = XMFLOAT3(dimension_x, dimension_x, dimension_x);
+        } else if (shape == ELISA_PHYSICS_SHAPE_CAPSULE) {
+            render_scale = XMFLOAT3(dimension_x, dimension_x + dimension_y, dimension_x);
+        }
         const ElisaTransformPayload authored{{position_x, position_y, position_z},
-            {0.0f, 0.0f, 0.0f, 1.0f}, {half_x, half_y, half_z}};
+            {0.0f, 0.0f, 0.0f, 1.0f}, {render_scale.x, render_scale.y, render_scale.z}};
         if (!probe::submit_elisa_transform(&profile, &authored, transform)) {
             state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_INVALID_ARGUMENT;
         }
+        // The first Scene::Update runs physics before its transform system.
+        // Prime the world matrix now so Jolt receives the requested Elisa pose
+        // instead of the entity's identity matrix on its first fixed step.
+        transform->UpdateTransform();
         wi::scene::RigidBodyPhysicsComponent& rigidbody = state.scene->rigidbodies.Create(entity);
-        rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
+        rigidbody.shape = shape == ELISA_PHYSICS_SHAPE_BOX
+            ? wi::scene::RigidBodyPhysicsComponent::BOX
+            : (shape == ELISA_PHYSICS_SHAPE_SPHERE
+                ? wi::scene::RigidBodyPhysicsComponent::SPHERE
+                : wi::scene::RigidBodyPhysicsComponent::CAPSULE);
         rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? 0.0f : mass;
-        rigidbody.box.halfextents = XMFLOAT3(half_x, half_y, half_z);
+        if (shape == ELISA_PHYSICS_SHAPE_BOX) {
+            rigidbody.box.halfextents = XMFLOAT3(1.0f, 1.0f, 1.0f);
+        } else if (shape == ELISA_PHYSICS_SHAPE_SPHERE) {
+            rigidbody.sphere.radius = 1.0f;
+        } else {
+            rigidbody.capsule.radius = 1.0f;
+            rigidbody.capsule.height = dimension_y / (dimension_x + dimension_y);
+        }
         rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
         rigidbody.SetSensor(sensor != 0);
         body_slot.entity = entity;
@@ -185,6 +218,18 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
     *slot = free_slot;
     *body_generation = body_slot.generation;
     return ELISA_PHYSICS_OK;
+}
+
+// Preserve the original box-only ABI entry point for native clients built
+// against physics v1 before typed primitive shapes were added.
+extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
+    float position_x, float position_y, float position_z,
+    float half_x, float half_y, float half_z, float mass,
+    int32_t sensor,
+    uint32_t* slot, uint64_t* body_generation) {
+    return elisa_physics_v1_create_body(world_generation, kind, ELISA_PHYSICS_SHAPE_BOX,
+        position_x, position_y, position_z, half_x, half_y, half_z, mass, sensor,
+        slot, body_generation);
 }
 
 extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,

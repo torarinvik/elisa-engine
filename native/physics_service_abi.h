@@ -25,6 +25,12 @@ enum {
 };
 
 enum {
+    ELISA_PHYSICS_SHAPE_BOX = 0,
+    ELISA_PHYSICS_SHAPE_SPHERE = 1,
+    ELISA_PHYSICS_SHAPE_CAPSULE = 2,
+};
+
+enum {
     ELISA_PHYSICS_CONTACT_ADDED = 0,
     ELISA_PHYSICS_CONTACT_PERSISTED = 1,
     ELISA_PHYSICS_CONTACT_REMOVED = 2,
@@ -87,6 +93,12 @@ int32_t elisa_physics_v1_probe_provider(void);
 int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z,
     float half_x, float half_y, float half_z, float mass,
+    int32_t sensor,
+    uint32_t* slot, uint64_t* body_generation);
+int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
+    int32_t shape,
+    float position_x, float position_y, float position_z,
+    float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_seconds,

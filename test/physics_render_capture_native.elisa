@@ -24,16 +24,18 @@ module PhysicsRenderCapture:
             floor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
-                    half_extents: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
+                    dimensions: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
                     mass: 0.0,
                     sensor: false,
                 })
             body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
-                    half_extents: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
+                    dimensions: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
                     mass: 1.0,
                     sensor: false,
                 })

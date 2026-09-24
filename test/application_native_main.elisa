@@ -1,8 +1,6 @@
-# End-to-end application lifecycle smoke: the generated executable entry is
-# Elisa main; it imports only the public engine module and owns the loop calls.
-# The generic application builder injects src/runtime/public.elisa before this
-# entry point, so this smoke exercises the same import surface as a game.
+# End-to-end native application smoke through the same generated Elisa entry as a game.
 include "./physics_app_probe.elisa"
+include "./physics_primitives_probe.elisa"
 include "./runtime_services_probe.elisa"
 include "./user_data_probe.elisa"
 using Capabilities
@@ -36,7 +34,6 @@ def check_native_profile() -> i32:
     return 23 if not backend_limit_supports(profile, BackendLimit.Viewports, 1)
     return 24 if profile.limits.memory_usage_bytes > profile.limits.memory_budget_bytes
     0
-
 def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
     raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::clip_is_empty(AudioRuntime::empty_clip())
     raise AudioRuntime::AudioError.UnknownStatus if not AudioRuntime::voice_is_empty(AudioRuntime::empty_voice())
@@ -61,14 +58,14 @@ def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
     raise AudioRuntime::AudioError.UnknownStatus if count != 1
     try AudioRuntime::stop(voice)
     0
-
 def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable i32&) -> i32 error[PhysicsRuntime::PhysicsError]:
     stage <- 1
     ground: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Static,
+            shape: PhysicsRuntime::BodyShape.Box,
             position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
-            half_extents: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
+            dimensions: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
             mass: 0.0,
             sensor: false,
         })
@@ -76,8 +73,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     falling: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Dynamic,
-            position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
-            half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+            shape: PhysicsRuntime::BodyShape.Box,
+            position: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+            dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
             mass: 1.0,
             sensor: false,
         })
@@ -85,8 +83,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     trigger: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Static,
+            shape: PhysicsRuntime::BodyShape.Box,
             position: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
-            half_extents: Geometry::Vec3{x: 1.0, y: 0.75, z: 1.0},
+            dimensions: Geometry::Vec3{x: 1.0, y: 0.75, z: 1.0},
             mass: 0.0,
             sensor: true,
         })
@@ -94,8 +93,9 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     disposable: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
         PhysicsRuntime::BodyDesc{
             kind: PhysicsRuntime::BodyKind.Kinematic,
+            shape: PhysicsRuntime::BodyShape.Box,
             position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
-            half_extents: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+            dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
             mass: 0.0,
             sensor: false,
         })
@@ -257,7 +257,6 @@ def exercise_jolt_physics(world: mutable PhysicsRuntime::World&, stage: mutable 
     raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != 9
     _ = ground
     0
-
 def check_startup_requirements(config: Application::Config) -> i32:
     required: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
         BackendFeature.Input, BackendFeature.Rendering, BackendFeature.NativeWindow,
@@ -424,6 +423,9 @@ def check_startup_requirements(config: Application::Config) -> i32:
         PhysicsRuntime::PhysicsError.StaleWorld: 161 + physics_stage
         PhysicsRuntime::PhysicsError.BackendFailure: 171 + physics_stage
         error failure: 118
+    primitive_stage: mutable i32 = 0
+    primitive_result: i32 = PhysicsPrimitiveProbe::run(&physics_world, &primitive_stage)
+    return primitive_result if primitive_result != 0
     physics_shutdown_ok: bool = Application::shutdown()
     return physics_result if physics_result != 0
     return 101 if not physics_shutdown_ok
@@ -539,8 +541,7 @@ def exercise_application() -> i32:
     return 2 if first_frame != Application::PumpStatus.Running
     return 3 if Application::frame_count() != 1
     return 17 if Application::uptime_nanos() == 0
-    # Environment reads: the runner sets the project width; an unset name
-    # and a non-numeric value fall back; an empty string is never NULL.
+    # Environment reads cover configured values and safe fallbacks.
     return 182 if Application::environment_integer("ELISA_PROJECT_WIDTH", -1) != 320
     return 183 if Application::environment_integer("ELISA_SMOKE_UNSET_FLAG", 7) != 7
     return 184 if Application::environment_integer("ELISA_PROJECT_TITLE", 9) != 9
@@ -586,9 +587,7 @@ def exercise_application() -> i32:
     return services_status if services_status != 0
     0
 
-# The outer entry owns cleanup for every assertion path in the smoke body.
-# This mirrors the host contract: returning early from game code still closes
-# runtime services before the native process exits.
+# The outer entry closes runtime services after every smoke-body path.
 def main() -> i32:
     return 180 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_missing_shader_root() != 1
     return 181 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_invalid_shader_manifest() != 1

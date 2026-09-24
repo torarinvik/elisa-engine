@@ -15,6 +15,9 @@ module PhysicsRuntime:
             BODY_STATIC: i32 = 0
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
+            SHAPE_BOX: i32 = 0
+            SHAPE_SPHERE: i32 = 1
+            SHAPE_CAPSULE: i32 = 2
 
         const CONTACT_ADDED: i32 = 0
         const CONTACT_PERSISTED: i32 = 1
@@ -24,9 +27,10 @@ module PhysicsRuntime:
         extern elisa_physics_v1_initialize(world_generation: mutable u64&) -> i32
 
         @callconv(c)
-        extern elisa_physics_v1_create_box(world_generation: u64, kind: i32,
+        extern elisa_physics_v1_create_body(world_generation: u64, kind: i32,
+            shape: i32,
             position_x: f32, position_y: f32, position_z: f32,
-            half_x: f32, half_y: f32, half_z: f32, mass: f32,
+            dimension_x: f32, dimension_y: f32, dimension_z: f32, mass: f32,
             sensor: i32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
 
@@ -118,6 +122,15 @@ module PhysicsRuntime:
                 BodyKind.Dynamic:
                     Status::BODY_DYNAMIC
 
+        def shape_code(shape: BodyShape) -> i32:
+            match shape:
+                BodyShape.Box:
+                    Status::SHAPE_BOX
+                BodyShape.Sphere:
+                    Status::SHAPE_SPHERE
+                BodyShape.Capsule:
+                    Status::SHAPE_CAPSULE
+
     public:
         const MAX_CONTACT_EVENTS: usize = 64
         const MAX_RAY_HITS: usize = 16
@@ -127,6 +140,11 @@ module PhysicsRuntime:
             Static
             Kinematic
             Dynamic
+
+        enum BodyShape:
+            Box
+            Sphere
+            Capsule
 
         enum ContactKind:
             Added
@@ -174,8 +192,11 @@ module PhysicsRuntime:
 
         struct BodyDesc:
             kind: BodyKind
+            shape: BodyShape
             position: Geometry::Vec3
-            half_extents: Geometry::Vec3
+            # Box: half-extents. Sphere: x is radius. Capsule: x is radius,
+            # y is the half-height of its straight cylindrical section.
+            dimensions: Geometry::Vec3
             mass: f32
             sensor: bool
 
@@ -351,10 +372,11 @@ module PhysicsRuntime:
             raise PhysicsError.ApplicationUnavailable if not state.live
             slot: mutable u32 = 0
             generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_box(state.generation,
-                kind_code(description.kind), description.position.x, description.position.y,
-                description.position.z, description.half_extents.x, description.half_extents.y,
-                description.half_extents.z, description.mass, 1 if description.sensor else 0,
+            status: i32 = elisa_physics_v1_create_body(state.generation,
+                kind_code(description.kind), shape_code(description.shape),
+                description.position.x, description.position.y, description.position.z,
+                description.dimensions.x, description.dimensions.y,
+                description.dimensions.z, description.mass, 1 if description.sensor else 0,
                 &slot, &generation)
             try check_status(status)
             BodyHandle{world_generation: state.generation, slot: slot, generation: generation}
@@ -518,10 +540,11 @@ module PhysicsRuntime:
             raise PhysicsError.ApplicationUnavailable if not world.live
             slot: mutable u32 = 0
             generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_box(world.generation,
-                kind_code(description.kind), description.position.x, description.position.y,
-                description.position.z, description.half_extents.x, description.half_extents.y,
-                description.half_extents.z, description.mass, 1 if description.sensor else 0,
+            status: i32 = elisa_physics_v1_create_body(world.generation,
+                kind_code(description.kind), shape_code(description.shape),
+                description.position.x, description.position.y, description.position.z,
+                description.dimensions.x, description.dimensions.y,
+                description.dimensions.z, description.mass, 1 if description.sensor else 0,
                 &slot, &generation)
             try check_status(status)
             BodyHandle{world_generation: world.generation, slot: slot, generation: generation}

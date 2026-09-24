@@ -1,0 +1,72 @@
+include "../src/physics/runtime.elisa"
+include "../src/math/geometry.elisa"
+
+module PhysicsPrimitiveProbe:
+    public:
+        def exercise(world: mutable PhysicsRuntime::World&,
+            stage: mutable i32&) -> void error[PhysicsRuntime::PhysicsError]:
+            invalid_sphere: i32 = catch PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Sphere,
+                    position: Geometry::Vec3{x: 8.0, y: 4.0, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                }):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidArgument: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_sphere != 0
+            stage <- 1
+            sphere: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Sphere,
+                    position: Geometry::Vec3{x: 8.0, y: 4.0, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.4, y: 0.0, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                })
+            stage <- 2
+            capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Capsule,
+                    position: Geometry::Vec3{x: 11.0, y: 4.0, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.3, y: 0.4, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                })
+            tick: mutable u64 = 0
+            starting_tick: u64 = PhysicsRuntime::committed_tick(world)
+            stage <- 3
+            for _ in 0..<9:
+                tick <- try PhysicsRuntime::fixed_step(world, 1.0 / 30.0)
+            stage <- 4
+            raise PhysicsRuntime::PhysicsError.BackendFailure if tick != starting_tick + 9
+            stage <- 5
+            sphere_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, sphere)
+            stage <- 6
+            capsule_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, capsule)
+            stage <- 7
+            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_position.y >= 3.8
+            stage <- 8
+            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_position.y >= 3.8
+            stage <- 9
+            try PhysicsRuntime::body_destroy(world, sphere)
+            stage <- 10
+            try PhysicsRuntime::body_destroy(world, capsule)
+
+        def run(world: mutable PhysicsRuntime::World&,
+            stage: mutable i32&) -> i32:
+            catch exercise(world, stage):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 111 + stage
+                PhysicsRuntime::PhysicsError.ApplicationUnavailable: 121 + stage
+                PhysicsRuntime::PhysicsError.WrongThread: 131 + stage
+                PhysicsRuntime::PhysicsError.Capacity: 141 + stage
+                PhysicsRuntime::PhysicsError.InvalidHandle: 151 + stage
+                PhysicsRuntime::PhysicsError.StaleWorld: 161 + stage
+                PhysicsRuntime::PhysicsError.BackendFailure: 171 + stage
+                error failure: 118
