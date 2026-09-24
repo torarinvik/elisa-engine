@@ -183,10 +183,13 @@ def cases(directory: Path) -> list[tuple]:
         ("indices", INDEX_STREAM, tile_index_count, 4,
             tile_geometry["indices"]),
     ]
+    if tile_geometry["tangents"]:
+        tile_streams.append(("tangents", VERTEX_STREAM, tile_vertex_count, 16,
+            tile_geometry["tangents"]))
     tile_encoded = encode_streams(tile_streams)
+    tile_stream_names = tuple(name for name, _kind, _count, _stride, _raw in tile_streams)
     tile_core_fields = {"meshopt_codec", *(f"{name}_b64" for name in
-        ("positions", "normals", "uvs", "indices")), *(f"{name}_meshopt_b64" for name in
-        ("positions", "normals", "uvs", "indices"))}
+        tile_stream_names), *(f"{name}_meshopt_b64" for name in tile_stream_names)}
     compressed_tile_lines = [line for line in tile_path.read_text(encoding="ascii").splitlines()
         if line.partition("=")[0] not in tile_core_fields]
     compressed_tile_lines.append("meshopt_codec=meshoptimizer-v1.2")
@@ -261,7 +264,7 @@ def cases(directory: Path) -> list[tuple]:
     lod_positions = lod_geometry["positions"]
     lod_normals = lod_geometry["normals"]
     lod_uvs = lod_geometry["uvs"]
-    lod_tangents = base64.b64decode(lod_sections["tangents_b64"])
+    lod_tangents = lod_geometry["tangents"]
     lod_index_stream = lod_geometry["indices"]
     lod_placements = list(struct.iter_unpack("<8I12f",
         base64.b64decode(lod_sections["mesh_placements_b64"])))
@@ -392,6 +395,8 @@ def cases(directory: Path) -> list[tuple]:
             "invalid cooked geometry vertex streams"),
         ("reject", "meshopt-corrupt-indices.pkg", meshopt_variant("indices_meshopt_b64", "AA=="),
             "invalid cooked geometry index stream"),
+        ("reject", "meshopt-corrupt-tangent.pkg", meshopt_variant("tangents_meshopt_b64", "AA=="),
+            "invalid cooked geometry tangent stream"),
         ("reject", "meshopt-unknown-stream.pkg", meshopt_variant("morph_0_positions_meshopt_b64", "AA=="),
             "unsupported meshoptimizer cooked geometry stream"),
         ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),

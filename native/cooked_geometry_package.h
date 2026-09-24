@@ -258,7 +258,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             section.first.compare(section.first.size() - (sizeof(suffix) - 1),
                 sizeof(suffix) - 1, suffix) == 0) {
             if (section.first != "positions_meshopt_b64" && section.first != "normals_meshopt_b64" &&
-                section.first != "uvs_meshopt_b64" && section.first != "indices_meshopt_b64") {
+                section.first != "uvs_meshopt_b64" && section.first != "tangents_meshopt_b64" &&
+                section.first != "indices_meshopt_b64") {
                 error = "unsupported meshoptimizer cooked geometry stream";
                 return false;
             }
@@ -299,14 +300,17 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         return false;
     }
     const auto tangent_stride = package.sections.find("tangent_stride");
-    const auto encoded_tangents = package.sections.find("tangents_b64");
-    if ((tangent_stride == package.sections.end()) != (encoded_tangents == package.sections.end())) {
+    const auto raw_tangents = package.sections.find("tangents_b64");
+    const auto encoded_tangents = package.sections.find("tangents_meshopt_b64");
+    const bool has_tangent_data = raw_tangents != package.sections.end() ||
+        encoded_tangents != package.sections.end();
+    if ((tangent_stride == package.sections.end()) != !has_tangent_data) {
         error = "incomplete cooked geometry tangent stream";
         return false;
     }
     if (tangent_stride != package.sections.end()) {
         if (tangent_stride->second != "16" ||
-            !detail::decode_floats(package, "tangents_b64", size_t(vertices) * 4, geometry.tangents)) {
+            !detail::decode_geometry_floats(package, "tangents", size_t(vertices), 16, geometry.tangents)) {
             error = "invalid cooked geometry tangent stream";
             return false;
         }

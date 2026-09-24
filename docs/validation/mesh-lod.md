@@ -39,15 +39,14 @@ geometry is rejected. Tiny ranges retain at least one triangle, so aggregate
 triangle counts can slightly exceed a requested ratio.
 
 The glTF and production FBX package cookers apply meshoptimizer v1.2's lossless
-vertex codec to positions, normals, and UV0, and its index codec to triangle
-indices. Each stream uses the encoded representation only when it is smaller;
-mixed raw and encoded core streams are supported. `meshopt_codec=meshoptimizer-v1.2`
-identifies the payload format. The bounded native reader checks that tag,
-rejects duplicate, unknown, or corrupt codec fields, restores the original
-little-endian streams, and continues to accept earlier raw v2/v3 packages. FBX
-`.pkg` and textured `.elpk` cooks share the same bounded package encoder;
-tangents, lightmap UV1, rig, and morph streams remain in their existing
-representations.
+vertex codec to positions, normals, UV0, and optional float4 tangents, and its
+index codec to triangle indices. Each stream uses the encoded representation
+only when it is smaller; mixed raw and encoded streams are supported.
+`meshopt_codec=meshoptimizer-v1.2` identifies the payload format. The bounded
+native reader checks that tag, rejects duplicate, unknown, or corrupt codec
+fields, restores the original little-endian streams, and continues to accept
+earlier raw v2/v3 packages. FBX `.pkg` and textured `.elpk` cooks share the same
+bounded package encoder. Lightmap UV1, rig, and morph streams remain raw.
 
 Validation on 2026-09-23 and 2026-09-24:
 
@@ -62,5 +61,6 @@ Validation on 2026-09-23 and 2026-09-24:
 - On a deterministic 2,304-triangle, 1,250-vertex grid, meshoptimizer reduced the four core binary streams from 67,648 to 23,590 bytes (65.1%); the full-detail text package was 59,152 bytes. Its three-level chain contained packages of 59,152, 32,603, and 19,086 bytes and cooked in 3,628.9 ms with the native tool build cached. The smaller 12-triangle maze tile's core streams fell from 912 to 253 bytes. These are one-host cook and storage samples, not broad performance claims.
 - `scripts/test_elisa_package.py` passed with compressed and legacy raw ELPK geometry. `scripts/test_geometry_subsets.py` passed 126 production-loader cases under ASan/UBSan, including exact valid compressed round-trips and rejected missing/unknown codec tags, duplicate stream fields, corrupt vertex/index payloads, and unknown compressed fields. `scripts/cook_gltf_asset.py --self-test` passed with deterministic codec output. `scripts/test_lod_manifest.py`, `scripts/test_fbx_import.py`, and `scripts/test_elisa_build_run.py` passed.
 - The SDL3/Metal render-only smoke passed with codec sources linked into the application. The LOD visual crop retained the same silhouette and material region (mean maximum-channel error 0.00276, p95 0.0196). Five warmups plus 21 samples measured `RenderPath3D::Render()` GPU timestamp medians of 3,051 µs at level 0 and 3,084 µs at level 2 (p95 3,147 / 3,153 µs); completed-frame medians were 8,227 / 8,193 µs. This sample shows no LOD GPU-time improvement; repeat and non-Metal measurements remain open.
-- On 2026-09-24, production FBX `.pkg` and textured `.elpk` output also gained the same lossless core-stream encoding. The cooker self-test requires deterministic compressed bytes, a smaller stored core-stream total, the codec tag, and preserved vertex/triangle/index counts. A two-mesh fixture reduced core streams from 260 to 154 bytes (four streams encoded); a textured cutout fixture reduced 216 to 167 bytes (two encoded). These are small fixture storage samples. `scripts/test_geometry_subsets.py` accepted both outputs through the sanitized production loader, including the FBX package without an explicit `indices=` count.
-- FBX compression validation: `DEVELOPER_DIR=/Library/Developer/CommandLineTools CC=/opt/homebrew/opt/llvm/bin/clang CXX=/opt/homebrew/opt/llvm/bin/clang++ /opt/homebrew/bin/python3 scripts/cook_fbx_asset.py --self-test` passed. The generated two-mesh package and textured ELPK passed together through `scripts/test_geometry_subsets.py` (128 cases, no failures). The native loader remains the authority for encoded-stream validation and backward compatibility.
+- On 2026-09-24, production FBX `.pkg` and textured `.elpk` output gained lossless core-stream and tangent encoding. The cooker self-test requires deterministic compressed bytes, a smaller stored stream total, the codec tag, and preserved vertex/triangle/index counts. A two-mesh fixture reduced all five geometry streams from 372 to 182 bytes (all five encoded); a textured cutout fixture reduced 312 to 196 bytes (three encoded). These are small fixture storage samples. The sanitized production loader accepts both outputs, including the FBX package without an explicit `indices=` count.
+- Tangent compression validation: `DEVELOPER_DIR=/Library/Developer/CommandLineTools CXX=/opt/homebrew/opt/llvm/bin/clang++ /opt/homebrew/bin/python3 scripts/cook_gltf_asset.py --self-test` passed and confirms five compressed streams on tangent-bearing maze and textured-panel fixtures. `scripts/test_geometry_subsets.py` passed 127 cases, including a malformed encoded tangent rejection. The FBX self-test passed using matched Homebrew clang/clang++, and the generated two-mesh package plus textured ELPK passed together through the sanitized loader (129 cases, no failures). Raw/encoded fallback and codec-tag validation remain covered.
+- The SDL3/Metal render-only smoke passed twice with compressed tangent packages loaded into Wicked. The first run measured LOD0/LOD2 GPU timestamp medians of 2,145/1,617 µs and completed-frame medians of 8,383/8,247 µs; its immediate repeat measured 3,054/2,979 µs and 8,070/8,020 µs. Both captures retained the same LOD image comparison (mean maximum-channel error 0.00276, p95 0.0196). The GPU medians varied substantially between runs, so these samples do not establish a repeatable LOD timing improvement; broader repeats and other hardware remain open.

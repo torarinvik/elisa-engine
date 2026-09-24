@@ -54,6 +54,9 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         ("uvs", VERTEX_STREAM, geometry["vertex_count"], 8, geometry["uvs"]),
         ("indices", INDEX_STREAM, geometry["index_count"], 4, geometry["indices"]),
     ]
+    if geometry["tangents"]:
+        raw_streams.append(("tangents", VERTEX_STREAM, geometry["vertex_count"], 16,
+            geometry["tangents"]))
     encoded_streams = encode_streams(raw_streams)
     compressed_streams = {}
     for name, _kind, _count, _stride, raw in raw_streams:
@@ -77,7 +80,8 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         f"positions={geometry['vertex_count']}", f"indices={geometry['index_count']}",
         "position_stride=12", "normal_stride=12", "uv_stride=8", "index_stride=4",
         *(["meshopt_codec=meshoptimizer-v1.2"] if compressed_streams else []),
-        *geometry_cooker.subset_lines(geometry), *geometry_cooker.tangent_lines(geometry),
+        *geometry_cooker.subset_lines(geometry),
+        *(["tangent_stride=16"] if geometry["tangents"] else []),
         *geometry_cooker.skin_lines(geometry),
         *cook_gltf_animation.package_lines(geometry["animation_clips"],
             0 if geometry["skin"] is None else len(geometry["skin"]["joints"]),

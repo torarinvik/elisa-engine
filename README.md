@@ -164,8 +164,9 @@ also inspect the supplied WallGame walking, running, and fence FBX sources.
 package, and the tool accepts a source FBX, a project-relative asset key, and
 an output `.pkg` path for real assets. Production `.pkg` and textured `.elpk`
 outputs losslessly compress positions, normals, UV0, and indices with pinned
-meshoptimizer v1.2 when each encoded stream is smaller. `--max-triangles` applies bounded
-meshoptimizer simplification for dense meshes. The amazing-labyrinth checkout
+meshoptimizer v1.2 when each encoded stream is smaller, plus float4 tangents
+when present. `--max-triangles` applies bounded meshoptimizer simplification
+for dense meshes. The amazing-labyrinth checkout
 records a 3.08-million-triangle Arc Gate cooked to 12,000 triangles and a
 620 kB package; that source asset is absent here, so the result was not rerun.
 Elisa's `RenderScene::create_mesh`, `set_emissive`, and `set_bloom` APIs load

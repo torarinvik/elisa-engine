@@ -30,13 +30,18 @@ def compress_core_geometry(package: bytes) -> tuple[bytes, dict[str, int]]:
             name: base64.b64decode(fields[f"{name}_b64"], validate=True)
             for name in ("positions", "normals", "uvs", "indices")
         }
+        stream_strides = {"positions": 12, "normals": 12, "uvs": 8, "indices": 4}
+        if "tangent_stride" in fields:
+            if fields["tangent_stride"] != "16":
+                raise ValueError("cooked geometry package has unsupported tangent stride")
+            stream_data["tangents"] = base64.b64decode(fields["tangents_b64"], validate=True)
+            stream_strides["tangents"] = 16
     except (KeyError, ValueError) as failure:
         raise ValueError("cooked geometry package is missing valid raw core streams") from failure
     streams = [
-        ("positions", VERTEX_STREAM, vertex_count, 12, stream_data["positions"]),
-        ("normals", VERTEX_STREAM, vertex_count, 12, stream_data["normals"]),
-        ("uvs", VERTEX_STREAM, vertex_count, 8, stream_data["uvs"]),
-        ("indices", INDEX_STREAM, index_count, 4, stream_data["indices"]),
+        (name, INDEX_STREAM if name == "indices" else VERTEX_STREAM,
+            index_count if name == "indices" else vertex_count, stream_strides[name], data)
+        for name, data in stream_data.items()
     ]
     encoded = encode_streams(streams)
     compressed = {name: encoded[name] for name, _kind, _count, _stride, raw in streams

@@ -121,6 +121,7 @@ def self_test() -> int:
     positions = b"".join(struct.pack("<3f", index % 16, index // 16, math.sin(index * 0.01))
         for index in range(vertex_count))
     normals = struct.pack("<3f", 0.0, 0.0, 1.0) * vertex_count
+    tangents = struct.pack("<4f", 1.0, 0.0, 0.0, 1.0) * vertex_count
     uvs = b"".join(struct.pack("<2f", (index % 16) / 15, (index // 16) / 15)
         for index in range(vertex_count))
     indices = b"".join(struct.pack("<I", value) for row in range(15) for col in range(15)
@@ -128,6 +129,7 @@ def self_test() -> int:
             row * 16 + col + 1, (row + 1) * 16 + col, (row + 1) * 16 + col + 1))
     streams = [("positions", VERTEX_STREAM, vertex_count, 12, positions),
         ("normals", VERTEX_STREAM, vertex_count, 12, normals),
+        ("tangents", VERTEX_STREAM, vertex_count, 16, tangents),
         ("uvs", VERTEX_STREAM, vertex_count, 8, uvs),
         ("indices", INDEX_STREAM, len(indices) // 4, 4, indices)]
     first = encode_streams(streams)

@@ -493,13 +493,6 @@ def subset_lines(geometry: dict) -> list[str]:
     return lines + cook_gltf_textures.texture_lines(geometry["slot_textures"], geometry["images"])
 
 
-def tangent_lines(geometry: dict) -> list[str]:
-    if not geometry["tangents"]:
-        return []
-    return ["tangent_stride=16",
-        "tangents_b64=" + base64.b64encode(geometry["tangents"]).decode("ascii")]
-
-
 def _name_bytes(names: list[str]) -> bytes:
     packed = bytearray()
     for name in names:

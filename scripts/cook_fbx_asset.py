@@ -463,6 +463,8 @@ def main(arguments: list[str]) -> int:
                         stream_report["compressed_streams"] == 0 or
                         stream_report["stored_bytes"] >= stream_report["raw_bytes"] or
                         compressed_grid_fields.get("meshopt_codec") != "meshoptimizer-v1.2" or
+                        "tangents_meshopt_b64" not in compressed_grid_fields or
+                        "tangents_b64" in compressed_grid_fields or
                         compressed_grid_fields.get("positions") != grid_fields.get("positions") or
                         compressed_grid_fields.get("triangles") != grid_fields.get("triangles") or
                         int(compressed_grid_fields.get("indices", "0")) != grid_triangles * 3):
