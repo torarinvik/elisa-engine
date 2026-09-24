@@ -11,6 +11,7 @@ def texture(id: u32, lifetime: RenderGraph::Lifetime,
         samples: 1,
         lifetime: lifetime,
         initialized: initialized,
+        import_source: RenderGraph::ImportSource.SceneColor if lifetime == RenderGraph::Lifetime.Imported else RenderGraph::ImportSource.None,
     }
 
 def access_and_descriptor_tests() -> i32:
@@ -45,6 +46,16 @@ def access_and_descriptor_tests() -> i32:
     return 67 if not RenderGraph::resource_descriptor_valid(internal_color)
     internal_color.width <- 320
     return 68 if RenderGraph::resource_descriptor_valid(internal_color)
+    linear_depth: mutable RenderGraph::ResourceDescriptor = texture(4,
+        RenderGraph::Lifetime.Imported, true)
+    linear_depth.format <- RenderGraph::Format.R32Float
+    linear_depth.import_source <- RenderGraph::ImportSource.LinearDepth
+    return 72 if not RenderGraph::resource_descriptor_valid(linear_depth)
+    linear_depth.import_source <- RenderGraph::ImportSource.SceneColor
+    return 73 if RenderGraph::resource_descriptor_valid(linear_depth)
+    linear_depth.import_source <- RenderGraph::ImportSource.LinearDepth
+    linear_depth.lifetime <- RenderGraph::Lifetime.Transient
+    return 74 if RenderGraph::resource_descriptor_valid(linear_depth)
     fixed_descriptor.width <- 0
     return 69 if RenderGraph::resource_descriptor_valid(fixed_descriptor)
     0

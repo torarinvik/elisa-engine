@@ -27,9 +27,13 @@ pass's declared graph reads and writes. The selected output is a terminal use:
 if its transient slot would be overwritten by a resource used after the output's
 first access, the runtime gives the output its own slot through composition.
 
-The native executor currently accepts one imported primary scene-color image,
-color targets in RGBA8, RGBA16F, or Wicked's R11G11B10F main format, D32 depth
-targets, and fixed or primary-internal extents. Color sample counts 1, 2, 4,
+The native executor currently accepts one imported primary scene-color image
+and an optional imported linear-depth image from Wicked's shader-readable
+`depthBuffer_Copy`. Imports declare their source explicitly; linear depth uses
+R32_FLOAT and can be copied into graph-owned R32 targets, while shader sampling
+and depth-tested geometry remain unsupported. Other targets use RGBA8, RGBA16F,
+Wicked's R11G11B10F main format, or D32 depth, with fixed or primary-internal
+extents. Color sample counts 1, 2, 4,
 and 8 are accepted only when Wicked creates the exact requested count; depth
 targets and imported scene color remain single-sampled. Operations are
 transparent black `ClearColor`, depth-one `ClearDepth`, exact single-sample
@@ -69,7 +73,10 @@ after Wicked's buffer-count retirement window plus a GPU wait. Replacement
 raises allocation while the old targets await retirement; after the window,
 allocation falls by at least 8 MiB. This measurement is specific to the tested
 macOS Metal path. A user-driven OS minimize or device-loss cycle and broader
-rendered graph references remain open R15 work.
+rendered graph references remain open R15 work. The final graph fixture imports
+both primary scene color and linear depth, copies the R32 depth image into a
+graph target, and then restores scene color as the composed output; the native
+probe confirms the depth input was read successfully.
 
 Run the focused planner test with:
 
