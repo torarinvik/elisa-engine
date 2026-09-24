@@ -1,0 +1,129 @@
+# Backend-neutral orbit controls for editor viewports. Input is expressed in
+# framebuffer pixels and wheel steps; Camera remains the authority for the
+# resulting projection and viewport.
+include "../backend/camera.elisa"
+include "../vendor/elisa_math.elisa"
+
+module EditorCamera:
+    private:
+        const module Limits:
+            MIN_DISTANCE: f32 = 0.05
+            DEFAULT_DISTANCE: f32 = 10.0
+            MAX_DISTANCE: f32 = 100000.0
+            MAX_POINTER_DELTA: f32 = 16384.0
+            MAX_WHEEL_STEPS: f32 = 64.0
+            MIN_PITCH: f32 = -1.553343
+            MAX_PITCH: f32 = 1.553343
+            RADIANS_PER_PIXEL: f32 = 0.005
+            ZOOM_RATE: f32 = 0.12
+            HALF_ANGLE: f32 = 0.5
+            PI: f32 = 3.141592654
+            TAU: f32 = 6.283185307
+
+    public:
+        affine struct Orbit:
+            private:
+                target: mutable Geometry::Vec3
+                yaw: mutable f32
+                pitch: mutable f32
+                distance: mutable f32
+
+        def Orbit() -> Orbit:
+            Orbit{
+                target: Geometry::vec3_zero(),
+                yaw: 0.0,
+                pitch: 0.0,
+                distance: Limits::DEFAULT_DISTANCE,
+            }
+
+        def orbit_valid(orbit: Orbit&) -> bool:
+            Geometry::vec3_is_finite(orbit.target) and orbit.yaw - orbit.yaw == 0.0 and orbit.pitch >= Limits::MIN_PITCH and orbit.pitch <= Limits::MAX_PITCH and orbit.distance >= Limits::MIN_DISTANCE and orbit.distance <= Limits::MAX_DISTANCE
+
+    private:
+        module Controls:
+            public:
+                def bounded_pointer_delta(value: f32) -> bool:
+                    value - value == 0.0 and value >= 0.0 - EditorCamera::Limits::MAX_POINTER_DELTA and value <= EditorCamera::Limits::MAX_POINTER_DELTA
+
+                def wrap_yaw(value: f32) -> f32:
+                    wrapped: mutable f32 = ElisaMath::fmodf(value + EditorCamera::Limits::PI,
+                        EditorCamera::Limits::TAU)
+                    wrapped <- wrapped + EditorCamera::Limits::TAU if wrapped < 0.0
+                    wrapped - EditorCamera::Limits::PI
+
+                def orientation(orbit: EditorCamera::Orbit&) -> Geometry::Quat:
+                    yaw_half: f32 = orbit.yaw * EditorCamera::Limits::HALF_ANGLE
+                    pitch_half: f32 = orbit.pitch * EditorCamera::Limits::HALF_ANGLE
+                    yaw_rotation: Geometry::Quat = Geometry::Quat{
+                        x: 0.0, y: ElisaMath::sinf(yaw_half), z: 0.0,
+                        w: ElisaMath::cosf(yaw_half),
+                    }
+                    pitch_rotation: Geometry::Quat = Geometry::Quat{
+                        x: ElisaMath::sinf(pitch_half), y: 0.0, z: 0.0,
+                        w: ElisaMath::cosf(pitch_half),
+                    }
+                    Geometry::quat_normalize(Geometry::quat_mul(yaw_rotation, pitch_rotation))
+
+                def view_height(orbit: EditorCamera::Orbit&, camera: Camera::State&) -> f32:
+                    return Camera::orthographic_height(camera) if Camera::projection(camera) == Camera::Projection.Orthographic
+                    orbit.distance * 2.0 * ElisaMath::tanf(Camera::perspective_fov(camera) * EditorCamera::Limits::HALF_ANGLE)
+
+                def transform(orbit: EditorCamera::Orbit&) -> Geometry::Transform:
+                    rotation: Geometry::Quat = orientation(orbit)
+                    forward: Geometry::Vec3 = Geometry::quat_rotate(rotation,
+                        Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0})
+                    eye: Geometry::Vec3 = Geometry::vec3_sub(orbit.target,
+                        Geometry::vec3_scale(forward, orbit.distance))
+                    Geometry::Transform{position: eye, rotation: rotation, scale: Geometry::vec3_one()}
+
+    public:
+        # Horizontal pointer motion orbits around world up; vertical motion is
+        # clamped before the camera can flip through either pole.
+        def orbit_drag(orbit: mutable Orbit&, delta_x: f32, delta_y: f32) -> bool:
+            return false if not orbit_valid(orbit) or not Controls::bounded_pointer_delta(delta_x) or not Controls::bounded_pointer_delta(delta_y)
+            orbit.yaw <- Controls::wrap_yaw(orbit.yaw - delta_x * Limits::RADIANS_PER_PIXEL)
+            next_pitch: f32 = orbit.pitch - delta_y * Limits::RADIANS_PER_PIXEL
+            orbit.pitch <- Limits::MIN_PITCH if next_pitch < Limits::MIN_PITCH
+            orbit.pitch <- Limits::MAX_PITCH if next_pitch > Limits::MAX_PITCH
+            orbit.pitch <- next_pitch if next_pitch >= Limits::MIN_PITCH and next_pitch <= Limits::MAX_PITCH
+            true
+
+        # Pan at the current target-plane scale. Positive screen drag moves the
+        # target opposite the camera's right axis and along its up axis.
+        def pan_drag(orbit: mutable Orbit&, camera: Camera::State&, delta_x: f32, delta_y: f32) -> bool:
+            return false if not orbit_valid(orbit) or not Camera::state_valid(camera) or not Controls::bounded_pointer_delta(delta_x) or not Controls::bounded_pointer_delta(delta_y)
+            viewport: Camera::Viewport = Camera::viewport(camera)
+            return false if viewport.height <= 0
+            rotation: Geometry::Quat = Controls::orientation(orbit)
+            right: Geometry::Vec3 = Geometry::quat_rotate(rotation,
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})
+            up: Geometry::Vec3 = Geometry::quat_rotate(rotation,
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+            units_per_pixel: f32 = Controls::view_height(orbit, camera) / viewport.height.f32()
+            horizontal: Geometry::Vec3 = Geometry::vec3_scale(right, 0.0 - delta_x * units_per_pixel)
+            vertical: Geometry::Vec3 = Geometry::vec3_scale(up, delta_y * units_per_pixel)
+            next_target: Geometry::Vec3 = Geometry::vec3_add(orbit.target,
+                Geometry::vec3_add(horizontal, vertical))
+            return false if not Geometry::vec3_is_finite(next_target)
+            orbit.target <- next_target
+            true
+
+        # Wheel input is exponential so each step scales distance consistently
+        # across near and far targets, with a hard range at both ends.
+        def zoom_steps(orbit: mutable Orbit&, steps: f32) -> bool:
+            return false if not orbit_valid(orbit) or steps - steps != 0.0 or steps < 0.0 - Limits::MAX_WHEEL_STEPS or steps > Limits::MAX_WHEEL_STEPS
+            next_distance: f32 = orbit.distance * ElisaMath::expf(0.0 - steps * Limits::ZOOM_RATE)
+            orbit.distance <- Limits::MIN_DISTANCE if next_distance < Limits::MIN_DISTANCE
+            orbit.distance <- Limits::MAX_DISTANCE if next_distance > Limits::MAX_DISTANCE
+            orbit.distance <- next_distance if next_distance >= Limits::MIN_DISTANCE and next_distance <= Limits::MAX_DISTANCE
+            true
+
+        def focus(orbit: mutable Orbit&, target: Geometry::Vec3, distance: f32) -> bool:
+            return false if not orbit_valid(orbit) or not Geometry::vec3_is_finite(target) or distance - distance != 0.0 or distance < Limits::MIN_DISTANCE or distance > Limits::MAX_DISTANCE
+            orbit.target <- target
+            orbit.distance <- distance
+            true
+
+        def apply(orbit: Orbit&, camera: mutable Camera::State&) -> bool:
+            return false if not orbit_valid(orbit)
+            Camera::set_transform(camera, Controls::transform(orbit))
