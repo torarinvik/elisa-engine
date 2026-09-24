@@ -1,0 +1,149 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/physics/runtime.elisa"
+include "../src/physics/interpolation.elisa"
+
+module PhysicsRenderCapture:
+    public:
+        const FIXED_STEP_SECONDS: f32 = 1.0 / 60.0
+        const THIRTY_HZ_FRAMES: i32 = 30
+        const ONE_TWENTY_HZ_FRAMES: i32 = 120
+
+        struct Result:
+            position: Geometry::Vec3
+            tick: u64
+
+        def close(left: f32, right: f32) -> bool:
+            difference: f32 = left - right
+            difference >= -0.01 and difference <= 0.01
+
+        def capture_rate(body_visual: RenderScene::InstanceHandle, render_hz: i32,
+            frame_count: i32, capture_path: cstr) -> Result error[PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            world: mutable PhysicsRuntime::World = try PhysicsRuntime::World()
+            floor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
+                    half_extents: Geometry::Vec3{x: 5.0, y: 0.5, z: 5.0},
+                    mass: 0.0,
+                    sensor: false,
+                })
+            body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+                    half_extents: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
+                    mass: 1.0,
+                    sensor: false,
+                })
+            initial: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
+            }
+            poses: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(initial)
+
+            for frame in 0..<frame_count:
+                # At equal one-second durations, 30 Hz renders two committed
+                # 60 Hz steps per frame. At 120 Hz, every other frame commits
+                # one step, so both paths must reach the same Jolt state.
+                step_count: i32 = 2 if render_hz == 30 else (1 if frame % 2 == 1 else 0)
+                for _ in 0..<step_count:
+                    tick: u64 = try PhysicsRuntime::fixed_step(&world,
+                        PhysicsRenderCapture::FIXED_STEP_SECONDS)
+                    raise PhysicsRuntime::PhysicsError.BackendFailure if tick != PhysicsRuntime::committed_tick(world)
+                    position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
+                    committed: Geometry::Transform = Geometry::Transform{
+                        position: position,
+                        rotation: Geometry::quat_identity(),
+                        scale: initial.scale,
+                    }
+                    pose_committed: bool = PhysicsInterpolation::commit(
+                        &poses, committed, tick.i64(), false)
+                    raise PhysicsRuntime::PhysicsError.BackendFailure if not pose_committed
+
+                alpha: f32 = 0.0 if render_hz == 30 else (0.0 if frame % 2 == 1 else 0.5)
+                rendered_pose: Geometry::Transform = PhysicsInterpolation::sample(&poses, alpha)
+                try RenderScene::update_transform(body_visual, rendered_pose)
+                tick_before_present: u64 = PhysicsRuntime::committed_tick(world)
+                pose_before_present: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
+                raise PhysicsRuntime::PhysicsError.BackendFailure if Application::pump() != Application::PumpStatus.Running
+                pose_after_present: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
+                raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != tick_before_present
+                raise PhysicsRuntime::PhysicsError.BackendFailure if pose_before_present.x != pose_after_present.x or pose_before_present.y != pose_after_present.y or pose_before_present.z != pose_after_present.z
+
+            raise RenderScene::RenderSceneError.InvalidValue if capture_path == ""
+            raise RenderScene::RenderSceneError.BackendFailure if not Application::save_screenshot(capture_path)
+            completed_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
+            completed_tick: u64 = PhysicsRuntime::committed_tick(world)
+            completed: Result = Result{position: completed_position, tick: completed_tick}
+            try PhysicsRuntime::body_destroy(world, body)
+            try PhysicsRuntime::body_destroy(world, floor)
+            try PhysicsRuntime::shutdown(&world)
+            completed
+
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Physics Render Cadence",
+                width: 320,
+                height: 240,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            init_scene: i32 = catch RenderScene::initialize(320, 240, 8.0):
+                ok: 0
+                error failure: 1
+            return 2 if init_scene != 0
+            camera: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 7.0, z: 9.0},
+                Geometry::Vec3{x: 0.0, y: 0.5, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            return 3 if camera != 0
+
+            floor_transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: -0.5, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 5.0, y: 1.0, z: 5.0},
+            }
+            _floor_visual: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Plane, floor_transform,
+                RenderScene::Color{red: 0.12, green: 0.16, blue: 0.23, alpha: 1.0}):
+                value: value
+                error failure: return 4
+            body_visual: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box,
+                Geometry::Transform{
+                    position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
+                },
+                RenderScene::Color{red: 0.12, green: 0.78, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 5
+
+            thirty_path: cstr = Application::environment_value("ELISA_PHYSICS_30HZ_CAPTURE_PATH")
+            one_twenty_path: cstr = Application::environment_value("ELISA_PHYSICS_120HZ_CAPTURE_PATH")
+            thirty: Result = catch capture_rate(body_visual, 30,
+                PhysicsRenderCapture::THIRTY_HZ_FRAMES, thirty_path):
+                value: value
+                error failure: return 6
+            one_twenty: Result = catch capture_rate(body_visual, 120,
+                PhysicsRenderCapture::ONE_TWENTY_HZ_FRAMES, one_twenty_path):
+                value: value
+                error failure: return 7
+
+            return 8 if thirty.tick != 60
+            return 13 if one_twenty.tick != 60
+            return 9 if not PhysicsRenderCapture::close(thirty.position.x, one_twenty.position.x)
+            return 10 if not PhysicsRenderCapture::close(thirty.position.y, one_twenty.position.y)
+            return 11 if not PhysicsRenderCapture::close(thirty.position.z, one_twenty.position.z)
+            return 12 if thirty.position.y < 0.3 or thirty.position.y > 0.6
+            0
+
+def main() -> i32:
+    result: i32 = PhysicsRenderCapture::run()
+    _ = Application::shutdown()
+    result

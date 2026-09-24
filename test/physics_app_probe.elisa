@@ -7,3 +7,12 @@ module PhysicsAppProbe:
             try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
             try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
             PhysicsRuntime::committed_tick(world)
+
+        def render_frames_do_not_step_physics(world: PhysicsRuntime::World&,
+            body: PhysicsRuntime::BodyHandle, fixed_pose: Geometry::Vec3) -> void error[PhysicsRuntime::PhysicsError]:
+            tick_before: u64 = PhysicsRuntime::committed_tick(world)
+            for _ in 0..<8:
+                raise PhysicsRuntime::PhysicsError.BackendFailure if Application::pump() != Application::PumpStatus.Running
+                sampled_pose: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
+                raise PhysicsRuntime::PhysicsError.BackendFailure if sampled_pose.x != fixed_pose.x or sampled_pose.y != fixed_pose.y or sampled_pose.z != fixed_pose.z
+                raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != tick_before
