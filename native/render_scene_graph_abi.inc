@@ -107,4 +107,20 @@ extern "C" uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(vo
 extern "C" uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(void) {
     return service().render_graph.color_resolve_count_for_test();
 }
+
+extern "C" uint64_t elisa_render_scene_v1_render_graph_test_device_memory_usage(void) {
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    return device == nullptr ? 0 : device->GetMemoryUsage().usage;
+}
+
+extern "C" uint32_t elisa_render_scene_v1_render_graph_test_retirement_frame_count(void) {
+    return wi::graphics::GraphicsDevice::GetBufferCount() + 1;
+}
+
+extern "C" int32_t elisa_render_scene_v1_render_graph_test_wait_for_gpu(void) {
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr) return 0;
+    device->WaitForGPU();
+    return 1;
+}
 #endif

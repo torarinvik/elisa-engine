@@ -63,8 +63,13 @@ that the selected resolve output remains live through composition. The native te
 injects SDL3 minimized/restored events through the
 application queue: minimize returns the host's suspended status without
 advancing the frame or graph, keeps the last rendered output, and restore runs
-the graph again. A user-driven OS minimize or device-loss cycle, deferred GPU
-retirement checks, and broader rendered graph references remain open R15 work.
+the graph again. For deferred retirement, the smoke configures two 1024×1024
+RGBA16F targets, replaces them, and samples Metal device allocation before and
+after Wicked's buffer-count retirement window plus a GPU wait. Replacement
+raises allocation while the old targets await retirement; after the window,
+allocation falls by at least 8 MiB. This measurement is specific to the tested
+macOS Metal path. A user-driven OS minimize or device-loss cycle and broader
+rendered graph references remain open R15 work.
 
 Run the focused planner test with:
 
