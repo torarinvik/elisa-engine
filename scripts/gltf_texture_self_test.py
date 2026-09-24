@@ -266,6 +266,7 @@ ACCEPTED = {
         d["materials"][1]["occlusionTexture"].pop("strength")], SLOT_TEXTURES, SECTIONS),
     "a non-default positive normal scale": (info(1, "normalTexture", scale=2.0), SLOT_TEXTURES, SECTIONS),
     "a negative normal scale": (info(1, "normalTexture", scale=-0.75), SLOT_TEXTURES, SECTIONS),
+    "a non-default occlusion strength": (info(1, "occlusionTexture", strength=0.5), SLOT_TEXTURES, SECTIONS),
     "an explicit TEXCOORD_0": (info(0, "baseColorTexture", texCoord=0), SLOT_TEXTURES, SECTIONS),
     "an occlusion map from another image": (info(1, "occlusionTexture", index=1),
         SEPARATE_OCCLUSION_TEXTURES, SECTIONS),
@@ -292,8 +293,15 @@ REJECTED = {
         "must fit Wicked's finite half-float range"),
     "a huge integer normal scale": (info(1, "normalTexture", scale=10 ** 10000),
         "must fit Wicked's finite half-float range"),
-    "an occlusion strength of 0.5": (info(1, "occlusionTexture", strength=0.5),
-        "must be 1 until runtime AO strength is supported"),
+    "a negative occlusion strength": (info(1, "occlusionTexture", strength=-0.01),
+        "strength must be in [0, 1]"),
+    "an excessive occlusion strength": (info(1, "occlusionTexture", strength=1.01),
+        "strength must be in [0, 1]"),
+    "a string occlusion strength": (info(1, "occlusionTexture", strength="0.5"), "strength must be finite"),
+    "a boolean occlusion strength": (info(1, "occlusionTexture", strength=True), "strength must be finite"),
+    "a NaN occlusion strength": (info(1, "occlusionTexture", strength=float("nan")), "strength must be finite"),
+    "an infinite occlusion strength": (info(1, "occlusionTexture", strength=float("inf")),
+        "strength must be finite"),
     "a texture index out of range": (info(1, "baseColorTexture", index=5), "names a missing texture"),
     "a string texture index": (info(1, "baseColorTexture", index="0"), "names a missing texture"),
     "a negative texture index": (info(1, "baseColorTexture", index=-1), "names a missing texture"),
@@ -421,7 +429,8 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     buffer = base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1])
     geometry = cook_gltf_geometry.normalized_geometry(document, buffer)
     if (geometry["slot_materials"] != SLOT_MATERIALS or geometry["slot_textures"] != SLOT_TEXTURES or
-            geometry["slot_normal_scales"] or geometry["images"] != SECTIONS or geometry["vertex_count"] != 16 or
+            geometry["slot_normal_scales"] or geometry["slot_occlusion_strengths"] or
+            geometry["images"] != SECTIONS or geometry["vertex_count"] != 16 or
             geometry["subsets"] != SUBSETS or len(geometry["tangents"]) != 16 * 16):
         return fail("the textured panel cooked the wrong slot records, images or subsets")
     tangent_values = list(struct.iter_unpack("<4f", geometry["tangents"]))
@@ -444,6 +453,11 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     negative_scale_geometry = cook_gltf_geometry.normalized_geometry(scaled_document, buffer)
     if negative_scale_geometry["slot_normal_scales"] != struct.pack("<4f", 1.0, -0.75, 1.0, 1.0):
         return fail("the glTF cooker did not preserve a negative normal scale")
+    occlusion_document = deepcopy(document)
+    info(1, "occlusionTexture", strength=0.5)(occlusion_document)
+    occlusion_geometry = cook_gltf_geometry.normalized_geometry(occlusion_document, buffer)
+    if occlusion_geometry["slot_occlusion_strengths"] != struct.pack("<4f", 1.0, 0.5, 1.0, 1.0):
+        return fail("the glTF cooker did not preserve occlusion strength per material slot")
 
     # The package lists the images, a bundle carries them, and only a bundle
     # may: a loose package would name sections nothing holds.

@@ -22,7 +22,11 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     uv1_values = None
     slot_names = None
     normal_scales = None
+    occlusion_strengths = None
     mesh_placements = None
+    if len(records) >= 2 and records[-2] == "occlusion_strengths":
+        occlusion_strengths = records[-1]
+        records = records[:-2]
     if len(records) >= 2 and records[-2] == "normal_scales":
         normal_scales = records[-1]
         records = records[:-2]
@@ -64,6 +68,8 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
         fields += ["slot_names"] + [name.encode("utf-8").hex() for name in slot_names]
     if normal_scales is not None:
         fields += ["normal_scales"] + [float32_text(value) for value in normal_scales]
+    if occlusion_strengths is not None:
+        fields += ["occlusion_strengths"] + [float32_text(value) for value in occlusion_strengths]
     if animation_count is not None:
         fields += ["animations", str(animation_count)]
     if morph_count is not None:

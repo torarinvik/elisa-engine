@@ -18,7 +18,7 @@ to exactly those images.
      - `texCoord` must be the integer 0.
      - Normal `scale` is preserved within Wicked's finite half-float range
        (−65504 to 65504); non-finite and out-of-range values fail. Occlusion
-       `strength` must remain 1 until the runtime exposes that factor.
+       `strength` is preserved in [0, 1]; invalid and non-finite values fail.
      - Anything else fails as an unsupported property, including
        `KHR_texture_transform`.
    - **Textures.** A texture may name `source`, `sampler`, `name`, and the
@@ -49,6 +49,10 @@ to exactly those images.
      `slot_normal_scale_stride=4` and `slot_normal_scales_b64`: one
      little-endian `f32` per material slot. Older packages omit this sidecar
      and retain the default scale of 1.
+   - when any material uses non-default AO strength,
+     `slot_occlusion_strength_stride=4` and
+     `slot_occlusion_strengths_b64`: one little-endian `f32` per slot. Older
+     packages default to strength 1.
    - `texture_count`: 1–64 images
    - `texture_names_b64`: the image section names, `image_<glTF index>` in
      glTF image order
@@ -64,6 +68,8 @@ to exactly those images.
    parser and the new `detail::parse_slot_textures`.
    - The optional normal-scale sidecar must contain one finite in-range value
      for every material record. Its absence keeps the glTF default of 1.
+   - The optional AO-strength sidecar has one finite [0, 1] value per record;
+     its absence keeps the glTF default of 1.
    - The four keys must all be present or all absent, and they need slot
      material records.
    - The stride must be 20 and the records must fill exactly one per slot.
@@ -155,19 +161,20 @@ checks:
   section
 - an untextured variant cooks no texture keys
 
-Eleven variants must cook the expected references:
+Twelve variants must cook the expected references:
 - the base-color image also sampled for emission
 - a data URI that names its `mimeType`
 - a sampler with only a name
 - default `scale` and `strength`
 - positive and negative non-default normal scales
+- a non-default occlusion strength
 - an explicit `texCoord` 0
 
-Fifty-seven variants must fail for the stated reason. They cover:
+Sixty-two variants must fail for the stated reason. They cover:
 - **UV sets:** a second UV set, or a boolean `texCoord`
 - **Texture info:** a texture transform, a scaled base-color texture,
-  string, boolean, non-finite or out-of-range normal scales, and an
-  occlusion strength of 0.5
+  string, boolean, non-finite or out-of-range normal scales, and string,
+  boolean, non-finite or out-of-range occlusion strengths
 - **Occlusion:** occlusion from another image, or without a surface image
 - **Indices:** texture indices out of range, negative or strings; a
   non-object texture info; texture sources missing, out of range or negative
@@ -187,7 +194,7 @@ Fifty-seven variants must fail for the stated reason. They cover:
 The earlier subset self-test's texture rejections now fail as missing
 textures, because its panel declares none.
 
-**Loader.** `scripts/test_geometry_subsets.py` now runs 141 sanitized cases. An
+**Loader.** `scripts/test_geometry_subsets.py` now runs 150 sanitized cases. An
 accepted case can list each slot's image references and flags and each
 section's name and checksum.
 - **Accepted.**
@@ -338,10 +345,9 @@ catches that mutation.
   the same section doesn't satisfy a slot until it is resident, and a slot
   never waits for it: an unresolved image is `AssetLoadFailure`.
 - **Embedded images only.** External image files, unsupported texture
-  extensions such as `KHR_texture_transform`, second UV sets, normal scales
-  outside Wicked's finite half-float range and non-unit occlusion strengths
-  fail. Bundles retain PNG, JPEG or bounded 2D Basis KTX2 data; mip data
-  stays in the KTX2 source.
+  extensions such as `KHR_texture_transform`, second UV sets and normal scales
+  outside Wicked's finite half-float range fail. Bundles retain PNG, JPEG or
+  bounded 2D Basis KTX2 data; mip data stays in the KTX2 source.
 - **Separate occlusion channel policy.** A separate glTF occlusion image is
   retained as a dedicated Wicked `OCCLUSIONMAP`; it is not packed into the
   metallic-roughness surface image. An occlusion texture named alone leaves
@@ -397,10 +403,9 @@ working tree.
 
 ## Validation on 2026-09-24
 
-The normal-scale sidecar, backend descriptor and Wicked material application
-passed the glTF cooker self-test, the 141-case sanitized geometry-loader test,
-and the Elisa material test. The SDL3/Metal render-scene smoke confirmed that
-the authored scale reaches Wicked and retained visible mirrored-seam shading.
-The test fixture uses `scale=0.75`; the captured luminance contrast was 0.2043
-against a 0.04 image threshold. Non-unit occlusion strength remains unsupported
-until Wicked has a matching runtime field and shader factor.
+The normal-scale and AO-strength sidecars, backend descriptor and Wicked
+material application passed the glTF cooker self-test, the 150-case sanitized
+geometry-loader test, and the Elisa material test. The SDL3/Metal render-scene
+smoke confirmed both values reach Wicked's shader material and retained visible
+mirrored-seam shading. The fixture uses normal scale 0.75 and AO strength 0.65;
+the captured luminance contrast was 0.2043 against a 0.04 image threshold.

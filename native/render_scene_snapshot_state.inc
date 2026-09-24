@@ -72,6 +72,7 @@ struct SnapshotMaterialAssetSlot {
     float roughness = 1.0f;
     float alpha_cutoff = DEFAULT_SNAPSHOT_ALPHA_CUTOFF;
     float normal_scale = 1.0f;
+    float occlusion_strength = 1.0f;
     int32_t alpha_mode = ELISA_RENDER_SCENE_ALPHA_OPAQUE;
     std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_high{};
     std::array<uint64_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> texture_low{};

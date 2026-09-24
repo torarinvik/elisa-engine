@@ -14,6 +14,7 @@ bool snapshot_material_values_valid(const SnapshotMaterialAssetSlot& values) {
         unit(values.metallic) && unit(values.roughness) &&
         finite(values.normal_scale) &&
         std::abs(values.normal_scale) <= elisa::assets::WICKED_NORMAL_SCALE_LIMIT &&
+        unit(values.occlusion_strength) &&
         std::all_of(std::begin(values.emissive), std::end(values.emissive), emission) &&
         unit(values.alpha_cutoff) && values.alpha_mode >= ELISA_RENDER_SCENE_ALPHA_OPAQUE &&
         values.alpha_mode <= ELISA_RENDER_SCENE_ALPHA_BLEND && (!values.occlusion || surfaced || separately_occluded);
@@ -24,6 +25,7 @@ bool snapshot_material_values_match(const SnapshotMaterialAssetSlot& asset,
     return std::equal(std::begin(asset.base_color), std::end(asset.base_color), std::begin(values.base_color)) &&
         asset.metallic == values.metallic && asset.roughness == values.roughness &&
         asset.normal_scale == values.normal_scale &&
+        asset.occlusion_strength == values.occlusion_strength &&
         std::equal(std::begin(asset.emissive), std::end(asset.emissive), std::begin(values.emissive)) &&
         asset.alpha_cutoff == values.alpha_cutoff && asset.alpha_mode == values.alpha_mode &&
         asset.double_sided == values.double_sided && asset.occlusion == values.occlusion &&
@@ -76,6 +78,7 @@ int32_t register_snapshot_material_locked(RenderSceneService& state, uint64_t hi
         material->SetRoughness(values.roughness);
         material->SetMetalness(values.metallic);
         material->SetNormalMapStrength(values.normal_scale);
+        material->SetOcclusionStrength(values.occlusion_strength);
         material->SetEmissiveColor(XMFLOAT4(values.emissive[0], values.emissive[1],
             values.emissive[2], DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH));
         material->SetAlphaRef(values.alpha_mode == ELISA_RENDER_SCENE_ALPHA_MASK
@@ -137,6 +140,7 @@ int32_t cooked_slot_material_values(const RenderSceneService& state, const Snaps
     std::copy(cooked.emissive.begin(), cooked.emissive.end(), std::begin(values.emissive));
     values.alpha_cutoff = cooked.alpha_cutoff;
     values.normal_scale = cooked.normal_scale;
+    values.occlusion_strength = cooked.occlusion_strength;
     values.alpha_mode = int32_t(cooked.alpha_mode);
     values.double_sided = cooked.double_sided;
     values.occlusion = cooked.occlusion;

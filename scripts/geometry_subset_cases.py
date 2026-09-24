@@ -24,6 +24,7 @@ import gltf_skin_self_test
 import gltf_texture_self_test
 import geometry_subset_deformation_cases
 import geometry_subset_normal_scale_cases
+import geometry_subset_occlusion_strength_cases
 from geometry_subset_package_builder import strip_package
 import test_geometry_uv1
 
@@ -473,6 +474,7 @@ def cases(directory: Path) -> list[tuple]:
         ("reject", "material-occlusion.pkg", strip_package(2, two, 2,
             materials=[GLASS, with_field(PAINT, 11, 2)]), NEEDS_TEXTURE),
         *geometry_subset_normal_scale_cases.cases(strip_package, PAINT),
+        *geometry_subset_occlusion_strength_cases.cases(strip_package, PAINT),
         ("accept", "textured.elpk", None, (24, 4, gltf_texture_self_test.SUBSETS, TEXTURED_MATERIALS,
             textured_sections)),
         ("accept", "listed.elpk", None, (6, 2, two, listed_materials, listed_sections)),

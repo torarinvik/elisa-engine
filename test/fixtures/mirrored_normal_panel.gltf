@@ -48,6 +48,10 @@
       "normalTexture": {
         "index": 0,
         "scale": 0.75
+      },
+      "occlusionTexture": {
+        "index": 0,
+        "strength": 0.65
       }
     }
   ],

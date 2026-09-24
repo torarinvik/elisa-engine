@@ -17,6 +17,7 @@ import cook_gltf_skin
 import cook_gltf_mikktspace
 import gltf_tangent_frames
 import cook_gltf_textures
+import cook_gltf_material_factors
 
 # The native loader enforces the same bounds.
 MAX_SUBSETS = 16
@@ -31,7 +32,6 @@ MATERIAL_KEYS = {"name", "pbrMetallicRoughness", "emissiveFactor", "alphaMode", 
     "normalTexture", "occlusionTexture", "emissiveTexture"}
 PBR_KEYS = {"baseColorFactor", "metallicFactor", "roughnessFactor", "baseColorTexture", "metallicRoughnessTexture"}
 SLOT_MATERIAL_STRIDE = 48
-SLOT_NORMAL_SCALE_STRIDE = 4
 DOUBLE_SIDED = 1
 OCCLUSION = 2
 
@@ -48,12 +48,8 @@ def unit_factors(value, count: int, label: str) -> list[float]:
     return [unit_factor(component, label) for component in value]
 
 
-def slot_material(document: dict, material) -> tuple[bytes, list, float]:
-    """Pack one glTF material's factors, with glTF defaults for absent ones,
-    into a 48-byte slot record: base color, metallic, roughness, emissive,
-    alpha cutoff, alpha mode, and flags (bit 0: double-sided, bit 1: occlusion
-    enabled). Also return the image each runtime
-    texture slot samples, or None."""
+def slot_material(document: dict, material) -> tuple[bytes, list, float, float]:
+    """Pack glTF factors into the 48-byte record and return images and map factors."""
     if not isinstance(material, dict):
         raise ValueError("every glTF material must be an object")
     pbr = material.get("pbrMetallicRoughness", {})
@@ -61,7 +57,8 @@ def slot_material(document: dict, material) -> tuple[bytes, list, float]:
         raise ValueError("material pbrMetallicRoughness must be an object")
     if set(material) - MATERIAL_KEYS or set(pbr) - PBR_KEYS:
         raise ValueError("runtime geometry cooker encountered unsupported material properties")
-    images, occlusion, normal_scale = cook_gltf_textures.material_images(document, material, pbr)
+    images, occlusion, normal_scale, occlusion_strength = cook_gltf_textures.material_images(
+        document, material, pbr)
     mode = material.get("alphaMode", "OPAQUE")
     if mode not in ALPHA_MODES:
         raise ValueError("material alphaMode must be OPAQUE, MASK, or BLEND")
@@ -77,10 +74,10 @@ def slot_material(document: dict, material) -> tuple[bytes, list, float]:
         *unit_factors(material.get("emissiveFactor", [0.0, 0.0, 0.0]), 3, "emissiveFactor"),
         unit_factor(material.get("alphaCutoff", 0.5), "alphaCutoff"),
         ALPHA_MODES[mode], (DOUBLE_SIDED if double_sided else 0) | (OCCLUSION if occlusion else 0))
-    return record, images, normal_scale
+    return record, images, normal_scale, occlusion_strength
 
 
-def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], list, bytes]:
+def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], list, bytes, bytes]:
     """Return the mesh's material slot count, each declared material's slot
     record, and the images each slot samples: one slot per declared glTF
     material, or one unrecorded slot when the document declares none.
@@ -97,7 +94,7 @@ def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], 
     if not materials:
         if any(binding is not None for binding in bindings):
             raise ValueError("primitive binds a material the document does not declare")
-        return 1, [], [], b""
+        return 1, [], [], b"", b""
     for binding in bindings:
         if type(binding) is not int or not 0 <= binding < len(materials):
             raise ValueError("every primitive must bind one of the document's materials")
@@ -105,10 +102,9 @@ def material_slots(document: dict, primitives: list) -> tuple[int, list[bytes], 
         textured = any(image is not None for image in slots[primitive["material"]][1])
         if textured and "TEXCOORD_0" not in primitive.get("attributes", {}):
             raise ValueError("a primitive with a textured material needs TEXCOORD_0")
-    scales = [scale for _, _, scale in slots]
-    normal_scales = (struct.pack(f"<{len(scales)}f", *scales)
-        if any(scale != 1.0 for scale in scales) else b"")
-    return len(materials), [record for record, _, _ in slots], [images for _, images, _ in slots], normal_scales
+    normal_scales, occlusion_strengths = cook_gltf_material_factors.factor_sidecars(slots)
+    return (len(materials), [record for record, _, _, _ in slots],
+        [images for _, images, _, _ in slots], normal_scales, occlusion_strengths)
 
 
 def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
@@ -154,7 +150,8 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
     morph_count = len(every_primitive[0].get("targets", [])) if every_primitive else 0
     if any(len(primitive.get("targets", [])) != morph_count for primitive in every_primitive):
         raise ValueError("all runtime primitives must use the same morph target count")
-    slot_count, slot_records, slot_images, slot_normal_scales = material_slots(document, every_primitive)
+    (slot_count, slot_records, slot_images, slot_normal_scales,
+        slot_occlusion_strengths) = material_slots(document, every_primitive)
     placement_records = cook_gltf_nodes.mesh_placement_records(document, len(meshes),
         allow_singular_mesh_transforms=bool(document.get("skins")))
     skin = cook_gltf_skin.normalize(document, buffer)
@@ -175,7 +172,8 @@ def validate_static_geometry_source(document: dict, buffer: bytes) -> tuple:
         placement_records, morph_count)
     default_weights = cook_gltf_animation.morph_defaults(document, placement_records, morph_count)
     scene = cook_gltf_scene.normalize(document, buffer, placement_records)
-    return (placement_records, slot_count, slot_records, slot_images, slot_normal_scales, skin, morph_count,
+    return (placement_records, slot_count, slot_records, slot_images, slot_normal_scales,
+        slot_occlusion_strengths, skin, morph_count,
         animation_clips, default_weights, scene)
 
 
@@ -269,7 +267,8 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
     # Node transforms bake into placement streams; material subsets and
     # textures stay grouped. Identical accessors share data within a placement.
     # Skin streams retain remapped influences and parent-ordered rig transforms.
-    (placements, slot_count, slot_records, slot_images, slot_normal_scales, skin, morph_count,
+    (placements, slot_count, slot_records, slot_images, slot_normal_scales,
+        slot_occlusion_strengths, skin, morph_count,
         animation_clips, morph_default_weights, scene) = validate_static_geometry_source(document, buffer)
     sources: dict[tuple, dict] = {}
     blocks: dict[tuple, dict] = {}
@@ -436,6 +435,7 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
         "indices": bytes(indices), "vertex_count": len(positions) // 12,
         "index_count": len(indices) // 4, "subsets": subsets, "material_slots": slot_count,
         "slot_materials": b"".join(slot_records), "slot_normal_scales": slot_normal_scales,
+        "slot_occlusion_strengths": slot_occlusion_strengths,
         "slot_textures": slot_textures, "images": images,
         "skin": skin, "animation_clips": animation_clips,
         "morph_default_weights": morph_default_weights,
@@ -496,8 +496,12 @@ def subset_lines(geometry: dict) -> list[str]:
         lines += [f"slot_material_stride={SLOT_MATERIAL_STRIDE}",
             "slot_materials_b64=" + base64.b64encode(slot_materials).decode("ascii")]
     if geometry["slot_normal_scales"]:
-        lines += [f"slot_normal_scale_stride={SLOT_NORMAL_SCALE_STRIDE}",
+        lines += [f"slot_normal_scale_stride={cook_gltf_material_factors.SLOT_NORMAL_SCALE_STRIDE}",
             "slot_normal_scales_b64=" + base64.b64encode(geometry["slot_normal_scales"]).decode("ascii")]
+    if geometry["slot_occlusion_strengths"]:
+        lines += [f"slot_occlusion_strength_stride={cook_gltf_material_factors.SLOT_OCCLUSION_STRENGTH_STRIDE}",
+            "slot_occlusion_strengths_b64=" + base64.b64encode(
+                geometry["slot_occlusion_strengths"]).decode("ascii")]
     return lines + cook_gltf_textures.texture_lines(geometry["slot_textures"], geometry["images"])
 
 

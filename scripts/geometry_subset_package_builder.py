@@ -13,7 +13,8 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
         skinned: bool = False, materials=None, material_stride: str = "48", textures=None,
         texture_count: int | None = None, texture_stride: str = "20", material_names=None,
         material_name_payload: bytes | None = None, normal_scales=None,
-        normal_scale_stride: str = "4") -> bytes:
+        normal_scale_stride: str = "4", occlusion_strengths=None,
+        occlusion_strength_stride: str = "4") -> bytes:
     """A row of separate triangles with optional subset and material records."""
     vertices = triangles * 3
     positions = []
@@ -46,6 +47,14 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
             "slot_normal_scale_stride": f"slot_normal_scale_stride={normal_scale_stride}",
             "slot_normal_scales_b64": "slot_normal_scales_b64=" + _encoded(
                 f"<{len(normal_scales)}f", normal_scales),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
+    if occlusion_strengths is not None:
+        records = {
+            "slot_occlusion_strength_stride":
+                f"slot_occlusion_strength_stride={occlusion_strength_stride}",
+            "slot_occlusion_strengths_b64": "slot_occlusion_strengths_b64=" + _encoded(
+                f"<{len(occlusion_strengths)}f", occlusion_strengths),
         }
         lines += [line for key, line in records.items() if key not in omit]
     if material_names is not None or material_name_payload is not None:

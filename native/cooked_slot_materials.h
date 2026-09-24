@@ -23,6 +23,8 @@ inline constexpr uint32_t SLOT_MATERIAL_DOUBLE_SIDED = 1;
 inline constexpr uint32_t SLOT_MATERIAL_OCCLUSION = 2;
 inline constexpr uint32_t SLOT_ALPHA_MASK = 1;
 inline constexpr float WICKED_NORMAL_SCALE_LIMIT = 65504.0f;
+inline constexpr float MIN_COOKED_OCCLUSION_STRENGTH = 0.0f;
+inline constexpr float MAX_COOKED_OCCLUSION_STRENGTH = 1.0f;
 
 // glTF factors authored for one material slot. Alpha mode uses the render
 // scene codes: 0 opaque, 1 mask, 2 blend.
@@ -33,6 +35,7 @@ struct CookedSlotMaterial {
     std::array<float, 3> emissive{};
     float alpha_cutoff = 0.5f;
     float normal_scale = 1.0f;
+    float occlusion_strength = 1.0f;
     uint32_t alpha_mode = 0;
     bool double_sided = false;
     // The surface image's red channel is ambient occlusion.
@@ -131,6 +134,31 @@ inline bool parse_slot_normal_scales(const probe::PackageIndex& package,
             return false;
         }
         materials[slot].normal_scale = scale;
+    }
+    return true;
+}
+
+inline bool parse_slot_occlusion_strengths(const probe::PackageIndex& package,
+    std::vector<CookedSlotMaterial>& materials, std::string& error) {
+    const size_t present = package.sections.count("slot_occlusion_strength_stride") +
+        package.sections.count("slot_occlusion_strengths_b64");
+    if (present == 0) return true;
+    std::vector<uint32_t> words;
+    if (present != 2 || materials.empty() ||
+        package.sections.at("slot_occlusion_strength_stride") != "4" ||
+        !decode_u32(package, "slot_occlusion_strengths_b64", materials.size(), words)) {
+        error = "invalid cooked slot occlusion strengths";
+        return false;
+    }
+    for (size_t slot = 0; slot < materials.size(); ++slot) {
+        float strength = 0.0f;
+        std::memcpy(&strength, &words[slot], sizeof(strength));
+        if (!std::isfinite(strength) || strength < MIN_COOKED_OCCLUSION_STRENGTH ||
+            strength > MAX_COOKED_OCCLUSION_STRENGTH) {
+            error = "cooked slot occlusion strength is out of range";
+            return false;
+        }
+        materials[slot].occlusion_strength = strength;
     }
     return true;
 }

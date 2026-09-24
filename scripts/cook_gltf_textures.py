@@ -88,8 +88,8 @@ def texture_image(document: dict, info, label: str, factor: str | None = None) -
     return source
 
 
-def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool, float]:
-    """Return slot images, the AO flag and normal-map strength."""
+def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool, float, float]:
+    """Return slot images and the factors for the AO and normal maps."""
     images = []
     for key in SLOT_TEXTURES[:4]:
         info = (pbr if key in PBR_TEXTURES else material).get(key)
@@ -98,15 +98,14 @@ def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bo
     if "occlusionTexture" not in material:
         images.append(None)
         occlusion_enabled = False
+        occlusion_strength = 1.0
     else:
         images.append(texture_image(document, material["occlusionTexture"], "occlusionTexture", "strength"))
         occlusion_enabled = True
         occlusion_strength = material["occlusionTexture"].get("strength", 1.0)
-        if occlusion_strength != 1.0:
-            raise ValueError("material occlusionTexture strength must be 1 until runtime AO strength is supported")
     normal = material.get("normalTexture")
     normal_scale = 1.0 if normal is None else normal.get("scale", 1.0)
-    return images, occlusion_enabled, float(normal_scale)
+    return images, occlusion_enabled, float(normal_scale), float(occlusion_strength)
 
 
 def view_bytes(document: dict, buffer: bytes, reference) -> bytes:

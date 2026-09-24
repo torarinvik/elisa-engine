@@ -263,6 +263,25 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_normal_scale_matches(
         std::abs(material->normalMapStrength - expected_scale) <= 1.0e-5f ? 1 : 0;
 }
 
+// 1 when cooked AO strength reaches both the Wicked component and its GPU
+// material record.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_occlusion_strength_matches(
+    uint64_t high, uint64_t low, float expected_strength) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !std::isfinite(expected_strength)) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (material == nullptr || std::abs(asset.occlusion_strength - expected_strength) > 1.0e-5f ||
+        std::abs(material->occlusionStrength - expected_strength) > 1.0e-5f) return 0;
+    ShaderMaterial packed = shader_material_null;
+    material->WriteShaderMaterial(&packed);
+    return std::abs(packed.padding.x - expected_strength) <= 1.0e-5f ? 1 : 0;
+}
+
 // The color channel (0 red, 1 green, 2 blue) that dominates a 5x5 patch of
 // the last 3D frame around (x, y) in thousandths of the frame size: its mean
 // exceeds twice each other channel's. -1 when none dominates, -2 when the
