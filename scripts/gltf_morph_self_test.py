@@ -56,7 +56,7 @@ def generated_document() -> dict:
     return document
 
 
-def animated_document() -> dict:
+def animated_document(second_animation: bool = False) -> dict:
     """Animate one unskinned placement while a sibling keeps mesh defaults."""
     document = generated_document()
     buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
@@ -75,6 +75,11 @@ def animated_document() -> dict:
     document["animations"] = [{"name": "weights", "samplers": [{"input": input_accessor,
         "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
         "target": {"node": 0, "path": "weights"}}]}]
+    if second_animation:
+        return_output = _append(document, buffer, struct.pack("<2f", 1.0, 0.0), 2, "SCALAR")
+        document["animations"].append({"name": "weights-return", "samplers": [{
+            "input": input_accessor, "output": return_output, "interpolation": "LINEAR"}],
+            "channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}]})
     document["buffers"][0]["byteLength"] = len(buffer)
     document["buffers"][0]["uri"] = "data:application/octet-stream;base64," + base64.b64encode(buffer).decode("ascii")
     return document
@@ -102,10 +107,12 @@ def write_package(output: Path) -> tuple[Path, dict]:
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 
-def write_animated_package(output: Path) -> tuple[Path, dict]:
+def write_animated_package(output: Path,
+        second_animation: bool = False) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-morph-animation-") as temporary:
         source = Path(temporary) / "morph_animation_panel.gltf"
-        source.write_text(json.dumps(animated_document(), separators=(",", ":")), encoding="utf-8")
+        source.write_text(json.dumps(animated_document(second_animation), separators=(",", ":")),
+            encoding="utf-8")
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
 
 

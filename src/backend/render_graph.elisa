@@ -30,20 +30,34 @@ module RenderGraph:
             for index in 0..<graph.pass_count |slot: usize = Limits::MAX_PASSES| -> slot:
                 break index if graph.passes[index].id == pass_id
 
+        def plans_equal(left: Plan&, right: Plan&) -> bool:
+            return false if left.pass_count != right.pass_count
+            return false if left.resource_count != right.resource_count
+            return false if left.transient_slot_count != right.transient_slot_count
+            for index in 0..<left.pass_count:
+                return false if left.pass_ids[index] != right.pass_ids[index]
+            for index in 0..<left.resource_count:
+                return false if left.resource_ids[index] != right.resource_ids[index]
+                return false if left.first_use[index] != right.first_use[index]
+                return false if left.last_use[index] != right.last_use[index]
+                return false if left.alias_slots[index] != right.alias_slots[index]
+            true
+
         def descriptor_valid(descriptor: ResourceDescriptor) -> bool:
-            dimensions_valid: bool = descriptor.width >= Limits::MIN_DIMENSION and descriptor.height >= Limits::MIN_DIMENSION and descriptor.width <= Limits::MAX_DIMENSION and descriptor.height <= Limits::MAX_DIMENSION
+            fixed_dimensions_valid: bool = descriptor.width >= Limits::MIN_DIMENSION and descriptor.height >= Limits::MIN_DIMENSION and descriptor.width <= Limits::MAX_DIMENSION and descriptor.height <= Limits::MAX_DIMENSION
+            dimensions_valid: bool = (descriptor.size_mode == SizeMode.Fixed and fixed_dimensions_valid) or (descriptor.size_mode == SizeMode.PrimaryInternal and descriptor.width == 0 and descriptor.height == 0)
             samples_valid: bool = descriptor.samples == Limits::SINGLE_SAMPLE or descriptor.samples == Limits::DOUBLE_SAMPLE or descriptor.samples == Limits::QUAD_SAMPLE or descriptor.samples == Limits::OCTA_SAMPLE
             lifetime_valid: bool =
                 match descriptor.lifetime:
                     Lifetime.Imported: descriptor.initialized
                     Lifetime.Persistent: true
                     Lifetime.Transient: not descriptor.initialized
-            format_valid: bool = descriptor.format == Format.Rgba8 or descriptor.format == Format.Rgba16Float or descriptor.format == Format.Depth32
+            format_valid: bool = descriptor.format == Format.Rgba8 or descriptor.format == Format.Rgba16Float or descriptor.format == Format.Depth32 or descriptor.format == Format.R11G11B10Float
             dimensions_valid and samples_valid and lifetime_valid and format_valid
 
         def descriptors_compatible(left: ResourceDescriptor,
                 right: ResourceDescriptor) -> bool:
-            left.width == right.width and left.height == right.height and left.format == right.format and left.samples == right.samples
+            left.size_mode == right.size_mode and left.width == right.width and left.height == right.height and left.format == right.format and left.samples == right.samples
 
         def happens_before(graph: Graph&, before: usize, after: usize) -> bool:
             reached: mutable bool[Limits::MAX_PASSES] = zeroed
@@ -69,6 +83,17 @@ module RenderGraph:
             Rgba8
             Rgba16Float
             Depth32
+            R11G11B10Float
+
+        enum SizeMode:
+            Fixed
+            PrimaryInternal
+
+        enum ResourceAccess:
+            None
+            Read
+            Write
+            ReadWrite
 
         enum GraphError:
             Capacity
@@ -90,6 +115,7 @@ module RenderGraph:
 
         struct ResourceDescriptor:
             id: u32
+            size_mode: SizeMode
             width: u32
             height: u32
             format: Format
@@ -125,8 +151,51 @@ module RenderGraph:
         def resource_count(graph: Graph&) -> usize:
             graph.resource_count
 
+        def resource_descriptor_valid(descriptor: ResourceDescriptor) -> bool:
+            descriptor_valid(descriptor)
+
+        def resource_descriptor_at(graph: Graph&, index: usize,
+                descriptor: mutable ResourceDescriptor&) -> bool:
+            return false if index >= graph.resource_count
+            descriptor <- graph.resources[index].descriptor
+            true
+
+        def plan_matches_graph(graph: Graph&, plan: Plan&) -> bool:
+            expected: Plan = catch compile(graph):
+                value: value
+                error failure: return false
+            plans_equal(expected, plan)
+
+        # Validation helper for native adapters that need to bind an operation
+        # to the graph's declared read/write set without an error-union path.
+        def access_if_known(graph: Graph&, pass_id: u32,
+                resource_id: u32) -> ResourceAccess:
+            pass_slot: usize = pass_index(graph, pass_id)
+            resource: usize = resource_index(graph, resource_id)
+            return ResourceAccess.None if pass_slot >= Limits::MAX_PASSES
+            return ResourceAccess.None if resource >= Limits::MAX_RESOURCES
+            reads: bool = graph.passes[pass_slot].reads[resource]
+            writes: bool = graph.passes[pass_slot].writes[resource]
+            return ResourceAccess.ReadWrite if reads and writes
+            return ResourceAccess.Read if reads
+            return ResourceAccess.Write if writes
+            ResourceAccess.None
+
         def pass_count(graph: Graph&) -> usize:
             graph.pass_count
+
+        def access(graph: Graph&, pass_id: u32,
+                resource_id: u32) -> ResourceAccess error[GraphError]:
+            pass_slot: usize = pass_index(graph, pass_id)
+            resource: usize = resource_index(graph, resource_id)
+            raise GraphError.UnknownPass if pass_slot >= Limits::MAX_PASSES
+            raise GraphError.UnknownResource if resource >= Limits::MAX_RESOURCES
+            reads: bool = graph.passes[pass_slot].reads[resource]
+            writes: bool = graph.passes[pass_slot].writes[resource]
+            return ResourceAccess.ReadWrite if reads and writes
+            return ResourceAccess.Read if reads
+            return ResourceAccess.Write if writes
+            ResourceAccess.None
 
         def add_resource(graph: mutable Graph&,
                 descriptor: ResourceDescriptor) -> void error[GraphError]:

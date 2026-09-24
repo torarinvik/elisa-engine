@@ -1,31 +1,52 @@
-# Elisa render-graph planning contract
+# Elisa render graph
 
-`RenderGraph` is the Elisa-owned, bounded contract for describing render work. It
-keeps graph construction and validation independent of Wicked so the same
-resource and pass rules can be tested without a GPU or window.
+`RenderGraph` is the Elisa-owned, bounded contract for describing render work.
+Graph construction, hazard checks, and lifetime planning stay independent of
+Wicked, while `RenderGraphRuntime` submits a compiled plan to the primary Wicked
+render path through a checked scalar ABI.
 
-The current planner supports up to 32 passes and 64 resources. A resource has a
-stable caller-provided ID, fixed dimensions, a format, a sample count, and an
-`Imported`, `Persistent`, or `Transient` lifetime. Passes declare resource reads
-and writes, and explicit dependencies establish execution order. `compile`
-returns a deterministic topological order, resource use intervals, and
-transient alias slots.
+The planner supports up to 32 passes and 64 resources. Resources can use fixed
+dimensions or the primary internal resolution and have an explicit format,
+sample count, and `Imported`, `Persistent`, or `Transient` lifetime. Passes
+declare reads and writes, and dependencies establish execution order. `compile`
+returns a deterministic topological order, resource-use intervals, and
+compatible transient alias slots. Internal-resolution descriptors use zero for
+their stored width and height; the runtime resolves them after Wicked updates
+the render path's buffers.
 
 Compilation rejects invalid descriptors, duplicate or unknown IDs, cycles,
 same-pass read/write hazards, conflicting accesses without an ordering path,
 reads before initialization, writes to imported resources, unused resources,
 and transient resources without a writer. Multiple writes are accepted only
 when dependencies serialize them. Transient resources share a slot only when
-their lifetimes do not overlap and their dimensions, format, and sample count
-match.
+their lifetimes do not overlap and their size mode, dimensions, format, and
+sample count match. Before submission, the runtime recomputes and compares the
+compiled plan so mutated pass order, resource intervals, or alias slots cannot
+reach the native allocator. Each clear/copy operation must also match that
+pass's declared graph reads and writes.
 
-The planner is not yet the native render graph executor. The current descriptor
-set has no size-relative extents, load/store operations, per-pass callbacks,
-Wicked resource handles, or native allocation and retirement. SDL3/Metal
-execution, resize and suspension handling, failure cleanup, and rendered
-reference captures remain R15 work.
+The native executor currently accepts one imported primary scene-color image,
+single-sample color targets in RGBA8, RGBA16F, or Wicked's R11G11B10F main
+format, and fixed or primary-internal extents. Its operations are transparent
+black `ClearColor` and exact `CopyColor`. It allocates targets on the render
+thread, maps transient resources sharing a planner slot to the same Wicked
+texture, and selects the configured output as the path's postprocess result.
+Persistent initialized targets are zeroed at allocation. Unsupported depth
+targets, multisampling, multiple imports, arbitrary shader callbacks, and
+load/store variants are rejected by the native boundary.
 
-Run the focused test with:
+The SDL3/Metal native smoke builds a two-pass graph: clear transient resource 2,
+then copy imported scene color to resource 3. The planner proves that the two
+transient lifetimes can share one target; the test checks rejection of a forged
+plan and a copy operation that disagrees with its declared reads, then verifies
+native execution across a resize and restoration. Test-only failure injection
+also forces target allocation and second-pass failures; both preserve the base
+postprocess output, leave the execution count unchanged, and recover on the next
+frame. Existing rendered image comparisons still pass. Target allocation is
+repeated when internal resolution changes. Suspension behavior, deferred GPU
+retirement checks, and broader rendered graph references remain open R15 work.
+
+Run the focused planner test with:
 
 ```sh
 ELISA_ALLOW_STALE_STAGE1=1 ../Elisa-compiler/scripts/elisac_stage1.sh \
@@ -33,4 +54,6 @@ ELISA_ALLOW_STALE_STAGE1=1 ../Elisa-compiler/scripts/elisac_stage1.sh \
 build/render-graph-test
 ```
 
-The same test is included in `elisascript scripts/check.elisascript`.
+The planner test is included in `elisascript scripts/check.elisascript`. The
+native integration is included in `scripts/render_scene_native_smoke.py` and
+requires the pinned Wicked SDL3/Metal build on macOS.

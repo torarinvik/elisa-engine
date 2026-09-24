@@ -17,6 +17,9 @@ module RenderSceneAnimationBlendNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_joint_y(
             handle: i64, joint_index: u32, expected_y: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_morph_transition_weights(
+            handle: i64, first_weight: f32, second_weight: f32) -> i32
 
         def near(value: f32, expected: f32) -> bool:
             value > expected - 0.002 and value < expected + 0.002
@@ -100,6 +103,44 @@ module RenderSceneAnimationBlendNativeTests:
             return 29 if elisa_render_scene_v1_test_animation_joint_y(raw_rig, 3, 1.3) == 0
             0
 
+        def morph_interruption_checks() -> i32:
+            morph: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/morph-transition-panel.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 30
+            raw_morph: i64 = RenderScene::native_smoke_handle(morph)
+            return 31 if not play(morph, "weights", 0.0, plain())
+            return 32 if elisa_render_scene_v1_test_morph_transition_weights(
+                raw_morph, 0.0, 0.2) != 1
+            return 33 if not advance(morph, 0.25)
+            # Both clips keep advancing during a fade: the source reaches .35,
+            # the destination reaches .9, and the new clip contributes one
+            # quarter of the visible mixture.
+            return 34 if not play(morph, "weights-return", FADE, plain())
+            return 35 if not advance(morph, 0.1)
+            return 36 if not near(elisa_render_scene_v1_test_animation_blend_weight(raw_morph), 0.25)
+            return 37 if elisa_render_scene_v1_test_morph_transition_weights(
+                raw_morph, 0.4875, 0.2) != 1
+            # Interrupt back to the first clip. The visible morph mixture must
+            # remain continuous and the original .3 seconds must be preserved.
+            return 38 if not play(morph, "weights", 0.08, plain())
+            return 39 if elisa_render_scene_v1_test_morph_transition_weights(
+                raw_morph, 0.4875, 0.2) != 1
+            return 40 if not advance(morph, 0.15)
+            return 41 if not near(elisa_render_scene_v1_test_animation_blend_weight(raw_morph), 0.5)
+            return 42 if elisa_render_scene_v1_test_morph_transition_weights(
+                raw_morph, 0.31875, 0.2) != 1
+            return 43 if not advance(morph, 0.15)
+            return 44 if elisa_render_scene_v1_test_animation_blend_weight(raw_morph) >= 0.0
+            return 45 if elisa_render_scene_v1_test_morph_transition_weights(
+                raw_morph, 0.3, 0.2) != 1
+            destroyed: bool = catch RenderScene::destroy(morph):
+                ok: true
+                error failure: false
+            return 46 if not destroyed
+            0
+
     public:
         def exercise(box: RenderScene::InstanceHandle) -> i32:
             rig: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
@@ -111,6 +152,8 @@ module RenderSceneAnimationBlendNativeTests:
             return phase_status if phase_status != 0
             fade_status: i32 = fade_checks(rig)
             return fade_status if fade_status != 0
+            morph_status: i32 = morph_interruption_checks()
+            return morph_status if morph_status != 0
             # Reverse speeds are accepted within the same bounded range.
             return 20 if retime(rig, -1.0) != 0
             return 21 if retime(rig, -17.0) != 1

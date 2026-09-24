@@ -353,6 +353,21 @@ int32_t elisa_render_scene_v1_set_environment(
     float fog_start, float fog_density, int32_t fog_enabled);
 int32_t elisa_render_scene_v1_set_sky_map(const char* asset_path, float rotation_radians);
 int32_t elisa_render_scene_v1_clear_sky_map(void);
+// Stage and commit an Elisa-planned postprocess graph. The native adapter
+// validates scalar descriptors again before the render path accepts it.
+int32_t elisa_render_scene_v1_render_graph_begin(
+    uint32_t resource_count, uint32_t pass_count, uint32_t output_id);
+int32_t elisa_render_scene_v1_render_graph_set_resource(
+    uint32_t index, uint32_t id, int32_t size_mode, uint32_t width, uint32_t height,
+    int32_t format, uint32_t samples, int32_t lifetime, int32_t initialized,
+    uint32_t target_slot);
+int32_t elisa_render_scene_v1_render_graph_set_pass(
+    uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
+    uint32_t destination_id);
+int32_t elisa_render_scene_v1_render_graph_commit(void);
+int32_t elisa_render_scene_v1_render_graph_abort(void);
+int32_t elisa_render_scene_v1_render_graph_status(void);
+uint64_t elisa_render_scene_v1_render_graph_execution_count(void);
 int64_t elisa_render_scene_v1_create_light(
     int32_t kind,
     float red, float green, float blue,

@@ -59,6 +59,11 @@ public:
         }
     }
 
+    void RenderPostprocessChain(wi::graphics::CommandList command_list) const override {
+        wi::RenderPath3D::RenderPostprocessChain(command_list);
+        if (state_ != nullptr) state_->render_graph.execute(*this, command_list);
+    }
+
     void Render() const override {
         if (state_ != nullptr) update_snapshot_lod_selection(*state_);
         if (state_ != nullptr && state_->scene != nullptr) {

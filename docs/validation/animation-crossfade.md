@@ -12,9 +12,13 @@ pose, animation cadence changes, same-clip continuation, and fade completion.
 It then interrupts the linear transition with a shorter fade: the first pose
 stays at Y=1.9375, the interrupted pose is still at Y=1.54375 after 0.15
 seconds, and the original remaining 0.3 seconds are retained until the new
-destination is reached. The native test exercises the joint pose; morph poses
-use the same captured-visible-mixture path but do not yet have a dedicated
-interruption assertion.
+destination is reached. A separate morph-only fixture cross-fades from a
+weight of 0.25 toward 1.0. Both clips keep advancing during the fade, so the
+displayed weight reaches 0.4875 before interruption back toward zero. It stays
+at 0.4875 at the switch, reaches 0.31875 halfway through the retained
+0.3-second recovery, and reaches 0.3 when the recovery ends. The non-animated
+sibling remains at its 0.2 default throughout. Both joint and morph mixtures
+therefore have interruption-continuity coverage.
 
 Run the complete SDL3/Metal gate on macOS with:
 

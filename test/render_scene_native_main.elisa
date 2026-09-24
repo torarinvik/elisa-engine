@@ -35,6 +35,7 @@ include "./render_scene_mesh_instance_native.elisa"
 include "./render_scene_animation_submission_native.elisa"
 include "./render_scene_animation_blend_native.elisa"
 include "./render_scene_animation_root_motion_native.elisa"
+include "./render_graph_native.elisa"
 include "./render_scene_effects_native.elisa"
 using Maze
 using MazeGame
@@ -328,13 +329,14 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 103 if perspective_render != 0
-    return 18 if Application::pump() != Application::PumpStatus.Running
     rendered_geometry: mutable i32 = 0
     for attempt in 0..<8 |rendered_geometry|:
         break if rendered_geometry != 0
         return 19 if Application::pump() != Application::PumpStatus.Running
         rendered_geometry <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
     return 20 if rendered_geometry == 0 or RenderSceneQualitySettingsNativeTests::verify_history_transitions() != 0
+    render_graph_status: i32 = RenderGraphNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(280, render_graph_status) if render_graph_status != 0
     restore_render_projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
         ok: 0
         error failure: 1
@@ -556,7 +558,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 23 if stale_update != 1
-    # Explicit release clears the scene and invalidates every instance.
     shutdown_result: i32 = catch RenderScene::shutdown():
         ok: 0
         error failure: 1

@@ -23,6 +23,7 @@
 #include "picking_bridge.h"
 #include "selection_outline_bridge.h"
 #include "render_scene_textures.h"
+#include "render_graph_executor.h"
 #include "lod_geometry_chain.h"
 #include "lod_selection.h"
 #include "bundle_texture.h"
@@ -94,6 +95,7 @@ struct ElectricArcSlot {
 };
 struct RenderSceneService {
     std::mutex mutex;
+    elisa::render_graph::Executor render_graph;
     std::unique_ptr<wi::scene::Scene> scene;
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
@@ -309,6 +311,7 @@ void reset_unlocked(RenderSceneService& state) {
         if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
     }
     if (state.selection != nullptr) state.selection->clear();
+    state.render_graph.reset();
     for (InstanceSlot& instance : state.instances) clear_instance_pick_bindings(state, instance);
     state.selection.reset();
     state.picking.reset();
@@ -422,6 +425,7 @@ int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
 }
 #include "render_scene_snapshot_internal.inc"
 } // namespace
+#include "render_scene_graph_abi.inc"
 extern "C" uint32_t elisa_render_scene_abi_version(void) {
     return ELISA_RENDER_SCENE_ABI_VERSION;
 }
