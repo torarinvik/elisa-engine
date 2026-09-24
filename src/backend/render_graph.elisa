@@ -52,8 +52,12 @@ module RenderGraph:
                     Lifetime.Imported: descriptor.initialized
                     Lifetime.Persistent: true
                     Lifetime.Transient: not descriptor.initialized
-            format_valid: bool = descriptor.format == Format.Rgba8 or descriptor.format == Format.Rgba16Float or descriptor.format == Format.Depth32 or descriptor.format == Format.R11G11B10Float
-            dimensions_valid and samples_valid and lifetime_valid and format_valid
+            format_valid: bool = descriptor.format == Format.Rgba8 or descriptor.format == Format.Rgba16Float or descriptor.format == Format.Depth32 or descriptor.format == Format.R11G11B10Float or descriptor.format == Format.R32Float
+            import_source_is_known: bool = descriptor.import_source == ImportSource.SceneColor or descriptor.import_source == ImportSource.LinearDepth
+            import_source_valid: bool = (descriptor.lifetime == Lifetime.Imported and import_source_is_known) or (descriptor.lifetime != Lifetime.Imported and descriptor.import_source == ImportSource.None)
+            scene_color_format_valid: bool = descriptor.format == Format.Rgba8 or descriptor.format == Format.Rgba16Float or descriptor.format == Format.R11G11B10Float
+            imported_format_valid: bool = descriptor.import_source == ImportSource.None or (descriptor.import_source == ImportSource.SceneColor and scene_color_format_valid) or (descriptor.import_source == ImportSource.LinearDepth and descriptor.format == Format.R32Float and descriptor.samples == Limits::SINGLE_SAMPLE)
+            dimensions_valid and samples_valid and lifetime_valid and format_valid and import_source_valid and imported_format_valid
 
         def descriptors_compatible(left: ResourceDescriptor,
                 right: ResourceDescriptor) -> bool:
@@ -79,11 +83,17 @@ module RenderGraph:
             Persistent
             Transient
 
+        enum ImportSource:
+            None
+            SceneColor
+            LinearDepth
+
         enum Format:
             Rgba8
             Rgba16Float
             Depth32
             R11G11B10Float
+            R32Float
 
         enum SizeMode:
             Fixed
@@ -122,6 +132,7 @@ module RenderGraph:
             samples: u32
             lifetime: Lifetime
             initialized: bool
+            import_source: ImportSource
 
         affine struct Graph:
             private:

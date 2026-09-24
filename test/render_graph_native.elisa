@@ -25,6 +25,8 @@ module RenderGraphNativeTests:
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_color_resolve_count() -> u64
     @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_linear_depth_read_count() -> u64
+    @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_device_memory_usage() -> u64
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_retirement_frame_count() -> u32
@@ -42,6 +44,20 @@ module RenderGraphNativeTests:
             samples: 1,
             lifetime: lifetime,
             initialized: initialized,
+            import_source: RenderGraph::ImportSource.SceneColor if lifetime == RenderGraph::Lifetime.Imported else RenderGraph::ImportSource.None,
+        }
+
+    def linear_depth_import(id: u32) -> RenderGraph::ResourceDescriptor:
+        RenderGraph::ResourceDescriptor{
+            id: id,
+            size_mode: RenderGraph::SizeMode.PrimaryInternal,
+            width: 0,
+            height: 0,
+            format: RenderGraph::Format.R32Float,
+            samples: 1,
+            lifetime: RenderGraph::Lifetime.Imported,
+            initialized: true,
+            import_source: RenderGraph::ImportSource.LinearDepth,
         }
 
     def configure_clear_copy_graph(output_id: u32) -> i32:
@@ -119,6 +135,7 @@ module RenderGraphNativeTests:
                 samples: 1,
                 lifetime: RenderGraph::Lifetime.Transient,
                 initialized: false,
+                import_source: RenderGraph::ImportSource.None,
             }):
             ok: 0
             error failure: return 62
@@ -131,6 +148,7 @@ module RenderGraphNativeTests:
                 samples: 4,
                 lifetime: RenderGraph::Lifetime.Transient,
                 initialized: false,
+                import_source: RenderGraph::ImportSource.None,
             }):
             ok: 0
             error failure: return 63
@@ -221,6 +239,75 @@ module RenderGraphNativeTests:
         return 80 if result != RenderGraphRuntime::CONFIGURE_OK
         0
 
+    def configure_linear_depth_graph() -> i32:
+        graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+        _ = catch RenderGraph::add_resource(&graph, primary_color(1,
+                RenderGraph::Lifetime.Imported, true)):
+            ok: 0
+            error failure: return 120
+        _ = catch RenderGraph::add_resource(&graph, linear_depth_import(2)):
+            ok: 0
+            error failure: return 121
+        _ = catch RenderGraph::add_resource(&graph, RenderGraph::ResourceDescriptor{
+                id: 3,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: RenderGraph::Format.R32Float,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Transient,
+                initialized: false,
+                import_source: RenderGraph::ImportSource.None,
+            }):
+            ok: 0
+            error failure: return 122
+        _ = catch RenderGraph::add_resource(&graph, primary_color(4,
+                RenderGraph::Lifetime.Transient, false)):
+            ok: 0
+            error failure: return 123
+        _ = catch RenderGraph::add_pass(&graph, 10):
+            ok: 0
+            error failure: return 124
+        _ = catch RenderGraph::add_pass(&graph, 20):
+            ok: 0
+            error failure: return 125
+        _ = catch RenderGraph::read(&graph, 10, 2):
+            ok: 0
+            error failure: return 126
+        _ = catch RenderGraph::write(&graph, 10, 3):
+            ok: 0
+            error failure: return 127
+        _ = catch RenderGraph::read(&graph, 20, 1):
+            ok: 0
+            error failure: return 128
+        _ = catch RenderGraph::write(&graph, 20, 4):
+            ok: 0
+            error failure: return 129
+        _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+            ok: 0
+            error failure: return 130
+        plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+            value: value
+            error failure: return 131
+        configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+        configuration.output_resource_id <- 4
+        configuration.operation_count <- 2
+        configuration.operations[0] <- RenderGraphRuntime::PassOperation{
+            pass_id: 10,
+            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 2,
+            destination_resource_id: 3,
+        }
+        configuration.operations[1] <- RenderGraphRuntime::PassOperation{
+            pass_id: 20,
+            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 1,
+            destination_resource_id: 4,
+        }
+        result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
+        return 132 if result != RenderGraphRuntime::CONFIGURE_OK
+        0
+
     def configure_retirement_graph() -> i32:
         graph: mutable RenderGraph::Graph = RenderGraph::Graph()
         _ = catch RenderGraph::add_resource(&graph, primary_color(1,
@@ -236,6 +323,7 @@ module RenderGraphNativeTests:
                 samples: 1,
                 lifetime: RenderGraph::Lifetime.Transient,
                 initialized: false,
+                import_source: RenderGraph::ImportSource.None,
             }):
             ok: 0
             error failure: return 92
@@ -248,6 +336,7 @@ module RenderGraphNativeTests:
                 samples: 1,
                 lifetime: RenderGraph::Lifetime.Transient,
                 initialized: false,
+                import_source: RenderGraph::ImportSource.None,
             }):
             ok: 0
             error failure: return 93
@@ -417,4 +506,12 @@ module RenderGraphNativeTests:
             return 209 if memory_pending <= memory_retired or memory_pending - memory_retired < RETIREMENT_MIN_BYTES
             return 210 if configure_clear_copy_graph(3) != SUCCESS
             return 211 if Application::pump() != Application::PumpStatus.Running
+            depth_import_setup: i32 = configure_linear_depth_graph()
+            return 212 + depth_import_setup if depth_import_setup != 0
+            depth_reads_before: u64 = elisa_render_scene_v1_render_graph_test_linear_depth_read_count()
+            return 213 if Application::pump() != Application::PumpStatus.Running
+            return 214 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+            return 215 if elisa_render_scene_v1_render_graph_test_linear_depth_read_count() != depth_reads_before + 1
+            return 216 if configure_clear_copy_graph(3) != SUCCESS
+            return 217 if Application::pump() != Application::PumpStatus.Running
             0

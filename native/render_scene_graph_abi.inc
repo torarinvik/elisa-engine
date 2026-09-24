@@ -10,7 +10,7 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_begin(
 extern "C" int32_t elisa_render_scene_v1_render_graph_set_resource(
     uint32_t index, uint32_t id, int32_t size_mode, uint32_t width, uint32_t height,
     int32_t format, uint32_t samples, int32_t lifetime, int32_t initialized,
-    uint32_t target_slot) {
+    uint32_t target_slot, int32_t import_source) {
     if (initialized != 0 && initialized != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -26,6 +26,7 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_set_resource(
         static_cast<elisa::render_graph::Lifetime>(lifetime),
         initialized != 0,
         target_slot,
+        static_cast<elisa::render_graph::ImportSource>(import_source),
     };
     return state.render_graph.set_resource(index, resource);
 }
@@ -106,6 +107,10 @@ extern "C" uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(vo
 
 extern "C" uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(void) {
     return service().render_graph.color_resolve_count_for_test();
+}
+
+extern "C" uint64_t elisa_render_scene_v1_render_graph_test_linear_depth_read_count(void) {
+    return service().render_graph.linear_depth_read_count_for_test();
 }
 
 extern "C" uint64_t elisa_render_scene_v1_render_graph_test_device_memory_usage(void) {

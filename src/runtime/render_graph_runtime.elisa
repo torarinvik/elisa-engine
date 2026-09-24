@@ -14,7 +14,7 @@ module RenderGraphRuntime:
         extern elisa_render_scene_v1_render_graph_set_resource(
             index: u32, id: u32, size_mode: i32, width: u32, height: u32,
             format: i32, samples: u32, lifetime: i32, initialized: i32,
-            target_slot: u32) -> i32
+            target_slot: u32, import_source: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_render_graph_set_pass(
             index: u32, id: u32, operation: i32, source_id: u32,
@@ -33,7 +33,12 @@ module RenderGraphRuntime:
             return 0 if format == RenderGraph::Format.Rgba8
             return 1 if format == RenderGraph::Format.Rgba16Float
             return 2 if format == RenderGraph::Format.Depth32
-            3
+            return 3 if format == RenderGraph::Format.R11G11B10Float
+            4
+        def native_import_source(source: RenderGraph::ImportSource) -> i32:
+            return 1 if source == RenderGraph::ImportSource.SceneColor
+            return 2 if source == RenderGraph::ImportSource.LinearDepth
+            0
         def native_lifetime(lifetime: RenderGraph::Lifetime) -> i32:
             return 0 if lifetime == RenderGraph::Lifetime.Imported
             return 1 if lifetime == RenderGraph::Lifetime.Persistent
@@ -161,7 +166,8 @@ module RenderGraphRuntime:
                     index.u32(), descriptor.id, native_size_mode(descriptor.size_mode),
                     descriptor.width, descriptor.height, native_format(descriptor.format),
                     descriptor.samples, native_lifetime(descriptor.lifetime),
-                    native_bool(descriptor.initialized), target_slot)
+                    native_bool(descriptor.initialized), target_slot,
+                    native_import_source(descriptor.import_source))
                 status <- check_staging_status(status)
                 return status if status != Native::OK
             for index in 0..<plan.pass_count:

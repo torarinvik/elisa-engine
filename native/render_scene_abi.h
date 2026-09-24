@@ -360,7 +360,7 @@ int32_t elisa_render_scene_v1_render_graph_begin(
 int32_t elisa_render_scene_v1_render_graph_set_resource(
     uint32_t index, uint32_t id, int32_t size_mode, uint32_t width, uint32_t height,
     int32_t format, uint32_t samples, int32_t lifetime, int32_t initialized,
-    uint32_t target_slot);
+    uint32_t target_slot, int32_t import_source);
 int32_t elisa_render_scene_v1_render_graph_set_pass(
     uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
     uint32_t destination_id);
@@ -371,6 +371,7 @@ uint64_t elisa_render_scene_v1_render_graph_execution_count(void);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(void);
 uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(void);
+uint64_t elisa_render_scene_v1_render_graph_test_linear_depth_read_count(void);
 uint64_t elisa_render_scene_v1_render_graph_test_device_memory_usage(void);
 uint32_t elisa_render_scene_v1_render_graph_test_retirement_frame_count(void);
 int32_t elisa_render_scene_v1_render_graph_test_wait_for_gpu(void);

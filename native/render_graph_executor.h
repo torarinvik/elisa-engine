@@ -17,8 +17,9 @@ constexpr uint32_t MAX_TARGETS = 64;
 constexpr uint32_t NO_TARGET = std::numeric_limits<uint32_t>::max();
 
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
-enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3 };
+enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
 enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
+enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
 enum class Operation : int32_t { ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3 };
 
 struct Resource {
@@ -31,6 +32,7 @@ struct Resource {
     Lifetime lifetime = Lifetime::Transient;
     bool initialized = false;
     uint32_t target = NO_TARGET;
+    ImportSource import_source = ImportSource::None;
 };
 
 struct Pass {
@@ -83,9 +85,17 @@ public:
             (resource.size_mode == SizeMode::PrimaryInternal &&
                 (resource.width != 0 || resource.height != 0)) ||
             (resource.lifetime == Lifetime::Imported &&
-                (!resource.initialized || resource.target != NO_TARGET || resource.samples != 1)) ||
+                (!resource.initialized || resource.target != NO_TARGET || resource.samples != 1 ||
+                 (resource.import_source != ImportSource::SceneColor &&
+                    resource.import_source != ImportSource::LinearDepth))) ||
             (resource.lifetime != Lifetime::Imported &&
-                (resource.initialized && resource.lifetime == Lifetime::Transient)) ||
+                ((resource.initialized && resource.lifetime == Lifetime::Transient) ||
+                 resource.import_source != ImportSource::None)) ||
+            (resource.lifetime == Lifetime::Imported && resource.import_source == ImportSource::None) ||
+            (resource.import_source == ImportSource::SceneColor &&
+                resource.format != Format::Rgba8 && resource.format != Format::Rgba16Float &&
+                resource.format != Format::R11G11B10Float) ||
+            (resource.import_source == ImportSource::LinearDepth && resource.format != Format::R32Float) ||
             (resource.format == Format::Depth32 && resource.lifetime == Lifetime::Persistent &&
                 resource.initialized) ||
             (resource.format == Format::Depth32 && resource.samples != 1) ||
@@ -159,6 +169,7 @@ public:
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         depth_clear_count_ = 0;
         color_resolve_count_ = 0;
+        linear_depth_read_count_ = 0;
         fail_next_allocation_ = false;
         fail_pass_index_ = NO_TARGET;
         suspend_next_frame_ = false;
@@ -202,6 +213,11 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         return color_resolve_count_;
     }
+
+    uint64_t linear_depth_read_count_for_test() const {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return linear_depth_read_count_;
+    }
 #endif
 
     void execute(const wi::RenderPath3D& path, wi::graphics::CommandList command_list) {
@@ -211,7 +227,7 @@ public:
         last_fallback_preserved_ = false;
 #endif
         const wi::graphics::Texture* imported = path.GetLastPostprocessRT();
-        if (imported == nullptr || !imported->IsValid()) {
+        if (imported == nullptr || !imported->IsValid() || scene_color_import_index(active_) == NO_TARGET) {
             last_status_ = BACKEND_FAILED;
             return;
         }
@@ -230,18 +246,13 @@ public:
             return;
         }
         if (targets_dirty_ || internal_width_ != resolution.x || internal_height_ != resolution.y) {
-            if (!prepare_targets(*imported, resolution.x, resolution.y)) {
+            if (!prepare_targets(path, resolution.x, resolution.y)) {
                 last_status_ = BACKEND_FAILED;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
                 last_fallback_preserved_ = path.GetLastPostprocessRT() == imported;
 #endif
                 return;
             }
-        }
-        const uint32_t imported_index = imported_resource_index(active_);
-        if (imported_index == NO_TARGET) {
-            last_status_ = INVALID_ARGUMENT;
-            return;
         }
         for (uint32_t index = 0; index < active_.pass_count; ++index) {
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
@@ -253,7 +264,7 @@ public:
             }
 #endif
             const Pass& pass = active_.passes[index];
-            wi::graphics::Texture* destination = texture_for(pass.destination_id, imported_index, imported);
+            wi::graphics::Texture* destination = texture_for(pass.destination_id, path);
             if (destination == nullptr) {
                 last_status_ = BACKEND_FAILED;
                 return;
@@ -281,7 +292,7 @@ public:
                 ++depth_clear_count_;
 #endif
             } else {
-                wi::graphics::Texture* source = texture_for(pass.source_id, imported_index, imported);
+                wi::graphics::Texture* source = texture_for(pass.source_id, path);
                 if (source == nullptr || source == destination ||
                     source->GetDesc().format == native_format(Format::Depth32) ||
                     destination->GetDesc().format == native_format(Format::Depth32) ||
@@ -300,6 +311,12 @@ public:
                         last_status_ = BACKEND_FAILED;
                         return;
                     }
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+                    const uint32_t source_index = resource_index(active_, pass.source_id);
+                    if (source_index != NO_TARGET && active_.resources[source_index].import_source == ImportSource::LinearDepth) {
+                        ++linear_depth_read_count_;
+                    }
+#endif
                 } else {
                     if (source->GetDesc().sample_count <= 1 || destination->GetDesc().sample_count != 1) {
                         last_status_ = INVALID_ARGUMENT;
@@ -316,7 +333,7 @@ public:
             }
         }
         const uint32_t output_index = resource_index(active_, active_.output_id);
-        wi::graphics::Texture* output = texture_for(active_.output_id, imported_index, imported);
+        wi::graphics::Texture* output = texture_for(active_.output_id, path);
         if (output == nullptr || output_index == NO_TARGET) {
             last_status_ = BACKEND_FAILED;
             return;
@@ -344,7 +361,8 @@ private:
 
     static bool known_format(Format format) {
         return format == Format::Rgba8 || format == Format::Rgba16Float ||
-            format == Format::Depth32 || format == Format::R11G11B10Float;
+            format == Format::Depth32 || format == Format::R11G11B10Float ||
+            format == Format::R32Float;
     }
 
     static bool known_sample_count(uint32_t samples) {
@@ -357,6 +375,7 @@ private:
         case Format::Rgba16Float: return wi::graphics::Format::R16G16B16A16_FLOAT;
         case Format::Depth32: return wi::graphics::Format::D32_FLOAT;
         case Format::R11G11B10Float: return wi::graphics::Format::R11G11B10_FLOAT;
+        case Format::R32Float: return wi::graphics::Format::R32_FLOAT;
         default: return wi::graphics::Format::UNKNOWN;
         }
     }
@@ -368,19 +387,21 @@ private:
         return NO_TARGET;
     }
 
-    static uint32_t imported_resource_index(const Configuration& config) {
+    static uint32_t scene_color_import_index(const Configuration& config) {
         for (uint32_t index = 0; index < config.resource_count; ++index) {
-            if (config.resources[index].lifetime == Lifetime::Imported) return index;
+            if (config.resources[index].import_source == ImportSource::SceneColor) return index;
         }
         return NO_TARGET;
     }
 
     static bool configuration_valid(const Configuration& config) {
-        uint32_t imported_count = 0;
+        uint32_t scene_color_import_count = 0;
+        uint32_t linear_depth_import_count = 0;
         std::array<bool, MAX_RESOURCES> initialized{};
         for (uint32_t index = 0; index < config.resource_count; ++index) {
             const Resource& resource = config.resources[index];
-            if (resource.lifetime == Lifetime::Imported) ++imported_count;
+            if (resource.import_source == ImportSource::SceneColor) ++scene_color_import_count;
+            if (resource.import_source == ImportSource::LinearDepth) ++linear_depth_import_count;
             initialized[index] = resource.initialized;
             if (resource.lifetime == Lifetime::Imported) continue;
             for (uint32_t previous = 0; previous < index; ++previous) {
@@ -391,7 +412,7 @@ private:
                     other.samples != resource.samples) return false;
             }
         }
-        if (imported_count != 1) return false;
+        if (scene_color_import_count != 1 || linear_depth_import_count > 1) return false;
         const uint32_t output_index = resource_index(config, config.output_id);
         if (output_index == NO_TARGET || config.resources[output_index].format == Format::Depth32) return false;
         for (uint32_t index = 0; index < config.pass_count; ++index) {
@@ -419,20 +440,18 @@ private:
         return initialized[output_index];
     }
 
-    bool prepare_targets(const wi::graphics::Texture& imported, uint32_t width, uint32_t height) {
-        const wi::graphics::TextureDesc& imported_desc = imported.GetDesc();
-        const uint32_t imported_index = [&]() {
-            for (uint32_t index = 0; index < active_.resource_count; ++index) {
-                if (active_.resources[index].lifetime == Lifetime::Imported) return index;
-            }
-            return NO_TARGET;
-        }();
-        if (imported_index == NO_TARGET) return false;
-        const Resource& imported_resource = active_.resources[imported_index];
-        const uint32_t expected_width = imported_resource.size_mode == SizeMode::PrimaryInternal ? width : imported_resource.width;
-        const uint32_t expected_height = imported_resource.size_mode == SizeMode::PrimaryInternal ? height : imported_resource.height;
-        if (imported_desc.width != expected_width || imported_desc.height != expected_height ||
-            imported_desc.format != native_format(imported_resource.format)) return false;
+    bool prepare_targets(const wi::RenderPath3D& path, uint32_t width, uint32_t height) {
+        for (uint32_t index = 0; index < active_.resource_count; ++index) {
+            const Resource& resource = active_.resources[index];
+            if (resource.lifetime != Lifetime::Imported) continue;
+            const wi::graphics::Texture* imported = import_texture(resource, path);
+            if (imported == nullptr || !imported->IsValid()) return false;
+            const wi::graphics::TextureDesc& imported_desc = imported->GetDesc();
+            const uint32_t expected_width = resource.size_mode == SizeMode::PrimaryInternal ? width : resource.width;
+            const uint32_t expected_height = resource.size_mode == SizeMode::PrimaryInternal ? height : resource.height;
+            if (imported_desc.width != expected_width || imported_desc.height != expected_height ||
+                imported_desc.format != native_format(resource.format) || imported_desc.sample_count != 1) return false;
+        }
 
         std::array<wi::graphics::Texture, MAX_TARGETS> candidate{};
         wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
@@ -478,12 +497,20 @@ private:
         return true;
     }
 
-    wi::graphics::Texture* texture_for(uint32_t id, uint32_t imported_index,
-        const wi::graphics::Texture* imported) {
+    static const wi::graphics::Texture* import_texture(const Resource& resource,
+        const wi::RenderPath3D& path) {
+        if (resource.import_source == ImportSource::SceneColor) return path.GetLastPostprocessRT();
+        if (resource.import_source == ImportSource::LinearDepth) return &path.depthBuffer_Copy;
+        return nullptr;
+    }
+
+    wi::graphics::Texture* texture_for(uint32_t id, const wi::RenderPath3D& path) {
         const uint32_t index = resource_index(active_, id);
         if (index == NO_TARGET) return nullptr;
         const Resource& resource = active_.resources[index];
-        if (index == imported_index) return const_cast<wi::graphics::Texture*>(imported);
+        if (resource.lifetime == Lifetime::Imported) {
+            return const_cast<wi::graphics::Texture*>(import_texture(resource, path));
+        }
         if (resource.target >= MAX_TARGETS) return nullptr;
         wi::graphics::Texture* texture = &targets_[resource.target];
         return texture->IsValid() ? texture : nullptr;
@@ -537,6 +564,7 @@ private:
     bool last_fallback_preserved_ = false;
     uint64_t depth_clear_count_ = 0;
     uint64_t color_resolve_count_ = 0;
+    uint64_t linear_depth_read_count_ = 0;
 #endif
 };
 
