@@ -24,10 +24,17 @@ The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
 orthographic camera components, applies a 2x viewport scale, resizes a
 perspective view, switches an actual `RenderPath3D` between the two cameras,
 rejects a missing camera without disturbing the active view, and removes both
-temporary views without retaining native camera entities. Render targets and
-native frustum scheduling remain higher-level work. The project-facing
+temporary views without retaining native camera entities. The project-facing
 `RenderScene::camera_ray` ABI unprojects the active Wicked camera in reverse-Z
 space, reflects the result back into Elisa's right-handed coordinates, returns
 camera origins for perspective and near-plane origins for orthographic views,
 and rejects pixels outside the viewport. The SDL3/Metal smoke checks a centered
 ray after changing the camera and an out-of-bounds request.
+
+Automatic static snapshot LOD selection now checks the active Wicked frustum
+against the transformed bounds of every mesh placement. It leaves the current
+shared mesh untouched while all placements are offscreen, then selects the
+appropriate level on the first visible frame. The native asset smoke verifies
+both the deferred offscreen case and the visible transition. Multiple
+`RenderPath3D` scheduling remains open; Wicked continues to cull scene draws
+through its own visibility path.
