@@ -128,11 +128,13 @@ The render smoke also saves twelve downsampled 160×100 references under
 toggle, outdoor/indoor, translucent/opaque, and receiver/rasterizer-bias
 baseline and variant frames. Every run compares fresh captures against these
 tracked PNGs, using a maximum RGB channel difference of `0.35` and mean
-per-pixel difference of `0.025` on the 0–1 scale. Two consecutive SDL3/Metal
-runs produced identical captures. These tolerances are scoped to this Metal
-fixture; they do not establish cross-backend image equivalence. Regenerate
-references only after reviewing the full-size captures and confirming an
-intentional visual change:
+per-pixel difference of `0.025` on the 0–1 scale. Across three SDL3/Metal runs,
+two generated identical captures; a fresh run after the render-graph merge also
+passed, with the largest observed per-image peak and mean differences of
+`0.2275` and `0.0015`. These tolerances are scoped to this Metal fixture; they
+do not establish cross-backend image equivalence. Regenerate references only
+after reviewing the full-size captures and confirming an intentional visual
+change:
 
 ```sh
 ELISA_UPDATE_LIGHTING_REFERENCES=1 \
