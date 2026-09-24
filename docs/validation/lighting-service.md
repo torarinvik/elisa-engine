@@ -91,3 +91,10 @@ proves the setting affects a cast shadow, as well as Wicked's state. The smoke
 can save the two presentation captures as
 `build/render-scene-shadows-disabled.png` and
 `build/render-scene-shadows-enabled.png`.
+
+The same isolated scene checks the live receiver-bias effect. It captures the
+shadowed frame at bias `0`, changes the bias to `0.005`, renders three more
+frames, and requires the same `0.01` patch change while also checking Wicked's
+packed live value. It restores the smoke's prior `0.001` bias before returning
+to the rest of the render tests. Rasterizer constant/slope-bias variants are
+still outside this runtime control because Wicked bakes them into pipelines.

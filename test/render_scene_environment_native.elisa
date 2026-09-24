@@ -20,6 +20,9 @@ module RenderSceneEnvironmentNativeTests:
         extern elisa_render_scene_v1_test_shadow_frame_change(capture_reference: i32) -> f32
 
         const MINIMUM_SHADOW_IMAGE_CHANGE: f32 = 0.01
+        const BASELINE_SHADOW_RECEIVER_BIAS: f32 = 0.0
+        const SHADOW_BIAS_VARIANT: f32 = 0.005
+        const RESTORED_SHADOW_RECEIVER_BIAS: f32 = 0.001
 
     public:
         def exercise() -> i32:
@@ -182,6 +185,12 @@ module RenderSceneEnvironmentNativeTests:
             _ = catch RenderScene::set_lit_material(caster, 0.8, 0.0):
                 ok: 0
                 error failure: return 75
+            baseline_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(
+                BASELINE_SHADOW_RECEIVER_BIAS):
+                ok: 0
+                error failure: 1
+            return 94 if (baseline_bias_status != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(BASELINE_SHADOW_RECEIVER_BIAS) != 1)
             disabled: i32 = catch RenderScene::set_sun_shadows(false):
                 ok: 0
                 error failure: 1
@@ -204,6 +213,25 @@ module RenderSceneEnvironmentNativeTests:
             maximum_change: f32 = elisa_render_scene_v1_test_shadow_frame_change(0)
             return 66 if maximum_change < 0.0
             return 67 if maximum_change < MINIMUM_SHADOW_IMAGE_CHANGE
+
+            bias_baseline: f32 = elisa_render_scene_v1_test_shadow_frame_change(1)
+            return 95 if bias_baseline < 0.0
+            variant_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(SHADOW_BIAS_VARIANT):
+                ok: 0
+                error failure: 1
+            return 96 if (variant_bias_status != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(SHADOW_BIAS_VARIANT) != 1)
+            for frame in 0..<3:
+                return 97 if Application::pump() != Application::PumpStatus.Running
+            bias_change: f32 = elisa_render_scene_v1_test_shadow_frame_change(0)
+            return 98 if bias_change < 0.0
+            return 99 if bias_change < MINIMUM_SHADOW_IMAGE_CHANGE
+            restored_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(
+                RESTORED_SHADOW_RECEIVER_BIAS):
+                ok: 0
+                error failure: 1
+            return 100 if (restored_bias_status != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(RESTORED_SHADOW_RECEIVER_BIAS) != 1)
             _ = catch RenderScene::destroy(caster):
                 ok: 0
                 error failure: return 76
