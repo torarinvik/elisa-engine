@@ -79,3 +79,15 @@ reduce acne and can increase light leaks; zero preserves the existing
 hard-coded rasterizer bias. Rasterizer constant/slope bias remains at Wicked's
 format-specific defaults because those values are baked into cached pipelines.
 The native gate checks range rejection and the packed value used by the shader.
+
+The SDL3/Metal render smoke also checks that `set_sun_shadows` changes visible
+lighting. It temporarily hides the smoke scene's existing geometry, electric
+arc, and HUD, then creates a lit plane and a lit box above it. With the sun
+above the receiver, it renders three frames with shadows disabled and three
+with them enabled. A test-only probe compares the full 3D render target using
+overlapping 5×5 mean-luminance patches and requires at least a `0.01` change.
+This keeps animated or unrelated scene content from satisfying the check and
+proves the setting affects a cast shadow, as well as Wicked's state. The smoke
+can save the two presentation captures as
+`build/render-scene-shadows-disabled.png` and
+`build/render-scene-shadows-enabled.png`.

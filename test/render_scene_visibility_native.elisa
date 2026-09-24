@@ -11,6 +11,11 @@ module RenderSceneVisibilityNativeTests:
             renderable: i32, occlusion_culling: i32) -> i32
 
     public:
+        def hide_instance(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::set_visible(handle, false):
+                ok: 0
+                error failure: 1
+
         def exercise(handle: RenderScene::InstanceHandle) -> i32:
             policy: RenderScene::VisibilityPolicy = RenderScene::VisibilityPolicy(
                 DRAW_DISTANCE, LOD_BIAS, LAYER_MASK, false)

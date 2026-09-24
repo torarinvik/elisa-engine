@@ -1,11 +1,15 @@
 #pragma once
 
-// Test-only hooks for multi-material snapshot meshes, built into the render
-// smoke host with ELISA_RENDER_SCENE_TEST_PROBE.
+// Test-only render and asset probes, built into the smoke host with
+// ELISA_RENDER_SCENE_TEST_PROBE.
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
 #include <filesystem>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -21,6 +25,9 @@ constexpr float TANGENT_HANDEDNESS_TOLERANCE = 0.002f;
 constexpr float LUMINANCE_RED_WEIGHT = 0.2126f;
 constexpr float LUMINANCE_GREEN_WEIGHT = 0.7152f;
 constexpr float LUMINANCE_BLUE_WEIGHT = 0.0722f;
+std::vector<float> shadow_reference_luminance;
+uint32_t shadow_reference_width = 0;
+uint32_t shadow_reference_height = 0;
 
 const InstanceSlot* snapshot_instance(const RenderSceneService& state, int64_t render_id) {
     if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return nullptr;
@@ -403,6 +410,73 @@ extern "C" float elisa_render_scene_v1_test_last_frame_luminance(uint32_t x_perm
         }
     }
     return luminance / float((2 * DOMINANT_CHANNEL_RADIUS + 1) * (2 * DOMINANT_CHANNEL_RADIUS + 1));
+}
+
+// Captures or compares the rendered 3D frame for the visible sun-shadow smoke.
+// The comparison scans overlapping 5x5 patches so a narrow cast shadow does
+// not need to land at a hand-picked screen coordinate.
+extern "C" float elisa_render_scene_v1_test_shadow_frame_change(int32_t capture_reference) {
+    if (capture_reference != 0 && capture_reference != 1) return -1.0f;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return -1.0f;
+    wait_for_object_pipelines();
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr) return -1.0f;
+    device->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.width <= 2 * DOMINANT_CHANNEL_RADIUS ||
+        desc.height <= 2 * DOMINANT_CHANNEL_RADIUS || pixel_size == 0 ||
+        !wi::helper::saveTextureToMemory(frame, pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * pixel_size) return -1.0f;
+
+    std::vector<float> current;
+    current.resize(size_t(desc.width) * desc.height);
+    for (uint32_t y = 0; y < desc.height; ++y) {
+        for (uint32_t x = 0; x < desc.width; ++x) {
+            float rgb[3] = {};
+            if (!decode_frame_pixel(desc.format,
+                pixels.data() + (size_t(y) * desc.width + x) * pixel_size, rgb)) return -1.0f;
+            const float luminance = LUMINANCE_RED_WEIGHT * rgb[0] +
+                LUMINANCE_GREEN_WEIGHT * rgb[1] + LUMINANCE_BLUE_WEIGHT * rgb[2];
+            if (!std::isfinite(luminance)) return -1.0f;
+            current[size_t(y) * desc.width + x] = luminance;
+        }
+    }
+
+    if (capture_reference != 0) {
+        shadow_reference_luminance = std::move(current);
+        shadow_reference_width = desc.width;
+        shadow_reference_height = desc.height;
+        return 0.0f;
+    }
+    if (shadow_reference_width != desc.width || shadow_reference_height != desc.height ||
+        shadow_reference_luminance.size() != current.size()) return -1.0f;
+
+    float maximum_change = 0.0f;
+    constexpr uint32_t SAMPLE_STEP = 2;
+    constexpr float PATCH_AREA = float((2 * DOMINANT_CHANNEL_RADIUS + 1) *
+        (2 * DOMINANT_CHANNEL_RADIUS + 1));
+    for (uint32_t center_y = DOMINANT_CHANNEL_RADIUS;
+        center_y + DOMINANT_CHANNEL_RADIUS < desc.height; center_y += SAMPLE_STEP) {
+        for (uint32_t center_x = DOMINANT_CHANNEL_RADIUS;
+            center_x + DOMINANT_CHANNEL_RADIUS < desc.width; center_x += SAMPLE_STEP) {
+            float patch_change = 0.0f;
+            for (uint32_t y = center_y - DOMINANT_CHANNEL_RADIUS;
+                y <= center_y + DOMINANT_CHANNEL_RADIUS; ++y) {
+                for (uint32_t x = center_x - DOMINANT_CHANNEL_RADIUS;
+                    x <= center_x + DOMINANT_CHANNEL_RADIUS; ++x) {
+                    const size_t index = size_t(y) * desc.width + x;
+                    patch_change += std::fabs(current[index] - shadow_reference_luminance[index]);
+                }
+            }
+            maximum_change = std::max(maximum_change, patch_change / PATCH_AREA);
+        }
+    }
+    return maximum_change;
 }
 
 // 1 when registered material `high:low` names texture

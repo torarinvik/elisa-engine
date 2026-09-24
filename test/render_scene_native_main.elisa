@@ -66,10 +66,6 @@ def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
         error failure: 2
     return 0 if overflow == 1 and RenderScene::electric_arc_batch_count(batch) == RenderScene::MAX_ELECTRIC_ARCS
     2
-def hide_render_instance(handle: RenderScene::InstanceHandle) -> i32:
-    catch RenderScene::set_visible(handle, false):
-        ok: 0
-        error failure: 1
 def exercise_render_scene() -> i32:
     config: Application::Config = Application::Config{
         title: "Elisa Render Scene Smoke",
@@ -342,6 +338,9 @@ def exercise_render_scene() -> i32:
     return 104 if restore_render_projection != 0
     for attempt in 0..<4:
         return 78 if Application::pump() != Application::PumpStatus.Running
+    shadow_rendering: i32 = RenderSceneEnvironmentNativeTests::verify_shadow_rendering(
+        box, sphere, floor, electric_arc, hud_text, hud_panel)
+    return elisa_render_scene_v1_test_failed_case(197, shadow_rendering) if shadow_rendering != 0
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
     return 131 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
     hidden_panel: i32 = catch RenderScene::set_overlay_panel_visible(hud_panel, false):
@@ -453,9 +452,9 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 75 if cooked_emissive != 0
-    hidden_box: i32 = hide_render_instance(box)
-    hidden_sphere: i32 = hide_render_instance(sphere)
-    hidden_floor: i32 = hide_render_instance(floor)
+    hidden_box: i32 = RenderSceneVisibilityNativeTests::hide_instance(box)
+    hidden_sphere: i32 = RenderSceneVisibilityNativeTests::hide_instance(sphere)
+    hidden_floor: i32 = RenderSceneVisibilityNativeTests::hide_instance(floor)
     return 63 if hidden_box != 0 or hidden_sphere != 0 or hidden_floor != 0
     return 65 if Application::pump() != Application::PumpStatus.Running
     rendered_cooked_mesh: mutable i32 = 0
