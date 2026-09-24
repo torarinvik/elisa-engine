@@ -30,10 +30,9 @@ Validation command from the engine root:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py
 ```
 
-The latest aggregate smoke passed the focused physics primitive client and this
-two-cadence Jolt/Wicked client, then stopped in the later application-wide smoke
-with exit status 185 at the silent-audio fallback voice-count assertion. The
-focused cadence executable exits successfully, and its midpoint and final PNGs
-match byte for byte. This is native SDL3/Metal evidence for macOS. It does not
-compare every intermediate frame or exercise the full game-session
-clock-to-hierarchy path.
+The latest aggregate smoke passed all four native entries: primitive bodies,
+this two-cadence Jolt/Wicked client, application lifecycle, and failure cleanup.
+It validates the midpoint and final captures as PNGs and compares their decoded
+RGBA pixels. This is native SDL3/Metal evidence for macOS. It does not compare
+every intermediate frame or exercise the full game-session clock-to-hierarchy
+path.

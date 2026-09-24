@@ -24,8 +24,8 @@ under gravity, then destroys them. The standalone application entry is
 Validation:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/elisa_build_run.py run --project build/physics-smoke --main "$PWD/test/physics_primitives_native.elisa" --output "$PWD/build/physics-primitives-smoke" --wicked-build ../WickedEngine/build-elisa-sdl3 --native-test-probes` exited 0.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py` ran the primitive smoke and the render-cadence smoke successfully. Both midpoint PNGs and both final PNGs matched byte-for-byte at 640x480. Artifacts: `build/validation/physics-render-cadence/physics-30hz-mid.png`, `physics-120hz-mid.png`, `physics-30hz.png`, and `physics-120hz.png`.
-- The aggregate smoke then stopped in `application-native-smoke` with exit code 185 at `RuntimeServicesAudioProbe::unavailable_default_device`: its silent-fallback route observed a nonzero active-voice count. This is after the focused primitive and cadence clients passed. The audio fallback failure remains open and should be investigated separately.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` passed all four native entries: primitive bodies, render cadence, application lifecycle, and failure cleanup. Midpoint and final PNG pairs decode to identical 640x480 RGBA pixels. Artifacts: `build/validation/physics-render-cadence/physics-30hz-mid.png`, `physics-120hz-mid.png`, `physics-30hz.png`, and `physics-120hz.png`.
+- During diagnosis, exit code 185 was traced to the application physics fixture: it required a ground-contact event after eight fixed steps, before the falling box had reached the ground. Starting that test body at y=0.7 gives the contact enough time to occur while it still overlaps the sensor. The full gate now reaches and passes the subsequent silent-audio fallback checks.
 
 This slice does not add reusable native shape handles, mesh or compound
 cooking, collision layers, or mass-property controls.
