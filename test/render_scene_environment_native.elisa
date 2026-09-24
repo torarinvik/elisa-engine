@@ -6,6 +6,9 @@ module RenderSceneEnvironmentNativeTests:
         extern elisa_render_scene_v1_test_environment_matches() -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_sun_shadows_match(enabled: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sun_cascade_distances_match(
+            near_end: f32, middle_end: f32, far_end: f32) -> i32
 
     public:
         def exercise() -> i32:
@@ -37,6 +40,24 @@ module RenderSceneEnvironmentNativeTests:
                 error failure: 1
             return 41 if environment_status != 0
             return 42 if elisa_render_scene_v1_test_environment_matches() != 1
+            invalid_cascade_order: i32 = catch RenderScene::set_sun_cascade_distances(
+                100.0, 50.0, 400.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 47 if invalid_cascade_order != 1
+            cascade_past_far_clip: i32 = catch RenderScene::set_sun_cascade_distances(
+                10.0, 100.0, 1200.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 48 if cascade_past_far_clip != 1
+            cascade_status: i32 = catch RenderScene::set_sun_cascade_distances(
+                10.0, 100.0, 400.0):
+                ok: 0
+                error failure: 1
+            return 49 if (cascade_status != 0 or
+                elisa_render_scene_v1_test_sun_cascade_distances_match(10.0, 100.0, 400.0) != 1)
             _ = catch RenderScene::set_sun_shadows(false):
                 ok: 0
                 error failure: return 43

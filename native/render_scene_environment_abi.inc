@@ -92,3 +92,24 @@ extern "C" int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled) {
     state.path->setShadowsEnabled(enabled != 0);
     return ELISA_RENDER_SCENE_OK;
 }
+
+extern "C" int32_t elisa_render_scene_v1_set_sun_cascade_distances(
+    float near_cascade_end, float middle_cascade_end, float far_cascade_end) {
+    if (!bounded(near_cascade_end) || !bounded(middle_cascade_end) ||
+        !bounded(far_cascade_end)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (near_cascade_end <= state.camera_near_clip ||
+        middle_cascade_end <= near_cascade_end || far_cascade_end <= middle_cascade_end ||
+        far_cascade_end > state.camera_far_clip) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    wi::scene::LightComponent* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun == nullptr) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    try {
+        sun->cascade_distances = {near_cascade_end, middle_cascade_end, far_cascade_end};
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}

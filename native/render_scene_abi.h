@@ -281,6 +281,8 @@ int32_t elisa_render_scene_v1_destroy_effect(int64_t handle);
 int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
 int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float scale_u, float scale_v, float offset_u, float offset_v);
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);
+int32_t elisa_render_scene_v1_set_sun_cascade_distances(
+    float near_cascade_end, float middle_cascade_end, float far_cascade_end);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_alpha_mode(int64_t handle, int32_t mode, float cutoff, int32_t double_sided);
 int32_t elisa_render_scene_v1_set_cast_shadow(int64_t handle, int32_t enabled);

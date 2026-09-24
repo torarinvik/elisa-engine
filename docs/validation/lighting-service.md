@@ -21,3 +21,10 @@ The native gate creates and moves point and spot lights, verifies Wicked transfo
 handle and an invalid probe resolution, applies sky exposure and height fog,
 rejects a zero sun direction, and destroys every probe/light. Authored sky-map
 loading, shadow-bias policy, and camera/renderer scheduling remain open.
+
+`RenderScene::set_sun_cascade_distances` configures Wicked's three directional
+shadow cascade end distances. Values must strictly increase and the last split
+must fit inside the active camera's far clip. The native environment test
+checks decreasing splits, splits past the camera range, and a valid 10/100/400
+distance configuration against the active primary camera's 1,000-unit far
+plane.

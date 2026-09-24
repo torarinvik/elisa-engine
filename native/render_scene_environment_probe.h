@@ -91,3 +91,16 @@ extern "C" int32_t elisa_render_scene_v1_test_sun_shadows_match(int32_t enabled)
     return sun != nullptr && sun->IsCastingShadow() == expected &&
         state.path->getShadowsEnabled() == expected ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_sun_cascade_distances_match(
+    float near_end, float middle_end, float far_end) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun == nullptr || sun->cascade_distances.size() != 3) return 0;
+    const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
+    return close(sun->cascade_distances[0], near_end) &&
+        close(sun->cascade_distances[1], middle_end) &&
+        close(sun->cascade_distances[2], far_end) ? 1 : 0;
+}
