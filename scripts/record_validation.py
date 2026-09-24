@@ -13,6 +13,7 @@ from typing import Optional
 from record_validation_assets import (
     asset_catalogue_database,
     asset_import_self_test,
+    cooked_mesh_companions,
     cooked_texture,
     cooked_texture_bc1,
     cooked_texture_packed,
@@ -355,14 +356,11 @@ def cook_asset(root: Path) -> dict:
     )
     if result.returncode != 0:
         raise ValueError(f"asset cooking failed: {result.stderr.strip() or result.stdout.strip()}")
-    packages = sorted((root / "build/cooked").glob("*.pkg"))
-    if not packages:
-        raise ValueError("asset cooking produced no package")
-    package = packages[0]
-    bundles = sorted((root / "build/cooked").glob("*.elpk"))
-    if not bundles:
-        raise ValueError("asset cooking produced no ELPK bundle")
-    bundle = bundles[0]
+    packages = cooked_mesh_companions(root)
+    package = root / "build/cooked/maze_tile.pkg"
+    bundle = root / "build/cooked/maze_tile.elpk"
+    if not bundle.is_file():
+        raise ValueError("asset cooking produced no maze ELPK bundle")
     return {
         "package": package.name,
         "sha256": sha256_file(package),
@@ -370,6 +368,7 @@ def cook_asset(root: Path) -> dict:
         "bundle": bundle.name,
         "bundle_sha256": sha256_file(bundle),
         "bundle_bytes": bundle.stat().st_size,
+        "companions": packages,
     }
 
 

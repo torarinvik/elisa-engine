@@ -32,7 +32,7 @@ def position_extent(positions: bytes) -> float:
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         allow_textures: bool = False, simplify_ratio: float | None = None,
         generate_lightmap_uv: bool = False, lightmap_resolution: int = 1024,
-        lightmap_padding: int = 4) -> tuple[Path, dict]:
+        lightmap_padding: int = 4, *, godot_output_path: Path | None = None) -> tuple[Path, dict]:
     """Write a geometry package; textured sources require a containing bundle."""
     asset_path = geometry_cooker.safe_asset_path(asset_path)
     source_path = source_path.expanduser().resolve(strict=True)
@@ -88,8 +88,12 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         raise ValueError("normalized geometry does not match the declared source counts")
     source_digest = hashlib.sha256(data).hexdigest()
     output_path = output_path.expanduser().resolve()
+    if godot_output_path is not None:
+        godot_output_path = godot_output_path.expanduser().resolve()
+        if godot_output_path == output_path:
+            raise ValueError("Godot raw companion must use a distinct output path")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
+    metadata_lines = [
         "format=" + ("elisa-cooked-v3" if geometry["skin"] is not None or geometry["animation_clips"]
             else "elisa-cooked-v2"),
         f"source={asset_path}", f"source_sha256={source_digest}", f"triangles={triangles}",
@@ -104,10 +108,13 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
             len(geometry["scene"]["mesh_placements"]), len(geometry["morph_targets"])),
         *geometry_cooker.morph_lines(geometry, include_vertex_streams=False),
         *geometry_cooker.scene_lines(geometry),
-        *[f"{name}_{'meshopt_' if name in compressed_streams else ''}b64=" +
-            base64.b64encode(compressed_streams.get(name, data)).decode("ascii")
-            for name, _kind, _count, _stride, data in raw_streams],
     ]
+    compressed_lines = [
+        f"{name}_{'meshopt_' if name in compressed_streams else ''}b64=" +
+            base64.b64encode(compressed_streams.get(name, data)).decode("ascii")
+            for name, _kind, _count, _stride, data in raw_streams
+    ]
+    lines = [*metadata_lines, *compressed_lines]
     if geometry["uv1s"]:
         metadata = geometry["uv1_metadata"]
         lines += ["uv1_stride=8", "uv1_source=" + metadata["source"]]
@@ -118,7 +125,22 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     package_bytes = ("\n".join(lines) + "\n").encode("utf-8")
     if len(package_bytes) > 64 * 1024 * 1024:
         raise ValueError("cooked geometry package exceeds the 64 MiB runtime limit")
+    raw_package_bytes = None
+    if godot_output_path is not None:
+        godot_metadata = [line for line in metadata_lines if not line.startswith("meshopt_codec=")]
+        raw_lines = [*godot_metadata, *[
+            f"{name}_b64=" + base64.b64encode(data).decode("ascii")
+            for name, _kind, _count, _stride, data in raw_streams
+        ]]
+        if geometry["uv1s"]:
+            raw_lines += lines[len(metadata_lines) + len(compressed_lines):]
+        raw_package_bytes = ("\n".join(raw_lines) + "\n").encode("utf-8")
+        if len(raw_package_bytes) > 64 * 1024 * 1024:
+            raise ValueError("Godot cooked geometry package exceeds the 64 MiB runtime limit")
     output_path.write_bytes(package_bytes)
+    if godot_output_path is not None:
+        godot_output_path.parent.mkdir(parents=True, exist_ok=True)
+        godot_output_path.write_bytes(raw_package_bytes)
     attribute_bytes = sum(len(geometry[name]) for name in
         ("positions", "normals", "uvs", "uv1s", "tangents"))
     raw_mesh_stream_bytes = sum(len(data) for _name, _kind, _count, _stride, data in raw_streams)

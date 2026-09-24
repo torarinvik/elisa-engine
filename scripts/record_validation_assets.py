@@ -10,9 +10,12 @@ recorder itself enforces.
 import base64
 import hashlib
 import sqlite3
+import struct
 import subprocess
 import sys
 from pathlib import Path
+
+from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, decode_streams
 
 
 def sha256_file(path: Path) -> str:
@@ -21,6 +24,17 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def same_oriented_triangle_order(left: bytes, right: bytes) -> bool:
+    if len(left) != len(right) or len(left) % 12 != 0:
+        return False
+    for offset in range(0, len(left), 12):
+        source = struct.unpack_from("<3I", left, offset)
+        decoded = struct.unpack_from("<3I", right, offset)
+        if not any(decoded == source[rotation:] + source[:rotation] for rotation in range(3)):
+            return False
+    return True
 
 
 def cooked_texture(root: Path) -> dict:
@@ -90,6 +104,60 @@ def cooked_texture_bc1(root: Path) -> dict:
     if width != 4 or height != 4 or block_bytes != 8 or len(pixels) != 8:
         raise ValueError(f"cooked BC1 texture size mismatch: {width}x{height} block={block_bytes} pixels={len(pixels)}")
     return {"sha256": sha256_file(path), "width": width, "height": height, "block_bytes": block_bytes}
+
+
+def cooked_mesh_companions(root: Path) -> dict:
+    directory = root / "build/cooked"
+    native = directory / "maze_tile.pkg"
+    godot = directory / "maze_tile-godot.pkg"
+    if not native.is_file() or not godot.is_file():
+        raise ValueError("native or Godot cooked mesh package is missing")
+
+    def fields(path: Path) -> dict[str, str]:
+        result = {}
+        for line in path.read_text(encoding="ascii").splitlines():
+            key, separator, value = line.partition("=")
+            if not separator or key in result:
+                raise ValueError(f"cooked mesh package has malformed or duplicate field: {key!r}")
+            result[key] = value
+        return result
+
+    native_fields = fields(native)
+    godot_fields = fields(godot)
+    core_streams = ("positions", "normals", "uvs", "indices")
+    if native_fields.get("meshopt_codec") != "meshoptimizer-v1.2" or any(
+            f"{name}_meshopt_b64" not in native_fields for name in core_streams):
+        raise ValueError("native cooked mesh package lost its compressed geometry streams")
+    if "meshopt_codec" in godot_fields or any(
+            f"{name}_b64" not in godot_fields or f"{name}_meshopt_b64" in godot_fields
+            for name in core_streams):
+        raise ValueError("Godot cooked companion is not a raw-stream package")
+    shared_fields = ("format", "source", "source_sha256", "triangles", "positions", "indices",
+        "position_stride", "normal_stride", "uv_stride", "index_stride")
+    if any(native_fields.get(key) != godot_fields.get(key) for key in shared_fields):
+        raise ValueError("native and Godot cooked mesh companions disagree on their geometry contract")
+    vertex_count = int(native_fields["positions"])
+    index_count = int(native_fields["indices"])
+    stride_fields = {"positions": "position_stride", "normals": "normal_stride",
+        "uvs": "uv_stride", "indices": "index_stride"}
+    streams = [(name, INDEX_STREAM if name == "indices" else VERTEX_STREAM,
+        index_count if name == "indices" else vertex_count,
+        int(native_fields[stride_fields[name]]),
+        base64.b64decode(native_fields[f"{name}_meshopt_b64"], validate=True))
+        for name in core_streams]
+    decoded = decode_streams(streams)
+    raw = {name: base64.b64decode(godot_fields[f"{name}_b64"], validate=True)
+        for name in core_streams}
+    if (any(decoded[name] != raw[name] for name in core_streams if name != "indices") or
+            not same_oriented_triangle_order(decoded["indices"], raw["indices"])):
+        raise ValueError("Godot raw cooked mesh streams differ from decoded native meshoptimizer data")
+    return {
+        "native": {"sha256": sha256_file(native), "bytes": native.stat().st_size},
+        "godot_raw": {"sha256": sha256_file(godot), "bytes": godot.stat().st_size},
+        "triangles": int(godot_fields["triangles"]),
+        "raw_geometry_streams": len(core_streams),
+        "native_decoded_streams_match": True,
+    }
 
 
 def asset_catalogue_database(root: Path) -> dict:

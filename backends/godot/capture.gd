@@ -167,9 +167,9 @@ func _run_capture() -> void:
         # agree with this host's own import: the runtime reads the package,
         # not the source format.
         var package_path: String = manifest_dir.path_join("..").path_join("build/cooked").path_join(
-            asset_path.get_file().get_basename() + ".pkg").simplify_path()
+            asset_path.get_file().get_basename() + "-godot.pkg").simplify_path()
         if not FileAccess.file_exists(package_path):
-            _fail("cooked package is missing: %s" % package_path)
+            _fail("Godot raw cooked companion is missing: %s" % package_path)
             return
         var package := {}
         for line in FileAccess.get_file_as_string(package_path).split("\n"):

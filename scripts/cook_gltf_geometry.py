@@ -579,7 +579,8 @@ def scene_lines(geometry: dict) -> list[str]:
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         allow_textures: bool = False, simplify_ratio: float | None = None,
         generate_lightmap_uv: bool = False, lightmap_resolution: int = 1024,
-        lightmap_padding: int = 4) -> tuple[Path, dict]:
+        lightmap_padding: int = 4, *, godot_output_path: Path | None = None) -> tuple[Path, dict]:
     import cook_gltf_package
     return cook_gltf_package.cook_geometry_package(source_path, asset_path, output_path,
-        allow_textures, simplify_ratio, generate_lightmap_uv, lightmap_resolution, lightmap_padding)
+        allow_textures, simplify_ratio, generate_lightmap_uv, lightmap_resolution, lightmap_padding,
+        godot_output_path=godot_output_path)

@@ -55,11 +55,13 @@ def self_test() -> int:
     source = ROOT / "examples/maze/assets/maze_tile.gltf"
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-cooker-") as temporary:
         first = Path(temporary) / "first.pkg"
+        godot_first = Path(temporary) / "first-godot.pkg"
         second = Path(temporary) / "second.pkg"
+        godot_second = Path(temporary) / "second-godot.pkg"
         first_path, first_result = cook_assets.cook_geometry_package(
-            source, "assets/maze_tile.gltf", first)
+            source, "assets/maze_tile.gltf", first, godot_output_path=godot_first)
         second_path, second_result = cook_assets.cook_geometry_package(
-            source, "assets/maze_tile.gltf", second)
+            source, "assets/maze_tile.gltf", second, godot_output_path=godot_second)
         if (first_result != second_result or first_path.read_bytes() != second_path.read_bytes() or
                 first_result["triangles"] != 12 or first_result["positions"] != 24 or
                 first_result["indices"] != 36 or first_result["meshopt_compressed_streams"] == 0 or
@@ -67,10 +69,19 @@ def self_test() -> int:
             print("glTF cooker self-test failed: output was not stable or counts differ", file=sys.stderr)
             return 1
         sections = dict(line.split("=", 1) for line in first_path.read_text(encoding="utf-8").splitlines())
+        godot_sections = dict(line.split("=", 1) for line in godot_first.read_text(encoding="utf-8").splitlines())
         if (sections.get("format") != "elisa-cooked-v2" or
                 sections.get("normal_stride") != "12" or sections.get("uv_stride") != "8" or
                 sections.get("index_stride") != "4"):
             print("glTF cooker self-test failed: runtime streams are incomplete", file=sys.stderr)
+            return 1
+        if ("meshopt_codec" in godot_sections or
+                any(f"{name}_b64" not in godot_sections or f"{name}_meshopt_b64" in godot_sections
+                    for name in ("positions", "normals", "uvs", "indices"))):
+            print("glTF cooker self-test failed: Godot raw companion is not host-compatible", file=sys.stderr)
+            return 1
+        if godot_first.read_bytes() != godot_second.read_bytes():
+            print("glTF cooker self-test failed: Godot raw companion is not deterministic", file=sys.stderr)
             return 1
         compressed_fields = [name for name in ("positions", "normals", "uvs", "tangents", "uv1s", "indices")
             if f"{name}_meshopt_b64" in sections]

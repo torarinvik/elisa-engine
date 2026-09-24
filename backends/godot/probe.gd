@@ -90,9 +90,9 @@ func _run_probe() -> void:
     var manifest_path: String = OS.get_cmdline_user_args()[0]
     if manifest.has("mesh_asset") and manifest.has("mesh_triangles"):
         var asset_name: String = String(manifest["mesh_asset"]).get_file().get_basename()
-        var package_path: String = manifest_path.get_base_dir().path_join("..").path_join("build/cooked").path_join(asset_name + ".pkg").simplify_path()
+        var package_path: String = manifest_path.get_base_dir().path_join("..").path_join("build/cooked").path_join(asset_name + "-godot.pkg").simplify_path()
         if not FileAccess.file_exists(package_path):
-            _fail("cooked package is missing: %s" % package_path)
+            _fail("Godot raw cooked companion is missing: %s" % package_path)
             return
         var package := {}
         for line in FileAccess.get_file_as_string(package_path).split("\n"):
