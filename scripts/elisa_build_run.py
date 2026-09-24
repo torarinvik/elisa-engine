@@ -135,6 +135,20 @@ def validate_native_files(paths: dict[str, Path]) -> None:
         raise BuildConfigurationError("Missing native build dependencies:\n  " + details)
 
 
+def validate_wicked_archive_abi(paths: dict[str, Path]) -> int:
+    libraries = paths["libraries"]
+    utility = libraries / "Utility"
+    archives = [
+        libraries / "libWickedEngine.a",
+        libraries / "libJolt.a",
+        utility / "libUtility.a",
+        utility / "FAudio/libFAudio.a",
+        libraries / "LUA/libLUA.a",
+    ]
+    checker = ENGINE_ROOT / "scripts/check_wicked_archive_abi.py"
+    return run_command([sys.executable, str(checker), *(str(path) for path in archives)])
+
+
 def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build or run an Elisa main() using the engine-owned Application host."
@@ -344,6 +358,9 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
     config = load_project_config(project)
     paths = resolve_native_paths(args)
     validate_native_files(paths)
+    abi_status = validate_wicked_archive_abi(paths)
+    if abi_status != 0:
+        return abi_status, None, None
     status = cook_declared_assets(project, config)
     if status != 0:
         return status, None, None

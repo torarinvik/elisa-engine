@@ -13,12 +13,13 @@ It then interrupts the linear transition with a shorter fade: the first pose
 stays at Y=1.9375, the interrupted pose is still at Y=1.54375 after 0.15
 seconds, and the original remaining 0.3 seconds are retained until the new
 destination is reached. A separate morph-only fixture cross-fades from a
-weight of 0.25 toward 1.0. Both clips keep advancing during the fade, so the
-displayed weight reaches 0.4875 before interruption back toward zero. It stays
-at 0.4875 at the switch, reaches 0.31875 halfway through the retained
-0.3-second recovery, and reaches 0.3 when the recovery ends. The non-animated
-sibling remains at its 0.2 default throughout. Both joint and morph mixtures
-therefore have interruption-continuity coverage.
+weight of 0.25 toward 1.0, interrupts back toward zero, verifies that the
+displayed value is 0.4875 at the first blend sample and remains 0.4875 at the
+interruption. Both source and destination clips continue advancing during a
+blend; halfway through the 0.3-second recovery the value is 0.31875, and the
+destination clip reaches 0.3 when the fade completes. The non-animated sibling
+remains at its 0.2 default throughout. Both joint and morph mixtures therefore
+have interruption-continuity coverage.
 
 Run the complete SDL3/Metal gate on macOS with:
 

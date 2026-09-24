@@ -114,9 +114,8 @@ module RenderSceneAnimationBlendNativeTests:
             return 32 if elisa_render_scene_v1_test_morph_transition_weights(
                 raw_morph, 0.0, 0.2) != 1
             return 33 if not advance(morph, 0.25)
-            # Both clips keep advancing during a fade: the source reaches .35,
-            # the destination reaches .9, and the new clip contributes one
-            # quarter of the visible mixture.
+            # Both clips advance while blending: the outgoing clip samples
+            # 0.35, the returning clip samples 0.9, and alpha is 0.25.
             return 34 if not play(morph, "weights-return", FADE, plain())
             return 35 if not advance(morph, 0.1)
             return 36 if not near(elisa_render_scene_v1_test_animation_blend_weight(raw_morph), 0.25)

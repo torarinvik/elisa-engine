@@ -18,7 +18,8 @@ import zlib
 
 
 def read_png(path):
-    data = open(path, "rb").read()
+    with open(path, "rb") as source:
+        data = source.read()
     if data[:8] != b"\x89PNG\r\n\x1a\n":
         raise ValueError(f"not a PNG file: {path}")
     width = height = bitdepth = colortype = None
