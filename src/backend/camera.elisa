@@ -180,3 +180,9 @@ module Camera:
 
         def viewport(state: State&) -> Viewport:
             state.viewport
+
+        def perspective_fov(state: State&) -> f32:
+            state.fov_radians
+
+        def orthographic_height(state: State&) -> f32:
+            state.ortho_height

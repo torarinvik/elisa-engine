@@ -1,4 +1,49 @@
 include "../src/backend/camera.elisa"
+include "../src/tooling/editor_camera.elisa"
+
+def editor_camera_test() -> i32:
+    orbit: mutable EditorCamera::Orbit = EditorCamera::Orbit()
+    camera: mutable Camera::State = Camera::State(320, 200)
+    return 1 if not EditorCamera::orbit_valid(&orbit)
+    return 2 if not EditorCamera::apply(&orbit, &camera)
+    initial_ray: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 3 if initial_ray.origin.z < 9.999 or initial_ray.origin.z > 10.001 or initial_ray.direction.z > -0.999
+
+    return 4 if not EditorCamera::orbit_drag(&orbit, 100.0, 0.0)
+    return 5 if not EditorCamera::apply(&orbit, &camera)
+    turned_ray: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 6 if turned_ray.direction.x < 0.4
+
+    return 7 if not EditorCamera::orbit_drag(&orbit, 0.0, -10000.0)
+    return 8 if not EditorCamera::apply(&orbit, &camera)
+    pole_ray: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 9 if pole_ray.direction.y < 0.99
+    return 10 if EditorCamera::orbit_drag(&orbit, 20000.0, 0.0)
+    return 11 if EditorCamera::zoom_steps(&orbit, 65.0)
+
+    return 12 if not EditorCamera::focus(&orbit, Geometry::vec3_zero(), 10.0)
+    return 13 if not EditorCamera::apply(&orbit, &camera)
+    before_pan: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 14 if not EditorCamera::pan_drag(&orbit, &camera, 20.0, 0.0)
+    return 15 if not EditorCamera::apply(&orbit, &camera)
+    after_pan: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 16 if after_pan.origin.x > before_pan.origin.x
+
+    return 17 if not EditorCamera::zoom_steps(&orbit, 1.0)
+    return 18 if not EditorCamera::apply(&orbit, &camera)
+    zoomed_ray: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 19 if zoomed_ray.origin.z >= after_pan.origin.z
+
+    orthographic_orbit: mutable EditorCamera::Orbit = EditorCamera::Orbit()
+    return 20 if not Camera::set_orthographic(&camera, 12.0, 0.1, 100.0)
+    return 21 if not EditorCamera::pan_drag(&orthographic_orbit, &camera, 0.0, 10.0)
+    return 22 if not EditorCamera::apply(&orthographic_orbit, &camera)
+    orthographic_ray: Geometry::Ray3 = Camera::ray(&camera, 160.0, 100.0)
+    return 23 if orthographic_ray.origin.y < 0.599 or orthographic_ray.origin.y > 0.601
+    invalid_focus: bool = EditorCamera::focus(&orbit, Geometry::vec3_zero(), 0.0)
+    return 24 if invalid_focus
+    return 25 if not EditorCamera::orbit_valid(&orbit)
+    0
 
 def main() -> i32:
     camera: mutable Camera::State = Camera::State(320, 200)
@@ -58,4 +103,4 @@ def main() -> i32:
         minimum: Geometry::Vec3{x: 4.0, y: -1.0, z: -1.0},
         maximum: Geometry::Vec3{x: 6.0, y: 1.0, z: 1.0},
     })
-    0
+    editor_camera_test()
