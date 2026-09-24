@@ -33,6 +33,10 @@ int main(int argc, char** argv) {
         geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
         geometry.indices.empty() || geometry.indices.size() % 3 != 0) return 9;
+    if (geometry.positions.size() == 9 &&
+        (geometry.positions[0] != 0.0f || geometry.positions[3] != 1.0f ||
+            geometry.positions[7] != 1.0f || geometry.normals[2] != 1.0f ||
+            geometry.indices != std::vector<uint32_t>{0, 1, 2})) return 13;
 
     const probe::BinaryPackageManifest manifest = probe::read_binary_package_manifest(argv[1]);
     const std::vector<std::string> expected_dependencies = texture == index.sections.end()

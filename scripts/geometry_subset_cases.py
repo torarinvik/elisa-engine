@@ -14,6 +14,7 @@ import zlib
 import cook_assets
 import cook_gltf_geometry
 import cook_gltf_lod
+from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, encode_streams
 from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 from elisa_package import write_geometry_package
 import gltf_hierarchy_self_test
@@ -167,6 +168,31 @@ def cases(directory: Path) -> list[tuple]:
     write_geometry_package(directory / "panel.elpk", panel)
     tile_path, _ = cook_gltf_geometry.cook_geometry_package(
         ROOT / "examples/maze/assets/maze_tile.gltf", "assets/maze_tile.gltf", directory / "tile.pkg")
+    tile_document = cook_assets.read_gltf((ROOT / "examples/maze/assets/maze_tile.gltf").read_bytes())
+    tile_geometry = cook_gltf_geometry.normalized_geometry(tile_document,
+        cook_assets.source_bytes(ROOT / "examples/maze/assets", tile_document))
+    tile_vertex_count = tile_geometry["vertex_count"]
+    tile_index_count = tile_geometry["index_count"]
+    tile_streams = [
+        ("positions", VERTEX_STREAM, tile_vertex_count, 12,
+            tile_geometry["positions"]),
+        ("normals", VERTEX_STREAM, tile_vertex_count, 12,
+            tile_geometry["normals"]),
+        ("uvs", VERTEX_STREAM, tile_vertex_count, 8,
+            tile_geometry["uvs"]),
+        ("indices", INDEX_STREAM, tile_index_count, 4,
+            tile_geometry["indices"]),
+    ]
+    tile_encoded = encode_streams(tile_streams)
+    tile_core_fields = {"meshopt_codec", *(f"{name}_b64" for name in
+        ("positions", "normals", "uvs", "indices")), *(f"{name}_meshopt_b64" for name in
+        ("positions", "normals", "uvs", "indices"))}
+    compressed_tile_lines = [line for line in tile_path.read_text(encoding="ascii").splitlines()
+        if line.partition("=")[0] not in tile_core_fields]
+    compressed_tile_lines.append("meshopt_codec=meshoptimizer-v1.2")
+    compressed_tile_lines.extend(f"{name}_meshopt_b64=" + base64.b64encode(tile_encoded[name]).decode("ascii")
+        for name, _kind, _count, _stride, _raw in tile_streams)
+    compressed_tile = ("\n".join(compressed_tile_lines) + "\n").encode("ascii")
     hierarchy_source = ROOT / "test/fixtures/node_hierarchy_panel.gltf"
     cook_gltf_geometry.cook_geometry_package(
         hierarchy_source, "test/fixtures/node_hierarchy_panel.gltf", directory / "hierarchy.pkg")
@@ -224,16 +250,19 @@ def cases(directory: Path) -> list[tuple]:
     if cooked_lod.returncode != 0:
         raise RuntimeError(cooked_lod.stderr or cooked_lod.stdout or "LOD CLI fixture cook failed")
     lod_sections = dict(line.split("=", 1) for line in lod_path.read_text(encoding="ascii").splitlines())
+    lod_document = cook_assets.read_gltf(lod_source.read_bytes())
+    lod_geometry = cook_gltf_geometry.normalized_geometry(lod_document,
+        cook_assets.source_bytes(lod_source.parent, lod_document), simplify_ratio=0.5)
     lod_subsets = list(struct.iter_unpack("<3I", base64.b64decode(lod_sections["subsets_b64"])))
     lod_materials = list(struct.iter_unpack("<10f2I", base64.b64decode(lod_sections["slot_materials_b64"])))
     lod_triangles = int(lod_sections["triangles"])
     lod_indices = int(lod_sections["indices"])
     lod_vertex_count = int(lod_sections["positions"])
-    lod_positions = base64.b64decode(lod_sections["positions_b64"])
-    lod_normals = base64.b64decode(lod_sections["normals_b64"])
-    lod_uvs = base64.b64decode(lod_sections["uvs_b64"])
+    lod_positions = lod_geometry["positions"]
+    lod_normals = lod_geometry["normals"]
+    lod_uvs = lod_geometry["uvs"]
     lod_tangents = base64.b64decode(lod_sections["tangents_b64"])
-    lod_index_stream = base64.b64decode(lod_sections["indices_b64"])
+    lod_index_stream = lod_geometry["indices"]
     lod_placements = list(struct.iter_unpack("<8I12f",
         base64.b64decode(lod_sections["mesh_placements_b64"])))
     source_placement_counts = cook_gltf_geometry.placed_counts(
@@ -279,6 +308,23 @@ def cases(directory: Path) -> list[tuple]:
         if old not in scene_metadata:
             raise RuntimeError("scene fixture mutation did not find its field")
         return scene_metadata.replace(old, new, 1)
+
+    def meshopt_variant(name: str, value: str | None, package: bytes = compressed_tile) -> bytes:
+        lines = package.decode("ascii").splitlines()
+        prefix = name + "="
+        for index, line in enumerate(lines):
+            if line.startswith(prefix):
+                if value is None:
+                    del lines[index]
+                else:
+                    lines[index] = prefix + value
+                return ("\n".join(lines) + "\n").encode("ascii")
+        if value is None:
+            return package
+        lines.append(prefix + value)
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    tile_raw_positions = base64.b64encode(tile_geometry["positions"]).decode("ascii")
 
     def hierarchy_variant(old: bytes, new: bytes) -> bytes:
         if old not in hierarchy_metadata:
@@ -335,6 +381,19 @@ def cases(directory: Path) -> list[tuple]:
         *test_geometry_uv1.cases(directory, panel_source, PANEL_MATERIALS, panel_subsets,
             [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)]),
         ("accept", tile_path.name, None, (36, 1, [(0, 36, 0)])),
+        ("accept", "tile-meshopt.pkg", compressed_tile, (36, 1, [(0, 36, 0)])),
+        ("reject", "meshopt-no-declaration.pkg", meshopt_variant("meshopt_codec", None),
+            "unsupported or inconsistent cooked geometry meshoptimizer codec"),
+        ("reject", "meshopt-unknown-codec.pkg", meshopt_variant("meshopt_codec", "meshoptimizer-v9"),
+            "unsupported or inconsistent cooked geometry meshoptimizer codec"),
+        ("reject", "meshopt-duplicate-position.pkg", meshopt_variant("positions_b64", tile_raw_positions),
+            "invalid cooked geometry vertex streams"),
+        ("reject", "meshopt-corrupt-position.pkg", meshopt_variant("positions_meshopt_b64", "AA=="),
+            "invalid cooked geometry vertex streams"),
+        ("reject", "meshopt-corrupt-indices.pkg", meshopt_variant("indices_meshopt_b64", "AA=="),
+            "invalid cooked geometry index stream"),
+        ("reject", "meshopt-unknown-stream.pkg", meshopt_variant("morph_0_positions_meshopt_b64", "AA=="),
+            "unsupported meshoptimizer cooked geometry stream"),
         ("accept", lod_path.name, None, (lod_indices, 2, lod_subsets, lod_materials)),
         *lod_chain_accepts,
         ("accept", "hierarchy.pkg", None, (24, 3, gltf_hierarchy_self_test.SUBSETS, HIERARCHY_MATERIALS)),

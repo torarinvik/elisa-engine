@@ -43,6 +43,7 @@ def _build_cooker() -> Path:
     for value in (compiler, version.stdout, os.environ.get("DEVELOPER_DIR", "")):
         fingerprint.update(value.encode("utf-8"))
         fingerprint.update(b"\0")
+    fingerprint.update(b"-include stdlib.h\0")
     for path in paths:
         fingerprint.update(path.read_bytes())
     digest = fingerprint.hexdigest()
@@ -53,6 +54,7 @@ def _build_cooker() -> Path:
         return output
     build_dir.mkdir(parents=True, exist_ok=True)
     compiled = subprocess.run([compiler, "-std=c++17", "-O2", "-DNDEBUG", "-pthread",
+        "-include", "stdlib.h",
         "-I", str(XATLAS_ROOT), str(paths[0]), str(paths[1]), "-o", str(output)],
         capture_output=True, text=True, check=False)
     if compiled.returncode != 0 or not output.is_file():

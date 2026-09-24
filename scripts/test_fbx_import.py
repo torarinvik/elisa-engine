@@ -45,7 +45,10 @@ def main() -> int:
         test_binary = build / "fbx-asset-import-test"
         run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(ufbx_object)])
         compile_command = [cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(ROOT / "native"),
-            str(ROOT / "native/fbx_asset_import_test.cpp"), str(ufbx_object), "-o", str(test_binary)]
+            "-I", str(ROOT / "dependencies/meshoptimizer"),
+            str(ROOT / "native/fbx_asset_import_test.cpp"), str(ROOT / "native/meshopt_stream_codec.cpp"),
+            str(ROOT / "dependencies/meshoptimizer/indexcodec.cpp"),
+            str(ROOT / "dependencies/meshoptimizer/vertexcodec.cpp"), str(ufbx_object), "-o", str(test_binary)]
         if args.cooked_skin is not None:
             compile_command.insert(1, "-DELISA_TEST_COOKED_SKIN")
             zstd_flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "libzstd"],

@@ -11,6 +11,7 @@ import struct
 import cook_assets
 import cook_gltf_animation
 import cook_gltf_geometry as geometry_cooker
+from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, encode_streams
 
 
 def position_extent(positions: bytes) -> float:
@@ -47,6 +48,18 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         generate_lightmap_uv, lightmap_resolution, lightmap_padding)
     if geometry["images"] and not allow_textures:
         raise ValueError("material textures need an .elpk bundle output")
+    raw_streams = [
+        ("positions", VERTEX_STREAM, geometry["vertex_count"], 12, geometry["positions"]),
+        ("normals", VERTEX_STREAM, geometry["vertex_count"], 12, geometry["normals"]),
+        ("uvs", VERTEX_STREAM, geometry["vertex_count"], 8, geometry["uvs"]),
+        ("indices", INDEX_STREAM, geometry["index_count"], 4, geometry["indices"]),
+    ]
+    encoded_streams = encode_streams(raw_streams)
+    compressed_streams = {}
+    for name, _kind, _count, _stride, raw in raw_streams:
+        encoded = encoded_streams[name]
+        if len(encoded) < len(raw):
+            compressed_streams[name] = encoded
     triangles = geometry["index_count"] // 3
     if (source_counts["triangles"] <= 0 or triangles <= 0 or triangles > source_counts["triangles"] or
             (simplify_ratio is None and triangles != source_counts["triangles"]) or
@@ -63,16 +76,16 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         f"source={asset_path}", f"source_sha256={source_digest}", f"triangles={triangles}",
         f"positions={geometry['vertex_count']}", f"indices={geometry['index_count']}",
         "position_stride=12", "normal_stride=12", "uv_stride=8", "index_stride=4",
+        *(["meshopt_codec=meshoptimizer-v1.2"] if compressed_streams else []),
         *geometry_cooker.subset_lines(geometry), *geometry_cooker.tangent_lines(geometry),
         *geometry_cooker.skin_lines(geometry),
         *cook_gltf_animation.package_lines(geometry["animation_clips"],
             0 if geometry["skin"] is None else len(geometry["skin"]["joints"]),
             len(geometry["scene"]["mesh_placements"]), len(geometry["morph_targets"])),
         *geometry_cooker.morph_lines(geometry), *geometry_cooker.scene_lines(geometry),
-        "positions_b64=" + base64.b64encode(geometry["positions"]).decode("ascii"),
-        "normals_b64=" + base64.b64encode(geometry["normals"]).decode("ascii"),
-        "uvs_b64=" + base64.b64encode(geometry["uvs"]).decode("ascii"),
-        "indices_b64=" + base64.b64encode(geometry["indices"]).decode("ascii"),
+        *[f"{name}_{'meshopt_' if name in compressed_streams else ''}b64=" +
+            base64.b64encode(compressed_streams.get(name, data)).decode("ascii")
+            for name, _kind, _count, _stride, data in raw_streams],
     ]
     if geometry["uv1s"]:
         metadata = geometry["uv1_metadata"]
@@ -88,9 +101,15 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     output_path.write_bytes(package_bytes)
     attribute_bytes = sum(len(geometry[name]) for name in
         ("positions", "normals", "uvs", "uv1s", "tangents"))
+    raw_mesh_stream_bytes = sum(len(data) for _name, _kind, _count, _stride, data in raw_streams)
+    stored_mesh_stream_bytes = sum(len(compressed_streams.get(name, data))
+        for name, _kind, _count, _stride, data in raw_streams)
     return output_path, {"triangles": triangles, "source_triangles": source_counts["triangles"],
         "positions": geometry["vertex_count"], "indices": geometry["index_count"],
         "attribute_bytes": attribute_bytes, "lightmap_uv": geometry.get("uv1_metadata"),
+        "raw_mesh_stream_bytes": raw_mesh_stream_bytes,
+        "stored_mesh_stream_bytes": stored_mesh_stream_bytes,
+        "meshopt_compressed_streams": len(compressed_streams),
         "position_extent": position_extent(geometry["positions"]),
         "subsets": len(geometry["subsets"]), "material_slots": geometry["material_slots"],
         "slot_materials": len(geometry["slot_materials"]) // geometry_cooker.SLOT_MATERIAL_STRIDE,

@@ -6,6 +6,7 @@
 #include "cooked_package_fields.h"
 #include "cooked_geometry_limits.h"
 #include "cooked_slot_materials.h"
+#include "cooked_geometry_streams.h"
 #include "cooked_geometry_uv1.h"
 #include "virtual_package.h"
 
@@ -249,6 +250,27 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         const auto found = package.sections.find(key);
         return found != package.sections.end() && found->second == expected;
     };
+    const auto meshopt_codec = package.sections.find("meshopt_codec");
+    size_t compressed_stream_count = 0;
+    for (const auto& section : package.sections) {
+        constexpr char suffix[] = "_meshopt_b64";
+        if (section.first.size() >= sizeof(suffix) - 1 &&
+            section.first.compare(section.first.size() - (sizeof(suffix) - 1),
+                sizeof(suffix) - 1, suffix) == 0) {
+            if (section.first != "positions_meshopt_b64" && section.first != "normals_meshopt_b64" &&
+                section.first != "uvs_meshopt_b64" && section.first != "indices_meshopt_b64") {
+                error = "unsupported meshoptimizer cooked geometry stream";
+                return false;
+            }
+            ++compressed_stream_count;
+        }
+    }
+    if ((compressed_stream_count == 0) != (meshopt_codec == package.sections.end()) ||
+        (meshopt_codec != package.sections.end() &&
+            meshopt_codec->second != "meshoptimizer-v1.2")) {
+        error = "unsupported or inconsistent cooked geometry meshoptimizer codec";
+        return false;
+    }
     if (!stride("position_stride", "12") || !stride("normal_stride", "12") ||
         !stride("uv_stride", "8") || !stride("index_stride", "4")) {
         error = "unsupported cooked geometry strides";
@@ -265,9 +287,9 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
         error = "invalid or excessive cooked geometry counts";
         return false;
     }
-    if (!detail::decode_floats(package, "positions_b64", size_t(vertices) * 3, geometry.positions) ||
-        !detail::decode_floats(package, "normals_b64", size_t(vertices) * 3, geometry.normals) ||
-        !detail::decode_floats(package, "uvs_b64", size_t(vertices) * 2, geometry.uvs)) {
+    if (!detail::decode_geometry_floats(package, "positions", size_t(vertices), 12, geometry.positions) ||
+        !detail::decode_geometry_floats(package, "normals", size_t(vertices), 12, geometry.normals) ||
+        !detail::decode_geometry_floats(package, "uvs", size_t(vertices), 8, geometry.uvs)) {
         error = "invalid cooked geometry vertex streams";
         return false;
     }
@@ -304,10 +326,8 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
             }
         }
     }
-    const auto encoded_indices = package.sections.find("indices_b64");
     std::vector<uint8_t> index_bytes;
-    if (encoded_indices == package.sections.end() ||
-        !detail::decode_base64(encoded_indices->second, index_bytes) || index_bytes.size() != size_t(indices) * 4) {
+    if (!detail::decode_geometry_index_bytes(package, size_t(indices), index_bytes)) {
         error = "invalid cooked geometry index stream";
         return false;
     }

@@ -183,7 +183,7 @@ def main(arguments: darray[sview]) -> i64:
     meshopt: Path = root.joinpath("dependencies/meshoptimizer")
     meshoptimizer_files: darray[sview] = [
         "meshoptimizer.h", "allocator.cpp", "vcacheoptimizer.cpp", "indexanalyzer.cpp",
-        "vfetchoptimizer.cpp", "indexgenerator.cpp",
+        "vfetchoptimizer.cpp", "indexgenerator.cpp", "indexcodec.cpp", "vertexcodec.cpp",
     ]
     for dependency_file in meshoptimizer_files:
         if not is_file(path(str(meshopt.joinpath(dependency_file)))):
@@ -201,7 +201,8 @@ def main(arguments: darray[sview]) -> i64:
         "-I", str(wicked_source), "-I", str(utility),
         "-I", str(utility.joinpath("metal")),
         "-I", sdl_include, "-I", sdl_subinclude,
-        str(source), str(root.joinpath("native/elisa_native_fallbacks.cpp")),
+        str(source), str(root.joinpath("native/meshopt_stream_codec.cpp")),
+        str(root.joinpath("native/elisa_native_fallbacks.cpp")),
         str(root.joinpath("native/miniaudio_implementation.cpp")),
         str(helper), str(input_helper),
         str(basis.joinpath("transcoder/basisu_transcoder.cpp")),
@@ -209,6 +210,8 @@ def main(arguments: darray[sview]) -> i64:
         str(meshopt.joinpath("allocator.cpp")),
         str(meshopt.joinpath("vcacheoptimizer.cpp")),
         str(meshopt.joinpath("indexanalyzer.cpp")),
+        str(meshopt.joinpath("indexcodec.cpp")),
+        str(meshopt.joinpath("vertexcodec.cpp")),
         str(ozz_libs[0]), str(ozz_libs[1]), str(ozz_libs[2]),
         str(recast_libs[0]), str(recast_libs[1]),
         "-L", sdl_library, "-lSDL3",

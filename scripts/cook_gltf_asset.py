@@ -10,10 +10,12 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+import time
 
 import cook_assets
 import cook_gltf_geometry
 from cook_gltf_meshopt import self_test as meshopt_self_test
+from cook_gltf_meshopt_streams import self_test as meshopt_stream_self_test
 from cook_gltf_lod import self_test as lod_self_test
 from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 from cook_gltf_lod_package import self_test as lod_package_self_test
@@ -38,6 +40,9 @@ def self_test() -> int:
     meshopt_status = meshopt_self_test()
     if meshopt_status != 0:
         return meshopt_status
+    meshopt_stream_status = meshopt_stream_self_test()
+    if meshopt_stream_status != 0:
+        return meshopt_stream_status
     lod_status = lod_self_test()
     if lod_status != 0:
         return lod_status
@@ -57,7 +62,8 @@ def self_test() -> int:
             source, "assets/maze_tile.gltf", second)
         if (first_result != second_result or first_path.read_bytes() != second_path.read_bytes() or
                 first_result["triangles"] != 12 or first_result["positions"] != 24 or
-                first_result["indices"] != 36):
+                first_result["indices"] != 36 or first_result["meshopt_compressed_streams"] == 0 or
+                first_result["stored_mesh_stream_bytes"] >= first_result["raw_mesh_stream_bytes"]):
             print("glTF cooker self-test failed: output was not stable or counts differ", file=sys.stderr)
             return 1
         sections = dict(line.split("=", 1) for line in first_path.read_text(encoding="utf-8").splitlines())
@@ -65,6 +71,13 @@ def self_test() -> int:
                 sections.get("normal_stride") != "12" or sections.get("uv_stride") != "8" or
                 sections.get("index_stride") != "4"):
             print("glTF cooker self-test failed: runtime streams are incomplete", file=sys.stderr)
+            return 1
+        compressed_fields = [name for name in ("positions", "normals", "uvs", "indices")
+            if f"{name}_meshopt_b64" in sections]
+        if (bool(compressed_fields) != (sections.get("meshopt_codec") == "meshoptimizer-v1.2") or
+                any(f"{name}_b64" in sections and f"{name}_meshopt_b64" in sections
+                    for name in ("positions", "normals", "uvs", "indices"))):
+            print("glTF cooker self-test failed: compressed stream fields are inconsistent", file=sys.stderr)
             return 1
         document = cook_assets.read_gltf(source.read_bytes())
         buffer = cook_assets.source_bytes(source.parent, document)
@@ -325,6 +338,7 @@ def main(arguments: list[str]) -> int:
         return self_test()
     if options.source is None or options.asset_path is None or options.output is None:
         parser.error("source, --asset-path, and --output are required")
+    cook_started = time.perf_counter()
     try:
         textures = parse_texture_arguments(options.texture)
         if not options.generate_lightmap_uv and (
@@ -343,6 +357,7 @@ def main(arguments: list[str]) -> int:
                     f"{level['vertices']} vertices, {level['byte_size']} bytes, "
                     f"relative_error_budget={level['relative_error_budget']:.6f}, "
                     f"sha256={level['sha256']}")
+            print(f"cook elapsed: {(time.perf_counter() - cook_started) * 1000:.1f} ms")
             return 0
         if (textures or options.dependency) and options.output.suffix.lower() != ".elpk":
             raise ValueError("--texture and --dependency require an .elpk output bundle")
@@ -371,6 +386,10 @@ def main(arguments: list[str]) -> int:
         reduction = (f"{result['triangles']}/{result['source_triangles']} triangles"
             if result["lod"] is not None else f"{result['triangles']} triangles")
         print(f"cooked {options.asset_path} -> {output} ({reduction}, {result['positions']} vertices)")
+        print(f"meshoptimizer streams: {result['raw_mesh_stream_bytes']} -> "
+            f"{result['stored_mesh_stream_bytes']} bytes "
+            f"({result['meshopt_compressed_streams']} streams compressed)")
+        print(f"cook elapsed: {(time.perf_counter() - cook_started) * 1000:.1f} ms")
         if result["lod"] is not None:
             print(f"LOD ratio={result['lod']['ratio']:.3f}, "
                 f"max relative error={result['lod']['maximum_error']:.5f}, "
