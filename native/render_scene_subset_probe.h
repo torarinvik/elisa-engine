@@ -14,6 +14,13 @@ constexpr float DOMINANT_CHANNEL_MINIMUM = 0.02f;
 constexpr uint32_t DOMINANT_CHANNEL_RADIUS = 2;
 constexpr int32_t DOMINANT_CHANNEL_NONE = -1;
 constexpr int32_t DOMINANT_CHANNEL_UNREADABLE = -2;
+constexpr size_t MIRRORED_TANGENT_VERTEX_COUNT = 8;
+constexpr size_t MIRRORED_TANGENT_INDEX_COUNT = 12;
+constexpr size_t MIRRORED_TANGENT_CHART_INDEX_COUNT = 6;
+constexpr float TANGENT_HANDEDNESS_TOLERANCE = 0.002f;
+constexpr float LUMINANCE_RED_WEIGHT = 0.2126f;
+constexpr float LUMINANCE_GREEN_WEIGHT = 0.7152f;
+constexpr float LUMINANCE_BLUE_WEIGHT = 0.0722f;
 
 const InstanceSlot* snapshot_instance(const RenderSceneService& state, int64_t render_id) {
     if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return nullptr;
@@ -106,6 +113,31 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_tangent_frames(
     const XMFLOAT4& first = mesh->vertex_tangents.front();
     return first.x < -0.99f && std::abs(first.y) < FRAME_TOLERANCE &&
         std::abs(first.z) < FRAME_TOLERANCE ? 1 : 0;
+}
+
+// 1 when the two mirrored UV charts arrived as opposite, triangle-consistent
+// handedness groups after the cooked mesh was uploaded into Wicked.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_mirrored_tangent_seam(int64_t render_id) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id);
+    if (mesh == nullptr || mesh->vertex_tangents.size() != MIRRORED_TANGENT_VERTEX_COUNT ||
+        mesh->indices.size() != MIRRORED_TANGENT_INDEX_COUNT) return 0;
+    float chart_handedness[2] = {};
+    for (size_t chart = 0; chart < 2; ++chart) {
+        const size_t first_index = chart * MIRRORED_TANGENT_CHART_INDEX_COUNT;
+        const uint32_t first_vertex = mesh->indices[first_index];
+        if (first_vertex >= mesh->vertex_tangents.size()) return 0;
+        const float handedness = mesh->vertex_tangents[first_vertex].w;
+        if (!std::isfinite(handedness) || std::abs(std::abs(handedness) - 1.0f) > TANGENT_HANDEDNESS_TOLERANCE) return 0;
+        chart_handedness[chart] = handedness;
+        for (size_t index = first_index; index < first_index + MIRRORED_TANGENT_CHART_INDEX_COUNT; ++index) {
+            const uint32_t vertex = mesh->indices[index];
+            if (vertex >= mesh->vertex_tangents.size() ||
+                std::abs(mesh->vertex_tangents[vertex].w - handedness) > TANGENT_HANDEDNESS_TOLERANCE) return 0;
+        }
+    }
+    return chart_handedness[0] * chart_handedness[1] < 0.0f ? 1 : 0;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_placement_subset_count(
@@ -259,6 +291,40 @@ extern "C" int32_t elisa_render_scene_v1_test_last_frame_dominant_channel(uint32
         }
     }
     return DOMINANT_CHANNEL_NONE;
+}
+
+// Mean Rec. 709 luminance in a 5x5 patch of the last 3D frame. Returns -1
+// when the render target or coordinates cannot be read.
+extern "C" float elisa_render_scene_v1_test_last_frame_luminance(uint32_t x_permille, uint32_t y_permille) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr ||
+        x_permille > 1000 || y_permille > 1000) return -1.0f;
+    wait_for_object_pipelines();
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.width <= 2 * DOMINANT_CHANNEL_RADIUS ||
+        desc.height <= 2 * DOMINANT_CHANNEL_RADIUS || pixel_size == 0 ||
+        !wi::helper::saveTextureToMemory(frame, pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * pixel_size) return -1.0f;
+    const uint32_t center_x = std::clamp(uint32_t(uint64_t(desc.width - 1) * x_permille / 1000),
+        DOMINANT_CHANNEL_RADIUS, desc.width - 1 - DOMINANT_CHANNEL_RADIUS);
+    const uint32_t center_y = std::clamp(uint32_t(uint64_t(desc.height - 1) * y_permille / 1000),
+        DOMINANT_CHANNEL_RADIUS, desc.height - 1 - DOMINANT_CHANNEL_RADIUS);
+    float luminance = 0.0f;
+    for (uint32_t y = center_y - DOMINANT_CHANNEL_RADIUS; y <= center_y + DOMINANT_CHANNEL_RADIUS; ++y) {
+        for (uint32_t x = center_x - DOMINANT_CHANNEL_RADIUS; x <= center_x + DOMINANT_CHANNEL_RADIUS; ++x) {
+            float rgb[3] = {};
+            if (!decode_frame_pixel(desc.format,
+                pixels.data() + (size_t(y) * desc.width + x) * pixel_size, rgb)) return -1.0f;
+            luminance += LUMINANCE_RED_WEIGHT * rgb[0] + LUMINANCE_GREEN_WEIGHT * rgb[1] +
+                LUMINANCE_BLUE_WEIGHT * rgb[2];
+        }
+    }
+    return luminance / float((2 * DOMINANT_CHANNEL_RADIUS + 1) * (2 * DOMINANT_CHANNEL_RADIUS + 1));
 }
 
 // 1 when registered material `high:low` names texture

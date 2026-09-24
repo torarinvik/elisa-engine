@@ -1,0 +1,224 @@
+# Render a cooked mirrored-UV seam with one tangent-space +X normal. The
+# native smoke checks uploaded MikkTSpace handedness and measured light contrast.
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneMirroredNormalNativeTests:
+    private:
+        const module Ids:
+            MESHES: u64 = 9400
+            TEXTURES: u64 = 9401
+            MATERIALS: u64 = 9402
+            SETS: u64 = 9403
+
+        const MESH: u64 = 1
+        const TEXTURE: u64 = 1
+        const MATERIAL: u64 = 1
+        const SET: u64 = 1
+        const RENDER_ID: i64 = 94001
+        const SAMPLE_Y: u32 = 500
+        const LEFT_X: u32 = 350
+        const RIGHT_X: u32 = 650
+        const NORMAL_SLOT: i32 = 1
+        const NORMAL_MAP_SIZE: u32 = 8
+        const MINIMUM_LIGHT_CONTRAST: f32 = 0.025
+
+        const module Code:
+            OK: i32 = 0
+            OTHER: i32 = 1
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_isolate_snapshot_instance(handle: i64, isolate: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_wait_render_pipelines() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_mirrored_tangent_seam(render_id: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_id(high: u64, low: u64,
+            slot: i32, texture_high: u64, texture_low: u64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_size(
+            high: u64, low: u64, slot: i32, width: u32, height: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_last_frame_luminance(x_permille: u32, y_permille: u32) -> f32
+
+        def mesh_id() -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MESHES, low: MESH}
+
+        def texture_id() -> Assets::AssetId:
+            Assets::AssetId{high: Ids::TEXTURES, low: TEXTURE}
+
+        def material_id() -> Assets::AssetId:
+            Assets::AssetId{high: Ids::MATERIALS, low: MATERIAL}
+
+        def set_id() -> Assets::AssetId:
+            Assets::AssetId{high: Ids::SETS, low: SET}
+
+        def register_assets() -> i32:
+            mesh_status: i32 = catch RenderScene::register_snapshot_mesh_asset(
+                mesh_id(), "build/cooked/subsets/mirrored_normal.elpk"):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return 1 if mesh_status != Code::OK
+            texture_status: i32 = catch RenderScene::register_snapshot_bundle_texture_asset(
+                texture_id(), "build/cooked/subsets/mirrored_normal.elpk", "image_0"):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return 2 if texture_status != Code::OK
+            linked: i32 = catch RenderScene::register_snapshot_mesh_texture(mesh_id(), 0, texture_id()):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return 3 if linked != Code::OK
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: i32 = catch RenderScene::snapshot_material_set_append(&materials, material_id()):
+                ok: Code::OK
+                error failure: Code::OTHER
+            return 4 if appended != Code::OK
+            catch RenderScene::register_snapshot_mesh_materials(mesh_id(), materials, set_id()):
+                ok: Code::OK
+                error failure: 5
+
+        def configure_reference() -> i32:
+            environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 1.5, y: 1.5, z: 1.5},
+                sun_direction: Geometry::Vec3{x: 1.0, y: 1.0, z: 0.0},
+                ambient: Geometry::vec3_zero(),
+                sky_exposure: 0.0,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }):
+                ok: 0
+                error failure: 1
+            return 1 if environment != 0
+            projection: i32 = catch RenderScene::set_camera_orthographic_height(4.0):
+                ok: 0
+                error failure: 2
+            return 2 if projection != 0
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 14.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}):
+                ok: 0
+                error failure: 3
+            return 3 if view != 0
+            0
+
+        def restore_reference() -> i32:
+            environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
+                sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
+                ambient: Geometry::Vec3{x: 0.14, y: 0.18, z: 0.25},
+                sky_exposure: 1.25,
+                fog_color: Geometry::Vec3{x: 0.04, y: 0.06, z: 0.1},
+                fog_start: 12.0,
+                fog_density: 0.02,
+                fog_enabled: true,
+            }):
+                ok: 0
+                error failure: 1
+            projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: 2
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
+                Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 3
+            return 1 if environment != 0 or projection != 0 or view != 0
+            0
+
+        def stage_panel() -> i64:
+            return 0 if elisa_render_scene_v1_snapshot_begin(0) != Code::OK
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(0, 1, RENDER_ID, RENDER_ID,
+                Ids::MESHES, MESH, Ids::SETS, SET,
+                0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 1.0, 2.0)
+            if staged != Code::OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 0
+            return 0 if elisa_render_scene_v1_snapshot_commit() != Code::OK
+            elisa_render_scene_v1_snapshot_result(0)
+
+        def draw_reference(capture: cstr, handle: i64) -> i32:
+            return 1 if elisa_render_scene_v1_test_isolate_snapshot_instance(handle, 1) != Code::OK
+            return 2 if elisa_render_scene_v1_test_wait_render_pipelines() != Code::OK
+            for frame in 0..<4:
+                return 3 if Application::pump() != Application::PumpStatus.Running
+            return 4 if elisa_render_scene_v1_test_snapshot_material_texture_id(
+                Ids::MATERIALS, MATERIAL, NORMAL_SLOT, Ids::TEXTURES, TEXTURE) != 1
+            return 5 if elisa_render_scene_v1_test_snapshot_material_texture_size(
+                Ids::MATERIALS, MATERIAL, NORMAL_SLOT, NORMAL_MAP_SIZE, NORMAL_MAP_SIZE) != 1
+            return 6 if elisa_render_scene_v1_test_snapshot_mirrored_tangent_seam(RENDER_ID) != 1
+            left: f32 = elisa_render_scene_v1_test_last_frame_luminance(LEFT_X, SAMPLE_Y)
+            right: f32 = elisa_render_scene_v1_test_last_frame_luminance(RIGHT_X, SAMPLE_Y)
+            return 7 if left < 0.0 or right < 0.0
+            return 8 if (left - right < MINIMUM_LIGHT_CONTRAST and
+                right - left < MINIMUM_LIGHT_CONTRAST)
+            return 9 if not Application::save_screenshot(capture)
+            0
+
+        def cleanup(handle: i64) -> i32:
+            if handle > 0:
+                _ = elisa_render_scene_v1_test_isolate_snapshot_instance(handle, 0)
+                return 1 if elisa_render_scene_v1_snapshot_begin(1) != Code::OK
+                retired: i32 = elisa_render_scene_v1_snapshot_retire(handle)
+                if retired != Code::OK:
+                    _ = elisa_render_scene_v1_snapshot_abort()
+                    return 2
+                return 3 if elisa_render_scene_v1_snapshot_commit() != Code::OK
+            _ = catch RenderScene::unregister_snapshot_material_set(set_id()):
+                ok: 0
+                error failure: 1
+            _ = catch RenderScene::unregister_snapshot_material_asset(material_id()):
+                ok: 0
+                error failure: 1
+            _ = catch RenderScene::unregister_snapshot_texture_asset(texture_id()):
+                ok: 0
+                error failure: 1
+            _ = catch RenderScene::unregister_snapshot_mesh_asset(mesh_id()):
+                ok: 0
+                error failure: 1
+            0
+
+    public:
+        def exercise() -> i32:
+            capture: cstr = Application::environment_value("ELISA_MIRRORED_NORMAL_CAPTURE")
+            return 1 if capture == ""
+            configured: i32 = configure_reference()
+            return 10 + configured if configured != 0
+            registered: i32 = register_assets()
+            if registered != 0:
+                _ = cleanup(0)
+                _ = restore_reference()
+                return 20 + registered
+            handle: i64 = stage_panel()
+            if handle <= 0:
+                _ = cleanup(0)
+                _ = restore_reference()
+                return 30
+            drawn: i32 = draw_reference(capture, handle)
+            cleaned: i32 = cleanup(handle)
+            restored: i32 = restore_reference()
+            return 40 + drawn if drawn != 0
+            return 50 + cleaned if cleaned != 0
+            return 60 + restored if restored != 0
+            0

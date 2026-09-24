@@ -19,6 +19,7 @@ include "./render_scene_async_asset_native.elisa"
 include "./render_scene_cooked_material_native.elisa"
 include "./render_scene_node_hierarchy_native.elisa"
 include "./render_scene_cooked_texture_native.elisa"
+include "./render_scene_mirrored_normal_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_image_native.elisa"
 include "./render_scene_debug_native.elisa"
@@ -374,7 +375,8 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(228, node_hierarchy_status) if node_hierarchy_status != 0
     cooked_texture_status: i32 = RenderSceneCookedTextureNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(230, cooked_texture_status) if cooked_texture_status != 0
-
+    mirrored_normal_status: i32 = RenderSceneMirroredNormalNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(231, mirrored_normal_status) if mirrored_normal_status != 0
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -473,7 +475,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: -1.0
         error failure: -2.0
     return 78 if stale_animation_progress != -1.0
-
     _ = catch RenderScene::set_electric_arc_visible(electric_arc, false):
         ok: 0
         error failure: return 95
@@ -498,7 +499,6 @@ def exercise_render_scene() -> i32:
         error failure: 2
     return 101 if stale_electric_arc != 1
     return 102 if elisa_render_scene_v1_test_arc_capacity() != 1
-
     destroyed_hud_text: i32 = catch RenderScene::destroy_overlay_text(hud_text):
         ok: 0
         error failure: 1
@@ -508,7 +508,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 81 if stale_hud_text != 1
-
     text_capacity_handles: mutable RenderScene::OverlayTextHandle[128] = zeroed
     for index in 0..<128 |text_capacity_handles|:
         capacity_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(

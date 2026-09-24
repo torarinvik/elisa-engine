@@ -24,6 +24,7 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 from png_image import encode_png
 import gltf_texture_self_test
+import gltf_mirrored_normal_fixture
 import gltf_skin_self_test
 import gltf_morph_self_test
 import gltf_scene_self_test
@@ -218,6 +219,16 @@ def main() -> int:
         variant = dict(gltf_texture_self_test.SECTIONS)
         variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
         write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
+        fixture_status = run([sys.executable, str(ROOT / "scripts/gltf_mirrored_normal_fixture.py"),
+            "--write-fixture"])
+        if fixture_status != 0:
+            return fixture_status
+        mirrored_normal = subset_directory / "mirrored_normal.elpk"
+        fixture_status = run([sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+            str(gltf_mirrored_normal_fixture.OUTPUT), "--asset-path",
+            "test/fixtures/mirrored_normal_panel.gltf", "--output", str(mirrored_normal)])
+        if fixture_status != 0:
+            return fixture_status
 
     if render_only:
         # The native test rewrites this bundle while checking checksum
@@ -230,6 +241,13 @@ def main() -> int:
             print("Render-only mode requires the cooked textured-panel fixtures", file=sys.stderr)
             return 2
         shutil.copyfile(textured, rewrite)
+        mirrored_normal = subset_directory / "mirrored_normal.elpk"
+        if not mirrored_normal.is_file():
+            fixture_status = run([sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+                str(gltf_mirrored_normal_fixture.OUTPUT), "--asset-path",
+                "test/fixtures/mirrored_normal_panel.gltf", "--output", str(mirrored_normal)])
+            if fixture_status != 0:
+                return fixture_status
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
@@ -300,6 +318,9 @@ def main() -> int:
     runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)
     fine_lod_capture = build / "render-scene-lod-fine.png"
     coarse_lod_capture = build / "render-scene-lod-coarse.png"
+    mirrored_normal_capture = build / "render-scene-mirrored-normal.png"
+    mirrored_normal_capture.unlink(missing_ok=True)
+    runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -333,8 +354,14 @@ def main() -> int:
             print("Same-camera LOD image quality comparison failed.", file=sys.stderr)
             return quality_status
     if status == 0:
+        normal_status = run([sys.executable, str(ROOT / "scripts/compare_mirrored_normal.py"),
+            str(mirrored_normal_capture)])
+        if normal_status != 0:
+            print("Mirrored-UV normal-map image comparison failed.", file=sys.stderr)
+            return normal_status
+    if status == 0:
         if render_only:
-            print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")
+            print("Elisa screen-space UI and mirrored-UV normal-map reference rendered by Wicked; visual checks passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

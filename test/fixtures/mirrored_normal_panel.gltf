@@ -1,0 +1,135 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Elisa mirrored normal reference"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "mirrored_normal_panel",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "mirrored_normal",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.85,
+          0.85,
+          0.85,
+          1.0
+        ],
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.9
+      },
+      "normalTexture": {
+        "index": 0,
+        "scale": 1.0
+      }
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    }
+  ],
+  "images": [
+    {
+      "name": "normal",
+      "bufferView": 4,
+      "mimeType": "image/png"
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 292,
+      "uri": "data:application/octet-stream;base64,AACAvwAAAAAAAIC/AACAvwAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAIC/AACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAABAAIAAAACAAMAAgAFAAQAAgAEAAMAiVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR42mP439DwHx9mGBkKAMTGv4H0w+meAAAAAElFTkSuQmCCAA=="
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 72,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 144,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 192,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 216,
+      "byteLength": 75
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3",
+      "min": [
+        -1.0,
+        0.0,
+        -1.0
+      ],
+      "max": [
+        1.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 12,
+      "type": "SCALAR"
+    }
+  ]
+}

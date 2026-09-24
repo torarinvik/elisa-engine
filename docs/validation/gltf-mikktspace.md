@@ -20,6 +20,10 @@ cooking, and retain vertex-aligned runtime streams when tangent seams split.
   normalized, orthogonal to its uploaded normal, and has a valid handedness;
   the first known +X Elisa tangent arrives as -X in Wicked space. The same
   scene renders its authored cutout, lit, and emissive material strips.
+- A separate mirrored-normal reference cooks two quads with opposite UV
+  directions, verifies Wicked receives opposite tangent handedness on the two
+  charts, and measures different lit-patch luminance in the captured frame.
+  See [`mirrored-normal-map.md`](mirrored-normal-map.md).
 - `/opt/homebrew/bin/python3 scripts/check_dependency_manifest.py` passed;
   MikkTSpace is pinned and remains outside the runtime link. The glTF helper
   builds only for offline cooking and caches the binary against source hashes
@@ -31,4 +35,4 @@ Authored glTF tangents retain their existing transform-and-handedness path.
 Generated tangent splits remap positions, normals, UVs, morph deltas, and skin
 influences together; cooked vertex limits are checked after splitting. For
 lightmap UV generation, see [`gltf-lightmap-uv.md`](gltf-lightmap-uv.md).
-An image reference dedicated to a mirrored normal map remains open.
+Rendered lightmap quality and runtime lightmap authoring remain open.
