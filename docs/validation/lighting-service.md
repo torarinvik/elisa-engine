@@ -1,7 +1,8 @@
 # Native lighting service
 
-`src/backend/lighting.elisa` owns backend-neutral directional, point, and spot
-light values plus sun, ambient, sky exposure, and fog settings. It rejects
+`src/backend/lighting.elisa` owns backend-neutral directional, point, spot, and
+rectangular area-light descriptors plus sun, ambient, sky exposure, and fog
+settings. It rejects
 non-finite positions, colors, directions, energy, or fog parameters, as well as zero directional
 vectors, and invalid range/cone combinations before native submission.
 
@@ -36,6 +37,10 @@ Directional and spot descriptors also set the Wicked transform rotation. The
 native assertion checks the transformed local +Y axis as well as the component
 direction, matching the direction Wicked uses when it updates and renders the
 scene.
+Rectangular area lights carry positive width and height in world units, orient
+their local −Z emission axis, and map those dimensions into Wicked's rectangle
+light component. The SDL3/Metal smoke creates and updates one, checking its live
+dimensions and the transformed emission axis.
 
 `RenderScene::set_sky_map` loads a project-relative color asset into Wicked's
 static sky path, accepting equirectangular images with a 2:1 aspect ratio or

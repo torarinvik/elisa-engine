@@ -13,7 +13,7 @@
 
 namespace probe {
 
-enum class NativeLightKind : uint8_t { Directional, Point, Spot };
+enum class NativeLightKind : uint8_t { Directional, Point, Spot, Rectangle };
 
 struct NativeLightDesc {
     NativeLightKind kind = NativeLightKind::Point;
@@ -26,6 +26,8 @@ struct NativeLightDesc {
     float inner_cone = 0.0f;
     bool cast_shadow = false;
     int32_t shadow_resolution = 0;
+    float rectangle_width = 0.0f;
+    float rectangle_height = 0.0f;
 };
 
 struct NativeEnvironmentDesc {
@@ -55,6 +57,9 @@ class LightingBridge {
 public:
     static constexpr uint32_t MAX_LIGHTS = 32;
     static constexpr uint32_t MAX_ENVIRONMENTS = 8;
+    static constexpr int32_t MIN_SHADOW_RESOLUTION = 16;
+    static constexpr int32_t MAX_SHADOW_RESOLUTION = 2048;
+    static constexpr float MAX_RECTANGLE_DIMENSION = 1000000.0f;
 
     explicit LightingBridge(wi::scene::Scene& scene)
         : scene_(scene), owner_(reinterpret_cast<uintptr_t>(this)) {}
@@ -99,8 +104,7 @@ public:
         const XMFLOAT3 direction = desc.kind == NativeLightKind::Point ? XMFLOAT3(0.0f, -1.0f, 0.0f) : XMFLOAT3(
             desc.direction.x / direction_length, desc.direction.y / direction_length,
             desc.direction.z / direction_length);
-        const XMVECTOR local_axis = desc.kind == NativeLightKind::Point ?
-            XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f) : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        const XMVECTOR local_axis = light_forward_axis(desc.kind);
         XMFLOAT3 rendered_direction;
         XMStoreFloat3(&rendered_direction, XMVector3Normalize(XMVector3TransformNormal(
             local_axis, transform->GetWorldMatrix())));
@@ -114,6 +118,8 @@ public:
             close(light->intensity, desc.intensity) && close(light->range, desc.range) &&
             close(light->innerConeAngle, desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f) &&
             close(light->outerConeAngle, desc.kind == NativeLightKind::Spot ? desc.outer_cone : 0.0f) &&
+            close(light->length, desc.kind == NativeLightKind::Rectangle ? desc.rectangle_width : 0.0f) &&
+            close(light->height, desc.kind == NativeLightKind::Rectangle ? desc.rectangle_height : 0.0f) &&
             light->IsCastingShadow() == desc.cast_shadow &&
             light->forced_shadow_resolution == (desc.shadow_resolution == 0 ? -1 : desc.shadow_resolution);
     }
@@ -210,17 +216,24 @@ private:
             return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
         };
         const float direction_length = XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)));
+        const bool valid_kind = desc.kind == NativeLightKind::Directional || desc.kind == NativeLightKind::Point ||
+            desc.kind == NativeLightKind::Spot || desc.kind == NativeLightKind::Rectangle;
         const bool valid_spot_cone = desc.kind != NativeLightKind::Spot ||
             (desc.outer_cone > 0.0f && desc.inner_cone >= 0.0f && desc.inner_cone <= desc.outer_cone);
-        return finite_color(desc.color) && finite_vector(desc.position) && finite_vector(desc.direction) &&
+        const bool valid_rectangle_size = std::isfinite(desc.rectangle_width) && std::isfinite(desc.rectangle_height) &&
+            (desc.kind == NativeLightKind::Rectangle ? desc.rectangle_width > 0.0f && desc.rectangle_height > 0.0f &&
+                desc.rectangle_width <= MAX_RECTANGLE_DIMENSION && desc.rectangle_height <= MAX_RECTANGLE_DIMENSION :
+                desc.rectangle_width == 0.0f && desc.rectangle_height == 0.0f);
+        return valid_kind && finite_color(desc.color) && finite_vector(desc.position) && finite_vector(desc.direction) &&
             (desc.kind == NativeLightKind::Point || direction_length > 0.0001f) &&
             std::isfinite(desc.intensity) && desc.intensity >= 0.0f &&
             std::isfinite(desc.range) && desc.range > 0.0f && std::isfinite(desc.outer_cone) &&
-            std::isfinite(desc.inner_cone) && valid_spot_cone && valid_shadow_resolution(desc.shadow_resolution);
+            std::isfinite(desc.inner_cone) && valid_spot_cone && valid_shadow_resolution(desc.shadow_resolution) &&
+            valid_rectangle_size;
     }
 
     static bool valid_shadow_resolution(int32_t resolution) {
-        return resolution == 0 || (resolution >= 16 && resolution <= 2048 &&
+        return resolution == 0 || (resolution >= MIN_SHADOW_RESOLUTION && resolution <= MAX_SHADOW_RESOLUTION &&
             (resolution & (resolution - 1)) == 0);
     }
 
@@ -230,14 +243,20 @@ private:
 
     static wi::scene::LightComponent::LightType light_type(NativeLightKind kind) {
         return kind == NativeLightKind::Directional ? wi::scene::LightComponent::DIRECTIONAL :
-            kind == NativeLightKind::Spot ? wi::scene::LightComponent::SPOT : wi::scene::LightComponent::POINT;
+            kind == NativeLightKind::Spot ? wi::scene::LightComponent::SPOT :
+            kind == NativeLightKind::Rectangle ? wi::scene::LightComponent::RECTANGLE : wi::scene::LightComponent::POINT;
     }
 
-    static XMVECTOR direction_rotation(const XMFLOAT3& direction) {
-        const XMVECTOR local_up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    static XMVECTOR light_forward_axis(NativeLightKind kind) {
+        return kind == NativeLightKind::Point ? XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f) :
+            kind == NativeLightKind::Rectangle ? XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f) :
+                XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    }
+
+    static XMVECTOR direction_rotation(const XMFLOAT3& direction, FXMVECTOR local_axis) {
         const XMVECTOR normalized_direction = XMVector3Normalize(XMLoadFloat3(&direction));
-        const XMVECTOR axis = XMVector3Cross(local_up, normalized_direction);
-        const float dot = std::clamp(XMVectorGetX(XMVector3Dot(local_up, normalized_direction)), -1.0f, 1.0f);
+        const XMVECTOR axis = XMVector3Cross(local_axis, normalized_direction);
+        const float dot = std::clamp(XMVectorGetX(XMVector3Dot(local_axis, normalized_direction)), -1.0f, 1.0f);
         if (dot < -0.999999f) {
             return XMQuaternionRotationAxis(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), XM_PI);
         }
@@ -254,7 +273,7 @@ private:
         if (transform != nullptr) {
             transform->translation_local = desc.position;
             if (desc.kind != NativeLightKind::Point) {
-                XMStoreFloat4(&transform->rotation_local, direction_rotation(desc.direction));
+                XMStoreFloat4(&transform->rotation_local, direction_rotation(desc.direction, light_forward_axis(desc.kind)));
             }
             transform->SetDirty();
             transform->UpdateTransform();
@@ -270,6 +289,8 @@ private:
         light->range = desc.range;
         light->outerConeAngle = desc.kind == NativeLightKind::Spot ? desc.outer_cone : 0.0f;
         light->innerConeAngle = desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f;
+        light->length = desc.kind == NativeLightKind::Rectangle ? desc.rectangle_width : 0.0f;
+        light->height = desc.kind == NativeLightKind::Rectangle ? desc.rectangle_height : 0.0f;
         light->SetType(light_type(desc.kind));
         light->SetCastShadow(desc.cast_shadow);
         light->forced_shadow_resolution = desc.shadow_resolution == 0 ? -1 : desc.shadow_resolution;

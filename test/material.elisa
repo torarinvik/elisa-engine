@@ -26,6 +26,8 @@ def main() -> i32:
         outer_cone: 0.7,
         casts_shadow: true,
         shadow_resolution: 1024,
+        rectangle_width: 0.0,
+        rectangle_height: 0.0,
     }
     return 9 if not Lighting::light_valid(light)
     light.range <- 0.0
@@ -51,6 +53,16 @@ def main() -> i32:
     return 18 if not Lighting::light_valid(point)
     point.shadow_resolution <- 2048
     return 19 if not Lighting::light_valid(point)
+    rectangle: Lighting::Light = point
+    rectangle.kind <- Lighting::LightKind.Rectangle
+    rectangle.direction <- Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}
+    rectangle.rectangle_width <- 3.0
+    rectangle.rectangle_height <- 1.5
+    return 20 if not Lighting::light_valid(rectangle)
+    rectangle.rectangle_width <- 0.0
+    return 21 if Lighting::light_valid(rectangle)
+    rectangle.rectangle_width <- 1000001.0
+    return 22 if Lighting::light_valid(rectangle)
     environment: Lighting::Environment = Lighting::Environment{
         sun_color: Geometry::Vec3{x: 1.0, y: 0.95, z: 0.8},
         sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},

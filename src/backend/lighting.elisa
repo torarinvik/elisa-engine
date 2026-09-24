@@ -9,6 +9,7 @@ module Lighting:
             MAX_FINITE_PARAMETER: f32 = 1000000000000000000000000000000.0
             MIN_SHADOW_RESOLUTION: i32 = 16
             MAX_SHADOW_RESOLUTION: i32 = 2048
+            MAX_AREA_LIGHT_DIMENSION: f32 = 1000000.0
 
         def finite(value: f32) -> bool:
             value == value and value >= -Limits::MAX_FINITE_PARAMETER and value <= Limits::MAX_FINITE_PARAMETER
@@ -23,6 +24,7 @@ module Lighting:
             Directional
             Point
             Spot
+            Rectangle
 
         struct Light:
             kind: LightKind
@@ -38,6 +40,9 @@ module Lighting:
             casts_shadow: bool
             # 0 selects Wicked's automatic resolution; otherwise a power of two from 16 to 2048.
             shadow_resolution: i32
+            # Rectangle lights require positive dimensions; other kinds require both values to be zero.
+            rectangle_width: f32
+            rectangle_height: f32
 
         struct Environment:
             sun_color: Geometry::Vec3
@@ -56,6 +61,10 @@ module Lighting:
             return false if light.kind != LightKind.Point and Geometry::vec3_length_squared(light.direction) <= Limits::ZERO_VECTOR_SQUARED
             return false if light.kind == LightKind.Spot and (light.inner_cone < 0.0 or light.outer_cone <= 0.0 or light.inner_cone > light.outer_cone)
             return false if not shadow_resolution_valid(light.shadow_resolution)
+            return false if not finite(light.rectangle_width) or not finite(light.rectangle_height)
+            return false if light.rectangle_width < 0.0 or light.rectangle_height < 0.0 or light.rectangle_width > Limits::MAX_AREA_LIGHT_DIMENSION or light.rectangle_height > Limits::MAX_AREA_LIGHT_DIMENSION
+            return false if light.kind == LightKind.Rectangle and (light.rectangle_width <= 0.0 or light.rectangle_height <= 0.0)
+            return false if light.kind != LightKind.Rectangle and (light.rectangle_width != 0.0 or light.rectangle_height != 0.0)
             true
 
         def environment_valid(environment: Environment) -> bool:

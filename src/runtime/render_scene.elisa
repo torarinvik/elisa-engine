@@ -22,10 +22,20 @@ module RenderScene:
             NORMAL: i32 = 1
             SURFACE: i32 = 2
             EMISSIVE: i32 = 3
+        const module NativeLightKindCode:
+            DIRECTIONAL: i32 = 0
+            POINT: i32 = 1
+            SPOT: i32 = 2
+            RECTANGLE: i32 = 3
         const BLEND_EASED: i32 = 1
         const BLEND_PHASE_MATCHED: i32 = 2
         const BLEND_CONTINUE_SAME_CLIP: i32 = 4
         include "./render_scene_abi_declarations.inc"
+        def native_light_kind(kind: Lighting::LightKind) -> i32:
+            return NativeLightKindCode::DIRECTIONAL if kind == Lighting::LightKind.Directional
+            return NativeLightKindCode::POINT if kind == Lighting::LightKind.Point
+            return NativeLightKindCode::SPOT if kind == Lighting::LightKind.Spot
+            NativeLightKindCode::RECTANGLE
         def check_status(status: i32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if status == NativeStatus::INVALID_ARGUMENT
             raise RenderSceneError.NotInitialized if status == NativeStatus::NOT_INITIALIZED
@@ -395,26 +405,28 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_clear_sky_map())
         def create_light(light: Lighting::Light) -> LightHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
-            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            kind: i32 = native_light_kind(light.kind)
             native_value: i64 = elisa_render_scene_v1_create_light(kind,
                 light.color.x, light.color.y, light.color.z,
                 light.position.x, light.position.y, light.position.z,
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
-                1 if light.casts_shadow else 0, light.shadow_resolution)
+                1 if light.casts_shadow else 0, light.shadow_resolution,
+                light.rectangle_width, light.rectangle_height)
             if native_value <= 0:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             LightHandle{id: native_value}
         def update_light(handle: LightHandle, light: Lighting::Light) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
-            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            kind: i32 = native_light_kind(light.kind)
             try check_status(elisa_render_scene_v1_update_light(handle.id, kind,
                 light.color.x, light.color.y, light.color.z,
                 light.position.x, light.position.y, light.position.z,
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
-                1 if light.casts_shadow else 0, light.shadow_resolution))
+                1 if light.casts_shadow else 0, light.shadow_resolution,
+                light.rectangle_width, light.rectangle_height))
         def destroy_light(handle: LightHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_light(handle.id))
         def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
