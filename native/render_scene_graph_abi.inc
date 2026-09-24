@@ -99,4 +99,8 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_test_suspend_next_frame(vo
 extern "C" int32_t elisa_render_scene_v1_render_graph_test_fallback_preserved(void) {
     return service().render_graph.last_fallback_preserved_for_test() ? 1 : 0;
 }
+
+extern "C" uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(void) {
+    return service().render_graph.depth_clear_count_for_test();
+}
 #endif
