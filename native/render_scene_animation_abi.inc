@@ -14,7 +14,7 @@ float clip_phase(const InstanceSlot& instance, int32_t clip_index, float time) {
 
 int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, float speed,
     float blend_seconds, int32_t flags) {
-    if ((loop != 0 && loop != 1) || !finite(speed) || speed < 0.0f || speed > 16.0f ||
+    if ((loop != 0 && loop != 1) || !finite(speed) || speed < -16.0f || speed > 16.0f ||
         !finite(blend_seconds) || blend_seconds < 0.0f || blend_seconds > 10.0f ||
         (flags & ~ANIMATION_BLEND_FLAG_MASK) != 0) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
@@ -58,6 +58,9 @@ int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, flo
         // Locomotion cycles stay in step: the new cycle starts where the old
         // one was, so a walk-to-run switch does not restart the stride.
         instance.animation_time = phase * instance.animation_clips[size_t(next_clip)].duration_seconds;
+    } else if (speed < 0.0f) {
+        const float duration = instance.animation_clips[size_t(next_clip)].duration_seconds;
+        instance.animation_time = loop != 0 ? std::nextafter(duration, 0.0f) : duration;
     }
     instance.animation_speed = speed;
     instance.animation_loop = loop != 0;
@@ -82,7 +85,7 @@ extern "C" int32_t elisa_render_scene_v1_play_animation_blended(
 // cycle or start a crossfade, otherwise an accelerating character freezes on
 // the clip's first frame while its cadence keeps being re-scaled.
 extern "C" int32_t elisa_render_scene_v1_set_animation_speed(int64_t handle, float speed) {
-    if (!finite(speed) || speed < 0.0f || speed > 16.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (!finite(speed) || speed < -16.0f || speed > 16.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
@@ -159,16 +162,16 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
             const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
             const float next_time = instance.animation_time + delta_seconds * instance.animation_speed;
             if (clip.duration_seconds > 0.0f && finite(next_time)) {
-                current_loop_crossings = std::floor(next_time / clip.duration_seconds);
+                current_loop_crossings = std::floor(next_time / clip.duration_seconds) -
+                    std::floor(instance.animation_time / clip.duration_seconds);
             }
         }
-        instance.animation_time += delta_seconds * instance.animation_speed;
+        const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+        const float next_time = instance.animation_time + delta_seconds * instance.animation_speed;
         if (instance.animation_loop) {
-            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
-            instance.animation_time = animation_time(clip, instance.animation_time, true);
+            instance.animation_time = animation_time(clip, next_time, true);
         } else {
-            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
-            instance.animation_time = std::min(instance.animation_time, clip.duration_seconds);
+            instance.animation_time = std::clamp(next_time, 0.0f, clip.duration_seconds);
         }
     }
     if (instance.previous_animation_clip >= 0) {
@@ -180,7 +183,8 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
             const float next_time = instance.previous_animation_time +
                 delta_seconds * instance.previous_animation_speed;
             if (clip.duration_seconds > 0.0f && finite(next_time)) {
-                previous_loop_crossings = std::floor(next_time / clip.duration_seconds);
+                previous_loop_crossings = std::floor(next_time / clip.duration_seconds) -
+                    std::floor(instance.previous_animation_time / clip.duration_seconds);
             }
         }
         instance.previous_animation_time += delta_seconds * instance.previous_animation_speed;

@@ -302,6 +302,7 @@ module RenderScene:
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
+        # Negative speed plays a clip backward; looping playback wraps in either direction.
         def play_animation(handle: InstanceHandle, clip_name: cstr, loop: bool,
             speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:
             loop_value: i32 = 1 if loop else 0
