@@ -589,3 +589,5 @@ module PhysicsRuntime:
             status: i32 = elisa_physics_v1_shutdown(world.generation)
             try check_status(status)
             world.live <- false
+
+include "./runtime_body_motion.elisa"

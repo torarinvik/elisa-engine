@@ -1,0 +1,48 @@
+# Verify dynamic-body motion controls through the public, session-routed API.
+module RuntimeServicesMotionProbe:
+    public:
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(session,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 20.0, y: 50.0, z: 20.0},
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+                    mass: 1.0,
+                    sensor: false,
+                }):
+                value: value
+                error failure: return 1
+            initial_step: i32 = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                value: 0
+                error failure: 2
+            return 3 if initial_step != 0
+            set_status: i32 = catch RuntimeServices::physics_body_set_linear_velocity(session,
+                body, Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0}):
+                ok: 0
+                error failure: 4
+            return 5 if set_status != 0
+            velocity: Geometry::Vec3 = catch RuntimeServices::physics_body_linear_velocity(session, body):
+                value: value
+                error failure: return 6
+            return 7 if velocity.x < 0.49 or velocity.x > 0.51
+            impulse_status: i32 = catch RuntimeServices::physics_body_apply_impulse(session,
+                body, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}):
+                ok: 0
+                error failure: 8
+            return 9 if impulse_status != 0
+            impulse_step: i32 = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                value: 0
+                error failure: 10
+            return 11 if impulse_step != 0
+            impulse_velocity: Geometry::Vec3 = catch RuntimeServices::physics_body_linear_velocity(session, body):
+                value: value
+                error failure: return 12
+            return 13 if impulse_velocity.x <= 0.5
+            destroy_status: i32 = catch RuntimeServices::physics_body_destroy(session, body):
+                ok: 0
+                error failure: 14
+            return 15 if destroy_status != 0
+            0

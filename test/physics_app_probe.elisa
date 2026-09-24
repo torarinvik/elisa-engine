@@ -205,6 +205,21 @@ module PhysicsAppProbe:
             raise PhysicsRuntime::PhysicsError.BackendFailure if tick != 9 or final_position.y >= initial_position.y - 0.05
             stage <- 17
             raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != 9
+            static_velocity: i32 = catch PhysicsRuntime::body_set_linear_velocity(world, ground,
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 1
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if static_velocity != 1
+            try PhysicsRuntime::body_set_linear_velocity(world, falling,
+                Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0})
+            set_velocity: Geometry::Vec3 = try PhysicsRuntime::body_linear_velocity(world, falling)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if set_velocity.x < 0.49 or set_velocity.x > 0.51
+            try PhysicsRuntime::body_apply_impulse(world, falling,
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})
+            tick <- try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
+            impulse_velocity: Geometry::Vec3 = try PhysicsRuntime::body_linear_velocity(world, falling)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if impulse_velocity.x <= 0.5
             _ = ground
             0
 

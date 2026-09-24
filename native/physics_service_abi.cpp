@@ -123,6 +123,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 #endif
 
 #include "physics_create_body_abi.inc"
+#include "physics_body_motion_abi.inc"
 
 extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
     float delta_seconds, uint64_t* tick) {

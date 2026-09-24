@@ -1,7 +1,8 @@
 # Typed Jolt primitive bodies
 
-**Status:** box, sphere, and capsule creation passed the SDL3/Metal native
-smokes on macOS. P02 remains open.
+**Status:** box, sphere, and capsule creation, plus dynamic linear velocity and
+impulse controls, passed the SDL3/Metal native smokes on macOS. P02 remains
+open.
 
 `PhysicsRuntime::BodyDesc` now selects `BodyShape.Box`, `BodyShape.Sphere`, or
 `BodyShape.Capsule`. Box `dimensions` are half-extents. Sphere uses `x` as its
@@ -20,6 +21,16 @@ Wicked/Jolt types behind the flat ABI. The capsule query mesh is a bounded
 falling sphere and capsule bodies, advances nine 30 Hz steps, checks both moved
 under gravity, then destroys them. The standalone application entry is
 `test/physics_primitives_native.elisa`.
+
+Dynamic bodies also expose checked linear velocity read/write and impulse
+operations through both `PhysicsRuntime` and the session-routed
+`RuntimeServices` API. Static and kinematic bodies reject these operations;
+the body must have entered the Jolt simulation at least once before velocity
+can be read or changed. Vectors are required to be finite and are bounded to
+10,000 units/s for velocity and 10,000,000 units per impulse component. The
+physics application probe verifies static-body rejection, set/get behavior,
+and an impulse changing velocity. The runtime-services probe exercises the
+same controls through an open session.
 
 Validation:
 
