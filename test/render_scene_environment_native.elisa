@@ -139,6 +139,65 @@ module RenderSceneEnvironmentNativeTests:
                     DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS) != 1)
             0
 
+        def verify_transparent_lit_object() -> i32:
+            outdoor_environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
+                sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
+                ambient: Geometry::Vec3{x: 0.14, y: 0.18, z: 0.25},
+                sky_exposure: 1.25,
+                fog_color: Geometry::Vec3{x: 0.04, y: 0.06, z: 0.1},
+                fog_start: 12.0,
+                fog_density: 0.02,
+                fog_enabled: true,
+            }):
+                ok: 0
+                error failure: 1
+            return 120 if outdoor_environment != 0
+            for frame in 0..<3:
+                return 121 if Application::pump() != Application::PumpStatus.Running
+            baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 122 if baseline < 0.0
+
+            glass: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box,
+                Geometry::Transform{position: Geometry::Vec3{x: 1.0, y: 0.35, z: 1.0},
+                    rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 0.65, y: 0.65, z: 0.65}},
+                RenderScene::Color{red: 0.2, green: 0.65, blue: 1.0, alpha: 0.42}):
+                value: value
+                error failure: return 123
+            _ = catch RenderScene::set_lit_material(glass, 0.24, 0.0):
+                ok: 0
+                error failure: return 124
+            _ = catch RenderScene::set_alpha_mode(glass,
+                RenderScene::AlphaMode.Blend, 0.5, true):
+                ok: 0
+                error failure: return 125
+            for frame in 0..<3:
+                return 126 if Application::pump() != Application::PumpStatus.Running
+            transparent_capture: cstr = Application::environment_value(
+                "ELISA_LIGHTING_TRANSPARENT_CAPTURE")
+            return 127 if (transparent_capture != "" and
+                not Application::save_screenshot(transparent_capture))
+            blended_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 128 if blended_change < 0.0
+            return 129 if blended_change < MINIMUM_LIGHTING_IMAGE_CHANGE
+
+            blend_reference: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 130 if blend_reference < 0.0
+            _ = catch RenderScene::set_alpha_mode(glass,
+                RenderScene::AlphaMode.Opaque, 0.5, true):
+                ok: 0
+                error failure: return 131
+            for frame in 0..<3:
+                return 132 if Application::pump() != Application::PumpStatus.Running
+            opaque_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 133 if opaque_change < 0.0
+            return 134 if opaque_change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            _ = catch RenderScene::destroy(glass):
+                ok: 0
+                error failure: return 135
+            0
+
     public:
         def exercise() -> i32:
             invalid_environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
@@ -335,6 +394,8 @@ module RenderSceneEnvironmentNativeTests:
             return rasterizer_bias_variant if rasterizer_bias_variant != 0
             environment_reference: i32 = verify_indoor_outdoor_lighting_reference()
             return environment_reference if environment_reference != 0
+            transparent_reference: i32 = verify_transparent_lit_object()
+            return transparent_reference if transparent_reference != 0
             _ = catch RenderScene::destroy(caster):
                 ok: 0
                 error failure: return 76

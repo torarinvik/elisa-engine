@@ -355,12 +355,14 @@ def main() -> int:
     shadows_enabled_capture = build / "render-scene-shadows-enabled.png"
     lighting_outdoor_capture = build / "render-scene-lighting-outdoor.png"
     lighting_indoor_capture = build / "render-scene-lighting-indoor.png"
+    lighting_transparent_capture = build / "render-scene-lighting-transparent.png"
     mirrored_normal_capture.unlink(missing_ok=True)
     mirrored_normal_no_occlusion_capture.unlink(missing_ok=True)
     shadows_disabled_capture.unlink(missing_ok=True)
     shadows_enabled_capture.unlink(missing_ok=True)
     lighting_outdoor_capture.unlink(missing_ok=True)
     lighting_indoor_capture.unlink(missing_ok=True)
+    lighting_transparent_capture.unlink(missing_ok=True)
     runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
     runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
         mirrored_normal_no_occlusion_capture)
@@ -372,6 +374,7 @@ def main() -> int:
     runtime_env["ELISA_SHADOWS_ENABLED_CAPTURE"] = str(shadows_enabled_capture)
     runtime_env["ELISA_LIGHTING_OUTDOOR_CAPTURE"] = str(lighting_outdoor_capture)
     runtime_env["ELISA_LIGHTING_INDOOR_CAPTURE"] = str(lighting_indoor_capture)
+    runtime_env["ELISA_LIGHTING_TRANSPARENT_CAPTURE"] = str(lighting_transparent_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
