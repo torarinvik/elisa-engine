@@ -23,6 +23,8 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.root_motion_previous_z = 0.0f;
     instance.root_motion_pending_x = 0.0f;
     instance.root_motion_pending_z = 0.0f;
+    instance.root_motion_wrap_correction_x = 0.0f;
+    instance.root_motion_wrap_correction_z = 0.0f;
     instance.root_motion_previous_valid = false;
 }
 
@@ -111,6 +113,20 @@ void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, flo
     interpolate_transform(first, second, weight, output);
 }
 
+bool animation_root_cycle_delta(const InstanceSlot& instance, int32_t clip_index,
+    int32_t joint_index, float& delta_x, float& delta_z) {
+    if (clip_index < 0 || clip_index >= int32_t(instance.animation_clips.size()) ||
+        joint_index < 0 || size_t(joint_index) >= instance.skin_joints.size()) return false;
+    const auto& clip = instance.animation_clips[size_t(clip_index)];
+    float first[10]{};
+    float last[10]{};
+    sample_animation_pose(instance, clip_index, 0.0f, false, size_t(joint_index), first);
+    sample_animation_pose(instance, clip_index, clip.duration_seconds, false, size_t(joint_index), last);
+    delta_x = last[0] - first[0];
+    delta_z = last[2] - first[2];
+    return std::isfinite(delta_x) && std::isfinite(delta_z);
+}
+
 float sample_animation_morph_weight(const InstanceSlot& instance, int32_t clip_index,
     float time, bool loop, size_t placement, size_t target, size_t placement_count,
     size_t morph_count) {
@@ -176,11 +192,20 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
                 instance.root_motion_previous_z = pose[2];
                 instance.root_motion_previous_valid = true;
             } else {
-                instance.root_motion_pending_x += pose[0] - instance.root_motion_previous_x;
-                instance.root_motion_pending_z += pose[2] - instance.root_motion_previous_z;
+                const float delta_x = pose[0] - instance.root_motion_previous_x +
+                    instance.root_motion_wrap_correction_x;
+                const float delta_z = pose[2] - instance.root_motion_previous_z +
+                    instance.root_motion_wrap_correction_z;
+                if (!std::isfinite(delta_x) || !std::isfinite(delta_z) ||
+                    !std::isfinite(instance.root_motion_pending_x + delta_x) ||
+                    !std::isfinite(instance.root_motion_pending_z + delta_z)) return false;
+                instance.root_motion_pending_x += delta_x;
+                instance.root_motion_pending_z += delta_z;
                 instance.root_motion_previous_x = pose[0];
                 instance.root_motion_previous_z = pose[2];
             }
+            instance.root_motion_wrap_correction_x = 0.0f;
+            instance.root_motion_wrap_correction_z = 0.0f;
             // Y is up in Elisa, so preserve the authored get-up lift in the
             // skeleton and extract only planar travel into the actor transform.
             pose[0] = instance.root_motion_anchor_x;

@@ -533,7 +533,6 @@ def exercise_render_scene() -> i32:
             ok: 0
             error failure: 1
         return 142 if destroyed_capacity_text != 0
-
     destroyed_hud_panel: i32 = catch RenderScene::destroy_overlay_panel(hud_panel):
         ok: 0
         error failure: 1
@@ -557,7 +556,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 23 if stale_update != 1
-
     # Explicit release clears the scene and invalidates every instance.
     shutdown_result: i32 = catch RenderScene::shutdown():
         ok: 0

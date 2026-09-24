@@ -150,7 +150,18 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
         (instance.animation_clip < 0 && instance.previous_animation_clip < 0)) {
         return instance.animation_clip < 0 ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
+    float current_loop_crossings = 0.0f;
+    float previous_loop_crossings = 0.0f;
+    const bool had_interrupted_pose = instance.interrupted_joint_pose.size() ==
+        instance.joint_entities.size() * 10;
     if (instance.animation_clip >= 0) {
+        if (instance.root_motion_mode == 1 && instance.animation_loop) {
+            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+            const float next_time = instance.animation_time + delta_seconds * instance.animation_speed;
+            if (clip.duration_seconds > 0.0f && finite(next_time)) {
+                current_loop_crossings = std::floor(next_time / clip.duration_seconds);
+            }
+        }
         instance.animation_time += delta_seconds * instance.animation_speed;
         if (instance.animation_loop) {
             const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
@@ -164,6 +175,14 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
         if (instance.previous_animation_clip >= int32_t(instance.animation_clips.size())) {
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
+        if (instance.root_motion_mode == 1 && instance.previous_animation_loop) {
+            const auto& clip = instance.animation_clips[size_t(instance.previous_animation_clip)];
+            const float next_time = instance.previous_animation_time +
+                delta_seconds * instance.previous_animation_speed;
+            if (clip.duration_seconds > 0.0f && finite(next_time)) {
+                previous_loop_crossings = std::floor(next_time / clip.duration_seconds);
+            }
+        }
         instance.previous_animation_time += delta_seconds * instance.previous_animation_speed;
         const auto& previous = instance.animation_clips[size_t(instance.previous_animation_clip)];
         instance.previous_animation_time = animation_time(previous, instance.previous_animation_time,
@@ -172,6 +191,30 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
     if (instance.blend_duration > 0.0f) {
         instance.blend_elapsed = std::min(instance.blend_duration, instance.blend_elapsed + delta_seconds);
         if (instance.blend_elapsed >= instance.blend_duration) instance.previous_animation_clip = -1;
+    }
+    if (instance.root_motion_mode == 1) {
+        float blend = 1.0f;
+        if (instance.blend_duration > 0.0f) {
+            blend = std::clamp(instance.blend_elapsed / instance.blend_duration, 0.0f, 1.0f);
+            if (instance.blend_eased) blend = blend * blend * (3.0f - 2.0f * blend);
+        }
+        float current_cycle_x = 0.0f;
+        float current_cycle_z = 0.0f;
+        float previous_cycle_x = 0.0f;
+        float previous_cycle_z = 0.0f;
+        if (current_loop_crossings != 0.0f && animation_root_cycle_delta(instance,
+            instance.animation_clip, instance.root_motion_joint, current_cycle_x, current_cycle_z)) {
+            instance.root_motion_wrap_correction_x += current_cycle_x * current_loop_crossings * blend;
+            instance.root_motion_wrap_correction_z += current_cycle_z * current_loop_crossings * blend;
+        }
+        if (!had_interrupted_pose && blend < 1.0f && previous_loop_crossings != 0.0f &&
+            animation_root_cycle_delta(instance, instance.previous_animation_clip,
+                instance.root_motion_joint, previous_cycle_x, previous_cycle_z)) {
+            instance.root_motion_wrap_correction_x += previous_cycle_x * previous_loop_crossings * (1.0f - blend);
+            instance.root_motion_wrap_correction_z += previous_cycle_z * previous_loop_crossings * (1.0f - blend);
+        }
+        if (!finite(instance.root_motion_wrap_correction_x) ||
+            !finite(instance.root_motion_wrap_correction_z)) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
@@ -194,6 +237,8 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
         instance.root_motion_previous_valid = false;
         instance.root_motion_pending_x = 0.0f;
         instance.root_motion_pending_z = 0.0f;
+        instance.root_motion_wrap_correction_x = 0.0f;
+        instance.root_motion_wrap_correction_z = 0.0f;
         return ELISA_RENDER_SCENE_OK;
     }
     if (instance.animation_clip < 0 ||
@@ -226,6 +271,8 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
     instance.root_motion_previous_valid = true;
     instance.root_motion_pending_x = 0.0f;
     instance.root_motion_pending_z = 0.0f;
+    instance.root_motion_wrap_correction_x = 0.0f;
+    instance.root_motion_wrap_correction_z = 0.0f;
     return ELISA_RENDER_SCENE_OK;
 }
 
