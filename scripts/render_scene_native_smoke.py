@@ -60,6 +60,7 @@ def main() -> int:
     brew_library = Path(os.environ.get("WICKED_BREW_LIB_DIR", "/opt/homebrew/lib")).resolve()
     utility = libraries / "Utility"
     basisu_transcoder = ROOT / "dependencies/basisu/transcoder"
+    cxx = os.environ.get("CXX", elisa_build_run.default_native_compiler())
     required = [
         wicked_source / "wiApplication.h", wicked_source / "wiAppleHelper.mm",
         wicked_source / "wiInput_Apple.mm", wicked_source / "shaders",
@@ -76,6 +77,7 @@ def main() -> int:
 
     abi_status = run([
         sys.executable, str(ROOT / "scripts/check_wicked_archive_abi.py"),
+        "--compiler", cxx,
         str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),
         str(libraries / "LUA/libLUA.a"),
@@ -277,7 +279,6 @@ def main() -> int:
             gltf_morph_self_test.write_animated_package(morph_transition, second_animation=True)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
-    cxx = os.environ.get("CXX", "clang++")
     archive = build / "render-scene-native-smoke.a"
     executable = build / "render-scene-native-smoke"
     native_main = Path(os.environ.get(
