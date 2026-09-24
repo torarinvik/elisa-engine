@@ -337,10 +337,14 @@ def main() -> int:
     point_light_right_capture = build / "render-scene-point-light-right.png"
     shadows_disabled_capture = build / "render-scene-shadows-disabled.png"
     shadows_enabled_capture = build / "render-scene-shadows-enabled.png"
+    lighting_outdoor_capture = build / "render-scene-lighting-outdoor.png"
+    lighting_indoor_capture = build / "render-scene-lighting-indoor.png"
     mirrored_normal_capture.unlink(missing_ok=True)
     mirrored_normal_no_occlusion_capture.unlink(missing_ok=True)
     shadows_disabled_capture.unlink(missing_ok=True)
     shadows_enabled_capture.unlink(missing_ok=True)
+    lighting_outdoor_capture.unlink(missing_ok=True)
+    lighting_indoor_capture.unlink(missing_ok=True)
     runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
     runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
         mirrored_normal_no_occlusion_capture)
@@ -350,6 +354,8 @@ def main() -> int:
     runtime_env["ELISA_POINT_LIGHT_RIGHT_CAPTURE"] = str(point_light_right_capture)
     runtime_env["ELISA_SHADOWS_DISABLED_CAPTURE"] = str(shadows_disabled_capture)
     runtime_env["ELISA_SHADOWS_ENABLED_CAPTURE"] = str(shadows_enabled_capture)
+    runtime_env["ELISA_LIGHTING_OUTDOOR_CAPTURE"] = str(lighting_outdoor_capture)
+    runtime_env["ELISA_LIGHTING_INDOOR_CAPTURE"] = str(lighting_indoor_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -396,7 +402,7 @@ def main() -> int:
             return occlusion_status
     if status == 0:
         if render_only:
-            print("Elisa UI, sun shadows, point lighting and authored glTF material references rendered by Wicked; visual checks passed.")
+            print("Elisa UI, sun shadows, indoor/outdoor lighting, point lights and authored glTF material references rendered by Wicked; visual checks passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

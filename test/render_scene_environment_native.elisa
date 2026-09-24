@@ -17,12 +17,83 @@ module RenderSceneEnvironmentNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_sky_map_cleared() -> i32
         @callconv(c)
-        extern elisa_render_scene_v1_test_shadow_frame_change(capture_reference: i32) -> f32
+        extern elisa_render_scene_v1_test_lighting_frame_change(capture_reference: i32) -> f32
 
-        const MINIMUM_SHADOW_IMAGE_CHANGE: f32 = 0.01
+        const MINIMUM_LIGHTING_IMAGE_CHANGE: f32 = 0.01
         const BASELINE_SHADOW_RECEIVER_BIAS: f32 = 0.0
         const SHADOW_BIAS_VARIANT: f32 = 0.005
         const RESTORED_SHADOW_RECEIVER_BIAS: f32 = 0.001
+
+        def verify_receiver_bias_variant() -> i32:
+            baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 95 if baseline < 0.0
+            configured: i32 = catch RenderScene::set_sun_shadow_bias(SHADOW_BIAS_VARIANT):
+                ok: 0
+                error failure: 1
+            return 96 if (configured != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(SHADOW_BIAS_VARIANT) != 1)
+            for frame in 0..<3:
+                return 97 if Application::pump() != Application::PumpStatus.Running
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 98 if change < 0.0
+            return 99 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            restored: i32 = catch RenderScene::set_sun_shadow_bias(RESTORED_SHADOW_RECEIVER_BIAS):
+                ok: 0
+                error failure: 1
+            return 100 if (restored != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(RESTORED_SHADOW_RECEIVER_BIAS) != 1)
+            0
+
+        def verify_indoor_outdoor_lighting_reference() -> i32:
+            for frame in 0..<3:
+                return 101 if Application::pump() != Application::PumpStatus.Running
+            outdoor_capture: cstr = Application::environment_value("ELISA_LIGHTING_OUTDOOR_CAPTURE")
+            return 102 if outdoor_capture != "" and not Application::save_screenshot(outdoor_capture)
+            outdoor_baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 103 if outdoor_baseline < 0.0
+
+            indoor_light: RenderScene::LightHandle = catch RenderScene::create_light(Lighting::Light{
+                kind: Lighting::LightKind.Rectangle,
+                color: Geometry::Vec3{x: 1.0, y: 0.68, z: 0.38},
+                position: Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
+                intensity: 5.0,
+                range: 16.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: false,
+                shadow_resolution: 0,
+                rectangle_width: 4.0,
+                rectangle_height: 3.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
+            }):
+                value: value
+                error failure: return 104
+            indoor_environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::vec3_zero(),
+                sun_direction: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+                ambient: Geometry::Vec3{x: 0.02, y: 0.02, z: 0.02},
+                sky_exposure: 0.0,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }):
+                ok: 0
+                error failure: 1
+            return 105 if indoor_environment != 0
+            for frame in 0..<3:
+                return 106 if Application::pump() != Application::PumpStatus.Running
+            indoor_capture: cstr = Application::environment_value("ELISA_LIGHTING_INDOOR_CAPTURE")
+            return 107 if indoor_capture != "" and not Application::save_screenshot(indoor_capture)
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 108 if change < 0.0
+            return 109 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            _ = catch RenderScene::destroy_light(indoor_light):
+                ok: 0
+                error failure: return 110
+            0
 
     public:
         def exercise() -> i32:
@@ -120,7 +191,7 @@ module RenderSceneEnvironmentNativeTests:
             return art_material if art_material != 0
             0
 
-        def verify_shadow_rendering(box: RenderScene::InstanceHandle,
+        def verify_lighting_rendering(box: RenderScene::InstanceHandle,
             sphere: RenderScene::InstanceHandle, floor: RenderScene::InstanceHandle,
             arc: RenderScene::ElectricArcHandle, hud_text: RenderScene::OverlayTextHandle,
             hud_panel: RenderScene::OverlayPanelHandle) -> i32:
@@ -199,7 +270,7 @@ module RenderSceneEnvironmentNativeTests:
                 return 62 if Application::pump() != Application::PumpStatus.Running
             without_capture: cstr = Application::environment_value("ELISA_SHADOWS_DISABLED_CAPTURE")
             return 68 if without_capture != "" and not Application::save_screenshot(without_capture)
-            without_capture_status: f32 = elisa_render_scene_v1_test_shadow_frame_change(1)
+            without_capture_status: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
             return 63 if without_capture_status < 0.0
 
             enabled: i32 = catch RenderScene::set_sun_shadows(true):
@@ -210,28 +281,14 @@ module RenderSceneEnvironmentNativeTests:
                 return 65 if Application::pump() != Application::PumpStatus.Running
             with_capture: cstr = Application::environment_value("ELISA_SHADOWS_ENABLED_CAPTURE")
             return 69 if with_capture != "" and not Application::save_screenshot(with_capture)
-            maximum_change: f32 = elisa_render_scene_v1_test_shadow_frame_change(0)
+            maximum_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
             return 66 if maximum_change < 0.0
-            return 67 if maximum_change < MINIMUM_SHADOW_IMAGE_CHANGE
+            return 67 if maximum_change < MINIMUM_LIGHTING_IMAGE_CHANGE
 
-            bias_baseline: f32 = elisa_render_scene_v1_test_shadow_frame_change(1)
-            return 95 if bias_baseline < 0.0
-            variant_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(SHADOW_BIAS_VARIANT):
-                ok: 0
-                error failure: 1
-            return 96 if (variant_bias_status != 0 or
-                elisa_render_scene_v1_test_sun_shadow_bias_matches(SHADOW_BIAS_VARIANT) != 1)
-            for frame in 0..<3:
-                return 97 if Application::pump() != Application::PumpStatus.Running
-            bias_change: f32 = elisa_render_scene_v1_test_shadow_frame_change(0)
-            return 98 if bias_change < 0.0
-            return 99 if bias_change < MINIMUM_SHADOW_IMAGE_CHANGE
-            restored_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(
-                RESTORED_SHADOW_RECEIVER_BIAS):
-                ok: 0
-                error failure: 1
-            return 100 if (restored_bias_status != 0 or
-                elisa_render_scene_v1_test_sun_shadow_bias_matches(RESTORED_SHADOW_RECEIVER_BIAS) != 1)
+            bias_variant: i32 = verify_receiver_bias_variant()
+            return bias_variant if bias_variant != 0
+            environment_reference: i32 = verify_indoor_outdoor_lighting_reference()
+            return environment_reference if environment_reference != 0
             _ = catch RenderScene::destroy(caster):
                 ok: 0
                 error failure: return 76

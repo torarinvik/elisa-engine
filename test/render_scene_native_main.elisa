@@ -338,7 +338,7 @@ def exercise_render_scene() -> i32:
     return 104 if restore_render_projection != 0
     for attempt in 0..<4:
         return 78 if Application::pump() != Application::PumpStatus.Running
-    shadow_rendering: i32 = RenderSceneEnvironmentNativeTests::verify_shadow_rendering(
+    shadow_rendering: i32 = RenderSceneEnvironmentNativeTests::verify_lighting_rendering(
         box, sphere, floor, electric_arc, hud_text, hud_panel)
     return elisa_render_scene_v1_test_failed_case(197, shadow_rendering) if shadow_rendering != 0
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0

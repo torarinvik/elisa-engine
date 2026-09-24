@@ -98,3 +98,10 @@ frames, and requires the same `0.01` patch change while also checking Wicked's
 packed live value. It restores the smoke's prior `0.001` bias before returning
 to the rest of the render tests. Rasterizer constant/slope-bias variants are
 still outside this runtime control because Wicked bakes them into pipelines.
+
+The same reference scene compares outdoor and indoor lighting. The outdoor
+capture uses the authored sun; the indoor capture removes sun contribution and
+uses a warm rectangular area light above the receiver. Both use the same lit
+plane, caster, and camera, and the smoke requires a `0.01` full-frame patch
+change. Captures are written to `build/render-scene-lighting-outdoor.png` and
+`build/render-scene-lighting-indoor.png`.

@@ -25,9 +25,9 @@ constexpr float TANGENT_HANDEDNESS_TOLERANCE = 0.002f;
 constexpr float LUMINANCE_RED_WEIGHT = 0.2126f;
 constexpr float LUMINANCE_GREEN_WEIGHT = 0.7152f;
 constexpr float LUMINANCE_BLUE_WEIGHT = 0.0722f;
-std::vector<float> shadow_reference_luminance;
-uint32_t shadow_reference_width = 0;
-uint32_t shadow_reference_height = 0;
+std::vector<float> lighting_reference_luminance;
+uint32_t lighting_reference_width = 0;
+uint32_t lighting_reference_height = 0;
 
 const InstanceSlot* snapshot_instance(const RenderSceneService& state, int64_t render_id) {
     if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return nullptr;
@@ -412,10 +412,10 @@ extern "C" float elisa_render_scene_v1_test_last_frame_luminance(uint32_t x_perm
     return luminance / float((2 * DOMINANT_CHANNEL_RADIUS + 1) * (2 * DOMINANT_CHANNEL_RADIUS + 1));
 }
 
-// Captures or compares the rendered 3D frame for the visible sun-shadow smoke.
-// The comparison scans overlapping 5x5 patches so a narrow cast shadow does
-// not need to land at a hand-picked screen coordinate.
-extern "C" float elisa_render_scene_v1_test_shadow_frame_change(int32_t capture_reference) {
+// Captures or compares the rendered 3D frame for authored lighting references.
+// The comparison scans overlapping 5x5 patches so a localized lighting change
+// does not need to land at a hand-picked screen coordinate.
+extern "C" float elisa_render_scene_v1_test_lighting_frame_change(int32_t capture_reference) {
     if (capture_reference != 0 && capture_reference != 1) return -1.0f;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -448,13 +448,13 @@ extern "C" float elisa_render_scene_v1_test_shadow_frame_change(int32_t capture_
     }
 
     if (capture_reference != 0) {
-        shadow_reference_luminance = std::move(current);
-        shadow_reference_width = desc.width;
-        shadow_reference_height = desc.height;
+        lighting_reference_luminance = std::move(current);
+        lighting_reference_width = desc.width;
+        lighting_reference_height = desc.height;
         return 0.0f;
     }
-    if (shadow_reference_width != desc.width || shadow_reference_height != desc.height ||
-        shadow_reference_luminance.size() != current.size()) return -1.0f;
+    if (lighting_reference_width != desc.width || lighting_reference_height != desc.height ||
+        lighting_reference_luminance.size() != current.size()) return -1.0f;
 
     float maximum_change = 0.0f;
     constexpr uint32_t SAMPLE_STEP = 2;
@@ -470,7 +470,7 @@ extern "C" float elisa_render_scene_v1_test_shadow_frame_change(int32_t capture_
                 for (uint32_t x = center_x - DOMINANT_CHANNEL_RADIUS;
                     x <= center_x + DOMINANT_CHANNEL_RADIUS; ++x) {
                     const size_t index = size_t(y) * desc.width + x;
-                    patch_change += std::fabs(current[index] - shadow_reference_luminance[index]);
+                    patch_change += std::fabs(current[index] - lighting_reference_luminance[index]);
                 }
             }
             maximum_change = std::max(maximum_change, patch_change / PATCH_AREA);
