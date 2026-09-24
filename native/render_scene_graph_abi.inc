@@ -103,4 +103,8 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_test_fallback_preserved(vo
 extern "C" uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(void) {
     return service().render_graph.depth_clear_count_for_test();
 }
+
+extern "C" uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(void) {
+    return service().render_graph.color_resolve_count_for_test();
+}
 #endif
