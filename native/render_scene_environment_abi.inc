@@ -4,6 +4,8 @@ constexpr uint32_t MAX_SKY_MAP_EDGE = 8192;
 constexpr uint32_t SKY_LATLONG_ASPECT_NUMERATOR = 2;
 constexpr uint32_t SKY_LATLONG_ASPECT_DENOMINATOR = 1;
 constexpr float MAX_SKY_ROTATION_RADIANS = 1000000.0f;
+constexpr int32_t MAX_SHADOW_RASTERIZER_CONSTANT_BIAS = 4096;
+constexpr float MAX_SHADOW_RASTERIZER_SLOPE_BIAS = 16.0f;
 }
 
 extern "C" int32_t elisa_render_scene_v1_set_environment(
@@ -180,6 +182,23 @@ extern "C" int32_t elisa_render_scene_v1_set_sun_shadow_bias(float receiver_dept
         sun->shadow_bias = receiver_depth_bias;
     }
     return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+    int32_t constant_depth_bias, float slope_scaled_depth_bias) {
+    if (constant_depth_bias < -MAX_SHADOW_RASTERIZER_CONSTANT_BIAS ||
+        constant_depth_bias > MAX_SHADOW_RASTERIZER_CONSTANT_BIAS ||
+        !bounded(slope_scaled_depth_bias) ||
+        slope_scaled_depth_bias < -MAX_SHADOW_RASTERIZER_SLOPE_BIAS ||
+        slope_scaled_depth_bias > MAX_SHADOW_RASTERIZER_SLOPE_BIAS) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    return wi::renderer::SetShadowRasterizerBias(constant_depth_bias, slope_scaled_depth_bias) ?
+        ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_UNSUPPORTED_FEATURE;
 }
 
 extern "C" int32_t elisa_render_scene_v1_set_sun_cascade_distances(

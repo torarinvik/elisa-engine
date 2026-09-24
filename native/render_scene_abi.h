@@ -25,6 +25,7 @@ enum {
     ELISA_RENDER_SCENE_ASSET_PENDING = -11,
     ELISA_RENDER_SCENE_NO_HIT = -12,
     ELISA_RENDER_SCENE_TIMED_OUT = -13,
+    ELISA_RENDER_SCENE_UNSUPPORTED_FEATURE = -14,
 };
 
 // elisa_render_scene_v1_snapshot_asset_state results; a failed request
@@ -321,6 +322,9 @@ int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float sca
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);
 // Positive values reduce reverse-Z directional shadow acne; range is [-0.01, 0.01].
 int32_t elisa_render_scene_v1_set_sun_shadow_bias(float receiver_depth_bias);
+// Live rasterizer bias is currently available on Wicked's Metal backend.
+int32_t elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+    int32_t constant_depth_bias, float slope_scaled_depth_bias);
 int32_t elisa_render_scene_v1_set_sun_cascade_distances(
     float near_cascade_end, float middle_cascade_end, float far_cascade_end);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);

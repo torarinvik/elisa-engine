@@ -12,6 +12,9 @@ module RenderSceneEnvironmentNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_sun_shadow_bias_matches(expected_bias: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+            expected_constant_bias: i32, expected_slope_bias: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_test_sky_map_matches(
             width: u32, height: u32, rotation_radians: f32) -> i32
         @callconv(c)
@@ -23,6 +26,10 @@ module RenderSceneEnvironmentNativeTests:
         const BASELINE_SHADOW_RECEIVER_BIAS: f32 = 0.0
         const SHADOW_BIAS_VARIANT: f32 = 0.005
         const RESTORED_SHADOW_RECEIVER_BIAS: f32 = 0.001
+        const DEFAULT_SHADOW_CONSTANT_BIAS: i32 = -1
+        const DEFAULT_SHADOW_SLOPE_BIAS: f32 = -4.0
+        const VARIANT_SHADOW_CONSTANT_BIAS: i32 = 256
+        const VARIANT_SHADOW_SLOPE_BIAS: f32 = -2.0
 
         def verify_receiver_bias_variant() -> i32:
             baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
@@ -93,6 +100,43 @@ module RenderSceneEnvironmentNativeTests:
             _ = catch RenderScene::destroy_light(indoor_light):
                 ok: 0
                 error failure: return 110
+            0
+
+        def verify_rasterizer_bias_variant() -> i32:
+            baseline_bias: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS):
+                ok: 0
+                error failure: return 111
+            return 112 if (baseline_bias != 0 or
+                elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+                    DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS) != 1)
+            baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 113 if baseline < 0.0
+            invalid_slope: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                DEFAULT_SHADOW_CONSTANT_BIAS, 16.01):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 114 if invalid_slope != 1
+            configured: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                VARIANT_SHADOW_CONSTANT_BIAS, VARIANT_SHADOW_SLOPE_BIAS):
+                ok: 0
+                error failure: 1
+            return 115 if (configured != 0 or
+                elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+                    VARIANT_SHADOW_CONSTANT_BIAS, VARIANT_SHADOW_SLOPE_BIAS) != 1)
+            for frame in 0..<3:
+                return 116 if Application::pump() != Application::PumpStatus.Running
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 117 if change < 0.0
+            return 118 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            restored: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS):
+                ok: 0
+                error failure: 1
+            return 119 if (restored != 0 or
+                elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+                    DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS) != 1)
             0
 
     public:
@@ -287,6 +331,8 @@ module RenderSceneEnvironmentNativeTests:
 
             bias_variant: i32 = verify_receiver_bias_variant()
             return bias_variant if bias_variant != 0
+            rasterizer_bias_variant: i32 = verify_rasterizer_bias_variant()
+            return rasterizer_bias_variant if rasterizer_bias_variant != 0
             environment_reference: i32 = verify_indoor_outdoor_lighting_reference()
             return environment_reference if environment_reference != 0
             _ = catch RenderScene::destroy(caster):

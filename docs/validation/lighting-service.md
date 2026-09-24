@@ -75,10 +75,20 @@ it into directional-light shader data and applies it to the depth comparison,
 so it takes effect at runtime without rebuilding pipelines. The setting is
 retained if applied before the environment creates its owned sun, and the
 shared quality profile carries the same value. Positive values
-reduce acne and can increase light leaks; zero preserves the existing
-hard-coded rasterizer bias. Rasterizer constant/slope bias remains at Wicked's
-format-specific defaults because those values are baked into cached pipelines.
-The native gate checks range rejection and the packed value used by the shader.
+reduce acne and can increase light leaks; zero preserves Wicked's
+format-specific caster rasterizer bias. The native gate checks range rejection
+and the packed value used by the shader.
+
+`RenderScene::set_sun_shadow_rasterizer_bias` changes the caster's constant and
+slope depth bias on Wicked's Metal backend. Metal applies these values as
+dynamic encoder state, so existing cached pipelines take effect on the next
+shadow pass. Other Wicked backends currently return
+`RenderSceneError.UnsupportedFeature` because their rasterizer values are
+baked into cached pipelines. The SDL3/Metal reference renders the same isolated
+caster and receiver with the default `(-1, -4)` and variant `(256, -2)` values,
+requires at least a `0.01` full-frame patch-luminance change, confirms the
+single- and double-sided shadow states share the live bias, and restores the defaults.
+It also rejects out-of-range slope bias without changing the live state.
 
 The SDL3/Metal render smoke also checks that `set_sun_shadows` changes visible
 lighting. It temporarily hides the smoke scene's existing geometry, electric
@@ -96,8 +106,7 @@ The same isolated scene checks the live receiver-bias effect. It captures the
 shadowed frame at bias `0`, changes the bias to `0.005`, renders three more
 frames, and requires the same `0.01` patch change while also checking Wicked's
 packed live value. It restores the smoke's prior `0.001` bias before returning
-to the rest of the render tests. Rasterizer constant/slope-bias variants are
-still outside this runtime control because Wicked bakes them into pipelines.
+to the rest of the render tests.
 
 The same reference scene compares outdoor and indoor lighting. The outdoor
 capture uses the authored sun; the indoor capture removes sun contribution and

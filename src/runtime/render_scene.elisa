@@ -17,6 +17,7 @@ module RenderScene:
             ASSET_PENDING: i32 = -11
             NO_HIT: i32 = -12
             TIMED_OUT: i32 = -13
+            UNSUPPORTED_FEATURE: i32 = -14
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
             NORMAL: i32 = 1
@@ -49,6 +50,7 @@ module RenderScene:
             raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.NoHit if status == NativeStatus::NO_HIT
             raise RenderSceneError.TimedOut if status == NativeStatus::TIMED_OUT
+            raise RenderSceneError.UnsupportedFeature if status == NativeStatus::UNSUPPORTED_FEATURE
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
     public:
         const MAX_INSTANCES: usize = 512
@@ -134,6 +136,7 @@ module RenderScene:
             AssetPending
             NoHit
             TimedOut
+            UnsupportedFeature
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1
             try check_status(elisa_render_scene_v1_initialize(width, height, orthographic_height))
@@ -350,6 +353,14 @@ module RenderScene:
         # values tighten contact but can reintroduce self-shadowing.
         def set_sun_shadow_bias(receiver_depth_bias: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_sun_shadow_bias(receiver_depth_bias))
+        # Metal applies these caster depth biases dynamically; other backends return UnsupportedFeature.
+        def set_sun_shadow_rasterizer_bias(constant_depth_bias: i32,
+            slope_scaled_depth_bias: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if constant_depth_bias < -4096 or constant_depth_bias > 4096
+            raise RenderSceneError.InvalidValue if (slope_scaled_depth_bias != slope_scaled_depth_bias or
+                slope_scaled_depth_bias < -16.0 or slope_scaled_depth_bias > 16.0)
+            try check_status(elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+                constant_depth_bias, slope_scaled_depth_bias))
         # Cascade ends are world-space distances from the active camera and
         # must increase while remaining inside its far clip plane.
         def set_sun_cascade_distances(near_end: f32, middle_end: f32,

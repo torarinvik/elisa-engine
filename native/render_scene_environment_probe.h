@@ -118,6 +118,21 @@ extern "C" int32_t elisa_render_scene_v1_test_sun_shadow_bias_matches(float expe
     return std::fabs(encoded_bias - expected_bias) < 0.0001f ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+    int32_t expected_constant_bias, float expected_slope_bias) {
+    const auto* single_sided = wi::renderer::GetRasterizerState(wi::enums::RSTYPE_SHADOW);
+    const auto* double_sided = wi::renderer::GetRasterizerState(wi::enums::RSTYPE_SHADOW_DOUBLESIDED);
+    if (single_sided == nullptr || double_sided == nullptr) return 0;
+    int32_t actual_constant_bias = 0;
+    float actual_slope_bias = 0.0f;
+    wi::renderer::GetShadowRasterizerBias(actual_constant_bias, actual_slope_bias);
+    return single_sided != double_sided &&
+        single_sided->cull_mode == wi::graphics::CullMode::BACK &&
+        double_sided->cull_mode == wi::graphics::CullMode::NONE &&
+        actual_constant_bias == expected_constant_bias &&
+        std::fabs(actual_slope_bias - expected_slope_bias) < 0.0001f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_sky_map_matches(
     uint32_t width, uint32_t height, float rotation_radians) {
     RenderSceneService& state = service();
