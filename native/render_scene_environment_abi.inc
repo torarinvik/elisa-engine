@@ -1,4 +1,13 @@
 // Private Elisa-owned environment updates for the active Wicked scene.
+namespace {
+constexpr uint32_t MAX_SKY_MAP_EDGE = 8192;
+constexpr uint32_t SKY_LATLONG_ASPECT_NUMERATOR = 2;
+constexpr uint32_t SKY_LATLONG_ASPECT_DENOMINATOR = 1;
+constexpr float MAX_SKY_ROTATION_RADIANS = 1000000.0f;
+constexpr int32_t MAX_SHADOW_RASTERIZER_CONSTANT_BIAS = 4096;
+constexpr float MAX_SHADOW_RASTERIZER_SLOPE_BIAS = 16.0f;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_environment(
     float sun_direction_x, float sun_direction_y, float sun_direction_z,
     float sun_red, float sun_green, float sun_blue,
@@ -65,6 +74,7 @@ extern "C" int32_t elisa_render_scene_v1_set_environment(
     sun_transform->SetDirty();
     sun_transform->UpdateTransform();
     XMStoreFloat3(&sun->direction, normalized_direction);
+    sun->shadow_bias = state.sun_shadow_receiver_bias;
     sun->SetCastShadow(false);
 
     auto& weather = state.scene->weather;
@@ -80,6 +90,70 @@ extern "C" int32_t elisa_render_scene_v1_set_environment(
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_sky_map(
+    const char* asset_path, float rotation_radians) {
+    if (!bounded(rotation_radians, MAX_SKY_ROTATION_RADIANS)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    std::filesystem::path resolved_path;
+    if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path)) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.scene == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+
+    wi::Resource resource;
+    try {
+        std::string extension = resolved_path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+            [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        if (extension == ".ktx2") {
+            resource = elisa::rendering::textures::load_ktx2_texture_resource(
+                resolved_path.string(), elisa::rendering::textures::KTX2TextureUsage::Color);
+        } else {
+            resource = wi::resourcemanager::Load(resolved_path.string(),
+                wi::resourcemanager::Flags::IMPORT_BLOCK_COMPRESSED);
+        }
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    if (!resource.IsValid() || !resource.GetTexture().IsValid()) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+
+    const wi::graphics::TextureDesc& description = resource.GetTexture().GetDesc();
+    const bool cube_map = has_flag(description.misc_flags,
+        wi::graphics::ResourceMiscFlag::TEXTURECUBE);
+    if (description.width == 0 || description.height == 0 ||
+        description.width > MAX_SKY_MAP_EDGE || description.height > MAX_SKY_MAP_EDGE ||
+        (cube_map && description.width != description.height) ||
+        (!cube_map && description.width * SKY_LATLONG_ASPECT_DENOMINATOR !=
+            description.height * SKY_LATLONG_ASPECT_NUMERATOR)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+
+    state.scene->weather.skyMap = std::move(resource);
+    state.scene->weather.skyMapName = resolved_path.string();
+    state.scene->weather.sky_rotation = std::remainder(rotation_radians, XM_2PI);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_sky_map(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.scene == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.scene->weather.skyMap = {};
+    state.scene->weather.skyMapName.clear();
+    state.scene->weather.sky_rotation = 0.0f;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled) {
     if (enabled != 0 && enabled != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
@@ -90,5 +164,60 @@ extern "C" int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled) {
     if (!sun) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     sun->SetCastShadow(enabled != 0);
     state.path->setShadowsEnabled(enabled != 0);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_sun_shadow_bias(float receiver_depth_bias) {
+    if (!bounded(receiver_depth_bias, elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.scene == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.sun_shadow_receiver_bias = receiver_depth_bias;
+    wi::scene::LightComponent* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun != nullptr && sun->type == wi::scene::LightComponent::DIRECTIONAL) {
+        sun->shadow_bias = receiver_depth_bias;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+    int32_t constant_depth_bias, float slope_scaled_depth_bias) {
+    if (constant_depth_bias < -MAX_SHADOW_RASTERIZER_CONSTANT_BIAS ||
+        constant_depth_bias > MAX_SHADOW_RASTERIZER_CONSTANT_BIAS ||
+        !bounded(slope_scaled_depth_bias) ||
+        slope_scaled_depth_bias < -MAX_SHADOW_RASTERIZER_SLOPE_BIAS ||
+        slope_scaled_depth_bias > MAX_SHADOW_RASTERIZER_SLOPE_BIAS) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    return wi::renderer::SetShadowRasterizerBias(constant_depth_bias, slope_scaled_depth_bias) ?
+        ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_UNSUPPORTED_FEATURE;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_sun_cascade_distances(
+    float near_cascade_end, float middle_cascade_end, float far_cascade_end) {
+    if (!bounded(near_cascade_end) || !bounded(middle_cascade_end) ||
+        !bounded(far_cascade_end)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (near_cascade_end <= state.camera_near_clip ||
+        middle_cascade_end <= near_cascade_end || far_cascade_end <= middle_cascade_end ||
+        far_cascade_end > state.camera_far_clip) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    wi::scene::LightComponent* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun == nullptr) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    try {
+        sun->cascade_distances = {near_cascade_end, middle_cascade_end, far_cascade_end};
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
     return ELISA_RENDER_SCENE_OK;
 }

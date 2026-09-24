@@ -5,6 +5,7 @@
 
 #include "basisu_transcoder.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -94,16 +95,25 @@ int main(int argc, char** argv) {
     if (!probe::check(width == 4 && height == 4, "KTX2 is the cooked 4x4 texture")) {
         return 1;
     }
+    if (!probe::check(transcoder.get_levels() == 3, "KTX2 texture has its complete 4x4 mip chain")) return 1;
     if (!probe::check(transcoder.start_transcoding(), "KTX2 starts transcoding")) {
         return 1;
     }
     const uint32_t pixel_count = width * height;
     std::vector<uint8_t> rgba((size_t)pixel_count * 4);
-    const bool transcoded = transcoder.transcode_image_level(
-        0, 0, 0, rgba.data(), pixel_count, basist::transcoder_texture_format::cTFRGBA32,
-        0, width, height);
-    if (!probe::check(transcoded, "KTX2 level transcodes to RGBA")) {
-        return 1;
+    for (uint32_t level = 0; level < transcoder.get_levels(); ++level) {
+        const uint32_t mip_width = std::max(1u, width >> level);
+        const uint32_t mip_height = std::max(1u, height >> level);
+        basist::ktx2_image_level_info info{};
+        if (!probe::check(transcoder.get_image_level_info(info, level, 0, 0) &&
+            info.m_orig_width == mip_width && info.m_orig_height == mip_height,
+            "KTX2 mip metadata matches the complete chain")) return 1;
+        std::vector<uint8_t> mip_rgba((size_t)mip_width * mip_height * 4);
+        if (!probe::check(transcoder.transcode_image_level(
+            level, 0, 0, mip_rgba.data(), mip_width * mip_height,
+            basist::transcoder_texture_format::cTFRGBA32, 0, mip_width, mip_height),
+            "KTX2 mip transcodes to RGBA")) return 1;
+        if (level == 0) rgba = std::move(mip_rgba);
     }
     const bool green = rgba[1] > 200 and rgba[0] < 80 and rgba[2] < 120;
     if (!probe::check(green, "transcoded pixels are the cooked green")) {
@@ -126,29 +136,34 @@ int main(int argc, char** argv) {
             "KTX2 cubemap parses")) return 1;
         if (!probe::check(cube.get_width() == 4 && cube.get_height() == 4 &&
             cube.get_layers() <= 1 && cube.get_faces() == 6, "KTX2 has six square cube faces")) return 1;
+        if (!probe::check(cube.get_levels() == 3, "KTX2 cubemap has the complete 4x4 mip chain")) return 1;
         if (!probe::check(cube.start_transcoding(), "KTX2 cubemap starts transcoding")) return 1;
         const uint8_t expected[6][3] = {
             {245, 35, 35}, {30, 240, 45}, {35, 50, 245},
             {240, 230, 25}, {235, 35, 230}, {25, 225, 225},
         };
-        for (uint32_t face = 0; face < 6; ++face) {
-            basist::ktx2_image_level_info face_info{};
-            if (!probe::check(cube.get_image_level_info(face_info, 0, 0, face) &&
-                face_info.m_orig_width == 4 && face_info.m_orig_height == 4,
-                "KTX2 cubemap face metadata")) return 1;
-            std::vector<uint8_t> face_rgba(4 * 4 * 4);
-            if (!probe::check(cube.transcode_image_level(
-                0, 0, face, face_rgba.data(), 4 * 4,
-                basist::transcoder_texture_format::cTFRGBA32, 0, 4, 4),
-                "KTX2 cubemap face transcodes")) return 1;
-            const uint8_t* pixel = face_rgba.data();
-            for (uint32_t channel = 0; channel < 3; ++channel) {
-                if (!probe::check(pixel[channel] > expected[face][channel] - 55 &&
-                    pixel[channel] < expected[face][channel] + 55,
-                    "KTX2 cubemap face color preserved")) return 1;
+        for (uint32_t level = 0; level < cube.get_levels(); ++level) {
+            const uint32_t mip_width = std::max(1u, cube.get_width() >> level);
+            const uint32_t mip_height = std::max(1u, cube.get_height() >> level);
+            for (uint32_t face = 0; face < 6; ++face) {
+                basist::ktx2_image_level_info face_info{};
+                if (!probe::check(cube.get_image_level_info(face_info, level, 0, face) &&
+                    face_info.m_orig_width == mip_width && face_info.m_orig_height == mip_height,
+                    "KTX2 cubemap mip metadata")) return 1;
+                std::vector<uint8_t> face_rgba((size_t)mip_width * mip_height * 4);
+                if (!probe::check(cube.transcode_image_level(
+                    level, 0, face, face_rgba.data(), mip_width * mip_height,
+                    basist::transcoder_texture_format::cTFRGBA32, 0, mip_width, mip_height),
+                    "KTX2 cubemap face mip transcodes")) return 1;
+                const uint8_t* pixel = face_rgba.data();
+                for (uint32_t channel = 0; channel < 3; ++channel) {
+                    if (!probe::check(pixel[channel] > expected[face][channel] - 55 &&
+                        pixel[channel] < expected[face][channel] + 55,
+                        "KTX2 cubemap mip preserves face color")) return 1;
+                }
             }
         }
-        std::fprintf(stdout, "basisu cubemap transcode: faces=6\n");
+        std::fprintf(stdout, "basisu cubemap transcode: faces=6 levels=%u\n", cube.get_levels());
     }
     if (argc >= 4) {
         std::ifstream alpha_input(argv[3], std::ios::binary);

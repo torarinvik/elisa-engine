@@ -22,14 +22,21 @@ const module CapiPolicy:
     FEATURE_BACKEND_PROFILE: i64 = 32
     FEATURE_BACKEND_STATUS: i64 = 64
 
-global mutable embedded_game: MazeGame = MazeGame::MazeGame()
+global mutable embedded_game: MazeGame = zeroed
+global mutable embedded_game_initialized: bool = false
 global mutable embedded_session_live: bool = false
 global mutable embedded_session_generation: i64 = 0
-global mutable embedded_backend_profile: BackendProfile = headless_profile()
+global mutable embedded_backend_profile: BackendProfile = zeroed
 global mutable embedded_backend_profile_configured: bool = false
+
+def capi_ensure_game() -> void:
+    if not embedded_game_initialized:
+        embedded_game <- MazeGame::MazeGame()
+        embedded_game_initialized <- true
 
 def capi_start() -> i32:
     return CapiPolicy::START_UNAVAILABLE if embedded_backend_profile_configured and capi_backend_status() != CapiPolicy::PROFILE_READY
+    capi_ensure_game()
     MazeGame::game_start(&embedded_game)
     MazeGame::game_status_code(embedded_game.status).i32()
 
@@ -81,19 +88,24 @@ def capi_move_of(direction: i32) -> Maze::MazeMove:
     Maze::MazeMove.Idle
 
 def capi_step(direction: i32) -> i32:
+    capi_ensure_game()
     moved: bool = MazeGame::game_step(&embedded_game, capi_move_of(direction))
     1 if moved else 0
 
 def capi_player_x() -> i32:
+    capi_ensure_game()
     embedded_game.grid.player_x.i32()
 
 def capi_player_y() -> i32:
+    capi_ensure_game()
     embedded_game.grid.player_y.i32()
 
 def capi_status() -> i32:
+    capi_ensure_game()
     MazeGame::game_status_code(embedded_game.status).i32()
 
 def capi_lives() -> i32:
+    capi_ensure_game()
     embedded_game.lives.i32()
 
 # Query surface: an embedder can inspect the world it drives, so it does not
@@ -139,6 +151,7 @@ def capi_session_update(handle: i64, direction: i32) -> i32:
 
 def capi_session_query(handle: i64, query: i32) -> i64:
     return -1 if not capi_session_valid(handle)
+    capi_ensure_game()
     return embedded_game.grid.player_x.i64() if query == 0
     return embedded_game.grid.player_y.i64() if query == 1
     return embedded_game.lives.i64() if query == 2

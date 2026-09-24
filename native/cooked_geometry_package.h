@@ -425,6 +425,9 @@ inline bool load_cooked_geometry_bytes(const uint8_t* bytes, size_t byte_count,
     }
     if (!detail::parse_geometry_subsets(package, geometry, error)) return false;
     if (!detail::parse_slot_materials(package, geometry.material_slots, geometry.slot_materials, error) ||
+        !detail::parse_slot_normal_scales(package, geometry.slot_materials, error) ||
+        !detail::parse_slot_occlusion_strengths(package, geometry.slot_materials, error) ||
+        !detail::parse_slot_clearcoat_factors(package, geometry.slot_materials, error) ||
         !detail::parse_slot_material_names(package, geometry.material_slots, geometry.slot_materials,
             geometry.slot_material_names, error) ||
         !detail::parse_slot_textures(package, geometry.slot_materials, geometry.texture_sections, error)) {

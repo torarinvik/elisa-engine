@@ -331,6 +331,66 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_render_target_matches(
     return live == (expected_live != 0) ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_camera_viewport_matches(
+    int32_t x, int32_t y, int32_t width, int32_t height, int32_t expected_composed_count) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    bool configured = false;
+    for (const RenderCameraSlot& slot : state.cameras) {
+        if (!slot.live || !slot.viewport_enabled || slot.viewport_x != x || slot.viewport_y != y ||
+            slot.viewport_width != width || slot.viewport_height != height) continue;
+        if (slot.pipeline == nullptr) continue;
+        const wi::graphics::Texture& output = slot.pipeline->GetRenderResult3D();
+        configured = output.IsValid() &&
+            output.desc.width == uint32_t(float(width) * slot.pipeline->resolutionScale) &&
+            output.desc.height == uint32_t(float(height) * slot.pipeline->resolutionScale);
+        if (configured) break;
+    }
+    return configured && state.camera_viewports_composed == size_t(expected_composed_count) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_camera_viewport_count_matches(int32_t expected_count) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    return state.initialized && on_owner_thread(state) && expected_count >= 0 &&
+        state.camera_viewports_composed == size_t(expected_count) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_primary_viewport_matches(
+    int32_t x, int32_t y, int32_t width, int32_t height, int32_t expected_enabled) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr ||
+        state.camera == nullptr || state.scene == nullptr) return 0;
+    const bool enabled = expected_enabled != 0;
+    if (state.primary_viewport.enabled != enabled) return 0;
+    if (enabled && (state.primary_viewport.x != x || state.primary_viewport.y != y ||
+        state.primary_viewport.width != width || state.primary_viewport.height != height)) return 0;
+    const uint32_t canvas_width = enabled ? uint32_t(width) :
+        (state.host_canvas_width > 0 ? state.host_canvas_width : uint32_t(state.width));
+    const uint32_t canvas_height = enabled ? uint32_t(height) :
+        (state.host_canvas_height > 0 ? state.host_canvas_height : uint32_t(state.height));
+    const wi::graphics::Texture& output = state.path->GetRenderResult3D();
+    const float scale = state.path->resolutionScale;
+    const bool matches = state.path->width == canvas_width &&
+        state.path->height == canvas_height && output.IsValid() &&
+        output.desc.width == uint32_t(float(canvas_width) * scale) &&
+        output.desc.height == uint32_t(float(canvas_height) * scale) &&
+        std::abs(state.camera->width - float(canvas_width)) < 0.00001f &&
+        std::abs(state.camera->height - float(canvas_height)) < 0.00001f;
+    if (!matches) {
+        std::fprintf(stderr, "primary viewport probe: enabled=%d requested=%d rect=%d,%d %dx%d window=%dx%d canvas=%ux%u camera=%.1fx%.1f output=%ux%u valid=%d scale=%.3f\n",
+            state.primary_viewport.enabled ? 1 : 0, expected_enabled,
+            state.primary_viewport.x, state.primary_viewport.y,
+            state.primary_viewport.width, state.primary_viewport.height,
+            state.width, state.height, state.path->width, state.path->height,
+            state.camera->width, state.camera->height, output.desc.width,
+            output.desc.height, output.IsValid() ? 1 : 0, scale);
+    }
+    return matches ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_instances_share_mesh(int64_t first, int64_t second) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

@@ -1,11 +1,15 @@
 #pragma once
 
-// Test-only hooks for multi-material snapshot meshes, built into the render
-// smoke host with ELISA_RENDER_SCENE_TEST_PROBE.
+// Test-only render and asset probes, built into the smoke host with
+// ELISA_RENDER_SCENE_TEST_PROBE.
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
 #include <filesystem>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -14,6 +18,16 @@ constexpr float DOMINANT_CHANNEL_MINIMUM = 0.02f;
 constexpr uint32_t DOMINANT_CHANNEL_RADIUS = 2;
 constexpr int32_t DOMINANT_CHANNEL_NONE = -1;
 constexpr int32_t DOMINANT_CHANNEL_UNREADABLE = -2;
+constexpr size_t MIRRORED_TANGENT_VERTEX_COUNT = 8;
+constexpr size_t MIRRORED_TANGENT_INDEX_COUNT = 12;
+constexpr size_t MIRRORED_TANGENT_CHART_INDEX_COUNT = 6;
+constexpr float TANGENT_HANDEDNESS_TOLERANCE = 0.002f;
+constexpr float LUMINANCE_RED_WEIGHT = 0.2126f;
+constexpr float LUMINANCE_GREEN_WEIGHT = 0.7152f;
+constexpr float LUMINANCE_BLUE_WEIGHT = 0.0722f;
+std::vector<float> lighting_reference_luminance;
+uint32_t lighting_reference_width = 0;
+uint32_t lighting_reference_height = 0;
 
 const InstanceSlot* snapshot_instance(const RenderSceneService& state, int64_t render_id) {
     if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return nullptr;
@@ -80,6 +94,57 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_subset_count(int64_t rend
     std::lock_guard<std::mutex> guard(state.mutex);
     const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id);
     return mesh == nullptr ? -1 : int32_t(mesh->subsets.size());
+}
+
+// 1 when authored cooker tangents reached Wicked as finite, normalized,
+// normal-orthogonal frames with the expected Elisa-to-Wicked X reflection.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_tangent_frames(
+    int64_t render_id, uint32_t expected_vertex_count) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id);
+    if (mesh == nullptr || expected_vertex_count == 0 ||
+        mesh->vertex_positions.size() != expected_vertex_count ||
+        mesh->vertex_normals.size() != expected_vertex_count ||
+        mesh->vertex_tangents.size() != expected_vertex_count) return 0;
+    constexpr float FRAME_TOLERANCE = 0.002f;
+    for (size_t vertex = 0; vertex < expected_vertex_count; ++vertex) {
+        const XMFLOAT3& normal = mesh->vertex_normals[vertex];
+        const XMFLOAT4& tangent = mesh->vertex_tangents[vertex];
+        const float length = std::sqrt(tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z);
+        const float dot = normal.x * tangent.x + normal.y * tangent.y + normal.z * tangent.z;
+        if (!std::isfinite(length) || !std::isfinite(dot) || !std::isfinite(tangent.w) ||
+            std::abs(length - 1.0f) > FRAME_TOLERANCE || std::abs(dot) > FRAME_TOLERANCE ||
+            std::abs(std::abs(tangent.w) - 1.0f) > FRAME_TOLERANCE) return 0;
+    }
+    const XMFLOAT4& first = mesh->vertex_tangents.front();
+    return first.x < -0.99f && std::abs(first.y) < FRAME_TOLERANCE &&
+        std::abs(first.z) < FRAME_TOLERANCE ? 1 : 0;
+}
+
+// 1 when the two mirrored UV charts arrived as opposite, triangle-consistent
+// handedness groups after the cooked mesh was uploaded into Wicked.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_mirrored_tangent_seam(int64_t render_id) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    const wi::scene::MeshComponent* mesh = snapshot_instance_mesh(state, render_id);
+    if (mesh == nullptr || mesh->vertex_tangents.size() != MIRRORED_TANGENT_VERTEX_COUNT ||
+        mesh->indices.size() != MIRRORED_TANGENT_INDEX_COUNT) return 0;
+    float chart_handedness[2] = {};
+    for (size_t chart = 0; chart < 2; ++chart) {
+        const size_t first_index = chart * MIRRORED_TANGENT_CHART_INDEX_COUNT;
+        const uint32_t first_vertex = mesh->indices[first_index];
+        if (first_vertex >= mesh->vertex_tangents.size()) return 0;
+        const float handedness = mesh->vertex_tangents[first_vertex].w;
+        if (!std::isfinite(handedness) || std::abs(std::abs(handedness) - 1.0f) > TANGENT_HANDEDNESS_TOLERANCE) return 0;
+        chart_handedness[chart] = handedness;
+        for (size_t index = first_index; index < first_index + MIRRORED_TANGENT_CHART_INDEX_COUNT; ++index) {
+            const uint32_t vertex = mesh->indices[index];
+            if (vertex >= mesh->vertex_tangents.size() ||
+                std::abs(mesh->vertex_tangents[vertex].w - handedness) > TANGENT_HANDEDNESS_TOLERANCE) return 0;
+        }
+    }
+    return chart_handedness[0] * chart_handedness[1] < 0.0f ? 1 : 0;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_snapshot_placement_subset_count(
@@ -189,6 +254,84 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_material_matches(uint64_t
     return drawn ? 1 : 0;
 }
 
+// 1 when a cooked normal scale is retained in the registered snapshot
+// descriptor and the live Wicked PBR material.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_normal_scale_matches(
+    uint64_t high, uint64_t low, float expected_scale) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !std::isfinite(expected_scale)) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    return material != nullptr && std::abs(asset.normal_scale - expected_scale) <= 1.0e-5f &&
+        std::abs(material->normalMapStrength - expected_scale) <= 1.0e-5f ? 1 : 0;
+}
+
+// 1 when cooked AO strength reaches both the Wicked component and its GPU
+// material record.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_occlusion_strength_matches(
+    uint64_t high, uint64_t low, float expected_strength) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !std::isfinite(expected_strength)) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (material == nullptr || std::abs(asset.occlusion_strength - expected_strength) > 1.0e-5f ||
+        std::abs(material->occlusionStrength - expected_strength) > 1.0e-5f) return 0;
+    ShaderMaterial packed = shader_material_null;
+    material->WriteShaderMaterial(&packed);
+    return std::abs(packed.padding.x - expected_strength) <= 1.0e-5f ? 1 : 0;
+}
+
+// 1 when cooked clearcoat factors, normal-map scale, and the Wicked shader
+// material all retain the authored values.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_clearcoat_matches(
+        uint64_t high, uint64_t low, float expected_factor, float expected_roughness,
+        float expected_normal_scale) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !std::isfinite(expected_factor) || !std::isfinite(expected_roughness) ||
+        !std::isfinite(expected_normal_scale)) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (material == nullptr || std::abs(asset.clearcoat_factor - expected_factor) > 1.0e-5f ||
+        std::abs(asset.clearcoat_roughness - expected_roughness) > 1.0e-5f ||
+        std::abs(asset.clearcoat_normal_scale - expected_normal_scale) > 1.0e-5f ||
+        std::abs(material->clearcoat - expected_factor) > 1.0e-5f ||
+        std::abs(material->clearcoatRoughness - expected_roughness) > 1.0e-5f ||
+        std::abs(material->clearcoatNormalMapStrength - expected_normal_scale) > 1.0e-5f ||
+        material->shaderType != wi::scene::MaterialComponent::SHADERTYPE_PBR_CLEARCOAT) return 0;
+    ShaderMaterial packed = shader_material_null;
+    material->WriteShaderMaterial(&packed);
+    return std::abs(packed.padding.y - expected_normal_scale) <= 1.0e-5f ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_set_snapshot_occlusion_strength(
+    uint64_t high, uint64_t low, float strength) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !std::isfinite(strength) || strength < 0.0f || strength > 1.0f) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    wi::scene::MaterialComponent* material =
+        state.scene->materials.GetComponent(state.snapshot_material_assets[slot].material_entity);
+    if (material == nullptr) return 0;
+    material->SetOcclusionStrength(strength);
+    ShaderMaterial packed = shader_material_null;
+    material->WriteShaderMaterial(&packed);
+    return std::abs(packed.padding.x - strength) <= 1.0e-5f ? 1 : 0;
+}
+
 // The color channel (0 red, 1 green, 2 blue) that dominates a 5x5 patch of
 // the last 3D frame around (x, y) in thousandths of the frame size: its mean
 // exceeds twice each other channel's. -1 when none dominates, -2 when the
@@ -233,6 +376,107 @@ extern "C" int32_t elisa_render_scene_v1_test_last_frame_dominant_channel(uint32
         }
     }
     return DOMINANT_CHANNEL_NONE;
+}
+
+// Mean Rec. 709 luminance in a 5x5 patch of the last 3D frame. Returns -1
+// when the render target or coordinates cannot be read.
+extern "C" float elisa_render_scene_v1_test_last_frame_luminance(uint32_t x_permille, uint32_t y_permille) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr ||
+        x_permille > 1000 || y_permille > 1000) return -1.0f;
+    wait_for_object_pipelines();
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.width <= 2 * DOMINANT_CHANNEL_RADIUS ||
+        desc.height <= 2 * DOMINANT_CHANNEL_RADIUS || pixel_size == 0 ||
+        !wi::helper::saveTextureToMemory(frame, pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * pixel_size) return -1.0f;
+    const uint32_t center_x = std::clamp(uint32_t(uint64_t(desc.width - 1) * x_permille / 1000),
+        DOMINANT_CHANNEL_RADIUS, desc.width - 1 - DOMINANT_CHANNEL_RADIUS);
+    const uint32_t center_y = std::clamp(uint32_t(uint64_t(desc.height - 1) * y_permille / 1000),
+        DOMINANT_CHANNEL_RADIUS, desc.height - 1 - DOMINANT_CHANNEL_RADIUS);
+    float luminance = 0.0f;
+    for (uint32_t y = center_y - DOMINANT_CHANNEL_RADIUS; y <= center_y + DOMINANT_CHANNEL_RADIUS; ++y) {
+        for (uint32_t x = center_x - DOMINANT_CHANNEL_RADIUS; x <= center_x + DOMINANT_CHANNEL_RADIUS; ++x) {
+            float rgb[3] = {};
+            if (!decode_frame_pixel(desc.format,
+                pixels.data() + (size_t(y) * desc.width + x) * pixel_size, rgb)) return -1.0f;
+            luminance += LUMINANCE_RED_WEIGHT * rgb[0] + LUMINANCE_GREEN_WEIGHT * rgb[1] +
+                LUMINANCE_BLUE_WEIGHT * rgb[2];
+        }
+    }
+    return luminance / float((2 * DOMINANT_CHANNEL_RADIUS + 1) * (2 * DOMINANT_CHANNEL_RADIUS + 1));
+}
+
+// Captures or compares the rendered 3D frame for authored lighting references.
+// The comparison scans overlapping 5x5 patches so a localized lighting change
+// does not need to land at a hand-picked screen coordinate.
+extern "C" float elisa_render_scene_v1_test_lighting_frame_change(int32_t capture_reference) {
+    if (capture_reference != 0 && capture_reference != 1) return -1.0f;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return -1.0f;
+    wait_for_object_pipelines();
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr) return -1.0f;
+    device->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    const size_t pixel_size = wi::graphics::GetFormatStride(desc.format);
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.width <= 2 * DOMINANT_CHANNEL_RADIUS ||
+        desc.height <= 2 * DOMINANT_CHANNEL_RADIUS || pixel_size == 0 ||
+        !wi::helper::saveTextureToMemory(frame, pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * pixel_size) return -1.0f;
+
+    std::vector<float> current;
+    current.resize(size_t(desc.width) * desc.height);
+    for (uint32_t y = 0; y < desc.height; ++y) {
+        for (uint32_t x = 0; x < desc.width; ++x) {
+            float rgb[3] = {};
+            if (!decode_frame_pixel(desc.format,
+                pixels.data() + (size_t(y) * desc.width + x) * pixel_size, rgb)) return -1.0f;
+            const float luminance = LUMINANCE_RED_WEIGHT * rgb[0] +
+                LUMINANCE_GREEN_WEIGHT * rgb[1] + LUMINANCE_BLUE_WEIGHT * rgb[2];
+            if (!std::isfinite(luminance)) return -1.0f;
+            current[size_t(y) * desc.width + x] = luminance;
+        }
+    }
+
+    if (capture_reference != 0) {
+        lighting_reference_luminance = std::move(current);
+        lighting_reference_width = desc.width;
+        lighting_reference_height = desc.height;
+        return 0.0f;
+    }
+    if (lighting_reference_width != desc.width || lighting_reference_height != desc.height ||
+        lighting_reference_luminance.size() != current.size()) return -1.0f;
+
+    float maximum_change = 0.0f;
+    constexpr uint32_t SAMPLE_STEP = 2;
+    constexpr float PATCH_AREA = float((2 * DOMINANT_CHANNEL_RADIUS + 1) *
+        (2 * DOMINANT_CHANNEL_RADIUS + 1));
+    for (uint32_t center_y = DOMINANT_CHANNEL_RADIUS;
+        center_y + DOMINANT_CHANNEL_RADIUS < desc.height; center_y += SAMPLE_STEP) {
+        for (uint32_t center_x = DOMINANT_CHANNEL_RADIUS;
+            center_x + DOMINANT_CHANNEL_RADIUS < desc.width; center_x += SAMPLE_STEP) {
+            float patch_change = 0.0f;
+            for (uint32_t y = center_y - DOMINANT_CHANNEL_RADIUS;
+                y <= center_y + DOMINANT_CHANNEL_RADIUS; ++y) {
+                for (uint32_t x = center_x - DOMINANT_CHANNEL_RADIUS;
+                    x <= center_x + DOMINANT_CHANNEL_RADIUS; ++x) {
+                    const size_t index = size_t(y) * desc.width + x;
+                    patch_change += std::fabs(current[index] - lighting_reference_luminance[index]);
+                }
+            }
+            maximum_change = std::max(maximum_change, patch_change / PATCH_AREA);
+        }
+    }
+    return maximum_change;
 }
 
 // 1 when registered material `high:low` names texture

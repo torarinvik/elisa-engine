@@ -24,6 +24,8 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.root_motion_previous_z = 0.0f;
     instance.root_motion_pending_x = 0.0f;
     instance.root_motion_pending_z = 0.0f;
+    instance.root_motion_wrap_correction_x = 0.0f;
+    instance.root_motion_wrap_correction_z = 0.0f;
     instance.root_motion_previous_valid = false;
 }
 
@@ -112,6 +114,49 @@ void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, flo
     interpolate_transform(first, second, weight, output);
 }
 
+// Root tracks are local to their joint. Resolve their linear transform through
+// the current ancestor pose so root motion uses the instance's scale and axes.
+XMMATRIX root_motion_parent_linear_transform(const InstanceSlot& instance, size_t root_joint) {
+    XMMATRIX parent_to_instance = XMMatrixIdentity();
+    int32_t parent = instance.skin_joints[root_joint].parent_index;
+    while (parent >= 0) {
+        const float* pose = instance.displayed_joint_pose.data() + size_t(parent) * 10;
+        const XMFLOAT3 scale(pose[7], pose[8], pose[9]);
+        const XMFLOAT4 rotation = probe::coordinates::to_wicked_rotation(
+            pose[3], pose[4], pose[5], pose[6]);
+        const XMMATRIX local = XMMatrixScaling(scale.x, scale.y, scale.z) *
+            XMMatrixRotationQuaternion(XMLoadFloat4(&rotation));
+        parent_to_instance = parent_to_instance * local;
+        parent = instance.skin_joints[size_t(parent)].parent_index;
+    }
+    return parent_to_instance;
+}
+
+XMFLOAT3 root_motion_instance_delta(const InstanceSlot& instance, size_t root_joint,
+    float local_x, float local_y, float local_z) {
+    const XMFLOAT3 local_wicked_value = probe::coordinates::to_wicked(local_x, local_y, local_z);
+    XMFLOAT3 instance_delta_wicked;
+    XMStoreFloat3(&instance_delta_wicked, XMVector3TransformNormal(
+        XMLoadFloat3(&local_wicked_value), root_motion_parent_linear_transform(instance, root_joint)));
+    return probe::coordinates::from_wicked(instance_delta_wicked);
+}
+
+bool animation_root_cycle_delta(const InstanceSlot& instance, int32_t clip_index,
+    int32_t joint_index, float& delta_x, float& delta_z) {
+    if (clip_index < 0 || clip_index >= int32_t(instance.animation_clips.size()) ||
+        joint_index < 0 || size_t(joint_index) >= instance.skin_joints.size()) return false;
+    const auto& clip = instance.animation_clips[size_t(clip_index)];
+    float first[10]{};
+    float last[10]{};
+    sample_animation_pose(instance, clip_index, 0.0f, false, size_t(joint_index), first);
+    sample_animation_pose(instance, clip_index, clip.duration_seconds, false, size_t(joint_index), last);
+    const XMFLOAT3 cycle = root_motion_instance_delta(instance, size_t(joint_index),
+        last[0] - first[0], last[1] - first[1], last[2] - first[2]);
+    delta_x = cycle.x;
+    delta_z = cycle.z;
+    return std::isfinite(cycle.x) && std::isfinite(cycle.y) && std::isfinite(cycle.z);
+}
+
 float sample_animation_morph_weight(const InstanceSlot& instance, int32_t clip_index,
     float time, bool loop, size_t placement, size_t target, size_t placement_count,
     size_t morph_count) {
@@ -130,24 +175,6 @@ float sample_animation_morph_weight(const InstanceSlot& instance, int32_t clip_i
     const size_t second = (size_t(second_frame) * placement_count + placement) * morph_count + target;
     if (second >= clip.morph_weights.size()) return 0.0f;
     return clip.morph_weights[first] + (clip.morph_weights[second] - clip.morph_weights[first]) * amount;
-}
-
-// Root tracks are local to their joint. Resolve their linear transform through
-// the current ancestor pose so root motion uses the instance's scale and axes.
-XMMATRIX root_motion_parent_linear_transform(const InstanceSlot& instance, size_t root_joint) {
-    XMMATRIX parent_to_instance = XMMatrixIdentity();
-    int32_t parent = instance.skin_joints[root_joint].parent_index;
-    while (parent >= 0) {
-        const float* pose = instance.displayed_joint_pose.data() + size_t(parent) * 10;
-        const XMFLOAT3 scale(pose[7], pose[8], pose[9]);
-        const XMFLOAT4 rotation = probe::coordinates::to_wicked_rotation(
-            pose[3], pose[4], pose[5], pose[6]);
-        const XMMATRIX local = XMMatrixScaling(scale.x, scale.y, scale.z) *
-            XMMatrixRotationQuaternion(XMLoadFloat4(&rotation));
-        parent_to_instance = parent_to_instance * local;
-        parent = instance.skin_joints[size_t(parent)].parent_index;
-    }
-    return parent_to_instance;
 }
 
 // Poses are sampled and blended in Elisa space, then reflected into Wicked's
@@ -188,47 +215,51 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
             std::copy(std::begin(current), std::end(current), pose);
         }
         if (instance.root_motion_mode == 1 && int32_t(joint_index) == instance.root_motion_joint) {
-            const XMMATRIX parent_to_instance = root_motion_parent_linear_transform(instance, joint_index);
-            const XMFLOAT3 root_position_wicked_value = probe::coordinates::to_wicked(
-                pose[0], pose[1], pose[2]);
-            const XMFLOAT3 root_anchor_wicked_value = probe::coordinates::to_wicked(
-                instance.root_motion_anchor_x, instance.root_motion_anchor_y,
-                instance.root_motion_anchor_z);
-            const XMVECTOR root_position = XMLoadFloat3(&root_position_wicked_value);
-            const XMVECTOR root_anchor = XMLoadFloat3(&root_anchor_wicked_value);
-            const XMVECTOR root_delta = XMVectorSubtract(root_position, root_anchor);
-            XMFLOAT3 instance_delta_wicked;
-            XMStoreFloat3(&instance_delta_wicked,
-                XMVector3TransformNormal(root_delta, parent_to_instance));
-            const XMFLOAT3 instance_delta = probe::coordinates::from_wicked(instance_delta_wicked);
-            const float horizontal_x = instance_delta.x;
-            const float horizontal_z = instance_delta.z;
-            if (!finite(horizontal_x) || !finite(instance_delta.y) || !finite(horizontal_z)) return false;
-            if (instance.root_motion_previous_valid) {
-                instance.root_motion_pending_x += horizontal_x - instance.root_motion_previous_x;
-                instance.root_motion_pending_z += horizontal_z - instance.root_motion_previous_z;
+            if (!instance.root_motion_previous_valid) {
+                instance.root_motion_anchor_x = pose[0];
+                instance.root_motion_anchor_y = pose[1];
+                instance.root_motion_anchor_z = pose[2];
+                instance.root_motion_previous_x = 0.0f;
+                instance.root_motion_previous_z = 0.0f;
+                instance.root_motion_previous_valid = true;
             }
+            const XMMATRIX parent_to_instance = root_motion_parent_linear_transform(instance, joint_index);
+            const XMFLOAT3 root_delta = root_motion_instance_delta(instance, joint_index,
+                pose[0] - instance.root_motion_anchor_x,
+                pose[1] - instance.root_motion_anchor_y,
+                pose[2] - instance.root_motion_anchor_z);
+            const float horizontal_x = root_delta.x;
+            const float horizontal_z = root_delta.z;
+            if (!std::isfinite(root_delta.x) || !std::isfinite(root_delta.y) ||
+                !std::isfinite(root_delta.z)) return false;
+            const float delta_x = horizontal_x - instance.root_motion_previous_x +
+                instance.root_motion_wrap_correction_x;
+            const float delta_z = horizontal_z - instance.root_motion_previous_z +
+                instance.root_motion_wrap_correction_z;
+            if (!std::isfinite(delta_x) || !std::isfinite(delta_z) ||
+                !std::isfinite(instance.root_motion_pending_x + delta_x) ||
+                !std::isfinite(instance.root_motion_pending_z + delta_z)) return false;
+            instance.root_motion_pending_x += delta_x;
+            instance.root_motion_pending_z += delta_z;
             instance.root_motion_previous_x = horizontal_x;
             instance.root_motion_previous_z = horizontal_z;
-            instance.root_motion_previous_valid = true;
-
+            instance.root_motion_wrap_correction_x = 0.0f;
+            instance.root_motion_wrap_correction_z = 0.0f;
             // Keep world-up motion in the skeleton. Root axes are asset-local
-            // (often Z-up), so remove planar movement via the inverse ancestor
-            // transform rather than freezing local x/z components.
+            // (often Z-up), so remove planar movement through inverse ancestors.
             const XMFLOAT3 horizontal_wicked_value = probe::coordinates::to_wicked(
                 horizontal_x, 0.0f, horizontal_z);
             const XMVECTOR horizontal_wicked = XMLoadFloat3(&horizontal_wicked_value);
             XMVECTOR determinant;
             const XMMATRIX instance_to_parent = XMMatrixInverse(&determinant, parent_to_instance);
             const float determinant_value = XMVectorGetX(determinant);
-            if (!finite(determinant_value) || std::abs(determinant_value) < 1.0e-12f) return false;
+            if (!std::isfinite(determinant_value) || std::abs(determinant_value) < 1.0e-12f) return false;
             XMFLOAT3 local_horizontal_wicked;
             XMStoreFloat3(&local_horizontal_wicked,
                 XMVector3TransformNormal(horizontal_wicked, instance_to_parent));
             const XMFLOAT3 local_horizontal = probe::coordinates::from_wicked(local_horizontal_wicked);
-            if (!finite(local_horizontal.x) || !finite(local_horizontal.y) || !finite(local_horizontal.z)) {
-                return false;
-            }
+            if (!std::isfinite(local_horizontal.x) || !std::isfinite(local_horizontal.y) ||
+                !std::isfinite(local_horizontal.z)) return false;
             pose[0] -= local_horizontal.x;
             pose[1] -= local_horizontal.y;
             pose[2] -= local_horizontal.z;

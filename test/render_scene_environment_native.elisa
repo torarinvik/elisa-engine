@@ -6,6 +6,138 @@ module RenderSceneEnvironmentNativeTests:
         extern elisa_render_scene_v1_test_environment_matches() -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_sun_shadows_match(enabled: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sun_cascade_distances_match(
+            near_end: f32, middle_end: f32, far_end: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sun_shadow_bias_matches(expected_bias: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+            expected_constant_bias: i32, expected_slope_bias: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sky_map_matches(
+            width: u32, height: u32, rotation_radians: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sky_map_cleared() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_lighting_frame_change(capture_reference: i32) -> f32
+
+        const MINIMUM_LIGHTING_IMAGE_CHANGE: f32 = 0.01
+        const BASELINE_SHADOW_RECEIVER_BIAS: f32 = 0.0
+        const SHADOW_BIAS_VARIANT: f32 = 0.005
+        const RESTORED_SHADOW_RECEIVER_BIAS: f32 = 0.001
+        const DEFAULT_SHADOW_CONSTANT_BIAS: i32 = -1
+        const DEFAULT_SHADOW_SLOPE_BIAS: f32 = -4.0
+        const VARIANT_SHADOW_CONSTANT_BIAS: i32 = 256
+        const VARIANT_SHADOW_SLOPE_BIAS: f32 = -2.0
+
+        def verify_receiver_bias_variant() -> i32:
+            baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 95 if baseline < 0.0
+            configured: i32 = catch RenderScene::set_sun_shadow_bias(SHADOW_BIAS_VARIANT):
+                ok: 0
+                error failure: 1
+            return 96 if (configured != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(SHADOW_BIAS_VARIANT) != 1)
+            for frame in 0..<3:
+                return 97 if Application::pump() != Application::PumpStatus.Running
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 98 if change < 0.0
+            return 99 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            restored: i32 = catch RenderScene::set_sun_shadow_bias(RESTORED_SHADOW_RECEIVER_BIAS):
+                ok: 0
+                error failure: 1
+            return 100 if (restored != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(RESTORED_SHADOW_RECEIVER_BIAS) != 1)
+            0
+
+        def verify_indoor_outdoor_lighting_reference() -> i32:
+            for frame in 0..<3:
+                return 101 if Application::pump() != Application::PumpStatus.Running
+            outdoor_capture: cstr = Application::environment_value("ELISA_LIGHTING_OUTDOOR_CAPTURE")
+            return 102 if outdoor_capture != "" and not Application::save_screenshot(outdoor_capture)
+            outdoor_baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 103 if outdoor_baseline < 0.0
+
+            indoor_light: RenderScene::LightHandle = catch RenderScene::create_light(Lighting::Light{
+                kind: Lighting::LightKind.Rectangle,
+                color: Geometry::Vec3{x: 1.0, y: 0.68, z: 0.38},
+                position: Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
+                intensity: 5.0,
+                range: 16.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: false,
+                shadow_resolution: 0,
+                rectangle_width: 4.0,
+                rectangle_height: 3.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
+            }):
+                value: value
+                error failure: return 104
+            indoor_environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::vec3_zero(),
+                sun_direction: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+                ambient: Geometry::Vec3{x: 0.02, y: 0.02, z: 0.02},
+                sky_exposure: 0.0,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }):
+                ok: 0
+                error failure: 1
+            return 105 if indoor_environment != 0
+            for frame in 0..<3:
+                return 106 if Application::pump() != Application::PumpStatus.Running
+            indoor_capture: cstr = Application::environment_value("ELISA_LIGHTING_INDOOR_CAPTURE")
+            return 107 if indoor_capture != "" and not Application::save_screenshot(indoor_capture)
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 108 if change < 0.0
+            return 109 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            _ = catch RenderScene::destroy_light(indoor_light):
+                ok: 0
+                error failure: return 110
+            0
+
+        def verify_rasterizer_bias_variant() -> i32:
+            baseline_bias: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS):
+                ok: 0
+                error failure: return 111
+            return 112 if (baseline_bias != 0 or
+                elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+                    DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS) != 1)
+            baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 113 if baseline < 0.0
+            invalid_slope: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                DEFAULT_SHADOW_CONSTANT_BIAS, 16.01):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 114 if invalid_slope != 1
+            configured: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                VARIANT_SHADOW_CONSTANT_BIAS, VARIANT_SHADOW_SLOPE_BIAS):
+                ok: 0
+                error failure: 1
+            return 115 if (configured != 0 or
+                elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+                    VARIANT_SHADOW_CONSTANT_BIAS, VARIANT_SHADOW_SLOPE_BIAS) != 1)
+            for frame in 0..<3:
+                return 116 if Application::pump() != Application::PumpStatus.Running
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 117 if change < 0.0
+            return 118 if change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            restored: i32 = catch RenderScene::set_sun_shadow_rasterizer_bias(
+                DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS):
+                ok: 0
+                error failure: 1
+            return 119 if (restored != 0 or
+                elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+                    DEFAULT_SHADOW_CONSTANT_BIAS, DEFAULT_SHADOW_SLOPE_BIAS) != 1)
+            0
 
     public:
         def exercise() -> i32:
@@ -23,6 +155,10 @@ module RenderSceneEnvironmentNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 40 if invalid_environment != 1
+            configured_bias_before_sun: i32 = catch RenderScene::set_sun_shadow_bias(0.0005):
+                ok: 0
+                error failure: 1
+            return 59 if configured_bias_before_sun != 0
             environment_status: i32 = catch RenderScene::set_environment(Lighting::Environment{
                 sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
                 sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
@@ -37,6 +173,56 @@ module RenderSceneEnvironmentNativeTests:
                 error failure: 1
             return 41 if environment_status != 0
             return 42 if elisa_render_scene_v1_test_environment_matches() != 1
+            return 60 if elisa_render_scene_v1_test_sun_shadow_bias_matches(0.0005) != 1
+            invalid_cascade_order: i32 = catch RenderScene::set_sun_cascade_distances(
+                100.0, 50.0, 400.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 47 if invalid_cascade_order != 1
+            cascade_past_far_clip: i32 = catch RenderScene::set_sun_cascade_distances(
+                10.0, 100.0, 1200.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 48 if cascade_past_far_clip != 1
+            cascade_status: i32 = catch RenderScene::set_sun_cascade_distances(
+                10.0, 100.0, 400.0):
+                ok: 0
+                error failure: 1
+            return 49 if (cascade_status != 0 or
+                elisa_render_scene_v1_test_sun_cascade_distances_match(10.0, 100.0, 400.0) != 1)
+            invalid_shadow_bias: i32 = catch RenderScene::set_sun_shadow_bias(0.02):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 57 if invalid_shadow_bias != 1
+            shadow_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(0.001):
+                ok: 0
+                error failure: 1
+            return 58 if (shadow_bias_status != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(0.001) != 1)
+            invalid_sky_path: i32 = catch RenderScene::set_sky_map("../outside.png", 0.5):
+                ok: 0
+                RenderScene::RenderSceneError.AssetLoadFailure: 1
+                error failure: 2
+            return 50 if invalid_sky_path != 1
+            invalid_sky_shape: i32 = catch RenderScene::set_sky_map(
+                "test/fixtures/sky_square.png", 0.5):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 51 if invalid_sky_shape != 1
+            sky_status: i32 = catch RenderScene::set_sky_map("test/fixtures/sky_latlong.png", 0.5):
+                ok: 0
+                error failure: 1
+            return 52 if sky_status != 0
+            return 53 if elisa_render_scene_v1_test_sky_map_matches(8, 4, 0.5) != 1
+            return 54 if Application::pump() != Application::PumpStatus.Running
+            _ = catch RenderScene::clear_sky_map():
+                ok: 0
+                error failure: return 55
+            return 56 if elisa_render_scene_v1_test_sky_map_cleared() != 1
             _ = catch RenderScene::set_sun_shadows(false):
                 ok: 0
                 error failure: return 43
@@ -47,4 +233,152 @@ module RenderSceneEnvironmentNativeTests:
             return 46 if elisa_render_scene_v1_test_sun_shadows_match(1) != 1
             art_material: i32 = RenderSceneArtMaterialNativeTests::exercise()
             return art_material if art_material != 0
+            0
+
+        def verify_lighting_rendering(box: RenderScene::InstanceHandle,
+            sphere: RenderScene::InstanceHandle, floor: RenderScene::InstanceHandle,
+            arc: RenderScene::ElectricArcHandle, hud_text: RenderScene::OverlayTextHandle,
+            hud_panel: RenderScene::OverlayPanelHandle) -> i32:
+            _ = catch RenderScene::set_visible(box, false):
+                ok: true
+                error failure: return 81
+            _ = catch RenderScene::set_visible(sphere, false):
+                ok: true
+                error failure: return 82
+            _ = catch RenderScene::set_visible(floor, false):
+                ok: true
+                error failure: return 83
+            _ = catch RenderScene::set_electric_arc_visible(arc, false):
+                ok: 0
+                error failure: return 84
+            _ = catch RenderScene::set_overlay_text_visible(hud_text, false):
+                ok: 0
+                error failure: return 89
+            _ = catch RenderScene::set_overlay_panel_visible(hud_panel, false):
+                ok: 0
+                error failure: return 90
+            environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                sun_direction: Geometry::Vec3{x: 0.7, y: 1.0, z: 0.4},
+                ambient: Geometry::Vec3{x: 0.02, y: 0.02, z: 0.02},
+                sky_exposure: 0.0,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }):
+                ok: 0
+                error failure: 1
+            return 60 if environment != 0
+            projection: i32 = catch RenderScene::set_camera_orthographic_height(8.0):
+                ok: 0
+                error failure: 1
+            return 70 if projection != 0
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 8.0, z: 0.0}, Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}):
+                ok: 0
+                error failure: 1
+            return 71 if view != 0
+            ground: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Plane,
+                Geometry::Transform{position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 6.0, y: 1.0, z: 6.0}},
+                RenderScene::Color{red: 0.72, green: 0.72, blue: 0.72, alpha: 1.0}):
+                value: value
+                error failure: return 72
+            caster: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box,
+                Geometry::Transform{position: Geometry::Vec3{x: 0.0, y: 0.5, z: 0.0},
+                    rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}},
+                RenderScene::Color{red: 0.85, green: 0.85, blue: 0.85, alpha: 1.0}):
+                value: value
+                error failure: return 73
+            _ = catch RenderScene::set_lit_material(ground, 1.0, 0.0):
+                ok: 0
+                error failure: return 74
+            _ = catch RenderScene::set_lit_material(caster, 0.8, 0.0):
+                ok: 0
+                error failure: return 75
+            baseline_bias_status: i32 = catch RenderScene::set_sun_shadow_bias(
+                BASELINE_SHADOW_RECEIVER_BIAS):
+                ok: 0
+                error failure: 1
+            return 94 if (baseline_bias_status != 0 or
+                elisa_render_scene_v1_test_sun_shadow_bias_matches(BASELINE_SHADOW_RECEIVER_BIAS) != 1)
+            disabled: i32 = catch RenderScene::set_sun_shadows(false):
+                ok: 0
+                error failure: 1
+            return 61 if disabled != 0
+            for frame in 0..<3:
+                return 62 if Application::pump() != Application::PumpStatus.Running
+            without_capture: cstr = Application::environment_value("ELISA_SHADOWS_DISABLED_CAPTURE")
+            return 68 if without_capture != "" and not Application::save_screenshot(without_capture)
+            without_capture_status: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 63 if without_capture_status < 0.0
+
+            enabled: i32 = catch RenderScene::set_sun_shadows(true):
+                ok: 0
+                error failure: 1
+            return 64 if enabled != 0
+            for frame in 0..<3:
+                return 65 if Application::pump() != Application::PumpStatus.Running
+            with_capture: cstr = Application::environment_value("ELISA_SHADOWS_ENABLED_CAPTURE")
+            return 69 if with_capture != "" and not Application::save_screenshot(with_capture)
+            maximum_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 66 if maximum_change < 0.0
+            return 67 if maximum_change < MINIMUM_LIGHTING_IMAGE_CHANGE
+
+            bias_variant: i32 = verify_receiver_bias_variant()
+            return bias_variant if bias_variant != 0
+            rasterizer_bias_variant: i32 = verify_rasterizer_bias_variant()
+            return rasterizer_bias_variant if rasterizer_bias_variant != 0
+            environment_reference: i32 = verify_indoor_outdoor_lighting_reference()
+            return environment_reference if environment_reference != 0
+            _ = catch RenderScene::destroy(caster):
+                ok: 0
+                error failure: return 76
+            _ = catch RenderScene::destroy(ground):
+                ok: 0
+                error failure: return 77
+            _ = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
+                sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
+                ambient: Geometry::Vec3{x: 0.14, y: 0.18, z: 0.25},
+                sky_exposure: 1.25,
+                fog_color: Geometry::Vec3{x: 0.04, y: 0.06, z: 0.1},
+                fog_start: 12.0,
+                fog_density: 0.02,
+                fog_enabled: true,
+            }):
+                ok: 0
+                error failure: return 78
+            _ = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: return 79
+            _ = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0}, Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: return 80
+            _ = catch RenderScene::set_visible(box, true):
+                ok: true
+                error failure: return 85
+            _ = catch RenderScene::set_visible(sphere, true):
+                ok: true
+                error failure: return 86
+            _ = catch RenderScene::set_visible(floor, true):
+                ok: true
+                error failure: return 87
+            _ = catch RenderScene::set_electric_arc_visible(arc, true):
+                ok: 0
+                error failure: return 88
+            _ = catch RenderScene::set_overlay_text_visible(hud_text, true):
+                ok: 0
+                error failure: return 91
+            _ = catch RenderScene::set_overlay_panel_visible(hud_panel, true):
+                ok: 0
+                error failure: return 92
+            for frame in 0..<3:
+                return 93 if Application::pump() != Application::PumpStatus.Running
             0

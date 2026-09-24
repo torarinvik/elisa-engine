@@ -14,7 +14,7 @@ float clip_phase(const InstanceSlot& instance, int32_t clip_index, float time) {
 
 int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, float speed,
     float blend_seconds, int32_t flags) {
-    if ((loop != 0 && loop != 1) || !finite(speed) || speed < 0.0f || speed > 16.0f ||
+    if ((loop != 0 && loop != 1) || !finite(speed) || speed < -16.0f || speed > 16.0f ||
         !finite(blend_seconds) || blend_seconds < 0.0f || blend_seconds > 10.0f ||
         (flags & ~ANIMATION_BLEND_FLAG_MASK) != 0) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
@@ -58,6 +58,9 @@ int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, flo
         // Locomotion cycles stay in step: the new cycle starts where the old
         // one was, so a walk-to-run switch does not restart the stride.
         instance.animation_time = phase * instance.animation_clips[size_t(next_clip)].duration_seconds;
+    } else if (speed < 0.0f) {
+        const float duration = instance.animation_clips[size_t(next_clip)].duration_seconds;
+        instance.animation_time = loop != 0 ? std::nextafter(duration, 0.0f) : duration;
     }
     instance.animation_speed = speed;
     instance.animation_loop = loop != 0;
@@ -82,7 +85,7 @@ extern "C" int32_t elisa_render_scene_v1_play_animation_blended(
 // cycle or start a crossfade, otherwise an accelerating character freezes on
 // the clip's first frame while its cadence keeps being re-scaled.
 extern "C" int32_t elisa_render_scene_v1_set_animation_speed(int64_t handle, float speed) {
-    if (!finite(speed) || speed < 0.0f || speed > 16.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (!finite(speed) || speed < -16.0f || speed > 16.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
@@ -150,19 +153,39 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
         (instance.animation_clip < 0 && instance.previous_animation_clip < 0)) {
         return instance.animation_clip < 0 ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
+    float current_loop_crossings = 0.0f;
+    float previous_loop_crossings = 0.0f;
+    const bool had_interrupted_pose = instance.interrupted_joint_pose.size() ==
+        instance.joint_entities.size() * 10;
     if (instance.animation_clip >= 0) {
-        instance.animation_time += delta_seconds * instance.animation_speed;
+        if (instance.root_motion_mode == 1 && instance.animation_loop) {
+            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+            const float next_time = instance.animation_time + delta_seconds * instance.animation_speed;
+            if (clip.duration_seconds > 0.0f && finite(next_time)) {
+                current_loop_crossings = std::floor(next_time / clip.duration_seconds) -
+                    std::floor(instance.animation_time / clip.duration_seconds);
+            }
+        }
+        const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
+        const float next_time = instance.animation_time + delta_seconds * instance.animation_speed;
         if (instance.animation_loop) {
-            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
-            instance.animation_time = animation_time(clip, instance.animation_time, true);
+            instance.animation_time = animation_time(clip, next_time, true);
         } else {
-            const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
-            instance.animation_time = std::min(instance.animation_time, clip.duration_seconds);
+            instance.animation_time = std::clamp(next_time, 0.0f, clip.duration_seconds);
         }
     }
     if (instance.previous_animation_clip >= 0) {
         if (instance.previous_animation_clip >= int32_t(instance.animation_clips.size())) {
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        if (instance.root_motion_mode == 1 && instance.previous_animation_loop) {
+            const auto& clip = instance.animation_clips[size_t(instance.previous_animation_clip)];
+            const float next_time = instance.previous_animation_time +
+                delta_seconds * instance.previous_animation_speed;
+            if (clip.duration_seconds > 0.0f && finite(next_time)) {
+                previous_loop_crossings = std::floor(next_time / clip.duration_seconds) -
+                    std::floor(instance.previous_animation_time / clip.duration_seconds);
+            }
         }
         instance.previous_animation_time += delta_seconds * instance.previous_animation_speed;
         const auto& previous = instance.animation_clips[size_t(instance.previous_animation_clip)];
@@ -173,11 +196,35 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
         instance.blend_elapsed = std::min(instance.blend_duration, instance.blend_elapsed + delta_seconds);
         if (instance.blend_elapsed >= instance.blend_duration) instance.previous_animation_clip = -1;
     }
+    if (instance.root_motion_mode == 1) {
+        float blend = 1.0f;
+        if (instance.blend_duration > 0.0f) {
+            blend = std::clamp(instance.blend_elapsed / instance.blend_duration, 0.0f, 1.0f);
+            if (instance.blend_eased) blend = blend * blend * (3.0f - 2.0f * blend);
+        }
+        float current_cycle_x = 0.0f;
+        float current_cycle_z = 0.0f;
+        float previous_cycle_x = 0.0f;
+        float previous_cycle_z = 0.0f;
+        if (current_loop_crossings != 0.0f && animation_root_cycle_delta(instance,
+            instance.animation_clip, instance.root_motion_joint, current_cycle_x, current_cycle_z)) {
+            instance.root_motion_wrap_correction_x += current_cycle_x * current_loop_crossings * blend;
+            instance.root_motion_wrap_correction_z += current_cycle_z * current_loop_crossings * blend;
+        }
+        if (!had_interrupted_pose && blend < 1.0f && previous_loop_crossings != 0.0f &&
+            animation_root_cycle_delta(instance, instance.previous_animation_clip,
+                instance.root_motion_joint, previous_cycle_x, previous_cycle_z)) {
+            instance.root_motion_wrap_correction_x += previous_cycle_x * previous_loop_crossings * (1.0f - blend);
+            instance.root_motion_wrap_correction_z += previous_cycle_z * previous_loop_crossings * (1.0f - blend);
+        }
+        if (!finite(instance.root_motion_wrap_correction_x) ||
+            !finite(instance.root_motion_wrap_correction_z)) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
     return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
 
-// Root extraction is opt-in and instance-local. The root joint stays at its
-// entry x/z while apply_animation_pose accumulates its planar motion for Elisa.
+// Root extraction is opt-in and instance-local. The pose keeps world-up motion
+// while apply_animation_pose accumulates instance-local horizontal travel.
 extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
     int64_t handle, int32_t mode, const char* root_joint_name) {
     if (mode != 0 && mode != 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
@@ -194,6 +241,8 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
         instance.root_motion_previous_valid = false;
         instance.root_motion_pending_x = 0.0f;
         instance.root_motion_pending_z = 0.0f;
+        instance.root_motion_wrap_correction_x = 0.0f;
+        instance.root_motion_wrap_correction_z = 0.0f;
         return ELISA_RENDER_SCENE_OK;
     }
     if (instance.animation_clip < 0 ||
@@ -224,13 +273,15 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
     instance.root_motion_anchor_x = root_pose[0];
     instance.root_motion_anchor_y = root_pose[1];
     instance.root_motion_anchor_z = root_pose[2];
-    instance.root_motion_previous_x = 0.0f;
-    instance.root_motion_previous_z = 0.0f;
     // The anchor is the zero-displacement baseline, so the first sampled pose
     // must contribute its full planar offset rather than merely initialize it.
+    instance.root_motion_previous_x = 0.0f;
+    instance.root_motion_previous_z = 0.0f;
     instance.root_motion_previous_valid = true;
     instance.root_motion_pending_x = 0.0f;
     instance.root_motion_pending_z = 0.0f;
+    instance.root_motion_wrap_correction_x = 0.0f;
+    instance.root_motion_wrap_correction_z = 0.0f;
     return ELISA_RENDER_SCENE_OK;
 }
 

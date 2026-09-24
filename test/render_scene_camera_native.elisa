@@ -16,6 +16,24 @@ module RenderSceneCameraNativeTests:
         extern elisa_render_scene_v1_test_camera_render_target_matches(width: i32, height: i32,
             expected_live: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_viewport_matches(x: i32, y: i32,
+            width: i32, height: i32, expected_composed_count: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_viewport_count_matches(expected_count: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_primary_viewport_matches(x: i32, y: i32,
+            width: i32, height: i32, expected_enabled: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_quality_profile_matches(
+            tonemap: i32, bloom: i32, threshold: f32, fxaa: i32,
+            ambient_occlusion: i32, reflections: i32, depth_effects: i32,
+            render_scale: f32, shadow_quality: i32,
+            sun_shadow_receiver_bias: f32) -> i32
+
         # Points the camera, then checks that Wicked shows the right-handed
         # view: the same eye and direction, with f × up on the frame's right.
         def looks_along(eye: Geometry::Vec3, target: Geometry::Vec3, up: Geometry::Vec3) -> bool:
@@ -144,6 +162,134 @@ module RenderSceneCameraNativeTests:
                 error failure: 1
             return 143 if restore_default != 0 or elisa_render_scene_v1_test_camera_orthographic_matches(
                 320.0, 200.0, 14.0) != 1
+            bad_viewport: i32 = catch RenderScene::set_camera_viewport(secondary,
+                200, 0, 160, 100, 0.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 148 if bad_viewport != 1
+            viewport: i32 = catch RenderScene::set_camera_viewport(secondary,
+                160, 0, 160, 100, 60.0):
+                ok: 0
+                error failure: 1
+            return 149 if viewport != 0
+            reject_viewport_activation: i32 = catch RenderScene::activate_camera(secondary):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 155 if reject_viewport_activation != 1
+            return 150 if Application::pump() != Application::PumpStatus.Running
+            return 151 if elisa_render_scene_v1_test_camera_viewport_matches(
+                160, 0, 160, 100, 1) != 1
+            camera_profile: mutable Quality::Profile = Quality::Profile()
+            camera_profile.tonemap <- Quality::Tonemap.Uchimura
+            camera_profile.render_scale <- 0.5
+            camera_profile.bloom <- false
+            camera_profile.bloom_threshold <- 2.0
+            camera_profile.fxaa <- false
+            camera_profile.temporal_aa <- false
+            camera_profile.ambient_occlusion <- false
+            camera_profile.screen_space_reflections <- false
+            camera_profile.fog <- false
+            camera_profile.depth_effects <- true
+            camera_profile.shadow_quality <- Quality::ShadowQuality.Low
+            camera_profile.sun_shadow_receiver_bias <- 0.001
+            camera_profile_status: i32 = catch RenderScene::set_camera_quality_profile(
+                secondary, camera_profile):
+                ok: 0
+                error failure: 1
+            return 169 if camera_profile_status != 0
+            return 170 if Application::pump() != Application::PumpStatus.Running
+            return 171 if elisa_render_scene_v1_test_camera_quality_profile_matches(
+                2, 0, 2.0, 0, 0, 0, 1, 0.5, 0, 0.001) != 1
+            return 172 if elisa_render_scene_v1_test_camera_viewport_matches(
+                160, 0, 160, 100, 1) != 1
+            invalid_primary_viewport: i32 = catch RenderScene::set_primary_viewport(
+                201, 0, 120, 200):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 173 if invalid_primary_viewport != 1
+            primary_viewport: i32 = catch RenderScene::set_primary_viewport(
+                10, 10, 140, 180):
+                ok: 0
+                error failure: 1
+            return 174 if primary_viewport != 0
+            return 175 if Application::pump() != Application::PumpStatus.Running
+            return 176 if elisa_render_scene_v1_test_primary_viewport_matches(
+                10, 10, 140, 180, 1) != 1
+            primary_center_ray: Geometry::Ray3 = catch RenderScene::camera_ray(80.0, 100.0):
+                value: value
+                error failure: return 177
+            return 178 if (primary_center_ray.direction.y > -0.5 or
+                primary_center_ray.direction.z > -0.5)
+            outside_primary_ray: i32 = catch RenderScene::camera_ray(240.0, 100.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 179 if outside_primary_ray != 1
+            viewport_center_ray: Geometry::Ray3 = catch RenderScene::camera_viewport_ray(
+                secondary, 240.0, 50.0):
+                value: value
+                error failure: return 158
+            return 159 if (not Geometry::vec3_is_finite(viewport_center_ray.origin) or
+                not Geometry::vec3_is_finite(viewport_center_ray.direction) or
+                Geometry::vec3_length(viewport_center_ray.direction) < 0.999 or
+                Geometry::vec3_length(viewport_center_ray.direction) > 1.001)
+            outside_viewport_ray: i32 = catch RenderScene::camera_viewport_ray(
+                secondary, 159.0, 50.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 160 if outside_viewport_ray != 1
+            grow_viewport_framebuffer: i32 = catch RenderScene::resize(640, 400):
+                ok: 0
+                error failure: 1
+            return 161 if grow_viewport_framebuffer != 0
+            return 162 if Application::pump() != Application::PumpStatus.Running
+            return 163 if elisa_render_scene_v1_test_camera_viewport_matches(
+                320, 0, 320, 200, 1) != 1
+            return 180 if elisa_render_scene_v1_test_primary_viewport_matches(
+                20, 20, 280, 360, 1) != 1
+            scaled_viewport_ray: Geometry::Ray3 = catch RenderScene::camera_viewport_ray(
+                secondary, 480.0, 100.0):
+                value: value
+                error failure: return 164
+            return 165 if (not Geometry::vec3_is_finite(scaled_viewport_ray.origin) or
+                not Geometry::vec3_is_finite(scaled_viewport_ray.direction) or
+                Geometry::vec3_length(scaled_viewport_ray.direction) < 0.999 or
+                Geometry::vec3_length(scaled_viewport_ray.direction) > 1.001)
+            restore_viewport_framebuffer: i32 = catch RenderScene::resize(320, 200):
+                ok: 0
+                error failure: 1
+            return 166 if restore_viewport_framebuffer != 0
+            return 167 if Application::pump() != Application::PumpStatus.Running
+            return 168 if elisa_render_scene_v1_test_camera_viewport_matches(
+                160, 0, 160, 100, 1) != 1
+            return 181 if elisa_render_scene_v1_test_primary_viewport_matches(
+                10, 10, 140, 180, 1) != 1
+            clear_primary_viewport: i32 = catch RenderScene::clear_primary_viewport():
+                ok: 0
+                error failure: 1
+            return 182 if clear_primary_viewport != 0
+            return 183 if Application::pump() != Application::PumpStatus.Running
+            return 184 if elisa_render_scene_v1_test_primary_viewport_matches(
+                0, 0, 0, 0, 0) != 1
+            clear_viewport: i32 = catch RenderScene::clear_camera_viewport(secondary):
+                ok: 0
+                error failure: 1
+            return 152 if clear_viewport != 0
+            return 153 if Application::pump() != Application::PumpStatus.Running
+            return 154 if elisa_render_scene_v1_test_camera_viewport_count_matches(0) != 1
+            activate_cleared: i32 = catch RenderScene::activate_camera(secondary):
+                ok: 0
+                error failure: 1
+            return 156 if activate_cleared != 0 or elisa_render_scene_v1_test_camera_orthographic_matches(
+                200.0, 100.0, 8.0) != 1
+            restore_after_viewport: i32 = catch RenderScene::activate_default_camera():
+                ok: 0
+                error failure: 1
+            return 157 if restore_after_viewport != 0
             destroy_secondary: i32 = catch RenderScene::destroy_camera(secondary):
                 ok: 0
                 error failure: 1

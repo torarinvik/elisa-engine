@@ -7,6 +7,11 @@
         @callconv(c)
         extern elisa_render_scene_v1_resize(width: i32, height: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_primary_viewport(x: i32, y: i32,
+            width: i32, height: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_primary_viewport() -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_camera_render_target(width: i32, height: i32, update_interval: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_clear_camera_render_target() -> i32
@@ -33,6 +38,16 @@
         extern elisa_render_scene_v1_activate_default_camera() -> i32
         @callconv(c)
         extern elisa_render_scene_v1_destroy_camera(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_camera_viewport(handle: i64, x: i32, y: i32,
+            width: i32, height: i32, update_interval: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_camera_viewport(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_camera_viewport_ray(handle: i64,
+            screen_x: f32, screen_y: f32,
+            origin_x: mutable f32&, origin_y: mutable f32&, origin_z: mutable f32&,
+            direction_x: mutable f32&, direction_y: mutable f32&, direction_z: mutable f32&) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_create(primitive: i32, px: f32, py: f32, pz: f32,
             qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32,
@@ -102,6 +117,14 @@
         @callconv(c)
         extern elisa_render_scene_v1_set_sun_shadows(enabled: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_sun_shadow_bias(receiver_depth_bias: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+            constant_depth_bias: i32, slope_scaled_depth_bias: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_sun_cascade_distances(near_end: f32,
+            middle_end: f32, far_end: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
@@ -120,17 +143,25 @@
             fog_red: f32, fog_green: f32, fog_blue: f32,
             fog_start: f32, fog_density: f32, fog_enabled: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_sky_map(asset_path: cstr, rotation_radians: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_sky_map() -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_create_light(kind: i32,
             red: f32, green: f32, blue: f32,
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
             intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
-            casts_shadow: i32) -> i64
+            casts_shadow: i32, shadow_resolution: i32,
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i64
         @callconv(c)
         extern elisa_render_scene_v1_update_light(handle: i64, kind: i32,
             red: f32, green: f32, blue: f32,
             px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
             intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
-            casts_shadow: i32) -> i32
+            casts_shadow: i32, shadow_resolution: i32,
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_destroy_light(handle: i64) -> i32
         @callconv(c)

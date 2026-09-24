@@ -1,5 +1,6 @@
 include "../math/geometry.elisa"
 include "../backend/lighting.elisa"
+include "../backend/quality.elisa"
 module RenderScene:
     private:
         const module NativeStatus:
@@ -16,15 +17,26 @@ module RenderScene:
             ASSET_PENDING: i32 = -11
             NO_HIT: i32 = -12
             TIMED_OUT: i32 = -13
+            UNSUPPORTED_FEATURE: i32 = -14
         const module NativeTextureSlot:
             BASE_COLOR: i32 = 0
             NORMAL: i32 = 1
             SURFACE: i32 = 2
             EMISSIVE: i32 = 3
+        const module NativeLightKindCode:
+            DIRECTIONAL: i32 = 0
+            POINT: i32 = 1
+            SPOT: i32 = 2
+            RECTANGLE: i32 = 3
         const BLEND_EASED: i32 = 1
         const BLEND_PHASE_MATCHED: i32 = 2
         const BLEND_CONTINUE_SAME_CLIP: i32 = 4
         include "./render_scene_abi_declarations.inc"
+        def native_light_kind(kind: Lighting::LightKind) -> i32:
+            return NativeLightKindCode::DIRECTIONAL if kind == Lighting::LightKind.Directional
+            return NativeLightKindCode::POINT if kind == Lighting::LightKind.Point
+            return NativeLightKindCode::SPOT if kind == Lighting::LightKind.Spot
+            NativeLightKindCode::RECTANGLE
         def check_status(status: i32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if status == NativeStatus::INVALID_ARGUMENT
             raise RenderSceneError.NotInitialized if status == NativeStatus::NOT_INITIALIZED
@@ -38,6 +50,7 @@ module RenderScene:
             raise RenderSceneError.AssetPending if status == NativeStatus::ASSET_PENDING
             raise RenderSceneError.NoHit if status == NativeStatus::NO_HIT
             raise RenderSceneError.TimedOut if status == NativeStatus::TIMED_OUT
+            raise RenderSceneError.UnsupportedFeature if status == NativeStatus::UNSUPPORTED_FEATURE
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
     public:
         const MAX_INSTANCES: usize = 512
@@ -61,10 +74,6 @@ module RenderScene:
             Reinhard
             Aces
             Uchimura
-        enum ShadowQuality:
-            Low
-            Medium
-            High
         enum CameraProjection:
             Perspective
             Orthographic
@@ -130,6 +139,7 @@ module RenderScene:
             AssetPending
             NoHit
             TimedOut
+            UnsupportedFeature
         def initialize(width: i32, height: i32, orthographic_height: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.BackendFailure if elisa_render_scene_abi_version() != 1
             try check_status(elisa_render_scene_v1_initialize(width, height, orthographic_height))
@@ -163,6 +173,14 @@ module RenderScene:
             batch.count
         def resize(width: i32, height: i32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_resize(width, height))
+        # Restrict the primary 3D camera to a framebuffer-pixel rectangle.
+        # Clearing restores full-canvas rendering.
+        def set_primary_viewport(x: i32, y: i32, width: i32,
+            height: i32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_primary_viewport(
+                x, y, width, height))
+        def clear_primary_viewport() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_primary_viewport())
         def set_camera_render_target(width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_render_target(width, height, update_interval))
         def clear_camera_render_target() -> void error[RenderSceneError]:
@@ -212,6 +230,31 @@ module RenderScene:
             try check_status(elisa_render_scene_v1_activate_default_camera())
         def destroy_camera(handle: CameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_camera(handle.native_value))
+        # Render a camera through its own RenderPath3D into a framebuffer-pixel
+        # rectangle over the primary view. Its post-process profile is separate.
+        def set_camera_viewport(handle: CameraHandle, x: i32, y: i32,
+            width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_camera_viewport(
+                handle.native_value, x, y, width, height, update_interval))
+        def clear_camera_viewport(handle: CameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_camera_viewport(handle.native_value))
+        # Screen coordinates are framebuffer pixels; points outside this
+        # camera's viewport are rejected instead of producing a misleading ray.
+        def camera_viewport_ray(handle: CameraHandle, screen_x: f32,
+            screen_y: f32) -> Geometry::Ray3 error[RenderSceneError]:
+            origin_x: mutable f32 = 0.0
+            origin_y: mutable f32 = 0.0
+            origin_z: mutable f32 = 0.0
+            direction_x: mutable f32 = 0.0
+            direction_y: mutable f32 = 0.0
+            direction_z: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_camera_viewport_ray(handle.native_value,
+                screen_x, screen_y, &origin_x, &origin_y, &origin_z,
+                &direction_x, &direction_y, &direction_z))
+            Geometry::Ray3{
+                origin: Geometry::Vec3{x: origin_x, y: origin_y, z: origin_z},
+                direction: Geometry::Vec3{x: direction_x, y: direction_y, z: direction_z},
+            }
         # An opaque sentinel for optional scene placements that have not been
         # created yet. Passing it to a scene operation returns UnknownHandle.
         def empty_instance_handle() -> InstanceHandle:
@@ -259,6 +302,7 @@ module RenderScene:
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
+        # Negative speed plays a clip backward; looping playback wraps in either direction.
         def play_animation(handle: InstanceHandle, clip_name: cstr, loop: bool,
             speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:
             loop_value: i32 = 1 if loop else 0
@@ -326,6 +370,24 @@ module RenderScene:
                 scale_u, scale_v, offset_u, offset_v))
         def set_sun_shadows(enabled: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_sun_shadows(1 if enabled else 0))
+        # Positive reverse-Z receiver bias reduces shadow acne; negative
+        # values tighten contact but can reintroduce self-shadowing.
+        def set_sun_shadow_bias(receiver_depth_bias: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_sun_shadow_bias(receiver_depth_bias))
+        # Metal applies these caster depth biases dynamically; other backends return UnsupportedFeature.
+        def set_sun_shadow_rasterizer_bias(constant_depth_bias: i32,
+            slope_scaled_depth_bias: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if constant_depth_bias < -4096 or constant_depth_bias > 4096
+            raise RenderSceneError.InvalidValue if (slope_scaled_depth_bias != slope_scaled_depth_bias or
+                slope_scaled_depth_bias < -16.0 or slope_scaled_depth_bias > 16.0)
+            try check_status(elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+                constant_depth_bias, slope_scaled_depth_bias))
+        # Cascade ends are world-space distances from the active camera and
+        # must increase while remaining inside its far clip plane.
+        def set_sun_cascade_distances(near_end: f32, middle_end: f32,
+            far_end: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_sun_cascade_distances(
+                near_end, middle_end, far_end))
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
@@ -369,28 +431,38 @@ module RenderScene:
                 environment.sky_exposure,
                 environment.fog_color.x, environment.fog_color.y, environment.fog_color.z,
                 environment.fog_start, environment.fog_density, fog_enabled))
+        # Sky maps may be equirectangular 2:1 images or square cubemaps.
+        # Asset paths stay inside the project root and use the color pipeline.
+        def set_sky_map(asset_path: cstr, rotation_radians: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_sky_map(asset_path, rotation_radians))
+        def clear_sky_map() -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_sky_map())
         def create_light(light: Lighting::Light) -> LightHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
-            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            kind: i32 = native_light_kind(light.kind)
             native_value: i64 = elisa_render_scene_v1_create_light(kind,
                 light.color.x, light.color.y, light.color.z,
                 light.position.x, light.position.y, light.position.z,
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
-                1 if light.casts_shadow else 0)
+                1 if light.casts_shadow else 0, light.shadow_resolution,
+                light.rectangle_width, light.rectangle_height,
+                1 if light.volumetrics_enabled else 0, light.volumetric_boost)
             if native_value <= 0:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
             LightHandle{id: native_value}
         def update_light(handle: LightHandle, light: Lighting::Light) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::light_valid(light)
-            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            kind: i32 = native_light_kind(light.kind)
             try check_status(elisa_render_scene_v1_update_light(handle.id, kind,
                 light.color.x, light.color.y, light.color.z,
                 light.position.x, light.position.y, light.position.z,
                 light.direction.x, light.direction.y, light.direction.z,
                 light.intensity, light.range, light.inner_cone, light.outer_cone,
-                1 if light.casts_shadow else 0))
+                1 if light.casts_shadow else 0, light.shadow_resolution,
+                light.rectangle_width, light.rectangle_height,
+                1 if light.volumetrics_enabled else 0, light.volumetric_boost))
         def destroy_light(handle: LightHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_light(handle.id))
         def set_bloom(enabled: bool, threshold: f32) -> void error[RenderSceneError]:
@@ -424,12 +496,12 @@ module RenderScene:
         def set_exposure(exposure: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if exposure < 0.0 or exposure > 8.0
             try check_status(elisa_render_scene_v1_set_exposure(exposure))
-        def set_shadow_quality(quality: ShadowQuality) -> void error[RenderSceneError]:
+        def set_shadow_quality(quality: Quality::ShadowQuality) -> void error[RenderSceneError]:
             quality_value: i32 =
                 match quality:
-                    RenderScene::ShadowQuality.Low: 0
-                    RenderScene::ShadowQuality.Medium: 1
-                    RenderScene::ShadowQuality.High: 2
+                    Quality::ShadowQuality.Low: 0
+                    Quality::ShadowQuality.Medium: 1
+                    Quality::ShadowQuality.High: 2
             try check_status(elisa_render_scene_v1_set_shadow_quality(quality_value))
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0

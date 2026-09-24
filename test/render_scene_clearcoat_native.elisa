@@ -1,0 +1,406 @@
+# Native coverage for cooked and authored clearcoat materials.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+include "../src/backend/lighting.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneClearcoatNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_clearcoat_matches(high: u64, low: u64,
+            factor: f32, roughness: f32, normal_scale: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_id(high: u64, low: u64, slot: i32,
+            texture_high: u64, texture_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_size(
+            material_high: u64, material_low: u64, slot: i32, width: u32, height: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_last_frame_luminance(x_permille: u32, y_permille: u32) -> f32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_begin(previous_count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_stage(existing_handle: i64,
+            gameplay_epoch: i64, gameplay_id: i64, render_id: i64,
+            mesh_high: u64, mesh_low: u64, material_high: u64, material_low: u64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_retire(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_commit() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_abort() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+
+        const MESHES: u64 = 970
+        const TEXTURES: u64 = 971
+        const MATERIALS: u64 = 972
+        const MESH: u64 = 4
+        const COOKED_FIRST: u64 = 7
+        const COOKED: u64 = 8
+        const BASELINE: u64 = 20
+        const AUTHORED: u64 = 21
+        const COOKED_SET: u64 = 30
+        const BASELINE_SET: u64 = 31
+        const AUTHORED_SET: u64 = 32
+        const FACTOR_MAP: u64 = 3
+        const NORMAL_MAP: u64 = 2
+        const BASE_MAP: u64 = 1
+        const OK: i32 = 0
+        const CLEARCOAT_FACTOR_SLOT: i32 = 5
+        const CLEARCOAT_ROUGHNESS_SLOT: i32 = 6
+        const CLEARCOAT_NORMAL_SLOT: i32 = 7
+        const ROW: i64 = 9701
+        const SAMPLE_ROW: u32 = 300
+        const RED_PATCH: u32 = 410
+        const BLUE_PATCH: u32 = 590
+        const MINIMUM_REFERENCE_LUMINANCE_DELTA: f32 = 0.01
+
+        def mesh_asset() -> Assets::AssetId:
+            Assets::AssetId{high: MESHES, low: MESH}
+
+        def texture_asset(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: TEXTURES, low: low}
+
+        def material_asset(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: MATERIALS, low: low}
+
+        def register_mesh() -> bool:
+            catch RenderScene::register_snapshot_mesh_asset(mesh_asset(),
+                    "build/cooked/subsets/clearcoat.elpk"):
+                ok: true
+                error failure: false
+
+        def register_image(index: u32, low: u64) -> bool:
+            catch RenderScene::register_snapshot_mesh_texture(mesh_asset(), index, texture_asset(low)):
+                ok: true
+                error failure: false
+
+        def append_materials(materials: mutable RenderScene::SnapshotMaterialSet&,
+            first: u64, second: u64, third: u64, fourth: u64) -> bool:
+            return false if catch RenderScene::snapshot_material_set_append(materials, material_asset(first)):
+                ok: false
+                error failure: true
+            return false if catch RenderScene::snapshot_material_set_append(materials, material_asset(second)):
+                ok: false
+                error failure: true
+            return false if catch RenderScene::snapshot_material_set_append(materials, material_asset(third)):
+                ok: false
+                error failure: true
+            catch RenderScene::snapshot_material_set_append(materials, material_asset(fourth)):
+                ok: true
+                error failure: false
+
+        def register_cooked_set() -> bool:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: bool = append_materials(&materials, COOKED_FIRST, COOKED_FIRST + 1,
+                COOKED_FIRST + 2, COOKED_FIRST + 3)
+            return false if not appended
+            catch RenderScene::register_snapshot_mesh_materials(mesh_asset(), materials,
+                material_asset(COOKED_SET)):
+                ok: true
+                error failure: false
+
+        def unregister_material(low: u64) -> bool:
+            catch RenderScene::unregister_snapshot_material_asset(material_asset(low)):
+                ok: true
+                error failure: false
+
+        def unregister_set(low: u64) -> bool:
+            catch RenderScene::unregister_snapshot_material_set(material_asset(low)):
+                ok: true
+                error failure: false
+
+        def unregister_image(low: u64) -> bool:
+            catch RenderScene::unregister_snapshot_texture_asset(texture_asset(low)):
+                ok: true
+                error failure: false
+
+        def unregister_mesh() -> bool:
+            catch RenderScene::unregister_snapshot_mesh_asset(mesh_asset()):
+                ok: true
+                error failure: false
+
+        def binds(low: u64, slot: i32, texture: u64, size: u32) -> bool:
+            return false if elisa_render_scene_v1_test_snapshot_material_texture_id(
+                MATERIALS, low, slot, TEXTURES, texture) != 1
+            elisa_render_scene_v1_test_snapshot_material_texture_size(
+                MATERIALS, low, slot, size, size) == 1
+
+        def probe(low: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_clearcoat_matches(MATERIALS, low, 0.8, 0.35, 0.6) == 1
+
+        def configure_reference() -> i32:
+            environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                sun_direction: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+                ambient: Geometry::Vec3{x: 0.03, y: 0.03, z: 0.03},
+                sky_exposure: 0.0,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }):
+                ok: 0
+                error failure: 1
+            return 1 if environment != 0
+            projection: i32 = catch RenderScene::set_camera_orthographic_height(4.0):
+                ok: 0
+                error failure: 2
+            return 2 if projection != 0
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 14.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}):
+                ok: 0
+                error failure: 3
+            return 3 if view != 0
+            0
+
+        def create_reference_light() -> RenderScene::LightHandle:
+            catch RenderScene::create_light(Lighting::Light{
+                kind: Lighting::LightKind.Point,
+                color: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                position: Geometry::Vec3{x: 0.0, y: 10.0, z: 0.0},
+                direction: Geometry::vec3_zero(),
+                intensity: 80.0,
+                range: 20.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: false,
+                shadow_resolution: 0,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
+            }):
+                value: value
+                error failure: RenderScene::LightHandle{id: 0}
+
+        def update_reference_light(handle: RenderScene::LightHandle, x: f32) -> bool:
+            light: Lighting::Light = Lighting::Light{
+                kind: Lighting::LightKind.Point,
+                color: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                position: Geometry::Vec3{x: x, y: 6.0, z: 0.0},
+                direction: Geometry::vec3_zero(),
+                intensity: 8.0,
+                range: 20.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: false,
+                shadow_resolution: 0,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
+            }
+            catch RenderScene::update_light(handle, light):
+                ok: true
+                error failure: false
+
+        def destroy_reference_light(handle: RenderScene::LightHandle) -> bool:
+            catch RenderScene::destroy_light(handle):
+                ok: true
+                error failure: false
+
+        def restore_reference() -> i32:
+            environment: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
+                sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
+                ambient: Geometry::Vec3{x: 0.14, y: 0.18, z: 0.25},
+                sky_exposure: 1.25,
+                fog_color: Geometry::Vec3{x: 0.04, y: 0.06, z: 0.1},
+                fog_start: 12.0,
+                fog_density: 0.02,
+                fog_enabled: true,
+            }):
+                ok: 0
+                error failure: 1
+            projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: 2
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
+                Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 3
+            return 1 if environment != 0 or projection != 0 or view != 0
+            0
+
+        def register_authored_material(low: u64, clearcoat: bool) -> bool:
+            descriptor: mutable Material::Material = Material::Material()
+            return false if not Material::set_texture(&descriptor, Material::TextureSlot.BaseColor,
+                texture_asset(BASE_MAP))
+            return false if not Material::set_texture(&descriptor, Material::TextureSlot.Normal,
+                texture_asset(NORMAL_MAP))
+            return false if not Material::set_texture(&descriptor, Material::TextureSlot.MetallicRoughness,
+                texture_asset(FACTOR_MAP))
+            return false if not Material::set_texture(&descriptor, Material::TextureSlot.Occlusion,
+                texture_asset(FACTOR_MAP))
+            descriptor.metallic_factor <- 1.0
+            descriptor.roughness_factor <- 1.0
+            if clearcoat:
+                return false if not Material::set_texture(&descriptor, Material::TextureSlot.Clearcoat,
+                    texture_asset(FACTOR_MAP))
+                return false if not Material::set_texture(&descriptor, Material::TextureSlot.ClearcoatRoughness,
+                    texture_asset(FACTOR_MAP))
+                return false if not Material::set_texture(&descriptor, Material::TextureSlot.ClearcoatNormal,
+                    texture_asset(NORMAL_MAP))
+                return false if not Material::set_clearcoat_factors(&descriptor, 0.8, 0.35, 0.6)
+            catch RenderScene::register_snapshot_material_asset(material_asset(low), &descriptor):
+                ok: true
+                error failure: false
+
+        def register_variant_set(set_low: u64, painted_low: u64) -> bool:
+            materials: mutable RenderScene::SnapshotMaterialSet = RenderScene::SnapshotMaterialSet()
+            appended: bool = append_materials(&materials, COOKED_FIRST, painted_low,
+                COOKED_FIRST + 2, COOKED_FIRST + 3)
+            return false if not appended
+            catch RenderScene::register_snapshot_material_set(material_asset(set_low), materials):
+                ok: true
+                error failure: false
+
+        def stage_panel(set_low: u64, previous: i64, game_id: i64) -> i64:
+            previous_count: u32 = 1 if previous > 0 else 0
+            return 0 if elisa_render_scene_v1_snapshot_begin(previous_count) != OK
+            if previous > 0 and elisa_render_scene_v1_snapshot_retire(previous) != OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 0
+            staged: i32 = elisa_render_scene_v1_snapshot_stage(0, 1, game_id, ROW,
+                MESHES, MESH, MATERIALS, set_low, 0.0, 4.0, 0.0,
+                0.0, 0.0, 0.0, 1.0, 12.0, 1.0, 8.0)
+            if staged != OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 0
+            return 0 if elisa_render_scene_v1_snapshot_commit() != OK
+            elisa_render_scene_v1_snapshot_result(0)
+
+        def sampled_luminance(x_permille: u32) -> f32:
+            for attempt in 0..<3:
+                if Application::pump() != Application::PumpStatus.Running:
+                    return -1.0
+            elisa_render_scene_v1_test_last_frame_luminance(x_permille, SAMPLE_ROW)
+
+        def exceeds_reference_luminance_delta(current: f32, baseline: f32) -> bool:
+            difference: mutable f32 = current - baseline
+            if difference < 0.0:
+                difference <- -difference
+            difference >= MINIMUM_REFERENCE_LUMINANCE_DELTA
+
+        def render_comparison() -> i32:
+            baseline_handle: i64 = stage_panel(BASELINE_SET, 0, ROW)
+            return 1 if baseline_handle <= 0
+            baseline_red: f32 = sampled_luminance(RED_PATCH)
+            baseline_blue: f32 = sampled_luminance(BLUE_PATCH)
+            return 2 if baseline_red < 0.0 or baseline_blue < 0.0
+            baseline_capture: cstr = Application::environment_value("ELISA_CLEARCOAT_BASELINE_CAPTURE")
+            return 12 if baseline_capture != "" and not Application::save_screenshot(baseline_capture)
+
+            cooked_handle: i64 = stage_panel(COOKED_SET, baseline_handle, ROW + 1)
+            return 3 if cooked_handle <= 0
+            cooked_red: f32 = sampled_luminance(RED_PATCH)
+            cooked_blue: f32 = sampled_luminance(BLUE_PATCH)
+            return 4 if cooked_red < 0.0 or cooked_blue < 0.0
+            coated_capture: cstr = Application::environment_value("ELISA_CLEARCOAT_COATED_CAPTURE")
+            return 13 if coated_capture != "" and not Application::save_screenshot(coated_capture)
+            if not exceeds_reference_luminance_delta(cooked_red, baseline_red) and not exceeds_reference_luminance_delta(cooked_blue, baseline_blue):
+                return 5
+
+            authored_handle: i64 = stage_panel(AUTHORED_SET, cooked_handle, ROW + 2)
+            return 6 if authored_handle <= 0
+            authored_red: f32 = sampled_luminance(RED_PATCH)
+            authored_blue: f32 = sampled_luminance(BLUE_PATCH)
+            return 7 if authored_red < 0.0 or authored_blue < 0.0
+            return 8 if not exceeds_reference_luminance_delta(authored_red, baseline_red) and not exceeds_reference_luminance_delta(authored_blue, baseline_blue)
+            return 9 if elisa_render_scene_v1_snapshot_begin(1) != OK
+            if elisa_render_scene_v1_snapshot_retire(authored_handle) != OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 10
+            return 11 if elisa_render_scene_v1_snapshot_commit() != OK
+            0
+
+        def verify_moving_light(handle: RenderScene::LightHandle) -> i32:
+            panel: i64 = stage_panel(BASELINE_SET, 0, ROW + 3)
+            return 1 if panel <= 0
+            return 2 if not update_reference_light(handle, -2.0)
+            red_left: f32 = sampled_luminance(RED_PATCH)
+            blue_left: f32 = sampled_luminance(BLUE_PATCH)
+            return 3 if red_left < 0.0 or blue_left < 0.0
+            left_capture: cstr = Application::environment_value("ELISA_POINT_LIGHT_LEFT_CAPTURE")
+            return 5 if left_capture != "" and not Application::save_screenshot(left_capture)
+
+            return 6 if not update_reference_light(handle, 2.0)
+            red_right: f32 = sampled_luminance(RED_PATCH)
+            blue_right: f32 = sampled_luminance(BLUE_PATCH)
+            return 7 if red_right < 0.0 or blue_right < 0.0
+            right_capture: cstr = Application::environment_value("ELISA_POINT_LIGHT_RIGHT_CAPTURE")
+            return 9 if right_capture != "" and not Application::save_screenshot(right_capture)
+            return 8 if (not exceeds_reference_luminance_delta(red_right, red_left) and
+                not exceeds_reference_luminance_delta(blue_right, blue_left))
+
+            return 10 if elisa_render_scene_v1_snapshot_begin(1) != OK
+            if elisa_render_scene_v1_snapshot_retire(panel) != OK:
+                _ = elisa_render_scene_v1_snapshot_abort()
+                return 11
+            return 12 if elisa_render_scene_v1_snapshot_commit() != OK
+            0
+
+    public:
+        def exercise() -> i32:
+            return 1 if not register_mesh()
+            texture_count: i32 = catch RenderScene::snapshot_mesh_texture_count(mesh_asset()):
+                count: count.i32()
+                error failure: -1
+            return 2 if texture_count != 4
+            images: u64[4] = [BASE_MAP, NORMAL_MAP, FACTOR_MAP, 4]
+            for index in 0..<4 |images|:
+                return 3 if not register_image(index.u32(), images[index])
+            return 4 if not register_cooked_set()
+            return 5 if not probe(COOKED)
+            return 6 if not binds(COOKED, CLEARCOAT_FACTOR_SLOT, FACTOR_MAP, 4)
+            return 7 if not binds(COOKED, CLEARCOAT_ROUGHNESS_SLOT, FACTOR_MAP, 4)
+            return 8 if not binds(COOKED, CLEARCOAT_NORMAL_SLOT, NORMAL_MAP, 8)
+
+            return 9 if not register_authored_material(BASELINE, false)
+            return 10 if not register_authored_material(AUTHORED, true)
+            return 11 if not probe(AUTHORED)
+            return 12 if not register_variant_set(BASELINE_SET, BASELINE)
+            return 13 if not register_variant_set(AUTHORED_SET, AUTHORED)
+            reference_status: i32 = configure_reference()
+            return 23 + reference_status if reference_status != 0
+            reference_light: RenderScene::LightHandle = create_reference_light()
+            return 27 if reference_light.id <= 0
+            comparison: i32 = render_comparison()
+            movement: mutable i32 = 0
+            if comparison == 0:
+                movement <- verify_moving_light(reference_light)
+            light_destroyed: bool = destroy_reference_light(reference_light)
+            restored: i32 = restore_reference()
+            return 28 if not light_destroyed
+            return 29 if restored != 0
+            return 14 + comparison if comparison != 0
+            return 39 + movement if movement != 0
+            return 15 if not unregister_set(AUTHORED_SET)
+            return 16 if not unregister_set(BASELINE_SET)
+            return 17 if not unregister_set(COOKED_SET)
+            return 18 if not unregister_material(AUTHORED)
+            return 19 if not unregister_material(BASELINE)
+            cooked_lows: u64[4] = [COOKED_FIRST, COOKED_FIRST + 1, COOKED_FIRST + 2, COOKED_FIRST + 3]
+            for index in 0..<4 |cooked_lows|:
+                return 20 if not unregister_material(cooked_lows[index])
+            for index in 0..<4 |images|:
+                return 21 if not unregister_image(images[index])
+            return 22 if not unregister_mesh()
+            0

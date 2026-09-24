@@ -184,11 +184,12 @@ def normalized_geometry(document: dict, buffer: bytes, *, generate_lightmap_uv: 
 
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         simplify_ratio: float | None = None, *, generate_lightmap_uv: bool = False,
-        lightmap_resolution: int = 1024, lightmap_padding: int = 4) -> tuple[Path, dict]:
+        lightmap_resolution: int = 1024, lightmap_padding: int = 4,
+        godot_output_path: Path | None = None) -> tuple[Path, dict]:
     from cook_gltf_geometry import cook_geometry_package as cook_package
     return cook_package(source_path, asset_path, output_path, simplify_ratio=simplify_ratio,
         generate_lightmap_uv=generate_lightmap_uv, lightmap_resolution=lightmap_resolution,
-        lightmap_padding=lightmap_padding)
+        lightmap_padding=lightmap_padding, godot_output_path=godot_output_path)
 
 
 def record_catalogue(root: Path, asset_rel: str, digest: str, counts: dict) -> Path:
@@ -349,7 +350,7 @@ def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
         source = Path(workdir) / "tile.png"
         source.write_bytes(write_png(size, size, pixels))
         result = subprocess.run(
-            [basisu, "-ktx2", "-uastc", "-linear", str(source), "-output_file", str(output)],
+            [basisu, "-ktx2", "-uastc", "-linear", "-mipmap", str(source), "-output_file", str(output)],
             capture_output=True, text=True, check=False,
         )
     if result.returncode != 0 or not output.is_file():
@@ -387,7 +388,7 @@ def write_basisu_ktx2_cubemap(root: Path, package_dir: Path, size: int):
             source.write_bytes(write_png(size, size, bytes(color) * (size * size)))
             sources.append(str(source))
         result = subprocess.run(
-            [basisu, "-ktx2", "-uastc", "-linear", "-cubemap", *sources,
+            [basisu, "-ktx2", "-uastc", "-linear", "-mipmap", "-cubemap", *sources,
              "-output_file", str(output)],
             capture_output=True, text=True, check=False,
         )
@@ -431,7 +432,9 @@ def cook(root: Path) -> Path:
     package_dir = root / "build/cooked"
     package_dir.mkdir(parents=True, exist_ok=True)
     package = package_dir / (asset_path.stem + ".pkg")
-    package, cooked = cook_geometry_package(asset_path, asset_rel, package)
+    godot_package = package.with_name(package.stem + "-godot.pkg")
+    package, cooked = cook_geometry_package(asset_path, asset_rel, package,
+        godot_output_path=godot_package)
     database = record_catalogue(root, asset_rel, cooked["source_sha256"], counts)
     texture = write_texture_package(root)
     sections = {"mesh": package.read_bytes()}

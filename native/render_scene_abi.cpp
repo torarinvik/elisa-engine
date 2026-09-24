@@ -3,6 +3,7 @@
 #include "wiHelper.h"
 #include "wiApplication.h"
 #include "wiGraphics.h"
+#include "wiImage.h"
 #include "wiJobSystem.h"
 #include "wiRenderer.h"
 #include "wiRenderPath3D.h"
@@ -70,15 +71,7 @@ constexpr size_t MAX_OVERLAY_TEXT_MEASURE_CACHE_ENTRIES = 256;
 #include "render_scene_text_internal.inc"
 #include "render_scene_panel_internal.inc"
 #include "render_scene_instance_state.inc"
-struct RenderLightSlot {
-    probe::NativeLightHandle native{};
-    bool live = false;
-};
-struct RenderCameraSlot {
-    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
-    uint64_t generation = 0;
-    bool live = false;
-};
+#include "render_scene_camera_state.inc"
 struct OverlayTextMeasureCacheEntry {
     uint64_t requested_frame = 0;
     uint64_t last_used_frame = 0;
@@ -106,6 +99,7 @@ struct RenderSceneService {
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<RenderLightSlot, MAX_RENDER_LIGHTS> lights{};
     std::array<RenderCameraSlot, MAX_RENDER_CAMERAS> cameras{};
+    PrimaryViewportState primary_viewport{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
     std::array<OverlayTextSlot, MAX_OVERLAY_TEXTS> overlay_texts{};
     std::unordered_map<std::string, OverlayTextMeasureCacheEntry> overlay_text_measure_cache;
@@ -128,6 +122,7 @@ struct RenderSceneService {
     SnapshotAssetRequests snapshot_asset_requests;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
+    size_t camera_viewports_composed = 0;
     uint64_t snapshot_test_transaction_api_calls = 0;
     uint64_t snapshot_test_last_transaction_api_calls = 0;
 #endif
@@ -150,12 +145,14 @@ struct RenderSceneService {
     std::thread::id owner_thread{};
     int32_t width = 0;
     int32_t height = 0;
+    uint32_t host_canvas_width = 0;
+    uint32_t host_canvas_height = 0;
     float vertical_size = 10.0f;
     float perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
     float camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
     float camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
     bool perspective_camera = false;
-    int32_t shadow_quality = 1;
+    int32_t shadow_quality = 1; float sun_shadow_receiver_bias = 0.0f;
     float eye[3] = {0.0f, 15.0f, 0.0f};
     float target[3] = {0.0f, 0.0f, 0.0f};
     float up[3] = {0.0f, 0.0f, -1.0f};
@@ -163,6 +160,8 @@ struct RenderSceneService {
     bool shutdown_hook_registered = false;
 };
 void update_snapshot_lod_selection(RenderSceneService& state);
+int32_t primary_view_width(const RenderSceneService& state);
+int32_t primary_view_height(const RenderSceneService& state);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 void lod_gpu_timing_begin_render();
 void lod_gpu_timing_end_render();
@@ -313,6 +312,10 @@ void reset_unlocked(RenderSceneService& state) {
     for (InstanceSlot& instance : state.instances) clear_instance_pick_bindings(state, instance);
     state.selection.reset();
     state.picking.reset();
+    for (RenderCameraSlot& camera : state.cameras) {
+        if (camera.pipeline != nullptr) camera.pipeline->Stop();
+        camera.pipeline.reset();
+    }
     if (state.path != nullptr) {
         state.path->ClearFonts();
         state.path->scene = nullptr;
@@ -332,6 +335,7 @@ void reset_unlocked(RenderSceneService& state) {
     }
     state.lights = {};
     state.cameras = {};
+    state.primary_viewport = {};
     for (InstanceSlot& instance : state.instances) clear_snapshot_instance(state, instance);
     state.snapshot_row_count = 0;
     state.snapshot_retire_count = 0;
@@ -343,6 +347,7 @@ void reset_unlocked(RenderSceneService& state) {
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     state.snapshot_test_transaction_api_calls = 0;
     state.snapshot_test_last_transaction_api_calls = 0;
+    state.camera_viewports_composed = 0;
 #endif
     state.snapshot_rows = {};
     state.snapshot_retire_handles = {};
@@ -374,12 +379,14 @@ void reset_unlocked(RenderSceneService& state) {
     state.owner_thread = std::thread::id{};
     state.width = 0;
     state.height = 0;
+    state.host_canvas_width = 0;
+    state.host_canvas_height = 0;
     state.vertical_size = 10.0f;
     state.perspective_fov = DEFAULT_CAMERA_FOV_RADIANS;
     state.camera_near_clip = DEFAULT_CAMERA_NEAR_CLIP;
     state.camera_far_clip = DEFAULT_CAMERA_FAR_CLIP;
     state.perspective_camera = false;
-    state.shadow_quality = 1;
+    state.shadow_quality = 1; state.sun_shadow_receiver_bias = 0.0f;
     state.initialized = false;
 }
 void on_application_shutdown(void* context) {
@@ -400,21 +407,7 @@ void on_application_shutdown(void* context) {
         std::fprintf(stderr, "render scene shutdown exception at stage %d\n", stage);
     }
 }
-int32_t resize_unlocked(RenderSceneService& state, int32_t width, int32_t height) {
-    if (!valid_viewport(width, height)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    if (state.camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    if (state.perspective_camera) {
-        state.camera->CreatePerspective(float(width), float(height),
-            state.camera_near_clip, state.camera_far_clip, state.perspective_fov);
-    } else {
-        state.camera->CreateOrtho(float(width), float(height),
-            state.camera_near_clip, state.camera_far_clip, state.vertical_size);
-    }
-    apply_camera_look_at(state);
-    state.width = width;
-    state.height = height;
-    return ELISA_RENDER_SCENE_OK;
-}
+#include "render_scene_resize_internal.inc"
 int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,

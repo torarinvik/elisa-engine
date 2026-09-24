@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -15,12 +16,18 @@
 namespace elisa::assets {
 
 inline constexpr uint32_t MAX_GEOMETRY_TEXTURES = 64;
-inline constexpr size_t SLOT_MATERIAL_TEXTURES = 5;
+inline constexpr size_t SLOT_MATERIAL_TEXTURES = 8;
 inline constexpr size_t SLOT_MATERIAL_SURFACE = 2;
 inline constexpr size_t SLOT_MATERIAL_OCCLUSION_TEXTURE = 4;
+inline constexpr size_t SLOT_MATERIAL_CLEARCOAT = 5;
+inline constexpr size_t SLOT_MATERIAL_CLEARCOAT_ROUGHNESS = 6;
+inline constexpr size_t SLOT_MATERIAL_CLEARCOAT_NORMAL = 7;
 inline constexpr uint32_t SLOT_MATERIAL_DOUBLE_SIDED = 1;
 inline constexpr uint32_t SLOT_MATERIAL_OCCLUSION = 2;
 inline constexpr uint32_t SLOT_ALPHA_MASK = 1;
+inline constexpr float WICKED_NORMAL_SCALE_LIMIT = 65504.0f;
+inline constexpr float MIN_COOKED_OCCLUSION_STRENGTH = 0.0f;
+inline constexpr float MAX_COOKED_OCCLUSION_STRENGTH = 1.0f;
 
 // glTF factors authored for one material slot. Alpha mode uses the render
 // scene codes: 0 opaque, 1 mask, 2 blend.
@@ -30,6 +37,11 @@ struct CookedSlotMaterial {
     float roughness = 1.0f;
     std::array<float, 3> emissive{};
     float alpha_cutoff = 0.5f;
+    float normal_scale = 1.0f;
+    float occlusion_strength = 1.0f;
+    float clearcoat_factor = 0.0f;
+    float clearcoat_roughness = 0.0f;
+    float clearcoat_normal_scale = 1.0f;
     uint32_t alpha_mode = 0;
     bool double_sided = false;
     // The surface image's red channel is ambient occlusion.
@@ -107,6 +119,86 @@ inline bool parse_slot_materials(const probe::PackageIndex& package, uint32_t ma
     return true;
 }
 
+// Normal scale is an additive sidecar so older 48-byte material records and
+// FBX packages keep their existing layout and default to the glTF value 1.
+inline bool parse_slot_normal_scales(const probe::PackageIndex& package,
+    std::vector<CookedSlotMaterial>& materials, std::string& error) {
+    const size_t present = package.sections.count("slot_normal_scale_stride") +
+        package.sections.count("slot_normal_scales_b64");
+    if (present == 0) return true;
+    std::vector<uint32_t> words;
+    if (present != 2 || materials.empty() || package.sections.at("slot_normal_scale_stride") != "4" ||
+        !decode_u32(package, "slot_normal_scales_b64", materials.size(), words)) {
+        error = "invalid cooked slot normal scales";
+        return false;
+    }
+    for (size_t slot = 0; slot < materials.size(); ++slot) {
+        float scale = 0.0f;
+        std::memcpy(&scale, &words[slot], sizeof(scale));
+        if (!std::isfinite(scale) || std::abs(scale) > WICKED_NORMAL_SCALE_LIMIT) {
+            error = "cooked slot normal scale is out of range";
+            return false;
+        }
+        materials[slot].normal_scale = scale;
+    }
+    return true;
+}
+
+inline bool parse_slot_occlusion_strengths(const probe::PackageIndex& package,
+    std::vector<CookedSlotMaterial>& materials, std::string& error) {
+    const size_t present = package.sections.count("slot_occlusion_strength_stride") +
+        package.sections.count("slot_occlusion_strengths_b64");
+    if (present == 0) return true;
+    std::vector<uint32_t> words;
+    if (present != 2 || materials.empty() ||
+        package.sections.at("slot_occlusion_strength_stride") != "4" ||
+        !decode_u32(package, "slot_occlusion_strengths_b64", materials.size(), words)) {
+        error = "invalid cooked slot occlusion strengths";
+        return false;
+    }
+    for (size_t slot = 0; slot < materials.size(); ++slot) {
+        float strength = 0.0f;
+        std::memcpy(&strength, &words[slot], sizeof(strength));
+        if (!std::isfinite(strength) || strength < MIN_COOKED_OCCLUSION_STRENGTH ||
+            strength > MAX_COOKED_OCCLUSION_STRENGTH) {
+            error = "cooked slot occlusion strength is out of range";
+            return false;
+        }
+        materials[slot].occlusion_strength = strength;
+    }
+    return true;
+}
+
+// Clearcoat values are an additive sidecar so existing 48-byte material
+// records and legacy five-texture records keep their original defaults.
+inline bool parse_slot_clearcoat_factors(const probe::PackageIndex& package,
+    std::vector<CookedSlotMaterial>& materials, std::string& error) {
+    const size_t present = package.sections.count("slot_clearcoat_factor_stride") +
+        package.sections.count("slot_clearcoat_factors_b64");
+    std::vector<uint32_t> words;
+    if (present == 0) return true;
+    if (present != 2 || materials.empty() ||
+        package.sections.at("slot_clearcoat_factor_stride") != "12" ||
+        !decode_u32(package, "slot_clearcoat_factors_b64", materials.size() * 3, words)) {
+        error = "invalid cooked slot clearcoat factors";
+        return false;
+    }
+    for (size_t slot = 0; slot < materials.size(); ++slot) {
+        float factors[3]{};
+        std::memcpy(factors, words.data() + slot * 3, sizeof(factors));
+        if (!std::isfinite(factors[0]) || factors[0] < 0.0f || factors[0] > 1.0f ||
+            !std::isfinite(factors[1]) || factors[1] < 0.0f || factors[1] > 1.0f ||
+            !std::isfinite(factors[2]) || std::abs(factors[2]) > WICKED_NORMAL_SCALE_LIMIT) {
+            error = "cooked slot clearcoat factors are out of range";
+            return false;
+        }
+        materials[slot].clearcoat_factor = factors[0];
+        materials[slot].clearcoat_roughness = factors[1];
+        materials[slot].clearcoat_normal_scale = factors[2];
+    }
+    return true;
+}
+
 inline bool parse_slot_material_names(const probe::PackageIndex& package, uint32_t material_slots,
     const std::vector<CookedSlotMaterial>& materials, std::vector<std::string>& names,
     std::string& error) {
@@ -134,7 +226,9 @@ inline bool texture_section_name_valid(const std::string& name) {
 
 // Slot texture records are all present or all absent and need slot material
 // records. The names list the bundle image sections the slots sample, each
-// at least once; each 20-byte slot record names its five images. Masking
+// at least once; legacy 20-byte records name five images and current 32-byte
+// records also carry clearcoat, clearcoat-roughness, and clearcoat-normal
+// images. Masking
 // needs a base color image and occlusion needs either a surface or an
 // occlusion image.
 inline bool parse_slot_textures(const probe::PackageIndex& package, std::vector<CookedSlotMaterial>& materials,
@@ -147,11 +241,14 @@ inline bool parse_slot_textures(const probe::PackageIndex& package, std::vector<
         uint64_t count = 0;
         std::vector<uint8_t> names;
         std::vector<uint32_t> words;
+        const std::string stride = package.sections.count("slot_texture_stride")
+            ? package.sections.at("slot_texture_stride") : std::string{};
+        const size_t references_per_slot = stride == "20" ? 5 : stride == "32" ? 8 : 0;
         if (present != 4 || materials.empty() || !parse_count(package, "texture_count", count) ||
-            count == 0 || count > MAX_GEOMETRY_TEXTURES || package.sections.at("slot_texture_stride") != "20" ||
+            count == 0 || count > MAX_GEOMETRY_TEXTURES || references_per_slot == 0 ||
             !decode_base64(package.sections.at("texture_names_b64"), names) ||
             !decode_names(names, size_t(count), sections) ||
-            !decode_u32(package, "slot_textures_b64", materials.size() * SLOT_MATERIAL_TEXTURES, words)) {
+            !decode_u32(package, "slot_textures_b64", materials.size() * references_per_slot, words)) {
             error = "invalid cooked slot texture records";
             return false;
         }
@@ -164,8 +261,8 @@ inline bool parse_slot_textures(const probe::PackageIndex& package, std::vector<
         }
         std::vector<bool> sampled(sections.size(), false);
         for (size_t slot = 0; slot < materials.size(); ++slot) {
-            for (size_t texture = 0; texture < SLOT_MATERIAL_TEXTURES; ++texture) {
-                const uint32_t reference = words[slot * SLOT_MATERIAL_TEXTURES + texture];
+            for (size_t texture = 0; texture < references_per_slot; ++texture) {
+                const uint32_t reference = words[slot * references_per_slot + texture];
                 if (reference > sections.size()) {
                     error = "cooked slot texture names a missing image";
                     return false;

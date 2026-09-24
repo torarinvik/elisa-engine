@@ -1,14 +1,53 @@
 include "../src/backend/material.elisa"
 include "../src/backend/lighting.elisa"
 
+const NORMAL_SCALE_LIMIT: f32 = 65504.0
+
 def main() -> i32:
     material: mutable Material::Material = Material::Material()
     return 1 if not Material::material_valid(&material)
+    return 24 if material.normal_scale != 1.0
+    return 36 if material.clearcoat_factor != 0.0 or material.clearcoat_roughness_factor != 0.0 or material.clearcoat_normal_scale != 1.0
+    material.normal_scale <- 0.0
+    return 25 if not Material::material_valid(&material)
+    material.normal_scale <- NORMAL_SCALE_LIMIT
+    return 26 if not Material::material_valid(&material)
+    material.normal_scale <- -NORMAL_SCALE_LIMIT
+    return 27 if not Material::material_valid(&material)
+    material.normal_scale <- NORMAL_SCALE_LIMIT + 1.0
+    return 29 if Material::material_valid(&material)
+    material.normal_scale <- -NORMAL_SCALE_LIMIT - 1.0
+    return 30 if Material::material_valid(&material)
+    material.normal_scale <- 1.0
+    return 31 if material.occlusion_strength != 1.0
+    material.occlusion_strength <- 0.0
+    return 32 if not Material::material_valid(&material)
+    material.occlusion_strength <- 1.0
+    return 33 if not Material::material_valid(&material)
+    material.occlusion_strength <- 1.01
+    return 34 if Material::material_valid(&material)
+    material.occlusion_strength <- -0.01
+    return 35 if Material::material_valid(&material)
+    material.occlusion_strength <- 1.0
     base: Assets::AssetId = Assets::AssetId{high: 4, low: 1}
     normal: Assets::AssetId = Assets::AssetId{high: 4, low: 2}
+    clearcoat: Assets::AssetId = Assets::AssetId{high: 4, low: 3}
+    clearcoat_roughness: Assets::AssetId = Assets::AssetId{high: 4, low: 4}
+    clearcoat_normal: Assets::AssetId = Assets::AssetId{high: 4, low: 5}
     return 2 if not Material::set_texture(&material, Material::TextureSlot.BaseColor, base)
     return 3 if not Material::set_texture(&material, Material::TextureSlot.Normal, normal)
     return 4 if Material::texture(&material, Material::TextureSlot.Normal).low != 2
+    return 37 if not Material::set_texture(&material, Material::TextureSlot.Clearcoat, clearcoat)
+    return 38 if not Material::set_texture(&material, Material::TextureSlot.ClearcoatRoughness, clearcoat_roughness)
+    return 39 if not Material::set_texture(&material, Material::TextureSlot.ClearcoatNormal, clearcoat_normal)
+    return 40 if Material::texture(&material, Material::TextureSlot.Clearcoat).low != 3
+    return 41 if Material::texture(&material, Material::TextureSlot.ClearcoatRoughness).low != 4
+    return 42 if Material::texture(&material, Material::TextureSlot.ClearcoatNormal).low != 5
+    return 43 if not Material::set_clearcoat_factors(&material, 0.8, 0.35, 0.6)
+    return 44 if material.clearcoat_factor != 0.8 or material.clearcoat_roughness_factor != 0.35 or material.clearcoat_normal_scale != 0.6
+    return 45 if Material::set_clearcoat_factors(&material, 1.01, 0.35, 0.6)
+    return 46 if Material::set_clearcoat_factors(&material, 0.8, -0.01, 0.6)
+    return 47 if Material::set_clearcoat_factors(&material, 0.8, 0.35, NORMAL_SCALE_LIMIT + 1.0)
     return 5 if not Material::set_factors(&material, 0.8, 0.4, 0.6)
     material.alpha_mode <- Material::AlphaMode.Mask
     return 6 if not Material::material_valid(&material)
@@ -25,10 +64,49 @@ def main() -> i32:
         inner_cone: 0.0,
         outer_cone: 0.7,
         casts_shadow: true,
+        shadow_resolution: 1024,
+        rectangle_width: 0.0,
+        rectangle_height: 0.0,
+        volumetrics_enabled: false,
+        volumetric_boost: 0.0,
     }
     return 9 if not Lighting::light_valid(light)
     light.range <- 0.0
     return 10 if Lighting::light_valid(light)
+    point: Lighting::Light = light
+    point.kind <- Lighting::LightKind.Point
+    point.range <- 12.0
+    point.direction <- Geometry::vec3_zero()
+    point.outer_cone <- 0.0
+    return 13 if not Lighting::light_valid(point)
+    point.kind <- Lighting::LightKind.Spot
+    point.direction <- Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}
+    return 14 if Lighting::light_valid(point)
+    point.outer_cone <- 0.7
+    return 15 if not Lighting::light_valid(point)
+    point.kind <- Lighting::LightKind.Point
+    point.direction <- Geometry::vec3_zero()
+    point.shadow_resolution <- 300
+    return 16 if Lighting::light_valid(point)
+    point.shadow_resolution <- 15
+    return 17 if Lighting::light_valid(point)
+    point.shadow_resolution <- 16
+    return 18 if not Lighting::light_valid(point)
+    point.shadow_resolution <- 2048
+    return 19 if not Lighting::light_valid(point)
+    rectangle: Lighting::Light = point
+    rectangle.kind <- Lighting::LightKind.Rectangle
+    rectangle.direction <- Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}
+    rectangle.rectangle_width <- 3.0
+    rectangle.rectangle_height <- 1.5
+    return 20 if not Lighting::light_valid(rectangle)
+    rectangle.rectangle_width <- 0.0
+    return 21 if Lighting::light_valid(rectangle)
+    rectangle.rectangle_width <- 1000001.0
+    return 22 if Lighting::light_valid(rectangle)
+    rectangle.rectangle_width <- 3.0
+    rectangle.volumetric_boost <- 9.0
+    return 23 if Lighting::light_valid(rectangle)
     environment: Lighting::Environment = Lighting::Environment{
         sun_color: Geometry::Vec3{x: 1.0, y: 0.95, z: 0.8},
         sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},

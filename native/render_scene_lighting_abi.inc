@@ -3,6 +3,14 @@ namespace {
 
 constexpr unsigned LIGHT_HANDLE_SLOT_BITS = 6;
 constexpr uint64_t LIGHT_HANDLE_SLOT_MASK = (uint64_t(1) << LIGHT_HANDLE_SLOT_BITS) - 1;
+constexpr int32_t LIGHT_KIND_DIRECTIONAL = 0;
+constexpr int32_t LIGHT_KIND_POINT = 1;
+constexpr int32_t LIGHT_KIND_SPOT = 2;
+constexpr int32_t LIGHT_KIND_RECTANGLE = 3;
+constexpr int32_t LIGHT_MIN_SHADOW_RESOLUTION = 16;
+constexpr int32_t LIGHT_MAX_SHADOW_RESOLUTION = 2048;
+constexpr float LIGHT_MAX_RECTANGLE_DIMENSION = 1000000.0f;
+constexpr float LIGHT_MAX_VOLUMETRIC_BOOST = 8.0f;
 
 bool valid_light_values(
     int32_t kind,
@@ -10,18 +18,29 @@ bool valid_light_values(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
-    if (kind < 0 || kind > 2 || (casts_shadow != 0 && casts_shadow != 1)) return false;
+    int32_t casts_shadow, int32_t shadow_resolution,
+    float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost) {
+    if (kind < LIGHT_KIND_DIRECTIONAL || kind > LIGHT_KIND_RECTANGLE ||
+        (casts_shadow != 0 && casts_shadow != 1) || (volumetrics_enabled != 0 && volumetrics_enabled != 1)) return false;
     const float values[] = {red, green, blue, px, py, pz, dx, dy, dz,
-        intensity, range, inner_cone, outer_cone};
+        intensity, range, inner_cone, outer_cone, rectangle_width, rectangle_height, volumetric_boost};
     for (float value : values) {
         if (!bounded(value)) return false;
     }
+    const bool valid_shadow_resolution = shadow_resolution == 0 ||
+        (shadow_resolution >= LIGHT_MIN_SHADOW_RESOLUTION && shadow_resolution <= LIGHT_MAX_SHADOW_RESOLUTION &&
+            (shadow_resolution & (shadow_resolution - 1)) == 0);
     if (red < 0.0f || red > 1.0f || green < 0.0f || green > 1.0f ||
         blue < 0.0f || blue > 1.0f || intensity < 0.0f || range <= 0.0f ||
-        inner_cone < 0.0f || outer_cone <= 0.0f || inner_cone > outer_cone) return false;
+        (kind == LIGHT_KIND_SPOT && (inner_cone < 0.0f || outer_cone <= 0.0f || inner_cone > outer_cone)) ||
+        (kind == LIGHT_KIND_RECTANGLE && (rectangle_width <= 0.0f || rectangle_height <= 0.0f ||
+            rectangle_width > LIGHT_MAX_RECTANGLE_DIMENSION || rectangle_height > LIGHT_MAX_RECTANGLE_DIMENSION)) ||
+        (kind != LIGHT_KIND_RECTANGLE && (rectangle_width != 0.0f || rectangle_height != 0.0f)) ||
+        volumetric_boost < 0.0f || volumetric_boost > LIGHT_MAX_VOLUMETRIC_BOOST ||
+        !valid_shadow_resolution) return false;
     const float direction_squared = dx * dx + dy * dy + dz * dz;
-    return std::isfinite(direction_squared) && (kind == 1 || direction_squared > 1.0e-8f);
+    return std::isfinite(direction_squared) && (kind == LIGHT_KIND_POINT || direction_squared > 1.0e-8f);
 }
 
 probe::NativeLightDesc make_light_desc(
@@ -30,18 +49,26 @@ probe::NativeLightDesc make_light_desc(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution,
+    float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost) {
     probe::NativeLightDesc desc;
-    desc.kind = kind == 0 ? probe::NativeLightKind::Directional :
-        (kind == 2 ? probe::NativeLightKind::Spot : probe::NativeLightKind::Point);
+    desc.kind = kind == LIGHT_KIND_DIRECTIONAL ? probe::NativeLightKind::Directional :
+        kind == LIGHT_KIND_SPOT ? probe::NativeLightKind::Spot :
+        kind == LIGHT_KIND_RECTANGLE ? probe::NativeLightKind::Rectangle : probe::NativeLightKind::Point;
     desc.color = XMFLOAT3(red, green, blue);
     desc.position = probe::coordinates::to_wicked(XMFLOAT3(px, py, pz));
     desc.direction = probe::coordinates::to_wicked_direction(XMFLOAT3(dx, dy, dz));
     desc.intensity = intensity;
     desc.range = range;
-    desc.inner_cone = inner_cone;
-    desc.outer_cone = outer_cone;
+    desc.inner_cone = kind == LIGHT_KIND_SPOT ? inner_cone : 0.0f;
+    desc.outer_cone = kind == LIGHT_KIND_SPOT ? outer_cone : 0.0f;
     desc.cast_shadow = casts_shadow != 0;
+    desc.shadow_resolution = shadow_resolution;
+    desc.rectangle_width = kind == LIGHT_KIND_RECTANGLE ? rectangle_width : 0.0f;
+    desc.rectangle_height = kind == LIGHT_KIND_RECTANGLE ? rectangle_height : 0.0f;
+    desc.volumetrics_enabled = volumetrics_enabled != 0;
+    desc.volumetric_boost = volumetric_boost;
     return desc;
 }
 
@@ -76,9 +103,12 @@ extern "C" int64_t elisa_render_scene_v1_create_light(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution,
+    float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost) {
     if (!valid_light_values(kind, red, green, blue, px, py, pz, dx, dy, dz,
-        intensity, range, inner_cone, outer_cone, casts_shadow)) {
+        intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution,
+        rectangle_width, rectangle_height, volumetrics_enabled, volumetric_boost)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
@@ -87,7 +117,8 @@ extern "C" int64_t elisa_render_scene_v1_create_light(
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.lighting == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue, px, py, pz,
-        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow);
+        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution,
+        rectangle_width, rectangle_height, volumetrics_enabled, volumetric_boost);
     const probe::NativeLightHandle native = state.lighting->create_light(desc);
     if (native.owner == 0 || native.slot >= MAX_RENDER_LIGHTS) {
         return ELISA_RENDER_SCENE_CAPACITY;
@@ -102,9 +133,12 @@ extern "C" int32_t elisa_render_scene_v1_update_light(
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow) {
+    int32_t casts_shadow, int32_t shadow_resolution,
+    float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost) {
     if (!valid_light_values(kind, red, green, blue, px, py, pz, dx, dy, dz,
-        intensity, range, inner_cone, outer_cone, casts_shadow)) {
+        intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution,
+        rectangle_width, rectangle_height, volumetrics_enabled, volumetric_boost)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
@@ -114,7 +148,8 @@ extern "C" int32_t elisa_render_scene_v1_update_light(
     size_t slot = MAX_RENDER_LIGHTS;
     if (!valid_light_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue, px, py, pz,
-        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow);
+        dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow, shadow_resolution,
+        rectangle_width, rectangle_height, volumetrics_enabled, volumetric_boost);
     return state.lighting->update_light(state.lights[slot].native, desc) ?
         ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
@@ -136,12 +171,17 @@ extern "C" int32_t elisa_render_scene_v1_destroy_light(int64_t handle) {
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 extern "C" int32_t elisa_render_scene_v1_test_light_matches(
     int32_t kind,
-    float px, float py, float pz, float dx, float dy, float dz) {
+    float red, float green, float blue,
+    float px, float py, float pz, float dx, float dy, float dz,
+    float intensity, float range, float inner_cone, float outer_cone, int32_t casts_shadow,
+    int32_t shadow_resolution, float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.lighting == nullptr) return 0;
-    const probe::NativeLightDesc desc = make_light_desc(kind, 1.0f, 1.0f, 1.0f,
-        px, py, pz, dx, dy, dz, 1.0f, 10.0f, 0.0f, XM_PIDIV4, 0);
+    const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue,
+        px, py, pz, dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow,
+        shadow_resolution, rectangle_width, rectangle_height, volumetrics_enabled, volumetric_boost);
     for (const RenderLightSlot& light : state.lights) {
         if (light.live && state.lighting->light_matches(light.native, desc)) return 1;
     }

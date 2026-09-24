@@ -31,6 +31,10 @@ module RenderSceneCookedTextureNativeTests:
         extern elisa_render_scene_v1_test_snapshot_material_occlusion(high: u64, low: u64) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_tangent_frames(render_id: i64,
+            expected_vertex_count: u32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_snapshot_bundle_texture_source_bytes() -> u64
 
         @callconv(c)
@@ -540,10 +544,11 @@ module RenderSceneCookedTextureNativeTests:
             return 3 if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
             handle: i64 = elisa_render_scene_v1_snapshot_result(0)
             return 4 if handle <= 0
-            return 5 if not strips_show()
+            return 5 if elisa_render_scene_v1_test_snapshot_tangent_frames(ROW, 16) != 1
+            return 6 if not strips_show()
             # The materials' images can't go away.
-            return 6 if unregister_texture(1) != Code::INVALID or unregister_texture(4) != Code::INVALID
-            return 7 if not retire(handle)
+            return 7 if unregister_texture(1) != Code::INVALID or unregister_texture(4) != Code::INVALID
+            return 8 if not retire(handle)
             0
 
         def cleanup() -> i32:

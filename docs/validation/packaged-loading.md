@@ -88,10 +88,14 @@ and the caller can report the configuration error cleanly. An unset or empty
 variable keeps Wicked's default shader path behavior.
 
 If `ELISA_ENGINE_SHADER_MANIFEST` is set, it must resolve to a regular
-`elisa.shader-manifest.json`-format file directly inside that shader root. The
-startup result is `Application::InitializeStatus.ShaderManifestInvalid` when
-the manifest is missing, outside the root, oversized, or lacks the generated
-schema, file list, or 64-character fingerprint fields.
+`elisa.shader-manifest.json`-format file directly inside that shader root. Before
+Wicked initializes, the runtime checks the schema and canonical fingerprint,
+requires a sorted, traversal-free inventory of compiled `.cso`/`.spv` files,
+hashes every listed file, and rejects missing or unlisted binaries and paths that
+resolve outside the shader root. The manifest is capped at 4 MiB, each shader at
+1 GiB, and the total listed shader data at 4 GiB. Startup reports
+`Application::InitializeStatus.ShaderManifestInvalid` for malformed, missing,
+oversized, or content-mismatched manifests.
 
 The native application smoke calls a test-only probe with a missing root and
 requires this status. It also runs the normal startup and failure-cleanup
@@ -100,9 +104,10 @@ cases to prove that valid configured roots still initialize and shut down.
 The macOS packager writes `shaders/elisa.shader-manifest.json` beside the
 compiled shader tree. Its schema version, sorted binary paths, byte sizes, and
 SHA-256 digests produce a deterministic `fingerprint`; the relocated launcher
-exports `ELISA_ENGINE_SHADER_MANIFEST` along with the shader root. A changed
-compiled shader therefore produces a new package identity before any runtime
-pipeline cache is reused.
+exports `ELISA_ENGINE_SHADER_MANIFEST` along with the shader root. The runtime
+recomputes those digests before loading the packaged shader tree, so edited,
+missing, or newly added compiled files fail preflight instead of silently
+changing the shader inputs.
 
 ## Limits
 

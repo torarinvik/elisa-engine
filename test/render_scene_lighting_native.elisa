@@ -1,10 +1,38 @@
 module RenderSceneLightingNativeTests:
     private:
+        const module NativeLightKindCode:
+            DIRECTIONAL: i32 = 0
+            POINT: i32 = 1
+            SPOT: i32 = 2
+            RECTANGLE: i32 = 3
+
         @callconv(c)
         extern elisa_render_scene_v1_test_light_matches(kind: i32,
-            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32) -> i32
+            red: f32, green: f32, blue: f32,
+            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
+            intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
+            casts_shadow: i32, shadow_resolution: i32,
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_light_count() -> i32
+
+        def light_kind_code(kind: Lighting::LightKind) -> i32:
+            return NativeLightKindCode::DIRECTIONAL if kind == Lighting::LightKind.Directional
+            return NativeLightKindCode::POINT if kind == Lighting::LightKind.Point
+            return NativeLightKindCode::SPOT if kind == Lighting::LightKind.Spot
+            NativeLightKindCode::RECTANGLE
+
+        def light_matches(light: Lighting::Light) -> bool:
+            kind: i32 = light_kind_code(light.kind)
+            elisa_render_scene_v1_test_light_matches(kind,
+                light.color.x, light.color.y, light.color.z,
+                light.position.x, light.position.y, light.position.z,
+                light.direction.x, light.direction.y, light.direction.z,
+                light.intensity, light.range, light.inner_cone, light.outer_cone,
+                1 if light.casts_shadow else 0, light.shadow_resolution,
+                light.rectangle_width, light.rectangle_height,
+                1 if light.volumetrics_enabled else 0, light.volumetric_boost) == 1
 
     public:
         def exercise() -> i32:
@@ -18,6 +46,11 @@ module RenderSceneLightingNativeTests:
                 inner_cone: 0.2,
                 outer_cone: 0.6,
                 casts_shadow: true,
+                shadow_resolution: 0,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
             }):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
@@ -28,28 +61,37 @@ module RenderSceneLightingNativeTests:
                 kind: Lighting::LightKind.Point,
                 color: Geometry::Vec3{x: 0.3, y: 0.7, z: 1.0},
                 position: Geometry::Vec3{x: 1.0, y: 2.0, z: 3.0},
-                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
+                direction: Geometry::vec3_zero(),
                 intensity: 2.0,
                 range: 10.0,
                 inner_cone: 0.0,
-                outer_cone: 0.8,
+                outer_cone: 0.0,
                 casts_shadow: true,
+                shadow_resolution: 512,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
             }
             point_handle: RenderScene::LightHandle = catch RenderScene::create_light(point):
                 value: value
                 error failure: return 121
             return 122 if elisa_render_scene_v1_test_light_count() != 1
-            return 123 if elisa_render_scene_v1_test_light_matches(1,
-                1.0, 2.0, 3.0, 0.0, -1.0, 0.0) != 1
+            return 123 if not light_matches(point)
 
             moved: Lighting::Light = point
             moved.position <- Geometry::Vec3{x: -2.0, y: 4.0, z: 1.0}
-            moved.direction <- Geometry::Vec3{x: 1.0, y: -1.0, z: 0.0}
+            moved.color <- Geometry::Vec3{x: 0.8, y: 0.4, z: 0.2}
+            moved.intensity <- 3.5
+            moved.range <- 18.0
+            moved.casts_shadow <- false
+            moved.shadow_resolution <- 256
+            moved.volumetrics_enabled <- true
+            moved.volumetric_boost <- 1.5
             _ = catch RenderScene::update_light(point_handle, moved):
                 ok: 0
                 error failure: return 124
-            return 125 if elisa_render_scene_v1_test_light_matches(1,
-                -2.0, 4.0, 1.0, 1.0, -1.0, 0.0) != 1
+            return 125 if not light_matches(moved)
 
             spot: Lighting::Light = Lighting::Light{
                 kind: Lighting::LightKind.Spot,
@@ -61,21 +103,62 @@ module RenderSceneLightingNativeTests:
                 inner_cone: 0.2,
                 outer_cone: 0.7,
                 casts_shadow: false,
+                shadow_resolution: 0,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
             }
             spot_handle: RenderScene::LightHandle = catch RenderScene::create_light(spot):
                 value: value
                 error failure: return 126
             return 127 if elisa_render_scene_v1_test_light_count() != 2
+            return 128 if not light_matches(spot)
+
+            area: Lighting::Light = Lighting::Light{
+                kind: Lighting::LightKind.Rectangle,
+                color: Geometry::Vec3{x: 0.9, y: 0.7, z: 0.4},
+                position: Geometry::Vec3{x: -3.0, y: 2.0, z: 1.0},
+                direction: Geometry::Vec3{x: 0.2, y: -0.3, z: -1.0},
+                intensity: 5.0,
+                range: 20.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: true,
+                shadow_resolution: 256,
+                rectangle_width: 3.0,
+                rectangle_height: 1.5,
+                volumetrics_enabled: true,
+                volumetric_boost: 2.0,
+            }
+            area_handle: RenderScene::LightHandle = catch RenderScene::create_light(area):
+                value: value
+                error failure: return 133
+            return 134 if not light_matches(area)
+            area_moved: Lighting::Light = area
+            area_moved.direction <- Geometry::Vec3{x: 0.7, y: -0.2, z: 0.5}
+            area_moved.rectangle_width <- 4.0
+            area_moved.rectangle_height <- 2.0
+            area_moved.shadow_resolution <- 128
+            area_moved.volumetric_boost <- 3.0
+            _ = catch RenderScene::update_light(area_handle, area_moved):
+                ok: 0
+                error failure: return 135
+            return 136 if not light_matches(area_moved)
+
+            _ = catch RenderScene::destroy_light(area_handle):
+                ok: 0
+                error failure: return 137
             _ = catch RenderScene::destroy_light(spot_handle):
                 ok: 0
-                error failure: return 128
+                error failure: return 129
             _ = catch RenderScene::destroy_light(point_handle):
                 ok: 0
-                error failure: return 129
-            return 130 if elisa_render_scene_v1_test_light_count() != 0
+                error failure: return 130
+            return 131 if elisa_render_scene_v1_test_light_count() != 0
             stale: i32 = catch RenderScene::destroy_light(point_handle):
                 ok: 0
                 RenderScene::RenderSceneError.UnknownHandle: 1
                 error failure: 2
-            return 131 if stale != 1
+            return 132 if stale != 1
             0

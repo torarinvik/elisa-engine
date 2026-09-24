@@ -17,8 +17,30 @@ extend beyond the framebuffer are rejected. `Camera::bounds_visible` also tests
 a world-space AABB against the transformed perspective or orthographic frustum;
 it builds a conservative camera-space box so camera rotation and nonuniform
 scale cannot cull visible geometry. The portable test covers near/far and
-side-plane cases. Render-to-texture and multi-camera render scheduling remain
-native R03 work.
+side-plane cases. `RenderScene::set_camera_viewport` gives each secondary camera
+its own `RenderPath3D` and composites that path's output into a checked
+framebuffer-pixel rectangle over the primary view. The viewport dimensions also
+set that camera's render resolution and aspect ratio; a bounded update interval
+can throttle it. `RenderScene::set_camera_quality_profile` applies a separate
+post-process profile to that path. Path-owned effects remain independent, while
+Wicked's renderer-wide temporal AA, height fog, shadow resolution, and sun
+shadow bias are applied for the secondary render and restored before the
+primary render. Unsupported optional upscalers keep the existing fallback
+behavior. Clearing the viewport releases the path and stops composition. The
+SDL3/Metal smoke rejects a rectangle extending beyond the framebuffer, renders
+and composites a valid right-half view, checks a distinct half-resolution
+quality profile, then verifies cleanup stops composition. A viewport camera
+cannot become the full-screen active camera until its viewport is cleared;
+clearing restores the camera's saved projection dimensions.
+
+`RenderScene::set_primary_viewport` gives the main camera a checked
+framebuffer-pixel rectangle and composes its `RenderPath3D` output into that
+region. `RenderScene::camera_ray` uses the rectangle's offset and dimensions and
+rejects pixels outside it. Framebuffer resize scales the primary rectangle as
+well as every secondary view; `clear_primary_viewport` restores full-canvas
+rendering. The SDL3/Metal camera test uses an offset primary rectangle beside a
+throttled secondary view, checks the primary center and outside picking rays,
+resizes both layouts, then verifies the full-canvas state returns.
 
 The Wicked gate runs `native/camera_bridge.h`, which creates perspective and
 orthographic camera components, applies a 2x viewport scale, resizes a
@@ -28,13 +50,27 @@ temporary views without retaining native camera entities. The project-facing
 `RenderScene::camera_ray` ABI unprojects the active Wicked camera in reverse-Z
 space, reflects the result back into Elisa's right-handed coordinates, returns
 camera origins for perspective and near-plane origins for orthographic views,
-and rejects pixels outside the viewport. The SDL3/Metal smoke checks a centered
-ray after changing the camera and an out-of-bounds request.
+and rejects pixels outside the viewport. `RenderScene::camera_viewport_ray`
+does the same for a secondary view after translating global framebuffer
+coordinates into its viewport; points outside the rectangle fail. The
+SDL3/Metal smoke checks centered rays and out-of-bounds requests for active and
+secondary views.
+
+When the framebuffer resizes, each configured primary and secondary viewport
+scales its pixel rectangle by the old-to-new framebuffer ratio, resizes its
+independent render path, and recreates its projection with the new aspect
+ratio. The native camera test grows from 320x200 to 640x400 and verifies that a
+(160, 0, 160, 100) secondary viewport becomes (320, 0, 320, 200), still
+composes, and still returns a finite center ray at (480, 100). Its offset
+primary rectangle (10, 10, 140, 180) scales to (20, 20, 280, 360). Resizing
+back restores both original rectangles and output dimensions. Per-camera
+quality scaling is included in the output size check.
 
 Automatic static snapshot LOD selection now checks the active Wicked frustum
 against the transformed bounds of every mesh placement. It leaves the current
 shared mesh untouched while all placements are offscreen, then selects the
 appropriate level on the first visible frame. The native asset smoke verifies
-both the deferred offscreen case and the visible transition. Multiple
-`RenderPath3D` scheduling remains open; Wicked continues to cull scene draws
+both the deferred offscreen case and the visible transition. Primary and
+secondary views use independent `RenderPath3D` output regions; secondary views
+also support per-camera quality profiles. Wicked continues to cull scene draws
 through its own visibility path.

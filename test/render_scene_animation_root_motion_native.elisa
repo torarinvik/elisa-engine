@@ -9,7 +9,12 @@ module RenderSceneAnimationRootMotionNativeTests:
             handle: i64, expected_x: f32, expected_y: f32, expected_z: f32) -> i32
 
         def near(value: f32, expected: f32) -> bool:
-            value > expected - 0.002 and value < expected + 0.002
+            value > expected - 0.0002 and value < expected + 0.0002
+
+        def progress(handle: RenderScene::InstanceHandle) -> f32:
+            catch RenderScene::animation_progress(handle):
+                value: value
+                error failure: -1.0
 
     public:
         def exercise() -> i32:
@@ -18,7 +23,7 @@ module RenderSceneAnimationRootMotionNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
-            started: bool = catch RenderScene::play_animation(rig, "root-motion", false, 1.0, 0.0):
+            started: bool = catch RenderScene::play_animation(rig, "root-motion", true, 1.0, 0.0):
                 ok: true
                 error failure: false
             return 2 if not started
@@ -50,21 +55,87 @@ module RenderSceneAnimationRootMotionNativeTests:
                 value: value
                 error failure: return 11
             return 12 if not near(queued.x, 0.005) or not near(queued.z, -0.0125)
+            crossed_loop: bool = catch RenderScene::advance_animation(rig, 0.5):
+                ok: true
+                error failure: false
+            return 13 if not crossed_loop
+            return 26 if elisa_render_scene_v1_test_animation_root_pose(raw_rig,
+                2.0, 0.0, 1.5) == 0
+            wrapped: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 14
+            return 15 if not near(wrapped.x, 0.01) or not near(wrapped.z, -0.025)
+            faster: bool = catch RenderScene::set_animation_speed(rig, 3.0):
+                ok: true
+                error failure: false
+            return 16 if not faster
+            skipped_cycles: bool = catch RenderScene::advance_animation(rig, 1.0):
+                ok: true
+                error failure: false
+            return 17 if not skipped_cycles
+            skipped: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 18
+            return 19 if not near(skipped.x, 0.06) or not near(skipped.z, -0.15)
+            restored_speed: bool = catch RenderScene::set_animation_speed(rig, 1.0):
+                ok: true
+                error failure: false
+            return 20 if not restored_speed
             advanced_pending: bool = catch RenderScene::advance_animation(rig, 0.1):
                 ok: true
                 error failure: false
-            return 13 if not advanced_pending
+            return 21 if not advanced_pending
+            pending_forward: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 27
+            return 28 if not near(pending_forward.x, 0.002) or not near(pending_forward.z, -0.005)
+            reversed: bool = catch RenderScene::set_animation_speed(rig, -1.0):
+                ok: true
+                error failure: false
+            return 29 if not reversed
+            reverse_step: bool = catch RenderScene::advance_animation(rig, 0.15):
+                ok: true
+                error failure: false
+            return 30 if not reverse_step
+            reverse_delta: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 31
+            return 32 if not near(reverse_delta.x, -0.003) or not near(reverse_delta.z, 0.0075)
+            reverse_wrap: bool = catch RenderScene::advance_animation(rig, 0.5):
+                ok: true
+                error failure: false
+            return 33 if not reverse_wrap
+            reverse_wrapped: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 34
+            return 35 if not near(reverse_wrapped.x, -0.01) or not near(reverse_wrapped.z, 0.025)
             disabled: bool = catch RenderScene::set_animation_root_motion(rig,
                 RenderScene::AnimationRootMotionMode.InPlace, "root"):
                 ok: true
                 error failure: false
-            return 14 if not disabled
+            return 36 if not disabled
             after_disable: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
                 value: value
-                error failure: return 15
-            return 16 if not near(after_disable.x, 0.0) or not near(after_disable.z, 0.0)
+                error failure: return 37
+            return 38 if not near(after_disable.x, 0.0) or not near(after_disable.z, 0.0)
+            reverse_started: bool = catch RenderScene::play_animation(rig, "root-motion", false, -1.0, 0.0):
+                ok: true
+                error failure: false
+            return 40 if not reverse_started or not near(progress(rig), 1.0)
+            reversed_once: bool = catch RenderScene::advance_animation(rig, 0.25):
+                ok: true
+                error failure: false
+            return 41 if not reversed_once or not near(progress(rig), 0.75)
+            reversed_to_start: bool = catch RenderScene::advance_animation(rig, 0.75):
+                ok: true
+                error failure: false
+            return 42 if not reversed_to_start or not near(progress(rig), 0.0)
+            stayed_at_start: bool = catch RenderScene::advance_animation(rig, 0.1):
+                ok: true
+                error failure: false
+            return 43 if not stayed_at_start or not near(progress(rig), 0.0)
             destroyed: bool = catch RenderScene::destroy(rig):
                 ok: true
                 error failure: false
-            return 17 if not destroyed
+            return 39 if not destroyed
             0

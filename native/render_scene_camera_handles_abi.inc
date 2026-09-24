@@ -100,6 +100,13 @@ extern "C" int64_t elisa_render_scene_v1_create_camera(
     }
     camera_slot.entity = entity;
     camera_slot.generation += 1;
+    camera_slot.viewport_x = 0;
+    camera_slot.viewport_y = 0;
+    camera_slot.viewport_width = 0;
+    camera_slot.viewport_height = 0;
+    camera_slot.camera_width = width;
+    camera_slot.camera_height = height;
+    camera_slot.viewport_enabled = false;
     camera_slot.live = true;
     refresh_active_camera(state);
     return int64_t(encode_camera_handle(slot, camera_slot.generation));
@@ -118,8 +125,13 @@ extern "C" int32_t elisa_render_scene_v1_update_camera(
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
-    if (camera == nullptr || !configure_camera(*camera, projection, width, height,
+    const RenderCameraSlot& camera_slot = state.cameras[slot];
+    const int32_t camera_width = camera_slot.viewport_enabled ? camera_slot.viewport_width : width;
+    const int32_t camera_height = camera_slot.viewport_enabled ? camera_slot.viewport_height : height;
+    if (camera == nullptr || !configure_camera(*camera, projection, camera_width, camera_height,
         projection_value, near_clip, far_clip)) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.cameras[slot].camera_width = width;
+    state.cameras[slot].camera_height = height;
     if (state.camera_entity == state.cameras[slot].entity) sync_camera_settings(state, *camera);
     return ELISA_RENDER_SCENE_OK;
 }
@@ -131,6 +143,7 @@ extern "C" int32_t elisa_render_scene_v1_activate_camera(int64_t handle) {
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    if (state.cameras[slot].viewport_enabled) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
     if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     state.camera_entity = state.cameras[slot].entity;
@@ -162,9 +175,154 @@ extern "C" int32_t elisa_render_scene_v1_destroy_camera(int64_t handle) {
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     if (state.camera_entity == state.cameras[slot].entity) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();
+    state.cameras[slot].pipeline.reset();
     state.scene->Entity_Remove(state.cameras[slot].entity);
     state.cameras[slot].entity = wi::ecs::INVALID_ENTITY;
     state.cameras[slot].live = false;
+    state.cameras[slot].viewport_enabled = false;
     refresh_active_camera(state);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_camera_viewport(
+    int64_t handle, int32_t x, int32_t y, int32_t width, int32_t height,
+    float update_interval) {
+    if (x < 0 || y < 0 || !valid_viewport(width, height) ||
+        !finite(update_interval) || update_interval < 0.0f || update_interval > 60.0f) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (width > state.width || height > state.height || x > state.width - width ||
+        y > state.height - height) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    size_t slot = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    if (state.camera_entity == state.cameras[slot].entity) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
+    if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+
+    RenderCameraSlot& camera_slot = state.cameras[slot];
+    std::unique_ptr<wi::RenderPath3D> new_pipeline;
+    if (camera_slot.pipeline == nullptr) {
+        try {
+            new_pipeline = std::make_unique<wi::RenderPath3D>();
+            new_pipeline->scene = state.scene.get();
+            new_pipeline->camera = camera;
+            new_pipeline->setSceneUpdateEnabled(false);
+            new_pipeline->init(uint32_t(width), uint32_t(height), state.path->dpi);
+            new_pipeline->scaling = state.path->scaling;
+        } catch (...) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+    }
+    camera_slot.viewport_x = x;
+    camera_slot.viewport_y = y;
+    camera_slot.viewport_width = width;
+    camera_slot.viewport_height = height;
+    camera_slot.update_interval = update_interval;
+    camera_slot.update_elapsed = 0.0f;
+    camera_slot.render_pending = true;
+    camera_slot.rendered = false;
+    camera_slot.viewport_enabled = true;
+    if (new_pipeline != nullptr) camera_slot.pipeline = std::move(new_pipeline);
+    camera_slot.pipeline->scene = state.scene.get();
+    camera_slot.pipeline->camera = camera;
+    camera_slot.pipeline->init(uint32_t(width), uint32_t(height), state.path->dpi);
+    camera_slot.pipeline->scaling = state.path->scaling;
+    if (camera->IsOrtho()) {
+        camera->CreateOrtho(float(width), float(height), camera->zNearP, camera->zFarP,
+            camera->ortho_vertical_size);
+    } else {
+        camera->CreatePerspective(float(width), float(height), camera->zNearP, camera->zFarP,
+            camera->fov);
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
+    if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();
+    state.cameras[slot].pipeline.reset();
+    state.cameras[slot].viewport_enabled = false;
+    state.cameras[slot].render_pending = false;
+    state.cameras[slot].rendered = false;
+    state.cameras[slot].viewport_x = 0;
+    state.cameras[slot].viewport_y = 0;
+    state.cameras[slot].viewport_width = 0;
+    state.cameras[slot].viewport_height = 0;
+    state.cameras[slot].quality_profile_set = false;
+    if (camera->IsOrtho()) {
+        camera->CreateOrtho(float(state.cameras[slot].camera_width),
+            float(state.cameras[slot].camera_height), camera->zNearP, camera->zFarP,
+            camera->ortho_vertical_size);
+    } else {
+        camera->CreatePerspective(float(state.cameras[slot].camera_width),
+            float(state.cameras[slot].camera_height), camera->zNearP, camera->zFarP,
+            camera->fov);
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_camera_viewport_ray(
+    int64_t handle, float screen_x, float screen_y,
+    float* origin_x, float* origin_y, float* origin_z,
+    float* direction_x, float* direction_y, float* direction_z) {
+    if (origin_x == nullptr || origin_y == nullptr || origin_z == nullptr ||
+        direction_x == nullptr || direction_y == nullptr || direction_z == nullptr ||
+        !finite(screen_x) || !finite(screen_y)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot_index = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, handle, slot_index)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    const RenderCameraSlot& slot = state.cameras[slot_index];
+    if (!slot.viewport_enabled || screen_x < float(slot.viewport_x) ||
+        screen_y < float(slot.viewport_y) ||
+        screen_x >= float(slot.viewport_x + slot.viewport_width) ||
+        screen_y >= float(slot.viewport_y + slot.viewport_height)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(slot.entity);
+    if (camera == nullptr || slot.viewport_width <= 0 || slot.viewport_height <= 0) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+
+    const float local_x = screen_x - float(slot.viewport_x);
+    const float local_y = screen_y - float(slot.viewport_y);
+    const float ndc_x = (local_x / float(slot.viewport_width)) * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - (local_y / float(slot.viewport_height)) * 2.0f;
+    const XMMATRIX inverse_view_projection = camera->GetInvViewProjection();
+    const XMVECTOR near_point = XMVector3TransformCoord(
+        XMVectorSet(ndc_x, ndc_y, 1.0f, 1.0f), inverse_view_projection);
+    const XMVECTOR far_point = XMVector3TransformCoord(
+        XMVectorSet(ndc_x, ndc_y, 0.0f, 1.0f), inverse_view_projection);
+    const XMVECTOR direction = XMVector3Normalize(XMVectorSubtract(far_point, near_point));
+    XMFLOAT3 wicked_origin;
+    XMFLOAT3 wicked_direction;
+    if (camera->IsOrtho()) XMStoreFloat3(&wicked_origin, near_point);
+    else wicked_origin = camera->Eye;
+    XMStoreFloat3(&wicked_direction, direction);
+    const XMFLOAT3 authored_origin = probe::coordinates::from_wicked(wicked_origin);
+    const XMFLOAT3 authored_direction = probe::coordinates::from_wicked_direction(wicked_direction);
+    if (!bounded(authored_origin.x) || !bounded(authored_origin.y) || !bounded(authored_origin.z) ||
+        !bounded(authored_direction.x) || !bounded(authored_direction.y) ||
+        !bounded(authored_direction.z)) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    *origin_x = authored_origin.x;
+    *origin_y = authored_origin.y;
+    *origin_z = authored_origin.z;
+    *direction_x = authored_direction.x;
+    *direction_y = authored_direction.y;
+    *direction_z = authored_direction.z;
     return ELISA_RENDER_SCENE_OK;
 }

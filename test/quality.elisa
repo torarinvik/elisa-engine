@@ -4,10 +4,11 @@ def main() -> i32:
     profile: Quality::Profile = Quality::Profile()
     return 1 if not Quality::profile_valid(profile)
     return 2 if profile.tonemap != Quality::Tonemap.Aces or profile.bloom_threshold != 1.0 or profile.temporal_aa
+    return 8 if profile.shadow_quality != Quality::ShadowQuality.Medium or profile.sun_shadow_receiver_bias != 0.0
     low: Quality::Profile = Quality::low()
-    return 3 if not Quality::profile_valid(low) or low.render_scale != 0.5 or low.bloom or low.fog
+    return 3 if not Quality::profile_valid(low) or low.render_scale != 0.5 or low.bloom or low.fog or low.shadow_quality != Quality::ShadowQuality.Low
     high: Quality::Profile = Quality::high()
-    return 4 if not Quality::profile_valid(high) or not high.ambient_occlusion or not high.screen_space_reflections or not high.temporal_aa or high.fxaa
+    return 4 if not Quality::profile_valid(high) or not high.ambient_occlusion or not high.screen_space_reflections or not high.temporal_aa or high.fxaa or high.shadow_quality != Quality::ShadowQuality.High
     invalid: mutable Quality::Profile = profile
     invalid.render_scale <- 0.1
     return 5 if Quality::profile_valid(invalid)
@@ -15,6 +16,9 @@ def main() -> i32:
     invalid.bloom_threshold <- 101.0
     return 6 if Quality::profile_valid(invalid)
     invalid.bloom_threshold <- 1.0
+    invalid.sun_shadow_receiver_bias <- 0.02
+    return 9 if Quality::profile_valid(invalid)
+    invalid.sun_shadow_receiver_bias <- 0.0
     invalid.temporal_aa <- true
     invalid.upscaler <- Quality::Upscaler.Fsr2
     return 7 if Quality::profile_valid(invalid)

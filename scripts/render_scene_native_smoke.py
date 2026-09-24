@@ -24,6 +24,8 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 from png_image import encode_png
 import gltf_texture_self_test
+import gltf_clearcoat_self_test
+import gltf_mirrored_normal_fixture
 import gltf_skin_self_test
 import gltf_morph_self_test
 import gltf_scene_self_test
@@ -220,6 +222,25 @@ def main() -> int:
         variant = dict(gltf_texture_self_test.SECTIONS)
         variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
         write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
+        clearcoat_document = gltf_texture_self_test.textured_panel()
+        gltf_clearcoat_self_test.clearcoat_material(clearcoat_document)
+        clearcoat_source = subset_directory / "clearcoat_panel.gltf"
+        clearcoat_source.write_text(json.dumps(clearcoat_document, indent=2) + "\n", encoding="utf-8")
+        clearcoat_package, clearcoat_result = cook_gltf_geometry.cook_geometry_package(
+            clearcoat_source, "test/fixtures/clearcoat_panel.gltf", subset_directory / "clearcoat.pkg",
+            allow_textures=True)
+        write_geometry_package(subset_directory / "clearcoat.elpk", clearcoat_package.read_bytes(),
+            clearcoat_result["images"])
+        fixture_status = run([sys.executable, str(ROOT / "scripts/gltf_mirrored_normal_fixture.py"),
+            "--write-fixture"])
+        if fixture_status != 0:
+            return fixture_status
+        mirrored_normal = subset_directory / "mirrored_normal.elpk"
+        fixture_status = run([sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+            str(gltf_mirrored_normal_fixture.OUTPUT), "--asset-path",
+            "test/fixtures/mirrored_normal_panel.gltf", "--output", str(mirrored_normal)])
+        if fixture_status != 0:
+            return fixture_status
 
     if render_only:
         # The native test rewrites this bundle while checking checksum
@@ -227,11 +248,19 @@ def main() -> int:
         # reruns don't start with the already-mutated variant from a prior run.
         subset_directory = build / "cooked/subsets"
         textured = subset_directory / "textured.elpk"
+        clearcoat = subset_directory / "clearcoat.elpk"
         rewrite = subset_directory / "textured_rewrite.elpk"
-        if not textured.is_file() or not rewrite.is_file():
+        if not textured.is_file() or not clearcoat.is_file() or not rewrite.is_file():
             print("Render-only mode requires the cooked textured-panel fixtures", file=sys.stderr)
             return 2
         shutil.copyfile(textured, rewrite)
+        mirrored_normal = subset_directory / "mirrored_normal.elpk"
+        if not mirrored_normal.is_file():
+            fixture_status = run([sys.executable, str(ROOT / "scripts/cook_gltf_asset.py"),
+                str(gltf_mirrored_normal_fixture.OUTPUT), "--asset-path",
+                "test/fixtures/mirrored_normal_panel.gltf", "--output", str(mirrored_normal)])
+            if fixture_status != 0:
+                return fixture_status
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
@@ -302,6 +331,33 @@ def main() -> int:
     runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)
     fine_lod_capture = build / "render-scene-lod-fine.png"
     coarse_lod_capture = build / "render-scene-lod-coarse.png"
+    mirrored_normal_capture = build / "render-scene-mirrored-normal.png"
+    mirrored_normal_no_occlusion_capture = build / "render-scene-mirrored-normal-no-occlusion.png"
+    clearcoat_baseline_capture = build / "render-scene-clearcoat-baseline.png"
+    clearcoat_coated_capture = build / "render-scene-clearcoat-coated.png"
+    point_light_left_capture = build / "render-scene-point-light-left.png"
+    point_light_right_capture = build / "render-scene-point-light-right.png"
+    shadows_disabled_capture = build / "render-scene-shadows-disabled.png"
+    shadows_enabled_capture = build / "render-scene-shadows-enabled.png"
+    lighting_outdoor_capture = build / "render-scene-lighting-outdoor.png"
+    lighting_indoor_capture = build / "render-scene-lighting-indoor.png"
+    mirrored_normal_capture.unlink(missing_ok=True)
+    mirrored_normal_no_occlusion_capture.unlink(missing_ok=True)
+    shadows_disabled_capture.unlink(missing_ok=True)
+    shadows_enabled_capture.unlink(missing_ok=True)
+    lighting_outdoor_capture.unlink(missing_ok=True)
+    lighting_indoor_capture.unlink(missing_ok=True)
+    runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
+    runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
+        mirrored_normal_no_occlusion_capture)
+    runtime_env["ELISA_CLEARCOAT_BASELINE_CAPTURE"] = str(clearcoat_baseline_capture)
+    runtime_env["ELISA_CLEARCOAT_COATED_CAPTURE"] = str(clearcoat_coated_capture)
+    runtime_env["ELISA_POINT_LIGHT_LEFT_CAPTURE"] = str(point_light_left_capture)
+    runtime_env["ELISA_POINT_LIGHT_RIGHT_CAPTURE"] = str(point_light_right_capture)
+    runtime_env["ELISA_SHADOWS_DISABLED_CAPTURE"] = str(shadows_disabled_capture)
+    runtime_env["ELISA_SHADOWS_ENABLED_CAPTURE"] = str(shadows_enabled_capture)
+    runtime_env["ELISA_LIGHTING_OUTDOOR_CAPTURE"] = str(lighting_outdoor_capture)
+    runtime_env["ELISA_LIGHTING_INDOOR_CAPTURE"] = str(lighting_indoor_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -335,8 +391,20 @@ def main() -> int:
             print("Same-camera LOD image quality comparison failed.", file=sys.stderr)
             return quality_status
     if status == 0:
+        normal_status = run([sys.executable, str(ROOT / "scripts/compare_mirrored_normal.py"),
+            str(mirrored_normal_capture)])
+        if normal_status != 0:
+            print("Mirrored-UV normal-map image comparison failed.", file=sys.stderr)
+            return normal_status
+    if status == 0:
+        occlusion_status = run([sys.executable, str(ROOT / "scripts/compare_occlusion_strength.py"),
+            str(mirrored_normal_capture), str(mirrored_normal_no_occlusion_capture)])
+        if occlusion_status != 0:
+            print("Occlusion-strength image comparison failed.", file=sys.stderr)
+            return occlusion_status
+    if status == 0:
         if render_only:
-            print("Elisa screen-space UI rendered by Wicked; focus, disabled state, scroll layout, and cleanup passed.")
+            print("Elisa UI, sun shadows, indoor/outdoor lighting, point lights and authored glTF material references rendered by Wicked; visual checks passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

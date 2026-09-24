@@ -91,3 +91,70 @@ extern "C" int32_t elisa_render_scene_v1_test_sun_shadows_match(int32_t enabled)
     return sun != nullptr && sun->IsCastingShadow() == expected &&
         state.path->getShadowsEnabled() == expected ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_sun_cascade_distances_match(
+    float near_end, float middle_end, float far_end) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun == nullptr || sun->cascade_distances.size() != 3) return 0;
+    const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
+    return close(sun->cascade_distances[0], near_end) &&
+        close(sun->cascade_distances[1], middle_end) &&
+        close(sun->cascade_distances[2], far_end) ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_sun_shadow_bias_matches(float expected_bias) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+    if (sun == nullptr || sun->type != wi::scene::LightComponent::DIRECTIONAL ||
+        std::fabs(sun->shadow_bias - expected_bias) >= 0.000001f) return 0;
+    ShaderEntity shader_entity = {};
+    shader_entity.SetShadowBias(sun->shadow_bias);
+    const float encoded_bias = XMConvertHalfToFloat(uint16_t(shader_entity.remap & 0xFFFFu));
+    return std::fabs(encoded_bias - expected_bias) < 0.0001f ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_sun_shadow_rasterizer_bias_matches(
+    int32_t expected_constant_bias, float expected_slope_bias) {
+    const auto* single_sided = wi::renderer::GetRasterizerState(wi::enums::RSTYPE_SHADOW);
+    const auto* double_sided = wi::renderer::GetRasterizerState(wi::enums::RSTYPE_SHADOW_DOUBLESIDED);
+    if (single_sided == nullptr || double_sided == nullptr) return 0;
+    int32_t actual_constant_bias = 0;
+    float actual_slope_bias = 0.0f;
+    wi::renderer::GetShadowRasterizerBias(actual_constant_bias, actual_slope_bias);
+    return single_sided != double_sided &&
+        single_sided->cull_mode == wi::graphics::CullMode::BACK &&
+        double_sided->cull_mode == wi::graphics::CullMode::NONE &&
+        actual_constant_bias == expected_constant_bias &&
+        std::fabs(actual_slope_bias - expected_slope_bias) < 0.0001f ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_sky_map_matches(
+    uint32_t width, uint32_t height, float rotation_radians) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    const auto& weather = state.scene->weather;
+    if (!weather.skyMap.IsValid() || !weather.skyMap.GetTexture().IsValid()) return 0;
+    const auto& texture = weather.skyMap.GetTexture();
+    const auto& desc = texture.GetDesc();
+    const std::string& name = weather.skyMapName;
+    const std::string expected_suffix = "/test/fixtures/sky_latlong.png";
+    const bool name_matches = name.size() >= expected_suffix.size() &&
+        name.compare(name.size() - expected_suffix.size(), expected_suffix.size(), expected_suffix) == 0;
+    const float expected_rotation = std::remainder(rotation_radians, XM_2PI);
+    return desc.width == width && desc.height == height && !name.empty() && name_matches &&
+        std::fabs(weather.sky_rotation - expected_rotation) < 0.0001f ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_sky_map_cleared(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr) return 0;
+    return !state.scene->weather.skyMap.IsValid() && state.scene->weather.skyMapName.empty() &&
+        state.scene->weather.sky_rotation == 0.0f ? 1 : 0;
+}

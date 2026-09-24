@@ -25,6 +25,7 @@ enum {
     ELISA_RENDER_SCENE_ASSET_PENDING = -11,
     ELISA_RENDER_SCENE_NO_HIT = -12,
     ELISA_RENDER_SCENE_TIMED_OUT = -13,
+    ELISA_RENDER_SCENE_UNSUPPORTED_FEATURE = -14,
 };
 
 // elisa_render_scene_v1_snapshot_asset_state results; a failed request
@@ -56,6 +57,9 @@ uint32_t elisa_render_scene_abi_version(void);
 int32_t elisa_render_scene_v1_initialize(int32_t width, int32_t height, float vertical_size);
 int32_t elisa_render_scene_v1_wait_for_pipelines(uint32_t timeout_milliseconds);
 int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
+int32_t elisa_render_scene_v1_set_primary_viewport(
+    int32_t x, int32_t y, int32_t width, int32_t height);
+int32_t elisa_render_scene_v1_clear_primary_viewport(void);
 int32_t elisa_render_scene_v1_set_camera_render_target(
     int32_t width, int32_t height, float update_interval);
 int32_t elisa_render_scene_v1_clear_camera_render_target(void);
@@ -79,6 +83,17 @@ int32_t elisa_render_scene_v1_update_camera(
 int32_t elisa_render_scene_v1_activate_camera(int64_t handle);
 int32_t elisa_render_scene_v1_activate_default_camera(void);
 int32_t elisa_render_scene_v1_destroy_camera(int64_t handle);
+// Render a secondary camera into the pixel rectangle and composite it over
+// the primary view. Rectangles use framebuffer pixels and update intervals
+// are in seconds.
+int32_t elisa_render_scene_v1_set_camera_viewport(
+    int64_t handle, int32_t x, int32_t y, int32_t width, int32_t height,
+    float update_interval);
+int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle);
+int32_t elisa_render_scene_v1_camera_viewport_ray(
+    int64_t handle, float screen_x, float screen_y,
+    float* origin_x, float* origin_y, float* origin_z,
+    float* direction_x, float* direction_y, float* direction_z);
 int64_t elisa_render_scene_v1_create(
     int32_t primitive,
     float px, float py, float pz,
@@ -201,6 +216,41 @@ int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_occlusion(
     float metallic, float roughness,
     float emissive_red, float emissive_green, float emissive_blue,
     float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion);
+int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_parameters(
+    uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness, float normal_scale,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion);
+int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_material_factors(
+    uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness, float normal_scale, float occlusion_strength,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion);
+// Additive PBR material registration with glTF KHR_materials_clearcoat data.
+int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_pbr_extensions(
+    uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
+    uint64_t clearcoat_high, uint64_t clearcoat_low,
+    uint64_t clearcoat_roughness_high, uint64_t clearcoat_roughness_low,
+    uint64_t clearcoat_normal_high, uint64_t clearcoat_normal_low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness, float normal_scale, float occlusion_strength,
+    float clearcoat_factor, float clearcoat_roughness_factor, float clearcoat_normal_scale,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion);
 int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_stage_snapshot_material_set_slot(
     uint32_t slot, uint64_t material_high, uint64_t material_low);
@@ -278,6 +328,13 @@ int32_t elisa_render_scene_v1_destroy_effect(int64_t handle);
 int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
 int32_t elisa_render_scene_v1_set_texture_uv_transform(int64_t handle, float scale_u, float scale_v, float offset_u, float offset_v);
 int32_t elisa_render_scene_v1_set_sun_shadows(int32_t enabled);
+// Positive values reduce reverse-Z directional shadow acne; range is [-0.01, 0.01].
+int32_t elisa_render_scene_v1_set_sun_shadow_bias(float receiver_depth_bias);
+// Live rasterizer bias is currently available on Wicked's Metal backend.
+int32_t elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
+    int32_t constant_depth_bias, float slope_scaled_depth_bias);
+int32_t elisa_render_scene_v1_set_sun_cascade_distances(
+    float near_cascade_end, float middle_cascade_end, float far_cascade_end);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_alpha_mode(int64_t handle, int32_t mode, float cutoff, int32_t double_sided);
 int32_t elisa_render_scene_v1_set_cast_shadow(int64_t handle, int32_t enabled);
@@ -294,20 +351,26 @@ int32_t elisa_render_scene_v1_set_environment(
     float sky_exposure,
     float fog_red, float fog_green, float fog_blue,
     float fog_start, float fog_density, int32_t fog_enabled);
+int32_t elisa_render_scene_v1_set_sky_map(const char* asset_path, float rotation_radians);
+int32_t elisa_render_scene_v1_clear_sky_map(void);
 int64_t elisa_render_scene_v1_create_light(
     int32_t kind,
     float red, float green, float blue,
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow);
+    int32_t casts_shadow, int32_t shadow_resolution,
+    float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost);
 int32_t elisa_render_scene_v1_update_light(
     int64_t handle, int32_t kind,
     float red, float green, float blue,
     float px, float py, float pz,
     float dx, float dy, float dz,
     float intensity, float range, float inner_cone, float outer_cone,
-    int32_t casts_shadow);
+    int32_t casts_shadow, int32_t shadow_resolution,
+    float rectangle_width, float rectangle_height,
+    int32_t volumetrics_enabled, float volumetric_boost);
 int32_t elisa_render_scene_v1_destroy_light(int64_t handle);
 int32_t elisa_render_scene_v1_set_bloom(int32_t enabled, float threshold);
 int32_t elisa_render_scene_v1_set_ambient_occlusion(int32_t enabled);
@@ -339,6 +402,14 @@ typedef struct ElisaRenderSceneQualityProfile {
 } ElisaRenderSceneQualityProfile;
 int32_t elisa_render_scene_v1_apply_quality_profile(
     const ElisaRenderSceneQualityProfile* profile);
+// Extended profile entry point. Kept separate so the v1 profile struct layout
+// stays compatible with callers compiled against the original ABI.
+int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
+    const ElisaRenderSceneQualityProfile* profile,
+    int32_t shadow_quality, float sun_shadow_receiver_bias);
+int32_t elisa_render_scene_v1_apply_camera_quality_profile(
+    int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
+    int32_t shadow_quality, float sun_shadow_receiver_bias);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_set_visibility_policy(
     int64_t handle, float draw_distance, float lod_bias, uint32_t layer_mask, int32_t renderable);

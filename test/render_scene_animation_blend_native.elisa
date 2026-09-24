@@ -111,11 +111,12 @@ module RenderSceneAnimationBlendNativeTests:
             return phase_status if phase_status != 0
             fade_status: i32 = fade_checks(rig)
             return fade_status if fade_status != 0
-            # Out-of-range speeds and unskinned instances are refused.
-            return 20 if retime(rig, -1.0) != 1
-            return 21 if retime(box, 1.0) != 1
+            # Reverse speeds are accepted within the same bounded range.
+            return 20 if retime(rig, -1.0) != 0
+            return 21 if retime(rig, -17.0) != 1
+            return 22 if retime(box, 1.0) != 1
             destroyed: bool = catch RenderScene::destroy(rig):
                 ok: true
                 error failure: false
-            return 22 if not destroyed
+            return 23 if not destroyed
             0

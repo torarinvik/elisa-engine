@@ -7,6 +7,12 @@ module Quality:
             MAX_SCALE: f32 = 1.0
             MIN_BLOOM_THRESHOLD: f32 = 0.0
             MAX_BLOOM_THRESHOLD: f32 = 100.0
+            MIN_SUN_SHADOW_RECEIVER_BIAS: f32 = -0.01
+            MAX_SUN_SHADOW_RECEIVER_BIAS: f32 = 0.01
+            FINITE_VALUE_LIMIT: f32 = 1000000000000000000000000000000.0
+
+        def finite(value: f32) -> bool:
+            value == value and value >= -Limits::FINITE_VALUE_LIMIT and value <= Limits::FINITE_VALUE_LIMIT
 
     public:
         enum Level:
@@ -24,6 +30,11 @@ module Quality:
             Fsr1
             Fsr2
 
+        enum ShadowQuality:
+            Low
+            Medium
+            High
+
         struct Profile:
             level: mutable Level
             tonemap: mutable Tonemap
@@ -37,6 +48,8 @@ module Quality:
             screen_space_reflections: mutable bool
             fog: mutable bool
             depth_effects: mutable bool
+            shadow_quality: mutable ShadowQuality
+            sun_shadow_receiver_bias: mutable f32
 
         def Profile() -> Profile:
             Profile{
@@ -52,10 +65,19 @@ module Quality:
                 screen_space_reflections: false,
                 fog: true,
                 depth_effects: true,
+                shadow_quality: ShadowQuality.Medium,
+                sun_shadow_receiver_bias: 0.0,
             }
 
         def profile_valid(profile: Profile) -> bool:
-            profile.render_scale >= Limits::MIN_SCALE and profile.render_scale <= Limits::MAX_SCALE and profile.bloom_threshold >= Limits::MIN_BLOOM_THRESHOLD and profile.bloom_threshold <= Limits::MAX_BLOOM_THRESHOLD and not (profile.temporal_aa and profile.upscaler == Upscaler.Fsr2)
+            return false if profile.tonemap != Tonemap.Reinhard and profile.tonemap != Tonemap.Aces and profile.tonemap != Tonemap.Uchimura
+            return false if profile.upscaler != Upscaler.None and profile.upscaler != Upscaler.Fsr1 and profile.upscaler != Upscaler.Fsr2
+            return false if profile.shadow_quality != ShadowQuality.Low and profile.shadow_quality != ShadowQuality.Medium and profile.shadow_quality != ShadowQuality.High
+            return false if not finite(profile.render_scale) or not finite(profile.bloom_threshold) or not finite(profile.sun_shadow_receiver_bias)
+            return false if profile.render_scale < Limits::MIN_SCALE or profile.render_scale > Limits::MAX_SCALE
+            return false if profile.bloom_threshold < Limits::MIN_BLOOM_THRESHOLD or profile.bloom_threshold > Limits::MAX_BLOOM_THRESHOLD
+            return false if profile.sun_shadow_receiver_bias < Limits::MIN_SUN_SHADOW_RECEIVER_BIAS or profile.sun_shadow_receiver_bias > Limits::MAX_SUN_SHADOW_RECEIVER_BIAS
+            not (profile.temporal_aa and profile.upscaler == Upscaler.Fsr2)
 
         def low() -> Profile:
             profile: mutable Profile = Profile()
@@ -67,6 +89,7 @@ module Quality:
             profile.screen_space_reflections <- false
             profile.fog <- false
             profile.depth_effects <- false
+            profile.shadow_quality <- ShadowQuality.Low
             profile
 
         def high() -> Profile:
@@ -78,4 +101,5 @@ module Quality:
             profile.ambient_occlusion <- true
             profile.screen_space_reflections <- true
             profile.depth_effects <- true
+            profile.shadow_quality <- ShadowQuality.High
             profile

@@ -16,6 +16,7 @@ constexpr float MIN_AO_POWER = 0.0f;
 constexpr float MAX_AO_POWER = 8.0f;
 constexpr int MIN_SHADOW_QUALITY = 0;
 constexpr int MAX_SHADOW_QUALITY = 2;
+constexpr float MAX_SUN_SHADOW_RECEIVER_BIAS = 0.01f;
 
 inline bool valid_emission(float red, float green, float blue, float strength) {
     return std::isfinite(red) && std::isfinite(green) && std::isfinite(blue) && std::isfinite(strength) &&

@@ -2,9 +2,9 @@ include "../src/world/storage.elisa"
 
 def main() -> i32:
     catalog: mutable WorldStorage::Catalog = WorldStorage::Catalog()
-    actor: i64 = WorldStorage::catalog_spawn_actor(&catalog, 100)
-    projectile: i64 = WorldStorage::catalog_spawn_projectile(&catalog, 7)
-    return 1 if actor <= 0 or projectile <= actor
+    actor: WorldStorage::Handle = WorldStorage::catalog_spawn_actor(&catalog, 100)
+    projectile: WorldStorage::Handle = WorldStorage::catalog_spawn_projectile(&catalog, 7)
+    return 1 if WorldStorage::catalog_handle_id(actor) <= 0 or WorldStorage::catalog_handle_id(projectile) <= WorldStorage::catalog_handle_id(actor)
     actor_record: WorldStorage::Actor = WorldStorage::catalog_actor(&catalog, actor)
     projectile_record: WorldStorage::Projectile = WorldStorage::catalog_projectile(&catalog, projectile)
     return 2 if actor_record.health != 100 or projectile_record.damage != 7
@@ -13,19 +13,26 @@ def main() -> i32:
     return 5 if WorldStorage::catalog_actor_count(&catalog) != 0 or WorldStorage::catalog_projectile_count(&catalog) != 1
     return 6 if not WorldStorage::catalog_destroy_projectile(&catalog, projectile)
     return 7 if WorldStorage::catalog_projectile_count(&catalog) != 0
-    dense_ids: mutable i64[WorldStorage::MAX_ROWS] = zeroed
+    foreign_actors: mutable WorldStorage::Catalog = WorldStorage::Catalog()
+    foreign_actor: WorldStorage::Handle = WorldStorage::catalog_spawn_actor(&foreign_actors, 200)
+    return 61 if WorldStorage::catalog_handle_id(foreign_actor) != WorldStorage::catalog_handle_id(actor)
+    return 62 if WorldStorage::catalog_handle_valid(&foreign_actors, actor) or WorldStorage::catalog_actor(&foreign_actors, actor).health != -1
+    return 63 if WorldStorage::catalog_destroy_actor(&foreign_actors, actor)
+    first_dense: mutable WorldStorage::Handle = WorldStorage::catalog_invalid_handle()
+    middle_dense: mutable WorldStorage::Handle = WorldStorage::catalog_invalid_handle()
+    last_dense: mutable WorldStorage::Handle = WorldStorage::catalog_invalid_handle()
     for index in 0..<WorldStorage::MAX_ROWS:
-        dense_ids[index] <- WorldStorage::catalog_spawn_actor(&catalog, 1000)
-        return 8 if dense_ids[index] <= 0
+        current_dense: WorldStorage::Handle = WorldStorage::catalog_spawn_actor(&catalog, 1000)
+        return 8 if WorldStorage::catalog_handle_id(current_dense) <= 0
+        first_dense <- current_dense if index == 0
+        middle_dense <- current_dense if index == WorldStorage::MAX_ROWS / 2
+        last_dense <- current_dense if index == WorldStorage::MAX_ROWS - 1
     return 9 if WorldStorage::catalog_actor_count(&catalog) != WorldStorage::MAX_ROWS
-    return 10 if WorldStorage::catalog_spawn_actor(&catalog, 9999) != -1
-    first_dense: i64 = dense_ids[0]
-    middle_dense: i64 = dense_ids[WorldStorage::MAX_ROWS / 2]
-    last_dense: i64 = dense_ids[WorldStorage::MAX_ROWS - 1]
+    return 10 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_actor(&catalog, 9999)) != -1
     return 11 if not WorldStorage::catalog_destroy_actor(&catalog, middle_dense)
     return 12 if WorldStorage::catalog_actor_count(&catalog) != WorldStorage::MAX_ROWS - 1
-    replacement: i64 = WorldStorage::catalog_spawn_actor(&catalog, 9999)
-    return 13 if replacement <= last_dense
+    replacement: WorldStorage::Handle = WorldStorage::catalog_spawn_actor(&catalog, 9999)
+    return 13 if WorldStorage::catalog_handle_id(replacement) <= WorldStorage::catalog_handle_id(last_dense)
     return 14 if WorldStorage::catalog_actor_count(&catalog) != WorldStorage::MAX_ROWS
     return 15 if WorldStorage::catalog_actor(&catalog, first_dense).health != 1000
     return 16 if WorldStorage::catalog_actor(&catalog, last_dense).health != 1000
@@ -35,18 +42,18 @@ def main() -> i32:
     return 18 if not WorldStorage::catalog_register_type(&dynamic, 1002, 2)
     return 19 if WorldStorage::catalog_registered_type_count(&dynamic) != 2
     return 20 if WorldStorage::catalog_type_field_count(&dynamic, 1001) != 2 or WorldStorage::catalog_type_field_count(&dynamic, 1002) != 2
-    first_dynamic: i64 = WorldStorage::catalog_spawn_registered(&dynamic, 1001, 4, 8)
-    second_dynamic: i64 = WorldStorage::catalog_spawn_registered(&dynamic, 1001, 5, 10)
-    projectile_dynamic: i64 = WorldStorage::catalog_spawn_registered(&dynamic, 1002, 7, 14)
-    return 21 if first_dynamic <= 0 or second_dynamic <= first_dynamic or projectile_dynamic <= second_dynamic
+    first_dynamic: WorldStorage::Handle = WorldStorage::catalog_spawn_registered(&dynamic, 1001, 4, 8)
+    second_dynamic: WorldStorage::Handle = WorldStorage::catalog_spawn_registered(&dynamic, 1001, 5, 10)
+    projectile_dynamic: WorldStorage::Handle = WorldStorage::catalog_spawn_registered(&dynamic, 1002, 7, 14)
+    return 21 if WorldStorage::catalog_handle_id(first_dynamic) <= 0 or WorldStorage::catalog_handle_id(second_dynamic) <= WorldStorage::catalog_handle_id(first_dynamic) or WorldStorage::catalog_handle_id(projectile_dynamic) <= WorldStorage::catalog_handle_id(second_dynamic)
     return 22 if WorldStorage::catalog_registered_count(&dynamic, 1001) != 2
     record: WorldStorage::DynamicRecord = WorldStorage::catalog_registered(&dynamic, second_dynamic)
-    return 23 if not record.live or record.type_id != 1001 or record.fields[0] != 5 or record.fields[1] != 10 or record.field_count != 2 or not WorldStorage::catalog_registered_valid(&dynamic, record)
-    return 24 if WorldStorage::catalog_spawn_registered(&dynamic, 1001, 6, 12) <= 0
-    return 25 if WorldStorage::catalog_spawn_registered(&dynamic, 1001, 7, 14) != -1
+    return 23 if not record.live or record.type_id != 1001 or WorldStorage::catalog_registered_value(&dynamic, second_dynamic, 0).integer != 5 or WorldStorage::catalog_registered_value(&dynamic, second_dynamic, 1).integer != 10 or record.field_count != 2 or not WorldStorage::catalog_registered_valid(&dynamic, record)
+    return 24 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered(&dynamic, 1001, 6, 12)) <= 0
+    return 25 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered(&dynamic, 1001, 7, 14)) != -1
     return 26 if not WorldStorage::catalog_destroy_registered(&dynamic, second_dynamic)
-    replacement_dynamic: i64 = WorldStorage::catalog_spawn_registered(&dynamic, 1001, 9, 18)
-    return 27 if replacement_dynamic <= projectile_dynamic
+    replacement_dynamic: WorldStorage::Handle = WorldStorage::catalog_spawn_registered(&dynamic, 1001, 9, 18)
+    return 27 if WorldStorage::catalog_handle_id(replacement_dynamic) <= WorldStorage::catalog_handle_id(projectile_dynamic)
     return 28 if WorldStorage::catalog_registered_count(&dynamic, 1001) != 3
     return 29 if WorldStorage::catalog_registered(&dynamic, second_dynamic).live
     return 30 if not WorldStorage::catalog_destroy_registered(&dynamic, first_dynamic)
@@ -61,23 +68,74 @@ def main() -> i32:
         return 36 if not WorldStorage::catalog_register_type(&total, 2000 + type_index.i64(), WorldStorage::MAX_ROWS)
     for row in 0..<WorldStorage::MAX_DYNAMIC_ROWS:
         type_id: i64 = 2000 + (row % WorldStorage::MAX_REGISTERED_TYPES).i64()
-        return 37 if WorldStorage::catalog_spawn_registered(&total, type_id, row.i64(), row.i64() * 2) <= 0
+        return 37 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered(&total, type_id, row.i64(), row.i64() * 2)) <= 0
     return 38 if WorldStorage::catalog_dynamic_count(&total) != WorldStorage::MAX_DYNAMIC_ROWS
-    return 39 if WorldStorage::catalog_spawn_registered(&total, 2000, 1, 2) != -1
+    return 39 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered(&total, 2000, 1, 2)) != -1
 
     schema: mutable WorldStorage::Catalog = WorldStorage::Catalog()
     return 40 if not WorldStorage::catalog_register_type_with_schema(&schema, 3001, 4, 4)
     return 41 if WorldStorage::catalog_type_capacity(&schema, 3001) != 4 or WorldStorage::catalog_type_field_count(&schema, 3001) != 4
     values: i64[WorldStorage::MAX_DYNAMIC_FIELDS] = [3, 5, 7, 11, 0, 0, 0, 0]
-    rich: i64 = WorldStorage::catalog_spawn_registered_values(&schema, 3001, values, 4)
-    return 42 if rich <= 0
+    rich: WorldStorage::Handle = WorldStorage::catalog_spawn_registered_values(&schema, 3001, values, 4)
+    return 42 if WorldStorage::catalog_handle_id(rich) <= 0
     rich_record: WorldStorage::DynamicRecord = WorldStorage::catalog_registered(&schema, rich)
-    return 43 if rich_record.field_count != 4 or rich_record.fields[0] != 3 or rich_record.fields[3] != 11 or not WorldStorage::catalog_registered_valid(&schema, rich_record)
-    return 44 if WorldStorage::catalog_spawn_registered_values(&schema, 3001, values, 3) != -1
+    return 43 if rich_record.field_count != 4 or WorldStorage::catalog_registered_value(&schema, rich, 0).integer != 3 or WorldStorage::catalog_registered_value(&schema, rich, 3).integer != 11 or not WorldStorage::catalog_registered_valid(&schema, rich_record)
+    return 44 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered_values(&schema, 3001, values, 3)) != -1
     return 45 if WorldStorage::catalog_register_type_with_schema(&schema, 3002, 1, 0)
     return 46 if WorldStorage::catalog_register_type_with_schema(&schema, 3002, 1, WorldStorage::MAX_DYNAMIC_FIELDS + 1)
     return 47 if WorldStorage::catalog_register_type_with_schema(&schema, 0, 1, 1)
-    invalid_record: WorldStorage::DynamicRecord = WorldStorage::DynamicRecord{
-        type_id: 3001, id: rich, fields: values, field_count: 3, live: true}
+    invalid_record: mutable WorldStorage::DynamicRecord = WorldStorage::catalog_registered(&schema, rich)
+    invalid_record.field_count <- 3
     return 48 if WorldStorage::catalog_registered_valid(&schema, invalid_record)
+
+    typed: mutable WorldStorage::Catalog = WorldStorage::Catalog()
+    kinds: WorldStorage::FieldKind[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+        WorldStorage::FieldKind.Integer, WorldStorage::FieldKind.Real,
+        WorldStorage::FieldKind.Boolean, WorldStorage::FieldKind.Integer,
+        WorldStorage::FieldKind.Invalid, WorldStorage::FieldKind.Invalid,
+        WorldStorage::FieldKind.Invalid, WorldStorage::FieldKind.Invalid]
+    return 49 if not WorldStorage::catalog_register_typed_type(&typed, 5001, 2, kinds, 3)
+    typed_values: WorldStorage::FieldValue[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+        WorldStorage::integer_field(42), WorldStorage::real_field(2.5),
+        WorldStorage::boolean_field(true), WorldStorage::integer_field(0),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false)]
+    typed_id: WorldStorage::Handle = WorldStorage::catalog_spawn_registered_typed_values(&typed, 5001, typed_values, 3)
+    return 50 if WorldStorage::catalog_handle_id(typed_id) <= 0
+    foreign_typed: mutable WorldStorage::Catalog = WorldStorage::Catalog()
+    return 64 if not WorldStorage::catalog_register_typed_type(&foreign_typed, 5001, 2, kinds, 3)
+    foreign_typed_id: WorldStorage::Handle = WorldStorage::catalog_spawn_registered_typed_values(&foreign_typed, 5001, typed_values, 3)
+    return 65 if WorldStorage::catalog_handle_id(foreign_typed_id) != WorldStorage::catalog_handle_id(typed_id)
+    return 66 if WorldStorage::catalog_handle_valid(&foreign_typed, typed_id) or WorldStorage::catalog_registered(&foreign_typed, typed_id).live
+    return 67 if WorldStorage::catalog_destroy_registered(&foreign_typed, typed_id)
+    typed_record: WorldStorage::DynamicRecord = WorldStorage::catalog_registered(&typed, typed_id)
+    return 51 if not WorldStorage::catalog_registered_valid(&typed, typed_record)
+    integer_value: WorldStorage::FieldValue = WorldStorage::catalog_registered_value(&typed, typed_id, 0)
+    real_value: WorldStorage::FieldValue = WorldStorage::catalog_registered_value(&typed, typed_id, 1)
+    boolean_value: WorldStorage::FieldValue = WorldStorage::catalog_registered_value(&typed, typed_id, 2)
+    return 52 if integer_value.kind != WorldStorage::FieldKind.Integer or integer_value.integer != 42
+    return 53 if real_value.kind != WorldStorage::FieldKind.Real or real_value.real != 2.5
+    return 54 if boolean_value.kind != WorldStorage::FieldKind.Boolean or not boolean_value.boolean
+    wrong_kind: WorldStorage::FieldValue[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+        WorldStorage::integer_field(42), WorldStorage::integer_field(25),
+        WorldStorage::boolean_field(true), WorldStorage::integer_field(0),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false)]
+    return 55 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered_typed_values(&typed, 5001, wrong_kind, 3)) != -1
+    invalid_real: WorldStorage::FieldValue[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+        WorldStorage::integer_field(42), WorldStorage::real_field(1.0e301),
+        WorldStorage::boolean_field(true), WorldStorage::integer_field(0),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false)]
+    return 56 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered_typed_values(&typed, 5001, invalid_real, 3)) != -1
+    malformed_values: WorldStorage::FieldValue[WorldStorage::MAX_DYNAMIC_FIELDS] = [
+        WorldStorage::FieldValue{kind: WorldStorage::FieldKind.Integer, integer: 42, real: 1.0, boolean: false},
+        WorldStorage::real_field(2.5), WorldStorage::boolean_field(true),
+        WorldStorage::integer_field(0), WorldStorage::boolean_field(false),
+        WorldStorage::boolean_field(false), WorldStorage::boolean_field(false),
+        WorldStorage::boolean_field(false)]
+    return 57 if WorldStorage::catalog_handle_id(WorldStorage::catalog_spawn_registered_typed_values(&typed, 5001, malformed_values, 3)) != -1
+    return 58 if not WorldStorage::catalog_registered_counts_valid(&typed)
+    return 59 if not WorldStorage::catalog_destroy_registered(&typed, typed_id)
+    return 60 if WorldStorage::catalog_registered_count(&typed, 5001) != 0 or not WorldStorage::catalog_registered_counts_valid(&typed)
     0

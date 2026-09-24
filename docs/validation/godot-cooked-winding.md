@@ -27,7 +27,7 @@ No check could see it:
 
 ## Confirmation
 
-A scratch script rendered cooked triangle 0 of `build/cooked/maze_tile.pkg`
+A scratch script rendered cooked triangle 0 of `build/cooked/maze_tile-godot.pkg`
 alone in Godot 4.7.2 with a display. It drew the triangle white on black with
 back faces culled, and read the center pixel. The camera looked at the
 triangle's center from 3 units along its cooked normal, +Z, which is also its
@@ -51,6 +51,12 @@ Godot:
 - `surface_arrays(package)` decodes positions, normals and indices.
 - It passes the indices through `godot_indices`, which swaps each triangle's
   second and third index.
+
+The native cooked package uses meshoptimizer's lossless stream codec, which
+the GDScript host does not decode. `scripts/cook_assets.py` therefore emits a
+`*-godot.pkg` companion from the same normalized geometry, with raw vertex and
+index streams. The Godot probe and capture load that explicit host variant;
+they do not fall back to Godot's source importer for rendered geometry.
 
 `probe.gd` and `capture.gd` both build their meshes from it. The skinned quad
 in `probe.gd` has hand-written indices and isn't cooked, so it doesn't use the

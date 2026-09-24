@@ -19,6 +19,8 @@ include "./render_scene_async_asset_native.elisa"
 include "./render_scene_cooked_material_native.elisa"
 include "./render_scene_node_hierarchy_native.elisa"
 include "./render_scene_cooked_texture_native.elisa"
+include "./render_scene_clearcoat_native.elisa"
+include "./render_scene_mirrored_normal_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_image_native.elisa"
 include "./render_scene_debug_native.elisa"
@@ -65,10 +67,6 @@ def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
         error failure: 2
     return 0 if overflow == 1 and RenderScene::electric_arc_batch_count(batch) == RenderScene::MAX_ELECTRIC_ARCS
     2
-def hide_render_instance(handle: RenderScene::InstanceHandle) -> i32:
-    catch RenderScene::set_visible(handle, false):
-        ok: 0
-        error failure: 1
 def exercise_render_scene() -> i32:
     config: Application::Config = Application::Config{
         title: "Elisa Render Scene Smoke",
@@ -343,6 +341,9 @@ def exercise_render_scene() -> i32:
     return 104 if restore_render_projection != 0
     for attempt in 0..<4:
         return 78 if Application::pump() != Application::PumpStatus.Running
+    shadow_rendering: i32 = RenderSceneEnvironmentNativeTests::verify_lighting_rendering(
+        box, sphere, floor, electric_arc, hud_text, hud_panel)
+    return elisa_render_scene_v1_test_failed_case(197, shadow_rendering) if shadow_rendering != 0
     return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
     return 131 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
     hidden_panel: i32 = catch RenderScene::set_overlay_panel_visible(hud_panel, false):
@@ -377,7 +378,10 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(228, node_hierarchy_status) if node_hierarchy_status != 0
     cooked_texture_status: i32 = RenderSceneCookedTextureNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(230, cooked_texture_status) if cooked_texture_status != 0
-
+    clearcoat_status: i32 = RenderSceneClearcoatNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(233, clearcoat_status) if clearcoat_status != 0
+    mirrored_normal_status: i32 = RenderSceneMirroredNormalNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(231, mirrored_normal_status) if mirrored_normal_status != 0
     mesh_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: -2.6666667, y: -0.6666667, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -451,9 +455,9 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 75 if cooked_emissive != 0
-    hidden_box: i32 = hide_render_instance(box)
-    hidden_sphere: i32 = hide_render_instance(sphere)
-    hidden_floor: i32 = hide_render_instance(floor)
+    hidden_box: i32 = RenderSceneVisibilityNativeTests::hide_instance(box)
+    hidden_sphere: i32 = RenderSceneVisibilityNativeTests::hide_instance(sphere)
+    hidden_floor: i32 = RenderSceneVisibilityNativeTests::hide_instance(floor)
     return 63 if hidden_box != 0 or hidden_sphere != 0 or hidden_floor != 0
     return 65 if Application::pump() != Application::PumpStatus.Running
     rendered_cooked_mesh: mutable i32 = 0
@@ -476,7 +480,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: -1.0
         error failure: -2.0
     return 78 if stale_animation_progress != -1.0
-
     _ = catch RenderScene::set_electric_arc_visible(electric_arc, false):
         ok: 0
         error failure: return 95
@@ -501,7 +504,6 @@ def exercise_render_scene() -> i32:
         error failure: 2
     return 101 if stale_electric_arc != 1
     return 102 if elisa_render_scene_v1_test_arc_capacity() != 1
-
     destroyed_hud_text: i32 = catch RenderScene::destroy_overlay_text(hud_text):
         ok: 0
         error failure: 1
@@ -511,7 +513,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 81 if stale_hud_text != 1
-
     text_capacity_handles: mutable RenderScene::OverlayTextHandle[128] = zeroed
     for index in 0..<128 |text_capacity_handles|:
         capacity_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
@@ -532,7 +533,6 @@ def exercise_render_scene() -> i32:
             ok: 0
             error failure: 1
         return 142 if destroyed_capacity_text != 0
-
     destroyed_hud_panel: i32 = catch RenderScene::destroy_overlay_panel(hud_panel):
         ok: 0
         error failure: 1
@@ -542,7 +542,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 139 if stale_hud_panel != 1
-
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0
         error failure: 1
@@ -557,14 +556,12 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 23 if stale_update != 1
-
     # Explicit release clears the scene and invalidates every instance.
     shutdown_result: i32 = catch RenderScene::shutdown():
         ok: 0
         error failure: 1
     return 24 if shutdown_result != 0
     return 25 if RenderScene::is_initialized() or RenderScene::instance_count() != 0
-
     # Reopen the scene, then let Application shutdown invoke the registered
     # cleanup hook. This catches leaked scenes or active paths on app teardown.
     replacement_init: i32 = catch RenderScene::initialize(320, 200, 10.0):
