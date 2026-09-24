@@ -1,5 +1,6 @@
 include "../math/geometry.elisa"
 include "../backend/lighting.elisa"
+include "../backend/quality.elisa"
 module RenderScene:
     private:
         const module NativeStatus:
@@ -61,10 +62,6 @@ module RenderScene:
             Reinhard
             Aces
             Uchimura
-        enum ShadowQuality:
-            Low
-            Medium
-            High
         enum CameraProjection:
             Perspective
             Orthographic
@@ -443,12 +440,12 @@ module RenderScene:
         def set_exposure(exposure: f32) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if exposure < 0.0 or exposure > 8.0
             try check_status(elisa_render_scene_v1_set_exposure(exposure))
-        def set_shadow_quality(quality: ShadowQuality) -> void error[RenderSceneError]:
+        def set_shadow_quality(quality: Quality::ShadowQuality) -> void error[RenderSceneError]:
             quality_value: i32 =
                 match quality:
-                    RenderScene::ShadowQuality.Low: 0
-                    RenderScene::ShadowQuality.Medium: 1
-                    RenderScene::ShadowQuality.High: 2
+                    Quality::ShadowQuality.Low: 0
+                    Quality::ShadowQuality.Medium: 1
+                    Quality::ShadowQuality.High: 2
             try check_status(elisa_render_scene_v1_set_shadow_quality(quality_value))
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0

@@ -33,6 +33,10 @@ module RenderSceneEnvironmentNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 40 if invalid_environment != 1
+            configured_bias_before_sun: i32 = catch RenderScene::set_sun_shadow_bias(0.0005):
+                ok: 0
+                error failure: 1
+            return 59 if configured_bias_before_sun != 0
             environment_status: i32 = catch RenderScene::set_environment(Lighting::Environment{
                 sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
                 sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
@@ -47,6 +51,7 @@ module RenderSceneEnvironmentNativeTests:
                 error failure: 1
             return 41 if environment_status != 0
             return 42 if elisa_render_scene_v1_test_environment_matches() != 1
+            return 60 if elisa_render_scene_v1_test_sun_shadow_bias_matches(0.0005) != 1
             invalid_cascade_order: i32 = catch RenderScene::set_sun_cascade_distances(
                 100.0, 50.0, 400.0):
                 ok: 0

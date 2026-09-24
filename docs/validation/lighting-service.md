@@ -41,7 +41,9 @@ plane.
 `RenderScene::set_sun_shadow_bias` configures a per-sun receiver comparison
 offset in normalized reverse-Z depth, bounded to `[-0.01, 0.01]`. Wicked packs
 it into directional-light shader data and applies it to the depth comparison,
-so it takes effect at runtime without rebuilding pipelines. Positive values
+so it takes effect at runtime without rebuilding pipelines. The setting is
+retained if applied before the environment creates its owned sun, and the
+shared quality profile carries the same value. Positive values
 reduce acne and can increase light leaks; zero preserves the existing
 hard-coded rasterizer bias. Rasterizer constant/slope bias remains at Wicked's
 format-specific defaults because those values are baked into cached pipelines.

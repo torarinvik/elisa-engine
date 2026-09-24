@@ -68,44 +68,84 @@ extern "C" int32_t elisa_render_scene_v1_set_shadow_quality(int32_t quality) {
     return ELISA_RENDER_SCENE_OK;
 }
 
+namespace {
+bool valid_quality_profile(const ElisaRenderSceneQualityProfile* profile) {
+    if (profile == nullptr) return false;
+    return profile->tonemap >= ELISA_RENDER_SCENE_QUALITY_TONEMAP_REINHARD &&
+        profile->tonemap <= ELISA_RENDER_SCENE_QUALITY_TONEMAP_UCHIMURA &&
+        profile->upscaler >= ELISA_RENDER_SCENE_QUALITY_UPSCALER_NONE &&
+        profile->upscaler <= ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2 &&
+        (profile->bloom == 0 || profile->bloom == 1) &&
+        (profile->fxaa == 0 || profile->fxaa == 1) &&
+        (profile->temporal_aa == 0 || profile->temporal_aa == 1) &&
+        (profile->ambient_occlusion == 0 || profile->ambient_occlusion == 1) &&
+        (profile->screen_space_reflections == 0 || profile->screen_space_reflections == 1) &&
+        (profile->fog == 0 || profile->fog == 1) &&
+        (profile->depth_effects == 0 || profile->depth_effects == 1) &&
+        std::isfinite(profile->render_scale) && profile->render_scale >= 0.25f &&
+        profile->render_scale <= 1.0f && std::isfinite(profile->bloom_threshold) &&
+        profile->bloom_threshold >= 0.0f && profile->bloom_threshold <= 100.0f &&
+        !(profile->temporal_aa != 0 && profile->upscaler == ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2);
+}
+
+int32_t apply_quality_profile_locked(RenderSceneService& state,
+    const ElisaRenderSceneQualityProfile& profile) {
+    probe::NativePostProcessDesc desc;
+    desc.tonemap = static_cast<probe::NativeTonemap>(profile.tonemap);
+    desc.upscaler = static_cast<probe::NativeUpscaler>(profile.upscaler);
+    desc.render_scale = profile.render_scale;
+    desc.bloom_threshold = profile.bloom_threshold;
+    desc.bloom = profile.bloom != 0;
+    desc.fxaa = profile.fxaa != 0;
+    desc.temporal_aa = profile.temporal_aa != 0;
+    desc.ambient_occlusion = profile.ambient_occlusion != 0;
+    desc.screen_space_reflections = profile.screen_space_reflections != 0;
+    desc.fog = profile.fog != 0;
+    desc.depth_effects = profile.depth_effects != 0;
+    const probe::PostProcessApply result = probe::PostProcessBridge(*state.path).apply(desc, false);
+    return result == probe::PostProcessApply::Invalid ?
+        ELISA_RENDER_SCENE_INVALID_ARGUMENT : ELISA_RENDER_SCENE_OK;
+}
+}
+
 extern "C" int32_t elisa_render_scene_v1_apply_quality_profile(
     const ElisaRenderSceneQualityProfile* profile) {
-    if (profile == nullptr ||
-        profile->tonemap < ELISA_RENDER_SCENE_QUALITY_TONEMAP_REINHARD ||
-        profile->tonemap > ELISA_RENDER_SCENE_QUALITY_TONEMAP_UCHIMURA ||
-        profile->upscaler < ELISA_RENDER_SCENE_QUALITY_UPSCALER_NONE ||
-        profile->upscaler > ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2 ||
-        (profile->bloom != 0 && profile->bloom != 1) ||
-        (profile->fxaa != 0 && profile->fxaa != 1) ||
-        (profile->temporal_aa != 0 && profile->temporal_aa != 1) ||
-        (profile->ambient_occlusion != 0 && profile->ambient_occlusion != 1) ||
-        (profile->screen_space_reflections != 0 && profile->screen_space_reflections != 1) ||
-        (profile->fog != 0 && profile->fog != 1) ||
-        (profile->depth_effects != 0 && profile->depth_effects != 1) ||
-        !std::isfinite(profile->render_scale) || profile->render_scale < 0.25f ||
-        profile->render_scale > 1.0f || !std::isfinite(profile->bloom_threshold) ||
-        profile->bloom_threshold < 0.0f || profile->bloom_threshold > 100.0f) {
+    if (!valid_quality_profile(profile)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    probe::NativePostProcessDesc desc;
-    desc.tonemap = static_cast<probe::NativeTonemap>(profile->tonemap);
-    desc.upscaler = static_cast<probe::NativeUpscaler>(profile->upscaler);
-    desc.render_scale = profile->render_scale;
-    desc.bloom_threshold = profile->bloom_threshold;
-    desc.bloom = profile->bloom != 0;
-    desc.fxaa = profile->fxaa != 0;
-    desc.temporal_aa = profile->temporal_aa != 0;
-    desc.ambient_occlusion = profile->ambient_occlusion != 0;
-    desc.screen_space_reflections = profile->screen_space_reflections != 0;
-    desc.fog = profile->fog != 0;
-    desc.depth_effects = profile->depth_effects != 0;
-    const probe::PostProcessApply result = probe::PostProcessBridge(*state.path).apply(desc, false);
-    return result == probe::PostProcessApply::Invalid ?
-        ELISA_RENDER_SCENE_INVALID_ARGUMENT : ELISA_RENDER_SCENE_OK;
+    return apply_quality_profile_locked(state, *profile);
+}
+
+extern "C" int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
+    const ElisaRenderSceneQualityProfile* profile, int32_t shadow_quality,
+    float sun_shadow_receiver_bias) {
+    if (!valid_quality_profile(profile) ||
+        !elisa::render_scene_effects::valid_shadow_quality(shadow_quality) ||
+        !std::isfinite(sun_shadow_receiver_bias) ||
+        std::fabs(sun_shadow_receiver_bias) >
+            elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const int32_t status = apply_quality_profile_locked(state, *profile);
+    if (status != ELISA_RENDER_SCENE_OK) return status;
+    elisa::render_scene_effects::apply_shadow_quality(shadow_quality);
+    state.shadow_quality = shadow_quality;
+    state.sun_shadow_receiver_bias = sun_shadow_receiver_bias;
+    if (state.scene != nullptr) {
+        wi::scene::LightComponent* sun = state.scene->lights.GetComponent(state.sun_entity);
+        if (sun != nullptr && sun->type == wi::scene::LightComponent::DIRECTIONAL) {
+            sun->shadow_bias = sun_shadow_receiver_bias;
+        }
+    }
+    return ELISA_RENDER_SCENE_OK;
 }
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
@@ -128,8 +168,13 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_rejects_invalid_flags(void
     duplicate_temporal.bloom_threshold = 1.0f;
     duplicate_temporal.temporal_aa = 1;
     duplicate_temporal.upscaler = ELISA_RENDER_SCENE_QUALITY_UPSCALER_FSR2;
+    ElisaRenderSceneQualityProfile valid_profile{};
+    valid_profile.render_scale = 1.0f;
+    valid_profile.bloom_threshold = 1.0f;
     return elisa_render_scene_v1_apply_quality_profile(&invalid_profile) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_apply_quality_profile(&duplicate_temporal) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_apply_quality_profile_with_shadow(&valid_profile, 3, 0.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_apply_quality_profile_with_shadow(&valid_profile, 2, 0.02f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion(2) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion_settings(0.0f, 1.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion_settings(1.0f, 9.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
@@ -162,6 +207,21 @@ extern "C" int32_t elisa_render_scene_v1_test_shadow_quality_matches(int32_t qua
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
     return state.shadow_quality == quality ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_quality_shadow_matches(
+    int32_t quality, float receiver_bias) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) ||
+        state.shadow_quality != quality ||
+        std::fabs(state.sun_shadow_receiver_bias - receiver_bias) >= 0.000001f) return 0;
+    if (state.scene != nullptr && state.sun_entity != wi::ecs::INVALID_ENTITY) {
+        const auto* sun = state.scene->lights.GetComponent(state.sun_entity);
+        if (sun != nullptr && sun->type == wi::scene::LightComponent::DIRECTIONAL &&
+            std::fabs(sun->shadow_bias - receiver_bias) >= 0.000001f) return 0;
+    }
+    return 1;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_quality_profile_matches(

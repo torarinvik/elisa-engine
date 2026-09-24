@@ -11,6 +11,10 @@ module RenderSceneQualitySettingsNativeTests:
         extern elisa_render_scene_v1_test_shadow_quality_matches(quality: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_quality_shadow_matches(
+            quality: i32, receiver_bias: f32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_quality_profile_matches(
             tonemap: i32, render_scale: f32, bloom_threshold: f32,
             bloom: i32, fxaa: i32, temporal_aa: i32, ambient_occlusion: i32,
@@ -40,7 +44,7 @@ module RenderSceneQualitySettingsNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 114 if invalid_ao != 1
-            shadow_status: i32 = catch RenderScene::set_shadow_quality(RenderScene::ShadowQuality.High):
+            shadow_status: i32 = catch RenderScene::set_shadow_quality(Quality::ShadowQuality.High):
                 ok: 0
                 error failure: 1
             return 115 if shadow_status != 0 or elisa_render_scene_v1_test_shadow_quality_matches(2) != 1
@@ -56,11 +60,23 @@ module RenderSceneQualitySettingsNativeTests:
             profile.screen_space_reflections <- true
             profile.fog <- false
             profile.depth_effects <- false
+            profile.shadow_quality <- Quality::ShadowQuality.High
+            profile.sun_shadow_receiver_bias <- 0.001
             profile_status: i32 = catch RenderScene::apply_quality_profile(&profile):
                 ok: 0
                 error failure: 1
-            return 116 if profile_status != 0 or elisa_render_scene_v1_test_quality_profile_matches(
-                2, 0.75, 1.4, 1, 1, 1, 1, 1, 0, 0) != 1
+            postprocess_matches: i32 = elisa_render_scene_v1_test_quality_profile_matches(
+                2, 0.75, 1.4, 1, 1, 1, 1, 1, 0, 0)
+            shadow_matches: i32 = elisa_render_scene_v1_test_quality_shadow_matches(2, 0.001)
+            return 116 if profile_status != 0 or postprocess_matches != 1 or shadow_matches != 1
+            profile.sun_shadow_receiver_bias <- 0.02
+            invalid_shadow_bias: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            shadow_unchanged: i32 = elisa_render_scene_v1_test_quality_shadow_matches(2, 0.001)
+            return 119 if invalid_shadow_bias != 1 or shadow_unchanged != 1
+            profile.sun_shadow_receiver_bias <- 0.001
             profile.upscaler <- Quality::Upscaler.Fsr2
             invalid_temporal_upscaler: i32 = catch RenderScene::apply_quality_profile(&profile):
                 ok: 0
