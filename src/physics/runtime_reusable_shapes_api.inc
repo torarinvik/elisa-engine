@@ -21,6 +21,19 @@
             try check_status(status)
             ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
 
+        def mesh_shape_create(world: World&, shape: MeshShape, asset_path: cstr,
+            scale: Geometry::Vec3) -> ShapeHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            kind: i32 = match shape:
+                MeshShape.ConvexHull: Status::MESH_SHAPE_CONVEX_HULL
+                MeshShape.TriangleMesh: Status::MESH_SHAPE_TRIANGLE_MESH
+            status: i32 = elisa_physics_v1_create_mesh_shape_from_asset(world.generation,
+                kind, asset_path, scale.x, scale.y, scale.z, &slot, &generation)
+            try check_status(status)
+            ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
+
         def shape_destroy(world: World&, shape: ShapeHandle) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             raise PhysicsError.StaleWorld if shape.world_generation != world.generation
@@ -48,6 +61,19 @@
             status: i32 = elisa_physics_v1_create_shape(state.generation,
                 shape_code(shape), dimensions.x, dimensions.y, dimensions.z,
                 &slot, &generation)
+            try check_status(status)
+            ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
+
+        def service_mesh_shape_create(state: ServiceState&, shape: MeshShape,
+            asset_path: cstr, scale: Geometry::Vec3) -> ShapeHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            kind: i32 = match shape:
+                MeshShape.ConvexHull: Status::MESH_SHAPE_CONVEX_HULL
+                MeshShape.TriangleMesh: Status::MESH_SHAPE_TRIANGLE_MESH
+            status: i32 = elisa_physics_v1_create_mesh_shape_from_asset(state.generation,
+                kind, asset_path, scale.x, scale.y, scale.z, &slot, &generation)
             try check_status(status)
             ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
 

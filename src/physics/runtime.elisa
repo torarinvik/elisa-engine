@@ -14,12 +14,15 @@ module PhysicsRuntime:
             STALE_WORLD: i32 = -7
             SHAPE_IN_USE: i32 = -8
             BODY_NOT_READY: i32 = -9
+            ASSET_LOAD_FAILED: i32 = -10
             BODY_STATIC: i32 = 0
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
             SHAPE_BOX: i32 = 0
             SHAPE_SPHERE: i32 = 1
             SHAPE_CAPSULE: i32 = 2
+            MESH_SHAPE_TRIANGLE_MESH: i32 = 3
+            MESH_SHAPE_CONVEX_HULL: i32 = 4
 
         const CONTACT_ADDED: i32 = 0
         const CONTACT_PERSISTED: i32 = 1
@@ -51,19 +54,7 @@ module PhysicsRuntime:
             position_z: mutable f32&, normal_x: mutable f32&, normal_y: mutable f32&,
             normal_z: mutable f32&, distance: mutable f32&, hit: mutable i32&) -> i32
 
-        struct NativeRayHit:
-            entity: u64
-            position_x: f32
-            position_y: f32
-            position_z: f32
-            normal_x: f32
-            normal_y: f32
-            normal_z: f32
-            distance: f32
-
-        struct NativeRayHitBuffer:
-            hits: NativeRayHit[16]
-            count: u32
+        include "./runtime_ray_abi_types.inc"
 
         @callconv(c)
         extern elisa_physics_v1_raycast_all(world_generation: u64,
@@ -115,6 +106,7 @@ module PhysicsRuntime:
             raise PhysicsError.StaleWorld if status == Status::STALE_WORLD
             raise PhysicsError.ShapeInUse if status == Status::SHAPE_IN_USE
             raise PhysicsError.BodyNotReady if status == Status::BODY_NOT_READY
+            raise PhysicsError.AssetLoadFailed if status == Status::ASSET_LOAD_FAILED
             raise PhysicsError.BackendFailure if status != Status::OK
         def kind_code(kind: BodyKind) -> i32:
             match kind:
@@ -148,6 +140,10 @@ module PhysicsRuntime:
             Box
             Sphere
             Capsule
+
+        enum MeshShape:
+            ConvexHull
+            TriangleMesh
 
         enum ContactKind:
             Added
@@ -193,6 +189,7 @@ module PhysicsRuntime:
             StaleWorld
             ShapeInUse
             BodyNotReady
+            AssetLoadFailed
             BackendFailure
 
         struct BodyDesc:

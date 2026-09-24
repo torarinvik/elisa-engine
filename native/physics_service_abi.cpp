@@ -1,6 +1,8 @@
 #include "physics_service_abi.h"
 
 #include "coordinate_transform_bridge.h"
+#include "coordinate_conventions.h"
+#include "cooked_geometry_package.h"
 #include "physics_service_internal.h"
 
 #include <array>
@@ -8,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <filesystem>
+#include <vector>
 
 namespace {
 
@@ -43,13 +47,19 @@ void shutdown_world() {
         body.entity = wi::ecs::INVALID_ENTITY;
         body.shape_slot = INVALID_SHAPE_SLOT;
         body.shape_generation = 0;
+        body.mesh_proxy_geometry_bytes = 0;
         body.live = false;
     }
     for (ShapeSlot& shape : state.shapes) {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
+        std::vector<XMFLOAT3>().swap(shape.mesh_vertices);
+        std::vector<uint32_t>().swap(shape.mesh_indices);
+        shape.mesh_geometry_bytes = 0;
         shape.body_references = 0;
         shape.live = false;
     }
+    state.mesh_geometry_bytes = 0;
+    state.mesh_proxy_geometry_bytes = 0;
     state.tick = 0;
     state.initialized = false;
     wi::physics::SetSimulationEnabled(state.simulation_before);
@@ -425,8 +435,13 @@ extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
         }
         referenced_shape = &shape;
     }
+    if (body->mesh_proxy_geometry_bytes > state.mesh_proxy_geometry_bytes) {
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
     state.scene->Entity_Remove(body->entity);
     body->entity = wi::ecs::INVALID_ENTITY;
+    state.mesh_proxy_geometry_bytes -= body->mesh_proxy_geometry_bytes;
+    body->mesh_proxy_geometry_bytes = 0;
     if (referenced_shape != nullptr) {
         --referenced_shape->body_references;
         body->shape_slot = INVALID_SHAPE_SLOT;

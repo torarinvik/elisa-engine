@@ -18,6 +18,7 @@ enum {
     ELISA_PHYSICS_STALE_WORLD = -7,
     ELISA_PHYSICS_SHAPE_IN_USE = -8,
     ELISA_PHYSICS_BODY_NOT_READY = -9,
+    ELISA_PHYSICS_ASSET_LOAD_FAILED = -10,
 };
 
 enum {
@@ -30,6 +31,8 @@ enum {
     ELISA_PHYSICS_SHAPE_BOX = 0,
     ELISA_PHYSICS_SHAPE_SPHERE = 1,
     ELISA_PHYSICS_SHAPE_CAPSULE = 2,
+    ELISA_PHYSICS_SHAPE_TRIANGLE_MESH = 3,
+    ELISA_PHYSICS_SHAPE_CONVEX_HULL = 4,
 };
 
 enum {
@@ -105,6 +108,9 @@ int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int32_t kind,
     float dimension_x, float dimension_y, float dimension_z,
+    uint32_t* slot, uint64_t* shape_generation);
+int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_generation, int32_t kind,
+    const char* asset_path, float scale_x, float scale_y, float scale_z,
     uint32_t* slot, uint64_t* shape_generation);
 int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     uint32_t slot, uint64_t shape_generation);
