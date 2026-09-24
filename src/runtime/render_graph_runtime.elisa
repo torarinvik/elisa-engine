@@ -66,8 +66,12 @@ module RenderGraphRuntime:
                 return NATIVE_REJECTED
             Native::OK
     public:
+        const CONFIGURE_OK: i32 = 0
         const CONFIGURE_INVALID_PLAN: i32 = INVALID_PLAN
+        const CONFIGURE_NATIVE_REJECTED: i32 = NATIVE_REJECTED
+        const EXECUTION_OK: i32 = 0
         const EXECUTION_BACKEND_FAILED: i32 = -8
+        const EXECUTION_SUSPENDED: i32 = 1
         enum OperationKind:
             ClearColor
             CopyColor

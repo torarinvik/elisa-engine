@@ -152,6 +152,7 @@ public:
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         fail_next_allocation_ = false;
         fail_pass_index_ = NO_TARGET;
+        suspend_next_frame_ = false;
         last_fallback_preserved_ = false;
 #endif
     }
@@ -168,6 +169,13 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if (!active_.valid || index >= active_.pass_count) return INVALID_ARGUMENT;
         fail_pass_index_ = index;
+        return OK;
+    }
+
+    int32_t suspend_next_frame_for_test() {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!active_.valid) return INVALID_ARGUMENT;
+        suspend_next_frame_ = true;
         return OK;
     }
 
@@ -189,7 +197,19 @@ public:
             return;
         }
         const XMUINT2 resolution = path.GetInternalResolution();
-        if (resolution.x == 0 || resolution.y == 0) return;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+        const bool suspend = suspend_next_frame_;
+        suspend_next_frame_ = false;
+#else
+        constexpr bool suspend = false;
+#endif
+        if (suspend || resolution.x == 0 || resolution.y == 0) {
+            last_status_ = SUSPENDED;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+            last_fallback_preserved_ = path.GetLastPostprocessRT() == imported;
+#endif
+            return;
+        }
         if (targets_dirty_ || internal_width_ != resolution.x || internal_height_ != resolution.y) {
             if (!prepare_targets(*imported, resolution.x, resolution.y)) {
                 last_status_ = BACKEND_FAILED;
@@ -262,6 +282,7 @@ public:
 
 private:
     static constexpr int32_t OK = 0;
+    static constexpr int32_t SUSPENDED = 1;
     static constexpr int32_t INVALID_ARGUMENT = -1;
     static constexpr int32_t BACKEND_FAILED = -8;
 
@@ -420,6 +441,7 @@ private:
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     bool fail_next_allocation_ = false;
     uint32_t fail_pass_index_ = NO_TARGET;
+    bool suspend_next_frame_ = false;
     bool last_fallback_preserved_ = false;
 #endif
 };

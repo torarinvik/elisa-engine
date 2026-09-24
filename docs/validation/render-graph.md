@@ -43,8 +43,11 @@ native execution across a resize and restoration. Test-only failure injection
 also forces target allocation and second-pass failures; both preserve the base
 postprocess output, leave the execution count unchanged, and recover on the next
 frame. Existing rendered image comparisons still pass. Target allocation is
-repeated when internal resolution changes. Suspension behavior, deferred GPU
-retirement checks, and broader rendered graph references remain open R15 work.
+repeated when internal resolution changes. A test-only zero-resolution injection
+also checks the suspended status, unchanged execution count, retained fallback,
+and recovery on the next frame. A real minimized-window or device suspension
+cycle, deferred GPU retirement checks, and broader rendered graph references
+remain open R15 work.
 
 Run the focused planner test with:
 

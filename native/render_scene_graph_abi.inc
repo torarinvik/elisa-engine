@@ -88,6 +88,14 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_test_fail_pass(uint32_t in
     return state.render_graph.fail_pass_for_test(index);
 }
 
+extern "C" int32_t elisa_render_scene_v1_render_graph_test_suspend_next_frame(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    return state.render_graph.suspend_next_frame_for_test();
+}
+
 extern "C" int32_t elisa_render_scene_v1_render_graph_test_fallback_preserved(void) {
     return service().render_graph.last_fallback_preserved_for_test() ? 1 : 0;
 }
