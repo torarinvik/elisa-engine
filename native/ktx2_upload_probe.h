@@ -184,7 +184,7 @@ inline bool check_ktx2_cubemap_upload(const std::filesystem::path& path) {
         "KTX2 cubemap uploaded to Wicked GPU")) return false;
     const wi::graphics::TextureDesc& desc = resource.GetTexture().GetDesc();
     const KTX2UploadFormats supported = query_ktx2_upload_formats(wi::graphics::GetDevice(), false);
-    return check(desc.array_size == 6 && desc.width == desc.height &&
+    return check(desc.array_size == 6 && desc.width == desc.height && desc.mip_levels == 3 &&
         desc.misc_flags == wi::graphics::ResourceMiscFlag::TEXTURECUBE &&
         desc.format == ktx2_wicked_format(choose_ktx2_upload_encoding(false, supported), false),
         "KTX2 upload preserves cubemap shape");

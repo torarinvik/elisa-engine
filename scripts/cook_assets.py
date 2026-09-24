@@ -350,7 +350,7 @@ def write_basisu_ktx2(root: Path, package_dir: Path, pixels: bytes, size: int):
         source = Path(workdir) / "tile.png"
         source.write_bytes(write_png(size, size, pixels))
         result = subprocess.run(
-            [basisu, "-ktx2", "-uastc", "-linear", str(source), "-output_file", str(output)],
+            [basisu, "-ktx2", "-uastc", "-linear", "-mipmap", str(source), "-output_file", str(output)],
             capture_output=True, text=True, check=False,
         )
     if result.returncode != 0 or not output.is_file():
@@ -388,7 +388,7 @@ def write_basisu_ktx2_cubemap(root: Path, package_dir: Path, size: int):
             source.write_bytes(write_png(size, size, bytes(color) * (size * size)))
             sources.append(str(source))
         result = subprocess.run(
-            [basisu, "-ktx2", "-uastc", "-linear", "-cubemap", *sources,
+            [basisu, "-ktx2", "-uastc", "-linear", "-mipmap", "-cubemap", *sources,
              "-output_file", str(output)],
             capture_output=True, text=True, check=False,
         )

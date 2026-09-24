@@ -394,6 +394,10 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     wi::graphics::Texture texture;
     if (!ktx2_upload_check(device->CreateTexture(&desc, init_data.data(), &texture),
         "KTX2 upload GPU texture")) return resource;
+    const wi::graphics::TextureDesc& uploaded = texture.GetDesc();
+    if (!ktx2_upload_check(uploaded.width == width && uploaded.height == height &&
+        uploaded.array_size == faces && uploaded.mip_levels == levels,
+        "Wicked texture preserves KTX2 dimensions, faces, and complete mip chain")) return resource;
     resource.SetTexture(texture);
     return resource;
 }
