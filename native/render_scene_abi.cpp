@@ -29,6 +29,7 @@
 #include <DirectXMath.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -428,6 +429,7 @@ extern "C" uint32_t elisa_render_scene_abi_version(void) {
     return ELISA_RENDER_SCENE_ABI_VERSION;
 }
 #include "render_scene_initialize_abi.inc"
+#include "render_scene_readiness_abi.inc"
 #include "render_scene_camera_abi.inc"
 #include "render_scene_camera_handles_abi.inc"
 extern "C" int64_t elisa_render_scene_v1_create(
