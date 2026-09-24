@@ -6,12 +6,11 @@
 #include "physics_service_internal.h"
 
 #include <array>
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <string>
+#include <filesystem>
 #include <vector>
 
 namespace {

@@ -20,15 +20,23 @@ bool valid_shape_dimensions(int32_t kind, float x, float y, float z) {
     return z == ZERO_DIMENSION && x + y <= MAX_HALF_EXTENT;
 }
 
+bool valid_mesh_shape_kind(int32_t kind) {
+    return kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ||
+        kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH;
+}
+
+bool valid_mesh_shape_scale(float x, float y, float z) {
+    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z) &&
+        x > ZERO_DIMENSION && y > ZERO_DIMENSION && z > ZERO_DIMENSION &&
+        x <= MAX_HALF_EXTENT && y <= MAX_HALF_EXTENT && z <= MAX_HALF_EXTENT;
+}
+
 bool valid_mesh_geometry(int32_t kind, const ElisaPhysicsVec3* vertices,
     uint32_t vertex_count, const uint32_t* indices, uint32_t index_count) {
-    if ((kind != ELISA_PHYSICS_SHAPE_TRIANGLE_MESH &&
-            kind != ELISA_PHYSICS_SHAPE_CONVEX_HULL) || vertices == nullptr ||
-        indices == nullptr || vertex_count < (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ? 4u : 3u) ||
+    if (!valid_mesh_shape_kind(kind) || vertices == nullptr || indices == nullptr ||
+        vertex_count < (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ? 4u : 3u) ||
         vertex_count > MAX_MESH_VERTICES || index_count < 3 ||
-        index_count > MAX_MESH_INDICES || index_count % 3 != 0) {
-        return false;
-    }
+        index_count > MAX_MESH_INDICES || index_count % 3 != 0) return false;
     for (uint32_t index = 0; index < vertex_count; ++index) {
         const ElisaPhysicsVec3& vertex = vertices[index];
         if (!std::isfinite(vertex.x) || !std::isfinite(vertex.y) ||
@@ -38,30 +46,24 @@ bool valid_mesh_geometry(int32_t kind, const ElisaPhysicsVec3* vertices,
         }
     }
     for (uint32_t index = 0; index < index_count; index += 3) {
-        const uint32_t a = indices[index + 0];
-        const uint32_t b = indices[index + 1];
-        const uint32_t c = indices[index + 2];
+        const uint32_t a = indices[index], b = indices[index + 1], c = indices[index + 2];
         if (a >= vertex_count || b >= vertex_count || c >= vertex_count ||
-            a == b || b == c || a == c) {
-            return false;
-        }
-        const ElisaPhysicsVec3 ab{vertices[b].x - vertices[a].x,
-            vertices[b].y - vertices[a].y, vertices[b].z - vertices[a].z};
-        const ElisaPhysicsVec3 ac{vertices[c].x - vertices[a].x,
-            vertices[c].y - vertices[a].y, vertices[c].z - vertices[a].z};
-        const float cross_x = ab.y * ac.z - ab.z * ac.y;
-        const float cross_y = ab.z * ac.x - ab.x * ac.z;
-        const float cross_z = ab.x * ac.y - ab.y * ac.x;
-        if (cross_x * cross_x + cross_y * cross_y + cross_z * cross_z <= 1.0e-12f) {
-            return false;
-        }
+            a == b || b == c || a == c) return false;
+        const double abx = double(vertices[b].x) - vertices[a].x;
+        const double aby = double(vertices[b].y) - vertices[a].y;
+        const double abz = double(vertices[b].z) - vertices[a].z;
+        const double acx = double(vertices[c].x) - vertices[a].x;
+        const double acy = double(vertices[c].y) - vertices[a].y;
+        const double acz = double(vertices[c].z) - vertices[a].z;
+        const double nx = aby * acz - abz * acy;
+        const double ny = abz * acx - abx * acz;
+        const double nz = abx * acy - aby * acx;
+        if (nx * nx + ny * ny + nz * nz <= 1.0e-20) return false;
     }
     return true;
 }
 
-bool cooked_geometry_has_non_degenerate_triangles(const elisa::assets::CookedGeometry& geometry) {
-    constexpr double MIN_MESH_EXTENT = 1.0e-6;
-    constexpr double RELATIVE_TRIANGLE_AREA_SQUARED = 1.0e-12;
+bool cooked_geometry_has_non_degenerate_triangle(const elisa::assets::CookedGeometry& geometry) {
     if (geometry.positions.size() < 9 || geometry.positions.size() % 3 != 0 ||
         geometry.indices.size() < 3 || geometry.indices.size() % 3 != 0) return false;
     const size_t vertex_count = geometry.positions.size() / 3;
@@ -78,8 +80,8 @@ bool cooked_geometry_has_non_degenerate_triangles(const elisa::assets::CookedGeo
         }
         extent = std::max(extent, double(maximum) - minimum);
     }
-    if (extent <= MIN_MESH_EXTENT) return false;
-    const double area_limit = extent * extent * extent * extent * RELATIVE_TRIANGLE_AREA_SQUARED;
+    if (extent <= 1.0e-6) return false;
+    const double area_limit = extent * extent * extent * extent * 1.0e-12;
     for (size_t offset = 0; offset < geometry.indices.size(); offset += 3) {
         const uint32_t a = geometry.indices[offset];
         const uint32_t b = geometry.indices[offset + 1];
@@ -101,10 +103,6 @@ bool cooked_geometry_has_non_degenerate_triangles(const elisa::assets::CookedGeo
 }
 
 bool cooked_geometry_has_volume(const elisa::assets::CookedGeometry& geometry) {
-    constexpr double MIN_MESH_EXTENT = 1.0e-6;
-    constexpr double RELATIVE_LINE_LENGTH_SQUARED = 1.0e-12;
-    constexpr double RELATIVE_PLANE_AREA_SQUARED = 1.0e-12;
-    constexpr double RELATIVE_VOLUME = 1.0e-9;
     if (geometry.positions.size() < 12 || geometry.positions.size() % 3 != 0) return false;
     const size_t vertex_count = geometry.positions.size() / 3;
     double extent = 0.0;
@@ -119,43 +117,43 @@ bool cooked_geometry_has_volume(const elisa::assets::CookedGeometry& geometry) {
         }
         extent = std::max(extent, double(maximum) - minimum);
     }
-    if (extent <= MIN_MESH_EXTENT) return false;
-    const double line_limit = extent * extent * RELATIVE_LINE_LENGTH_SQUARED;
-    const double area_limit = extent * extent * extent * extent * RELATIVE_PLANE_AREA_SQUARED;
-    const double volume_limit = extent * extent * extent * RELATIVE_VOLUME;
-    const double origin[3] = {geometry.positions[0], geometry.positions[1], geometry.positions[2]};
-    double line[3] = {};
+    if (!(extent > 1.0e-6)) return false;
+    const double area_limit = extent * extent * extent * extent * 1.0e-12;
+    const double volume_limit = extent * extent * extent * 1.0e-9;
+    const double p0[3] = {geometry.positions[0], geometry.positions[1], geometry.positions[2]};
+    double v1[3] = {};
     bool found_line = false;
     for (size_t vertex = 1; vertex < vertex_count && !found_line; ++vertex) {
         for (size_t axis = 0; axis < 3; ++axis) {
-            line[axis] = double(geometry.positions[vertex * 3 + axis]) - origin[axis];
+            v1[axis] = double(geometry.positions[vertex * 3 + axis]) - p0[axis];
         }
-        found_line = line[0] * line[0] + line[1] * line[1] + line[2] * line[2] > line_limit;
+        const double length2 = v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2];
+        found_line = length2 > extent * extent * 1.0e-12;
     }
     if (!found_line) return false;
     double normal[3] = {};
     bool found_plane = false;
     for (size_t vertex = 1; vertex < vertex_count && !found_plane; ++vertex) {
-        const double offset[3] = {
-            double(geometry.positions[vertex * 3]) - origin[0],
-            double(geometry.positions[vertex * 3 + 1]) - origin[1],
-            double(geometry.positions[vertex * 3 + 2]) - origin[2],
+        const double v2[3] = {
+            double(geometry.positions[vertex * 3]) - p0[0],
+            double(geometry.positions[vertex * 3 + 1]) - p0[1],
+            double(geometry.positions[vertex * 3 + 2]) - p0[2],
         };
-        normal[0] = line[1] * offset[2] - line[2] * offset[1];
-        normal[1] = line[2] * offset[0] - line[0] * offset[2];
-        normal[2] = line[0] * offset[1] - line[1] * offset[0];
+        normal[0] = v1[1] * v2[2] - v1[2] * v2[1];
+        normal[1] = v1[2] * v2[0] - v1[0] * v2[2];
+        normal[2] = v1[0] * v2[1] - v1[1] * v2[0];
         found_plane = normal[0] * normal[0] + normal[1] * normal[1] +
             normal[2] * normal[2] > area_limit;
     }
     if (!found_plane) return false;
     for (size_t vertex = 1; vertex < vertex_count; ++vertex) {
-        const double offset[3] = {
-            double(geometry.positions[vertex * 3]) - origin[0],
-            double(geometry.positions[vertex * 3 + 1]) - origin[1],
-            double(geometry.positions[vertex * 3 + 2]) - origin[2],
+        const double v3[3] = {
+            double(geometry.positions[vertex * 3]) - p0[0],
+            double(geometry.positions[vertex * 3 + 1]) - p0[1],
+            double(geometry.positions[vertex * 3 + 2]) - p0[2],
         };
-        if (std::abs(normal[0] * offset[0] + normal[1] * offset[1] +
-            normal[2] * offset[2]) > volume_limit) return true;
+        const double signed_volume = normal[0] * v3[0] + normal[1] * v3[1] + normal[2] * v3[2];
+        if (std::abs(signed_volume) > volume_limit) return true;
     }
     return false;
 }
@@ -244,21 +242,33 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
     if (shape.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
 
     try {
+        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
         std::vector<XMFLOAT3> copied_vertices;
         copied_vertices.reserve(vertex_count);
-        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
         for (uint32_t index = 0; index < vertex_count; ++index) {
             const ElisaPhysicsVec3& vertex = vertices[index];
-            copied_vertices.emplace_back(-vertex.x * profile.metres_per_unit,
-                vertex.y * profile.metres_per_unit, vertex.z * profile.metres_per_unit);
+            const XMFLOAT3 wicked = probe::coordinates::to_wicked(vertex.x, vertex.y, vertex.z);
+            const XMFLOAT3 converted(wicked.x * profile.metres_per_unit,
+                wicked.y * profile.metres_per_unit, wicked.z * profile.metres_per_unit);
+            if (!probe::coordinates::finite(converted) ||
+                std::fabs(converted.x) > MAX_HALF_EXTENT ||
+                std::fabs(converted.y) > MAX_HALF_EXTENT ||
+                std::fabs(converted.z) > MAX_HALF_EXTENT) {
+                return ELISA_PHYSICS_INVALID_ARGUMENT;
+            }
+            copied_vertices.push_back(converted);
         }
-        std::vector<uint32_t> copied_indices(indices, indices + index_count);
+        std::vector<uint32_t> copied_indices;
+        copied_indices.reserve(index_count);
+        for (uint32_t offset = 0; offset < index_count; offset += 3) {
+            copied_indices.push_back(indices[offset]);
+            copied_indices.push_back(indices[offset + 1]);
+            copied_indices.push_back(indices[offset + 2]);
+        }
 
         wi::scene::MeshComponent source_mesh;
         source_mesh.vertex_positions.reserve(vertex_count);
-        for (const XMFLOAT3& vertex : copied_vertices) {
-            source_mesh.vertex_positions.push_back(vertex);
-        }
+        for (const XMFLOAT3& vertex : copied_vertices) source_mesh.vertex_positions.push_back(vertex);
         source_mesh.indices.reserve(index_count);
         for (uint32_t index : copied_indices) source_mesh.indices.push_back(index);
         wi::scene::MeshComponent::MeshSubset& subset = source_mesh.subsets.emplace_back();
@@ -279,9 +289,7 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
         shape.mesh_indices = std::move(copied_indices);
         shape.mesh_geometry_bytes = geometry_bytes;
         shape.kind = kind;
-        shape.dimension_x = 0.0f;
-        shape.dimension_y = 0.0f;
-        shape.dimension_z = 0.0f;
+        shape.dimension_x = shape.dimension_y = shape.dimension_z = 0.0f;
         shape.body_references = 0;
     } catch (...) {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
@@ -301,11 +309,8 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
 extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_generation,
     int32_t kind, const char* asset_path, float scale_x, float scale_y, float scale_z,
     uint32_t* slot, uint64_t* shape_generation) {
-    if (slot == nullptr || shape_generation == nullptr ||
-        (kind != ELISA_PHYSICS_SHAPE_TRIANGLE_MESH && kind != ELISA_PHYSICS_SHAPE_CONVEX_HULL) ||
-        !std::isfinite(scale_x) || !std::isfinite(scale_y) || !std::isfinite(scale_z) ||
-        scale_x <= ZERO_DIMENSION || scale_y <= ZERO_DIMENSION || scale_z <= ZERO_DIMENSION ||
-        scale_x > MAX_HALF_EXTENT || scale_y > MAX_HALF_EXTENT || scale_z > MAX_HALF_EXTENT) {
+    if (slot == nullptr || shape_generation == nullptr || !valid_mesh_shape_kind(kind) ||
+        !valid_mesh_shape_scale(scale_x, scale_y, scale_z)) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     const int32_t status = require_world(world_generation);
@@ -324,15 +329,18 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
         return ELISA_PHYSICS_ASSET_LOAD_FAILED;
     }
     const size_t vertex_count = geometry.positions.size() / 3;
-    if (geometry.positions.size() % 3 != 0 ||
-        vertex_count < (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ? 4u : 3u) ||
-        vertex_count > MAX_MESH_VERTICES || geometry.indices.size() > MAX_MESH_INDICES ||
+    if (vertex_count > MAX_MESH_VERTICES || geometry.indices.size() > MAX_MESH_INDICES) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (!cooked_geometry_has_non_degenerate_triangle(geometry) ||
         !geometry.mesh_placements.empty() || !geometry.skin_bone_names.empty() ||
         !geometry.skin_indices.empty() || !geometry.skin_weights.empty() ||
         !geometry.skin_inverse_bind_matrices.empty() || !geometry.skin_joints.empty() ||
-        !geometry.skin_cluster_joints.empty() || !geometry.morph_targets.empty() ||
-        !cooked_geometry_has_non_degenerate_triangles(geometry) ||
-        (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL && !cooked_geometry_has_volume(geometry))) {
+        !geometry.skin_cluster_joints.empty() || !geometry.animation_clips.empty() ||
+        !geometry.morph_targets.empty() || !geometry.morph_default_weights.empty()) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL && !cooked_geometry_has_volume(geometry)) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     const size_t geometry_bytes = vertex_count * sizeof(XMFLOAT3) +
@@ -340,9 +348,6 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
     if (geometry_bytes > MAX_MESH_SHAPE_BYTES) return ELISA_PHYSICS_INVALID_ARGUMENT;
 
     PhysicsService& state = physics_service();
-    if (state.mesh_geometry_bytes > MAX_WORLD_MESH_SHAPE_BYTES - geometry_bytes) {
-        return ELISA_PHYSICS_CAPACITY;
-    }
     uint32_t free_slot = MAX_SHAPES;
     for (uint32_t index = 0; index < MAX_SHAPES; ++index) {
         if (!state.shapes[index].live) { free_slot = index; break; }
@@ -350,6 +355,9 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
     if (free_slot == MAX_SHAPES) return ELISA_PHYSICS_CAPACITY;
     ShapeSlot& shape = state.shapes[free_slot];
     if (shape.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
+    if (state.mesh_geometry_bytes > MAX_WORLD_MESH_SHAPE_BYTES - geometry_bytes) {
+        return ELISA_PHYSICS_CAPACITY;
+    }
 
     try {
         const ElisaCoordinateProfile profile = elisa_coordinate_profile();
@@ -373,11 +381,17 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
             source_mesh.vertex_positions.push_back(converted);
         }
         source_mesh.indices.reserve(geometry.indices.size());
-        const bool reverse_winding = probe::coordinates::winding_reversed(XMFLOAT3(scale_x, scale_y, scale_z));
+        const bool reverse_winding =
+            probe::coordinates::winding_reversed(XMFLOAT3(scale_x, scale_y, scale_z));
         for (size_t offset = 0; offset < geometry.indices.size(); offset += 3) {
             source_mesh.indices.push_back(geometry.indices[offset]);
-            source_mesh.indices.push_back(geometry.indices[offset + (reverse_winding ? 2 : 1)]);
-            source_mesh.indices.push_back(geometry.indices[offset + (reverse_winding ? 1 : 2)]);
+            if (reverse_winding) {
+                source_mesh.indices.push_back(geometry.indices[offset + 2]);
+                source_mesh.indices.push_back(geometry.indices[offset + 1]);
+            } else {
+                source_mesh.indices.push_back(geometry.indices[offset + 1]);
+                source_mesh.indices.push_back(geometry.indices[offset + 2]);
+            }
         }
         wi::scene::MeshComponent::MeshSubset& subset = source_mesh.subsets.emplace_back();
         subset.indexOffset = 0;
@@ -385,21 +399,27 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
 
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
         shape.backend_shape.mass = 1.0f;
-        shape.backend_shape.shape = kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL
-            ? wi::scene::RigidBodyPhysicsComponent::CONVEX_HULL
-            : wi::scene::RigidBodyPhysicsComponent::TRIANGLE_MESH;
-        wi::physics::CreateRigidBodyShape(shape.backend_shape, XMFLOAT3(1.0f, 1.0f, 1.0f),
-            &source_mesh);
-        if (shape.backend_shape.physicsobject == nullptr) return ELISA_PHYSICS_BACKEND_FAILURE;
-        shape.mesh_vertices = std::move(converted_positions);
-        shape.mesh_indices.assign(source_mesh.indices.begin(), source_mesh.indices.end());
-        shape.mesh_geometry_bytes = geometry_bytes;
         shape.kind = kind;
         shape.dimension_x = 0.0f;
         shape.dimension_y = 0.0f;
         shape.dimension_z = 0.0f;
         shape.body_references = 0;
+        shape.mesh_vertices = converted_positions;
+        shape.mesh_indices.assign(source_mesh.indices.begin(), source_mesh.indices.end());
+        shape.mesh_geometry_bytes = geometry_bytes;
+        shape.backend_shape.shape = kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL
+            ? wi::scene::RigidBodyPhysicsComponent::CONVEX_HULL
+            : wi::scene::RigidBodyPhysicsComponent::TRIANGLE_MESH;
+        wi::physics::CreateRigidBodyShape(shape.backend_shape, XMFLOAT3(1.0f, 1.0f, 1.0f),
+            &source_mesh);
     } catch (...) {
+        shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
+        std::vector<XMFLOAT3>().swap(shape.mesh_vertices);
+        std::vector<uint32_t>().swap(shape.mesh_indices);
+        shape.mesh_geometry_bytes = 0;
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+    if (shape.backend_shape.physicsobject == nullptr) {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
         std::vector<XMFLOAT3>().swap(shape.mesh_vertices);
         std::vector<uint32_t>().swap(shape.mesh_indices);
@@ -453,39 +473,32 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
     PhysicsService& state = physics_service();
     ShapeSlot* shape = resolve_shape(state, shape_slot, shape_generation);
     if (shape == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    if (shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH && kind != ELISA_PHYSICS_BODY_STATIC) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     if (shape->body_references == UINT32_MAX) return ELISA_PHYSICS_CAPACITY;
 
     if (shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH ||
         shape->kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL) {
-        if ((shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH &&
-                kind != ELISA_PHYSICS_BODY_STATIC) ||
-            !std::isfinite(position_x) || !std::isfinite(position_y) ||
-            !std::isfinite(position_z) || std::fabs(position_x) > MAX_POSITION ||
-            std::fabs(position_y) > MAX_POSITION || std::fabs(position_z) > MAX_POSITION ||
-            !std::isfinite(mass) || mass < ZERO_MASS || mass > MAX_MASS ||
-            (kind == ELISA_PHYSICS_BODY_DYNAMIC && mass <= ZERO_MASS)) {
-            return ELISA_PHYSICS_INVALID_ARGUMENT;
-        }
         uint32_t free_slot = MAX_BODIES;
         for (uint32_t index = 0; index < MAX_BODIES; ++index) {
             if (!state.bodies[index].live) { free_slot = index; break; }
         }
         if (free_slot == MAX_BODIES) return ELISA_PHYSICS_CAPACITY;
-        BodySlot& body_slot_record = state.bodies[free_slot];
-        if (body_slot_record.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
-        const size_t mesh_proxy_bytes = shape->mesh_vertices.size() *
-            (2u * sizeof(XMFLOAT3)) + shape->mesh_indices.size() * sizeof(uint32_t);
-        if (mesh_proxy_bytes > MAX_WORLD_MESH_PROXY_BYTES ||
-            state.mesh_proxy_geometry_bytes > MAX_WORLD_MESH_PROXY_BYTES - mesh_proxy_bytes) {
+        BodySlot& body_record = state.bodies[free_slot];
+        if (body_record.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
+        const size_t proxy_bytes = shape->mesh_vertices.size() * (2u * sizeof(XMFLOAT3)) +
+            shape->mesh_indices.size() * sizeof(uint32_t);
+        if (proxy_bytes > MAX_WORLD_MESH_PROXY_BYTES ||
+            state.mesh_proxy_geometry_bytes > MAX_WORLD_MESH_PROXY_BYTES - proxy_bytes) {
             return ELISA_PHYSICS_CAPACITY;
         }
 
         wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
         try {
-            const std::string body_name = "elisa_physics_mesh_body_" + std::to_string(free_slot);
-            entity = state.scene->Entity_CreateMeshFromData(body_name,
-                shape->mesh_indices.size(), shape->mesh_indices.data(),
-                shape->mesh_vertices.size(), shape->mesh_vertices.data());
+            const std::string name = "elisa_physics_mesh_body_" + std::to_string(free_slot);
+            entity = state.scene->Entity_CreateMeshFromData(name, shape->mesh_indices.size(),
+                shape->mesh_indices.data(), shape->mesh_vertices.size(), shape->mesh_vertices.data());
             if (entity == wi::ecs::INVALID_ENTITY) return ELISA_PHYSICS_BACKEND_FAILURE;
             wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
             wi::scene::MeshComponent* mesh = state.scene->meshes.GetComponent(entity);
@@ -509,28 +522,33 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
             rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? ZERO_MASS : mass;
             rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
             rigidbody.SetSensor(sensor == SENSOR_ENABLED);
-            body_slot_record.entity = entity;
-            body_slot_record.shape_slot = shape_slot;
-            body_slot_record.shape_generation = shape_generation;
-            body_slot_record.mesh_proxy_geometry_bytes = mesh_proxy_bytes;
-            ++body_slot_record.generation;
-            body_slot_record.live = true;
+            body_record.entity = entity;
+            body_record.shape_slot = shape_slot;
+            body_record.shape_generation = shape_generation;
+            body_record.mesh_proxy_geometry_bytes = proxy_bytes;
+            ++body_record.generation;
+            body_record.live = true;
         } catch (...) {
             if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_BACKEND_FAILURE;
         }
-        state.mesh_proxy_geometry_bytes += mesh_proxy_bytes;
+        state.mesh_proxy_geometry_bytes += proxy_bytes;
         ++shape->body_references;
         *body_slot = free_slot;
-        *body_generation = body_slot_record.generation;
+        *body_generation = body_record.generation;
         return ELISA_PHYSICS_OK;
     }
 
     uint32_t created_slot = 0;
     uint64_t created_generation = 0;
+    const bool mesh_shape = shape->kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ||
+        shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH;
+    const int32_t proxy_shape = mesh_shape ? ELISA_PHYSICS_SHAPE_BOX : shape->kind;
     const int32_t create_status = elisa_physics_v1_create_body(world_generation, kind,
-        shape->kind, position_x, position_y, position_z,
-        shape->dimension_x, shape->dimension_y, shape->dimension_z, mass, sensor,
+        proxy_shape, position_x, position_y, position_z,
+        mesh_shape ? 1.0f : shape->dimension_x,
+        mesh_shape ? 1.0f : shape->dimension_y,
+        mesh_shape ? 1.0f : shape->dimension_z, mass, sensor,
         &created_slot, &created_generation);
     if (create_status != ELISA_PHYSICS_OK) return create_status;
 

@@ -1,6 +1,3 @@
-        const MAX_MESH_VERTICES: usize = 65536
-        const MAX_MESH_INDICES: usize = 196608
-
         struct ShapeHandle:
             private:
                 world_generation: u64
@@ -24,6 +21,29 @@
             try check_status(status)
             ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
 
+        # Array inputs are copied and cooked before this function returns.
+        def shape_create_triangle_mesh(world: World&, vertices: Geometry::Vec3&,
+            vertex_count: usize, indices: u32&, index_count: usize) -> ShapeHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > Status::MAX_MESH_VERTICES or index_count > Status::MAX_MESH_INDICES
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_create_mesh_shape(world.generation,
+                Status::MESH_SHAPE_TRIANGLE_MESH, vertices, vertex_count.u32(), indices, index_count.u32(), &slot, &generation)
+            try check_status(status)
+            ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
+
+        def shape_create_convex_hull(world: World&, vertices: Geometry::Vec3&,
+            vertex_count: usize, indices: u32&, index_count: usize) -> ShapeHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not world.live
+            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > Status::MAX_MESH_VERTICES or index_count > Status::MAX_MESH_INDICES
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_create_mesh_shape(world.generation,
+                Status::MESH_SHAPE_CONVEX_HULL, vertices, vertex_count.u32(), indices, index_count.u32(), &slot, &generation)
+            try check_status(status)
+            ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
+
         def mesh_shape_create(world: World&, shape: MeshShape, asset_path: cstr,
             scale: Geometry::Vec3) -> ShapeHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
@@ -34,32 +54,6 @@
                 MeshShape.TriangleMesh: Status::MESH_SHAPE_TRIANGLE_MESH
             status: i32 = elisa_physics_v1_create_mesh_shape_from_asset(world.generation,
                 kind, asset_path, scale.x, scale.y, scale.z, &slot, &generation)
-            try check_status(status)
-            ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
-
-        # Mesh arrays are copied and cooked during this call. The caller can
-        # release or reuse both arrays as soon as the returned handle exists.
-        def shape_create_triangle_mesh(world: World&, vertices: Geometry::Vec3&,
-            vertex_count: usize, indices: u32&, index_count: usize) -> ShapeHandle error[PhysicsError]:
-            raise PhysicsError.ApplicationUnavailable if not world.live
-            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > PhysicsRuntime::MAX_MESH_VERTICES or index_count > PhysicsRuntime::MAX_MESH_INDICES
-            slot: mutable u32 = 0
-            generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_mesh_shape(world.generation,
-                Status::SHAPE_TRIANGLE_MESH, vertices, vertex_count.u32(), indices,
-                index_count.u32(), &slot, &generation)
-            try check_status(status)
-            ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
-
-        def shape_create_convex_hull(world: World&, vertices: Geometry::Vec3&,
-            vertex_count: usize, indices: u32&, index_count: usize) -> ShapeHandle error[PhysicsError]:
-            raise PhysicsError.ApplicationUnavailable if not world.live
-            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > PhysicsRuntime::MAX_MESH_VERTICES or index_count > PhysicsRuntime::MAX_MESH_INDICES
-            slot: mutable u32 = 0
-            generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_mesh_shape(world.generation,
-                Status::SHAPE_CONVEX_HULL, vertices, vertex_count.u32(), indices,
-                index_count.u32(), &slot, &generation)
             try check_status(status)
             ShapeHandle{world_generation: world.generation, slot: slot, generation: generation}
 
@@ -93,6 +87,30 @@
             try check_status(status)
             ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
 
+        def service_shape_create_triangle_mesh(state: ServiceState&,
+            vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
+            index_count: usize) -> ShapeHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > Status::MAX_MESH_VERTICES or index_count > Status::MAX_MESH_INDICES
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_create_mesh_shape(state.generation,
+                Status::MESH_SHAPE_TRIANGLE_MESH, vertices, vertex_count.u32(), indices, index_count.u32(), &slot, &generation)
+            try check_status(status)
+            ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
+
+        def service_shape_create_convex_hull(state: ServiceState&,
+            vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
+            index_count: usize) -> ShapeHandle error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > Status::MAX_MESH_VERTICES or index_count > Status::MAX_MESH_INDICES
+            slot: mutable u32 = 0
+            generation: mutable u64 = 0
+            status: i32 = elisa_physics_v1_create_mesh_shape(state.generation,
+                Status::MESH_SHAPE_CONVEX_HULL, vertices, vertex_count.u32(), indices, index_count.u32(), &slot, &generation)
+            try check_status(status)
+            ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
+
         def service_mesh_shape_create(state: ServiceState&, shape: MeshShape,
             asset_path: cstr, scale: Geometry::Vec3) -> ShapeHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
@@ -103,32 +121,6 @@
                 MeshShape.TriangleMesh: Status::MESH_SHAPE_TRIANGLE_MESH
             status: i32 = elisa_physics_v1_create_mesh_shape_from_asset(state.generation,
                 kind, asset_path, scale.x, scale.y, scale.z, &slot, &generation)
-            try check_status(status)
-            ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
-
-        def service_shape_create_triangle_mesh(state: ServiceState&,
-            vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
-            index_count: usize) -> ShapeHandle error[PhysicsError]:
-            raise PhysicsError.ApplicationUnavailable if not state.live
-            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > PhysicsRuntime::MAX_MESH_VERTICES or index_count > PhysicsRuntime::MAX_MESH_INDICES
-            slot: mutable u32 = 0
-            generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_mesh_shape(state.generation,
-                Status::SHAPE_TRIANGLE_MESH, vertices, vertex_count.u32(), indices,
-                index_count.u32(), &slot, &generation)
-            try check_status(status)
-            ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
-
-        def service_shape_create_convex_hull(state: ServiceState&,
-            vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
-            index_count: usize) -> ShapeHandle error[PhysicsError]:
-            raise PhysicsError.ApplicationUnavailable if not state.live
-            raise PhysicsError.InvalidArgument if vertex_count == 0 or index_count == 0 or vertex_count > PhysicsRuntime::MAX_MESH_VERTICES or index_count > PhysicsRuntime::MAX_MESH_INDICES
-            slot: mutable u32 = 0
-            generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_mesh_shape(state.generation,
-                Status::SHAPE_CONVEX_HULL, vertices, vertex_count.u32(), indices,
-                index_count.u32(), &slot, &generation)
             try check_status(status)
             ShapeHandle{world_generation: state.generation, slot: slot, generation: generation}
 

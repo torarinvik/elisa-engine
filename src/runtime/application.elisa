@@ -111,6 +111,8 @@ module Application:
             KEY_DIGIT_2: i64 = 2023
             KEY_DIGIT_3: i64 = 2024
             KEY_H: i64 = 2025
+            KEY_LEFT_CONTROL: i64 = 2026
+            KEY_RIGHT_CONTROL: i64 = 2027
 
         @callconv(c)
         extern elisa_application_abi_version() -> u32
@@ -193,13 +195,13 @@ module Application:
             Escape
             LeftShift
             RightShift
+            LeftControl
+            RightControl
             ArrowLeft
             ArrowRight
             ArrowUp
             ArrowDown
 
-        # Stable action codes for the SDL gamepad controls supported by the
-        # engine. Event codes are not SDL enum values.
         enum GamepadButtonCode:
             South
             East
@@ -245,7 +247,6 @@ module Application:
             height: i32
             hidden: bool
 
-        # Fixed-width snapshot of one native pump and the current window state.
         struct FrameInfo:
             frame_count: u64
             elapsed_nanos: u64
@@ -334,6 +335,8 @@ module Application:
                 KeyboardKeyCode.Escape: PortableInputCodes::KEY_ESCAPE
                 KeyboardKeyCode.LeftShift: PortableInputCodes::KEY_LEFT_SHIFT
                 KeyboardKeyCode.RightShift: PortableInputCodes::KEY_RIGHT_SHIFT
+                KeyboardKeyCode.LeftControl: PortableInputCodes::KEY_LEFT_CONTROL
+                KeyboardKeyCode.RightControl: PortableInputCodes::KEY_RIGHT_CONTROL
                 KeyboardKeyCode.ArrowLeft: PortableInputCodes::KEY_ARROW_LEFT
                 KeyboardKeyCode.ArrowRight: PortableInputCodes::KEY_ARROW_RIGHT
                 KeyboardKeyCode.ArrowUp: PortableInputCodes::KEY_ARROW_UP
@@ -427,9 +430,8 @@ module Application:
                 apply_fallback_provider_availability(report.services)
             BackendRequirements::backend_requirements_with_services(report, services)
 
-        # Rejected requirements shut the just-started host back down. A fallback
-        # result leaves it running and tells the caller to apply its declared
-        # fallback before entering gameplay. `report` is meaningful for Ready,
+        # Rejected requirements shut down; fallback results keep the host open.
+        # `report` is meaningful for Ready,
         # FallbackRequired, RequirementsUnavailable, and InvalidRequirements.
         def initialize_with_requirements(config: Config,
             required: Capabilities::BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS],

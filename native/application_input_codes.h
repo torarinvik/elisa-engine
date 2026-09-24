@@ -105,6 +105,8 @@ enum ElisaKeyboardCode : int32_t {
     KEY_DIGIT_2 = 2023,
     KEY_DIGIT_3 = 2024,
     KEY_H = 2025,
+    KEY_LEFT_CONTROL = 2026,
+    KEY_RIGHT_CONTROL = 2027,
 };
 
 constexpr int32_t keyboard_key_code(SDL_Keycode key) {
@@ -130,6 +132,8 @@ constexpr int32_t keyboard_key_code(SDL_Keycode key) {
     case SDLK_ESCAPE: return KEY_ESCAPE;
     case SDLK_LSHIFT: return KEY_LEFT_SHIFT;
     case SDLK_RSHIFT: return KEY_RIGHT_SHIFT;
+    case SDLK_LCTRL: return KEY_LEFT_CONTROL;
+    case SDLK_RCTRL: return KEY_RIGHT_CONTROL;
     case SDLK_LEFT: return KEY_ARROW_LEFT;
     case SDLK_RIGHT: return KEY_ARROW_RIGHT;
     case SDLK_UP: return KEY_ARROW_UP;

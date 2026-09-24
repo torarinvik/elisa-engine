@@ -35,14 +35,6 @@ enum {
     ELISA_PHYSICS_SHAPE_CONVEX_HULL = 4,
 };
 
-// Elisa-owned position record for mesh cooking. Kept flat and independent of
-// Wicked's XMFLOAT3 so mesh data never crosses the ABI as a vendor type.
-typedef struct ElisaPhysicsVec3 {
-    float x;
-    float y;
-    float z;
-} ElisaPhysicsVec3;
-
 enum {
     ELISA_PHYSICS_CONTACT_ADDED = 0,
     ELISA_PHYSICS_CONTACT_PERSISTED = 1,
@@ -61,6 +53,12 @@ typedef struct ElisaPhysicsRayHit {
     float normal_z;
     float distance;
 } ElisaPhysicsRayHit;
+
+typedef struct ElisaPhysicsVec3 {
+    float x;
+    float y;
+    float z;
+} ElisaPhysicsVec3;
 
 typedef struct ElisaPhysicsRayHitBuffer {
     ElisaPhysicsRayHit hits[ELISA_PHYSICS_MAX_QUERY_HITS];

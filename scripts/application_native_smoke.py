@@ -80,7 +80,7 @@ def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
 
 
 def write_physics_mesh_fixture(project: Path) -> None:
-    """Write a tiny valid cooked tetrahedron for the public physics mesh API."""
+    """Create a tiny valid cooked tetrahedron for the native physics API smoke."""
     positions = (
         0.0, 0.0, 0.0,
         1.0, 0.0, 0.0,
@@ -88,10 +88,7 @@ def write_physics_mesh_fixture(project: Path) -> None:
         0.0, 0.0, 1.0,
     )
     indices = (0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3)
-
-    def encode(values: tuple[float, ...] | tuple[int, ...], fmt: str) -> str:
-        return base64.b64encode(struct.pack(fmt, *values)).decode("ascii")
-
+    encode = lambda values, fmt: base64.b64encode(struct.pack(fmt, *values)).decode("ascii")
     fixture = project / "test/fixtures/physics-tetra.pkg"
     fixture.parent.mkdir(parents=True, exist_ok=True)
     fixture.write_text("\n".join((
