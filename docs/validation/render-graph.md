@@ -23,7 +23,9 @@ their lifetimes do not overlap and their size mode, dimensions, format, and
 sample count match. Before submission, the runtime recomputes and compares the
 compiled plan so mutated pass order, resource intervals, or alias slots cannot
 reach the native allocator. Each clear/copy operation must also match that
-pass's declared graph reads and writes.
+pass's declared graph reads and writes. The selected output is a terminal use:
+if its transient slot would be overwritten by a resource used after the output's
+first access, the runtime gives the output its own slot through composition.
 
 The native executor currently accepts one imported primary scene-color image,
 single-sample color targets in RGBA8, RGBA16F, or Wicked's R11G11B10F main
@@ -39,15 +41,18 @@ The SDL3/Metal native smoke builds a two-pass graph: clear transient resource 2,
 then copy imported scene color to resource 3. The planner proves that the two
 transient lifetimes can share one target; the test checks rejection of a forged
 plan and a copy operation that disagrees with its declared reads, then verifies
-native execution across a resize and restoration. Test-only failure injection
-also forces target allocation and second-pass failures; both preserve the base
-postprocess output, leave the execution count unchanged, and recover on the next
-frame. Existing rendered image comparisons still pass. Target allocation is
-repeated when internal resolution changes. A test-only zero-resolution injection
-also checks the suspended status, unchanged execution count, retained fallback,
-and recovery on the next frame. A real minimized-window or device suspension
-cycle, deferred GPU retirement checks, and broader rendered graph references
-remain open R15 work.
+plan and a copy operation that disagrees with its declared reads, then renders
+the transient clear target as output and verifies it stays black despite a
+later pass sharing the planner's original slot. It restores the scene-copy
+output and checks that the rendered scene returns. The smoke also exercises
+resize/restoration. Test-only failure injection forces target allocation and
+second-pass failures; both preserve the base postprocess output, leave the
+execution count unchanged, and recover on the next frame. Existing rendered
+image comparisons still pass. Target allocation is repeated when internal
+resolution changes. A test-only zero-resolution injection checks suspended
+status, unchanged execution count, retained fallback, and recovery on the next
+frame. A real minimized-window or device suspension cycle, deferred GPU
+retirement checks, and broader rendered graph references remain open R15 work.
 
 Run the focused planner test with:
 
