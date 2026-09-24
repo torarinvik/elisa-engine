@@ -21,6 +21,7 @@ from pathlib import Path
 
 import cook_assets
 from elisa_package import encoded_image_dimensions
+from ktx2_container import with_key_value
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 BASISU = ENGINE_ROOT / "dependencies/basisu"
@@ -96,16 +97,30 @@ def main() -> int:
             return 1
     print("Basis Universal validated opaque and alpha ETC1S DFD profiles.")
     normal = ENGINE_ROOT / "build/cooked/maze_tile_normal.ktx2"
+    normal_swizzled = ENGINE_ROOT / "build/cooked/maze_tile_normal_swizzled.ktx2"
+    color_swizzled = ENGINE_ROOT / "build/cooked/maze_tile_color_swizzled.ktx2"
     hdr = ENGINE_ROOT / "build/cooked/maze_tile_hdr.ktx2"
     normal_pixels = bytes((96, 192, 232, 255)) * 16
     with tempfile.TemporaryDirectory(prefix="elisa-basisu-normal-") as workdir:
         source = Path(workdir) / "normal.png"
         source.write_bytes(cook_assets.write_png(4, 4, normal_pixels))
+        color_source = Path(workdir) / "color.png"
+        color_pixels = b"".join(
+            bytes((128, 64, 32, 192) if y < 2 else (160, 96, 48, 128)) * 4
+            for y in range(4))
+        color_source.write_bytes(cook_assets.write_png(4, 4, color_pixels))
         hdr_source = Path(workdir) / "range.hdr"
         write_hdr_fixture(hdr_source)
         normal_result = subprocess.run([
+            basisu, "-ktx2", "-uastc", "-normal_map", "-linear", str(source),
+            "-output_file", str(normal),
+        ], capture_output=True, text=True, check=False)
+        swizzled_result = subprocess.run([
             basisu, "-ktx2", "-uastc", "-normal_map", "-separate_rg_to_color_alpha",
-            "-linear", str(source), "-output_file", str(normal),
+            "-linear", str(source), "-output_file", str(normal_swizzled),
+        ], capture_output=True, text=True, check=False)
+        color_result = subprocess.run([
+            basisu, "-ktx2", "-uastc", str(color_source), "-output_file", str(color_swizzled),
         ], capture_output=True, text=True, check=False)
         hdr_result = subprocess.run([
             basisu, "-ktx2", "-hdr", "-uastc_level", "0", str(hdr_source),
@@ -115,6 +130,27 @@ def main() -> int:
     if normal_result.returncode != 0 or not normal.is_file():
         print("basisu probe: could not cook the two-channel normal-map fixture", file=sys.stderr)
         return normal_result.returncode if normal_result.returncode != 0 else 1
+    relay(swizzled_result)
+    if swizzled_result.returncode != 0 or not normal_swizzled.is_file():
+        print("basisu probe: could not cook the swizzled normal-map fixture", file=sys.stderr)
+        return swizzled_result.returncode if swizzled_result.returncode != 0 else 1
+    try:
+        normal_swizzled.write_bytes(with_key_value(
+            normal_swizzled.read_bytes(), "KTXswizzle", b"ra01\0"))
+    except ValueError as error:
+        print(f"basisu probe: could not tag the normal channel swizzle: {error}", file=sys.stderr)
+        return 1
+    relay(color_result)
+    if color_result.returncode != 0 or not color_swizzled.is_file():
+        print("basisu probe: could not cook the sRGB swizzle fixture", file=sys.stderr)
+        return color_result.returncode if color_result.returncode != 0 else 1
+    try:
+        color_payload = with_key_value(
+            color_swizzled.read_bytes(), "KTXswizzle", b"ar01\0")
+        color_swizzled.write_bytes(with_key_value(color_payload, "KTXorientation", b"ru\0"))
+    except ValueError as error:
+        print(f"basisu probe: could not tag the sRGB channel swizzle: {error}", file=sys.stderr)
+        return 1
     relay(hdr_result)
     if hdr_result.returncode != 0 or not hdr.is_file():
         print("basisu probe: could not cook the HDR fixture", file=sys.stderr)
@@ -154,7 +190,8 @@ def main() -> int:
         print("basisu probe: compile failed", file=sys.stderr)
         return compile_result.returncode if compile_result.returncode != 0 else 1
 
-    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha), str(normal), str(hdr)],
+    run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha), str(normal), str(hdr),
+            str(normal_swizzled), str(color_swizzled)],
         capture_output=True, text=True, check=False)
     relay(run)
     if run.returncode != 0 or MARKER not in run.stdout:
@@ -168,6 +205,9 @@ def main() -> int:
         return 1
     if "basisu normal BC5 transcode:" not in run.stdout:
         print("basisu probe: BC5 did not preserve both normal-map channels", file=sys.stderr)
+        return 1
+    if "basisu swizzled sRGB transcode:" not in run.stdout:
+        print("basisu probe: sRGB swizzle fixture did not preserve its encoded channels", file=sys.stderr)
         return 1
     if "basisu HDR transcode:" not in run.stdout:
         print("basisu probe: HDR dynamic range was not verified", file=sys.stderr)

@@ -19,7 +19,7 @@ module PhysicsRenderCapture:
             difference >= -0.01 and difference <= 0.01
 
         def capture_rate(body_visual: RenderScene::InstanceHandle, render_hz: i32,
-            frame_count: i32, capture_path: cstr) -> Result error[PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            frame_count: i32, capture_path: cstr, mid_capture_path: cstr) -> Result error[PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
             world: mutable PhysicsRuntime::World = try PhysicsRuntime::World()
             floor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
@@ -45,6 +45,7 @@ module PhysicsRenderCapture:
                 scale: Geometry::Vec3{x: 0.4, y: 0.4, z: 0.4},
             }
             poses: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(initial)
+            mid_capture_saved: mutable bool = false
 
             for frame in 0..<frame_count:
                 # At equal one-second durations, 30 Hz renders two committed
@@ -74,8 +75,13 @@ module PhysicsRenderCapture:
                 pose_after_present: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
                 raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != tick_before_present
                 raise PhysicsRuntime::PhysicsError.BackendFailure if pose_before_present.x != pose_after_present.x or pose_before_present.y != pose_after_present.y or pose_before_present.z != pose_after_present.z
+                if not mid_capture_saved and tick_before_present == 30:
+                    raise RenderScene::RenderSceneError.InvalidValue if mid_capture_path == ""
+                    raise RenderScene::RenderSceneError.BackendFailure if not Application::save_screenshot(mid_capture_path)
+                    mid_capture_saved <- true
 
             raise RenderScene::RenderSceneError.InvalidValue if capture_path == ""
+            raise RenderScene::RenderSceneError.BackendFailure if not mid_capture_saved
             raise RenderScene::RenderSceneError.BackendFailure if not Application::save_screenshot(capture_path)
             completed_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
             completed_tick: u64 = PhysicsRuntime::committed_tick(world)
@@ -140,12 +146,14 @@ module PhysicsRenderCapture:
 
             thirty_path: cstr = Application::environment_value("ELISA_PHYSICS_30HZ_CAPTURE_PATH")
             one_twenty_path: cstr = Application::environment_value("ELISA_PHYSICS_120HZ_CAPTURE_PATH")
+            thirty_mid_path: cstr = Application::environment_value("ELISA_PHYSICS_30HZ_MID_CAPTURE_PATH")
+            one_twenty_mid_path: cstr = Application::environment_value("ELISA_PHYSICS_120HZ_MID_CAPTURE_PATH")
             thirty: Result = catch capture_rate(body_visual, 30,
-                PhysicsRenderCapture::THIRTY_HZ_FRAMES, thirty_path):
+                PhysicsRenderCapture::THIRTY_HZ_FRAMES, thirty_path, thirty_mid_path):
                 value: value
                 error failure: return 6
             one_twenty: Result = catch capture_rate(body_visual, 120,
-                PhysicsRenderCapture::ONE_TWENTY_HZ_FRAMES, one_twenty_path):
+                PhysicsRenderCapture::ONE_TWENTY_HZ_FRAMES, one_twenty_path, one_twenty_mid_path):
                 value: value
                 error failure: return 7
 

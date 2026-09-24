@@ -116,6 +116,73 @@ def _valid_key_values(data: bytes, start: int, length: int) -> bool:
     return position == end
 
 
+def with_key_value(data: bytes, key: str, value: bytes) -> bytes:
+    """Return a validated KTX2 with one sorted KVD entry added or replaced."""
+    if (not key or "\0" in key or len(key.encode("utf-8")) > 255 or
+            not isinstance(value, bytes) or len(value) > 4096 or
+            ktx2_dimensions(data) is None):
+        raise ValueError("KTX2 key-value update has invalid input")
+    width, height = struct.unpack_from("<2I", data, 20)
+    levels = struct.unpack_from("<I", data, 40)[0]
+    scheme = struct.unpack_from("<I", data, 44)[0]
+    dfd_offset, dfd_length, kvd_offset, kvd_length, sgd_offset, sgd_length = \
+        struct.unpack_from("<4I2Q", data, 48)
+    dfd_end = dfd_offset + dfd_length
+    entries: dict[str, bytes] = {}
+    position = kvd_offset
+    end = kvd_offset + kvd_length
+    while position < end:
+        entry_length = struct.unpack_from("<I", data, position)[0]
+        position += 4
+        entry_end = position + entry_length
+        entry = data[position:entry_end]
+        terminator = entry.index(b"\0")
+        entry_key = entry[:terminator].decode("utf-8", errors="strict")
+        entries[entry_key] = entry[terminator + 1:]
+        position = entry_end + ((-entry_end) & 3)
+    entries[key] = value
+
+    new_kvd = bytearray()
+    for entry_key, entry_value in sorted(entries.items()):
+        encoded_key = entry_key.encode("utf-8") + b"\0"
+        entry = encoded_key + entry_value
+        new_kvd.extend(struct.pack("<I", len(entry)))
+        new_kvd.extend(entry)
+        new_kvd.extend(bytes((-len(new_kvd)) & 3))
+
+    level_offsets = [struct.unpack_from("<Q", data, 80 + level * 24)[0]
+        for level in range(levels)]
+    following_sections = ([sgd_offset] if sgd_length else []) + level_offsets
+    first_payload = min(following_sections)
+    kvd_start = kvd_offset if kvd_length else dfd_end
+    old_kvd_end = kvd_offset + kvd_length if kvd_length else dfd_end
+    if first_payload < old_kvd_end:
+        raise ValueError("KTX2 key-value section overlaps payload")
+
+    if sgd_length and sgd_offset == first_payload:
+        alignment = 8
+    else:
+        alignment = 1 if scheme != 0 else math.lcm(4, data[dfd_offset + 20])
+    new_kvd_end = kvd_start + len(new_kvd)
+    new_first_payload = ((new_kvd_end + alignment - 1) // alignment) * alignment
+    inserted = bytes(new_kvd) + bytes(new_first_payload - new_kvd_end)
+    shift = new_first_payload - first_payload
+    updated = bytearray(data[:kvd_start] + inserted + data[first_payload:])
+
+    new_sgd_offset = sgd_offset + shift if sgd_length and sgd_offset >= first_payload else sgd_offset
+    struct.pack_into("<4I2Q", updated, 48, dfd_offset, dfd_length,
+        kvd_start, len(new_kvd), new_sgd_offset, sgd_length)
+    for level in range(levels):
+        offset_position = 80 + level * 24
+        offset = struct.unpack_from("<Q", updated, offset_position)[0]
+        if offset >= first_payload:
+            struct.pack_into("<Q", updated, offset_position, offset + shift)
+    result = bytes(updated)
+    if ktx2_dimensions(result) != (width, height):
+        raise ValueError("KTX2 key-value update did not preserve a valid container")
+    return result
+
+
 def ktx2_dimensions(data: bytes) -> tuple[int, int] | None:
     """Validate a bounded 2D Basis KTX2 container and return its dimensions."""
     if len(data) < 80 or data[:12] != KTX2_IDENTIFIER:

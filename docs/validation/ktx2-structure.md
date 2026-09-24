@@ -27,10 +27,12 @@ into geometry or image bundles. The accepted layout follows the official
   Valid uncompressed UASTC levels use the KTX2-required block alignment; valid
   BasisLZ and Zstandard levels retain their scheme-defined byte alignment.
 - `/opt/homebrew/bin/python3 scripts/cook_gltf_asset.py --self-test` passed,
-  including cooking the KTX2 material fixture into its bundle.
+  including cooking the KTX2 material fixture into its bundle and adding,
+  replacing, and revalidating sorted KTX2 key/value metadata.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3
   scripts/basisu_probe.py` passed the CPU Basis color, cubemap, alpha, and
-  normal-map transcodes and the generated UASTC HDR 4x4 profile. The bounded
+  normal-map transcodes, channel-swizzle metadata, and the generated UASTC HDR
+  4x4 profile. The bounded
   cooker admits that exact HDR vkFormat/DFD/block/transfer/supercompression
   combination and rejects a mismatched LDR DFD. Its upload-shape policy checks
   accept ordinary 2D and square cubemap shapes while rejecting arrays, invalid
@@ -53,3 +55,21 @@ and exact mip layout. It does not decode the compressed payload; the native
 Basis transcoder validates that content before upload. The separate HDR note
 records real Metal BC6H upload evidence and remaining hardware limits:
 [`ktx2-hdr.md`](ktx2-hdr.md).
+
+## Channel swizzle upload
+
+The runtime reads the standard [`KTXswizzle` metadata](https://github.khronos.org/KTX-Specification/ktxspec.v2.html#_ktxswizzle)
+as a four-character mapping using `r`, `g`, `b`, `a`, `0`, or `1`. Identity
+mappings keep the normal device format-selection path. Nonidentity mappings
+use linear RGBA8, or RGBA16F for HDR, then remap each decoded mip before Wicked
+uploads it. For sRGB color data, the fallback first converts RGB samples to
+linear values and uploads to UNORM; this preserves the texture-sampling result
+when a mapping moves alpha into a color channel. It also reads standard
+[`KTXorientation` metadata](https://github.khronos.org/KTX-Specification/ktxspec.v2.html#_ktxorientation),
+defaults missing values to `rd`, and flips decoded 2D pixels for leftward S or
+upward T axes to keep Wicked's right/down sampling convention. Cubemaps with
+non-`rd` orientation are rejected because KTX requires that layout. The native
+fixtures verify `ra01` for normal X/Y split across red/alpha and `ar01` for
+alpha plus sRGB red; the latter also requests `ru`, and Metal readback verifies
+the vertical flip and linearized red value. Other GPU backends remain
+unverified.

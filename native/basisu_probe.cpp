@@ -72,8 +72,8 @@ static bool check_ktx2_upload_shapes() {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 6) {
-        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2 [hdr.ktx2]]]]\n");
+    if (argc < 2 || argc > 8) {
+        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2 [hdr.ktx2 [swizzled-normal.ktx2 [swizzled-srgb.ktx2]]]]]]\n");
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -188,22 +188,18 @@ int main(int argc, char** argv) {
         if (!probe::check(normal.init(normal_bytes.data(), (uint32_t)normal_bytes.size()),
             "KTX2 normal map parses")) return 1;
         if (!probe::check(normal.get_width() == 4 && normal.get_height() == 4 &&
-            !normal.is_srgb() && normal.get_has_alpha() != 0,
-            "KTX2 normal map carries linear RG through color and alpha")) return 1;
+            !normal.is_srgb(), "KTX2 normal map carries linear data")) return 1;
         if (!probe::check(normal.start_transcoding(), "KTX2 normal map starts transcoding")) return 1;
-        uint8_t bc5_block[16] = {};
+        std::vector<uint8_t> normal_rgba(4 * 4 * 4);
         if (!probe::check(normal.transcode_image_level(
-            0, 0, 0, bc5_block, 1, basist::transcoder_texture_format::cTFBC5_RG, 0, 1),
-            "KTX2 normal map transcodes to BC5")) return 1;
-        basist::color_rgba bc5_pixels[16];
-        basist::bcu::unpack_bc5(bc5_block, bc5_pixels);
-        if (!probe::check(bc5_pixels[0].r >= 65 && bc5_pixels[0].r <= 125 &&
-            bc5_pixels[0].g >= 155 && bc5_pixels[0].g <= 225,
-            "BC5 retains authored normal-map X and Y channels")) return 1;
-        std::fprintf(stdout, "basisu normal BC5 transcode: xy=%u,%u\n",
-            (unsigned)bc5_pixels[0].r, (unsigned)bc5_pixels[0].g);
+            0, 0, 0, normal_rgba.data(), 4 * 4,
+            basist::transcoder_texture_format::cTFRGBA32, 0, 4, 4),
+            "KTX2 normal map transcodes to RGBA")) return 1;
+        if (!probe::check(normal_rgba[0] >= 65 && normal_rgba[0] <= 125 &&
+            normal_rgba[1] >= 155 && normal_rgba[1] <= 225,
+            "RGBA normal map preserves canonical X and Y channels")) return 1;
     }
-    if (argc == 6) {
+    if (argc >= 6) {
         std::ifstream hdr_input(argv[5], std::ios::binary);
         if (!probe::check(hdr_input.good(), "KTX2 HDR file readable")) return 1;
         const std::vector<uint8_t> hdr_bytes(
@@ -233,6 +229,63 @@ int main(int argc, char** argv) {
             0, 0, 0, bc6h_block, 1, basist::transcoder_texture_format::cTFBC6H, 0, 1),
             "HDR KTX2 transcodes to BC6H")) return 1;
         std::fprintf(stdout, "basisu HDR transcode: bc6h=1 rgba16f_dynamic_range=1\n");
+    }
+    if (argc >= 7) {
+        std::ifstream normal_input(argv[6], std::ios::binary);
+        if (!probe::check(normal_input.good(), "KTX2 swizzled normal file readable")) return 1;
+        const std::vector<uint8_t> normal_bytes(
+            (std::istreambuf_iterator<char>(normal_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder normal;
+        if (!probe::check(normal.init(normal_bytes.data(), static_cast<uint32_t>(normal_bytes.size())) &&
+            normal.get_width() == 4 && normal.get_height() == 4 && normal.get_has_alpha() != 0 &&
+            !normal.is_srgb(), "KTX2 split-channel normal metadata is preserved")) return 1;
+        const basisu::uint8_vec* swizzle = normal.find_key("KTXswizzle");
+        if (!probe::check(swizzle != nullptr && swizzle->size() == 6 &&
+            (*swizzle)[0] == 'r' && (*swizzle)[1] == 'a' && (*swizzle)[2] == '0' &&
+            (*swizzle)[3] == '1' && (*swizzle)[4] == 0 && (*swizzle)[5] == 0,
+            "KTX2 normal channel mapping is explicit")) return 1;
+        if (!probe::check(normal.start_transcoding(), "KTX2 split-channel normal starts transcoding")) return 1;
+        uint8_t bc5_block[16] = {};
+        if (!probe::check(normal.transcode_image_level(
+            0, 0, 0, bc5_block, 1, basist::transcoder_texture_format::cTFBC5_RG, 0, 1),
+            "split-channel normal transcodes to BC5")) return 1;
+        basist::color_rgba bc5_pixels[16];
+        basist::bcu::unpack_bc5(bc5_block, bc5_pixels);
+        if (!probe::check(bc5_pixels[0].r >= 65 && bc5_pixels[0].r <= 125 &&
+            bc5_pixels[0].g >= 155 && bc5_pixels[0].g <= 225,
+            "BC5 retains normal X from red and Y from alpha")) return 1;
+        std::fprintf(stdout, "basisu normal BC5 transcode: xy=%u,%u\n",
+            (unsigned)bc5_pixels[0].r, (unsigned)bc5_pixels[0].g);
+    }
+    if (argc == 8) {
+        std::ifstream color_input(argv[7], std::ios::binary);
+        if (!probe::check(color_input.good(), "KTX2 swizzled sRGB file readable")) return 1;
+        const std::vector<uint8_t> color_bytes(
+            (std::istreambuf_iterator<char>(color_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder color;
+        if (!probe::check(color.init(color_bytes.data(), static_cast<uint32_t>(color_bytes.size())) &&
+            color.get_width() == 4 && color.get_height() == 4 && color.get_has_alpha() != 0 &&
+            color.is_srgb(), "KTX2 swizzled color retains sRGB and alpha metadata")) return 1;
+        const basisu::uint8_vec* swizzle = color.find_key("KTXswizzle");
+        if (!probe::check(swizzle != nullptr && swizzle->size() == 6 &&
+            (*swizzle)[0] == 'a' && (*swizzle)[1] == 'r' && (*swizzle)[2] == '0' &&
+            (*swizzle)[3] == '1' && (*swizzle)[4] == 0 && (*swizzle)[5] == 0,
+            "KTX2 sRGB channel mapping is explicit")) return 1;
+        const basisu::uint8_vec* orientation = color.find_key("KTXorientation");
+        if (!probe::check(orientation != nullptr && orientation->size() == 4 &&
+            (*orientation)[0] == 'r' && (*orientation)[1] == 'u' &&
+            (*orientation)[2] == 0 && (*orientation)[3] == 0,
+            "KTX2 texture orientation is explicit")) return 1;
+        if (!probe::check(color.start_transcoding(), "KTX2 swizzled sRGB starts transcoding")) return 1;
+        uint8_t rgba[4 * 4 * 4] = {};
+        if (!probe::check(color.transcode_image_level(0, 0, 0, rgba, 4 * 4,
+            basist::transcoder_texture_format::cTFRGBA32, 0, 4, 4),
+            "KTX2 swizzled sRGB transcodes to RGBA")) return 1;
+        if (!probe::check(rgba[0] >= 115 && rgba[0] <= 145 && rgba[3] >= 175 && rgba[3] <= 210 &&
+            rgba[4 * 4 * 3] >= 150 && rgba[4 * 4 * 3] <= 175,
+            "KTX2 source retains authored encoded red and alpha")) return 1;
+        std::fprintf(stdout, "basisu swizzled sRGB transcode: encoded=%u alpha=%u\n",
+            (unsigned)rgba[0], (unsigned)rgba[3]);
     }
     return 0;
 }

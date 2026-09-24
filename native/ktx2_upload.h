@@ -9,8 +9,11 @@
 #include "basisu_transcoder.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -132,6 +135,124 @@ inline bool ktx2_encoding_is_compressed(KTX2UploadEncoding encoding) {
         encoding == KTX2UploadEncoding::Bc7;
 }
 
+struct KTX2ChannelSwizzle {
+    // r, g, b, a select a source channel; 0 and 1 select constants.
+    std::array<uint8_t, 4> source{0, 1, 2, 3};
+
+    bool identity() const { return source == std::array<uint8_t, 4>{0, 1, 2, 3}; }
+};
+
+struct KTX2Orientation {
+    bool flip_x = false;
+    bool flip_y = false;
+};
+
+inline bool ktx2_read_orientation(const basist::ktx2_transcoder& transcoder,
+    KTX2Orientation& orientation) {
+    const basisu::uint8_vec* value = transcoder.find_key("KTXorientation");
+    if (value == nullptr) return true; // KTX's default is right, down (top-left origin).
+    // Basis appends a safety NUL after the NUL-terminated KTX string value.
+    if (value->size() != 4 || (*value)[2] != 0 || (*value)[3] != 0) return false;
+    if ((*value)[0] != 'r' && (*value)[0] != 'l') return false;
+    if ((*value)[1] != 'd' && (*value)[1] != 'u') return false;
+    orientation.flip_x = (*value)[0] == 'l';
+    orientation.flip_y = (*value)[1] == 'u';
+    return true;
+}
+
+inline bool ktx2_read_channel_swizzle(const basist::ktx2_transcoder& transcoder,
+    KTX2ChannelSwizzle& swizzle) {
+    const basisu::uint8_vec* value = transcoder.find_key("KTXswizzle");
+    if (value == nullptr) return true;
+    // Basis retains the KTX value (including its terminating NUL) and appends
+    // one more NUL to every value returned by find_key().
+    if (value->size() != 6 || (*value)[4] != 0 || (*value)[5] != 0) return false;
+    for (size_t channel = 0; channel < swizzle.source.size(); ++channel) {
+        switch ((*value)[channel]) {
+        case 'r': swizzle.source[channel] = 0; break;
+        case 'g': swizzle.source[channel] = 1; break;
+        case 'b': swizzle.source[channel] = 2; break;
+        case 'a': swizzle.source[channel] = 3; break;
+        case '0': swizzle.source[channel] = 4; break;
+        case '1': swizzle.source[channel] = 5; break;
+        default: return false;
+        }
+    }
+    return true;
+}
+
+inline void ktx2_apply_orientation(uint8_t* pixels, uint32_t width, uint32_t height,
+    uint32_t pixel_bytes, const KTX2Orientation& orientation) {
+    if (orientation.flip_x) {
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width / 2; ++x) {
+                uint8_t* left = pixels + (static_cast<size_t>(y) * width + x) * pixel_bytes;
+                uint8_t* right = pixels + (static_cast<size_t>(y) * width + (width - 1 - x)) * pixel_bytes;
+                for (uint32_t byte = 0; byte < pixel_bytes; ++byte) std::swap(left[byte], right[byte]);
+            }
+        }
+    }
+    if (orientation.flip_y) {
+        for (uint32_t y = 0; y < height / 2; ++y) {
+            uint8_t* top = pixels + static_cast<size_t>(y) * width * pixel_bytes;
+            uint8_t* bottom = pixels + static_cast<size_t>(height - 1 - y) * width * pixel_bytes;
+            for (size_t byte = 0; byte < static_cast<size_t>(width) * pixel_bytes; ++byte) {
+                std::swap(top[byte], bottom[byte]);
+            }
+        }
+    }
+}
+
+inline void ktx2_apply_swizzle_rgba8(uint8_t* pixels, size_t pixel_count,
+    const KTX2ChannelSwizzle& swizzle) {
+    for (size_t pixel = 0; pixel < pixel_count; ++pixel) {
+        uint8_t* channels = pixels + pixel * 4u;
+        const std::array<uint8_t, 4> source{channels[0], channels[1], channels[2], channels[3]};
+        for (size_t channel = 0; channel < source.size(); ++channel) {
+            const uint8_t selected = swizzle.source[channel];
+            channels[channel] = selected < 4 ? source[selected] : (selected == 4 ? 0 : 255);
+        }
+    }
+}
+
+inline uint8_t ktx2_linearize_srgb_channel(uint8_t encoded) {
+    static const std::array<uint8_t, 256> lookup = [] {
+        std::array<uint8_t, 256> values{};
+        for (size_t value = 0; value < values.size(); ++value) {
+            const double encoded_value = static_cast<double>(value) / 255.0;
+            const double linear_value = encoded_value <= 0.04045 ? encoded_value / 12.92 :
+                std::pow((encoded_value + 0.055) / 1.055, 2.4);
+            values[value] = static_cast<uint8_t>(std::lround(linear_value * 255.0));
+        }
+        return values;
+    }();
+    return lookup[encoded];
+}
+
+inline void ktx2_linearize_srgb_rgba8(uint8_t* pixels, size_t pixel_count) {
+    for (size_t pixel = 0; pixel < pixel_count; ++pixel) {
+        uint8_t* channels = pixels + pixel * 4u;
+        channels[0] = ktx2_linearize_srgb_channel(channels[0]);
+        channels[1] = ktx2_linearize_srgb_channel(channels[1]);
+        channels[2] = ktx2_linearize_srgb_channel(channels[2]);
+    }
+}
+
+inline void ktx2_apply_swizzle_rgba16f(uint8_t* pixels, size_t pixel_count,
+    const KTX2ChannelSwizzle& swizzle) {
+    for (size_t pixel = 0; pixel < pixel_count; ++pixel) {
+        uint8_t* pixel_bytes = pixels + pixel * 8u;
+        std::array<uint16_t, 4> source{};
+        std::memcpy(source.data(), pixel_bytes, sizeof(source));
+        std::array<uint16_t, 4> channels{};
+        for (size_t channel = 0; channel < source.size(); ++channel) {
+            const uint8_t selected = swizzle.source[channel];
+            channels[channel] = selected < 4 ? source[selected] : (selected == 4 ? 0x0000u : 0x3C00u);
+        }
+        std::memcpy(pixel_bytes, channels.data(), sizeof(channels));
+    }
+}
+
 inline uint32_t ktx2_pixel_bytes(KTX2UploadEncoding encoding) {
     return encoding == KTX2UploadEncoding::Rgba16Float ? 8u : 4u;
 }
@@ -157,6 +278,12 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     basist::basisu_transcoder_init();
     basist::ktx2_transcoder transcoder;
     if (!ktx2_upload_check(transcoder.init(bytes.data(), static_cast<uint32_t>(bytes.size())), "KTX2 upload parses")) return resource;
+    KTX2ChannelSwizzle channel_swizzle;
+    if (!ktx2_upload_check(ktx2_read_channel_swizzle(transcoder, channel_swizzle),
+        "KTX2 swizzle metadata is a valid four-component mapping")) return resource;
+    KTX2Orientation orientation;
+    if (!ktx2_upload_check(ktx2_read_orientation(transcoder, orientation),
+        "KTX2 orientation metadata is a valid 2D mapping")) return resource;
     const uint32_t width = transcoder.get_width();
     const uint32_t height = transcoder.get_height();
     const uint32_t levels = transcoder.get_levels();
@@ -167,18 +294,27 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     const bool is_cubemap = faces == 6;
     if (!ktx2_upload_check(ktx2_upload_shape_supported(layers, faces, width, height),
         "KTX2 upload is a 2D texture or cubemap")) return resource;
+    if (is_cubemap && !ktx2_upload_check(!orientation.flip_x && !orientation.flip_y,
+        "KTX2 cubemap orientation is the required right/down layout")) return resource;
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (!ktx2_upload_check(device != nullptr, "KTX2 upload has a graphics device")) return resource;
     const bool hdr = transcoder.is_hdr();
     const bool srgb = !hdr && usage == KTX2TextureUsage::Color && transcoder.is_srgb();
+    const bool linearize_swizzled_color = srgb && !channel_swizzle.identity();
+    const bool transform_pixels = !channel_swizzle.identity() || orientation.flip_x || orientation.flip_y;
     const KTX2UploadFormats available_formats = query_ktx2_upload_formats(device, srgb);
     if (format_mask != nullptr && !ktx2_formats_are_subset(*format_mask, available_formats)) {
         return resource;
     }
     const KTX2UploadFormats supported_formats =
         format_mask == nullptr ? available_formats : *format_mask;
-    const KTX2UploadEncoding encoding = choose_ktx2_upload_encoding(
+    KTX2UploadEncoding encoding = choose_ktx2_upload_encoding(
         transcoder.get_has_alpha() != 0, supported_formats, usage, hdr);
+    if (transform_pixels) {
+        encoding = hdr ? (supported_formats.rgba16f ? KTX2UploadEncoding::Rgba16Float :
+            KTX2UploadEncoding::Unsupported) : (supported_formats.rgba8 ? KTX2UploadEncoding::Rgba8 :
+            KTX2UploadEncoding::Unsupported);
+    }
     if (!ktx2_upload_check(encoding != KTX2UploadEncoding::Unsupported,
         "KTX2 upload has a supported native texture format")) return resource;
     if (!ktx2_upload_check(transcoder.start_transcoding(), "KTX2 upload starts transcoding")) return resource;
@@ -217,6 +353,26 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
                 static_cast<uint32_t>(output_units), basis_format,
                 0, static_cast<uint32_t>(is_compressed ? blocks_x : mip_width),
                 is_compressed ? 0u : mip_height), "KTX2 upload transcodes selected mip format")) return resource;
+            if (transform_pixels) {
+                if (encoding == KTX2UploadEncoding::Rgba8) {
+                    if (linearize_swizzled_color) {
+                        ktx2_linearize_srgb_rgba8(mip_bytes[subresource].data(), pixel_count);
+                    }
+                    if (!channel_swizzle.identity()) {
+                        ktx2_apply_swizzle_rgba8(mip_bytes[subresource].data(), pixel_count, channel_swizzle);
+                    }
+                    ktx2_apply_orientation(mip_bytes[subresource].data(), mip_width, mip_height,
+                        pixel_bytes, orientation);
+                } else if (encoding == KTX2UploadEncoding::Rgba16Float) {
+                    if (!channel_swizzle.identity()) {
+                        ktx2_apply_swizzle_rgba16f(mip_bytes[subresource].data(), pixel_count, channel_swizzle);
+                    }
+                    ktx2_apply_orientation(mip_bytes[subresource].data(), mip_width, mip_height,
+                        pixel_bytes, orientation);
+                } else {
+                    return resource;
+                }
+            }
             wi::graphics::SubresourceData data;
             data.data_ptr = mip_bytes[subresource].data();
             data.row_pitch = static_cast<uint32_t>(row_pitch);
@@ -232,7 +388,7 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     desc.array_size = faces;
     desc.mip_levels = levels;
     desc.sample_count = 1;
-    desc.format = ktx2_wicked_format(encoding, srgb);
+    desc.format = ktx2_wicked_format(encoding, srgb && !linearize_swizzled_color);
     desc.bind_flags = wi::graphics::BindFlag::SHADER_RESOURCE;
     if (is_cubemap) desc.misc_flags = wi::graphics::ResourceMiscFlag::TEXTURECUBE;
     wi::graphics::Texture texture;

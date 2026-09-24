@@ -12,11 +12,14 @@ the managed tick and body pose unchanged.
 
 The smoke pumps initial render frames, then calls the public
 `RenderScene::wait_for_pipelines` API so Wicked finishes asynchronous shader
-compilation before either capture. Both final frames are saved from Wicked's
-SDL3/Metal backbuffer, decoded, checked for visible pixels, and compared pixel
-for pixel. On the validated macOS host, both are 640x480 RGBA PNGs and are
-identical. The smoke stores them at:
+compilation before either capture. Frames at physics ticks 30 and 60 are saved
+from Wicked's SDL3/Metal backbuffer. The validation decodes each PNG, checks
+that it contains visible pixels, and compares both PNG bytes and decoded pixels
+between the 30 Hz and 120 Hz presentation runs. On the validated macOS host,
+both pairs are 640x480 RGBA PNGs and are identical. The smoke stores them at:
 
+- `build/validation/physics-render-cadence/physics-30hz-mid.png`
+- `build/validation/physics-render-cadence/physics-120hz-mid.png`
 - `build/validation/physics-render-cadence/physics-30hz.png`
 - `build/validation/physics-render-cadence/physics-120hz.png`
 
@@ -26,8 +29,11 @@ Validation command from the engine root:
 python3 scripts/application_native_smoke.py
 ```
 
-The full application smoke passed, including the existing lifecycle and failure
-cleanup clients plus the new two-cadence Jolt/Wicked client. This is native
-SDL3/Metal evidence for macOS. It checks equal-duration final rendered output
-and render-owned stepping, but does not yet prove pixel equivalence at every
-intermediate frame or the clock-to-hierarchy path used by a full game session.
+The dedicated Jolt/Wicked cadence client passed on SDL3/Metal. It checks
+matching midpoint and final renders at equal physics ticks, plus render-owned
+step rejection. The aggregate `scripts/application_native_smoke.py` currently
+stops earlier: `RuntimeServicesAudioProbe` returns status 185 because its
+silent-audio voice count is nonzero. The standalone cadence client therefore
+provides the native rendering evidence while that separate audio assertion is
+unresolved. This does not compare every intermediate frame or exercise the full
+game-session clock-to-hierarchy path.

@@ -93,6 +93,90 @@ inline bool check_ktx2_format_policy() {
             "HDR upload maps to Wicked's BC6H or RGBA16F formats");
 }
 
+enum class KTX2RGBAFallbackFixture { OpaqueColor, AlphaColor, NormalData };
+
+inline bool check_ktx2_rgba8_fallback(const std::filesystem::path& path,
+    KTX2RGBAFallbackFixture fixture) {
+    if (!check(std::filesystem::is_regular_file(path), "KTX2 RGBA fallback fixture present")) return false;
+    const bool srgb = fixture == KTX2RGBAFallbackFixture::AlphaColor;
+    const KTX2TextureUsage usage = fixture == KTX2RGBAFallbackFixture::NormalData ?
+        KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
+    const KTX2UploadFormats available = query_ktx2_upload_formats(wi::graphics::GetDevice(), srgb);
+    if (!check(available.rgba8, "KTX2 RGBA fallback format is supported by the active device")) return false;
+
+    std::vector<uint8_t> encoded;
+    if (!check(read_bounded_ktx2_container(path.lexically_normal().string(), encoded),
+        "KTX2 RGBA fallback input reads within its budget")) return false;
+    KTX2UploadFormats rgba8_only{};
+    rgba8_only.rgba8 = true;
+    const wi::Resource resource = elisa::rendering::textures::detail::load_ktx2_texture_resource(
+        encoded, usage, &rgba8_only);
+    const wi::graphics::Format expected_format = srgb ? wi::graphics::Format::R8G8B8A8_UNORM_SRGB :
+        wi::graphics::Format::R8G8B8A8_UNORM;
+    if (!check(resource.IsValid() && resource.GetTexture().IsValid() &&
+        resource.GetTexture().GetDesc().format == expected_format,
+        "KTX2 RGBA fallback uploads with the correct linear or sRGB format")) return false;
+
+    wi::vector<uint8_t> pixels;
+    if (!check(wi::helper::saveTextureToMemory(resource.GetTexture(), pixels) && pixels.size() >= 4u * 4u * 4u,
+        "KTX2 RGBA fallback texture reads back")) return false;
+    if (fixture == KTX2RGBAFallbackFixture::OpaqueColor) {
+        return check(pixels[0] < 80 && pixels[1] > 180 && pixels[2] < 110 && pixels[3] == 255,
+            "RGBA fallback preserves opaque color channels");
+    }
+    if (fixture == KTX2RGBAFallbackFixture::AlphaColor) {
+        return check(pixels[0] < 80 && pixels[1] > 180 && pixels[2] < 110 &&
+            pixels[3] >= 80 && pixels[3] <= 175,
+            "RGBA fallback preserves color and fractional alpha");
+    }
+    return check(pixels[0] >= 65 && pixels[0] <= 125 &&
+        pixels[1] >= 155 && pixels[1] <= 225 && pixels[3] > 240,
+        "RGBA fallback preserves both normal-map channels");
+}
+
+inline bool check_ktx2_swizzled_normal_upload(const std::filesystem::path& path) {
+    if (!check(std::filesystem::is_regular_file(path), "KTX2 swizzled normal fixture present")) return false;
+    const wi::Resource resource = load_ktx2_texture_resource(
+        path.lexically_normal().string(), KTX2TextureUsage::NormalData);
+    if (!check(resource.IsValid() && resource.GetTexture().IsValid() &&
+        resource.GetTexture().GetDesc().format == wi::graphics::Format::R8G8B8A8_UNORM,
+        "KTXswizzle metadata selects a readable linear RGBA texture")) return false;
+    wi::vector<uint8_t> pixels;
+    if (!check(wi::helper::saveTextureToMemory(resource.GetTexture(), pixels) && pixels.size() >= 4u * 4u * 4u,
+        "KTXswizzle texture reads back")) return false;
+    return check(pixels[0] >= 65 && pixels[0] <= 125 &&
+        pixels[1] >= 155 && pixels[1] <= 225 && pixels[2] == 0 && pixels[3] == 255,
+        "KTXswizzle restores normal X/Y from red and alpha");
+}
+
+inline bool check_ktx2_swizzled_srgb_upload(const std::filesystem::path& path) {
+    if (!check(std::filesystem::is_regular_file(path), "KTX2 swizzled sRGB fixture present")) return false;
+    std::vector<uint8_t> encoded;
+    if (!check(read_bounded_ktx2_container(path.lexically_normal().string(), encoded),
+        "KTX2 swizzled sRGB input reads within its budget")) return false;
+    basist::basisu_transcoder_init();
+    basist::ktx2_transcoder transcoder;
+    if (!check(transcoder.init(encoded.data(), static_cast<uint32_t>(encoded.size())) &&
+        transcoder.is_srgb() && transcoder.get_has_alpha() != 0,
+        "KTX2 swizzled sRGB fixture has encoded color and alpha")) return false;
+    const basisu::uint8_vec* orientation = transcoder.find_key("KTXorientation");
+    if (!check(orientation != nullptr && orientation->size() == 4 &&
+        (*orientation)[0] == 'r' && (*orientation)[1] == 'u' &&
+        (*orientation)[2] == 0 && (*orientation)[3] == 0,
+        "KTX2 fixture requests a vertical texture-axis flip")) return false;
+
+    const wi::Resource resource = load_ktx2_texture_resource(encoded, KTX2TextureUsage::Color);
+    if (!check(resource.IsValid() && resource.GetTexture().IsValid() &&
+        resource.GetTexture().GetDesc().format == wi::graphics::Format::R8G8B8A8_UNORM,
+        "swizzled sRGB color is linearized into an RGBA8 texture")) return false;
+    wi::vector<uint8_t> pixels;
+    if (!check(wi::helper::saveTextureToMemory(resource.GetTexture(), pixels) &&
+        pixels.size() >= 4u * 4u * 4u, "swizzled sRGB texture reads back")) return false;
+    return check(pixels[0] >= 110 && pixels[0] <= 145 &&
+        pixels[1] >= 70 && pixels[1] <= 110 && pixels[2] == 0 && pixels[3] == 255,
+        "orientation flip and sRGB swizzle preserve the source sample");
+}
+
 inline bool check_ktx2_cubemap_upload(const std::filesystem::path& path) {
     if (!check(std::filesystem::is_regular_file(path), "KTX2 cubemap artifact present")) return false;
     const wi::Resource resource = load_ktx2_texture_resource(path.lexically_normal().string());
@@ -186,10 +270,18 @@ inline bool check_ktx2_hdr_upload(const std::filesystem::path& path) {
 inline bool check_ktx2_upload_fixtures(const std::filesystem::path& cooked_directory) {
     return check_ktx2_bounded_reader(cooked_directory) && check_ktx2_format_policy() &&
         check_ktx2_color_upload(cooked_directory / "maze_tile_tex.ktx2") &&
+        check_ktx2_rgba8_fallback(cooked_directory / "maze_tile_tex.ktx2",
+            KTX2RGBAFallbackFixture::OpaqueColor) &&
         check_ktx2_normal_data_upload(cooked_directory / "maze_tile_normal.ktx2") &&
+        check_ktx2_rgba8_fallback(cooked_directory / "maze_tile_normal.ktx2",
+            KTX2RGBAFallbackFixture::NormalData) &&
+        check_ktx2_swizzled_normal_upload(cooked_directory / "maze_tile_normal_swizzled.ktx2") &&
+        check_ktx2_swizzled_srgb_upload(cooked_directory / "maze_tile_color_swizzled.ktx2") &&
         check_ktx2_hdr_upload(cooked_directory / "maze_tile_hdr.ktx2") &&
         check_ktx2_cubemap_upload(cooked_directory / "maze_tile_cube.ktx2") &&
-        check_ktx2_alpha_upload(cooked_directory / "maze_tile_alpha.ktx2");
+        check_ktx2_alpha_upload(cooked_directory / "maze_tile_alpha.ktx2") &&
+        check_ktx2_rgba8_fallback(cooked_directory / "maze_tile_alpha.ktx2",
+            KTX2RGBAFallbackFixture::AlphaColor);
 }
 
 inline int run_ktx2_upload_smoke(const std::filesystem::path& scene_manifest) {
