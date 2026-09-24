@@ -33,11 +33,11 @@ module RenderSceneAnimationRootMotionNativeTests:
             return 4 if not advanced
             raw_rig: i64 = RenderScene::native_smoke_handle(rig)
             return 5 if elisa_render_scene_v1_test_animation_root_pose(raw_rig,
-                2.0, 2.5, 0.0) == 0
+                2.0, 0.0, 3.0) == 0
             delta: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
                 value: value
                 error failure: return 6
-            return 7 if not near(delta.x, 1.0) or not near(delta.y, 0.0) or not near(delta.z, 3.0)
+            return 7 if not near(delta.x, 0.01) or not near(delta.y, 0.0) or not near(delta.z, -0.025)
             empty: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
                 value: value
                 error failure: return 8
@@ -49,7 +49,7 @@ module RenderSceneAnimationRootMotionNativeTests:
             queued: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
                 value: value
                 error failure: return 11
-            return 12 if not near(queued.x, 0.5) or not near(queued.z, 1.5)
+            return 12 if not near(queued.x, 0.005) or not near(queued.z, -0.0125)
             advanced_pending: bool = catch RenderScene::advance_animation(rig, 0.1):
                 ok: true
                 error failure: false

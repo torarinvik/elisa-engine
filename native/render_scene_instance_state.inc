@@ -47,7 +47,9 @@ struct InstanceSlot {
     int32_t root_motion_mode = 0;
     int32_t root_motion_joint = -1;
     float root_motion_anchor_x = 0.0f;
+    float root_motion_anchor_y = 0.0f;
     float root_motion_anchor_z = 0.0f;
+    // Previous horizontal displacement in instance-local Elisa metres.
     float root_motion_previous_x = 0.0f;
     float root_motion_previous_z = 0.0f;
     float root_motion_pending_x = 0.0f;

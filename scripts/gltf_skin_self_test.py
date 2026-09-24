@@ -144,8 +144,12 @@ def write_package(output: Path,
 
 
 def write_root_motion_package(output: Path) -> tuple[Path, dict]:
-    """Cook a minimal skinned clip whose root translates on all three axes."""
+    """Cook a scaled, rotated rig whose root translates on all three axes."""
     document = generated_document()
+    document["nodes"][4].update({
+        "rotation": [-0.7071067811865475, 0.0, 0.0, 0.7071067811865476],
+        "scale": [0.01, 0.01, 0.01],
+    })
     buffer = bytearray(base64.b64decode(document["buffers"][0]["uri"].split(",", 1)[1]))
     time_accessor = document["animations"][0]["samplers"][0]["input"]
     output_accessor = _append(document, buffer,

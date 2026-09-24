@@ -216,13 +216,18 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
     }
     if (root_joint < 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     const float* root_pose = instance.displayed_joint_pose.data() + size_t(root_joint) * 10;
-    if (!finite(root_pose[0]) || !finite(root_pose[2])) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    if (!finite(root_pose[0]) || !finite(root_pose[1]) || !finite(root_pose[2])) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
     instance.root_motion_mode = mode;
     instance.root_motion_joint = root_joint;
     instance.root_motion_anchor_x = root_pose[0];
+    instance.root_motion_anchor_y = root_pose[1];
     instance.root_motion_anchor_z = root_pose[2];
-    instance.root_motion_previous_x = root_pose[0];
-    instance.root_motion_previous_z = root_pose[2];
+    instance.root_motion_previous_x = 0.0f;
+    instance.root_motion_previous_z = 0.0f;
+    // The anchor is the zero-displacement baseline, so the first sampled pose
+    // must contribute its full planar offset rather than merely initialize it.
     instance.root_motion_previous_valid = true;
     instance.root_motion_pending_x = 0.0f;
     instance.root_motion_pending_z = 0.0f;
