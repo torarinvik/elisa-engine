@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
@@ -78,11 +79,46 @@ def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
     return width, height, bytes(pixels)
 
 
+def write_physics_mesh_fixture(project: Path) -> None:
+    """Write a tiny valid cooked tetrahedron for the public physics mesh API."""
+    positions = (
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0,
+    )
+    indices = (0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3)
+
+    def encode(values: tuple[float, ...] | tuple[int, ...], fmt: str) -> str:
+        return base64.b64encode(struct.pack(fmt, *values)).decode("ascii")
+
+    fixture = project / "test/fixtures/physics-tetra.pkg"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text("\n".join((
+        "format=elisa-cooked-v2",
+        "source=physics-tetra.gltf",
+        "source_sha256=" + "0" * 64,
+        "triangles=4",
+        "positions=4",
+        "indices=12",
+        "position_stride=12",
+        "normal_stride=12",
+        "uv_stride=8",
+        "index_stride=4",
+        "positions_b64=" + encode(positions, "<12f"),
+        "normals_b64=" + encode((0.0,) * 12, "<12f"),
+        "uvs_b64=" + encode((0.0,) * 8, "<8f"),
+        "indices_b64=" + encode(indices, "<12I"),
+        "",
+    )), encoding="ascii")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="Elisa application smoke ") as temporary_directory:
         project = Path(temporary_directory)
         fixture = project / "test/fixtures/audio-smoke.wav"
         fixture.parent.mkdir(parents=True, exist_ok=True)
+        write_physics_mesh_fixture(project)
         samples = [int(6000 * math.sin(2.0 * math.pi * 440.0 * frame / 8000)) for frame in range(400)]
         with wave.open(str(fixture), "wb") as output:
             output.setnchannels(1)
@@ -98,6 +134,7 @@ def main() -> int:
         }
         projects = [
             ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),
+            ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
             ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
@@ -136,6 +173,7 @@ def main() -> int:
                 "--native-test-probes"]
             environment = dict(os.environ)
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
+            environment["ELISA_PROJECT_ROOT"] = str(project)
             screenshot = project / f"{name}-frame.png"
             environment["ELISA_SMOKE_SCREENSHOT_PATH"] = str(screenshot)
             environment["ELISA_PHYSICS_30HZ_CAPTURE_PATH"] = str(physics_captures / "physics-30hz.png")

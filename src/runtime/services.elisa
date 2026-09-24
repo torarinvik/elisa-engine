@@ -400,6 +400,12 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_shape_create(session.physics, shape, dimensions)
 
+        def physics_mesh_shape_create(session: Session&, shape: PhysicsRuntime::MeshShape,
+            asset_path: cstr, scale: Geometry::Vec3) -> PhysicsRuntime::ShapeHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_mesh_shape_create(session.physics, shape, asset_path, scale)
+
         def physics_shape_create_triangle_mesh(session: Session&,
             vertices: Geometry::Vec3&, vertex_count: usize, indices: u32&,
             index_count: usize) -> PhysicsRuntime::ShapeHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:

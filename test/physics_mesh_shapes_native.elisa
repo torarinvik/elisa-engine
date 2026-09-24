@@ -1,0 +1,105 @@
+include "../src/runtime/application.elisa"
+include "../src/physics/runtime.elisa"
+
+module PhysicsMeshShapesNative:
+    private:
+        const module Window:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 240
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Physics Mesh Shapes",
+                width: Window::WIDTH,
+                height: Window::HEIGHT,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+                value: value
+                error failure: return 2
+            scale: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}
+            missing_asset: i32 = catch PhysicsRuntime::mesh_shape_create(&world,
+                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/not-found.pkg", scale):
+                ok: 0
+                PhysicsRuntime::PhysicsError.AssetLoadFailed: 1
+                error failure: 2
+            return 15 if missing_asset != 1
+            invalid_scale: i32 = catch PhysicsRuntime::mesh_shape_create(&world,
+                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg",
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 1
+                error failure: 2
+            return 16 if invalid_scale != 1
+            hull: PhysicsRuntime::ShapeHandle = catch PhysicsRuntime::mesh_shape_create(&world,
+                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg", scale):
+                value: value
+                error failure: return 3
+            triangle_mesh: PhysicsRuntime::ShapeHandle = catch PhysicsRuntime::mesh_shape_create(&world,
+                PhysicsRuntime::MeshShape.TriangleMesh, "test/fixtures/physics-tetra.pkg", scale):
+                value: value
+                error failure: return 4
+            hull_body: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create_with_shape(&world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                }, hull):
+                value: value
+                error failure: return 5
+            triangle_body: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create_with_shape(&world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    mass: 0.0,
+                    sensor: false,
+                }, triangle_mesh):
+                value: value
+                error failure: return 6
+            rejected_dynamic: i32 = catch PhysicsRuntime::body_create_with_shape(&world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: 6.0, y: 2.0, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                }, triangle_mesh):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 1
+                error failure: 2
+            return 7 if rejected_dynamic != 1
+            _tick: u64 = catch PhysicsRuntime::fixed_step(&world, 1.0 / 60.0):
+                value: value
+                error failure: return 8
+            hit: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(world,
+                Geometry::Vec3{x: -0.1, y: 3.0, z: 0.1},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 9
+            return 10 if not hit.hit
+            triangle_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, triangle_body):
+                ok: 0
+                error failure: 1
+            hull_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, hull_body):
+                ok: 0
+                error failure: 1
+            triangle_shape_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, triangle_mesh):
+                ok: 0
+                error failure: 1
+            hull_shape_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, hull):
+                ok: 0
+                error failure: 1
+            return 13 if triangle_body_destroyed != 0 or hull_body_destroyed != 0
+            return 14 if triangle_shape_destroyed != 0 or hull_shape_destroyed != 0
+            closed: i32 = catch PhysicsRuntime::shutdown(&world):
+                ok: 0
+                error failure: 1
+            return 11 if closed != 0
+            return 12 if not Application::shutdown()
+            0
+
+def main() -> i32:
+    PhysicsMeshShapesNative::run()

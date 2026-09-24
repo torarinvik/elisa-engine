@@ -82,4 +82,16 @@ module RuntimeServicesMotionProbe:
                 ok: 0
                 error failure: 20
             return 21 if service_hull_release != 0
+
+            service_asset_shape: PhysicsRuntime::ShapeHandle = catch RuntimeServices::physics_mesh_shape_create(
+                session, PhysicsRuntime::MeshShape.ConvexHull,
+                "test/fixtures/physics-tetra.pkg",
+                Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}):
+                value: value
+                error failure: return 22
+            service_asset_release: i32 = catch RuntimeServices::physics_shape_destroy(
+                session, service_asset_shape):
+                ok: 0
+                error failure: 23
+            return 24 if service_asset_release != 0
             0

@@ -1,13 +1,18 @@
 #include "physics_service_abi.h"
 
 #include "coordinate_transform_bridge.h"
+#include "coordinate_conventions.h"
+#include "cooked_geometry_package.h"
 #include "physics_service_internal.h"
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 

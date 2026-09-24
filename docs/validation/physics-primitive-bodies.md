@@ -34,6 +34,16 @@ Convex hulls can attach to static, kinematic, and dynamic bodies.
 generation-checked shape lifetime operations. Cooking happens at runtime;
 offline collision cook packages and compound shapes remain open.
 
+`PhysicsRuntime::mesh_shape_create` and
+`RuntimeServices::physics_mesh_shape_create` also load project-relative cooked
+geometry assets. They verify ELPK bundle dependencies, apply the shared
+coordinate and winding conventions, and prepare a reusable shape with a
+positive per-shape scale. Each attached body keeps a matching mesh query proxy.
+Triangle meshes remain static-only; convex hulls support all body kinds.
+Packages with skinning, morph targets, or multiple scene placements are
+rejected until the physics API can represent those deformations and transforms.
+Missing or unreadable assets return `PhysicsError.AssetLoadFailed`.
+
 Dynamic bodies expose checked linear-velocity read/write and impulse operations
 through both `PhysicsRuntime` and `RuntimeServices`. Static and kinematic bodies
 reject those operations. Before the first fixed step creates the native body,
@@ -52,7 +62,7 @@ The standalone primitive client also fills the fixed 64-body registry, verifies
 that the next body creation returns `PhysicsError.Capacity`, then releases every
 body and the shared shape.
 The application probe verifies velocity and impulse behavior; the session probe
-exercises the public service routes.
+exercises the public service routes, including cooked-asset creation and release.
 
 Validation on 2026-09-24:
 
@@ -83,6 +93,14 @@ objects, and source-length, module-hygiene, and diff checks passed. The run used
 the available stage1 compiler product with `ELISA_ALLOW_STALE_STAGE1=1`; it
 validates the engine changes against that product, not later unseeded edits in
 the adjacent compiler checkout.
+
+Cooked-asset follow-up on 2026-09-24: the full gate passed all five clients,
+including `test/physics_mesh_shapes_native.elisa`. The new client verifies a
+typed missing-asset error, invalid scale rejection, convex and triangle-mesh
+creation from the cooked tetrahedron, static-only triangle-mesh enforcement,
+physics ray hits, and handle cleanup. The application client creates and
+releases a cooked convex shape through `RuntimeServices`. Midpoint and final
+30 Hz/120 Hz captures remained pixel-identical at 640x480.
 
 P02 remains partial: native compound shapes, broadphase layers, and custom mass
 properties are open. Mesh cooking is runtime-only and is not an offline
