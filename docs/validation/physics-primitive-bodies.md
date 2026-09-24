@@ -31,6 +31,9 @@ set/get, impulse response, and the not-ready state.
 `test/physics_primitives_probe.elisa` verifies invalid dimensions, falling
 sphere/capsule/zero-cylinder bodies, two bodies sharing one sphere shape,
 in-use shape destruction rejection, final release, and stale-handle rejection.
+The standalone primitive client also fills the fixed 64-body registry, verifies
+that the next body creation returns `PhysicsError.Capacity`, then releases every
+body and the shared shape.
 The application probe verifies velocity and impulse behavior; the session probe
 exercises the public service routes.
 
@@ -38,6 +41,16 @@ Validation on 2026-09-24:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` passed all four entries: primitive bodies, render cadence, application lifecycle, and failure cleanup. The 30 Hz and 120 Hz midpoint/final captures match at 640x480.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
+
+Capacity follow-up on 2026-09-24: after running
+`bash scripts/elisac_stage1.sh --seed` in the adjacent compiler checkout, the
+full SDL3/Metal gate passed all four clients with the new saturation assertion:
+`ELISA_ALLOW_STALE_STAGE1=1 ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py`.
+This run used `ELISA_ALLOW_STALE_STAGE1=1` and the freshly seeded compiler product because
+`src/semantic/check_destroyed_region.elisa` was edited again after that seed;
+the runtime test does not exercise that checker change. This validates the
+engine change against the seed product, not the compiler checkout's later edit.
+Source-length, module-hygiene, and diff checks passed as well.
 
 The native registry currently supports reusable box, sphere, and capsule shapes.
 It does not yet support cooked mesh or compound shapes, broadphase layers, or

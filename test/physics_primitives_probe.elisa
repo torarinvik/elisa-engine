@@ -16,6 +16,7 @@ module PhysicsPrimitiveProbe:
             CAPSULE_CYLINDER_HALF_HEIGHT: f32 = 0.4
             FIXED_STEP_SECONDS: f32 = 1.0 / 30.0
             FIXED_STEPS: i32 = 9
+            BODY_CAPACITY: usize = 64
 
     public:
         def exercise(world: mutable PhysicsRuntime::World&,
@@ -129,6 +130,54 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::PhysicsError.InvalidHandle: 0
                 error failure: 2
             raise PhysicsRuntime::PhysicsError.BackendFailure if stale_shape_status != 0
+
+        def exercise_capacity(world: mutable PhysicsRuntime::World&) -> void error[PhysicsRuntime::PhysicsError]:
+            capacity_shape: PhysicsRuntime::ShapeHandle = try PhysicsRuntime::shape_create(world,
+                PhysicsRuntime::BodyShape.Sphere,
+                Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0})
+            capacity_bodies: mutable PhysicsRuntime::ServiceBodyHandles::Pool =
+                PhysicsRuntime::ServiceBodyHandles::Pool()
+            for index in 0..<Fixture::BODY_CAPACITY:
+                body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
+                    PhysicsRuntime::BodyInstanceDesc{
+                        kind: PhysicsRuntime::BodyKind.Static,
+                        position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                        mass: 0.0,
+                        sensor: false,
+                    }, capacity_shape)
+                stored: bool = PhysicsRuntime::ServiceBodyHandles::store(
+                    &capacity_bodies, index, body)
+                raise PhysicsRuntime::PhysicsError.BackendFailure if not stored
+            exhausted: i32 = catch PhysicsRuntime::body_create_with_shape(world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    mass: 0.0,
+                    sensor: false,
+                }, capacity_shape):
+                value: 1
+                PhysicsRuntime::PhysicsError.Capacity: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if exhausted != 0
+            for index in 0..<Fixture::BODY_CAPACITY:
+                body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(
+                    capacity_bodies, index)
+                try PhysicsRuntime::body_destroy(world, body)
+            try PhysicsRuntime::shape_destroy(world, capacity_shape)
+
+        def capacity(world: mutable PhysicsRuntime::World&) -> i32:
+            catch exercise_capacity(world):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 1
+                PhysicsRuntime::PhysicsError.ApplicationUnavailable: 2
+                PhysicsRuntime::PhysicsError.WrongThread: 3
+                PhysicsRuntime::PhysicsError.Capacity: 4
+                PhysicsRuntime::PhysicsError.InvalidHandle: 5
+                PhysicsRuntime::PhysicsError.StaleWorld: 6
+                PhysicsRuntime::PhysicsError.ShapeInUse: 7
+                PhysicsRuntime::PhysicsError.BodyNotReady: 8
+                PhysicsRuntime::PhysicsError.BackendFailure: 9
+                error failure: 10
 
         def run(world: mutable PhysicsRuntime::World&,
             stage: mutable i32&) -> i32:
