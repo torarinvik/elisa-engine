@@ -16,6 +16,8 @@ module RenderGraphNativeTests:
     extern elisa_render_scene_v1_render_graph_test_fallback_preserved() -> i32
     @callconv(c)
     extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
+    @callconv(c)
+    extern elisa_application_v1_test_set_minimized(minimized: i32) -> i32
 
     def primary_color(id: u32, lifetime: RenderGraph::Lifetime,
             initialized: bool) -> RenderGraph::ResourceDescriptor:
@@ -104,6 +106,22 @@ module RenderGraphNativeTests:
             return 40 if elisa_render_scene_v1_render_graph_test_fallback_preserved() != 1
             return 41 if Application::pump() != Application::PumpStatus.Running
             return 42 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() <= before_suspension
+            before_platform_suspend_frames: u64 = Application::frame_count()
+            before_platform_suspend_graph_frames: u64 = RenderGraphRuntime::execution_count()
+            return 49 if elisa_application_v1_test_set_minimized(1) != 0
+            return 50 if Application::pump() != Application::PumpStatus.Suspended
+            minimized_info: mutable Application::FrameInfo = zeroed
+            return 51 if not Application::frame_info(&minimized_info)
+            return 52 if not Application::saw_minimize(minimized_info) or not Application::is_minimized(minimized_info) or not Application::is_suspended(minimized_info)
+            return 53 if Application::frame_count() != before_platform_suspend_frames or RenderGraphRuntime::execution_count() != before_platform_suspend_graph_frames
+            return 54 if elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+            return 55 if elisa_application_v1_test_set_minimized(0) != 0
+            return 56 if Application::pump() != Application::PumpStatus.Running
+            restored_info: mutable Application::FrameInfo = zeroed
+            return 57 if not Application::frame_info(&restored_info)
+            return 58 if not Application::saw_restore(restored_info) or Application::is_minimized(restored_info) or Application::is_suspended(restored_info)
+            return 59 if Application::frame_count() != before_platform_suspend_frames + 1 or RenderGraphRuntime::execution_count() <= before_platform_suspend_graph_frames
+            return 60 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             clear_output_status: i32 = configure_clear_copy_graph(2)
             return 43 if clear_output_status != SUCCESS
             return 44 if Application::pump() != Application::PumpStatus.Running

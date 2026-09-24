@@ -39,10 +39,9 @@ load/store variants are rejected by the native boundary.
 
 The SDL3/Metal native smoke builds a two-pass graph: clear transient resource 2,
 then copy imported scene color to resource 3. The planner proves that the two
-transient lifetimes can share one target; the test checks rejection of a forged
-plan and a copy operation that disagrees with its declared reads, then verifies
-plan and a copy operation that disagrees with its declared reads, then renders
-the transient clear target as output and verifies it stays black despite a
+transient lifetimes can share one target; the test rejects a forged plan and a
+copy operation that disagrees with its declared reads, then renders the
+transient clear target as output and verifies it stays black despite a
 later pass sharing the planner's original slot. It restores the scene-copy
 output and checks that the rendered scene returns. The smoke also exercises
 resize/restoration. Test-only failure injection forces target allocation and
@@ -51,7 +50,10 @@ execution count unchanged, and recover on the next frame. Existing rendered
 image comparisons still pass. Target allocation is repeated when internal
 resolution changes. A test-only zero-resolution injection checks suspended
 status, unchanged execution count, retained fallback, and recovery on the next
-frame. A real minimized-window or device suspension cycle, deferred GPU
+frame. The native test also injects SDL3 minimized/restored events through the
+application queue: minimize returns the host's suspended status without
+advancing the frame or graph, keeps the last rendered output, and restore runs
+the graph again. A user-driven OS minimize or device-loss cycle, deferred GPU
 retirement checks, and broader rendered graph references remain open R15 work.
 
 Run the focused planner test with:
