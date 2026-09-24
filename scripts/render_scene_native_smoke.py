@@ -74,6 +74,15 @@ def main() -> int:
         print("Missing render scene smoke dependency:\n  " + "\n  ".join(missing), file=sys.stderr)
         return 2
 
+    abi_status = run([
+        sys.executable, str(ROOT / "scripts/check_wicked_archive_abi.py"),
+        str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
+        str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),
+        str(libraries / "LUA/libLUA.a"),
+    ])
+    if abi_status != 0:
+        return abi_status
+
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
     render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1"
@@ -186,6 +195,8 @@ def main() -> int:
             subset_directory / "mixed-skin-panel.pkg")
         gltf_morph_self_test.write_animated_package(
             subset_directory / "animated-morph-panel.pkg")
+        gltf_morph_self_test.write_animated_package(
+            subset_directory / "morph-transition-panel.pkg", second_animation=True)
         gltf_scene_self_test.write_package(subset_directory / "scene-metadata.pkg")
         # The cooked-material test also registers a variant whose center slot is
         # blended, single-sided glass. Its buffer is embedded, so the copy cooks
@@ -261,6 +272,9 @@ def main() -> int:
                 "test/fixtures/mirrored_normal_panel.gltf", "--output", str(mirrored_normal)])
             if fixture_status != 0:
                 return fixture_status
+        morph_transition = subset_directory / "morph-transition-panel.pkg"
+        if not morph_transition.is_file():
+            gltf_morph_self_test.write_animated_package(morph_transition, second_animation=True)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     cxx = os.environ.get("CXX", "clang++")
