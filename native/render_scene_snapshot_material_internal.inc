@@ -6,15 +6,17 @@
 bool snapshot_material_values_valid(const SnapshotMaterialAssetSlot& values) {
     const auto unit = [](float value) { return finite(value) && value >= 0.0f && value <= 1.0f; };
     const auto emission = [](float value) { return bounded(value, 1.0e4f) && value >= 0.0f; };
+    const auto normal_scale = [](float value) { return finite(value) &&
+        std::abs(value) <= elisa::assets::WICKED_NORMAL_SCALE_LIMIT; };
     const size_t surface = static_cast<size_t>(elisa::rendering::textures::Slot::Surface);
     const size_t occlusion = static_cast<size_t>(elisa::rendering::textures::Slot::Occlusion);
     const bool surfaced = values.texture_high[surface] != 0 || values.texture_low[surface] != 0;
     const bool separately_occluded = values.texture_high[occlusion] != 0 || values.texture_low[occlusion] != 0;
     return valid_color(values.base_color[0], values.base_color[1], values.base_color[2], values.base_color[3]) &&
         unit(values.metallic) && unit(values.roughness) &&
-        finite(values.normal_scale) &&
-        std::abs(values.normal_scale) <= elisa::assets::WICKED_NORMAL_SCALE_LIMIT &&
+        normal_scale(values.normal_scale) && normal_scale(values.clearcoat_normal_scale) &&
         unit(values.occlusion_strength) &&
+        unit(values.clearcoat_factor) && unit(values.clearcoat_roughness) &&
         std::all_of(std::begin(values.emissive), std::end(values.emissive), emission) &&
         unit(values.alpha_cutoff) && values.alpha_mode >= ELISA_RENDER_SCENE_ALPHA_OPAQUE &&
         values.alpha_mode <= ELISA_RENDER_SCENE_ALPHA_BLEND && (!values.occlusion || surfaced || separately_occluded);
@@ -26,6 +28,9 @@ bool snapshot_material_values_match(const SnapshotMaterialAssetSlot& asset,
         asset.metallic == values.metallic && asset.roughness == values.roughness &&
         asset.normal_scale == values.normal_scale &&
         asset.occlusion_strength == values.occlusion_strength &&
+        asset.clearcoat_factor == values.clearcoat_factor &&
+        asset.clearcoat_roughness == values.clearcoat_roughness &&
+        asset.clearcoat_normal_scale == values.clearcoat_normal_scale &&
         std::equal(std::begin(asset.emissive), std::end(asset.emissive), std::begin(values.emissive)) &&
         asset.alpha_cutoff == values.alpha_cutoff && asset.alpha_mode == values.alpha_mode &&
         asset.double_sided == values.double_sided && asset.occlusion == values.occlusion &&
@@ -72,12 +77,23 @@ int32_t register_snapshot_material_locked(RenderSceneService& state, uint64_t hi
             if (material_entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(material_entity);
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
-        material->shaderType = wi::scene::MaterialComponent::SHADERTYPE_PBR;
+        const size_t first_clearcoat = static_cast<size_t>(elisa::rendering::textures::Slot::Clearcoat);
+        const bool has_clearcoat = values.clearcoat_factor > 0.0f || values.clearcoat_roughness > 0.0f ||
+            std::any_of(values.texture_high.begin() + first_clearcoat, values.texture_high.end(),
+                [](uint64_t id) { return id != 0; }) ||
+            std::any_of(values.texture_low.begin() + first_clearcoat, values.texture_low.end(),
+                [](uint64_t id) { return id != 0; });
+        material->shaderType = has_clearcoat
+            ? wi::scene::MaterialComponent::SHADERTYPE_PBR_CLEARCOAT
+            : wi::scene::MaterialComponent::SHADERTYPE_PBR;
         material->SetBaseColor(XMFLOAT4(values.base_color[0], values.base_color[1],
             values.base_color[2], values.base_color[3]));
         material->SetRoughness(values.roughness);
         material->SetMetalness(values.metallic);
         material->SetNormalMapStrength(values.normal_scale);
+        material->SetClearcoatFactor(values.clearcoat_factor);
+        material->SetClearcoatRoughness(values.clearcoat_roughness);
+        material->SetClearcoatNormalMapStrength(values.clearcoat_normal_scale);
         material->SetOcclusionStrength(values.occlusion_strength);
         material->SetEmissiveColor(XMFLOAT4(values.emissive[0], values.emissive[1],
             values.emissive[2], DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH));
@@ -148,6 +164,9 @@ int32_t cooked_slot_material_values(const RenderSceneService& state, const Snaps
     values.alpha_cutoff = cooked.alpha_cutoff;
     values.normal_scale = cooked.normal_scale;
     values.occlusion_strength = cooked.occlusion_strength;
+    values.clearcoat_factor = cooked.clearcoat_factor;
+    values.clearcoat_roughness = cooked.clearcoat_roughness;
+    values.clearcoat_normal_scale = cooked.clearcoat_normal_scale;
     values.alpha_mode = int32_t(cooked.alpha_mode);
     values.double_sided = cooked.double_sided;
     values.occlusion = cooked.occlusion;

@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Self-test for glTF material textures cooked into mesh slot records.
-
-The textured panel draws three up-facing strips across the panel and a red,
-emissive backdrop under the first. From -x to +x:
-
-- cutout: an alpha-masked, double-sided strip whose 32x32 image is opaque
-  green in its left half and transparent in its right, so the backdrop shows
-  through there. The image is a data URI.
-- painted: a lit strip sampling a 16x16 base color that is red in its left
-  half and blue in its right, a flat 8x8 normal map, and a 4x4 surface image
-  that also carries occlusion.
-- glow: a black strip whose emissive texture samples the painted strip's base
-  color image through a second texture.
-
-Run with --write-fixture to regenerate test/fixtures/textured_panel.gltf.
-"""
+"""Self-tests for glTF material texture cooking, slot factors, and bundled image data."""
 
 from __future__ import annotations
 
@@ -27,6 +12,7 @@ import sys
 
 import cook_gltf_geometry
 import cook_gltf_textures
+import gltf_clearcoat_self_test
 import cook_gltf_mikktspace
 from ktx2_fixtures import make_ktx2
 from elisa_package import build_package_bytes, encoded_image_dimensions
@@ -75,13 +61,17 @@ SLOT_MATERIALS = (
     struct.pack("<10f2I", 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 2) +
     struct.pack("<10f2I", 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0, 0) +
     struct.pack("<10f2I", 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.5, 0, 0))
-SLOT_TEXTURES = struct.pack("<20I", 4, 0, 0, 0, 0, 1, 2, 3, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
-BASIS_SLOT_TEXTURES = struct.pack("<20I", 3, 0, 0, 0, 0, 4, 1, 2, 0, 2,
-    0, 0, 0, 4, 0, 0, 0, 0, 0, 0)
+SLOT_TEXTURE_ROWS = ((4, 0, 0, 0, 0, 0, 0, 0), (1, 2, 3, 0, 3, 0, 0, 0),
+    (0, 0, 0, 1, 0, 0, 0, 0), (0,) * 8)
+SLOT_TEXTURES = struct.pack("<32I", *(value for row in SLOT_TEXTURE_ROWS for value in row))
+BASIS_SLOT_TEXTURES = struct.pack("<32I", 3, 0, 0, 0, 0, 0, 0, 0, 4, 1, 2, 0, 2, 0, 0, 0,
+    0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 SEPARATE_OCCLUSION_TEXTURES = struct.pack(
-    "<20I", 4, 0, 0, 0, 0, 1, 2, 3, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
+    "<32I", 4, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 2, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 NO_SURFACE_TEXTURES = struct.pack(
-    "<20I", 4, 0, 0, 0, 0, 1, 2, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0)
+    "<32I", 4, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 SECTIONS = [(f"image_{index}", data) for index, data in enumerate(IMAGES)]
 SUBSETS = [(0, 6, 0), (6, 6, 1), (12, 6, 2), (18, 6, 3)]
 
@@ -258,7 +248,8 @@ def emissive_painted(document: dict) -> None:
 
 ACCEPTED = {
     "a base-color image sampled for emission too": (emissive_painted,
-        SLOT_TEXTURES[:32] + struct.pack("<I", 1) + SLOT_TEXTURES[36:], SECTIONS),
+        struct.pack("<32I", *(value for index, row in enumerate(SLOT_TEXTURE_ROWS)
+            for value in (row[:3] + ((1,) if index == 1 else (row[3],)) + row[4:]))), SECTIONS),
     "a data URI naming its mimeType": (entry("images", 3, mimeType="image/png"), SLOT_TEXTURES, SECTIONS),
     "a sampler with only a name": (lambda d: d["samplers"].__setitem__(0, {"name": "default"}),
         SLOT_TEXTURES, SECTIONS),
@@ -441,7 +432,7 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     names = b"".join(struct.pack("<I", 7) + name.encode("ascii") for name, _ in SECTIONS)
     lines = cook_gltf_geometry.subset_lines(geometry)
     expected_lines = ["texture_count=4", "texture_names_b64=" + base64.b64encode(names).decode("ascii"),
-        "slot_texture_stride=20", "slot_textures_b64=" + base64.b64encode(SLOT_TEXTURES).decode("ascii")]
+        "slot_texture_stride=32", "slot_textures_b64=" + base64.b64encode(SLOT_TEXTURES).decode("ascii")]
     if lines[-4:] != expected_lines:
         return fail("the textured panel's slot texture lines are wrong")
     scaled_document = deepcopy(document)
@@ -458,6 +449,9 @@ def material_texture_self_test(temporary: Path, cook_main) -> int:
     occlusion_geometry = cook_gltf_geometry.normalized_geometry(occlusion_document, buffer)
     if occlusion_geometry["slot_occlusion_strengths"] != struct.pack("<4f", 1.0, 0.5, 1.0, 1.0):
         return fail("the glTF cooker did not preserve occlusion strength per material slot")
+    clearcoat_failure = gltf_clearcoat_self_test.check(document, buffer)
+    if clearcoat_failure is not None:
+        return fail(clearcoat_failure)
 
     # The package lists the images, a bundle carries them, and only a bundle
     # may: a loose package would name sections nothing holds.

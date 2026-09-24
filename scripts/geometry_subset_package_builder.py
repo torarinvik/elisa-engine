@@ -14,7 +14,8 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
         texture_count: int | None = None, texture_stride: str = "20", material_names=None,
         material_name_payload: bytes | None = None, normal_scales=None,
         normal_scale_stride: str = "4", occlusion_strengths=None,
-        occlusion_strength_stride: str = "4") -> bytes:
+        occlusion_strength_stride: str = "4", clearcoat_factors=None,
+        clearcoat_factor_stride: str = "12") -> bytes:
     """A row of separate triangles with optional subset and material records."""
     vertices = triangles * 3
     positions = []
@@ -57,6 +58,13 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
                 f"<{len(occlusion_strengths)}f", occlusion_strengths),
         }
         lines += [line for key, line in records.items() if key not in omit]
+    if clearcoat_factors is not None:
+        records = {
+            "slot_clearcoat_factor_stride": f"slot_clearcoat_factor_stride={clearcoat_factor_stride}",
+            "slot_clearcoat_factors_b64": "slot_clearcoat_factors_b64=" + _encoded(
+                f"<{len(clearcoat_factors) * 3}f", [value for factors in clearcoat_factors for value in factors]),
+        }
+        lines += [line for key, line in records.items() if key not in omit]
     if material_names is not None or material_name_payload is not None:
         names_data = material_name_payload
         if names_data is None:
@@ -66,13 +74,17 @@ def strip_package(triangles: int, subsets=None, slots: int | None = None,
             lines.append("slot_material_names_b64=" + base64.b64encode(names_data).decode("ascii"))
     if textures is not None:
         names, references = textures
-        references = [tuple(record) + (0,) if len(record) == 4 else tuple(record) for record in references]
+        references_per_slot = 8 if texture_stride == "32" else 5
+        references = [tuple(record) + (0,) * max(0, references_per_slot - len(record))
+            for record in references]
+        if any(len(record) != references_per_slot for record in references):
+            raise ValueError("texture reference count must match the declared slot stride")
         records = {
             "texture_count": f"texture_count={len(names) if texture_count is None else texture_count}",
             "texture_names_b64": "texture_names_b64=" + base64.b64encode(b"".join(
                 struct.pack("<I", len(name)) + name.encode("ascii") for name in names)).decode("ascii"),
             "slot_texture_stride": f"slot_texture_stride={texture_stride}",
-            "slot_textures_b64": "slot_textures_b64=" + _encoded(f"<{len(references) * 5}I",
+            "slot_textures_b64": "slot_textures_b64=" + _encoded(f"<{len(references) * references_per_slot}I",
                 [value for record in references for value in record]),
         }
         lines += [line for key, line in records.items() if key not in omit]

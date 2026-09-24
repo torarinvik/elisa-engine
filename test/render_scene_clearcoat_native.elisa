@@ -1,0 +1,119 @@
+# Native coverage for cooked and authored clearcoat materials.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_assets.elisa"
+
+module RenderSceneClearcoatNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_clearcoat_matches(high: u64, low: u64,
+            factor: f32, roughness: f32, normal_scale: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_id(high: u64, low: u64, slot: i32,
+            texture_high: u64, texture_low: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_size(
+            material_high: u64, material_low: u64, slot: i32, width: u32, height: u32) -> i32
+
+        const MESHES: u64 = 970
+        const TEXTURES: u64 = 971
+        const MATERIALS: u64 = 972
+        const MESH: u64 = 4
+        const COOKED: u64 = 8
+        const AUTHORED: u64 = 9
+        const FACTOR_MAP: u64 = 3
+        const NORMAL_MAP: u64 = 2
+        const BASE_MAP: u64 = 1
+        const OK: i32 = 0
+        const CLEARCOAT_FACTOR_SLOT: i32 = 5
+        const CLEARCOAT_ROUGHNESS_SLOT: i32 = 6
+        const CLEARCOAT_NORMAL_SLOT: i32 = 7
+
+        def mesh_asset() -> Assets::AssetId:
+            Assets::AssetId{high: MESHES, low: MESH}
+
+        def texture_asset(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: TEXTURES, low: low}
+
+        def material_asset(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: MATERIALS, low: low}
+
+        def register_mesh() -> bool:
+            catch RenderScene::register_snapshot_mesh_asset(mesh_asset(),
+                    "build/cooked/subsets/clearcoat.elpk"):
+                ok: true
+                error failure: false
+
+        def register_image(index: u32, low: u64) -> bool:
+            catch RenderScene::register_snapshot_mesh_texture(mesh_asset(), index, texture_asset(low)):
+                ok: true
+                error failure: false
+
+        def register_material_slot(slot: u32) -> bool:
+            catch RenderScene::register_snapshot_mesh_material(mesh_asset(), slot, material_asset(COOKED)):
+                ok: true
+                error failure: false
+
+        def unregister_material(low: u64) -> bool:
+            catch RenderScene::unregister_snapshot_material_asset(material_asset(low)):
+                ok: true
+                error failure: false
+
+        def unregister_image(low: u64) -> bool:
+            catch RenderScene::unregister_snapshot_texture_asset(texture_asset(low)):
+                ok: true
+                error failure: false
+
+        def unregister_mesh() -> bool:
+            catch RenderScene::unregister_snapshot_mesh_asset(mesh_asset()):
+                ok: true
+                error failure: false
+
+        def binds(low: u64, slot: i32, texture: u64, size: u32) -> bool:
+            return false if elisa_render_scene_v1_test_snapshot_material_texture_id(
+                MATERIALS, low, slot, TEXTURES, texture) != 1
+            elisa_render_scene_v1_test_snapshot_material_texture_size(
+                MATERIALS, low, slot, size, size) == 1
+
+        def probe(low: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_clearcoat_matches(MATERIALS, low, 0.8, 0.35, 0.6) == 1
+
+    public:
+        def exercise() -> i32:
+            return 1 if not register_mesh()
+            texture_count: i32 = catch RenderScene::snapshot_mesh_texture_count(mesh_asset()):
+                count: count.i32()
+                error failure: -1
+            return 2 if texture_count != 4
+            images: u64[4] = [BASE_MAP, NORMAL_MAP, FACTOR_MAP, 4]
+            for index in 0..<4 |images|:
+                return 3 if not register_image(index.u32(), images[index])
+            return 4 if not register_material_slot(1)
+            return 5 if not probe(COOKED)
+            return 6 if not binds(COOKED, CLEARCOAT_FACTOR_SLOT, FACTOR_MAP, 4)
+            return 7 if not binds(COOKED, CLEARCOAT_ROUGHNESS_SLOT, FACTOR_MAP, 4)
+            return 8 if not binds(COOKED, CLEARCOAT_NORMAL_SLOT, NORMAL_MAP, 8)
+
+            descriptor: mutable Material::Material = Material::Material()
+            return 9 if not Material::set_texture(&descriptor, Material::TextureSlot.BaseColor,
+                texture_asset(BASE_MAP))
+            return 10 if not Material::set_texture(&descriptor, Material::TextureSlot.Clearcoat,
+                texture_asset(FACTOR_MAP))
+            return 11 if not Material::set_texture(&descriptor, Material::TextureSlot.ClearcoatRoughness,
+                texture_asset(FACTOR_MAP))
+            return 12 if not Material::set_texture(&descriptor, Material::TextureSlot.ClearcoatNormal,
+                texture_asset(NORMAL_MAP))
+            return 13 if not Material::set_clearcoat_factors(&descriptor, 0.8, 0.35, 0.6)
+            return 14 if not Material::material_valid(&descriptor)
+            authored: bool = catch RenderScene::register_snapshot_material_asset(
+                    material_asset(AUTHORED), &descriptor):
+                ok: true
+                error failure: false
+            return 15 if not authored or not probe(AUTHORED)
+            return 16 if not unregister_material(AUTHORED)
+            return 17 if not unregister_material(COOKED)
+            for index in 0..<4 |images|:
+                return 18 if not unregister_image(images[index])
+            return 19 if not unregister_mesh()
+            0

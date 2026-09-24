@@ -7,6 +7,7 @@ def main() -> i32:
     material: mutable Material::Material = Material::Material()
     return 1 if not Material::material_valid(&material)
     return 24 if material.normal_scale != 1.0
+    return 36 if material.clearcoat_factor != 0.0 or material.clearcoat_roughness_factor != 0.0 or material.clearcoat_normal_scale != 1.0
     material.normal_scale <- 0.0
     return 25 if not Material::material_valid(&material)
     material.normal_scale <- NORMAL_SCALE_LIMIT
@@ -30,9 +31,23 @@ def main() -> i32:
     material.occlusion_strength <- 1.0
     base: Assets::AssetId = Assets::AssetId{high: 4, low: 1}
     normal: Assets::AssetId = Assets::AssetId{high: 4, low: 2}
+    clearcoat: Assets::AssetId = Assets::AssetId{high: 4, low: 3}
+    clearcoat_roughness: Assets::AssetId = Assets::AssetId{high: 4, low: 4}
+    clearcoat_normal: Assets::AssetId = Assets::AssetId{high: 4, low: 5}
     return 2 if not Material::set_texture(&material, Material::TextureSlot.BaseColor, base)
     return 3 if not Material::set_texture(&material, Material::TextureSlot.Normal, normal)
     return 4 if Material::texture(&material, Material::TextureSlot.Normal).low != 2
+    return 37 if not Material::set_texture(&material, Material::TextureSlot.Clearcoat, clearcoat)
+    return 38 if not Material::set_texture(&material, Material::TextureSlot.ClearcoatRoughness, clearcoat_roughness)
+    return 39 if not Material::set_texture(&material, Material::TextureSlot.ClearcoatNormal, clearcoat_normal)
+    return 40 if Material::texture(&material, Material::TextureSlot.Clearcoat).low != 3
+    return 41 if Material::texture(&material, Material::TextureSlot.ClearcoatRoughness).low != 4
+    return 42 if Material::texture(&material, Material::TextureSlot.ClearcoatNormal).low != 5
+    return 43 if not Material::set_clearcoat_factors(&material, 0.8, 0.35, 0.6)
+    return 44 if material.clearcoat_factor != 0.8 or material.clearcoat_roughness_factor != 0.35 or material.clearcoat_normal_scale != 0.6
+    return 45 if Material::set_clearcoat_factors(&material, 1.01, 0.35, 0.6)
+    return 46 if Material::set_clearcoat_factors(&material, 0.8, -0.01, 0.6)
+    return 47 if Material::set_clearcoat_factors(&material, 0.8, 0.35, NORMAL_SCALE_LIMIT + 1.0)
     return 5 if not Material::set_factors(&material, 0.8, 0.4, 0.6)
     material.alpha_mode <- Material::AlphaMode.Mask
     return 6 if not Material::material_valid(&material)

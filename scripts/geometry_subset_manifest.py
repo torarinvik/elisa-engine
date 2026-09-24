@@ -23,7 +23,11 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     slot_names = None
     normal_scales = None
     occlusion_strengths = None
+    clearcoat_factors = None
     mesh_placements = None
+    if len(records) >= 2 and records[-2] == "clearcoat_factors":
+        clearcoat_factors = records[-1]
+        records = records[:-2]
     if len(records) >= 2 and records[-2] == "occlusion_strengths":
         occlusion_strengths = records[-1]
         records = records[:-2]
@@ -58,12 +62,15 @@ def manifest_line(directory: Path, verdict: str, name: str, expectation) -> str:
     if records:
         fields.append("materials")
         for record in records[0]:
-            record += (0,) * (17 - len(record))
+            record += (0,) * (20 - len(record))
             fields += [float32_text(value) for value in record[:10]] + [str(value) for value in record[10:]]
     if len(records) > 1:
         fields.append("sections")
         for name, checksum in records[1]:
             fields += [name, str(checksum)]
+    if clearcoat_factors is not None:
+        fields += ["clearcoat_factors"]
+        fields += [float32_text(value) for factors in clearcoat_factors for value in factors]
     if slot_names is not None:
         fields += ["slot_names"] + [name.encode("utf-8").hex() for name in slot_names]
     if normal_scales is not None:

@@ -11,8 +11,10 @@ to exactly those images.
 ## Path
 
 1. **Cook.** `scripts/cook_gltf_textures.py` resolves each material's
-   textures into five runtime slots: base color, normal, surface
-   (metallic-roughness), emissive and occlusion.
+   textures into eight runtime slots: base color, normal, surface
+   (metallic-roughness), emissive, occlusion, clearcoat, clearcoat roughness,
+   and clearcoat normal. Occlusion remains a separate material binding rather
+   than a slot-texture reference.
    - **Texture info.** It may name `index`, `texCoord`, and `scale` for the
      normal texture or `strength` for occlusion.
      - `texCoord` must be the integer 0.
@@ -29,6 +31,11 @@ to exactly those images.
    - **Occlusion.** `occlusionTexture` may reuse the metallic-roughness image
      or name a separate image. The latter is bound to Wicked's native
      `OCCLUSIONMAP` slot. The slot then sets flag bit 1, occlusion.
+   - **Clearcoat.** `KHR_materials_clearcoat` supports its factor, roughness
+     factor, and three texture infos. `clearcoatNormalTexture.scale` is
+     preserved within Wicked's finite half-float range. The extension must be
+     listed in `extensionsUsed`; unsupported properties and texture transforms
+     fail instead of being dropped.
    - **Images.** PNG/JPEG and Basis KTX2 images must be embedded in a packed
      bufferView or a base64 data URI. KTX2 must be selected by
      `KHR_texture_basisu`; a PNG/JPEG core `source` fallback is omitted from
@@ -53,12 +60,17 @@ to exactly those images.
      `slot_occlusion_strength_stride=4` and
      `slot_occlusion_strengths_b64`: one little-endian `f32` per slot. Older
      packages default to strength 1.
+   - when any material uses non-default clearcoat values,
+     `slot_clearcoat_factor_stride=12` and `slot_clearcoat_factors_b64`: three
+     little-endian `f32` values per slot in factor, roughness, normal-scale
+     order. Its absence means the default clearcoat values.
    - `texture_count`: 1–64 images
    - `texture_names_b64`: the image section names, `image_<glTF index>` in
      glTF image order
-   - `slot_texture_stride=20` and `slot_textures_b64`: five little-endian
+   - `slot_texture_stride=32` and `slot_textures_b64`: eight little-endian
      `u32` references per slot, each 0 for none or one more than the image's
-     position in the names
+     position in the names. The loader continues to accept the legacy stride
+     20 format with its original five references.
 
    `cook_gltf_asset.py` writes each image as a section of the output `.elpk`.
    A `--texture` section that reuses one of those names fails. A textured
@@ -70,9 +82,13 @@ to exactly those images.
      for every material record. Its absence keeps the glTF default of 1.
    - The optional AO-strength sidecar has one finite [0, 1] value per record;
      its absence keeps the glTF default of 1.
-   - The four keys must all be present or all absent, and they need slot
-     material records.
-   - The stride must be 20 and the records must fill exactly one per slot.
+   - The optional clearcoat sidecar has three values per record: factor and
+     roughness in [0, 1], then a finite normal scale within ±65504. Its absence
+     keeps the no-clearcoat defaults.
+   - Each optional sidecar has a stride key and a data key; its pair must be
+     complete and requires slot material records.
+   - Texture stride must be 20 or 32, and records must fill exactly one per
+     slot. Clearcoat factors require stride 12 and one triple per slot.
    - **Names.** Each name must be a valid bundle section name: 1–15 bytes of
      `[a-z0-9_]`, with no embedded NUL. It can't be `mesh` or `manifest`, and
      can't repeat.
@@ -112,6 +128,11 @@ to exactly those images.
    - The Wicked material takes those textures in their slots, including a
      dedicated `OCCLUSIONMAP` when the glTF source uses one, and calls
      `SetOcclusionEnabled_Primary` for occluded slots.
+   - Clearcoat factors and maps are copied to Wicked's clearcoat material
+     fields and texture slots. The clearcoat-normal scale reaches both Wicked
+     shader paths through the previously unused second per-material padding
+     half; a zero clearcoat factor still leaves the material on its ordinary
+     PBR path unless another clearcoat value or map is authored.
    - Occlusion is now part of the material's registration values. The same
      factors and images without occlusion are therefore a conflicting
      material.
@@ -138,6 +159,36 @@ enable the occlusion that cooked slots get.
   - A hand material with the painted slot's factors, images and occlusion is
     the same registration as the slot.
   - The same material without occlusion still conflicts.
+
+## Clearcoat materials
+
+Added on 2026-09-24. Cooked glTF clearcoat and hand-registered snapshot
+materials share the same eight-slot runtime representation.
+- Cooked materials preserve clearcoat factor, roughness, normal-map scale, and
+  their three texture references. Older five-slot package records still load.
+- `Material::Material()` initializes clearcoat factors and maps to the glTF
+  defaults. `set_texture` covers each clearcoat slot, and
+  `set_clearcoat_factors` validates both unit factors and Wicked's half-float
+  normal-scale range.
+- The additive `_with_pbr_extensions` ABI carries clearcoat data while older
+  material-registration entry points retain their signatures and default to
+  no clearcoat.
+- Registration matching includes the new clearcoat values and texture IDs, so
+  two material IDs cannot alias different clearcoat states. The native smoke
+  probes both cooked and hand-registered material paths, including the shader
+  type, packed factors, texture bindings, and normal-map scale.
+- The sanitized geometry loader accepts the eight-slot clearcoat bundle and
+  rejects incomplete factor sidecars, invalid factors, out-of-range normal
+  scales, and unsupported texture transforms. The full loader gate now runs
+  162 cases with no failures.
+- `test/render_scene_clearcoat_native.elisa` runs as SDL3/Metal smoke group 233.
+  It registers all four bundle images, checks the three clearcoat map bindings
+  and dimensions, verifies Wicked's clearcoat shader fields, then repeats the
+  checks for a hand-registered material and releases each resource. The
+  complete `scripts/render_scene_native_smoke.py` run passed, including the
+  existing render comparisons and packaged-maze checks. This clearcoat case
+  verifies the data path; a dedicated visible clearcoat reference comparison
+  remains open under R04.
 
 ## Evidence
 
@@ -194,7 +245,7 @@ Sixty-two variants must fail for the stated reason. They cover:
 The earlier subset self-test's texture rejections now fail as missing
 textures, because its panel declares none.
 
-**Loader.** `scripts/test_geometry_subsets.py` now runs 150 sanitized cases. An
+**Loader.** `scripts/test_geometry_subsets.py` now runs 162 sanitized cases. An
 accepted case can list each slot's image references and flags and each
 section's name and checksum.
 - **Accepted.**

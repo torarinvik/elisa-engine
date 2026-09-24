@@ -282,6 +282,32 @@ extern "C" int32_t elisa_render_scene_v1_test_snapshot_occlusion_strength_matche
     return std::abs(packed.padding.x - expected_strength) <= 1.0e-5f ? 1 : 0;
 }
 
+// 1 when cooked clearcoat factors, normal-map scale, and the Wicked shader
+// material all retain the authored values.
+extern "C" int32_t elisa_render_scene_v1_test_snapshot_clearcoat_matches(
+        uint64_t high, uint64_t low, float expected_factor, float expected_roughness,
+        float expected_normal_scale) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.scene == nullptr ||
+        !std::isfinite(expected_factor) || !std::isfinite(expected_roughness) ||
+        !std::isfinite(expected_normal_scale)) return 0;
+    const size_t slot = snapshot_material_asset_slot(state, high, low);
+    if (slot == MAX_SNAPSHOT_MATERIAL_ASSETS) return 0;
+    const SnapshotMaterialAssetSlot& asset = state.snapshot_material_assets[slot];
+    const wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(asset.material_entity);
+    if (material == nullptr || std::abs(asset.clearcoat_factor - expected_factor) > 1.0e-5f ||
+        std::abs(asset.clearcoat_roughness - expected_roughness) > 1.0e-5f ||
+        std::abs(asset.clearcoat_normal_scale - expected_normal_scale) > 1.0e-5f ||
+        std::abs(material->clearcoat - expected_factor) > 1.0e-5f ||
+        std::abs(material->clearcoatRoughness - expected_roughness) > 1.0e-5f ||
+        std::abs(material->clearcoatNormalMapStrength - expected_normal_scale) > 1.0e-5f ||
+        material->shaderType != wi::scene::MaterialComponent::SHADERTYPE_PBR_CLEARCOAT) return 0;
+    ShaderMaterial packed = shader_material_null;
+    material->WriteShaderMaterial(&packed);
+    return std::abs(packed.padding.y - expected_normal_scale) <= 1.0e-5f ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_set_snapshot_occlusion_strength(
     uint64_t high, uint64_t low, float strength) {
     RenderSceneService& state = service();

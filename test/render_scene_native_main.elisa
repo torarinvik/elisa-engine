@@ -19,6 +19,7 @@ include "./render_scene_async_asset_native.elisa"
 include "./render_scene_cooked_material_native.elisa"
 include "./render_scene_node_hierarchy_native.elisa"
 include "./render_scene_cooked_texture_native.elisa"
+include "./render_scene_clearcoat_native.elisa"
 include "./render_scene_mirrored_normal_native.elisa"
 include "./render_scene_text_native.elisa"
 include "./render_scene_image_native.elisa"
@@ -375,6 +376,8 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(228, node_hierarchy_status) if node_hierarchy_status != 0
     cooked_texture_status: i32 = RenderSceneCookedTextureNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(230, cooked_texture_status) if cooked_texture_status != 0
+    clearcoat_status: i32 = RenderSceneClearcoatNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(233, clearcoat_status) if clearcoat_status != 0
     mirrored_normal_status: i32 = RenderSceneMirroredNormalNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(231, mirrored_normal_status) if mirrored_normal_status != 0
     mesh_transform: Geometry::Transform = Geometry::Transform{
@@ -538,7 +541,6 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 139 if stale_hud_panel != 1
-
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0
         error failure: 1
@@ -560,7 +562,6 @@ def exercise_render_scene() -> i32:
         error failure: 1
     return 24 if shutdown_result != 0
     return 25 if RenderScene::is_initialized() or RenderScene::instance_count() != 0
-
     # Reopen the scene, then let Application shutdown invoke the registered
     # cleanup hook. This catches leaked scenes or active paths on app teardown.
     replacement_init: i32 = catch RenderScene::initialize(320, 200, 10.0):

@@ -235,6 +235,21 @@ int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_material_fac
     float metallic, float roughness, float normal_scale, float occlusion_strength,
     float emissive_red, float emissive_green, float emissive_blue,
     float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion);
+// Additive PBR material registration with glTF KHR_materials_clearcoat data.
+int32_t elisa_render_scene_v1_register_snapshot_material_asset_with_pbr_extensions(
+    uint64_t high, uint64_t low,
+    uint64_t base_color_high, uint64_t base_color_low,
+    uint64_t normal_high, uint64_t normal_low,
+    uint64_t surface_high, uint64_t surface_low,
+    uint64_t emissive_high, uint64_t emissive_low,
+    uint64_t clearcoat_high, uint64_t clearcoat_low,
+    uint64_t clearcoat_roughness_high, uint64_t clearcoat_roughness_low,
+    uint64_t clearcoat_normal_high, uint64_t clearcoat_normal_low,
+    float red, float green, float blue, float alpha,
+    float metallic, float roughness, float normal_scale, float occlusion_strength,
+    float clearcoat_factor, float clearcoat_roughness_factor, float clearcoat_normal_scale,
+    float emissive_red, float emissive_green, float emissive_blue,
+    float alpha_cutoff, int32_t alpha_mode, int32_t double_sided, int32_t occlusion);
 int32_t elisa_render_scene_v1_unregister_snapshot_material_asset(uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_stage_snapshot_material_set_slot(
     uint32_t slot, uint64_t material_high, uint64_t material_low);

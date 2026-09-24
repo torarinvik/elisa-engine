@@ -24,6 +24,7 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 from png_image import encode_png
 import gltf_texture_self_test
+import gltf_clearcoat_self_test
 import gltf_mirrored_normal_fixture
 import gltf_skin_self_test
 import gltf_morph_self_test
@@ -219,6 +220,15 @@ def main() -> int:
         variant = dict(gltf_texture_self_test.SECTIONS)
         variant["image_0"], variant["image_1"] = variant["image_1"], variant["image_0"]
         write_geometry_package(subset_directory / "textured_variant.elpk", textured_package.read_bytes(), variant)
+        clearcoat_document = gltf_texture_self_test.textured_panel()
+        gltf_clearcoat_self_test.clearcoat_material(clearcoat_document)
+        clearcoat_source = subset_directory / "clearcoat_panel.gltf"
+        clearcoat_source.write_text(json.dumps(clearcoat_document, indent=2) + "\n", encoding="utf-8")
+        clearcoat_package, clearcoat_result = cook_gltf_geometry.cook_geometry_package(
+            clearcoat_source, "test/fixtures/clearcoat_panel.gltf", subset_directory / "clearcoat.pkg",
+            allow_textures=True)
+        write_geometry_package(subset_directory / "clearcoat.elpk", clearcoat_package.read_bytes(),
+            clearcoat_result["images"])
         fixture_status = run([sys.executable, str(ROOT / "scripts/gltf_mirrored_normal_fixture.py"),
             "--write-fixture"])
         if fixture_status != 0:
@@ -236,8 +246,9 @@ def main() -> int:
         # reruns don't start with the already-mutated variant from a prior run.
         subset_directory = build / "cooked/subsets"
         textured = subset_directory / "textured.elpk"
+        clearcoat = subset_directory / "clearcoat.elpk"
         rewrite = subset_directory / "textured_rewrite.elpk"
-        if not textured.is_file() or not rewrite.is_file():
+        if not textured.is_file() or not clearcoat.is_file() or not rewrite.is_file():
             print("Render-only mode requires the cooked textured-panel fixtures", file=sys.stderr)
             return 2
         shutil.copyfile(textured, rewrite)

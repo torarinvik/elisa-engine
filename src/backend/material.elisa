@@ -19,6 +19,9 @@ module Material:
             MetallicRoughness
             Occlusion
             Emissive
+            Clearcoat
+            ClearcoatRoughness
+            ClearcoatNormal
 
         struct Material:
             base_color: mutable Assets::AssetId
@@ -26,11 +29,17 @@ module Material:
             metallic_roughness: mutable Assets::AssetId
             occlusion: mutable Assets::AssetId
             emissive: mutable Assets::AssetId
+            clearcoat: mutable Assets::AssetId
+            clearcoat_roughness: mutable Assets::AssetId
+            clearcoat_normal: mutable Assets::AssetId
             base_color_factor: f32[4]
             metallic_factor: mutable f32
             roughness_factor: mutable f32
             normal_scale: mutable f32
             occlusion_strength: mutable f32
+            clearcoat_factor: mutable f32
+            clearcoat_roughness_factor: mutable f32
+            clearcoat_normal_scale: mutable f32
             emissive_factor: f32[3]
             alpha_cutoff: mutable f32
             alpha_mode: AlphaMode
@@ -43,11 +52,17 @@ module Material:
                 metallic_roughness: Assets::AssetId{high: 0, low: 0},
                 occlusion: Assets::AssetId{high: 0, low: 0},
                 emissive: Assets::AssetId{high: 0, low: 0},
+                clearcoat: Assets::AssetId{high: 0, low: 0},
+                clearcoat_roughness: Assets::AssetId{high: 0, low: 0},
+                clearcoat_normal: Assets::AssetId{high: 0, low: 0},
                 base_color_factor: [1.0, 1.0, 1.0, 1.0],
                 metallic_factor: 0.0,
                 roughness_factor: 1.0,
                 normal_scale: 1.0,
                 occlusion_strength: 1.0,
+                clearcoat_factor: 0.0,
+                clearcoat_roughness_factor: 0.0,
+                clearcoat_normal_scale: 1.0,
                 emissive_factor: [0.0, 0.0, 0.0],
                 alpha_cutoff: 0.5,
                 alpha_mode: AlphaMode.Opaque,
@@ -66,6 +81,21 @@ module Material:
                 material.occlusion <- asset
             if slot == TextureSlot.Emissive:
                 material.emissive <- asset
+            if slot == TextureSlot.Clearcoat:
+                material.clearcoat <- asset
+            if slot == TextureSlot.ClearcoatRoughness:
+                material.clearcoat_roughness <- asset
+            if slot == TextureSlot.ClearcoatNormal:
+                material.clearcoat_normal <- asset
+            true
+
+        def set_clearcoat_factors(material: mutable Material&, factor: f32,
+                roughness: f32, normal_scale: f32) -> bool:
+            return false if factor != factor or roughness != roughness or factor < 0.0 or factor > 1.0 or roughness < 0.0 or roughness > 1.0
+            return false if normal_scale != normal_scale or normal_scale < -Limits::WICKED_NORMAL_SCALE_LIMIT or normal_scale > Limits::WICKED_NORMAL_SCALE_LIMIT
+            material.clearcoat_factor <- factor
+            material.clearcoat_roughness_factor <- roughness
+            material.clearcoat_normal_scale <- normal_scale
             true
 
         def set_factors(material: mutable Material&, metallic: f32, roughness: f32, alpha_cutoff: f32) -> bool:
@@ -78,6 +108,8 @@ module Material:
         def material_valid(material: Material&) -> bool:
             return false if material.normal_scale != material.normal_scale or material.normal_scale < -Limits::WICKED_NORMAL_SCALE_LIMIT or material.normal_scale > Limits::WICKED_NORMAL_SCALE_LIMIT
             return false if material.occlusion_strength != material.occlusion_strength or material.occlusion_strength < 0.0 or material.occlusion_strength > 1.0
+            return false if material.clearcoat_factor != material.clearcoat_factor or material.clearcoat_roughness_factor != material.clearcoat_roughness_factor or material.clearcoat_factor < 0.0 or material.clearcoat_factor > 1.0 or material.clearcoat_roughness_factor < 0.0 or material.clearcoat_roughness_factor > 1.0
+            return false if material.clearcoat_normal_scale != material.clearcoat_normal_scale or material.clearcoat_normal_scale < -Limits::WICKED_NORMAL_SCALE_LIMIT or material.clearcoat_normal_scale > Limits::WICKED_NORMAL_SCALE_LIMIT
             return false if material.metallic_factor < 0.0 or material.metallic_factor > 1.0 or material.roughness_factor < 0.0 or material.roughness_factor > 1.0 or material.alpha_cutoff < 0.0 or material.alpha_cutoff > 1.0
             return false if material.alpha_mode == AlphaMode.Mask and not Assets::asset_id_valid(material.base_color)
             true
@@ -87,4 +119,7 @@ module Material:
             return material.normal if slot == TextureSlot.Normal
             return material.metallic_roughness if slot == TextureSlot.MetallicRoughness
             return material.occlusion if slot == TextureSlot.Occlusion
-            material.emissive
+            return material.emissive if slot == TextureSlot.Emissive
+            return material.clearcoat if slot == TextureSlot.Clearcoat
+            return material.clearcoat_roughness if slot == TextureSlot.ClearcoatRoughness
+            material.clearcoat_normal

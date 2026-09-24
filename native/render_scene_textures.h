@@ -26,7 +26,10 @@ enum class Slot : int32_t {
     Surface = 2,
     Emissive = 3,
     Occlusion = 4,
-    Count = 5,
+    Clearcoat = 5,
+    ClearcoatRoughness = 6,
+    ClearcoatNormal = 7,
+    Count = 8,
 };
 
 inline constexpr int32_t SLOT_COUNT = static_cast<int32_t>(Slot::Count);
@@ -36,6 +39,9 @@ inline constexpr std::array<uint32_t, SLOT_COUNT> MATERIAL_SLOTS = {
     wi::scene::MaterialComponent::SURFACEMAP,
     wi::scene::MaterialComponent::EMISSIVEMAP,
     wi::scene::MaterialComponent::OCCLUSIONMAP,
+    wi::scene::MaterialComponent::CLEARCOATMAP,
+    wi::scene::MaterialComponent::CLEARCOATROUGHNESSMAP,
+    wi::scene::MaterialComponent::CLEARCOATNORMALMAP,
 };
 
 inline constexpr size_t MAX_DECODED_IMAGE_BYTES = 256u * 1024u * 1024u;
@@ -97,7 +103,8 @@ inline bool decode_image(const std::vector<uint8_t>& encoded, uint32_t expected_
 
 inline wi::resourcemanager::Flags import_flags(int32_t slot_code) {
     auto flags = wi::resourcemanager::Flags::IMPORT_BLOCK_COMPRESSED;
-    if (slot_code == static_cast<int32_t>(Slot::Normal)) {
+    if (slot_code == static_cast<int32_t>(Slot::Normal) ||
+        slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)) {
         flags |= wi::resourcemanager::Flags::IMPORT_NORMALMAP;
     }
     return flags;
@@ -125,7 +132,8 @@ inline bool assign_resolved_texture(wi::scene::MaterialComponent& material,
         wi::Resource resource;
         wi::Resource* destination = cached_resource == nullptr ? &resource : cached_resource;
         if (!destination->IsValid()) {
-            const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal)
+            const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal) ||
+                slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)
                 ? KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
             *destination = load_ktx2_texture_resource(resolved_path.string(), usage);
         }
@@ -212,7 +220,8 @@ inline wi::Resource create_decoded_resource(const std::string& resource_name, in
     wi::renderer::AddDeferredMIPGen(uncompressed, true);
 
     Texture texture;
-    if (slot_code == static_cast<int32_t>(Slot::Normal)) {
+    if (slot_code == static_cast<int32_t>(Slot::Normal) ||
+        slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)) {
         compressed_format = Format::BC5_UNORM;
         swizzle = {ComponentSwizzle::R, ComponentSwizzle::G,
             ComponentSwizzle::ONE, ComponentSwizzle::ONE};
@@ -244,6 +253,7 @@ inline bool assign_decoded_texture(wi::scene::MaterialComponent& material, int32
     if (!valid_slot(slot_code) || resource_stem.empty() || extension == nullptr) return false;
     std::string resource_name = resource_stem;
     if (slot_code == static_cast<int32_t>(Slot::Normal)) resource_name += ".normal";
+    if (slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)) resource_name += ".clearcoat_normal";
     if (slot_code == static_cast<int32_t>(Slot::Occlusion)) resource_name += ".occlusion";
     resource_name += ".";
     resource_name += extension;
@@ -259,7 +269,8 @@ inline bool assign_encoded_ktx2_texture(wi::scene::MaterialComponent& material, 
         wi::Resource& cached_resource, const std::vector<uint8_t>& encoded) {
     if (!valid_slot(slot_code) || encoded.empty()) return false;
     if (!cached_resource.IsValid()) {
-        const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal)
+        const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal) ||
+            slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)
             ? KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
         cached_resource = load_ktx2_texture_resource(encoded, usage);
     }

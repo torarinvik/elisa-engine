@@ -17,15 +17,16 @@ from elisa_package import KTX2_IDENTIFIER, MAX_SECTION_BYTES, encoded_image_dime
 
 # Runtime texture slots, in the order a slot texture record lists them.
 SLOT_TEXTURES = ("baseColorTexture", "normalTexture", "metallicRoughnessTexture", "emissiveTexture",
-    "occlusionTexture")
+    "occlusionTexture", "clearcoatTexture", "clearcoatRoughnessTexture", "clearcoatNormalTexture")
 PBR_TEXTURES = {"baseColorTexture", "metallicRoughnessTexture"}
 SURFACE = 2
-SLOT_TEXTURE_STRIDE = 20
+SLOT_TEXTURE_STRIDE = 32
 WICKED_NORMAL_SCALE_LIMIT = 65504.0
 LINEAR = 9729
 LINEAR_MIPMAP_LINEAR = 9987
 REPEAT = 10497
 KHR_TEXTURE_BASISU = "KHR_texture_basisu"
+KHR_MATERIALS_CLEARCOAT = "KHR_materials_clearcoat"
 IMAGE_SIGNATURES = {"image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff",
     "image/ktx2": KTX2_IDENTIFIER}
 
@@ -88,8 +89,8 @@ def texture_image(document: dict, info, label: str, factor: str | None = None) -
     return source
 
 
-def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool, float, float]:
-    """Return slot images and the factors for the AO and normal maps."""
+def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bool, float, float, float, float, float]:
+    """Return slot images and factors for core and clearcoat material maps."""
     images = []
     for key in SLOT_TEXTURES[:4]:
         info = (pbr if key in PBR_TEXTURES else material).get(key)
@@ -105,7 +106,18 @@ def material_images(document: dict, material: dict, pbr: dict) -> tuple[list, bo
         occlusion_strength = material["occlusionTexture"].get("strength", 1.0)
     normal = material.get("normalTexture")
     normal_scale = 1.0 if normal is None else normal.get("scale", 1.0)
-    return images, occlusion_enabled, float(normal_scale), float(occlusion_strength)
+    extensions = material.get("extensions", {})
+    clearcoat = extensions.get(KHR_MATERIALS_CLEARCOAT, {})
+    for key in SLOT_TEXTURES[5:]:
+        info = clearcoat.get(key)
+        images.append(None if info is None else texture_image(document, info,
+            f"{KHR_MATERIALS_CLEARCOAT}.{key}", "scale" if key == "clearcoatNormalTexture" else None))
+    clearcoat_factor = clearcoat.get("clearcoatFactor", 0.0)
+    clearcoat_roughness = clearcoat.get("clearcoatRoughnessFactor", 0.0)
+    clearcoat_normal = clearcoat.get("clearcoatNormalTexture")
+    clearcoat_normal_scale = 1.0 if clearcoat_normal is None else clearcoat_normal.get("scale", 1.0)
+    return (images, occlusion_enabled, float(normal_scale), float(occlusion_strength),
+        clearcoat_factor, clearcoat_roughness, float(clearcoat_normal_scale))
 
 
 def view_bytes(document: dict, buffer: bytes, reference) -> bytes:
@@ -169,11 +181,14 @@ def texture_infos(material: dict) -> list:
     pbr = material.get("pbrMetallicRoughness", {})
     infos = [pbr.get(key) for key in ("baseColorTexture", "metallicRoughnessTexture")]
     infos += [material.get(key) for key in ("normalTexture", "occlusionTexture", "emissiveTexture")]
+    extensions = material.get("extensions", {})
+    clearcoat = extensions.get(KHR_MATERIALS_CLEARCOAT, {}) if isinstance(extensions, dict) else {}
+    infos += [clearcoat.get(key) for key in SLOT_TEXTURES[5:]]
     return [info for info in infos if info is not None]
 
 
 def cooked_textures(document: dict, buffer: bytes, slot_images: list) -> tuple[bytes, list]:
-    """Pack each slot's five image references, 0 for none or one more than
+    """Pack each slot's eight image references, 0 for none or one more than
     the image's position among the sampled images, and return the records
     with each sampled image's (section name, bytes). Every texture and sampler
     must be used. Unused image declarations are accepted only as core glTF
@@ -228,7 +243,7 @@ def cooked_textures(document: dict, buffer: bytes, slot_images: list) -> tuple[b
         if image_bytes(document, buffer, source).startswith(KTX2_IDENTIFIER):
             raise ValueError("KTX2 glTF images must be selected by KHR_texture_basisu")
     reference = {image: position + 1 for position, image in enumerate(sampled)}
-    records = b"".join(struct.pack("<5I", *(0 if image is None else reference[image] for image in images))
+    records = b"".join(struct.pack("<8I", *(0 if image is None else reference[image] for image in images))
         for images in slot_images)
     encoded_images = []
     for image in sampled:

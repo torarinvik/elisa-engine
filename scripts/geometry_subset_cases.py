@@ -22,9 +22,11 @@ import gltf_morph_self_test
 import gltf_scene_self_test
 import gltf_skin_self_test
 import gltf_texture_self_test
+import gltf_clearcoat_self_test
 import geometry_subset_deformation_cases
 import geometry_subset_normal_scale_cases
 import geometry_subset_occlusion_strength_cases
+import geometry_subset_clearcoat_cases
 from geometry_subset_package_builder import strip_package
 import test_geometry_uv1
 
@@ -74,7 +76,7 @@ MASKED = (0.0, 0.5, 0.0, 1.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.25, 1, 0)
 SURFACED = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0, 3)
 
 TEXTURED_MATERIALS = [struct.unpack_from("<10f2I", gltf_texture_self_test.SLOT_MATERIALS, slot * 48) +
-    struct.unpack_from("<5I", gltf_texture_self_test.SLOT_TEXTURES, slot * 20) for slot in range(4)]
+    struct.unpack_from("<8I", gltf_texture_self_test.SLOT_TEXTURES, slot * 32) for slot in range(4)]
 
 HIERARCHY_MATERIALS = [(0.08, 0.0, 0.0, 1.0, 0.0, 0.9, 1.0, 0.0, 0.0, 0.5, 0, 0),
     (0.0, 0.08, 0.0, 1.0, 0.0, 0.9, 0.0, 1.0, 0.0, 0.5, 0, 0),
@@ -162,6 +164,21 @@ def cases(directory: Path) -> list[tuple]:
     write_geometry_package(directory / "textured-missing.elpk", textured,
         {name: data for name, data in images.items() if name != "image_2"})
     textured_sections = [(name, zlib.crc32(data)) for name, data in gltf_texture_self_test.SECTIONS]
+    clearcoat_document = gltf_texture_self_test.textured_panel()
+    gltf_clearcoat_self_test.clearcoat_material(clearcoat_document)
+    clearcoat_source = directory / "clearcoat-panel.gltf"
+    clearcoat_source.write_text(json.dumps(clearcoat_document), encoding="utf-8")
+    clearcoat_path, clearcoat_result = cook_gltf_geometry.cook_geometry_package(clearcoat_source,
+        "test/clearcoat-panel.gltf", directory / "clearcoat.pkg", allow_textures=True)
+    clearcoat_images = dict(clearcoat_result["images"])
+    write_geometry_package(directory / "clearcoat.elpk", clearcoat_path.read_bytes(), clearcoat_images)
+    clearcoat_geometry = cook_gltf_geometry.normalized_geometry(clearcoat_document,
+        cook_assets.source_bytes(clearcoat_source.parent, clearcoat_document))
+    clearcoat_references = list(struct.iter_unpack("<8I", clearcoat_geometry["slot_textures"]))
+    clearcoat_materials = [struct.unpack_from("<10f2I", clearcoat_geometry["slot_materials"], slot * 48) +
+        clearcoat_references[slot] for slot in range(4)]
+    clearcoat_factors = list(struct.iter_unpack("<3f", clearcoat_geometry["slot_clearcoat_factors"]))
+    clearcoat_sections = [(name, zlib.crc32(data)) for name, data in clearcoat_result["images"].items()]
     # Sections listed out of bundle order, beside a section nothing samples.
     listed = {"surface_1": images["image_2"], "albedo": images["image_3"]}
     write_geometry_package(directory / "listed.elpk", strip_package(2, two, 2, materials=[MASKED, SURFACED],
@@ -475,8 +492,11 @@ def cases(directory: Path) -> list[tuple]:
             materials=[GLASS, with_field(PAINT, 11, 2)]), NEEDS_TEXTURE),
         *geometry_subset_normal_scale_cases.cases(strip_package, PAINT),
         *geometry_subset_occlusion_strength_cases.cases(strip_package, PAINT),
+        *geometry_subset_clearcoat_cases.cases(strip_package, PAINT),
         ("accept", "textured.elpk", None, (24, 4, gltf_texture_self_test.SUBSETS, TEXTURED_MATERIALS,
             textured_sections)),
+        ("accept", "clearcoat.elpk", None, (24, 4, gltf_texture_self_test.SUBSETS, clearcoat_materials,
+            clearcoat_sections, "clearcoat_factors", clearcoat_factors)),
         ("accept", "listed.elpk", None, (6, 2, two, listed_materials, listed_sections)),
         ("reject", "textured.pkg", None, NEEDS_BUNDLE),
         ("reject", "textured-missing.elpk", None, MISSING_SECTION),

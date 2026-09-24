@@ -79,8 +79,11 @@ Extending the C ABI with a query surface (`maze_is_wall`, `maze_wall_count`)
 inside a `module` wrapper made `-emit c-archive` produce an archive whose object
 referenced `_Maze::Steps.next_position` from `maze_try_move` without emitting its
 definition, so linking failed with an undefined symbol. Top-level functions and
-a top-level `global mutable` emit reliably, so the export surface is now flat;
-the compiler defect remains for a module-wrapped file and should be filed in the
-compiler repository. Per the plan's guidance, the engine did not move gameplay
-policy into C++ to work around it: the game stays in `examples/maze`, and only
-the export surface was flattened.
+a zero-initialized top-level `global mutable` emit reliably, so the export
+surface is now flat. Stage1 still rejects nonconstant global constructors; the
+embed API calls `capi_ensure_game()` from its Elisa exports to initialize the
+game once on first use. This keeps gameplay initialization in `examples/maze`
+without relying on a compiler global-constructor path. The nested-module
+emission defect remains in the compiler repository. Per the plan's guidance,
+the engine did not move gameplay policy into C++ to work around it: the game
+stays in `examples/maze`, and only the export surface was flattened.

@@ -7,7 +7,6 @@ include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
-
 module RenderSceneSnapshotNativeTests:
     private:
         const module Stress:
@@ -192,9 +191,14 @@ module RenderSceneSnapshotNativeTests:
                 metallic_roughness: Assets::AssetId{high: 0, low: 0},
                 occlusion: Assets::AssetId{high: 0, low: 0},
                 emissive: Assets::AssetId{high: 0, low: 0},
+                clearcoat: Assets::AssetId{high: 0, low: 0}, clearcoat_roughness: Assets::AssetId{high: 0, low: 0},
+                clearcoat_normal: Assets::AssetId{high: 0, low: 0},
                 base_color_factor: [0.25, 0.5, 0.75, 1.0],
                 metallic_factor: 0.4,
                 roughness_factor: 0.6,
+                normal_scale: 1.0,
+                occlusion_strength: 1.0,
+                clearcoat_factor: 0.0, clearcoat_roughness_factor: 0.0, clearcoat_normal_scale: 1.0,
                 emissive_factor: [0.0, 0.0, 0.0],
                 alpha_cutoff: 0.5,
                 alpha_mode: Material::AlphaMode.Opaque,
@@ -213,9 +217,14 @@ module RenderSceneSnapshotNativeTests:
                 metallic_roughness: Assets::AssetId{high: 0, low: 0},
                 occlusion: Assets::AssetId{high: 0, low: 0},
                 emissive: Assets::AssetId{high: 0, low: 0},
+                clearcoat: Assets::AssetId{high: 0, low: 0}, clearcoat_roughness: Assets::AssetId{high: 0, low: 0},
+                clearcoat_normal: Assets::AssetId{high: 0, low: 0},
                 base_color_factor: [1.0, 1.0, 1.0, 1.0],
                 metallic_factor: 0.0,
                 roughness_factor: 1.0,
+                normal_scale: 1.0,
+                occlusion_strength: 1.0,
+                clearcoat_factor: 0.0, clearcoat_roughness_factor: 0.0, clearcoat_normal_scale: 1.0,
                 emissive_factor: [0.0, 0.0, 0.0],
                 alpha_cutoff: 0.5,
                 alpha_mode: Material::AlphaMode.Opaque,
