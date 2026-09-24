@@ -119,13 +119,16 @@ class BuildRunCliTests(unittest.TestCase):
                 "CXX": str(linker),
                 "FAKE_LOG_DIR": str(log_dir),
             }
+            runner = __import__("elisa_build_run")
             with mock.patch.dict(os.environ, environment, clear=True), \
-                    mock.patch.object(sys, "platform", "darwin"):
-                status = __import__("elisa_build_run").main([
+                    mock.patch.object(sys, "platform", "darwin"), \
+                    mock.patch.object(runner, "validate_wicked_archive_abi", return_value=0) as abi_check:
+                status = runner.main([
                     "run", "--project", str(project),
                 ])
 
             self.assertEqual(status, 0)
+            self.assertTrue(abi_check.called)
             self.assertTrue(output.is_file())
             run_info = json.loads((log_dir / "ran.json").read_text())
             self.assertEqual(run_info["cwd"], str(project.resolve()))
@@ -149,6 +152,58 @@ class BuildRunCliTests(unittest.TestCase):
         self.assertIn(str(SCRIPT.parent.parent / "native/render_scene_abi.cpp"), linker_args)
         self.assertIn(str(SCRIPT.parent.parent / "dependencies/basisu/transcoder/basisu_transcoder.cpp"), linker_args)
         self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
+
+    def test_wicked_abi_guard_checks_every_linked_archive(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa Wicked ABI guard ") as temporary_directory:
+            root = Path(temporary_directory)
+            _, wicked_build, _, _ = fake_native_paths(root)
+            runner = __import__("elisa_build_run")
+            paths = {"libraries": wicked_build / "WickedEngine"}
+            with mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.validate_wicked_archive_abi(paths), 0)
+
+            command = run.call_args.args[0]
+            utility = paths["libraries"] / "Utility"
+            self.assertEqual(command[0], sys.executable)
+            self.assertEqual(command[1], str(SCRIPT.parent / "check_wicked_archive_abi.py"))
+            self.assertEqual(command[2:], [str(path) for path in (
+                paths["libraries"] / "libWickedEngine.a",
+                paths["libraries"] / "libJolt.a",
+                utility / "libUtility.a",
+                utility / "FAudio/libFAudio.a",
+                paths["libraries"] / "LUA/libLUA.a",
+            )])
+
+    def test_mixed_wicked_abi_stops_before_compile_and_link(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa mixed Wicked ABI ") as temporary_directory:
+            root = Path(temporary_directory)
+            project = root / "project"
+            project.mkdir()
+            (project / "main.elisa").write_text("def main() -> i32:\n    0\n", encoding="utf-8")
+            output = project / "game"
+            wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
+            compiler, linker, log_dir = write_fake_tools(root)
+            environment = {
+                "WICKED_ROOT": str(wicked_root),
+                "WICKED_BUILD": str(wicked_build),
+                "WICKED_SDL3_ROOT": str(sdl_root),
+                "WICKED_BREW_PREFIX": str(brew_root),
+                "ELISA_COMPILER_BIN": str(compiler),
+                "CXX": str(linker),
+                "FAKE_LOG_DIR": str(log_dir),
+            }
+            runner = __import__("elisa_build_run")
+            with mock.patch.dict(os.environ, environment, clear=True), \
+                    mock.patch.object(sys, "platform", "darwin"), \
+                    mock.patch.object(runner, "validate_wicked_archive_abi", return_value=1):
+                status = runner.main([
+                    "build", "--project", str(project), "--main", "main.elisa", "--output", str(output),
+                ])
+
+            self.assertEqual(status, 1)
+            self.assertFalse((log_dir / "compiler.json").exists())
+            self.assertFalse((log_dir / "linker.json").exists())
+            self.assertFalse(output.exists())
 
     def test_native_link_optimizes_only_on_request(self) -> None:
         runner = __import__("elisa_build_run")
@@ -463,9 +518,11 @@ class BuildRunCliTests(unittest.TestCase):
                 "FAKE_LOG_DIR": str(log_dir),
                 "FAKE_EXPORT": "1",
             }
+            runner = __import__("elisa_build_run")
             with mock.patch.dict(os.environ, environment, clear=True), \
-                    mock.patch.object(sys, "platform", "darwin"):
-                status = __import__("elisa_build_run").main([
+                    mock.patch.object(sys, "platform", "darwin"), \
+                    mock.patch.object(runner, "validate_wicked_archive_abi", return_value=0):
+                status = runner.main([
                     "build", "--project", str(project), "--main", "main.elisa", "--output", str(output),
                 ])
             self.assertEqual(status, 2)
@@ -493,9 +550,11 @@ class BuildRunCliTests(unittest.TestCase):
                 "FAKE_LOG_DIR": str(log_dir),
                 "FAKE_COMPILER_STATUS": "17",
             }
+            runner = __import__("elisa_build_run")
             with mock.patch.dict(os.environ, environment, clear=True), \
-                    mock.patch.object(sys, "platform", "darwin"):
-                status = __import__("elisa_build_run").main([
+                    mock.patch.object(sys, "platform", "darwin"), \
+                    mock.patch.object(runner, "validate_wicked_archive_abi", return_value=0):
+                status = runner.main([
                     "run", "--project", str(project), "--main", "main.elisa", "--output", str(output),
                 ])
             self.assertEqual(status, 17)
