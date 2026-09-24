@@ -5,6 +5,7 @@
 #include "probe_core.h"
 #include "wiScene.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -98,11 +99,18 @@ public:
         const XMFLOAT3 direction = desc.kind == NativeLightKind::Point ? XMFLOAT3(0.0f, -1.0f, 0.0f) : XMFLOAT3(
             desc.direction.x / direction_length, desc.direction.y / direction_length,
             desc.direction.z / direction_length);
+        const XMVECTOR local_axis = desc.kind == NativeLightKind::Point ?
+            XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f) : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        XMFLOAT3 rendered_direction;
+        XMStoreFloat3(&rendered_direction, XMVector3Normalize(XMVector3TransformNormal(
+            local_axis, transform->GetWorldMatrix())));
         return light->type == light_type(desc.kind) && close(position.x, desc.position.x) &&
             close(position.y, desc.position.y) && close(position.z, desc.position.z) &&
             close(light->direction.x, direction.x) && close(light->direction.y, direction.y) &&
             close(light->direction.z, direction.z) && close(light->color.x, desc.color.x) &&
             close(light->color.y, desc.color.y) && close(light->color.z, desc.color.z) &&
+            (desc.kind == NativeLightKind::Point || (close(rendered_direction.x, direction.x) &&
+                close(rendered_direction.y, direction.y) && close(rendered_direction.z, direction.z))) &&
             close(light->intensity, desc.intensity) && close(light->range, desc.range) &&
             close(light->innerConeAngle, desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f) &&
             close(light->outerConeAngle, desc.kind == NativeLightKind::Spot ? desc.outer_cone : 0.0f) &&
@@ -225,12 +233,29 @@ private:
             kind == NativeLightKind::Spot ? wi::scene::LightComponent::SPOT : wi::scene::LightComponent::POINT;
     }
 
+    static XMVECTOR direction_rotation(const XMFLOAT3& direction) {
+        const XMVECTOR local_up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        const XMVECTOR normalized_direction = XMVector3Normalize(XMLoadFloat3(&direction));
+        const XMVECTOR axis = XMVector3Cross(local_up, normalized_direction);
+        const float dot = std::clamp(XMVectorGetX(XMVector3Dot(local_up, normalized_direction)), -1.0f, 1.0f);
+        if (dot < -0.999999f) {
+            return XMQuaternionRotationAxis(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), XM_PI);
+        }
+        if (dot < 0.999999f) {
+            return XMQuaternionRotationAxis(XMVector3Normalize(axis), std::acos(dot));
+        }
+        return XMQuaternionIdentity();
+    }
+
     void apply(wi::ecs::Entity entity, const NativeLightDesc& desc) {
         auto* light = scene_.lights.GetComponent(entity);
         if (light == nullptr) return;
         auto* transform = scene_.transforms.GetComponent(entity);
         if (transform != nullptr) {
             transform->translation_local = desc.position;
+            if (desc.kind != NativeLightKind::Point) {
+                XMStoreFloat4(&transform->rotation_local, direction_rotation(desc.direction));
+            }
             transform->SetDirty();
             transform->UpdateTransform();
         }

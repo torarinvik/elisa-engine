@@ -32,6 +32,10 @@ with `shadow_resolution`; zero leaves resolution selection to Wicked, while
 explicit values are powers of two from 16 through 2048. The SDL3/Metal test
 checks the live component after creation and update, including the automatic
 sentinel and fixed 512/256 pixel requests.
+Directional and spot descriptors also set the Wicked transform rotation. The
+native assertion checks the transformed local +Y axis as well as the component
+direction, matching the direction Wicked uses when it updates and renders the
+scene.
 
 `RenderScene::set_sky_map` loads a project-relative color asset into Wicked's
 static sky path, accepting equirectangular images with a 2:1 aspect ratio or
