@@ -1,0 +1,144 @@
+include "../src/backend/render_graph.elisa"
+include "../src/runtime/render_graph_runtime.elisa"
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+
+module RenderGraphNativeTests:
+    const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
+
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_fail_next_allocation() -> i32
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_fail_pass(index: u32) -> i32
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_suspend_next_frame() -> i32
+    @callconv(c)
+    extern elisa_render_scene_v1_render_graph_test_fallback_preserved() -> i32
+
+    def primary_color(id: u32, lifetime: RenderGraph::Lifetime,
+            initialized: bool) -> RenderGraph::ResourceDescriptor:
+        RenderGraph::ResourceDescriptor{
+            id: id,
+            size_mode: RenderGraph::SizeMode.PrimaryInternal,
+            width: 0,
+            height: 0,
+            format: RenderGraph::Format.R11G11B10Float,
+            samples: 1,
+            lifetime: lifetime,
+            initialized: initialized,
+        }
+
+    public:
+        def configure_clear_copy_graph() -> i32:
+            graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+            _ = catch RenderGraph::add_resource(&graph, primary_color(1,
+                    RenderGraph::Lifetime.Imported, true)):
+                ok: 0
+                error failure: return 1
+            _ = catch RenderGraph::add_resource(&graph, primary_color(2,
+                    RenderGraph::Lifetime.Transient, false)):
+                ok: 0
+                error failure: return 2
+            _ = catch RenderGraph::add_resource(&graph, primary_color(3,
+                    RenderGraph::Lifetime.Transient, false)):
+                ok: 0
+                error failure: return 3
+            _ = catch RenderGraph::add_pass(&graph, 10):
+                ok: 0
+                error failure: return 4
+            _ = catch RenderGraph::add_pass(&graph, 20):
+                ok: 0
+                error failure: return 5
+            _ = catch RenderGraph::write(&graph, 10, 2):
+                ok: 0
+                error failure: return 6
+            _ = catch RenderGraph::read(&graph, 20, 1):
+                ok: 0
+                error failure: return 7
+            _ = catch RenderGraph::write(&graph, 20, 3):
+                ok: 0
+                error failure: return 8
+            _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+                ok: 0
+                error failure: return 9
+            plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+                value: value
+                error failure: return 10
+            return 11 if plan.transient_slot_count != 1 or plan.alias_slots[1] != plan.alias_slots[2]
+            configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+            configuration.output_resource_id <- 3
+            configuration.operation_count <- 2
+            configuration.operations[0] <- RenderGraphRuntime::PassOperation{
+                pass_id: 10,
+                kind: RenderGraphRuntime::OperationKind.ClearColor,
+                source_resource_id: 0,
+                destination_resource_id: 2,
+            }
+            configuration.operations[1] <- RenderGraphRuntime::PassOperation{
+                pass_id: 20,
+                kind: RenderGraphRuntime::OperationKind.CopyColor,
+                source_resource_id: 1,
+                destination_resource_id: 3,
+            }
+            invalid_configuration: mutable RenderGraphRuntime::Configuration = configuration
+            invalid_configuration.operations[1].source_resource_id <- 3
+            invalid_status: i32 = RenderGraphRuntime::configure(graph, plan,
+                invalid_configuration)
+            return 12 if invalid_status != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+            result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
+            return 13 if result != RenderGraphRuntime::CONFIGURE_OK
+            0
+
+        def exercise() -> i32:
+            return 1 if configure_clear_copy_graph() != SUCCESS
+            for attempt in 0..<2:
+                return 2 if Application::pump() != Application::PumpStatus.Running
+            return 3 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() == 0
+            before_suspension: u64 = RenderGraphRuntime::execution_count()
+            return 36 if elisa_render_scene_v1_render_graph_test_suspend_next_frame() != SUCCESS
+            return 37 if Application::pump() != Application::PumpStatus.Running
+            return 38 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_SUSPENDED
+            return 39 if RenderGraphRuntime::execution_count() != before_suspension
+            return 40 if elisa_render_scene_v1_render_graph_test_fallback_preserved() != 1
+            return 41 if Application::pump() != Application::PumpStatus.Running
+            return 42 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() <= before_suspension
+            before_resize: u64 = RenderGraphRuntime::execution_count()
+            resize_down: i32 = catch RenderScene::resize(320, 200):
+                ok: 0
+                error failure: 1
+            return 14 if resize_down != SUCCESS
+            small_viewport: i32 = catch RenderScene::set_primary_viewport(0, 0, 320, 200):
+                ok: 0
+                error failure: 1
+            return 34 if small_viewport != SUCCESS
+            return 20 if elisa_render_scene_v1_render_graph_test_fail_next_allocation() != SUCCESS
+            count_before_allocation_failure: u64 = RenderGraphRuntime::execution_count()
+            return 21 if Application::pump() != Application::PumpStatus.Running
+            return 22 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_BACKEND_FAILED
+            return 23 if RenderGraphRuntime::execution_count() != count_before_allocation_failure
+            return 24 if elisa_render_scene_v1_render_graph_test_fallback_preserved() != 1
+            return 25 if Application::pump() != Application::PumpStatus.Running
+            return 26 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() <= before_resize
+            for attempt in 0..<2:
+                return 15 if Application::pump() != Application::PumpStatus.Running
+            before_restore: u64 = RenderGraphRuntime::execution_count()
+            resize_restore: i32 = catch RenderScene::resize(640, 400):
+                ok: 0
+                error failure: 1
+            return 17 if resize_restore != SUCCESS
+            clear_small_viewport: i32 = catch RenderScene::clear_primary_viewport():
+                ok: 0
+                error failure: 1
+            return 35 if clear_small_viewport != SUCCESS
+            return 27 if elisa_render_scene_v1_render_graph_test_fail_pass(1) != RenderGraphRuntime::CONFIGURE_OK
+            count_before_pass_failure: u64 = RenderGraphRuntime::execution_count()
+            return 28 if Application::pump() != Application::PumpStatus.Running
+            return 29 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_BACKEND_FAILED
+            return 30 if RenderGraphRuntime::execution_count() != count_before_pass_failure
+            return 31 if elisa_render_scene_v1_render_graph_test_fallback_preserved() != 1
+            return 32 if Application::pump() != Application::PumpStatus.Running
+            return 33 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() <= count_before_pass_failure
+            for attempt in 0..<2:
+                return 18 if Application::pump() != Application::PumpStatus.Running
+            return 19 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() < before_restore
+            0

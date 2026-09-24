@@ -1,0 +1,146 @@
+include "../backend/render_graph.elisa"
+
+module RenderGraphRuntime:
+    private:
+        const module Native:
+            OK: i32 = 0
+            NO_TARGET: u32 = 4294967295
+        const INVALID_PLAN: i32 = -100
+        const NATIVE_REJECTED: i32 = -101
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_begin(
+            resource_count: u32, pass_count: u32, output_id: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_resource(
+            index: u32, id: u32, size_mode: i32, width: u32, height: u32,
+            format: i32, samples: u32, lifetime: i32, initialized: i32,
+            target_slot: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_commit() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_abort() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_status() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_execution_count() -> u64
+        def native_size_mode(mode: RenderGraph::SizeMode) -> i32:
+            0 if mode == RenderGraph::SizeMode.Fixed else 1
+        def native_format(format: RenderGraph::Format) -> i32:
+            return 0 if format == RenderGraph::Format.Rgba8
+            return 1 if format == RenderGraph::Format.Rgba16Float
+            return 2 if format == RenderGraph::Format.Depth32
+            3
+        def native_lifetime(lifetime: RenderGraph::Lifetime) -> i32:
+            return 0 if lifetime == RenderGraph::Lifetime.Imported
+            return 1 if lifetime == RenderGraph::Lifetime.Persistent
+            2
+        def native_bool(value: bool) -> i32:
+            1 if value else 0
+        def native_operation(kind: OperationKind) -> i32:
+            0 if kind == OperationKind.ClearColor else 1
+        def operation_matches_graph(graph: RenderGraph::Graph&,
+                plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
+            for index in 0..<plan.resource_count:
+                descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+                return false if not RenderGraph::resource_descriptor_at(graph,
+                    index, &descriptor)
+                declared: RenderGraph::ResourceAccess = RenderGraph::access_if_known(graph, operation.pass_id, descriptor.id)
+                expected: mutable RenderGraph::ResourceAccess = RenderGraph::ResourceAccess.None
+                if operation.kind == OperationKind.ClearColor:
+                    expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
+                else:
+                    expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
+                    expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
+                return false if declared != expected
+            true
+        def abort_with_status(status: i32) -> i32:
+            _ = elisa_render_scene_v1_render_graph_abort()
+            status
+        def check_staging_status(status: i32) -> i32:
+            if status != Native::OK:
+                _ = elisa_render_scene_v1_render_graph_abort()
+                return NATIVE_REJECTED
+            Native::OK
+    public:
+        const CONFIGURE_OK: i32 = 0
+        const CONFIGURE_INVALID_PLAN: i32 = INVALID_PLAN
+        const CONFIGURE_NATIVE_REJECTED: i32 = NATIVE_REJECTED
+        const EXECUTION_OK: i32 = 0
+        const EXECUTION_BACKEND_FAILED: i32 = -8
+        const EXECUTION_SUSPENDED: i32 = 1
+        enum OperationKind:
+            ClearColor
+            CopyColor
+        struct PassOperation:
+            pass_id: u32
+            kind: OperationKind
+            source_resource_id: u32
+            destination_resource_id: u32
+        struct Configuration:
+            output_resource_id: u32
+            operations: PassOperation[RenderGraph::MAX_PASSES]
+            operation_count: usize
+        def Configuration() -> Configuration:
+            Configuration{
+                output_resource_id: RenderGraph::INVALID_ID,
+                operations: zeroed,
+                operation_count: 0,
+            }
+        # Sends a compiled lifetime plan and one clear/copy operation for each
+        # pass. The native path adopts it atomically and allocates targets on
+        # the render thread when the internal resolution is known.
+        def configure(graph: RenderGraph::Graph&, plan: RenderGraph::Plan&,
+                configuration: Configuration&) -> i32:
+            return INVALID_PLAN if not RenderGraph::plan_matches_graph(graph, plan)
+            return INVALID_PLAN if RenderGraph::resource_count(graph) != plan.resource_count
+            return INVALID_PLAN if RenderGraph::pass_count(graph) != plan.pass_count
+            return INVALID_PLAN if configuration.operation_count != plan.pass_count
+            return INVALID_PLAN if configuration.output_resource_id == RenderGraph::INVALID_ID
+            status: mutable i32 = elisa_render_scene_v1_render_graph_begin(
+                plan.resource_count.u32(), plan.pass_count.u32(), configuration.output_resource_id)
+            return NATIVE_REJECTED if status != Native::OK
+            next_target: mutable usize = plan.transient_slot_count
+            for index in 0..<plan.resource_count |next_target|:
+                descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+                if not RenderGraph::resource_descriptor_at(graph, index, &descriptor):
+                    return abort_with_status(INVALID_PLAN)
+                if descriptor.id != plan.resource_ids[index]:
+                    return abort_with_status(INVALID_PLAN)
+                target_slot: mutable u32 = Native::NO_TARGET
+                if descriptor.lifetime == RenderGraph::Lifetime.Transient:
+                    target_slot <- plan.alias_slots[index]
+                    if target_slot == RenderGraph::NO_TRANSIENT_ALIAS_SLOT:
+                        return abort_with_status(INVALID_PLAN)
+                elif descriptor.lifetime == RenderGraph::Lifetime.Persistent:
+                    if next_target >= RenderGraph::MAX_RESOURCES:
+                        return abort_with_status(INVALID_PLAN)
+                    target_slot <- next_target.u32()
+                    next_target <- next_target + 1
+                status <- elisa_render_scene_v1_render_graph_set_resource(
+                    index.u32(), descriptor.id, native_size_mode(descriptor.size_mode),
+                    descriptor.width, descriptor.height, native_format(descriptor.format),
+                    descriptor.samples, native_lifetime(descriptor.lifetime),
+                    native_bool(descriptor.initialized), target_slot)
+                status <- check_staging_status(status)
+                return status if status != Native::OK
+            for index in 0..<plan.pass_count:
+                operation: PassOperation = configuration.operations[index]
+                if operation.pass_id != plan.pass_ids[index]:
+                    return abort_with_status(INVALID_PLAN)
+                if not operation_matches_graph(graph, plan, operation):
+                    return abort_with_status(INVALID_PLAN)
+                status <- elisa_render_scene_v1_render_graph_set_pass(
+                    index.u32(), operation.pass_id, native_operation(operation.kind),
+                    operation.source_resource_id, operation.destination_resource_id)
+                status <- check_staging_status(status)
+                return status if status != Native::OK
+            status <- elisa_render_scene_v1_render_graph_commit()
+            check_staging_status(status)
+        def last_execution_status() -> i32:
+            elisa_render_scene_v1_render_graph_status()
+        def execution_count() -> u64:
+            elisa_render_scene_v1_render_graph_execution_count()

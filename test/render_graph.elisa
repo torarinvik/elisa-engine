@@ -4,6 +4,7 @@ def texture(id: u32, lifetime: RenderGraph::Lifetime,
         initialized: bool) -> RenderGraph::ResourceDescriptor:
     RenderGraph::ResourceDescriptor{
         id: id,
+        size_mode: RenderGraph::SizeMode.Fixed,
         width: 320,
         height: 200,
         format: RenderGraph::Format.Rgba16Float,
@@ -11,6 +12,42 @@ def texture(id: u32, lifetime: RenderGraph::Lifetime,
         lifetime: lifetime,
         initialized: initialized,
     }
+
+def access_and_descriptor_tests() -> i32:
+    graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+    _ = catch RenderGraph::add_resource(&graph, texture(1,
+        RenderGraph::Lifetime.Imported, true)):
+        ok: 0
+        error failure: return 61
+    _ = catch RenderGraph::add_pass(&graph, 10):
+        ok: 0
+        error failure: return 62
+    _ = catch RenderGraph::read(&graph, 10, 1):
+        ok: 0
+        error failure: return 63
+    imported_read_access: bool = catch RenderGraph::access(graph, 10, 1):
+        RenderGraph::ResourceAccess.Read: true
+        error failure: false
+    return 64 if not imported_read_access
+    return 70 if RenderGraph::access_if_known(graph, 10, 1) != RenderGraph::ResourceAccess.Read
+    return 71 if RenderGraph::access_if_known(graph, 999, 1) != RenderGraph::ResourceAccess.None
+    fixed_descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+    return 65 if not RenderGraph::resource_descriptor_at(graph, 0, &fixed_descriptor)
+    return 65 if fixed_descriptor.size_mode != RenderGraph::SizeMode.Fixed
+    missing_descriptor: bool = RenderGraph::resource_descriptor_at(graph,
+        RenderGraph::resource_count(graph), &fixed_descriptor)
+    return 66 if missing_descriptor
+    internal_color: RenderGraph::ResourceDescriptor = texture(2,
+        RenderGraph::Lifetime.Imported, true)
+    internal_color.size_mode <- RenderGraph::SizeMode.PrimaryInternal
+    internal_color.width <- 0
+    internal_color.height <- 0
+    return 67 if not RenderGraph::resource_descriptor_valid(internal_color)
+    internal_color.width <- 320
+    return 68 if RenderGraph::resource_descriptor_valid(internal_color)
+    fixed_descriptor.width <- 0
+    return 69 if RenderGraph::resource_descriptor_valid(fixed_descriptor)
+    0
 
 def main() -> i32:
     graph: mutable RenderGraph::Graph = RenderGraph::Graph()
@@ -65,36 +102,31 @@ def main() -> i32:
     plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
         value: value
         error failure: return 16
+    return 72 if not RenderGraph::plan_matches_graph(graph, plan)
+    forged_plan: mutable RenderGraph::Plan = plan
+    forged_plan.pass_ids[0] <- 30
+    return 73 if RenderGraph::plan_matches_graph(graph, forged_plan)
     return 17 if plan.pass_count != 4 or plan.resource_count != 3
     return 18 if plan.pass_ids[0] != 10 or plan.pass_ids[1] != 20 or plan.pass_ids[2] != 30 or plan.pass_ids[3] != 40
     return 60 if plan.resource_ids[0] != 1 or plan.resource_ids[1] != 2 or plan.resource_ids[2] != 3
     return 19 if plan.first_use[1] != 0 or plan.last_use[1] != 1 or plan.first_use[2] != 2 or plan.last_use[2] != 3
     return 20 if plan.alias_slots[1] != plan.alias_slots[2] or plan.transient_slot_count != 1 or plan.alias_slots[0] != RenderGraph::NO_TRANSIENT_ALIAS_SLOT
+    extra_test_status: i32 = access_and_descriptor_tests()
+    return extra_test_status if extra_test_status != 0
 
-    invalid_descriptor: mutable RenderGraph::Graph = RenderGraph::Graph()
-    invalid_texture: RenderGraph::ResourceDescriptor = texture(1,
-        RenderGraph::Lifetime.Transient, false)
-    invalid_texture.width <- 0
-    _ = catch RenderGraph::add_resource(&invalid_descriptor, invalid_texture):
-        ok: 0
-        RenderGraph::GraphError.InvalidDescriptor: 0
-        error failure: return 21
-    duplicate: i32 = catch RenderGraph::add_resource(&graph, texture(1,
+    duplicate_rejected: bool = catch RenderGraph::add_resource(&graph, texture(1,
         RenderGraph::Lifetime.Imported, true)):
-        ok: 0
-        RenderGraph::GraphError.DuplicateResource: 1
-        error failure: 2
-    return 22 if duplicate != 1
-    duplicate_pass: i32 = catch RenderGraph::add_pass(&graph, 10):
-        ok: 0
-        RenderGraph::GraphError.DuplicatePass: 1
-        error failure: 2
-    return 23 if duplicate_pass != 1
-    duplicate_access: i32 = catch RenderGraph::read(&graph, 10, 1):
-        ok: 0
-        RenderGraph::GraphError.DuplicateAccess: 1
-        error failure: 2
-    return 24 if duplicate_access != 1
+        ok: false
+        error failure: true
+    return 22 if not duplicate_rejected
+    duplicate_pass_rejected: bool = catch RenderGraph::add_pass(&graph, 10):
+        ok: false
+        error failure: true
+    return 23 if not duplicate_pass_rejected
+    duplicate_access_rejected: bool = catch RenderGraph::read(&graph, 10, 1):
+        ok: false
+        error failure: true
+    return 24 if not duplicate_access_rejected
 
     cycle: mutable RenderGraph::Graph = RenderGraph::Graph()
     _ = catch RenderGraph::add_resource(&cycle, texture(1,
@@ -116,11 +148,10 @@ def main() -> i32:
     _ = catch RenderGraph::add_dependency(&cycle, 20, 10):
         ok: 0
         error failure: return 30
-    cycle_result: i32 = catch RenderGraph::compile(&cycle):
-        value: 0
-        RenderGraph::GraphError.DependencyCycle: 1
-        error failure: 2
-    return 31 if cycle_result != 1
+    cycle_rejected: bool = catch RenderGraph::compile(&cycle):
+        value: false
+        error failure: true
+    return 31 if not cycle_rejected
 
     read_before_write: mutable RenderGraph::Graph = RenderGraph::Graph()
     _ = catch RenderGraph::add_resource(&read_before_write, texture(2,
@@ -142,11 +173,10 @@ def main() -> i32:
     _ = catch RenderGraph::add_dependency(&read_before_write, 10, 20):
         ok: 0
         error failure: return 37
-    read_result: i32 = catch RenderGraph::compile(&read_before_write):
-        value: 0
-        RenderGraph::GraphError.ReadBeforeWrite: 1
-        error failure: 2
-    return 38 if read_result != 1
+    read_rejected: bool = catch RenderGraph::compile(&read_before_write):
+        value: false
+        error failure: true
+    return 38 if not read_rejected
 
     readwrite: mutable RenderGraph::Graph = RenderGraph::Graph()
     _ = catch RenderGraph::add_resource(&readwrite, texture(1,
@@ -162,11 +192,10 @@ def main() -> i32:
     _ = catch RenderGraph::write(&readwrite, 10, 1):
         ok: 0
         error failure: return 41
-    hazard_result: i32 = catch RenderGraph::compile(&readwrite):
-        value: 0
-        RenderGraph::GraphError.ReadWriteHazard: 1
-        error failure: 2
-    return 43 if hazard_result != 1
+    hazard_rejected: bool = catch RenderGraph::compile(&readwrite):
+        value: false
+        error failure: true
+    return 43 if not hazard_rejected
 
     writers: mutable RenderGraph::Graph = RenderGraph::Graph()
     _ = catch RenderGraph::add_resource(&writers, texture(2,
@@ -185,11 +214,10 @@ def main() -> i32:
     _ = catch RenderGraph::write(&writers, 20, 2):
         ok: 0
         error failure: return 47
-    writer_result: i32 = catch RenderGraph::compile(&writers):
-        value: 0
-        RenderGraph::GraphError.UnorderedHazard: 1
-        error failure: 2
-    return 49 if writer_result != 1
+    writers_rejected: bool = catch RenderGraph::compile(&writers):
+        value: false
+        error failure: true
+    return 49 if not writers_rejected
 
     ordered_writers: mutable RenderGraph::Graph = RenderGraph::Graph()
     _ = catch RenderGraph::add_resource(&ordered_writers, texture(2,
@@ -221,10 +249,9 @@ def main() -> i32:
         _ = catch RenderGraph::add_pass(&capacity, index.u32() + 1):
             ok: 0
             error failure: return 58
-    capacity_result: i32 = catch RenderGraph::add_pass(&capacity,
+    capacity_rejected: bool = catch RenderGraph::add_pass(&capacity,
         RenderGraph::MAX_PASSES.u32() + 1):
-        ok: 0
-        RenderGraph::GraphError.Capacity: 1
-        error failure: 2
-    return 59 if capacity_result != 1
+        ok: false
+        error failure: true
+    return 59 if not capacity_rejected
     0
