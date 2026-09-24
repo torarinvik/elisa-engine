@@ -39,6 +39,7 @@ int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, flo
         instance.animation_loop = loop != 0;
         return apply_animation_pose(state, slot) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
+    blend_seconds = preserve_interrupted_pose(instance, blend_seconds);
     const float phase = has_current ? clip_phase(instance, instance.animation_clip, instance.animation_time) : 0.0f;
     if (has_current) {
         instance.previous_animation_clip = instance.animation_clip;
@@ -113,6 +114,7 @@ extern "C" int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float bl
         (instance.skin_joints.empty() && !has_morph_animation)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
+    blend_seconds = preserve_interrupted_pose(instance, blend_seconds);
     if (instance.animation_clip >= 0 && instance.animation_clip < int32_t(instance.animation_clips.size())) {
         instance.previous_animation_clip = instance.animation_clip;
         instance.previous_animation_time = instance.animation_time;

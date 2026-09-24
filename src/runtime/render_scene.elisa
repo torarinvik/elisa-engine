@@ -263,6 +263,8 @@ module RenderScene:
                 clip_name, loop_value, speed, blend_seconds))
         def locomotion_transition() -> AnimationTransition:
             AnimationTransition{eased: true, phase_matched: true, continue_same_clip: true}
+        # Interrupting a nonzero fade blends from the displayed pose and
+        # retains at least its remaining time. A zero duration explicitly cuts.
         def play_animation_blended(handle: InstanceHandle, clip_name: cstr, loop: bool,
             speed: f32, blend_seconds: f32,
             transition: AnimationTransition) -> void error[RenderSceneError]:
