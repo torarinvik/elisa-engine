@@ -202,6 +202,8 @@ module RenderSceneAsyncAssetNativeTests:
             return middle_lod_status if middle_lod_status != 0
             near_lod_status: i32 = camera_lod_matches(handle, 21.5, 0, 1152)
             return near_lod_status if near_lod_status != 0
+            deferred_lod_status: i32 = snapshot_lod_waits_until_visible(handle)
+            return deferred_lod_status if deferred_lod_status != 0
             restore_projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):
                 ok: 0
                 error failure: 1
@@ -242,6 +244,32 @@ module RenderSceneAsyncAssetNativeTests:
             return 10 + actual_level if actual_level != expected_level
             actual_triangles: u64 = elisa_render_scene_v1_test_snapshot_lod_triangles(handle)
             return 20 if actual_triangles != expected_triangles
+            0
+
+        def snapshot_lod_waits_until_visible(handle: i64) -> i32:
+            return 1 if elisa_render_scene_v1_test_select_snapshot_lod(handle, 2) != Code::OK
+            away: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 21.5},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 100.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 2
+            if away != 0:
+                return 3
+            refresh_hidden: i32 = elisa_render_scene_v1_test_refresh_snapshot_lod_selection()
+            return 4 if (refresh_hidden != Code::OK or
+                elisa_render_scene_v1_test_snapshot_lod_level(handle) != 2)
+            face_asset: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 21.5},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 5
+            if face_asset != 0:
+                return 6
+            refresh_visible: i32 = elisa_render_scene_v1_test_refresh_snapshot_lod_selection()
+            return 7 if (refresh_visible != Code::OK or
+                elisa_render_scene_v1_test_snapshot_lod_level(handle) != 0)
             0
 
         def request_lod_chain() -> i32:
