@@ -37,15 +37,18 @@ temporary views without retaining native camera entities. The project-facing
 `RenderScene::camera_ray` ABI unprojects the active Wicked camera in reverse-Z
 space, reflects the result back into Elisa's right-handed coordinates, returns
 camera origins for perspective and near-plane origins for orthographic views,
-and rejects pixels outside the viewport. The SDL3/Metal smoke checks a centered
-ray after changing the camera and an out-of-bounds request.
+and rejects pixels outside the viewport. `RenderScene::camera_viewport_ray`
+does the same for a secondary view after translating global framebuffer
+coordinates into its viewport; points outside the rectangle fail. The
+SDL3/Metal smoke checks centered rays and out-of-bounds requests for active and
+secondary views.
 
 Automatic static snapshot LOD selection now checks the active Wicked frustum
 against the transformed bounds of every mesh placement. It leaves the current
 shared mesh untouched while all placements are offscreen, then selects the
 appropriate level on the first visible frame. The native asset smoke verifies
-both the deferred offscreen case and the visible transition. Multiple
-The camera-component pass supplies a lightweight secondary view. Dedicated
+both the deferred offscreen case and the visible transition. The
+camera-component pass supplies a lightweight secondary view. Dedicated
 `RenderPath3D` pipelines per camera, with independent full post-processing and
 primary-view layout, remain open; Wicked continues to cull scene draws through
 its own visibility path.

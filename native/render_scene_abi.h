@@ -86,6 +86,10 @@ int32_t elisa_render_scene_v1_set_camera_viewport(
     int64_t handle, int32_t x, int32_t y, int32_t width, int32_t height,
     float update_interval);
 int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle);
+int32_t elisa_render_scene_v1_camera_viewport_ray(
+    int64_t handle, float screen_x, float screen_y,
+    float* origin_x, float* origin_y, float* origin_z,
+    float* direction_x, float* direction_y, float* direction_z);
 int64_t elisa_render_scene_v1_create(
     int32_t primitive,
     float px, float py, float pz,

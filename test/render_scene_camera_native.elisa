@@ -170,6 +170,20 @@ module RenderSceneCameraNativeTests:
             return 150 if Application::pump() != Application::PumpStatus.Running
             return 151 if elisa_render_scene_v1_test_camera_viewport_matches(
                 160, 0, 160, 100, 1) != 1
+            viewport_center_ray: Geometry::Ray3 = catch RenderScene::camera_viewport_ray(
+                secondary, 240.0, 50.0):
+                value: value
+                error failure: return 158
+            return 159 if (not Geometry::vec3_is_finite(viewport_center_ray.origin) or
+                not Geometry::vec3_is_finite(viewport_center_ray.direction) or
+                Geometry::vec3_length(viewport_center_ray.direction) < 0.999 or
+                Geometry::vec3_length(viewport_center_ray.direction) > 1.001)
+            outside_viewport_ray: i32 = catch RenderScene::camera_viewport_ray(
+                secondary, 159.0, 50.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 160 if outside_viewport_ray != 1
             clear_viewport: i32 = catch RenderScene::clear_camera_viewport(secondary):
                 ok: 0
                 error failure: 1

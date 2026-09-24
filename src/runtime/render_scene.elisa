@@ -217,6 +217,23 @@ module RenderScene:
                 handle.native_value, x, y, width, height, update_interval))
         def clear_camera_viewport(handle: CameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_clear_camera_viewport(handle.native_value))
+        # Screen coordinates are framebuffer pixels; points outside this
+        # camera's viewport are rejected instead of producing a misleading ray.
+        def camera_viewport_ray(handle: CameraHandle, screen_x: f32,
+            screen_y: f32) -> Geometry::Ray3 error[RenderSceneError]:
+            origin_x: mutable f32 = 0.0
+            origin_y: mutable f32 = 0.0
+            origin_z: mutable f32 = 0.0
+            direction_x: mutable f32 = 0.0
+            direction_y: mutable f32 = 0.0
+            direction_z: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_camera_viewport_ray(handle.native_value,
+                screen_x, screen_y, &origin_x, &origin_y, &origin_z,
+                &direction_x, &direction_y, &direction_z))
+            Geometry::Ray3{
+                origin: Geometry::Vec3{x: origin_x, y: origin_y, z: origin_z},
+                direction: Geometry::Vec3{x: direction_x, y: direction_y, z: direction_z},
+            }
         # An opaque sentinel for optional scene placements that have not been
         # created yet. Passing it to a scene operation returns UnknownHandle.
         def empty_instance_handle() -> InstanceHandle:
