@@ -25,6 +25,9 @@ module NativeApplicationTestProbe:
         @callconv(c)
         extern elisa_application_v1_test_rejects_invalid_shader_manifest() -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_test_shader_manifest_verifies_contents() -> i32
+
 def check_native_profile() -> i32:
     profile: BackendProfile = catch Application::backend_profile():
         value: value
@@ -401,6 +404,7 @@ def exercise_application() -> i32:
 def main() -> i32:
     return 180 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_missing_shader_root() != 1
     return 181 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_invalid_shader_manifest() != 1
+    return 182 if NativeApplicationTestProbe::elisa_application_v1_test_shader_manifest_verifies_contents() != 1
     storage_result: i32 = exercise_user_data()
     return 104 + storage_result if storage_result != 0
     result: i32 = exercise_application()
