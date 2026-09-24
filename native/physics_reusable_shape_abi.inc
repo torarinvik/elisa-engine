@@ -67,11 +67,21 @@ bool cooked_geometry_has_non_degenerate_triangle(const elisa::assets::CookedGeom
     if (geometry.positions.size() < 9 || geometry.positions.size() % 3 != 0 ||
         geometry.indices.size() < 3 || geometry.indices.size() % 3 != 0) return false;
     const size_t vertex_count = geometry.positions.size() / 3;
-    for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
-        for (size_t axis = 0; axis < 3; ++axis) {
-            if (!std::isfinite(geometry.positions[vertex * 3 + axis])) return false;
+    double extent = 0.0;
+    for (size_t axis = 0; axis < 3; ++axis) {
+        float minimum = geometry.positions[axis];
+        float maximum = minimum;
+        if (!std::isfinite(minimum)) return false;
+        for (size_t vertex = 1; vertex < vertex_count; ++vertex) {
+            const float value = geometry.positions[vertex * 3 + axis];
+            if (!std::isfinite(value)) return false;
+            minimum = std::min(minimum, value);
+            maximum = std::max(maximum, value);
         }
+        extent = std::max(extent, double(maximum) - minimum);
     }
+    if (extent <= 1.0e-6) return false;
+    const double area_limit = extent * extent * extent * extent * 1.0e-12;
     for (size_t offset = 0; offset < geometry.indices.size(); offset += 3) {
         const uint32_t a = geometry.indices[offset];
         const uint32_t b = geometry.indices[offset + 1];
@@ -87,7 +97,7 @@ bool cooked_geometry_has_non_degenerate_triangle(const elisa::assets::CookedGeom
         const double nx = aby * acz - abz * acy;
         const double ny = abz * acx - abx * acz;
         const double nz = abx * acy - aby * acx;
-        if (nx * nx + ny * ny + nz * nz <= 1.0e-20) return false;
+        if (nx * nx + ny * ny + nz * nz <= area_limit) return false;
     }
     return true;
 }
@@ -323,7 +333,11 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     if (!cooked_geometry_has_non_degenerate_triangle(geometry) ||
-        !geometry.skin_joints.empty() || !geometry.skin_cluster_joints.empty()) {
+        !geometry.mesh_placements.empty() || !geometry.skin_bone_names.empty() ||
+        !geometry.skin_indices.empty() || !geometry.skin_weights.empty() ||
+        !geometry.skin_inverse_bind_matrices.empty() || !geometry.skin_joints.empty() ||
+        !geometry.skin_cluster_joints.empty() || !geometry.animation_clips.empty() ||
+        !geometry.morph_targets.empty() || !geometry.morph_default_weights.empty()) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     if (kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL && !cooked_geometry_has_volume(geometry)) {

@@ -28,7 +28,9 @@ positive scale. The engine uses the bounded cooked-geometry loader already
 used by rendering, verifies ELPK bundle dependencies, cooks the Jolt shape once,
 and lets multiple bodies share it. A triangle mesh may only be attached to a
 static body; convex hulls can be static, kinematic, or dynamic. This first API
-accepts static geometry packages and rejects skinned meshes. It converts
+accepts static geometry packages and rejects skinned meshes. Packages with
+animation clips, morph targets, or multiple scene placements are rejected until
+the API can represent those deformations and transforms. It converts
 positions and triangle winding at the Elisa-to-Wicked boundary, and each body
 keeps a matching cooked-mesh scene-query proxy. Geometry is limited to 65,536
 vertices and 196,608 indices per mesh, 8 MiB per shape, 32 MiB of shared shapes
@@ -67,11 +69,14 @@ height. It fills and releases the fixed 64-body registry and verifies that the
 next creation returns `PhysicsError.Capacity`.
 `test/physics_mesh_shapes_native.elisa` loads a tetrahedron package through the
 Elisa API, creates a dynamic convex hull and static triangle mesh, verifies that
-dynamic triangle meshes are rejected, and raycasts against the cooked mesh.
+dynamic triangle meshes are rejected, checks invalid scales and missing-package
+errors, and raycasts against the cooked mesh. The RuntimeServices probe also
+creates and releases both caller-array and cooked-asset shapes.
 
 Validation on 2026-09-24:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools python3 scripts/application_native_smoke.py` passed all five entries, including primitive and cooked mesh shapes, render cadence, application lifecycle, and failure cleanup. The 30 Hz and 120 Hz midpoint/final captures match at 640x480.
+- The run used the currently available stage1 compiler product with `ELISA_ALLOW_STALE_STAGE1=1`; it validates the engine changes against that product, not later unseeded compiler edits.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
 The native registry now supports reusable box, sphere, capsule, convex-hull, and

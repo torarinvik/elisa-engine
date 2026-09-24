@@ -26,6 +26,13 @@ module PhysicsMeshShapesNative:
                 PhysicsRuntime::PhysicsError.AssetLoadFailed: 1
                 error failure: 2
             return 15 if missing_asset != 1
+            invalid_scale: i32 = catch PhysicsRuntime::mesh_shape_create(&world,
+                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg",
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 1
+                error failure: 2
+            return 16 if invalid_scale != 1
             hull: PhysicsRuntime::ShapeHandle = catch PhysicsRuntime::mesh_shape_create(&world,
                 PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg", scale):
                 value: value
