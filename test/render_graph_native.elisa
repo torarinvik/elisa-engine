@@ -248,17 +248,8 @@ module RenderGraphNativeTests:
         _ = catch RenderGraph::add_resource(&graph, linear_depth_import(2)):
             ok: 0
             error failure: return 121
-        _ = catch RenderGraph::add_resource(&graph, RenderGraph::ResourceDescriptor{
-                id: 3,
-                size_mode: RenderGraph::SizeMode.PrimaryInternal,
-                width: 0,
-                height: 0,
-                format: RenderGraph::Format.R32Float,
-                samples: 1,
-                lifetime: RenderGraph::Lifetime.Transient,
-                initialized: false,
-                import_source: RenderGraph::ImportSource.None,
-            }):
+        _ = catch RenderGraph::add_resource(&graph, primary_color(3,
+                RenderGraph::Lifetime.Transient, false)):
             ok: 0
             error failure: return 122
         _ = catch RenderGraph::add_resource(&graph, primary_color(4,
@@ -294,7 +285,7 @@ module RenderGraphNativeTests:
         configuration.operation_count <- 2
         configuration.operations[0] <- RenderGraphRuntime::PassOperation{
             pass_id: 10,
-            kind: RenderGraphRuntime::OperationKind.CopyColor,
+            kind: RenderGraphRuntime::OperationKind.VisualizeLinearDepth,
             source_resource_id: 2,
             destination_resource_id: 3,
         }
@@ -512,6 +503,7 @@ module RenderGraphNativeTests:
             return 213 if Application::pump() != Application::PumpStatus.Running
             return 214 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
             return 215 if elisa_render_scene_v1_render_graph_test_linear_depth_read_count() != depth_reads_before + 1
-            return 216 if configure_clear_copy_graph(3) != SUCCESS
-            return 217 if Application::pump() != Application::PumpStatus.Running
+            return 216 if elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+            return 217 if configure_clear_copy_graph(3) != SUCCESS
+            return 218 if Application::pump() != Application::PumpStatus.Running
             0

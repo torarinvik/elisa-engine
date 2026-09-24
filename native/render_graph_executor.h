@@ -2,6 +2,7 @@
 
 #include "wiGraphics.h"
 #include "wiRenderPath3D.h"
+#include "render_graph_visualize.h"
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -20,7 +21,9 @@ enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
 enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
 enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
-enum class Operation : int32_t { ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3 };
+enum class Operation : int32_t {
+    ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3, VisualizeLinearDepth = 4
+};
 
 struct Resource {
     uint32_t id = 0;
@@ -115,11 +118,13 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if (!staging_.building || index >= staging_.pass_count || pass.id == 0 ||
             (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
-                pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor) ||
+                pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
+                pass.operation != Operation::VisualizeLinearDepth) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
-            ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor) &&
+            ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
+                pass.operation == Operation::VisualizeLinearDepth) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -294,15 +299,31 @@ public:
             } else {
                 wi::graphics::Texture* source = texture_for(pass.source_id, path);
                 if (source == nullptr || source == destination ||
-                    source->GetDesc().format == native_format(Format::Depth32) ||
-                    destination->GetDesc().format == native_format(Format::Depth32) ||
-                    source->GetDesc().format != destination->GetDesc().format ||
                     source->GetDesc().width != destination->GetDesc().width ||
                     source->GetDesc().height != destination->GetDesc().height) {
                     last_status_ = INVALID_ARGUMENT;
                     return;
                 }
-                if (pass.operation == Operation::CopyColor) {
+                if (pass.operation == Operation::VisualizeLinearDepth) {
+                    if (source->GetDesc().format != native_format(Format::R32Float) ||
+                        destination->GetDesc().format == native_format(Format::Depth32) ||
+                        source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    if (!visualize_linear_depth(*source, *destination, command_list)) {
+                        last_status_ = BACKEND_FAILED;
+                        return;
+                    }
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+                    ++linear_depth_read_count_;
+#endif
+                } else if (source->GetDesc().format == native_format(Format::Depth32) ||
+                    destination->GetDesc().format == native_format(Format::Depth32) ||
+                    source->GetDesc().format != destination->GetDesc().format) {
+                    last_status_ = INVALID_ARGUMENT;
+                    return;
+                } else if (pass.operation == Operation::CopyColor) {
                     if (source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
                         last_status_ = INVALID_ARGUMENT;
                         return;
@@ -311,12 +332,6 @@ public:
                         last_status_ = BACKEND_FAILED;
                         return;
                     }
-#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-                    const uint32_t source_index = resource_index(active_, pass.source_id);
-                    if (source_index != NO_TARGET && active_.resources[source_index].import_source == ImportSource::LinearDepth) {
-                        ++linear_depth_read_count_;
-                    }
-#endif
                 } else {
                     if (source->GetDesc().sample_count <= 1 || destination->GetDesc().sample_count != 1) {
                         last_status_ = INVALID_ARGUMENT;
@@ -421,14 +436,21 @@ private:
             if (destination == NO_TARGET || config.resources[destination].lifetime == Lifetime::Imported) return false;
             if (pass.operation == Operation::ClearColor && config.resources[destination].format == Format::Depth32) return false;
             if (pass.operation == Operation::ClearDepth && config.resources[destination].format != Format::Depth32) return false;
-            if (pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor) {
+            if (pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
+                pass.operation == Operation::VisualizeLinearDepth) {
                 const uint32_t source = resource_index(config, pass.source_id);
                 if (source == NO_TARGET || source == destination || !initialized[source]) return false;
                 const Resource& source_desc = config.resources[source];
                 const Resource& destination_desc = config.resources[destination];
-                if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32) return false;
                 if (source_desc.size_mode != destination_desc.size_mode ||
-                    source_desc.width != destination_desc.width || source_desc.height != destination_desc.height ||
+                    source_desc.width != destination_desc.width || source_desc.height != destination_desc.height) return false;
+                if (pass.operation == Operation::VisualizeLinearDepth) {
+                    if (source_desc.format != Format::R32Float || destination_desc.format == Format::Depth32 ||
+                        source_desc.samples != 1 || destination_desc.samples != 1) return false;
+                    initialized[destination] = true;
+                    continue;
+                }
+                if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32 ||
                     source_desc.format != destination_desc.format) return false;
                 if (pass.operation == Operation::CopyColor &&
                     (source_desc.samples != 1 || destination_desc.samples != 1)) return false;

@@ -49,7 +49,8 @@ module RenderGraphRuntime:
             return 0 if kind == OperationKind.ClearColor
             return 1 if kind == OperationKind.CopyColor
             return 2 if kind == OperationKind.ClearDepth
-            3
+            return 3 if kind == OperationKind.ResolveColor
+            4
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             for index in 0..<plan.resource_count:
@@ -60,7 +61,7 @@ module RenderGraphRuntime:
                 expected: mutable RenderGraph::ResourceAccess = RenderGraph::ResourceAccess.None
                 if operation.kind == OperationKind.ClearColor or operation.kind == OperationKind.ClearDepth:
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor:
+                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 else:
@@ -114,6 +115,7 @@ module RenderGraphRuntime:
             CopyColor
             ClearDepth
             ResolveColor
+            VisualizeLinearDepth
         struct PassOperation:
             pass_id: u32
             kind: OperationKind

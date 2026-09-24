@@ -30,10 +30,12 @@ first access, the runtime gives the output its own slot through composition.
 The native executor currently accepts one imported primary scene-color image
 and an optional imported linear-depth image from Wicked's shader-readable
 `depthBuffer_Copy`. Imports declare their source explicitly; linear depth uses
-R32_FLOAT and can be copied into graph-owned R32 targets, while shader sampling
-and depth-tested geometry remain unsupported. Other targets use RGBA8, RGBA16F,
-Wicked's R11G11B10F main format, or D32 depth, with fixed or primary-internal
-extents. Color sample counts 1, 2, 4,
+R32_FLOAT and supports exact copies into graph-owned R32 targets plus a
+`VisualizeLinearDepth` pass that samples it with Wicked's built-in image shader
+and writes grayscale to a single-sample color target. Custom depth-sampling
+shaders and depth-tested geometry remain unsupported. Other targets use RGBA8,
+RGBA16F, Wicked's R11G11B10F main format, or D32 depth, with fixed or
+primary-internal extents. Color sample counts 1, 2, 4,
 and 8 are accepted only when Wicked creates the exact requested count; depth
 targets and imported scene color remain single-sampled. Operations are
 transparent black `ClearColor`, depth-one `ClearDepth`, exact single-sample
@@ -74,9 +76,9 @@ raises allocation while the old targets await retirement; after the window,
 allocation falls by at least 8 MiB. This measurement is specific to the tested
 macOS Metal path. A user-driven OS minimize or device-loss cycle and broader
 rendered graph references remain open R15 work. The final graph fixture imports
-both primary scene color and linear depth, copies the R32 depth image into a
-graph target, and then restores scene color as the composed output; the native
-probe confirms the depth input was read successfully.
+both primary scene color and linear depth, visualizes depth into a transient
+color target, and then restores scene color as the composed output. A test-only
+GPU readback confirms the depth visualization is spatially nonuniform.
 
 Run the focused planner test with:
 
