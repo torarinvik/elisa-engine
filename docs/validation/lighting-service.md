@@ -80,15 +80,16 @@ format-specific caster rasterizer bias. The native gate checks range rejection
 and the packed value used by the shader.
 
 `RenderScene::set_sun_shadow_rasterizer_bias` changes the caster's constant and
-slope depth bias on Wicked's Metal backend. Metal applies these values as
-dynamic encoder state, so existing cached pipelines take effect on the next
-shadow pass. Other Wicked backends currently return
-`RenderSceneError.UnsupportedFeature` because their rasterizer values are
-baked into cached pipelines. The SDL3/Metal reference renders the same isolated
-caster and receiver with the default `(-1, -4)` and variant `(256, -2)` values,
-requires at least a `0.01` full-frame patch-luminance change, confirms the
-single- and double-sided shadow states share the live bias, and restores the defaults.
-It also rejects out-of-range slope bias without changing the live state.
+slope depth bias on Wicked's Metal and Vulkan backends. Metal applies these
+values as dynamic encoder state; Vulkan uses dynamic pipeline state. Direct3D
+12 and PS5 currently return `RenderSceneError.UnsupportedFeature` because
+their rasterizer values are baked into cached pipelines. The SDL3/Metal
+reference renders the same isolated caster and receiver with the default
+`(-1, -4)` and variant `(256, -2)` values, requires at least a `0.01` full-frame
+patch-luminance change, confirms the single- and double-sided shadow states
+share the live bias, and restores the defaults. It also rejects out-of-range
+slope bias without changing the live state. The Vulkan implementation compiles
+in the pinned Wicked build; runtime visual validation on a Vulkan device remains.
 
 The SDL3/Metal render smoke also checks that `set_sun_shadows` changes visible
 lighting. It temporarily hides the smoke scene's existing geometry, electric
