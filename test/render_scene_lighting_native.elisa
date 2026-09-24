@@ -2,9 +2,21 @@ module RenderSceneLightingNativeTests:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_test_light_matches(kind: i32,
-            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32) -> i32
+            red: f32, green: f32, blue: f32,
+            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
+            intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
+            casts_shadow: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_light_count() -> i32
+
+        def light_matches(light: Lighting::Light) -> bool:
+            kind: i32 = 0 if light.kind == Lighting::LightKind.Directional else (2 if light.kind == Lighting::LightKind.Spot else 1)
+            elisa_render_scene_v1_test_light_matches(kind,
+                light.color.x, light.color.y, light.color.z,
+                light.position.x, light.position.y, light.position.z,
+                light.direction.x, light.direction.y, light.direction.z,
+                light.intensity, light.range, light.inner_cone, light.outer_cone,
+                1 if light.casts_shadow else 0) == 1
 
     public:
         def exercise() -> i32:
@@ -28,7 +40,7 @@ module RenderSceneLightingNativeTests:
                 kind: Lighting::LightKind.Point,
                 color: Geometry::Vec3{x: 0.3, y: 0.7, z: 1.0},
                 position: Geometry::Vec3{x: 1.0, y: 2.0, z: 3.0},
-                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
+                direction: Geometry::vec3_zero(),
                 intensity: 2.0,
                 range: 10.0,
                 inner_cone: 0.0,
@@ -39,17 +51,18 @@ module RenderSceneLightingNativeTests:
                 value: value
                 error failure: return 121
             return 122 if elisa_render_scene_v1_test_light_count() != 1
-            return 123 if elisa_render_scene_v1_test_light_matches(1,
-                1.0, 2.0, 3.0, 0.0, -1.0, 0.0) != 1
+            return 123 if not light_matches(point)
 
             moved: Lighting::Light = point
             moved.position <- Geometry::Vec3{x: -2.0, y: 4.0, z: 1.0}
-            moved.direction <- Geometry::Vec3{x: 1.0, y: -1.0, z: 0.0}
+            moved.color <- Geometry::Vec3{x: 0.8, y: 0.4, z: 0.2}
+            moved.intensity <- 3.5
+            moved.range <- 18.0
+            moved.casts_shadow <- false
             _ = catch RenderScene::update_light(point_handle, moved):
                 ok: 0
                 error failure: return 124
-            return 125 if elisa_render_scene_v1_test_light_matches(1,
-                -2.0, 4.0, 1.0, 1.0, -1.0, 0.0) != 1
+            return 125 if not light_matches(moved)
 
             spot: Lighting::Light = Lighting::Light{
                 kind: Lighting::LightKind.Spot,
@@ -66,16 +79,17 @@ module RenderSceneLightingNativeTests:
                 value: value
                 error failure: return 126
             return 127 if elisa_render_scene_v1_test_light_count() != 2
+            return 128 if not light_matches(spot)
             _ = catch RenderScene::destroy_light(spot_handle):
                 ok: 0
-                error failure: return 128
+                error failure: return 129
             _ = catch RenderScene::destroy_light(point_handle):
                 ok: 0
-                error failure: return 129
-            return 130 if elisa_render_scene_v1_test_light_count() != 0
+                error failure: return 130
+            return 131 if elisa_render_scene_v1_test_light_count() != 0
             stale: i32 = catch RenderScene::destroy_light(point_handle):
                 ok: 0
                 RenderScene::RenderSceneError.UnknownHandle: 1
                 error failure: 2
-            return 131 if stale != 1
+            return 132 if stale != 1
             0

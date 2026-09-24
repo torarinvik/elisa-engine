@@ -29,6 +29,13 @@ def main() -> i32:
     return 9 if not Lighting::light_valid(light)
     light.range <- 0.0
     return 10 if Lighting::light_valid(light)
+    point: Lighting::Light = light
+    point.kind <- Lighting::LightKind.Point
+    point.range <- 12.0
+    point.direction <- Geometry::vec3_zero()
+    return 13 if not Lighting::light_valid(point)
+    point.kind <- Lighting::LightKind.Spot
+    return 14 if Lighting::light_valid(point)
     environment: Lighting::Environment = Lighting::Environment{
         sun_color: Geometry::Vec3{x: 1.0, y: 0.95, z: 0.8},
         sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},

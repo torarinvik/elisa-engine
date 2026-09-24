@@ -21,6 +21,7 @@ module Lighting:
             kind: LightKind
             color: Geometry::Vec3
             position: Geometry::Vec3
+            # Ignored for point lights; their direction may be zero.
             direction: Geometry::Vec3
             intensity: f32
             range: f32

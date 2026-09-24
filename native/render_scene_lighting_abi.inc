@@ -136,12 +136,14 @@ extern "C" int32_t elisa_render_scene_v1_destroy_light(int64_t handle) {
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 extern "C" int32_t elisa_render_scene_v1_test_light_matches(
     int32_t kind,
-    float px, float py, float pz, float dx, float dy, float dz) {
+    float red, float green, float blue,
+    float px, float py, float pz, float dx, float dy, float dz,
+    float intensity, float range, float inner_cone, float outer_cone, int32_t casts_shadow) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.lighting == nullptr) return 0;
-    const probe::NativeLightDesc desc = make_light_desc(kind, 1.0f, 1.0f, 1.0f,
-        px, py, pz, dx, dy, dz, 1.0f, 10.0f, 0.0f, XM_PIDIV4, 0);
+    const probe::NativeLightDesc desc = make_light_desc(kind, red, green, blue,
+        px, py, pz, dx, dy, dz, intensity, range, inner_cone, outer_cone, casts_shadow);
     for (const RenderLightSlot& light : state.lights) {
         if (light.live && state.lighting->light_matches(light.native, desc)) return 1;
     }

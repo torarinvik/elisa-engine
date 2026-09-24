@@ -93,11 +93,18 @@ public:
         if (light == nullptr || transform == nullptr) return false;
         const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
         const XMFLOAT3 position = transform->translation_local;
+        const float direction_length = XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)));
+        const XMFLOAT3 direction = desc.kind == NativeLightKind::Point ? XMFLOAT3(0.0f, -1.0f, 0.0f) : XMFLOAT3(
+            desc.direction.x / direction_length, desc.direction.y / direction_length,
+            desc.direction.z / direction_length);
         return light->type == light_type(desc.kind) && close(position.x, desc.position.x) &&
             close(position.y, desc.position.y) && close(position.z, desc.position.z) &&
-            close(light->direction.x, desc.direction.x / XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)))) &&
-            close(light->direction.y, desc.direction.y / XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)))) &&
-            close(light->direction.z, desc.direction.z / XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction))));
+            close(light->direction.x, direction.x) && close(light->direction.y, direction.y) &&
+            close(light->direction.z, direction.z) && close(light->color.x, desc.color.x) &&
+            close(light->color.y, desc.color.y) && close(light->color.z, desc.color.z) &&
+            close(light->intensity, desc.intensity) && close(light->range, desc.range) &&
+            close(light->innerConeAngle, desc.inner_cone) && close(light->outerConeAngle, desc.outer_cone) &&
+            light->IsCastingShadow() == desc.cast_shadow;
     }
 
     bool destroy_light(NativeLightHandle handle) {
@@ -220,7 +227,11 @@ private:
         }
         light->color = desc.color;
         light->position = desc.position;
-        XMStoreFloat3(&light->direction, XMVector3Normalize(XMLoadFloat3(&desc.direction)));
+        if (desc.kind == NativeLightKind::Point) {
+            light->direction = XMFLOAT3(0.0f, -1.0f, 0.0f);
+        } else {
+            XMStoreFloat3(&light->direction, XMVector3Normalize(XMLoadFloat3(&desc.direction)));
+        }
         light->intensity = desc.intensity;
         light->range = desc.range;
         light->outerConeAngle = desc.outer_cone;

@@ -21,6 +21,12 @@ The native gate creates and moves point and spot lights, verifies Wicked transfo
 handle and an invalid probe resolution, applies sky exposure and height fog,
 rejects a zero sun direction, and destroys every probe/light.
 
+Point-light direction is ignored by the shared descriptor and can be zero.
+The Wicked adapter substitutes a stable downward direction rather than
+normalizing zero. The SDL3/Metal light test creates a zero-direction point
+light, moves it, changes its color, intensity, range and shadow flag, and checks
+those values plus spot cone settings on the live Wicked components.
+
 `RenderScene::set_sky_map` loads a project-relative color asset into Wicked's
 static sky path, accepting equirectangular images with a 2:1 aspect ratio or
 square cubemaps up to 8,192 pixels per edge. KTX2 assets use Elisa's checked
