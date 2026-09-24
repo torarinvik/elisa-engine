@@ -26,6 +26,8 @@ The Wicked adapter substitutes a stable downward direction rather than
 normalizing zero. The SDL3/Metal light test creates a zero-direction point
 light, moves it, changes its color, intensity, range and shadow flag, and checks
 those values plus spot cone settings on the live Wicked components.
+Cone angles are required only for spots; point and directional lights use zero
+angles at the Wicked boundary.
 
 `RenderScene::set_sky_map` loads a project-relative color asset into Wicked's
 static sky path, accepting equirectangular images with a 2:1 aspect ratio or

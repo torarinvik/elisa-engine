@@ -19,7 +19,7 @@ bool valid_light_values(
     }
     if (red < 0.0f || red > 1.0f || green < 0.0f || green > 1.0f ||
         blue < 0.0f || blue > 1.0f || intensity < 0.0f || range <= 0.0f ||
-        inner_cone < 0.0f || outer_cone <= 0.0f || inner_cone > outer_cone) return false;
+        (kind == 2 && (inner_cone < 0.0f || outer_cone <= 0.0f || inner_cone > outer_cone))) return false;
     const float direction_squared = dx * dx + dy * dy + dz * dz;
     return std::isfinite(direction_squared) && (kind == 1 || direction_squared > 1.0e-8f);
 }
@@ -39,8 +39,8 @@ probe::NativeLightDesc make_light_desc(
     desc.direction = probe::coordinates::to_wicked_direction(XMFLOAT3(dx, dy, dz));
     desc.intensity = intensity;
     desc.range = range;
-    desc.inner_cone = inner_cone;
-    desc.outer_cone = outer_cone;
+    desc.inner_cone = kind == 2 ? inner_cone : 0.0f;
+    desc.outer_cone = kind == 2 ? outer_cone : 0.0f;
     desc.cast_shadow = casts_shadow != 0;
     return desc;
 }

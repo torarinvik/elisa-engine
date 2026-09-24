@@ -44,7 +44,7 @@ module RenderSceneLightingNativeTests:
                 intensity: 2.0,
                 range: 10.0,
                 inner_cone: 0.0,
-                outer_cone: 0.8,
+                outer_cone: 0.0,
                 casts_shadow: true,
             }
             point_handle: RenderScene::LightHandle = catch RenderScene::create_light(point):

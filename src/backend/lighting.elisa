@@ -25,6 +25,7 @@ module Lighting:
             direction: Geometry::Vec3
             intensity: f32
             range: f32
+            # Used by spot lights; point and directional lights canonicalize both to zero.
             inner_cone: f32
             outer_cone: f32
             casts_shadow: bool
@@ -44,7 +45,7 @@ module Lighting:
             return false if not finite(light.intensity) or not finite(light.range) or not finite(light.inner_cone) or not finite(light.outer_cone)
             return false if light.color.x < 0.0 or light.color.y < 0.0 or light.color.z < 0.0 or light.intensity < 0.0 or light.range <= 0.0
             return false if light.kind != LightKind.Point and Geometry::vec3_length_squared(light.direction) <= Limits::ZERO_VECTOR_SQUARED
-            return false if light.inner_cone < 0.0 or light.outer_cone <= 0.0 or light.inner_cone > light.outer_cone
+            return false if light.kind == LightKind.Spot and (light.inner_cone < 0.0 or light.outer_cone <= 0.0 or light.inner_cone > light.outer_cone)
             true
 
         def environment_valid(environment: Environment) -> bool:

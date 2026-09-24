@@ -103,7 +103,8 @@ public:
             close(light->direction.z, direction.z) && close(light->color.x, desc.color.x) &&
             close(light->color.y, desc.color.y) && close(light->color.z, desc.color.z) &&
             close(light->intensity, desc.intensity) && close(light->range, desc.range) &&
-            close(light->innerConeAngle, desc.inner_cone) && close(light->outerConeAngle, desc.outer_cone) &&
+            close(light->innerConeAngle, desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f) &&
+            close(light->outerConeAngle, desc.kind == NativeLightKind::Spot ? desc.outer_cone : 0.0f) &&
             light->IsCastingShadow() == desc.cast_shadow;
     }
 
@@ -199,12 +200,13 @@ private:
             return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
         };
         const float direction_length = XMVectorGetX(XMVector3Length(XMLoadFloat3(&desc.direction)));
+        const bool valid_spot_cone = desc.kind != NativeLightKind::Spot ||
+            (desc.outer_cone > 0.0f && desc.inner_cone >= 0.0f && desc.inner_cone <= desc.outer_cone);
         return finite_color(desc.color) && finite_vector(desc.position) && finite_vector(desc.direction) &&
             (desc.kind == NativeLightKind::Point || direction_length > 0.0001f) &&
             std::isfinite(desc.intensity) && desc.intensity >= 0.0f &&
             std::isfinite(desc.range) && desc.range > 0.0f && std::isfinite(desc.outer_cone) &&
-            std::isfinite(desc.inner_cone) && desc.outer_cone > 0.0f && desc.inner_cone >= 0.0f &&
-            desc.inner_cone <= desc.outer_cone && (desc.kind != NativeLightKind::Directional || desc.range > 0.0f);
+            std::isfinite(desc.inner_cone) && valid_spot_cone;
     }
 
     static bool valid_resolution(uint32_t resolution) {
@@ -234,8 +236,8 @@ private:
         }
         light->intensity = desc.intensity;
         light->range = desc.range;
-        light->outerConeAngle = desc.outer_cone;
-        light->innerConeAngle = desc.inner_cone;
+        light->outerConeAngle = desc.kind == NativeLightKind::Spot ? desc.outer_cone : 0.0f;
+        light->innerConeAngle = desc.kind == NativeLightKind::Spot ? desc.inner_cone : 0.0f;
         light->SetType(light_type(desc.kind));
         light->SetCastShadow(desc.cast_shadow);
     }
