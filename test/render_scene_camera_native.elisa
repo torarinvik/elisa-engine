@@ -202,6 +202,19 @@ module RenderSceneCameraNativeTests:
             return 170 if Application::pump() != Application::PumpStatus.Running
             return 171 if elisa_render_scene_v1_test_camera_quality_profile_matches(
                 2, 0, 2.0, 0, 0, 0, 1, 0.5, 0, 0.001) != 1
+            camera_profile.upscaler <- Quality::Upscaler.Fsr1
+            camera_fallback: Quality::ApplyOutcome = catch RenderScene::set_camera_quality_profile_with_result(
+                secondary, camera_profile):
+                outcome: outcome
+                error failure: return 173
+            return 174 if camera_fallback != Quality::ApplyOutcome.UpscalerFallback
+            camera_profile.upscaler <- Quality::Upscaler.None
+            camera_profile_restore: i32 = catch RenderScene::set_camera_quality_profile(
+                secondary, camera_profile):
+                ok: 0
+                error failure: 1
+            return 175 if camera_profile_restore != 0
+            return 176 if Application::pump() != Application::PumpStatus.Running
             return 172 if elisa_render_scene_v1_test_camera_viewport_matches(
                 160, 0, 160, 100, 1) != 1
             invalid_primary_viewport: i32 = catch RenderScene::set_primary_viewport(

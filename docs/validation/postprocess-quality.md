@@ -12,6 +12,13 @@ only when the queried adapter says they are supported; otherwise the adapter
 returns an explicit fallback after applying the rest of the profile. Temporal
 AA uses Wicked's renderer history path; Elisa profiles reject enabling it
 alongside FSR2, which already owns a temporal reconstruction pass.
+`RenderScene::apply_quality_profile_with_result` and
+`set_camera_quality_profile_with_result` return
+`Quality::ApplyOutcome.UpscalerFallback` when Wicked disables a requested
+upscaler, while the compatibility wrappers retain their previous void result.
+The scene adapter currently reports all FSR1/FSR2 requests as fallbacks because
+device/format support negotiation is not wired yet; applications can now detect
+that result instead of assuming upscaling was enabled.
 
 Evidence: the shared Elisa gate runs `test/quality.elisa`; the SDL3/Wicked gate
 calls `probe_postprocess_bridge` and checks both fallback and supported paths,
@@ -30,6 +37,14 @@ shared image metric with per-channel peak tolerance 0.35 and mean tolerance
 or a profile rendered with the wrong settings. The Low reference visibly uses
 the lower render scale; the High reference retains the full internal detail.
 These images validate rendered profile output.
+
+The 2026-09-25 quality-result smoke adds Elisa assertions for the scene and
+camera fallback outcomes and verifies their other profile fields. The targeted
+stage1 build emits the Elisa archive and compiles the native sources, but cannot
+link the executable: the seeded compiler omits `arena_free`, `ctx_streq`, and
+`ctx_string_views_eq`, and this build target does not export the scene test-probe
+functions. Runtime assertions therefore remain unverified until those gates
+link.
 
 ## Apple M5 profile cost sample
 

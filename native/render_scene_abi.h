@@ -37,6 +37,11 @@ enum {
 };
 
 enum {
+    ELISA_RENDER_SCENE_QUALITY_APPLIED = 0,
+    ELISA_RENDER_SCENE_QUALITY_UPSCALER_FALLBACK = 1,
+};
+
+enum {
     ELISA_RENDER_SCENE_SNAPSHOT_ASSET_MESH = 0,
     ELISA_RENDER_SCENE_SNAPSHOT_ASSET_TEXTURE = 1,
 };
@@ -451,9 +456,15 @@ int32_t elisa_render_scene_v1_apply_quality_profile(
 int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
     const ElisaRenderSceneQualityProfile* profile,
     int32_t shadow_quality, float sun_shadow_receiver_bias);
+int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow_result(
+    const ElisaRenderSceneQualityProfile* profile, int32_t shadow_quality,
+    float sun_shadow_receiver_bias, int32_t* apply_outcome);
 int32_t elisa_render_scene_v1_apply_camera_quality_profile(
     int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
     int32_t shadow_quality, float sun_shadow_receiver_bias);
+int32_t elisa_render_scene_v1_apply_camera_quality_profile_result(
+    int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
+    int32_t shadow_quality, float sun_shadow_receiver_bias, int32_t* apply_outcome);
 int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_set_visibility_policy(
     int64_t handle, float draw_distance, float lod_bias, uint32_t layer_mask, int32_t renderable);

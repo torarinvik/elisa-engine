@@ -1,6 +1,7 @@
 # Public Elisa access to the engine's validated, backend-neutral post-process
 # quality profile. Unsupported optional upscalers fall back while the rest of
-# the profile remains applied by the native adapter.
+# the profile remains applied by the native adapter. Use the `*_with_result`
+# calls when the application needs to display the selected fallback.
 include "./render_scene.elisa"
 
 module RenderSceneQualityProfile:
@@ -9,6 +10,10 @@ module RenderSceneQualityProfile:
 
 extend RenderScene:
     private:
+        const module NativeQualityOutcome:
+            APPLIED: i32 = 0
+            UPSCALER_FALLBACK: i32 = 1
+
         struct NativeQualityProfile:
             tonemap: i32
             upscaler: i32
@@ -23,14 +28,14 @@ extend RenderScene:
             depth_effects: i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_apply_quality_profile_with_shadow(
+        extern elisa_render_scene_v1_apply_quality_profile_with_shadow_result(
             profile: mutable NativeQualityProfile&, shadow_quality: i32,
-            sun_shadow_receiver_bias: f32) -> i32
+            sun_shadow_receiver_bias: f32, apply_outcome: mutable i32&) -> i32
 
         @callconv(c)
-        extern elisa_render_scene_v1_apply_camera_quality_profile(camera_handle: i64,
+        extern elisa_render_scene_v1_apply_camera_quality_profile_result(camera_handle: i64,
             profile: mutable NativeQualityProfile&, shadow_quality: i32,
-            sun_shadow_receiver_bias: f32) -> i32
+            sun_shadow_receiver_bias: f32, apply_outcome: mutable i32&) -> i32
 
         def native_profile(profile: Quality::Profile) -> NativeQualityProfile:
             tonemap: i32 = 0 if profile.tonemap == Quality::Tonemap.Reinhard else 1 if profile.tonemap == Quality::Tonemap.Aces else 2
@@ -50,7 +55,7 @@ extend RenderScene:
             }
 
     public:
-        def apply_quality_profile(profile: Quality::Profile&) -> void error[RenderSceneError]:
+        def apply_quality_profile_with_result(profile: Quality::Profile&) -> Quality::ApplyOutcome error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
             native: mutable NativeQualityProfile = native_profile(profile)
             shadow_quality: i32 =
@@ -58,16 +63,30 @@ extend RenderScene:
                     Quality::ShadowQuality.Low: 0
                     Quality::ShadowQuality.Medium: 1
                     Quality::ShadowQuality.High: 2
-            try check_status(elisa_render_scene_v1_apply_quality_profile_with_shadow(
-                &native, shadow_quality, profile.sun_shadow_receiver_bias))
+            apply_outcome: mutable i32 = NativeQualityOutcome::APPLIED
+            try check_status(elisa_render_scene_v1_apply_quality_profile_with_shadow_result(
+                &native, shadow_quality, profile.sun_shadow_receiver_bias, &apply_outcome))
+            raise RenderSceneError.BackendFailure if apply_outcome != NativeQualityOutcome::APPLIED and apply_outcome != NativeQualityOutcome::UPSCALER_FALLBACK
+            return Quality::ApplyOutcome.UpscalerFallback if apply_outcome == NativeQualityOutcome::UPSCALER_FALLBACK
+            Quality::ApplyOutcome.Applied
+        def apply_quality_profile(profile: Quality::Profile&) -> void error[RenderSceneError]:
+            _ = try apply_quality_profile_with_result(profile)
+        def set_camera_quality_profile_with_result(handle: CameraHandle,
+            profile: Quality::Profile&) -> Quality::ApplyOutcome error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
+            native: mutable NativeQualityProfile = native_profile(profile)
+            shadow_quality: i32 =
+                match profile.shadow_quality:
+                    Quality::ShadowQuality.Low: 0
+                    Quality::ShadowQuality.Medium: 1
+                    Quality::ShadowQuality.High: 2
+            apply_outcome: mutable i32 = NativeQualityOutcome::APPLIED
+            try check_status(elisa_render_scene_v1_apply_camera_quality_profile_result(
+                handle.native_value, &native, shadow_quality,
+                profile.sun_shadow_receiver_bias, &apply_outcome))
+            raise RenderSceneError.BackendFailure if apply_outcome != NativeQualityOutcome::APPLIED and apply_outcome != NativeQualityOutcome::UPSCALER_FALLBACK
+            return Quality::ApplyOutcome.UpscalerFallback if apply_outcome == NativeQualityOutcome::UPSCALER_FALLBACK
+            Quality::ApplyOutcome.Applied
         def set_camera_quality_profile(handle: CameraHandle,
             profile: Quality::Profile&) -> void error[RenderSceneError]:
-            raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
-            native: mutable NativeQualityProfile = native_profile(profile)
-            shadow_quality: i32 =
-                match profile.shadow_quality:
-                    Quality::ShadowQuality.Low: 0
-                    Quality::ShadowQuality.Medium: 1
-                    Quality::ShadowQuality.High: 2
-            try check_status(elisa_render_scene_v1_apply_camera_quality_profile(
-                handle.native_value, &native, shadow_quality, profile.sun_shadow_receiver_bias))
+            _ = try set_camera_quality_profile_with_result(handle, profile)
