@@ -32,5 +32,7 @@ removed on instance destruction or scene reset.
 232. It checks a transformed sphere hit after an owner-frame update, an off-target
 miss, a zero-direction rejection, a real material outline enable, and an explicit
 outline clear. The backend-neutral editor orbit camera and retained world-selection overlay
-are implemented in Elisa. Wiring viewport input, pick, outline, and overlay
-lifetimes into a complete interactive editor remains open R06 work.
+are implemented in Elisa, and `RenderScene::pick_and_select` connects one ray
+hit to its gameplay identity and exact native outline. Feeding SDL pointer and
+wheel events into those controls, and owning the camera and overlay together in
+an interactive editor viewport, remain open R06 work.

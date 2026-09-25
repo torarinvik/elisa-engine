@@ -144,6 +144,13 @@ int32_t elisa_render_scene_v1_pick(
     float direction_x, float direction_y, float direction_z,
     uint32_t layer_mask, int64_t* gameplay_epoch, int64_t* gameplay_id,
     float* distance);
+// Pick and outline the native object for the returned gameplay identity. A
+// successful call with has_hit=0 clears any previous outline.
+int32_t elisa_render_scene_v1_pick_and_select(
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    uint32_t layer_mask, int32_t* has_hit,
+    int64_t* gameplay_epoch, int64_t* gameplay_id, float* distance);
 int32_t elisa_render_scene_v1_select(int64_t handle);
 int32_t elisa_render_scene_v1_clear_selection(void);
 int32_t elisa_render_scene_v1_snapshot_begin(uint32_t previous_count);
