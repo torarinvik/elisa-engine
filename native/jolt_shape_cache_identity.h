@@ -5,8 +5,12 @@
 #include "jolt_shape_cache.h"
 #include "sha256_file.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <limits>
 #include <string>
 
 namespace elisa::physics::shape_cache {
@@ -39,6 +43,49 @@ inline Identity make_identity(const std::filesystem::path& asset_path, int32_t k
         identity.enabled = false;
     }
     return identity;
+}
+
+inline bool make_array_geometry_digest(const float* positions, size_t vertex_count,
+        const uint32_t* indices, size_t index_count, std::string& result) {
+    if (positions == nullptr || indices == nullptr || vertex_count == 0 || index_count == 0 ||
+        vertex_count > std::numeric_limits<size_t>::max() / 3) {
+        return false;
+    }
+    constexpr char domain[] = "elisa-jolt-shape-array-geometry-v1";
+    assets::Sha256 hash;
+    hash.update(reinterpret_cast<const uint8_t*>(domain), sizeof(domain) - 1);
+    std::array<uint8_t, sizeof(uint64_t)> count{};
+    write_u64(count.data(), vertex_count);
+    hash.update(count.data(), count.size());
+    for (size_t index = 0; index < vertex_count * 3; ++index) {
+        uint32_t bits = 0;
+        std::memcpy(&bits, positions + index, sizeof(bits));
+        std::array<uint8_t, sizeof(uint32_t)> encoded{};
+        write_u32(encoded.data(), bits);
+        hash.update(encoded.data(), encoded.size());
+    }
+    write_u64(count.data(), index_count);
+    hash.update(count.data(), count.size());
+    for (size_t index = 0; index < index_count; ++index) {
+        std::array<uint8_t, sizeof(uint32_t)> encoded{};
+        write_u32(encoded.data(), indices[index]);
+        hash.update(encoded.data(), encoded.size());
+    }
+    result = hash.finish();
+    return valid_digest(result);
+}
+
+inline bool make_array_geometry_identity(const std::filesystem::path& project_root,
+        int32_t kind, const float* positions, size_t vertex_count,
+        const uint32_t* indices, size_t index_count,
+        const ElisaCoordinateProfile& profile, uint64_t jolt_version,
+        std::filesystem::path& path, std::string& key) {
+    std::string geometry_digest;
+    if (!make_array_geometry_digest(positions, vertex_count, indices, index_count,
+            geometry_digest) || !make_cache_key(geometry_digest, kind,
+            1.0f, 1.0f, 1.0f, profile, jolt_version, key)) return false;
+    path = project_root / "build" / "cache" / "physics" / (key + ".joltshape");
+    return true;
 }
 
 } // namespace elisa::physics::shape_cache

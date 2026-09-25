@@ -178,20 +178,32 @@ int32_t create_mesh_shape_internal(uint64_t world_generation,
             copied_indices.push_back(indices[offset + 2]);
         }
 
-        wi::scene::MeshComponent source_mesh;
-        source_mesh.vertex_positions.reserve(vertex_count);
-        for (const XMFLOAT3& vertex : copied_vertices) source_mesh.vertex_positions.push_back(vertex);
-        source_mesh.indices.reserve(index_count);
-        for (uint32_t index : copied_indices) source_mesh.indices.push_back(index);
-        wi::scene::MeshComponent::MeshSubset& subset = source_mesh.subsets.emplace_back();
-        subset.indexOffset = 0;
-        subset.indexCount = index_count;
-
+        std::filesystem::path array_cache_path;
+        std::string array_cache_key;
+        bool array_cache_enabled = false;
+        try {
+            std::filesystem::path project_root;
+            array_cache_enabled = cache_path == nullptr && cache_key == nullptr &&
+                elisa::assets::project_asset_root(project_root) &&
+                elisa::physics::shape_cache::make_array_geometry_identity(project_root,
+                    kind, reinterpret_cast<const float*>(copied_vertices.data()),
+                    copied_vertices.size(), copied_indices.data(), copied_indices.size(),
+                    profile, wi::physics::GetJoltVersionID(), array_cache_path,
+                    array_cache_key);
+        } catch (...) {
+            array_cache_enabled = false;
+        }
+        const std::filesystem::path* selected_cache_path = array_cache_enabled
+            ? &array_cache_path : cache_path;
+        const std::string* selected_cache_key = array_cache_enabled
+            ? &array_cache_key : cache_key;
         std::vector<uint8_t> cached_shape;
         bool restored_from_cache = false;
         try {
-            restored_from_cache = cache_path != nullptr && cache_key != nullptr &&
-                elisa::physics::shape_cache::load(*cache_path, *cache_key, kind,
+            restored_from_cache = selected_cache_path != nullptr &&
+                selected_cache_key != nullptr &&
+                elisa::physics::shape_cache::load(*selected_cache_path,
+                    *selected_cache_key, kind,
                     wi::physics::GetJoltVersionID(), cached_shape);
         } catch (...) {
             restored_from_cache = false;
@@ -211,22 +223,32 @@ int32_t create_mesh_shape_internal(uint64_t world_generation,
             }
         }
 #if defined(ELISA_PHYSICS_TEST_PROBE)
-        if (cache_path != nullptr && cache_key != nullptr) {
+        if (selected_cache_path != nullptr && selected_cache_key != nullptr) {
             if (restored_from_cache) ++physics_service().shape_cache_hits;
             else ++physics_service().shape_cache_misses;
         }
 #endif
         if (!restored_from_cache) {
+            wi::scene::MeshComponent source_mesh;
+            source_mesh.vertex_positions.reserve(vertex_count);
+            for (const XMFLOAT3& vertex : copied_vertices) source_mesh.vertex_positions.push_back(vertex);
+            source_mesh.indices.reserve(index_count);
+            for (uint32_t index : copied_indices) source_mesh.indices.push_back(index);
+            wi::scene::MeshComponent::MeshSubset& subset = source_mesh.subsets.emplace_back();
+            subset.indexOffset = 0;
+            subset.indexCount = index_count;
             wi::physics::CreateRigidBodyShape(cooked_shape, XMFLOAT3(1.0f, 1.0f, 1.0f),
                 &source_mesh);
         }
         if (cooked_shape.physicsobject == nullptr) return ELISA_PHYSICS_BACKEND_FAILURE;
 
-        if (!restored_from_cache && cache_path != nullptr && cache_key != nullptr) {
+        if (!restored_from_cache &&
+            selected_cache_path != nullptr && selected_cache_key != nullptr) {
             try {
                 std::vector<uint8_t> serialized_shape;
                 if (wi::physics::SerializeRigidBodyShape(cooked_shape, serialized_shape)) {
-                    elisa::physics::shape_cache::store(*cache_path, *cache_key, kind,
+                    elisa::physics::shape_cache::store(*selected_cache_path,
+                        *selected_cache_key, kind,
                         wi::physics::GetJoltVersionID(), serialized_shape);
                 }
             } catch (...) {
