@@ -307,8 +307,8 @@ def main(arguments: darray[sview]) -> i64:
     return save_schema_status if save_schema_status != 0
     save_schema_status <- run_visible(save_schema_binary, [])
     return save_schema_status if save_schema_status != 0
-    save_journal_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/save_journal.py")), "--self-test"])
-    return save_journal_status if save_journal_status != 0
+    native_unit_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/native_unit_tests.py"))])
+    return native_unit_status if native_unit_status != 0
     scene_file_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/scene_file.py")), "--self-test"])
     return scene_file_status if scene_file_status != 0
     cell_world_binary: sview = str(root.joinpath("build/cell-world-test"))

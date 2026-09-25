@@ -4,6 +4,7 @@
 #include "coordinate_conventions.h"
 #include "cooked_collision_geometry.h"
 #include "cooked_geometry_package.h"
+#include "jolt_shape_cache.h"
 #include "physics_coordinate_bridge.h"
 #include "physics_service_internal.h"
 
@@ -106,6 +107,10 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
 #endif
     ++state.world_generation;
     state.tick = 0;
+#if defined(ELISA_PHYSICS_TEST_PROBE)
+    state.shape_cache_hits = 0;
+    state.shape_cache_misses = 0;
+#endif
     state.pending_contact_count = 0;
     state.pending_contact_dropped = 0;
     state.simulation_before = wi::physics::IsSimulationEnabled();
@@ -161,6 +166,8 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
         ? 1 : 0;
 }
 #endif
+
+#include "physics_shape_cache_test_abi.inc"
 
 #include "physics_create_body_abi.inc"
 #include "physics_reusable_shape_abi.inc"

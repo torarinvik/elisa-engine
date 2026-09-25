@@ -76,6 +76,8 @@ struct PhysicsService {
     bool interpolation_before = true;
 #if defined(ELISA_PHYSICS_TEST_PROBE)
     bool fail_next_initialize_after_scene = false;
+    uint64_t shape_cache_hits = 0;
+    uint64_t shape_cache_misses = 0;
 #endif
 };
 

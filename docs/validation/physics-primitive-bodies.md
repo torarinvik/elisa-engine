@@ -8,20 +8,20 @@ pass the focused SDL3/Metal native smoke on macOS. P02 remains open.
 `BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its
 radius. Capsule uses `x` as its radius and `y` as the half-height of its
 straight cylindrical section. Unused sphere/capsule dimensions must be zero.
+Each body descriptor also carries an initial `Geometry::Quat` orientation in
+`(x, y, z, w)` order. Use `Geometry::quat_identity()` for an unrotated body.
+`PhysicsRuntime::body_pose` and `RuntimeServices::physics_body_pose` return the
+body's position and rotation after creation and simulation; `body_position`
+remains the position-only convenience getter. The native boundary converts
+both directions between Elisa's right-handed coordinates and Wicked's
+left-handed coordinates. Primitive, reusable mesh, and compound-body creation
+all apply the authored orientation. Non-finite or degenerate quaternions are
+rejected before allocating a body slot; the primitive probe checks both direct
+and shared-shape creation. A rotated-box raycast checks that the physics query
+uses the authored orientation.
 The ABI keeps Wicked and Jolt types private. Zero-cylinder capsules map to
 spheres because Jolt rejects zero-height capsules. Direct bodies scale unit
 shapes and keep scene-query proxy geometry aligned with their physics shape.
-`BodyDesc` and `BodyInstanceDesc` take an Elisa-order `(x, y, z, w)` quaternion
-for their initial orientation. Use `Geometry::quat_identity()` for an unrotated
-body. `body_pose` and `RuntimeServices::physics_body_pose` return the body
-position and orientation in Elisa coordinates; `body_position` remains the
-position-only convenience getter. Non-finite or degenerate orientation values
-are rejected before the native body slot is allocated. The native boundary
-converts both directions between Elisa's right-handed coordinates and Wicked's
-left-handed coordinates; direct primitives, reusable mesh shapes, and compound
-bodies all apply the authored orientation. Probes cover invalid quaternions on
-direct and shared-shape creation, plus a rotated-box raycast that would miss if
-the query ignored the body's orientation.
 
 For shared primitives, create a world-scoped `ShapeHandle` with
 `PhysicsRuntime::shape_create`, then create bodies using
@@ -87,9 +87,22 @@ pending execution because the refreshed stage1 compiler exits during native
 compilation; the previous cooked-geometry runtime route had passed its native
 smoke.
 
-The runtime still asks Jolt to build its native shape from those bounded
-streams when the asset loads. Versioned, pre-cooked Jolt shape serialization
-and cache invalidation remain open P02 work.
+On first load of a collision-only package, the runtime cooks the bounded mesh
+with Jolt and serializes the complete shape tree with Jolt's
+`SaveWithChildren` API. It stores the payload in the disposable
+`build/cache/physics` directory under the project root. The cache envelope
+records its own format version, `JPH_VERSION_ID`, shape kind, payload length,
+and CRC32. Its key includes the package SHA-256, shape kind, exact scale, and
+coordinate profile. Different scales and shape kinds keep separate entries;
+editing the package invalidates and replaces that configuration's entry.
+Unknown versions, mismatched keys, malformed lengths, checksum failures, and
+Jolt restore failures are cache misses: the runtime cooks the shape again and
+rewrites the entry when possible. Cache read/write failures never prevent the
+asset from loading. Removing `build/cache/physics` clears all saved shapes.
+
+This persistent cache currently covers collision-only raw and ELPK packages.
+Caller-owned vertex/index arrays and the legacy full cooked-render-geometry
+asset path still cook their Jolt shapes at runtime.
 
 For assemblies, use `PhysicsRuntime::shape_create_compound` with one to 16
 `CompoundChild` entries, then attach the resulting handle through
@@ -210,6 +223,13 @@ Validation on 2026-09-25:
   SDL3/Metal. It checks invalid moments and rotations, `BodyNotReady` before
   creation, tensor-equivalent readback after Jolt reorders the 8/4/2 principal
   moments, and `ConfigurationLocked` on a late update.
+- The same probe now verifies the authored body quaternion immediately after
+  creation and after a fixed simulation step, using a non-spherical box so its
+  orientation is physically observable. It passes with rotated inertia through
+  the `RuntimeServices` pose getter.
+- `test/physics_primitives_native.elisa` passes with regressions for degenerate
+  direct and shared-shape quaternions and a ray through a rotated box. The ray
+  would miss if the native body ignored its authored orientation.
 - The complete eleven-fixture `scripts/application_native_smoke.py` run passed
   against Wicked commit `23ecbb9` after adding `physics-inertia-smoke`; that
   fixture round-trips a rotated principal frame through Jolt. Its 30 Hz and
@@ -221,29 +241,43 @@ Validation on 2026-09-25:
   mass properties and matching fall positions. An out-of-range offset is
   rejected before body creation. Both fixtures passed on SDL3/Metal.
 
+Validation on 2026-09-25 (isolated Wicked sync):
+
+- The full `scripts/application_native_smoke.py` suite passed all twelve
+  SDL3/Metal fixtures against Wicked revision
+  `eecdf036b26717c97fe1c7b2d00d6e199b30f4b4`, including shared and cooked mesh
+  shapes, collision layers, body pose/inertia, World synchronization, and
+  failure cleanup.
+- The 30 Hz and 120 Hz physics-to-Wicked midpoint and final captures match
+  pixel-for-pixel at 640x480. `scripts/check.elisascript` also passed with the
+  freshly seeded Stage1 compiler, Godot 4.7.2, and both Elisa Proof suites.
+- Source-length, module-hygiene, dependency-manifest, and whitespace checks
+  passed.
+
+Validation on 2026-09-25 (versioned shape cache):
+
+- The native cache-envelope test covers source and scale key changes, separate
+  cache paths for different scales, shape-kind and Jolt-version mismatches,
+  and CRC rejection after payload corruption.
+- The SDL3/Metal physics mesh smoke clears its project cache, verifies two cold
+  cooks, corrupts the saved entries, confirms the next request recooks, then
+  confirms a later request restores the Jolt shape and that a body using the
+  restored shape remains ray-queryable.
+- The native test also verifies that shape handles and bodies created from
+  restored shapes release normally. Cache persistence is limited to
+  collision-only packages; full cooked-render-geometry and caller-array routes
+  remain uncached.
+- Wicked adapter commit `7ed3901564b308a457411560466581672fc8fd66` provides
+  the Jolt `SaveWithChildren` and restore bridge. The complete twelve-fixture
+  SDL3/Metal smoke and `scripts/check.elisascript` passed against that pinned
+  revision; the physics midpoint and final captures match at 640x480.
+- The native physics service syntax check, 600-line source policy,
+  module-hygiene check, and cache-envelope test passed after the adapter split.
+
 The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
 per-body friction/restitution and rotated principal inertia tensors.
-Versioned, pre-cooked Jolt shape serialization remains open P02 work.
-
-
-Validation on 2026-09-25 (body orientation and pose):
-
-- The eleven-fixture SDL3/Metal native application smoke passes with explicit
-  body orientations. The primitive fixture rejects degenerate quaternions for
-  direct and reusable-shape bodies and raycasts through a rotated box at a
-  position that would miss if the orientation were ignored.
-- The inertia fixture checks `BodyPose` rotation before and after a fixed step,
-  using an asymmetric box so the orientation is physically observable. It also
-  exercises rotated inertia through `RuntimeServices`. The complete suite's
-  30 Hz and 120 Hz render captures remain pixel-identical at 640x480.
-- `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, the
-  dependency-manifest validator, and whitespace checks pass.
-
-
-Validation on 2026-09-25 (isolated mainline sync):
-
-- The isolated Wicked adapter was rebuilt with per-instance center-of-mass offsets.
-- All 12 SDL3/Metal native application fixtures pass with the current stage1 compiler, including collision-only cooked meshes, center-of-mass and rotated-body physics, quality settings, and pixel-identical 30/120 Hz render captures.
-- The collision-package self-test, source-length, module-hygiene, and dependency-manifest checks pass. Versioned Jolt shape serialization remains open.
+Versioned collision-only package serialization and invalidation now pass their
+focused native probes. Extending persistent shape caching to the legacy full
+cooked-render-geometry path remains open P02 work.

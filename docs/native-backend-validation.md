@@ -6,7 +6,7 @@ commands live in [`docs/capabilities.md`](capabilities.md). The upstream Wicked
 checkout stays beside the repository so third-party source and build output do
 not become Elisa source.
 
-## Current status — 2026-09-19
+## Current status — 2026-09-25
 
 The native probe consumes the canonical Elisa scene, drives the maze through
 SDL3 input, renders hidden Metal frames, checks deterministic captures, and
@@ -70,7 +70,8 @@ godot --headless --path backends/godot --script backends/godot/probe.gd
 ```
 
 The Wicked checkout is pinned at revision
-`5e07e3bfd7f89633a468009e0620b14e508dd8b7`. The arm64 Debug/O0 build provides
+`7ed3901564b308a457411560466581672fc8fd66` in the sibling
+`../amazing-labyrinth-wickedengine` checkout. Its arm64 Debug/O0 build provides
 Wicked, Jolt, Utility, FAudio, and Lua. The native driver is:
 
 ```sh
@@ -94,8 +95,8 @@ The full workstation gate is:
 
 ```sh
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
-ELISA_ALLOW_STALE_STAGE1=1 \
 ELISA_COMPILER_BIN="$PWD/../Elisa-compiler/scripts/elisac_stage1.sh" \
+PYTHON_BIN=/opt/homebrew/bin/python3.14 \
 ~/.local/bin/elisascript scripts/check.elisascript
 ```
 
