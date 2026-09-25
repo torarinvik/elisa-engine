@@ -129,6 +129,7 @@ module PhysicsRuntime:
                 BodyShape.Capsule:
                     Status::SHAPE_CAPSULE
         include "./runtime_body_motion_abi.inc"
+        include "./runtime_body_material_abi.inc"
 
     public:
         const MAX_CONTACT_EVENTS: usize = 64
@@ -208,6 +209,15 @@ module PhysicsRuntime:
             mass: f32
             sensor: bool
             collision_layer: u32
+
+        struct PhysicsMaterial:
+            private:
+                friction: f32
+                restitution: f32
+
+        def PhysicsMaterial(friction: f32, restitution: f32) -> PhysicsMaterial error[PhysicsError]:
+            raise PhysicsError.InvalidArgument if not finite(friction) or friction < MaterialLimits::MIN_COEFFICIENT or friction > MaterialLimits::MAX_FRICTION or not finite(restitution) or restitution < MaterialLimits::MIN_COEFFICIENT or restitution > MaterialLimits::MAX_RESTITUTION
+            PhysicsMaterial{friction: friction, restitution: restitution}
 
         struct BodyHandle:
             private:
@@ -579,3 +589,4 @@ module PhysicsRuntime:
 
         include "./runtime_reusable_shapes_api.inc"
         include "./runtime_body_motion_api.inc"
+        include "./runtime_body_material_api.inc"

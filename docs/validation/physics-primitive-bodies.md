@@ -68,6 +68,15 @@ no larger than 10,000 units/s; impulse components must be finite and no larger
 than 10,000,000 units. The probes verify static-body rejection, velocity
 set/get, impulse response, and the not-ready state.
 
+`PhysicsRuntime::PhysicsMaterial(friction, restitution)` builds a bounded
+per-body material value, and `body_set_material` / `physics_body_set_material`
+apply it before or after body creation. Friction accepts finite values from 0
+through 10; restitution accepts finite values from 0 through 1. The setter
+updates Wicked's rigid-body component, which applies the values to Jolt during
+the next fixed step. `test/physics_material_native_main.elisa` verifies the
+RuntimeServices route and observes a dynamic sphere rebound from a static floor
+with full restitution.
+
 Each body descriptor also selects a collision category from
 `0..<PhysicsRuntime::MAX_COLLISION_LAYERS` (32 categories). All category pairs
 collide by default. `PhysicsRuntime::set_layer_collision` and
@@ -122,9 +131,11 @@ Validation on 2026-09-25:
 - Sphere and capsule all-hit overlaps now also include managed Jolt bodies. The focused collision-layer fixture checks mask misses, exactly one selected-category hit, and consistent bounded-buffer counts for both shapes.
 - The interactive maze now builds Jolt wall bodies and a category-1 key sensor. Gameplay uses a wall-layer sphere cast to gate each move and a category-filtered all-hit sphere overlap to collect the key. Its hidden SDL3/Metal self-test proves an added obstacle in an otherwise open cell blocks movement, removes the obstacle, and completes the key-and-door route; it passed both directly and through `scripts/render_scene_native_smoke.py`, including the packaged run with checkout access denied.
 - `test/application_native_main.elisa` built and linked with native test probes enabled, compiling the RuntimeServices layer-configuration wrapper.
+- `test/physics_material_native_main.elisa` passed on SDL3/Metal. It rejects restitution above 1, sets materials after Jolt body creation, and observes a sphere rebound from a full-restitution floor through the RuntimeServices API.
 - The source-length, module-hygiene, and Python syntax checks passed.
 
 The native registry now supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
-nested compounds), plus a bounded 32-category physical collision matrix.
-Custom mass properties and offline collision cooking remain open P02 work.
+nested compounds), a bounded 32-category physical collision matrix, and
+per-body friction/restitution. Custom mass properties and offline collision
+cooking remain open P02 work.
