@@ -99,8 +99,9 @@ MAX_RESOURCE_ENTRIES = 256
 
 SHADER_METADATA_SUFFIX = ".wishadermeta"
 SHADER_MANIFEST_NAME = "elisa.shader-manifest.json"
-SHADER_MANIFEST_SCHEMA = 1
+SHADER_MANIFEST_SCHEMA = 2
 SHADER_BINARY_SUFFIXES = frozenset({".cso", ".spv"})
+SHADER_BACKENDS = frozenset({"hlsl6", "metal", "spirv"})
 
 
 def ignore_litter(_directory: str, names: list[str]) -> set[str]:
@@ -116,19 +117,29 @@ def ignore_shader_metadata(directory: str, names: list[str]) -> set[str]:
 
 
 def shader_manifest(shader_root: Path) -> dict[str, object]:
-    """Describe compiled shader inputs with a stable content fingerprint."""
+    """Describe compiled shader inputs and their backends with a stable fingerprint."""
     files: list[dict[str, object]] = []
+    backends: set[str] = set()
     for path in sorted(shader_root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in SHADER_BINARY_SUFFIXES:
             continue
+        relative = path.relative_to(shader_root).as_posix()
+        backend = relative.partition("/")[0]
+        if backend not in SHADER_BACKENDS or "/" not in relative:
+            raise PackageError(f"compiled shader is outside a known backend directory: {relative}")
+        backends.add(backend)
         files.append({
-            "path": path.relative_to(shader_root).as_posix(),
+            "path": relative,
             "bytes": path.stat().st_size,
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         })
     if not files:
         raise PackageError(f"shader directory has no compiled shader binaries: {shader_root}")
-    payload: dict[str, object] = {"schema": SHADER_MANIFEST_SCHEMA, "files": files}
+    payload: dict[str, object] = {
+        "schema": SHADER_MANIFEST_SCHEMA,
+        "backends": sorted(backends),
+        "files": files,
+    }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     payload["fingerprint"] = hashlib.sha256(canonical).hexdigest()
     return payload

@@ -15,6 +15,8 @@ from pathlib import Path
 
 import package_macos_app as packager
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def touch(path: Path, content: bytes = b"x") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,11 +105,36 @@ class PackageMacosAppTests(unittest.TestCase):
 
     def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
         manifest = packager.shader_manifest(self.project / "shaders")
-        self.assertEqual(manifest["schema"], 1)
+        self.assertEqual(manifest["schema"], 2)
+        self.assertEqual(manifest["backends"], ["metal"])
         self.assertEqual(len(manifest["files"]), 1)
         first = manifest["fingerprint"]
         (self.project / "shaders" / "metal" / "basic.cso").write_bytes(b"changed")
         self.assertNotEqual(first, packager.shader_manifest(self.project / "shaders")["fingerprint"])
+
+    def test_shader_manifest_records_every_compiled_backend(self) -> None:
+        touch(self.project / "shaders" / "spirv" / "basic.spv", b"spirv")
+        manifest = packager.shader_manifest(self.project / "shaders")
+        self.assertEqual(manifest["backends"], ["metal", "spirv"])
+        self.assertEqual(len(manifest["files"]), 2)
+
+    def test_shader_manifest_rejects_binaries_outside_backend_directories(self) -> None:
+        touch(self.project / "shaders" / "basic.cso", b"orphan")
+        with self.assertRaises(packager.PackageError):
+            packager.shader_manifest(self.project / "shaders")
+
+    def test_native_shader_manifest_validation(self) -> None:
+        compiler = shutil.which("clang++") or shutil.which("c++")
+        if compiler is None:
+            self.skipTest("a C++ compiler is required")
+        executable = Path(self.tempdir.name) / "shader-manifest-validation"
+        command = [compiler, "-std=c++17", "-I", str(ROOT / "native")]
+        for include_root in (Path("/opt/homebrew/include"), Path("/usr/local/include")):
+            if include_root.is_dir():
+                command.extend(["-I", str(include_root)])
+        command.extend([str(ROOT / "test/shader_manifest_validation_native.cpp"), "-o", str(executable)])
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run([str(executable)], check=True)
 
     def test_invalid_window_sizes_are_rejected(self) -> None:
         for size in (0, -5, 20000, "wide", True):

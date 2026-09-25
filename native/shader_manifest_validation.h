@@ -91,9 +91,11 @@ class ManifestJsonReader {
 public:
     explicit ManifestJsonReader(const std::string& input) : input_(input) {}
 
-    bool read(uint64_t& schema, std::vector<ManifestFile>& files, std::string& fingerprint) {
+    bool read(uint64_t& schema, std::vector<std::string>& backends,
+        std::vector<ManifestFile>& files, std::string& fingerprint) {
         if (!expect('{')) return false;
         bool has_schema = false;
+        bool has_backends = false;
         bool has_files = false;
         bool has_fingerprint = false;
         for (;;) {
@@ -104,6 +106,9 @@ public:
             if (key == "schema" && !has_schema) {
                 if (!read_uint(schema)) return false;
                 has_schema = true;
+            } else if (key == "backends" && !has_backends) {
+                if (!read_strings(backends)) return false;
+                has_backends = true;
             } else if (key == "files" && !has_files) {
                 if (!read_files(files)) return false;
                 has_files = true;
@@ -118,7 +123,8 @@ public:
             if (!take(',')) return false;
         }
         skip_space();
-        return offset_ == input_.size() && has_schema && has_files && has_fingerprint;
+        return offset_ == input_.size() && has_schema && has_files && has_fingerprint &&
+            (schema == 1 ? !has_backends : schema == 2 && has_backends);
     }
 
 private:
@@ -253,6 +259,21 @@ private:
             if (!take(',')) return false;
         }
     }
+
+    bool read_strings(std::vector<std::string>& values) {
+        if (!expect('[')) return false;
+        skip_space();
+        if (take(']')) return true;
+        for (;;) {
+            if (values.size() >= 3) return false;
+            std::string value;
+            if (!read_string(value)) return false;
+            values.push_back(std::move(value));
+            skip_space();
+            if (take(']')) return true;
+            if (!take(',')) return false;
+        }
+    }
 };
 
 inline void append_python_json_string(std::string& output, const std::string& value) {
@@ -319,8 +340,18 @@ inline bool path_is_within(const std::filesystem::path& root, const std::filesys
     return true;
 }
 
-inline std::string canonical_fingerprint_payload(const std::vector<ManifestFile>& files) {
-    std::string canonical = "{\"files\":[";
+inline std::string canonical_fingerprint_payload(uint64_t schema,
+    const std::vector<std::string>& backends, const std::vector<ManifestFile>& files) {
+    std::string canonical = "{";
+    if (schema == 2) {
+        canonical += "\"backends\":[";
+        for (size_t index = 0; index < backends.size(); ++index) {
+            if (index > 0) canonical.push_back(',');
+            append_python_json_string(canonical, backends[index]);
+        }
+        canonical += "],";
+    }
+    canonical += "\"files\":[";
     for (size_t index = 0; index < files.size(); ++index) {
         if (index > 0) canonical.push_back(',');
         canonical += "{\"bytes\":" + std::to_string(files[index].bytes) + ",\"path\":";
@@ -329,31 +360,63 @@ inline std::string canonical_fingerprint_payload(const std::vector<ManifestFile>
         append_python_json_string(canonical, files[index].sha256);
         canonical.push_back('}');
     }
-    canonical += "],\"schema\":1}";
+    canonical += "],\"schema\":" + std::to_string(schema);
+    canonical.push_back('}');
     return canonical;
 }
 
-inline bool verify_shader_manifest(const std::filesystem::path& root, const std::string& content) {
+inline bool valid_shader_backend(const std::string& backend) {
+    return backend == "hlsl6" || backend == "metal" || backend == "spirv";
+}
+
+inline bool shader_file_backend(const std::string& path, std::string& backend) {
+    const size_t separator = path.find('/');
+    if (separator == std::string::npos) return false;
+    backend = path.substr(0, separator);
+    if (!valid_shader_backend(backend)) return false;
+    std::string extension = std::filesystem::path(path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char character) { return char(std::tolower(character)); });
+    return (backend == "spirv" && extension == ".spv") ||
+        ((backend == "metal" || backend == "hlsl6") && extension == ".cso");
+}
+
+inline bool verify_shader_manifest(const std::filesystem::path& root, const std::string& content,
+    const std::string& expected_backend) {
     uint64_t schema = 0;
+    std::vector<std::string> backends;
     std::vector<ManifestFile> files;
     std::string fingerprint;
     ManifestJsonReader reader(content);
-    if (!reader.read(schema, files, fingerprint) || schema != 1 || files.empty() ||
+    if (!reader.read(schema, backends, files, fingerprint) || (schema != 1 && schema != 2) || files.empty() ||
         files.size() > MAX_MANIFEST_FILES || !valid_digest(fingerprint)) return false;
+
+    if (!valid_shader_backend(expected_backend)) return false;
+    if (schema == 2) {
+        if (backends.empty() || backends.size() > 3 ||
+            !std::is_sorted(backends.begin(), backends.end()) ||
+            std::adjacent_find(backends.begin(), backends.end()) != backends.end()) return false;
+        for (const std::string& backend : backends) if (!valid_shader_backend(backend)) return false;
+        if (!std::binary_search(backends.begin(), backends.end(), expected_backend)) return false;
+    }
 
     uint64_t total_bytes = 0;
     std::string previous_path;
     std::set<std::string> expected_paths;
+    std::set<std::string> observed_backends;
     std::error_code error;
     const std::filesystem::path canonical_root = std::filesystem::weakly_canonical(root, error);
     if (error) return false;
     for (const ManifestFile& file : files) {
-        if (!safe_shader_path(file.path) || !valid_digest(file.sha256) || file.bytes == 0 ||
+        std::string backend;
+        if (!safe_shader_path(file.path) || !shader_file_backend(file.path, backend) ||
+            !valid_digest(file.sha256) || file.bytes == 0 ||
             file.bytes > MAX_SHADER_FILE_BYTES || (!previous_path.empty() && file.path <= previous_path) ||
             file.bytes > MAX_SHADER_TOTAL_BYTES - total_bytes || !expected_paths.insert(file.path).second) {
             return false;
         }
         previous_path = file.path;
+        observed_backends.insert(backend);
         total_bytes += file.bytes;
         const std::filesystem::path candidate = canonical_root / std::filesystem::path(file.path);
         const std::filesystem::path canonical_file = std::filesystem::weakly_canonical(candidate, error);
@@ -365,8 +428,13 @@ inline bool verify_shader_manifest(const std::filesystem::path& root, const std:
             return false;
         }
     }
+    if (schema == 1) {
+        if (observed_backends.find(expected_backend) == observed_backends.end()) return false;
+    } else if (std::vector<std::string>(observed_backends.begin(), observed_backends.end()) != backends) {
+        return false;
+    }
 
-    const std::string canonical = canonical_fingerprint_payload(files);
+    const std::string canonical = canonical_fingerprint_payload(schema, backends, files);
     elisa::assets::Sha256 hash;
     hash.update(reinterpret_cast<const uint8_t*>(canonical.data()), canonical.size());
     if (hash.finish() != fingerprint) return false;
