@@ -10,11 +10,13 @@ extend RenderScene:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_create_environment_probe(
-            px: f32, py: f32, pz: f32, resolution: i32, view_distance: f32,
+            px: f32, py: f32, pz: f32, extent_x: f32, extent_y: f32, extent_z: f32,
+            resolution: i32, view_distance: f32,
             update_interval: f32, realtime: i32, multisampled: i32) -> i64
         @callconv(c)
         extern elisa_render_scene_v1_update_environment_probe(handle: i64,
-            px: f32, py: f32, pz: f32, resolution: i32, view_distance: f32,
+            px: f32, py: f32, pz: f32, extent_x: f32, extent_y: f32, extent_z: f32,
+            resolution: i32, view_distance: f32,
             update_interval: f32, realtime: i32, multisampled: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_destroy_environment_probe(handle: i64) -> i32
@@ -31,7 +33,9 @@ extend RenderScene:
         def create_environment_probe(probe: Lighting::EnvironmentProbe) -> EnvironmentProbeHandle error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::environment_probe_valid(probe)
             native_value: i64 = elisa_render_scene_v1_create_environment_probe(
-                probe.position.x, probe.position.y, probe.position.z, probe.resolution,
+                probe.position.x, probe.position.y, probe.position.z,
+                probe.influence_extent.x, probe.influence_extent.y, probe.influence_extent.z,
+                probe.resolution,
                 probe.view_distance, probe.update_interval,
                 1 if probe.realtime else 0, 1 if probe.multisampled else 0)
             if native_value <= 0:
@@ -43,7 +47,9 @@ extend RenderScene:
             probe: Lighting::EnvironmentProbe) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Lighting::environment_probe_valid(probe)
             try check_status(elisa_render_scene_v1_update_environment_probe(handle.native_value,
-                probe.position.x, probe.position.y, probe.position.z, probe.resolution,
+                probe.position.x, probe.position.y, probe.position.z,
+                probe.influence_extent.x, probe.influence_extent.y, probe.influence_extent.z,
+                probe.resolution,
                 probe.view_distance, probe.update_interval,
                 1 if probe.realtime else 0, 1 if probe.multisampled else 0))
 

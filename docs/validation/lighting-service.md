@@ -12,11 +12,14 @@ Wicked's weather state. Probe resolution and view distance are bounded before
 allocating a Wicked probe.
 
 `Lighting::EnvironmentProbe` validates a finite position within ±1,000,000 world
-units, power-of-two resolution from 16 through 2,048, positive view distance up
-to 1,000,000, and update intervals from 0 through 3,600 seconds. The active
+units, positive box half-extents up to 1,000,000 units per axis, power-of-two
+resolution from 16 through 2,048, positive view distance up to 1,000,000, and
+update intervals from 0 through 3,600 seconds. The active
 `RenderScene` owns at most eight probes through opaque generation-checked handles.
 Updates move the Wicked transform and apply resolution, view distance, realtime
-mode, interval, and MSAA; changes to capture inputs mark the cube dirty, and
+mode, interval, extent, and MSAA. Extents set Wicked's probe influence box and
+update its selection bounds without needlessly recapturing the cube. Changes to
+capture inputs mark the cube dirty, and
 `refresh_environment_probe` explicitly requests a new capture after nearby scene
 content changes. Invalid values, stale handles, and capacity overflow preserve
 the existing live set. Probes are removed through the owning scene service.

@@ -16,6 +16,7 @@ module Lighting:
             MAX_PROBE_VIEW_DISTANCE: f32 = 1000000.0
             MAX_PROBE_UPDATE_INTERVAL: f32 = 3600.0
             MAX_PROBE_POSITION_MAGNITUDE: f32 = 1000000.0
+            MAX_PROBE_INFLUENCE_EXTENT: f32 = 1000000.0
 
         def finite(value: f32) -> bool:
             value == value and value >= -Limits::MAX_FINITE_PARAMETER and value <= Limits::MAX_FINITE_PARAMETER
@@ -65,6 +66,8 @@ module Lighting:
 
         struct EnvironmentProbe:
             position: Geometry::Vec3
+            # Positive half-extents of Wicked's axis-aligned influence volume.
+            influence_extent: Geometry::Vec3
             resolution: i32
             view_distance: f32
             realtime: bool
@@ -74,6 +77,7 @@ module Lighting:
         def EnvironmentProbe() -> EnvironmentProbe:
             EnvironmentProbe{
                 position: Geometry::vec3_zero(),
+                influence_extent: Geometry::vec3_one(),
                 resolution: 128,
                 view_distance: 100.0,
                 realtime: false,
@@ -109,6 +113,10 @@ module Lighting:
             return false if probe.position.x < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.x > Limits::MAX_PROBE_POSITION_MAGNITUDE
             return false if probe.position.y < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.y > Limits::MAX_PROBE_POSITION_MAGNITUDE
             return false if probe.position.z < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.z > Limits::MAX_PROBE_POSITION_MAGNITUDE
+            return false if not Geometry::vec3_is_finite(probe.influence_extent)
+            return false if probe.influence_extent.x <= 0.0 or probe.influence_extent.x > Limits::MAX_PROBE_INFLUENCE_EXTENT
+            return false if probe.influence_extent.y <= 0.0 or probe.influence_extent.y > Limits::MAX_PROBE_INFLUENCE_EXTENT
+            return false if probe.influence_extent.z <= 0.0 or probe.influence_extent.z > Limits::MAX_PROBE_INFLUENCE_EXTENT
             return false if probe.resolution < Limits::MIN_PROBE_RESOLUTION or probe.resolution > Limits::MAX_PROBE_RESOLUTION
             return false if (probe.resolution & (probe.resolution - 1)) != 0
             return false if not finite(probe.view_distance) or probe.view_distance <= 0.0 or probe.view_distance > Limits::MAX_PROBE_VIEW_DISTANCE
