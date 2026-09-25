@@ -4,6 +4,7 @@
 // data instead of parsing a source format. Packages are produced offline by
 // scripts/cook_assets.py; the runtime only accepts a format it knows.
 #include "wiScene.h"
+#include "cooked_geometry_package.h"
 #include "meshopt_probe.h"
 #include "virtual_package.h"
 
@@ -23,6 +24,7 @@ struct CookedPackage {
     std::vector<float> uv_data;
     std::vector<float> uv1_data;
     std::vector<uint32_t> index_data;
+    std::string error;
     bool loaded = false;
 };
 
@@ -73,40 +75,26 @@ inline void decode_u32(const std::string& text, std::vector<uint32_t>& out) {
 inline CookedPackage load_cooked_package(const std::string& path) {
     CookedPackage package;
     const PackageIndex index = read_package_index(path);
-    if (!index.valid) return package;
-    try {
-      for (const auto& section : index.sections) {
-        const std::string& key = section.first;
-        const std::string& value = section.second;
-        if (key == "format") {
-            package.format = value;
-        } else if (key == "triangles") {
-            package.triangles = std::stoll(value);
-        } else if (key == "positions") {
-            package.positions = std::stoll(value);
-        } else if (key == "indices") {
-            package.indices = std::stoll(value);
-        } else if (key == "positions_b64") {
-            decode_floats(value, package.position_data);
-        } else if (key == "normals_b64") {
-            decode_floats(value, package.normal_data);
-        } else if (key == "uvs_b64") {
-            decode_floats(value, package.uv_data);
-        } else if (key == "uv1s_b64") {
-            decode_floats(value, package.uv1_data);
-        } else if (key == "indices_b64") {
-            decode_u32(value, package.index_data);
-        }
-      }
-    } catch (const std::exception&) {
-        return CookedPackage{};
+    if (!index.valid) {
+        package.error = index.error;
+        return package;
     }
-    package.loaded = package.format == "elisa-cooked-v2" &&
-        package.position_data.size() == (size_t)package.positions * 3 &&
-        package.index_data.size() >= (size_t)package.triangles * 3 &&
-        package.normal_data.size() == package.position_data.size() &&
-        (package.uv_data.empty() || package.uv_data.size() == (size_t)package.positions * 2) &&
-        (package.uv1_data.empty() || package.uv1_data.size() == (size_t)package.positions * 2);
+    const auto format = index.sections.find("format");
+    if (format != index.sections.end()) package.format = format->second;
+    elisa::assets::CookedGeometry geometry;
+    if (!elisa::assets::load_cooked_geometry(path, geometry, package.error)) return package;
+    package.positions = static_cast<long long>(geometry.positions.size() / 3);
+    package.triangles = static_cast<long long>(geometry.indices.size() / 3);
+    package.indices = static_cast<long long>(geometry.indices.size());
+    package.position_data = std::move(geometry.positions);
+    package.normal_data = std::move(geometry.normals);
+    package.uv_data = std::move(geometry.uvs);
+    package.uv1_data = std::move(geometry.uv1s);
+    package.index_data = std::move(geometry.indices);
+    package.loaded = package.format == "elisa-cooked-v2";
+    if (!package.loaded && package.error.empty()) {
+        package.error = "native probe expects an elisa-cooked-v2 package";
+    }
     return package;
 }
 

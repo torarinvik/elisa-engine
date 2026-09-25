@@ -155,6 +155,28 @@ module PhysicsAppProbe:
             raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[0].distance > ray.distance + 0.001
             for index in 1..<all_ray_count:
                 raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[index].distance + 0.001 < all_rays.hits[index - 1].distance
+            physics_only_filter: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+                scene_objects: false,
+                scene_colliders: false,
+                physics_bodies: true,
+            }
+            physics_only_rays: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+            physics_only_count: usize = try PhysicsRuntime::raycast_all_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsRuntime::ALL_LAYERS, physics_only_filter, physics_only_rays)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if physics_only_count != 1 or physics_only_rays.hits[0].entity != ray.entity
+            no_query_targets: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+                scene_objects: false,
+                scene_colliders: false,
+                physics_bodies: false,
+            }
+            no_target_rays: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+            no_target_count: usize = try PhysicsRuntime::raycast_all_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsRuntime::ALL_LAYERS, no_query_targets, no_target_rays)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if no_target_count != 0 or no_target_rays.count != 0
             stage <- 71
             sphere_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::sphere_cast(world,
                 Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
