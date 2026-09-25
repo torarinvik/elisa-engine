@@ -74,3 +74,12 @@ both the deferred offscreen case and the visible transition. Primary and
 secondary views use independent `RenderPath3D` output regions; secondary views
 also support per-camera quality profiles. Wicked continues to cull scene draws
 through its own visibility path.
+
+`EditorViewport` composes a backend-neutral `Camera::State`, editor orbit
+controls, ray picking, exact-object selection, and a retained selection overlay.
+It applies camera changes to the active Wicked view, maps primary framebuffer
+pixels to rays, and rejects a pick before changing selection when the viewport
+cannot fit the overlay. The SDL3/Metal selection smoke verifies center-pixel
+selection, orbit/pan/zoom updates, miss cleanup, and the undersized-view
+no-side-effect rule. SDL pointer-motion and wheel event routing remains to be
+connected by the editor host.

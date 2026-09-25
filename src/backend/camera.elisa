@@ -186,3 +186,9 @@ module Camera:
 
         def orthographic_height(state: State&) -> f32:
             state.ortho_height
+
+        def near_clip(state: State&) -> f32:
+            state.near_clip
+
+        def far_clip(state: State&) -> f32:
+            state.far_clip

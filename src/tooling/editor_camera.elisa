@@ -21,6 +21,11 @@ module EditorCamera:
             TAU: f32 = 6.283185307
 
     public:
+        struct View:
+            eye: Geometry::Vec3
+            target: Geometry::Vec3
+            up: Geometry::Vec3
+
         affine struct Orbit:
             private:
                 target: mutable Geometry::Vec3
@@ -76,7 +81,21 @@ module EditorCamera:
                         Geometry::vec3_scale(forward, orbit.distance))
                     Geometry::Transform{position: eye, rotation: rotation, scale: Geometry::vec3_one()}
 
+                def view(orbit: EditorCamera::Orbit&) -> EditorCamera::View:
+                    rotation: Geometry::Quat = orientation(orbit)
+                    forward: Geometry::Vec3 = Geometry::quat_rotate(rotation,
+                        Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0})
+                    up: Geometry::Vec3 = Geometry::quat_rotate(rotation,
+                        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+                    eye: Geometry::Vec3 = Geometry::vec3_sub(orbit.target,
+                        Geometry::vec3_scale(forward, orbit.distance))
+                    EditorCamera::View{eye: eye, target: orbit.target, up: up}
+
     public:
+        def view(orbit: Orbit&) -> View:
+            return View{eye: Geometry::vec3_zero(), target: Geometry::vec3_zero(), up: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}} if not orbit_valid(orbit)
+            Controls::view(orbit)
+
         # Horizontal pointer motion orbits around world up; vertical motion is
         # clamped before the camera can flip through either pole.
         def orbit_drag(orbit: mutable Orbit&, delta_x: f32, delta_y: f32) -> bool:

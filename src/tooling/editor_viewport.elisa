@@ -1,0 +1,146 @@
+# Own one editor camera and its retained selection presentation. Platform
+# adapters feed pointer deltas and logical framebuffer coordinates here.
+include "../backend/camera.elisa"
+include "../runtime/render_scene_selection.elisa"
+include "../ui/style.elisa"
+include "editor_camera.elisa"
+include "world_selection_overlay.elisa"
+
+module EditorViewport:
+    private:
+        const module Limits:
+            ALL_LAYERS: u32 = 4294967295
+
+    public:
+        affine struct Viewport:
+            private:
+                camera: mutable Camera::State
+                orbit: mutable EditorCamera::Orbit
+                overlay: mutable WorldSelectionOverlay::Canvas
+                selection: mutable RenderScene::PickSelection
+                live: mutable bool
+
+        def Viewport(camera: Camera::State,
+            overlay: WorldSelectionOverlay::Canvas) -> Viewport:
+            Viewport{
+                camera: camera,
+                orbit: EditorCamera::Orbit(),
+                overlay: overlay,
+                selection: RenderScene::PickSelection{
+                    hit: false,
+                    result: RenderScene::PickResult{
+                        gameplay_epoch: 0,
+                        gameplay_id: 0,
+                        distance: 0.0,
+                    },
+                },
+                live: true,
+            }
+
+        def viewport_valid(viewport: Viewport&) -> bool:
+            viewport.live and Camera::state_valid(&viewport.camera) and EditorCamera::orbit_valid(&viewport.orbit) and WorldSelectionOverlay::canvas_valid(&viewport.overlay)
+
+    private:
+        module Apply:
+            public:
+                def camera(viewport: mutable EditorViewport::Viewport&) -> void error[RenderScene::RenderSceneError]:
+                    raise RenderScene::RenderSceneError.InvalidValue if not EditorViewport::viewport_valid(viewport)
+                    raise RenderScene::RenderSceneError.InvalidValue if not EditorCamera::apply(&viewport.orbit, &viewport.camera)
+                    projection: Camera::Projection = Camera::projection(&viewport.camera)
+                    if projection == Camera::Projection.Perspective:
+                        try RenderScene::set_camera_perspective(
+                            Camera::perspective_fov(&viewport.camera),
+                            Camera::near_clip(&viewport.camera),
+                            Camera::far_clip(&viewport.camera))
+                    else:
+                        try RenderScene::set_camera_orthographic_height(
+                            Camera::orthographic_height(&viewport.camera))
+                    pose: EditorCamera::View = EditorCamera::view(&viewport.orbit)
+                    try RenderScene::set_camera_look_at(pose.eye, pose.target, pose.up)
+
+                def empty_selection() -> RenderScene::PickSelection:
+                    RenderScene::PickSelection{
+                        hit: false,
+                        result: RenderScene::PickResult{
+                            gameplay_epoch: 0,
+                            gameplay_id: 0,
+                            distance: 0.0,
+                        },
+                    }
+
+    public:
+        def initialize(viewport: mutable Viewport&) -> void error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not viewport_valid(viewport)
+            try Apply::camera(viewport)
+            try WorldSelectionOverlay::hide(&viewport.overlay)
+
+        def resize(viewport: mutable Viewport&, width: i32, height: i32,
+            display_scale: f32) -> bool error[RenderScene::RenderSceneError]:
+            return false if not viewport_valid(viewport)
+            return false if not Camera::resize(&viewport.camera, width, height, display_scale)
+            try Apply::camera(viewport)
+            true
+
+        def focus(viewport: mutable Viewport&, target: Geometry::Vec3,
+            distance: f32) -> bool error[RenderScene::RenderSceneError]:
+            return false if not viewport_valid(viewport)
+            return false if not EditorCamera::focus(&viewport.orbit, target, distance)
+            try Apply::camera(viewport)
+            true
+
+        def orbit_drag(viewport: mutable Viewport&, delta_x: f32,
+            delta_y: f32) -> bool error[RenderScene::RenderSceneError]:
+            return false if not viewport_valid(viewport)
+            return false if not EditorCamera::orbit_drag(&viewport.orbit, delta_x, delta_y)
+            try Apply::camera(viewport)
+            true
+
+        def pan_drag(viewport: mutable Viewport&, delta_x: f32,
+            delta_y: f32) -> bool error[RenderScene::RenderSceneError]:
+            return false if not viewport_valid(viewport)
+            return false if not EditorCamera::pan_drag(&viewport.orbit,
+                &viewport.camera, delta_x, delta_y)
+            try Apply::camera(viewport)
+            true
+
+        def zoom_steps(viewport: mutable Viewport&, steps: f32) -> bool error[RenderScene::RenderSceneError]:
+            return false if not viewport_valid(viewport)
+            return false if not EditorCamera::zoom_steps(&viewport.orbit, steps)
+            try Apply::camera(viewport)
+            true
+
+        # This controller owns the primary editor viewport. Pixel coordinates
+        # and the retained overlay use the same framebuffer origin at (0, 0).
+        def select_at_pixel(viewport: mutable Viewport&, pixel_x: f32,
+            pixel_y: f32, theme: UiStyle::Theme) -> bool error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not viewport_valid(viewport)
+            raise RenderScene::RenderSceneError.InvalidValue if not UiStyle::theme_valid(&theme)
+            area: Camera::Viewport = Camera::viewport(&viewport.camera)
+            raise RenderScene::RenderSceneError.InvalidValue if area.x != 0 or area.y != 0
+            raise RenderScene::RenderSceneError.InvalidValue if pixel_x < 0.0 or pixel_y < 0.0 or pixel_x >= area.width.f32() or pixel_y >= area.height.f32()
+            raise RenderScene::RenderSceneError.InvalidValue if not WorldSelectionOverlay::canvas_fits_viewport(viewport.overlay, area.width.i64(), area.height.i64())
+            pick: RenderScene::PickSelection = try RenderScene::pick_and_select(
+                Camera::ray(&viewport.camera, pixel_x, pixel_y), Limits::ALL_LAYERS)
+            if pick.hit:
+                try WorldSelectionOverlay::show(&viewport.overlay, pick.result,
+                    area.width.i64(), area.height.i64(), theme)
+            else:
+                try WorldSelectionOverlay::hide(&viewport.overlay)
+            viewport.selection <- pick
+            pick.hit
+
+        def selection(viewport: Viewport&) -> RenderScene::PickSelection:
+            return Apply::empty_selection() if not viewport_valid(viewport)
+            viewport.selection
+
+        def clear_selection(viewport: mutable Viewport&) -> void error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not viewport_valid(viewport)
+            try RenderScene::clear_selection()
+            try WorldSelectionOverlay::hide(&viewport.overlay)
+            viewport.selection <- Apply::empty_selection()
+
+        def destroy(viewport: mutable Viewport&) -> void error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not viewport_valid(viewport)
+            try clear_selection(viewport)
+            try WorldSelectionOverlay::destroy(&viewport.overlay)
+            viewport.live <- false

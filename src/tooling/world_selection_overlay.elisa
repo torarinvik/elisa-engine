@@ -28,14 +28,19 @@ module WorldSelectionOverlay:
                 entity: RenderScene::OverlayTextHandle
                 live: mutable bool
 
+    public:
         def Canvas(panel: RenderScene::OverlayPanelHandle,
             title: RenderScene::OverlayTextHandle,
             world: RenderScene::OverlayTextHandle,
             entity: RenderScene::OverlayTextHandle) -> Canvas:
             Canvas{panel: panel, title: title, world: world, entity: entity, live: true}
 
+    public:
         def canvas_valid(canvas: Canvas&) -> bool:
             canvas.live and canvas.panel.id > 0 and canvas.title.id > 0 and canvas.world.id > 0 and canvas.entity.id > 0 and canvas.title.id != canvas.world.id and canvas.title.id != canvas.entity.id and canvas.world.id != canvas.entity.id
+
+        def canvas_fits_viewport(canvas: Canvas&, width: i64, height: i64) -> bool:
+            canvas_valid(canvas) and width >= Layout::PANEL_X + Layout::PANEL_WIDTH and width <= Layout::MAX_VIEWPORT and height >= Layout::PANEL_Y + Layout::PANEL_HEIGHT and height <= Layout::MAX_VIEWPORT
 
     private:
         module Compose:
@@ -80,8 +85,7 @@ module WorldSelectionOverlay:
             raise RenderScene::RenderSceneError.InvalidValue if not canvas_valid(canvas)
             raise RenderScene::RenderSceneError.InvalidValue if not Compose::pick_valid(pick)
             raise RenderScene::RenderSceneError.InvalidValue if not UiStyle::theme_valid(&theme)
-            raise RenderScene::RenderSceneError.InvalidValue if viewport_width < Layout::PANEL_X + Layout::PANEL_WIDTH or viewport_width > Layout::MAX_VIEWPORT
-            raise RenderScene::RenderSceneError.InvalidValue if viewport_height < Layout::PANEL_Y + Layout::PANEL_HEIGHT or viewport_height > Layout::MAX_VIEWPORT
+            raise RenderScene::RenderSceneError.InvalidValue if not canvas_fits_viewport(canvas, viewport_width, viewport_height)
 
             # Keep the composition hidden until all retained elements are
             # updated, so a failed backend call cannot expose mixed identities.
