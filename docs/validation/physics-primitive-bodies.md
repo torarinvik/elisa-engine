@@ -68,6 +68,18 @@ no larger than 10,000 units/s; impulse components must be finite and no larger
 than 10,000,000 units. The probes verify static-body rejection, velocity
 set/get, impulse response, and the not-ready state.
 
+Each body descriptor also selects a collision category from
+`0..<PhysicsRuntime::MAX_COLLISION_LAYERS` (32 categories). All category pairs
+collide by default. `PhysicsRuntime::set_layer_collision` and
+`RuntimeServices::physics_set_layer_collision` enable or disable a symmetric
+pair for the managed world. Configure pairs before creating bodies; changing
+the matrix while any body is live returns `PhysicsError.ConfigurationLocked`.
+The Jolt filter assigns each body a private subgroup, so bodies in the same
+category can still collide. These physical collision categories are separate
+from the existing query `layer_mask`; query filtering remains P03 work.
+`test/physics_collision_layers_native.elisa` verifies disabled and allowed
+overlapping body pairs, invalid category indices, and the configuration lock.
+
 `test/physics_primitives_probe.elisa` verifies invalid dimensions, falling
 sphere/capsule/zero-cylinder bodies, two bodies sharing one sphere shape,
 in-use shape destruction rejection, final release, stale-handle rejection, and
@@ -98,7 +110,14 @@ Validation on 2026-09-25:
 - `scripts/elisa_build_run.py run --main test/physics_app_native.elisa` passed. This isolated integration entry reuses `PhysicsAppProbe` to verify nearest/all-hit rays, sphere/capsule casts and overlaps, contact delivery, X-axis velocity and impulse conversion, and fixed-step ownership. The application smoke runner now includes it as a separate entry.
 - The run used a temporary compiler wrapper to link the compiler's matching core runtime object, plus `DEVELOPER_DIR=/Library/Developer/CommandLineTools` for the post-upgrade linker. Neither workaround changes project or system settings.
 
+Validation on 2026-09-25:
+
+- Rebuilt the SDL3/Jolt Wicked archive with `cmake --build ../WickedEngine/build-elisa-sdl3 --target WickedEngine_ext_shaders -j 8`.
+- The focused `test/physics_collision_layers_native.elisa` runner passed on SDL3/Metal. An overlapping dynamic body on a disabled category pair produced no collision, while a same-category pair produced a contact; invalid categories and post-creation configuration changes were rejected.
+- `test/application_native_main.elisa` built and linked with native test probes enabled, compiling the RuntimeServices layer-configuration wrapper.
+- The source-length, module-hygiene, and Python syntax checks passed.
+
 The native registry now supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
-nested compounds). Broadphase layers, custom mass properties, and offline
-collision cooking remain open P02 work.
+nested compounds), plus a bounded 32-category physical collision matrix.
+Custom mass properties and offline collision cooking remain open P02 work.

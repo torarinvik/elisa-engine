@@ -21,6 +21,7 @@ module PhysicsPrimitivesNative:
                     dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
                     mass: 0.0,
                     sensor: false,
+                    collision_layer: 0,
                 }):
                 value: value
                 error failure: return 7

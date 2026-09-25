@@ -115,6 +115,23 @@ extern "C" int32_t elisa_physics_v1_initialize(uint64_t* world_generation) {
     return ELISA_PHYSICS_OK;
 }
 
+extern "C" int32_t elisa_physics_v1_set_layer_collision(uint64_t world_generation,
+    uint32_t layer_a, uint32_t layer_b, int32_t enabled) {
+    if (layer_a >= wi::physics::COLLISION_LAYER_COUNT ||
+        layer_b >= wi::physics::COLLISION_LAYER_COUNT ||
+        (enabled != 0 && enabled != 1)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    for (const BodySlot& body : state.bodies) {
+        if (body.live) return ELISA_PHYSICS_CONFIGURATION_LOCKED;
+    }
+    return wi::physics::SetCollisionLayerCollision(*state.scene, layer_a, layer_b,
+        enabled != 0) ? ELISA_PHYSICS_OK : ELISA_PHYSICS_INVALID_ARGUMENT;
+}
+
 extern "C" int32_t elisa_physics_v1_probe_provider(void) {
     uint64_t world_generation = 0;
     const int32_t initialized = elisa_physics_v1_initialize(&world_generation);
@@ -499,6 +516,7 @@ extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
     if (body->mesh_proxy_geometry_bytes > state.mesh_proxy_geometry_bytes) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
+    wi::physics::UnregisterCollisionLayerBody(*state.scene, slot);
     state.scene->Entity_Remove(body->entity);
     body->entity = wi::ecs::INVALID_ENTITY;
     state.mesh_proxy_geometry_bytes -= body->mesh_proxy_geometry_bytes;

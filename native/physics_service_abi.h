@@ -19,6 +19,7 @@ enum {
     ELISA_PHYSICS_SHAPE_IN_USE = -8,
     ELISA_PHYSICS_BODY_NOT_READY = -9,
     ELISA_PHYSICS_ASSET_LOAD_FAILED = -10,
+    ELISA_PHYSICS_CONFIGURATION_LOCKED = -11,
 };
 
 enum {
@@ -109,6 +110,8 @@ typedef struct ElisaPhysicsContactEvent {
 } ElisaPhysicsContactEvent;
 
 int32_t elisa_physics_v1_initialize(uint64_t* world_generation);
+int32_t elisa_physics_v1_set_layer_collision(uint64_t world_generation,
+    uint32_t layer_a, uint32_t layer_b, int32_t enabled);
 int32_t elisa_physics_v1_probe_provider(void);
 int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z,
@@ -119,7 +122,7 @@ int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     int32_t shape,
     float position_x, float position_y, float position_z,
     float dimension_x, float dimension_y, float dimension_z, float mass,
-    int32_t sensor,
+    int32_t sensor, uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int32_t kind,
     float dimension_x, float dimension_y, float dimension_z,
@@ -139,6 +142,7 @@ int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     uint32_t slot, uint64_t shape_generation);
 int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_generation, int32_t kind,
     float position_x, float position_y, float position_z, float mass, int32_t sensor,
+    uint32_t collision_layer,
     uint32_t shape_slot, uint64_t shape_generation,
     uint32_t* body_slot, uint64_t* body_generation);
 int32_t elisa_physics_v1_fixed_step(uint64_t world_generation, float delta_seconds,

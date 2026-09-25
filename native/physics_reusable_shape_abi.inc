@@ -479,10 +479,11 @@ extern "C" int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
 
 extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_generation,
     int32_t kind, float position_x, float position_y, float position_z, float mass,
-    int32_t sensor, uint32_t shape_slot, uint64_t shape_generation,
+    int32_t sensor, uint32_t collision_layer, uint32_t shape_slot, uint64_t shape_generation,
     uint32_t* body_slot, uint64_t* body_generation) {
     if (body_slot == nullptr || body_generation == nullptr ||
         kind < ELISA_PHYSICS_BODY_STATIC || kind > ELISA_PHYSICS_BODY_DYNAMIC ||
+        collision_layer >= wi::physics::COLLISION_LAYER_COUNT ||
         (sensor != SENSOR_DISABLED && sensor != SENSOR_ENABLED) ||
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
@@ -544,6 +545,12 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
             rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? ZERO_MASS : mass;
             rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
             rigidbody.SetSensor(sensor == SENSOR_ENABLED);
+            rigidbody.collision_layer = collision_layer;
+            rigidbody.collision_filter_subgroup = free_slot;
+            if (!wi::physics::RegisterCollisionLayerBody(*state.scene, free_slot, collision_layer)) {
+                state.scene->Entity_Remove(entity);
+                return ELISA_PHYSICS_BACKEND_FAILURE;
+            }
             body_record.entity = entity;
             body_record.shape_slot = shape_slot;
             body_record.shape_generation = shape_generation;
@@ -571,7 +578,7 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
         proxy_shape, position_x, position_y, position_z,
         mesh_shape ? 1.0f : shape->dimension_x,
         mesh_shape ? 1.0f : shape->dimension_y,
-        mesh_shape ? 1.0f : shape->dimension_z, mass, sensor,
+        mesh_shape ? 1.0f : shape->dimension_z, mass, sensor, collision_layer,
         &created_slot, &created_generation);
     if (create_status != ELISA_PHYSICS_OK) return create_status;
 

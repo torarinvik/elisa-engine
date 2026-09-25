@@ -1,0 +1,95 @@
+include "../src/runtime/application.elisa"
+include "../src/physics/runtime.elisa"
+
+module PhysicsCollisionLayersNative:
+    private:
+        const module Window:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 240
+
+        def body(world: PhysicsRuntime::World&, kind: PhysicsRuntime::BodyKind,
+            layer: u32) -> PhysicsRuntime::BodyHandle error[PhysicsRuntime::PhysicsError]:
+            try PhysicsRuntime::body_create(world, PhysicsRuntime::BodyDesc{
+                kind: kind,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                dimensions: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                mass: 1.0 if kind == PhysicsRuntime::BodyKind.Dynamic else 0.0,
+                sensor: false,
+                collision_layer: layer,
+            })
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Physics Collision Layer Smoke",
+                width: Window::WIDTH,
+                height: Window::HEIGHT,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+                value: value
+                error failure: return 2
+
+            invalid_layer: i32 = catch PhysicsRuntime::set_layer_collision(&world,
+                PhysicsRuntime::MAX_COLLISION_LAYERS, 0, false):
+                ok: 1
+                PhysicsRuntime::PhysicsError.InvalidArgument: 0
+                error failure: 3
+            return 4 if invalid_layer != 0
+            config_status: i32 = catch PhysicsRuntime::set_layer_collision(&world, 0, 1, false):
+                ok: 0
+                error failure: 5
+            return 6 if config_status != 0
+
+            static_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
+                &world, PhysicsRuntime::BodyKind.Static, 0):
+                value: value
+                error failure: return 7
+            suppressed_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
+                &world, PhysicsRuntime::BodyKind.Dynamic, 1):
+                value: value
+                error failure: return 8
+            locked_config: i32 = catch PhysicsRuntime::set_layer_collision(&world, 0, 1, true):
+                ok: 1
+                PhysicsRuntime::PhysicsError.ConfigurationLocked: 0
+                error failure: 9
+            return 10 if locked_config != 0
+            allowed_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
+                &world, PhysicsRuntime::BodyKind.Dynamic, 0):
+                value: value
+                error failure: return 11
+
+            tick: u64 = catch PhysicsRuntime::fixed_step(&world, 1.0 / 60.0):
+                value: value
+                error failure: return 12
+            return 13 if tick != 1
+            contacts: mutable PhysicsRuntime::ContactBuffer = zeroed
+            dropped: mutable u32 = 0
+            contact_count: usize = catch PhysicsRuntime::poll_contacts(&world,
+                &contacts, &dropped):
+                value: value
+                error failure: return 14
+            return 15 if contact_count == 0 or dropped != 0
+
+            destroy_allowed: i32 = catch PhysicsRuntime::body_destroy(&world, allowed_body):
+                ok: 0
+                error failure: 16
+            destroy_suppressed: i32 = catch PhysicsRuntime::body_destroy(&world, suppressed_body):
+                ok: 0
+                error failure: 17
+            destroy_static: i32 = catch PhysicsRuntime::body_destroy(&world, static_body):
+                ok: 0
+                error failure: 18
+            world_closed: bool = catch PhysicsRuntime::shutdown(&world):
+                ok: true
+                error failure: false
+            application_closed: bool = Application::shutdown()
+            return 19 if destroy_allowed != 0 or destroy_suppressed != 0 or destroy_static != 0
+            return 20 if not world_closed
+            return 21 if not application_closed
+            0
+
+def main() -> i32:
+    PhysicsCollisionLayersNative::run()

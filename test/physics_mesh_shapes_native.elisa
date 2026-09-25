@@ -47,6 +47,7 @@ module PhysicsMeshShapesNative:
                     position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, hull):
                 value: value
                 error failure: return 5
@@ -56,6 +57,7 @@ module PhysicsMeshShapesNative:
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 0.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, triangle_mesh):
                 value: value
                 error failure: return 6
@@ -65,6 +67,7 @@ module PhysicsMeshShapesNative:
                     position: Geometry::Vec3{x: 6.0, y: 2.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, triangle_mesh):
                 ok: 0
                 PhysicsRuntime::PhysicsError.InvalidArgument: 1
