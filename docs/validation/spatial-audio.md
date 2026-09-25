@@ -144,4 +144,7 @@ Validation on 2026-09-21 (macOS 27.0 / Apple M5, SDL3/Metal):
   `scripts/application_native_smoke.py` suite passed with the selected Wicked
   SDL3 backend. Its world-audio fixture places a Jolt box between listener and
   source, verifies attenuation, removes the box, and verifies the clear-ray
-  mix is restored. Source-length and module-hygiene checks passed.
+  mix is restored. It also externally stops a live voice, verifies it leaves
+  the native active-voice count immediately, and confirms the following Elisa
+  update reports exactly one finished detach with no remaining binding.
+  Source-length and module-hygiene checks passed.
