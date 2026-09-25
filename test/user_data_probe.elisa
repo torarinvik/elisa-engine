@@ -1,4 +1,28 @@
 # Exercises the public, Elisa-owned user-data API from the native app smoke.
+include "../src/runtime/quality_settings.elisa"
+
+const module QualityPersistenceTest:
+    PROFILE_VERSION: i64 = 1
+    PROFILE_BLOB_FIELD_COUNT: usize = 15
+    LEVEL_BLOB_FIELD: usize = 1
+    TONEMAP_BLOB_FIELD: usize = 2
+    UPSCALER_BLOB_FIELD: usize = 3
+    TEMPORAL_AA_BLOB_FIELD: usize = 8
+    HIGH_WIRE_CODE: i64 = 2
+    UCHIMURA_WIRE_CODE: i64 = 2
+    FSR1_WIRE_CODE: i64 = 1
+    BOOL_TRUE_WIRE_CODE: i64 = 1
+    FLOAT_TOLERANCE: f32 = 0.000002
+
+def quality_profiles_match(left: Quality::Profile, right: Quality::Profile) -> bool:
+    return false if left.level != right.level or left.tonemap != right.tonemap or left.upscaler != right.upscaler
+    return false if ElisaMath::fabsf(left.render_scale - right.render_scale) > QualityPersistenceTest::FLOAT_TOLERANCE
+    return false if left.bloom != right.bloom or left.fxaa != right.fxaa or left.temporal_aa != right.temporal_aa
+    return false if ElisaMath::fabsf(left.bloom_threshold - right.bloom_threshold) > QualityPersistenceTest::FLOAT_TOLERANCE
+    return false if left.ambient_occlusion != right.ambient_occlusion or left.screen_space_reflections != right.screen_space_reflections
+    return false if left.fog != right.fog or left.depth_effects != right.depth_effects or left.shadow_quality != right.shadow_quality
+    ElisaMath::fabsf(left.sun_shadow_receiver_bias - right.sun_shadow_receiver_bias) <= QualityPersistenceTest::FLOAT_TOLERANCE
+
 def exercise_user_data() -> i32:
     values: i64[16] = [7, 9, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     blob: mutable Save::Blob = catch Save::save_write(values, 3):
@@ -65,4 +89,86 @@ def exercise_user_data() -> i32:
         UserData::UserDataError.NotFound: 1
         error failure: 2
     return 18 if removed != 1
+
+    quality: mutable Quality::Profile = Quality::high()
+    quality.tonemap <- Quality::Tonemap.Uchimura
+    quality.upscaler <- Quality::Upscaler.Fsr1
+    quality.render_scale <- 0.7312345
+    quality.bloom <- false
+    quality.bloom_threshold <- 23.456789
+    quality.fxaa <- true
+    quality.temporal_aa <- false
+    quality.ambient_occlusion <- true
+    quality.screen_space_reflections <- true
+    quality.fog <- false
+    quality.depth_effects <- true
+    quality.sun_shadow_receiver_bias <- -0.004321
+    profile_blob: mutable Save::Blob = catch QualitySettings::profile_to_blob(&quality):
+        value: value
+        error failure: return 19
+    return 20 if profile_blob.version != QualityPersistenceTest::PROFILE_VERSION
+    return 20 if profile_blob.count != QualityPersistenceTest::PROFILE_BLOB_FIELD_COUNT
+    return 21 if profile_blob.fields[QualityPersistenceTest::LEVEL_BLOB_FIELD] != QualityPersistenceTest::HIGH_WIRE_CODE
+    return 21 if profile_blob.fields[QualityPersistenceTest::TONEMAP_BLOB_FIELD] != QualityPersistenceTest::UCHIMURA_WIRE_CODE
+    return 21 if profile_blob.fields[QualityPersistenceTest::UPSCALER_BLOB_FIELD] != QualityPersistenceTest::FSR1_WIRE_CODE
+    decoded_quality: Quality::Profile = catch QualitySettings::profile_from_blob(profile_blob):
+        value: value
+        error failure: return 22
+    return 23 if not quality_profiles_match(quality, decoded_quality)
+
+    wrong_version: mutable Save::Blob = profile_blob
+    wrong_version.version <- QualityPersistenceTest::PROFILE_VERSION + 1
+    wrong_version_status: i32 = catch QualitySettings::profile_from_blob(wrong_version):
+        value: 0
+        QualitySettings::QualitySettingsError.WrongVersion: 1
+        error failure: 2
+    return 24 if wrong_version_status != 1
+    corrupt_profile: mutable Save::Blob = profile_blob
+    corrupt_profile.fields[QualityPersistenceTest::LEVEL_BLOB_FIELD] <- QualityPersistenceTest::PROFILE_BLOB_FIELD_COUNT.i64()
+    corrupt_status: i32 = catch QualitySettings::profile_from_blob(corrupt_profile):
+        value: 0
+        QualitySettings::QualitySettingsError.Corrupt: 1
+        error failure: 2
+    return 25 if corrupt_status != 1
+    incomplete_profile: mutable Save::Blob = profile_blob
+    incomplete_profile.count <- QualityPersistenceTest::PROFILE_BLOB_FIELD_COUNT - 1
+    incomplete_status: i32 = catch QualitySettings::profile_from_blob(incomplete_profile):
+        value: 0
+        QualitySettings::QualitySettingsError.Corrupt: 1
+        error failure: 2
+    return 26 if incomplete_status != 1
+    unsupported_profile: mutable Save::Blob = profile_blob
+    unsupported_profile.fields[QualityPersistenceTest::UPSCALER_BLOB_FIELD] <- QualityPersistenceTest::HIGH_WIRE_CODE
+    unsupported_profile.fields[QualityPersistenceTest::TEMPORAL_AA_BLOB_FIELD] <- QualityPersistenceTest::BOOL_TRUE_WIRE_CODE
+    unsupported_status: i32 = catch QualitySettings::profile_from_blob(unsupported_profile):
+        value: 0
+        QualitySettings::QualitySettingsError.InvalidProfile: 1
+        error failure: 2
+    return 27 if unsupported_status != 1
+    invalid_quality: mutable Quality::Profile = quality
+    invalid_quality.upscaler <- Quality::Upscaler.Fsr2
+    invalid_quality.temporal_aa <- true
+    invalid_quality_status: i32 = catch QualitySettings::profile_to_blob(&invalid_quality):
+        value: 0
+        QualitySettings::QualitySettingsError.InvalidProfile: 1
+        error failure: 2
+    return 33 if invalid_quality_status != 1
+
+    missing_quality: i32 = catch QualitySettings::load_user_data():
+        value: 0
+        UserData::UserDataError.NotFound: 1
+        error failure: 2
+    return 28 if missing_quality != 1
+    saved_quality: i32 = catch QualitySettings::save_user_data(&quality):
+        ok: 0
+        error failure: 1
+    return 29 if saved_quality != 0
+    loaded_quality: Quality::Profile = catch QualitySettings::load_user_data():
+        value: value
+        error failure: return 30
+    return 31 if not quality_profiles_match(quality, loaded_quality)
+    removed_quality: i32 = catch UserData::remove_blob("render-quality"):
+        ok: 0
+        error failure: 1
+    return 32 if removed_quality != 0
     0

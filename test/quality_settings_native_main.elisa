@@ -1,0 +1,6 @@
+# Focused persistence smoke so quality-profile coverage runs even when an
+# unrelated renderer fixture cannot compile on a given stage1 compiler build.
+include "./user_data_probe.elisa"
+
+def main() -> i64:
+    exercise_user_data().i64()

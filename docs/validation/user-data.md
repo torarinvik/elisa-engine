@@ -29,5 +29,7 @@ Validation:
   capacity errors, corruption, future format versions, and removal.
 - `test/user_data_probe.elisa` exercises the public API from an Elisa-owned
   native application, including staged reads and expected error mapping.
+- `test/quality_settings_native_main.elisa` runs the same public user-data path
+  with the engine's versioned render-quality profile encoder and decoder.
 - `python3 scripts/application_native_smoke.py` compiles and runs both native
   application probes and the standalone storage test.
