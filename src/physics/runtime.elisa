@@ -39,6 +39,7 @@ module PhysicsRuntime:
             shape: i32,
             position_x: f32, position_y: f32, position_z: f32,
             rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32,
+            center_of_mass_x: f32, center_of_mass_y: f32, center_of_mass_z: f32,
             dimension_x: f32, dimension_y: f32, dimension_z: f32, mass: f32,
             sensor: i32, collision_layer: u32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
@@ -130,6 +131,8 @@ module PhysicsRuntime:
                     Status::SHAPE_SPHERE
                 BodyShape.Capsule:
                     Status::SHAPE_CAPSULE
+
+        include "./runtime_body_com_types.inc"
         include "./runtime_body_motion_abi.inc"
         include "./runtime_body_material_abi.inc"
         include "./runtime_body_inertia_abi.inc"
@@ -203,6 +206,7 @@ module PhysicsRuntime:
             AssetLoadFailed
             BackendFailure
 
+        include "./runtime_body_create_types.inc"
         include "./runtime_body_types.inc"
 
         struct PhysicsMaterial:

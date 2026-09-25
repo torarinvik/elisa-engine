@@ -19,6 +19,7 @@ module PhysicsCollisionLayersNative:
                 mass: 1.0 if kind == PhysicsRuntime::BodyKind.Dynamic else 0.0,
                 sensor: false,
                 collision_layer: layer,
+                center_of_mass_offset: Geometry::vec3_zero(),
             })
 
     public:

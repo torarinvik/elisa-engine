@@ -70,6 +70,7 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
     int32_t shape,
     float position_x, float position_y, float position_z,
     float rotation_x, float rotation_y, float rotation_z, float rotation_w,
+    float center_of_mass_x, float center_of_mass_y, float center_of_mass_z,
     float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor, uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation) {
@@ -81,6 +82,11 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
         !std::isfinite(rotation_x) || !std::isfinite(rotation_y) ||
         !std::isfinite(rotation_z) || !std::isfinite(rotation_w) ||
+        !std::isfinite(center_of_mass_x) || !std::isfinite(center_of_mass_y) ||
+        !std::isfinite(center_of_mass_z) ||
+        std::fabs(center_of_mass_x) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(center_of_mass_y) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(center_of_mass_z) > MAX_CENTER_OF_MASS_OFFSET ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
         std::fabs(position_z) > MAX_POSITION || !std::isfinite(dimension_x) ||
         !std::isfinite(dimension_y) || !std::isfinite(dimension_z) ||
@@ -116,6 +122,16 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
     if (free_slot == MAX_BODIES) return ELISA_PHYSICS_CAPACITY;
     BodySlot& body_slot = state.bodies[free_slot];
     if (body_slot.generation == UINT64_MAX) return ELISA_PHYSICS_CAPACITY;
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_center_of_mass_offset;
+    if (!elisa_physics_coordinates::to_wicked_physical_vector(&profile,
+            XMFLOAT3(center_of_mass_x, center_of_mass_y, center_of_mass_z),
+            backend_center_of_mass_offset) ||
+        std::fabs(backend_center_of_mass_offset.x) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(backend_center_of_mass_offset.y) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(backend_center_of_mass_offset.z) > MAX_CENTER_OF_MASS_OFFSET) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
 
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     try {
@@ -142,7 +158,6 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
             state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_BACKEND_FAILURE;
         }
-        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
         const ElisaTransformPayload authored{{position_x, position_y, position_z},
             {rotation_x, rotation_y, rotation_z, rotation_w},
             {scale_x, scale_y, scale_z}};
@@ -155,6 +170,7 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         set_body_collision_layer(*state.scene, entity, collision_layer);
 
         wi::scene::RigidBodyPhysicsComponent& rigidbody = state.scene->rigidbodies.Create(entity);
+        rigidbody.center_of_mass_offset = backend_center_of_mass_offset;
         rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? ZERO_MASS : mass;
         if (shape == ELISA_PHYSICS_SHAPE_BOX) {
             rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
@@ -201,6 +217,7 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
     uint32_t* slot, uint64_t* body_generation) {
     return elisa_physics_v1_create_body(world_generation, kind, ELISA_PHYSICS_SHAPE_BOX,
         position_x, position_y, position_z, 0.0f, 0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, 0.0f,
         half_x, half_y, half_z, mass, sensor,
         0,
         slot, body_generation);

@@ -31,6 +31,7 @@ module MazePhysics:
                 mass: 0.0,
                 sensor: false,
                 collision_layer: Tune::WALL_LAYER,
+                center_of_mass_offset: Geometry::vec3_zero(),
             }
 
         def key_description() -> PhysicsRuntime::BodyDesc:
@@ -45,6 +46,7 @@ module MazePhysics:
                 mass: 0.0,
                 sensor: true,
                 collision_layer: Tune::KEY_LAYER,
+                center_of_mass_offset: Geometry::vec3_zero(),
             }
 
         def wall_clear(session: RuntimeServices::Session&, state: Maze::MazeState&,

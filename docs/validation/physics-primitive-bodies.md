@@ -153,6 +153,16 @@ The getter reads Jolt's equivalent principal moments and body-local frame after
 creation. Jolt may reorder the moments during eigendecomposition, so the probe
 compares the reconstructed tensor rather than relying on input ordering.
 
+`BodyDesc.center_of_mass_offset` and
+`BodyInstanceDesc.center_of_mass_offset` shift the shape's computed center of
+mass in body-local coordinates. Each component must be finite and within 10,000
+physics units. The native adapter converts the vector across the
+Elisa/Wicked handedness and unit boundary. Wicked wraps the scaled instance
+shape, so reusable shapes can have different offsets per body without copying
+the shared base shape. The entity pose, `BodyPose`, scene query proxy, and
+physics query geometry continue to use the shape origin. Jolt shifts the mass
+properties with the offset, including the corresponding parallel-axis inertia.
+
 Validation on 2026-09-25:
 
 - Wicked commits `5f5b43f` and `23ecbb9` add versioned rigid-body component
@@ -172,6 +182,11 @@ Validation on 2026-09-25:
   fixture round-trips a rotated principal frame through Jolt. Its 30 Hz and
   120 Hz render captures match pixel-for-pixel at 640x480.
 - The source-length, module-hygiene, and whitespace checks passed.
+- `BodyDesc` and `BodyInstanceDesc` center-of-mass offsets are validated on the
+  focused probes. The direct box fixture checks the expected inertia trace and
+  initial shape-origin pose; two bodies sharing a sphere shape verify separate
+  mass properties and matching fall positions. An out-of-range offset is
+  rejected before body creation. Both fixtures passed on SDL3/Metal.
 
 The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including

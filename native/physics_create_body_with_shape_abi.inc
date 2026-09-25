@@ -1,6 +1,7 @@
 extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_generation,
     int32_t kind, float position_x, float position_y, float position_z,
-    float rotation_x, float rotation_y, float rotation_z, float rotation_w, float mass,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w,
+    float center_of_mass_x, float center_of_mass_y, float center_of_mass_z, float mass,
     int32_t sensor, uint32_t collision_layer, uint32_t shape_slot, uint64_t shape_generation,
     uint32_t* body_slot, uint64_t* body_generation) {
     if (body_slot == nullptr || body_generation == nullptr ||
@@ -10,6 +11,11 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
         !std::isfinite(rotation_x) || !std::isfinite(rotation_y) ||
         !std::isfinite(rotation_z) || !std::isfinite(rotation_w) ||
+        !std::isfinite(center_of_mass_x) || !std::isfinite(center_of_mass_y) ||
+        !std::isfinite(center_of_mass_z) ||
+        std::fabs(center_of_mass_x) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(center_of_mass_y) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(center_of_mass_z) > MAX_CENTER_OF_MASS_OFFSET ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
         std::fabs(position_z) > MAX_POSITION || !std::isfinite(mass) || mass < ZERO_MASS ||
         mass > MAX_MASS || (kind == ELISA_PHYSICS_BODY_DYNAMIC && mass <= ZERO_MASS)) {
@@ -31,6 +37,16 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     if (shape->body_references == UINT32_MAX) return ELISA_PHYSICS_CAPACITY;
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_center_of_mass_offset;
+    if (!elisa_physics_coordinates::to_wicked_physical_vector(&profile,
+            XMFLOAT3(center_of_mass_x, center_of_mass_y, center_of_mass_z),
+            backend_center_of_mass_offset) ||
+        std::fabs(backend_center_of_mass_offset.x) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(backend_center_of_mass_offset.y) > MAX_CENTER_OF_MASS_OFFSET ||
+        std::fabs(backend_center_of_mass_offset.z) > MAX_CENTER_OF_MASS_OFFSET) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
 
     if (shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH ||
         shape->kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL) {
@@ -60,7 +76,6 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
                 state.scene->Entity_Remove(entity);
                 return ELISA_PHYSICS_BACKEND_FAILURE;
             }
-            const ElisaCoordinateProfile profile = elisa_coordinate_profile();
             const ElisaTransformPayload authored{{position_x, position_y, position_z},
                 {rotation_x, rotation_y, rotation_z, rotation_w},
                 {1.0f, 1.0f, 1.0f}};
@@ -72,6 +87,7 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
             set_body_collision_layer(*state.scene, entity, collision_layer);
             mesh->precomputed_rigidbody_physics_shape = shape->backend_shape;
             wi::scene::RigidBodyPhysicsComponent& rigidbody = state.scene->rigidbodies.Create(entity);
+            rigidbody.center_of_mass_offset = backend_center_of_mass_offset;
             rigidbody.shape = shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH
                 ? wi::scene::RigidBodyPhysicsComponent::TRIANGLE_MESH
                 : wi::scene::RigidBodyPhysicsComponent::CONVEX_HULL;
@@ -110,6 +126,7 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
     const int32_t create_status = elisa_physics_v1_create_body(world_generation, kind,
         proxy_shape, position_x, position_y, position_z,
         rotation_x, rotation_y, rotation_z, rotation_w,
+        center_of_mass_x, center_of_mass_y, center_of_mass_z,
         mesh_shape ? 1.0f : shape->dimension_x,
         mesh_shape ? 1.0f : shape->dimension_y,
         mesh_shape ? 1.0f : shape->dimension_z, mass, sensor, collision_layer,

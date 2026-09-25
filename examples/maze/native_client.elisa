@@ -146,6 +146,7 @@ module MazeNativeClient:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: Actions::PHYSICS_WALL_LAYER,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             _ = try RuntimeServices::physics_fixed_step(session, Actions::PHYSICS_STEP_SECONDS)
             moved: bool = try MazePhysics::game_step(session, game, Maze::MazeMove.South)

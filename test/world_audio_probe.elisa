@@ -90,6 +90,7 @@ module WorldAudioProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: Tune::OCCLUDER_LAYER,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }):
                 value: value
                 error failure: return 132

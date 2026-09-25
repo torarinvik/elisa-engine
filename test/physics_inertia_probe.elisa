@@ -15,10 +15,18 @@ module PhysicsInertiaProbe:
             PRINCIPAL_ROTATION_Z: f32 = 0.70710678118
             MOMENT_TOLERANCE: f32 = 0.0001
             DEFAULT_COLLISION_LAYER: u32 = 0
+            COM_OFFSET_Y: f32 = 0.25
+            EXPECTED_CUBE_INERTIA_TRACE: f32 = 0.625
+            INERTIA_TRACE_TOLERANCE: f32 = 0.01
 
         def close(left: f32, right: f32) -> bool:
             difference: f32 = left - right
             difference >= -Tune::MOMENT_TOLERANCE and difference <= Tune::MOMENT_TOLERANCE
+
+        def close_with_tolerance(left: f32, right: f32,
+            tolerance: f32) -> bool:
+            difference: f32 = left - right
+            difference >= -tolerance and difference <= tolerance
 
         def rotation_matches(left: Geometry::Quat, right: Geometry::Quat) -> bool:
             dot: f32 = left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w
@@ -58,6 +66,10 @@ module PhysicsInertiaProbe:
             z_axis: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}
             close(inertia_tensor_apply(left, x_axis).x, inertia_tensor_apply(right, x_axis).x) and close(inertia_tensor_apply(left, x_axis).y, inertia_tensor_apply(right, x_axis).y) and close(inertia_tensor_apply(left, x_axis).z, inertia_tensor_apply(right, x_axis).z) and close(inertia_tensor_apply(left, y_axis).x, inertia_tensor_apply(right, y_axis).x) and close(inertia_tensor_apply(left, y_axis).y, inertia_tensor_apply(right, y_axis).y) and close(inertia_tensor_apply(left, y_axis).z, inertia_tensor_apply(right, y_axis).z) and close(inertia_tensor_apply(left, z_axis).x, inertia_tensor_apply(right, z_axis).x) and close(inertia_tensor_apply(left, z_axis).y, inertia_tensor_apply(right, z_axis).y) and close(inertia_tensor_apply(left, z_axis).z, inertia_tensor_apply(right, z_axis).z)
 
+        def inertia_trace(inertia: PhysicsRuntime::BodyInertia) -> f32:
+            moments: Geometry::Vec3 = PhysicsRuntime::body_inertia_principal_moments(inertia)
+            moments.x + moments.y + moments.z
+
     public:
         def run(session: mutable RuntimeServices::Session&) -> i32:
             body_rotation: Geometry::Quat = Geometry::Quat{
@@ -73,9 +85,29 @@ module PhysicsInertiaProbe:
                     mass: Tune::MASS,
                     sensor: false,
                     collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }):
                 value: value
                 error failure: return 1
+            offset_body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 20.0, y: 10.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::Vec3{x: 0.0, y: -Tune::COM_OFFSET_Y, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+                    mass: 1.0,
+                    sensor: false,
+                    collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 17
+            offset_initial_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_body_pose(
+                session, offset_body):
+                value: value
+                error failure: return 18
+            return 19 if not PhysicsInertiaProbe::close(offset_initial_pose.position.x, 20.0) or not PhysicsInertiaProbe::close(offset_initial_pose.position.y, 10.0)
             initial_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_body_pose(
                 session, body):
                 value: value
@@ -119,6 +151,13 @@ module PhysicsInertiaProbe:
             readback: Geometry::Vec3 = PhysicsRuntime::body_inertia_principal_moments(moments)
             return 8 if not PhysicsInertiaProbe::close(readback.x, Tune::EXPECTED_MOMENT_X) or not PhysicsInertiaProbe::close(readback.y, Tune::EXPECTED_MOMENT_Y) or not PhysicsInertiaProbe::close(readback.z, Tune::EXPECTED_MOMENT_Z)
             return 12 if not PhysicsInertiaProbe::same_inertia_tensor(inertia, moments)
+            offset_inertia: PhysicsRuntime::BodyInertia = catch RuntimeServices::physics_body_inertia(
+                session, offset_body):
+                value: value
+                error failure: return 20
+            return 21 if not PhysicsInertiaProbe::close_with_tolerance(
+                PhysicsInertiaProbe::inertia_trace(offset_inertia),
+                Tune::EXPECTED_CUBE_INERTIA_TRACE, Tune::INERTIA_TRACE_TOLERANCE)
             late_update: bool = catch RuntimeServices::physics_body_set_inertia(
                 session, body, inertia):
                 ok: false
@@ -129,4 +168,9 @@ module PhysicsInertiaProbe:
                 ok: true
                 error failure: false
             return 10 if not destroyed
+            offset_destroyed: bool = catch RuntimeServices::physics_body_destroy(session,
+                offset_body):
+                ok: true
+                error failure: false
+            return 22 if not offset_destroyed
             0

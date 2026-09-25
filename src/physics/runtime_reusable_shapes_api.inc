@@ -15,6 +15,8 @@
             kind: BodyKind
             position: Geometry::Vec3
             rotation: Geometry::Quat
+            # Per-instance shift of the shape's computed center of mass.
+            center_of_mass_offset: Geometry::Vec3
             mass: f32
             sensor: bool
             collision_layer: u32
@@ -105,13 +107,17 @@
         def body_create_with_shape(world: World&, description: BodyInstanceDesc,
             shape: ShapeHandle) -> BodyHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
+            raise PhysicsError.InvalidArgument if not center_of_mass_offset_valid(description.center_of_mass_offset)
             raise PhysicsError.StaleWorld if shape.world_generation != world.generation
             slot: mutable u32 = 0
             generation: mutable u64 = 0
             status: i32 = elisa_physics_v1_create_body_with_shape(world.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
                 description.position.z, description.rotation.x, description.rotation.y,
-                description.rotation.z, description.rotation.w, description.mass,
+                description.rotation.z, description.rotation.w,
+                description.center_of_mass_offset.x,
+                description.center_of_mass_offset.y,
+                description.center_of_mass_offset.z, description.mass,
                 1 if description.sensor else 0,
                 description.collision_layer,
                 shape.slot, shape.generation, &slot, &generation)
@@ -180,13 +186,17 @@
         def service_body_create_with_shape(state: ServiceState&,
             description: BodyInstanceDesc, shape: ShapeHandle) -> BodyHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
+            raise PhysicsError.InvalidArgument if not center_of_mass_offset_valid(description.center_of_mass_offset)
             raise PhysicsError.StaleWorld if shape.world_generation != state.generation
             slot: mutable u32 = 0
             generation: mutable u64 = 0
             status: i32 = elisa_physics_v1_create_body_with_shape(state.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
                 description.position.z, description.rotation.x, description.rotation.y,
-                description.rotation.z, description.rotation.w, description.mass,
+                description.rotation.z, description.rotation.w,
+                description.center_of_mass_offset.x,
+                description.center_of_mass_offset.y,
+                description.center_of_mass_offset.z, description.mass,
                 1 if description.sensor else 0,
                 description.collision_layer,
                 shape.slot, shape.generation, &slot, &generation)

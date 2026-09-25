@@ -27,6 +27,7 @@ module PhysicsAppProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             stage <- 2
             falling: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
@@ -39,6 +40,7 @@ module PhysicsAppProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             stage <- 3
             trigger: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
@@ -51,6 +53,7 @@ module PhysicsAppProbe:
                     mass: 0.0,
                     sensor: true,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             stage <- 4
             disposable: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
@@ -63,6 +66,7 @@ module PhysicsAppProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             query_anchor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
                 PhysicsRuntime::BodyDesc{
@@ -77,6 +81,7 @@ module PhysicsAppProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             stage <- 5
             target: Geometry::Transform = Geometry::Transform{
