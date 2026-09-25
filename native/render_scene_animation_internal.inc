@@ -27,6 +27,7 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.root_motion_wrap_correction_x = 0.0f;
     instance.root_motion_wrap_correction_z = 0.0f;
     instance.root_motion_previous_valid = false;
+    instance.root_motion_exit_pending = false;
 }
 
 // Capture the actual displayed mixture before replacing its destination.
@@ -34,6 +35,15 @@ void clear_animation_state(InstanceSlot& instance) {
 // an unfinished recovery just because the next destination has a short fade.
 float preserve_interrupted_pose(InstanceSlot& instance, float requested_seconds) {
     const float remaining = instance.blend_duration - instance.blend_elapsed;
+    if (instance.root_motion_exit_pending) {
+        instance.root_motion_exit_pending = false;
+        if (requested_seconds > 0.0f) {
+            // The displayed pose already has root travel removed. Sampling the
+            // outgoing clip again would restore its raw root at the first fade
+            // frame and make the character jump back across the whole path.
+            return std::max(requested_seconds, remaining);
+        }
+    }
     if (requested_seconds > 0.0f && remaining > 0.0f) {
         instance.interrupted_joint_pose = instance.displayed_joint_pose;
         instance.interrupted_morph_pose = instance.displayed_morph_pose;

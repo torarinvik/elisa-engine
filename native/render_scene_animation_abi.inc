@@ -236,6 +236,12 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     InstanceSlot& instance = state.instances[slot];
     if (mode == 0) {
+        if (instance.root_motion_mode == 1 &&
+            instance.displayed_joint_pose.size() == instance.joint_entities.size() * 10) {
+            instance.interrupted_joint_pose = instance.displayed_joint_pose;
+            instance.interrupted_morph_pose = instance.displayed_morph_pose;
+            instance.root_motion_exit_pending = true;
+        }
         instance.root_motion_mode = 0;
         instance.root_motion_joint = -1;
         instance.root_motion_previous_valid = false;
@@ -269,6 +275,7 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     instance.root_motion_mode = mode;
+    instance.root_motion_exit_pending = false;
     instance.root_motion_joint = root_joint;
     instance.root_motion_anchor_x = root_pose[0];
     instance.root_motion_anchor_y = root_pose[1];

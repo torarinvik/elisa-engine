@@ -138,4 +138,43 @@ module RenderSceneAnimationRootMotionNativeTests:
                 ok: true
                 error failure: false
             return 39 if not destroyed
+            # Leaving an extracted clip must fade from its displayed pose.
+            # The raw authored root is metres away at the same clip time.
+            exit_rig: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/root-motion-skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 44
+            exit_started: bool = catch RenderScene::play_animation(exit_rig, "root-motion", false, 1.0, 0.0):
+                ok: true
+                error failure: false
+            return 45 if not exit_started
+            exit_enabled: bool = catch RenderScene::set_animation_root_motion(exit_rig,
+                RenderScene::AnimationRootMotionMode.Horizontal, "root"):
+                ok: true
+                error failure: false
+            return 46 if not exit_enabled
+            exit_advanced: bool = catch RenderScene::advance_animation(exit_rig, 1.0):
+                ok: true
+                error failure: false
+            return 47 if not exit_advanced
+            exit_raw: i64 = RenderScene::native_smoke_handle(exit_rig)
+            return 48 if elisa_render_scene_v1_test_animation_root_pose(exit_raw,
+                2.0, 0.0, 6.0) == 0
+            exit_disabled: bool = catch RenderScene::set_animation_root_motion(exit_rig,
+                RenderScene::AnimationRootMotionMode.InPlace, "root"):
+                ok: true
+                error failure: false
+            return 49 if not exit_disabled
+            exit_blending: bool = catch RenderScene::play_animation(exit_rig,
+                "root-motion", false, 1.0, 0.3):
+                ok: true
+                error failure: false
+            return 50 if not exit_blending
+            return 51 if elisa_render_scene_v1_test_animation_root_pose(exit_raw,
+                2.0, 0.0, 6.0) == 0
+            exit_destroyed: bool = catch RenderScene::destroy(exit_rig):
+                ok: true
+                error failure: false
+            return 52 if not exit_destroyed
             0

@@ -141,9 +141,18 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_root_pose(
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return 0;
     const InstanceSlot& instance = state.instances[slot];
-    if (instance.root_motion_mode != 1 || instance.root_motion_joint < 0 ||
-        instance.displayed_joint_pose.size() != instance.joint_entities.size() * 10) return 0;
-    const float* root = instance.displayed_joint_pose.data() + size_t(instance.root_motion_joint) * 10;
+    if (instance.displayed_joint_pose.size() != instance.joint_entities.size() * 10) return 0;
+    int32_t root_joint = instance.root_motion_joint;
+    if (root_joint < 0) {
+        for (size_t index = 0; index < instance.skin_joints.size(); ++index) {
+            if (instance.skin_joints[index].name == "root") {
+                root_joint = int32_t(index);
+                break;
+            }
+        }
+    }
+    if (root_joint < 0) return 0;
+    const float* root = instance.displayed_joint_pose.data() + size_t(root_joint) * 10;
     return std::abs(root[0] - expected_x) < 2.0e-3f &&
         std::abs(root[1] - expected_y) < 2.0e-3f &&
         std::abs(root[2] - expected_z) < 2.0e-3f ? 1 : 0;

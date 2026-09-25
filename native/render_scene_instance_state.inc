@@ -56,5 +56,8 @@ struct InstanceSlot {
     float root_motion_wrap_correction_x = 0.0f;
     float root_motion_wrap_correction_z = 0.0f;
     bool root_motion_previous_valid = false;
+    // The extracted pose becomes the source of the next fade when root
+    // extraction is disabled at the end of an authored action.
+    bool root_motion_exit_pending = false;
     bool live = false;
 };
