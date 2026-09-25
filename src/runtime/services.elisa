@@ -298,8 +298,15 @@ module RuntimeServices:
             try AudioRuntime::set_bus_gain(bus, gain)
 
         def audio_active_voice_count(session: Session&) -> usize error[RuntimeServicesError, AudioRuntime::AudioError]:
-            try require_audio(session)
-            try AudioRuntime::active_voice_count()
+            # Keep each nested service error intact in the combined public set.
+            session_status: i32 = catch require_audio(session):
+                value: 0
+                RuntimeServicesError.SessionStopped: 1
+                RuntimeServicesError.AudioUnavailable: 2
+                error failure: 3
+            raise RuntimeServicesError.SessionStopped if session_status == 1
+            raise RuntimeServicesError.AudioUnavailable if session_status != 0
+            AudioRuntime::active_voice_count()
 
         # Keep the native host lifecycle behind the same owner as its
         # provider fallbacks. These wrappers intentionally preserve the

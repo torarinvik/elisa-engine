@@ -174,5 +174,26 @@ module QualitySettings:
 
         def load_user_data() -> Quality::Profile error[QualitySettingsError, UserData::UserDataError]:
             blob: mutable Save::Blob = Save::Blob(0)
-            try UserData::read_blob(Limits::USER_DATA_KEY, &blob)
+            # Preserve the UserData error identity across this wider error set.
+            read_status: i32 = catch UserData::read_blob(Limits::USER_DATA_KEY, &blob):
+                value: 0
+                UserData::UserDataError.NotInitialized: 1
+                UserData::UserDataError.InvalidKey: 2
+                UserData::UserDataError.InvalidArgument: 3
+                UserData::UserDataError.NotFound: 4
+                UserData::UserDataError.Capacity: 5
+                UserData::UserDataError.WrongVersion: 6
+                UserData::UserDataError.Corrupt: 7
+                UserData::UserDataError.IoFailure: 8
+                UserData::UserDataError.ApiMismatch: 9
+                UserData::UserDataError.InvalidPayload: 10
+                error failure: 11
+            raise UserData::UserDataError.NotInitialized if read_status == 1
+            raise UserData::UserDataError.InvalidKey if read_status == 2
+            raise UserData::UserDataError.InvalidArgument if read_status == 3
+            raise UserData::UserDataError.NotFound if read_status == 4
+            raise UserData::UserDataError.Capacity if read_status == 5
+            raise UserData::UserDataError.WrongVersion if read_status == 6
+            raise UserData::UserDataError.Corrupt if read_status == 7
+            raise UserData::UserDataError.IoFailure if read_status >= 8
             profile_from_blob(blob)
