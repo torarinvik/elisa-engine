@@ -60,7 +60,12 @@ wrapped to one turn, and invalid paths, unsupported assets, and incompatible
 dimensions fail without replacing the current sky. `clear_sky_map` releases
 the authored map. The SDL3/Metal gate loads an 8x4 fixture, checks asset and
 rotation state, pumps a frame, rejects a traversal path and a square non-cube
-image, and verifies clearing.
+image, and verifies clearing. After the reference screenshots have been saved,
+the gate hides the game geometry, points the camera at the sky, and compares
+GPU readbacks: loading the fixture, setting sky exposure to zero, and clearing
+the map must each change a 5x5 rendered patch by at least 0.01 mean luminance.
+Running this last keeps the temporary sky state out of the lighting and
+post-process references.
 
 `RenderScene::set_sun_cascade_distances` configures Wicked's three directional
 shadow cascade end distances. Values must strictly increase and the last split
