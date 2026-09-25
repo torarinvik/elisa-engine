@@ -10,6 +10,8 @@ The native SDL3/Metal fixture uses a 0.01-scale, rotated skeleton ancestor and a
 root clip with translation on all three authored axes. Its assertions cover the
 first sampled delta, the remaining vertical pose, accumulation, forward and
 reverse loop wraps, skipped cycles, direction changes, and disabling extraction.
+After disabling extraction, it starts a follow-on fade and verifies that the
+displayed root pose remains the fade source with no visible jump.
 The native render-scene main invokes this as animation case group 271.
 
 The focused fixture can be regenerated and checked on macOS with:
