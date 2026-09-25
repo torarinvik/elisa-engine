@@ -1,0 +1,178 @@
+# Versioned, portable persistence for the backend-neutral render quality
+# profile. The native user-data service stores only the checked Save blob.
+include "../backend/quality.elisa"
+include "../vendor/elisa_math.elisa"
+include "./save.elisa"
+include "./user_data.elisa"
+
+module QualitySettings:
+    private:
+        const module Limits:
+            USER_DATA_KEY: cstr = "render-quality"
+            PROFILE_VERSION: i64 = 1
+            PROFILE_FIELD_COUNT: usize = 14
+            FLOAT_SCALE_F64: f64 = 1000000.0
+            FLOAT_SCALE_F32: f32 = 1000000.0
+
+            LEVEL_LOW: i64 = 0
+            LEVEL_MEDIUM: i64 = 1
+            LEVEL_HIGH: i64 = 2
+            TONEMAP_REINHARD: i64 = 0
+            TONEMAP_ACES: i64 = 1
+            TONEMAP_UCHIMURA: i64 = 2
+            UPSCALER_NONE: i64 = 0
+            UPSCALER_FSR1: i64 = 1
+            UPSCALER_FSR2: i64 = 2
+            SHADOW_LOW: i64 = 0
+            SHADOW_MEDIUM: i64 = 1
+            SHADOW_HIGH: i64 = 2
+            BOOL_FALSE: i64 = 0
+            BOOL_TRUE: i64 = 1
+
+            LEVEL_FIELD: usize = 0
+            TONEMAP_FIELD: usize = 1
+            UPSCALER_FIELD: usize = 2
+            RENDER_SCALE_FIELD: usize = 3
+            BLOOM_FIELD: usize = 4
+            BLOOM_THRESHOLD_FIELD: usize = 5
+            FXAA_FIELD: usize = 6
+            TEMPORAL_AA_FIELD: usize = 7
+            AMBIENT_OCCLUSION_FIELD: usize = 8
+            SCREEN_SPACE_REFLECTIONS_FIELD: usize = 9
+            FOG_FIELD: usize = 10
+            DEPTH_EFFECTS_FIELD: usize = 11
+            SHADOW_QUALITY_FIELD: usize = 12
+            SUN_SHADOW_RECEIVER_BIAS_FIELD: usize = 13
+
+        def encode_level(value: Quality::Level) -> i64:
+            return Limits::LEVEL_LOW if value == Quality::Level.Low
+            return Limits::LEVEL_MEDIUM if value == Quality::Level.Medium
+            Limits::LEVEL_HIGH
+
+        def decode_level(value: i64) -> Quality::Level error[QualitySettingsError]:
+            return Quality::Level.Low if value == Limits::LEVEL_LOW
+            return Quality::Level.Medium if value == Limits::LEVEL_MEDIUM
+            return Quality::Level.High if value == Limits::LEVEL_HIGH
+            raise QualitySettingsError.Corrupt
+
+        def encode_tonemap(value: Quality::Tonemap) -> i64:
+            return Limits::TONEMAP_REINHARD if value == Quality::Tonemap.Reinhard
+            return Limits::TONEMAP_ACES if value == Quality::Tonemap.Aces
+            Limits::TONEMAP_UCHIMURA
+
+        def decode_tonemap(value: i64) -> Quality::Tonemap error[QualitySettingsError]:
+            return Quality::Tonemap.Reinhard if value == Limits::TONEMAP_REINHARD
+            return Quality::Tonemap.Aces if value == Limits::TONEMAP_ACES
+            return Quality::Tonemap.Uchimura if value == Limits::TONEMAP_UCHIMURA
+            raise QualitySettingsError.Corrupt
+
+        def encode_upscaler(value: Quality::Upscaler) -> i64:
+            return Limits::UPSCALER_NONE if value == Quality::Upscaler.None
+            return Limits::UPSCALER_FSR1 if value == Quality::Upscaler.Fsr1
+            Limits::UPSCALER_FSR2
+
+        def decode_upscaler(value: i64) -> Quality::Upscaler error[QualitySettingsError]:
+            return Quality::Upscaler.None if value == Limits::UPSCALER_NONE
+            return Quality::Upscaler.Fsr1 if value == Limits::UPSCALER_FSR1
+            return Quality::Upscaler.Fsr2 if value == Limits::UPSCALER_FSR2
+            raise QualitySettingsError.Corrupt
+
+        def encode_shadow_quality(value: Quality::ShadowQuality) -> i64:
+            return Limits::SHADOW_LOW if value == Quality::ShadowQuality.Low
+            return Limits::SHADOW_MEDIUM if value == Quality::ShadowQuality.Medium
+            Limits::SHADOW_HIGH
+
+        def decode_shadow_quality(value: i64) -> Quality::ShadowQuality error[QualitySettingsError]:
+            return Quality::ShadowQuality.Low if value == Limits::SHADOW_LOW
+            return Quality::ShadowQuality.Medium if value == Limits::SHADOW_MEDIUM
+            return Quality::ShadowQuality.High if value == Limits::SHADOW_HIGH
+            raise QualitySettingsError.Corrupt
+
+        def encode_bool(value: bool) -> i64:
+            Limits::BOOL_TRUE if value else Limits::BOOL_FALSE
+
+        def decode_bool(value: i64) -> bool error[QualitySettingsError]:
+            return false if value == Limits::BOOL_FALSE
+            return true if value == Limits::BOOL_TRUE
+            raise QualitySettingsError.Corrupt
+
+        def encode_float(value: f32) -> i64:
+            ElisaMath::round(value.f64() * Limits::FLOAT_SCALE_F64).i64()
+
+        def decode_float(value: i64) -> f32:
+            value.f32() / Limits::FLOAT_SCALE_F32
+
+    public:
+        error QualitySettingsError:
+            InvalidProfile
+            WrongVersion
+            Corrupt
+
+        # Stable profile fields use explicit codes and millionth fixed-point
+        # floats. This keeps the save format independent of Elisa enum layout.
+        def profile_to_blob(profile: Quality::Profile&) -> Save::Blob error[QualitySettingsError, Save::SaveError]:
+            raise QualitySettingsError.InvalidProfile if not Quality::profile_valid(profile)
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[Limits::LEVEL_FIELD] <- encode_level(profile.level)
+            values[Limits::TONEMAP_FIELD] <- encode_tonemap(profile.tonemap)
+            values[Limits::UPSCALER_FIELD] <- encode_upscaler(profile.upscaler)
+            values[Limits::RENDER_SCALE_FIELD] <- encode_float(profile.render_scale)
+            values[Limits::BLOOM_FIELD] <- encode_bool(profile.bloom)
+            values[Limits::BLOOM_THRESHOLD_FIELD] <- encode_float(profile.bloom_threshold)
+            values[Limits::FXAA_FIELD] <- encode_bool(profile.fxaa)
+            values[Limits::TEMPORAL_AA_FIELD] <- encode_bool(profile.temporal_aa)
+            values[Limits::AMBIENT_OCCLUSION_FIELD] <- encode_bool(profile.ambient_occlusion)
+            values[Limits::SCREEN_SPACE_REFLECTIONS_FIELD] <- encode_bool(profile.screen_space_reflections)
+            values[Limits::FOG_FIELD] <- encode_bool(profile.fog)
+            values[Limits::DEPTH_EFFECTS_FIELD] <- encode_bool(profile.depth_effects)
+            values[Limits::SHADOW_QUALITY_FIELD] <- encode_shadow_quality(profile.shadow_quality)
+            values[Limits::SUN_SHADOW_RECEIVER_BIAS_FIELD] <- encode_float(profile.sun_shadow_receiver_bias)
+            blob: mutable Save::Blob = try Save::save_write(values, Limits::PROFILE_FIELD_COUNT)
+            blob.version <- Limits::PROFILE_VERSION
+            blob
+
+        # Decode into a local profile and expose it only after every field and
+        # the whole profile validate, so corrupt data cannot partially apply.
+        def profile_from_blob(blob: Save::Blob) -> Quality::Profile error[QualitySettingsError]:
+            raise QualitySettingsError.WrongVersion if blob.version != Limits::PROFILE_VERSION
+            raise QualitySettingsError.Corrupt if not Save::blob_valid(blob)
+            raise QualitySettingsError.Corrupt if blob.count != Limits::PROFILE_FIELD_COUNT + 1
+            profile: mutable Quality::Profile = Quality::Profile()
+            level: Quality::Level = try decode_level(blob.fields[Limits::LEVEL_FIELD + 1])
+            profile.level <- level
+            tonemap: Quality::Tonemap = try decode_tonemap(blob.fields[Limits::TONEMAP_FIELD + 1])
+            profile.tonemap <- tonemap
+            upscaler: Quality::Upscaler = try decode_upscaler(blob.fields[Limits::UPSCALER_FIELD + 1])
+            profile.upscaler <- upscaler
+            profile.render_scale <- decode_float(blob.fields[Limits::RENDER_SCALE_FIELD + 1])
+            bloom: bool = try decode_bool(blob.fields[Limits::BLOOM_FIELD + 1])
+            profile.bloom <- bloom
+            profile.bloom_threshold <- decode_float(blob.fields[Limits::BLOOM_THRESHOLD_FIELD + 1])
+            fxaa: bool = try decode_bool(blob.fields[Limits::FXAA_FIELD + 1])
+            profile.fxaa <- fxaa
+            temporal_aa: bool = try decode_bool(blob.fields[Limits::TEMPORAL_AA_FIELD + 1])
+            profile.temporal_aa <- temporal_aa
+            ambient_occlusion: bool = try decode_bool(blob.fields[Limits::AMBIENT_OCCLUSION_FIELD + 1])
+            profile.ambient_occlusion <- ambient_occlusion
+            screen_space_reflections: bool = try decode_bool(blob.fields[Limits::SCREEN_SPACE_REFLECTIONS_FIELD + 1])
+            profile.screen_space_reflections <- screen_space_reflections
+            fog: bool = try decode_bool(blob.fields[Limits::FOG_FIELD + 1])
+            profile.fog <- fog
+            depth_effects: bool = try decode_bool(blob.fields[Limits::DEPTH_EFFECTS_FIELD + 1])
+            profile.depth_effects <- depth_effects
+            shadow_quality: Quality::ShadowQuality = try decode_shadow_quality(blob.fields[Limits::SHADOW_QUALITY_FIELD + 1])
+            profile.shadow_quality <- shadow_quality
+            profile.sun_shadow_receiver_bias <- decode_float(blob.fields[Limits::SUN_SHADOW_RECEIVER_BIAS_FIELD + 1])
+            raise QualitySettingsError.InvalidProfile if not Quality::profile_valid(profile)
+            profile
+
+        # UserData::initialize remains application-owned; this module only
+        # owns the stable key and profile schema.
+        def save_user_data(profile: Quality::Profile&) -> void error[QualitySettingsError, Save::SaveError, UserData::UserDataError]:
+            blob: mutable Save::Blob = try profile_to_blob(profile)
+            try UserData::write_blob(Limits::USER_DATA_KEY, &blob)
+
+        def load_user_data() -> Quality::Profile error[QualitySettingsError, UserData::UserDataError]:
+            blob: mutable Save::Blob = Save::Blob(0)
+            try UserData::read_blob(Limits::USER_DATA_KEY, &blob)
+            profile_from_blob(blob)

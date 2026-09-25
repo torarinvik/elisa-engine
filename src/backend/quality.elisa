@@ -70,6 +70,7 @@ module Quality:
             }
 
         def profile_valid(profile: Profile) -> bool:
+            return false if profile.level != Level.Low and profile.level != Level.Medium and profile.level != Level.High
             return false if profile.tonemap != Tonemap.Reinhard and profile.tonemap != Tonemap.Aces and profile.tonemap != Tonemap.Uchimura
             return false if profile.upscaler != Upscaler.None and profile.upscaler != Upscaler.Fsr1 and profile.upscaler != Upscaler.Fsr2
             return false if profile.shadow_quality != ShadowQuality.Low and profile.shadow_quality != ShadowQuality.Medium and profile.shadow_quality != ShadowQuality.High
