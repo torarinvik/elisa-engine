@@ -1,0 +1,77 @@
+namespace {
+
+constexpr float MIN_BODY_PRINCIPAL_MOMENT = 0.000001f;
+constexpr float MAX_BODY_PRINCIPAL_MOMENT = 1.0e12f;
+
+bool valid_principal_moments(float x, float y, float z) {
+    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z) &&
+        x >= MIN_BODY_PRINCIPAL_MOMENT && x <= MAX_BODY_PRINCIPAL_MOMENT &&
+        y >= MIN_BODY_PRINCIPAL_MOMENT && y <= MAX_BODY_PRINCIPAL_MOMENT &&
+        z >= MIN_BODY_PRINCIPAL_MOMENT && z <= MAX_BODY_PRINCIPAL_MOMENT;
+}
+
+} // namespace
+
+extern "C" int32_t elisa_physics_v1_body_set_inertia(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, float moment_x, float moment_y,
+    float moment_z) {
+    if (!valid_principal_moments(moment_x, moment_y, moment_z)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    wi::scene::RigidBodyPhysicsComponent* rigidbody =
+        state.scene->rigidbodies.GetComponent(body->entity);
+    if (rigidbody == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    if (rigidbody->mass <= 0.0f || rigidbody->IsKinematic()) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (rigidbody->physicsobject != nullptr) return ELISA_PHYSICS_CONFIGURATION_LOCKED;
+
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    const float inertia_scale = profile.metres_per_unit * profile.metres_per_unit;
+    const XMFLOAT3 backend_moments(moment_x * inertia_scale,
+        moment_y * inertia_scale, moment_z * inertia_scale);
+    if (!probe::coordinates::finite(backend_moments)) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    rigidbody->principal_inertia = backend_moments;
+    rigidbody->has_principal_inertia_override = true;
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_body_inertia(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, float* moment_x, float* moment_y,
+    float* moment_z) {
+    if (moment_x == nullptr || moment_y == nullptr || moment_z == nullptr) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    wi::scene::RigidBodyPhysicsComponent* rigidbody =
+        state.scene->rigidbodies.GetComponent(body->entity);
+    if (rigidbody == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    if (rigidbody->mass <= 0.0f || rigidbody->IsKinematic()) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (rigidbody->physicsobject == nullptr) return ELISA_PHYSICS_BODY_NOT_READY;
+
+    const XMFLOAT3 backend_moments = wi::physics::GetPrincipalInertia(*rigidbody);
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    const float inverse_scale = 1.0f / profile.metres_per_unit;
+    const float inertia_scale = inverse_scale * inverse_scale;
+    const XMFLOAT3 authored_moments(backend_moments.x * inertia_scale,
+        backend_moments.y * inertia_scale, backend_moments.z * inertia_scale);
+    if (!valid_principal_moments(authored_moments.x, authored_moments.y,
+            authored_moments.z)) {
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+    *moment_x = authored_moments.x;
+    *moment_y = authored_moments.y;
+    *moment_z = authored_moments.z;
+    return ELISA_PHYSICS_OK;
+}

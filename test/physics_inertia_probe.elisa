@@ -1,0 +1,78 @@
+# Verifies the public inertia contract against Jolt's live body properties.
+include "../src/runtime/services.elisa"
+
+module PhysicsInertiaProbe:
+    private:
+        const module Tune:
+            MASS: f32 = 3.0
+            FIXED_STEP_SECONDS: f32 = 1.0 / 60.0
+            REQUESTED_MOMENT_X: f32 = 2.0
+            REQUESTED_MOMENT_Y: f32 = 4.0
+            REQUESTED_MOMENT_Z: f32 = 8.0
+            EXPECTED_MOMENT_X: f32 = 8.0
+            EXPECTED_MOMENT_Y: f32 = 4.0
+            EXPECTED_MOMENT_Z: f32 = 2.0
+            MOMENT_TOLERANCE: f32 = 0.0001
+            DEFAULT_COLLISION_LAYER: u32 = 0
+
+        def close(left: f32, right: f32) -> bool:
+            difference: f32 = left - right
+            difference >= -Tune::MOMENT_TOLERANCE and difference <= Tune::MOMENT_TOLERANCE
+
+        def invalid_inertia_rejected() -> bool:
+            catch PhysicsRuntime::BodyInertia(Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}):
+                value: false
+                PhysicsRuntime::PhysicsError.InvalidArgument: true
+                error failure: false
+
+    public:
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Sphere,
+                    position: Geometry::Vec3{x: 0.0, y: 10.0, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0},
+                    mass: Tune::MASS,
+                    sensor: false,
+                    collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 1
+            inertia: PhysicsRuntime::BodyInertia = catch PhysicsRuntime::BodyInertia(
+                Geometry::Vec3{x: Tune::REQUESTED_MOMENT_X,
+                    y: Tune::REQUESTED_MOMENT_Y, z: Tune::REQUESTED_MOMENT_Z}):
+                value: value
+                error failure: return 2
+            return 3 if not PhysicsInertiaProbe::invalid_inertia_rejected()
+            configured: bool = catch RuntimeServices::physics_body_set_inertia(
+                session, body, inertia):
+                ok: true
+                error failure: false
+            return 4 if not configured
+            not_ready: bool = catch RuntimeServices::physics_body_inertia(session, body):
+                value: false
+                PhysicsRuntime::PhysicsError.BodyNotReady: true
+                error failure: false
+            return 5 if not not_ready
+            stepped: bool = catch RuntimeServices::physics_fixed_step(session,
+                Tune::FIXED_STEP_SECONDS):
+                value: true
+                error failure: false
+            return 6 if not stepped
+            moments: Geometry::Vec3 = catch RuntimeServices::physics_body_inertia(
+                session, body):
+                value: value
+                error failure: return 7
+            return 8 if not PhysicsInertiaProbe::close(moments.x, Tune::EXPECTED_MOMENT_X) or not PhysicsInertiaProbe::close(moments.y, Tune::EXPECTED_MOMENT_Y) or not PhysicsInertiaProbe::close(moments.z, Tune::EXPECTED_MOMENT_Z)
+            late_update: bool = catch RuntimeServices::physics_body_set_inertia(
+                session, body, inertia):
+                ok: false
+                PhysicsRuntime::PhysicsError.ConfigurationLocked: true
+                error failure: false
+            return 9 if not late_update
+            destroyed: bool = catch RuntimeServices::physics_body_destroy(session, body):
+                ok: true
+                error failure: false
+            return 10 if not destroyed
+            0
