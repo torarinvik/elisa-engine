@@ -35,8 +35,12 @@ extern "C" int32_t elisa_physics_v1_body_linear_velocity(uint64_t world_generati
         body_generation, rigidbody);
     if (body_status != ELISA_PHYSICS_OK) return body_status;
     try {
-        const XMFLOAT3 velocity = wi::physics::GetVelocity(*rigidbody);
-        if (!finite_bounded_vector(velocity.x, velocity.y, velocity.z,
+        const XMFLOAT3 backend_velocity = wi::physics::GetVelocity(*rigidbody);
+        XMFLOAT3 velocity{};
+        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+        if (!elisa_physics_coordinates::from_wicked_physical_vector(&profile,
+                backend_velocity, velocity) ||
+            !finite_bounded_vector(velocity.x, velocity.y, velocity.z,
                 MAX_BODY_LINEAR_SPEED)) {
             return ELISA_PHYSICS_BACKEND_FAILURE;
         }
@@ -64,8 +68,14 @@ extern "C" int32_t elisa_physics_v1_body_set_linear_velocity(uint64_t world_gene
         body_generation, rigidbody);
     if (body_status != ELISA_PHYSICS_OK) return body_status;
     try {
+        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+        XMFLOAT3 backend_velocity{};
+        if (!elisa_physics_coordinates::to_wicked_physical_vector(&profile,
+                XMFLOAT3(velocity_x, velocity_y, velocity_z), backend_velocity)) {
+            return ELISA_PHYSICS_INVALID_ARGUMENT;
+        }
         wi::physics::SetLinearVelocity(*rigidbody,
-            XMFLOAT3(velocity_x, velocity_y, velocity_z));
+            backend_velocity);
     } catch (...) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
@@ -87,7 +97,13 @@ extern "C" int32_t elisa_physics_v1_body_apply_impulse(uint64_t world_generation
         body_generation, rigidbody);
     if (body_status != ELISA_PHYSICS_OK) return body_status;
     try {
-        wi::physics::ApplyImpulse(*rigidbody, XMFLOAT3(impulse_x, impulse_y, impulse_z));
+        const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+        XMFLOAT3 backend_impulse{};
+        if (!elisa_physics_coordinates::to_wicked_physical_vector(&profile,
+                XMFLOAT3(impulse_x, impulse_y, impulse_z), backend_impulse)) {
+            return ELISA_PHYSICS_INVALID_ARGUMENT;
+        }
+        wi::physics::ApplyImpulse(*rigidbody, backend_impulse);
     } catch (...) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }

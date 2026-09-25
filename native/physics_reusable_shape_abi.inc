@@ -200,6 +200,9 @@ extern "C" int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int3
     shape.dimension_y = dimension_y;
     shape.dimension_z = dimension_z;
     shape.body_references = 0;
+    shape.compound_references = 0;
+    shape.requires_static_body = false;
+    std::vector<ShapeReference>().swap(shape.child_shapes);
     try {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
         configure_precomputed_shape(shape);
@@ -291,6 +294,9 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
         shape.kind = kind;
         shape.dimension_x = shape.dimension_y = shape.dimension_z = 0.0f;
         shape.body_references = 0;
+        shape.compound_references = 0;
+        shape.requires_static_body = kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH;
+        std::vector<ShapeReference>().swap(shape.child_shapes);
     } catch (...) {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
         std::vector<XMFLOAT3>().swap(shape.mesh_vertices);
@@ -404,6 +410,9 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
         shape.dimension_y = 0.0f;
         shape.dimension_z = 0.0f;
         shape.body_references = 0;
+        shape.compound_references = 0;
+        shape.requires_static_body = kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH;
+        std::vector<ShapeReference>().swap(shape.child_shapes);
         shape.mesh_vertices = converted_positions;
         shape.mesh_indices.assign(source_mesh.indices.begin(), source_mesh.indices.end());
         shape.mesh_geometry_bytes = geometry_bytes;
@@ -441,16 +450,29 @@ extern "C" int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     PhysicsService& state = physics_service();
     ShapeSlot* shape = resolve_shape(state, slot, shape_generation);
     if (shape == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
-    if (shape->body_references != 0) return ELISA_PHYSICS_SHAPE_IN_USE;
+    if (shape->body_references != 0 || shape->compound_references != 0) {
+        return ELISA_PHYSICS_SHAPE_IN_USE;
+    }
+    for (const ShapeReference& reference : shape->child_shapes) {
+        if (reference.slot >= MAX_SHAPES) return ELISA_PHYSICS_BACKEND_FAILURE;
+        const ShapeSlot& child = state.shapes[reference.slot];
+        if (!child.live || child.generation != reference.generation ||
+            child.compound_references == 0) return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
     if (shape->mesh_geometry_bytes > state.mesh_geometry_bytes) return ELISA_PHYSICS_BACKEND_FAILURE;
+    for (const ShapeReference& reference : shape->child_shapes) {
+        --state.shapes[reference.slot].compound_references;
+    }
     state.mesh_geometry_bytes -= shape->mesh_geometry_bytes;
     shape->backend_shape = wi::scene::RigidBodyPhysicsComponent{};
     std::vector<XMFLOAT3>().swap(shape->mesh_vertices);
     std::vector<uint32_t>().swap(shape->mesh_indices);
     shape->mesh_geometry_bytes = 0;
+    std::vector<ShapeReference>().swap(shape->child_shapes);
     shape->dimension_x = 0.0f;
     shape->dimension_y = 0.0f;
     shape->dimension_z = 0.0f;
+    shape->requires_static_body = false;
     shape->live = false;
     return ELISA_PHYSICS_OK;
 }
@@ -473,7 +495,7 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
     PhysicsService& state = physics_service();
     ShapeSlot* shape = resolve_shape(state, shape_slot, shape_generation);
     if (shape == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
-    if (shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH && kind != ELISA_PHYSICS_BODY_STATIC) {
+    if (shape->requires_static_body && kind != ELISA_PHYSICS_BODY_STATIC) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     if (shape->body_references == UINT32_MAX) return ELISA_PHYSICS_CAPACITY;
@@ -542,7 +564,8 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
     uint32_t created_slot = 0;
     uint64_t created_generation = 0;
     const bool mesh_shape = shape->kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL ||
-        shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH;
+        shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH ||
+        shape->kind == ELISA_PHYSICS_SHAPE_COMPOUND;
     const int32_t proxy_shape = mesh_shape ? ELISA_PHYSICS_SHAPE_BOX : shape->kind;
     const int32_t create_status = elisa_physics_v1_create_body(world_generation, kind,
         proxy_shape, position_x, position_y, position_z,

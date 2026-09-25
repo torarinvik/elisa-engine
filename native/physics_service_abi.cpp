@@ -3,6 +3,7 @@
 #include "coordinate_transform_bridge.h"
 #include "coordinate_conventions.h"
 #include "cooked_geometry_package.h"
+#include "physics_coordinate_bridge.h"
 #include "physics_service_internal.h"
 
 #include <array>
@@ -56,6 +57,9 @@ void shutdown_world() {
         std::vector<uint32_t>().swap(shape.mesh_indices);
         shape.mesh_geometry_bytes = 0;
         shape.body_references = 0;
+        shape.compound_references = 0;
+        std::vector<elisa_physics_internal::ShapeReference>().swap(shape.child_shapes);
+        shape.requires_static_body = false;
         shape.live = false;
     }
     state.mesh_geometry_bytes = 0;
@@ -141,6 +145,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 
 #include "physics_create_body_abi.inc"
 #include "physics_reusable_shape_abi.inc"
+#include "physics_compound_shape_abi.inc"
 #include "physics_body_motion_abi.inc"
 
 extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
@@ -200,20 +205,37 @@ extern "C" int32_t elisa_physics_v1_raycast(uint64_t world_generation,
     probe::PhysicsQueryHit result{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
-    const XMFLOAT3 origin(origin_x, origin_y, origin_z);
-    const XMFLOAT3 direction(direction_x, direction_y, direction_z);
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 origin{};
+    XMFLOAT3 direction{};
+    float backend_max_distance = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(origin_x, origin_y, origin_z), origin) ||
+        !elisa_physics_coordinates::to_wicked_direction(&profile,
+            XMFLOAT3(direction_x, direction_y, direction_z), direction) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, max_distance, backend_max_distance)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     const bool found = state.query_bridge != nullptr &&
-        (state.query_bridge->raycast(query_token, origin, direction, max_distance,
-            layer_mask, result) || state.query_bridge->raycast_physics(query_token,
-            origin, direction, max_distance, layer_mask, result));
+        state.query_bridge->raycast_physics(query_token, origin, direction,
+            backend_max_distance, layer_mask, result);
+    XMFLOAT3 authored_position{};
+    XMFLOAT3 authored_normal{};
+    float authored_distance = 0.0f;
+    if (found && (!elisa_physics_coordinates::from_wicked_position(&profile,
+            result.position, authored_position) ||
+        !elisa_physics_coordinates::from_wicked_direction(&profile,
+            result.normal, authored_normal) ||
+        !elisa_physics_coordinates::from_wicked_length(&profile,
+            result.distance, authored_distance))) return ELISA_PHYSICS_BACKEND_FAILURE;
     *entity = found ? static_cast<uint64_t>(result.entity) : 0;
-    *position_x = found ? result.position.x : 0.0f;
-    *position_y = found ? result.position.y : 0.0f;
-    *position_z = found ? result.position.z : 0.0f;
-    *normal_x = found ? result.normal.x : 0.0f;
-    *normal_y = found ? result.normal.y : 0.0f;
-    *normal_z = found ? result.normal.z : 0.0f;
-    *distance = found ? result.distance : 0.0f;
+    *position_x = found ? authored_position.x : 0.0f;
+    *position_y = found ? authored_position.y : 0.0f;
+    *position_z = found ? authored_position.z : 0.0f;
+    *normal_x = found ? authored_normal.x : 0.0f;
+    *normal_y = found ? authored_normal.y : 0.0f;
+    *normal_z = found ? authored_normal.z : 0.0f;
+    *distance = found ? authored_distance : 0.0f;
     *hit = found ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }
@@ -240,23 +262,42 @@ extern "C" int32_t elisa_physics_v1_raycast_all(uint64_t world_generation,
     probe::PhysicsQueryBridge::Hits results{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 origin{};
+    XMFLOAT3 direction{};
+    float backend_max_distance = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(origin_x, origin_y, origin_z), origin) ||
+        !elisa_physics_coordinates::to_wicked_direction(&profile,
+            XMFLOAT3(direction_x, direction_y, direction_z), direction) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, max_distance, backend_max_distance)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     const size_t found = state.query_bridge != nullptr
         ? state.query_bridge->raycast_all(query_token,
-            XMFLOAT3(origin_x, origin_y, origin_z),
-            XMFLOAT3(direction_x, direction_y, direction_z), max_distance, layer_mask, results)
+            origin, direction, backend_max_distance, layer_mask, results)
         : 0;
     buffer->count = static_cast<uint32_t>(found);
     for (size_t index = 0; index < found; ++index) {
         const probe::PhysicsQueryHit& source = results.values[index];
         ElisaPhysicsRayHit& destination = buffer->hits[index];
+        XMFLOAT3 authored_position{};
+        XMFLOAT3 authored_normal{};
+        float authored_distance = 0.0f;
+        if (!elisa_physics_coordinates::from_wicked_position(&profile,
+                source.position, authored_position) ||
+            !elisa_physics_coordinates::from_wicked_direction(&profile,
+                source.normal, authored_normal) ||
+            !elisa_physics_coordinates::from_wicked_length(&profile,
+                source.distance, authored_distance)) return ELISA_PHYSICS_BACKEND_FAILURE;
         destination.entity = static_cast<uint64_t>(source.entity);
-        destination.position_x = source.position.x;
-        destination.position_y = source.position.y;
-        destination.position_z = source.position.z;
-        destination.normal_x = source.normal.x;
-        destination.normal_y = source.normal.y;
-        destination.normal_z = source.normal.z;
-        destination.distance = source.distance;
+        destination.position_x = authored_position.x;
+        destination.position_y = authored_position.y;
+        destination.position_z = authored_position.z;
+        destination.normal_x = authored_normal.x;
+        destination.normal_y = authored_normal.y;
+        destination.normal_z = authored_normal.z;
+        destination.distance = authored_distance;
     }
     return ELISA_PHYSICS_OK;
 }
@@ -274,18 +315,28 @@ extern "C" int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
         *dropped = static_cast<uint32_t>(state.pending_contact_dropped);
         return ELISA_PHYSICS_CAPACITY;
     }
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
     for (size_t index = 0; index < state.pending_contact_count; ++index) {
         const probe::PhysicsContactEvent& source = state.pending_contacts[index];
         ElisaPhysicsContactEvent& destination = events[index];
+        XMFLOAT3 authored_position{};
+        XMFLOAT3 authored_normal{};
+        float authored_depth = 0.0f;
+        if (!elisa_physics_coordinates::from_wicked_position(&profile,
+                source.position, authored_position) ||
+            !elisa_physics_coordinates::from_wicked_direction(&profile,
+                source.normal, authored_normal) ||
+            !elisa_physics_coordinates::from_wicked_length(&profile,
+                source.depth, authored_depth)) return ELISA_PHYSICS_BACKEND_FAILURE;
         destination.entity_a = source.entity_a;
         destination.entity_b = source.entity_b;
-        destination.position_x = source.position.x;
-        destination.position_y = source.position.y;
-        destination.position_z = source.position.z;
-        destination.normal_x = source.normal.x;
-        destination.normal_y = source.normal.y;
-        destination.normal_z = source.normal.z;
-        destination.penetration_depth = source.depth;
+        destination.position_x = authored_position.x;
+        destination.position_y = authored_position.y;
+        destination.position_z = authored_position.z;
+        destination.normal_x = authored_normal.x;
+        destination.normal_y = authored_normal.y;
+        destination.normal_z = authored_normal.z;
+        destination.penetration_depth = authored_depth;
         destination.kind = static_cast<int32_t>(source.kind);
         destination.trigger = source.trigger ? 1 : 0;
         destination.sequence = source.sequence;
@@ -324,15 +375,25 @@ extern "C" int32_t elisa_physics_v1_contact_at(uint64_t world_generation, uint32
     const PhysicsService& state = physics_service();
     if (index >= state.pending_contact_count) return ELISA_PHYSICS_INVALID_ARGUMENT;
     const probe::PhysicsContactEvent& source = state.pending_contacts[index];
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 authored_position{};
+    XMFLOAT3 authored_normal{};
+    float authored_depth = 0.0f;
+    if (!elisa_physics_coordinates::from_wicked_position(&profile,
+            source.position, authored_position) ||
+        !elisa_physics_coordinates::from_wicked_direction(&profile,
+            source.normal, authored_normal) ||
+        !elisa_physics_coordinates::from_wicked_length(&profile,
+            source.depth, authored_depth)) return ELISA_PHYSICS_BACKEND_FAILURE;
     *entity_a = source.entity_a;
     *entity_b = source.entity_b;
-    *position_x = source.position.x;
-    *position_y = source.position.y;
-    *position_z = source.position.z;
-    *normal_x = source.normal.x;
-    *normal_y = source.normal.y;
-    *normal_z = source.normal.z;
-    *penetration_depth = source.depth;
+    *position_x = authored_position.x;
+    *position_y = authored_position.y;
+    *position_z = authored_position.z;
+    *normal_x = authored_normal.x;
+    *normal_y = authored_normal.y;
+    *normal_z = authored_normal.z;
+    *penetration_depth = authored_depth;
     *kind = static_cast<int32_t>(source.kind);
     *trigger = source.trigger ? 1 : 0;
     *sequence = source.sequence;

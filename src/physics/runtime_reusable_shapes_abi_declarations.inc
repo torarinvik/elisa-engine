@@ -14,6 +14,12 @@
             slot: mutable u32&, shape_generation: mutable u64&) -> i32
 
         @callconv(c)
+        extern elisa_physics_v1_create_compound_shape(world_generation: u64,
+            child_slots: u32&, child_generations: u64&,
+            child_positions: Geometry::Vec3&, child_rotations: Geometry::Quat&,
+            child_count: u32, slot: mutable u32&, shape_generation: mutable u64&) -> i32
+
+        @callconv(c)
         extern elisa_physics_v1_destroy_shape(world_generation: u64,
             slot: u32, shape_generation: u64) -> i32
 

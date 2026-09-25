@@ -17,6 +17,7 @@ namespace elisa_physics_internal {
 
 constexpr uint32_t MAX_BODIES = 64;
 constexpr uint32_t MAX_SHAPES = 64;
+constexpr uint32_t MAX_COMPOUND_CHILDREN = ELISA_PHYSICS_MAX_COMPOUND_CHILDREN;
 constexpr uint32_t INVALID_SHAPE_SLOT = MAX_SHAPES;
 constexpr size_t MAX_CONTACT_EVENTS = ELISA_PHYSICS_MAX_CONTACT_EVENTS;
 constexpr uint32_t MAX_MESH_VERTICES = 65536;
@@ -34,17 +35,25 @@ struct BodySlot {
     bool live = false;
 };
 
+struct ShapeReference {
+    uint32_t slot = INVALID_SHAPE_SLOT;
+    uint64_t generation = 0;
+};
+
 struct ShapeSlot {
     wi::scene::RigidBodyPhysicsComponent backend_shape{};
     std::vector<XMFLOAT3> mesh_vertices;
     std::vector<uint32_t> mesh_indices;
+    std::vector<ShapeReference> child_shapes;
     size_t mesh_geometry_bytes = 0;
     float dimension_x = 0.0f;
     float dimension_y = 0.0f;
     float dimension_z = 0.0f;
     uint64_t generation = 0;
     uint32_t body_references = 0;
+    uint32_t compound_references = 0;
     int32_t kind = ELISA_PHYSICS_SHAPE_BOX;
+    bool requires_static_body = false;
     bool live = false;
 };
 

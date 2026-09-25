@@ -33,6 +33,7 @@ enum {
     ELISA_PHYSICS_SHAPE_CAPSULE = 2,
     ELISA_PHYSICS_SHAPE_TRIANGLE_MESH = 3,
     ELISA_PHYSICS_SHAPE_CONVEX_HULL = 4,
+    ELISA_PHYSICS_SHAPE_COMPOUND = 5,
 };
 
 enum {
@@ -41,6 +42,7 @@ enum {
     ELISA_PHYSICS_CONTACT_REMOVED = 2,
     ELISA_PHYSICS_MAX_CONTACT_EVENTS = 64,
     ELISA_PHYSICS_MAX_QUERY_HITS = 16,
+    ELISA_PHYSICS_MAX_COMPOUND_CHILDREN = 16,
 };
 
 typedef struct ElisaPhysicsRayHit {
@@ -59,6 +61,13 @@ typedef struct ElisaPhysicsVec3 {
     float y;
     float z;
 } ElisaPhysicsVec3;
+
+typedef struct ElisaPhysicsQuat {
+    float x;
+    float y;
+    float z;
+    float w;
+} ElisaPhysicsQuat;
 
 typedef struct ElisaPhysicsRayHitBuffer {
     ElisaPhysicsRayHit hits[ELISA_PHYSICS_MAX_QUERY_HITS];
@@ -122,6 +131,10 @@ int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation, int32_t ki
     const ElisaPhysicsVec3* vertices, uint32_t vertex_count,
     const uint32_t* indices, uint32_t index_count,
     uint32_t* slot, uint64_t* shape_generation);
+int32_t elisa_physics_v1_create_compound_shape(uint64_t world_generation,
+    const uint32_t* child_slots, const uint64_t* child_generations,
+    const ElisaPhysicsVec3* child_positions, const ElisaPhysicsQuat* child_rotations,
+    uint32_t child_count, uint32_t* slot, uint64_t* shape_generation);
 int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     uint32_t slot, uint64_t shape_generation);
 int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_generation, int32_t kind,

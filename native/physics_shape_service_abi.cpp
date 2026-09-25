@@ -1,4 +1,5 @@
 #include "physics_service_internal.h"
+#include "physics_coordinate_bridge.h"
 
 #include <cmath>
 #include <cstddef>
@@ -36,16 +37,26 @@ bool valid_overlap(float radius) {
     return std::isfinite(radius) && radius > 0.0f;
 }
 
-void copy_shape_hit(const probe::PhysicsQueryHit& source, ElisaPhysicsShapeHit* destination) {
+bool copy_shape_hit(const ElisaCoordinateProfile* profile,
+    const probe::PhysicsQueryHit& source, ElisaPhysicsShapeHit* destination) {
+    XMFLOAT3 position{};
+    XMFLOAT3 normal{};
+    float distance = 0.0f;
+    float depth = 0.0f;
+    if (!elisa_physics_coordinates::from_wicked_position(profile, source.position, position) ||
+        !elisa_physics_coordinates::from_wicked_direction(profile, source.normal, normal) ||
+        !elisa_physics_coordinates::from_wicked_length(profile, source.distance, distance) ||
+        !elisa_physics_coordinates::from_wicked_length(profile, source.depth, depth)) return false;
     destination->entity = static_cast<uint64_t>(source.entity);
-    destination->position_x = source.position.x;
-    destination->position_y = source.position.y;
-    destination->position_z = source.position.z;
-    destination->normal_x = source.normal.x;
-    destination->normal_y = source.normal.y;
-    destination->normal_z = source.normal.z;
-    destination->distance = source.distance;
-    destination->penetration_depth = source.depth;
+    destination->position_x = position.x;
+    destination->position_y = position.y;
+    destination->position_z = position.z;
+    destination->normal_x = normal.x;
+    destination->normal_y = normal.y;
+    destination->normal_z = normal.z;
+    destination->distance = distance;
+    destination->penetration_depth = depth;
+    return true;
 }
 
 } // namespace
@@ -63,14 +74,26 @@ extern "C" int32_t elisa_physics_v1_sphere_cast(uint64_t world_generation,
     const int32_t status = elisa_physics_internal::require_world(world_generation);
     if (status != ELISA_PHYSICS_OK) return status;
     elisa_physics_internal::PhysicsService& state = elisa_physics_internal::physics_service();
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_center{};
+    XMFLOAT3 backend_direction{};
+    float backend_distance = 0.0f;
+    float backend_radius = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(center_x, center_y, center_z), backend_center) ||
+        !elisa_physics_coordinates::to_wicked_direction(&profile,
+            XMFLOAT3(direction_x, direction_y, direction_z), backend_direction) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, max_distance, backend_distance) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, radius, backend_radius)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     probe::PhysicsQueryHit source{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
     const bool found = state.query_bridge != nullptr && state.query_bridge->sphere_cast(
-        query_token, XMFLOAT3(center_x, center_y, center_z),
-        XMFLOAT3(direction_x, direction_y, direction_z), max_distance, radius,
+        query_token, backend_center, backend_direction, backend_distance, backend_radius,
         layer_mask, source);
-    if (found) copy_shape_hit(source, result);
+    if (found && !copy_shape_hit(&profile, source, result)) return ELISA_PHYSICS_BACKEND_FAILURE;
     *hit = found ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }
@@ -91,14 +114,29 @@ extern "C" int32_t elisa_physics_v1_capsule_cast(uint64_t world_generation,
     const int32_t status = elisa_physics_internal::require_world(world_generation);
     if (status != ELISA_PHYSICS_OK) return status;
     elisa_physics_internal::PhysicsService& state = elisa_physics_internal::physics_service();
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_base{};
+    XMFLOAT3 backend_tip{};
+    XMFLOAT3 backend_direction{};
+    float backend_distance = 0.0f;
+    float backend_radius = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(base_x, base_y, base_z), backend_base) ||
+        !elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(tip_x, tip_y, tip_z), backend_tip) ||
+        !elisa_physics_coordinates::to_wicked_direction(&profile,
+            XMFLOAT3(direction_x, direction_y, direction_z), backend_direction) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, max_distance, backend_distance) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, radius, backend_radius)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     probe::PhysicsQueryHit source{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
     const bool found = state.query_bridge != nullptr && state.query_bridge->capsule_cast(
-        query_token, XMFLOAT3(base_x, base_y, base_z), XMFLOAT3(tip_x, tip_y, tip_z),
-        XMFLOAT3(direction_x, direction_y, direction_z), max_distance, radius,
+        query_token, backend_base, backend_tip, backend_direction, backend_distance, backend_radius,
         layer_mask, source);
-    if (found) copy_shape_hit(source, result);
+    if (found && !copy_shape_hit(&profile, source, result)) return ELISA_PHYSICS_BACKEND_FAILURE;
     *hit = found ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }
@@ -115,12 +153,20 @@ extern "C" int32_t elisa_physics_v1_overlap_sphere(uint64_t world_generation,
     const int32_t status = elisa_physics_internal::require_world(world_generation);
     if (status != ELISA_PHYSICS_OK) return status;
     elisa_physics_internal::PhysicsService& state = elisa_physics_internal::physics_service();
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_center{};
+    float backend_radius = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(center_x, center_y, center_z), backend_center) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, radius, backend_radius)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     probe::PhysicsQueryHit source{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
     const bool found = state.query_bridge != nullptr && state.query_bridge->overlap_sphere(
-        query_token, XMFLOAT3(center_x, center_y, center_z), radius, layer_mask, source);
-    if (found) copy_shape_hit(source, result);
+        query_token, backend_center, backend_radius, layer_mask, source);
+    if (found && !copy_shape_hit(&profile, source, result)) return ELISA_PHYSICS_BACKEND_FAILURE;
     *hit = found ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }
@@ -136,14 +182,24 @@ extern "C" int32_t elisa_physics_v1_overlap_sphere_all(uint64_t world_generation
     const int32_t status = elisa_physics_internal::require_world(world_generation);
     if (status != ELISA_PHYSICS_OK) return status;
     elisa_physics_internal::PhysicsService& state = elisa_physics_internal::physics_service();
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_center{};
+    float backend_radius = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(center_x, center_y, center_z), backend_center) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, radius, backend_radius)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     probe::PhysicsQueryBridge::Hits results{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
     const size_t found = state.query_bridge != nullptr ? state.query_bridge->overlap_sphere_all(
-        query_token, XMFLOAT3(center_x, center_y, center_z), radius, layer_mask, results) : 0;
+        query_token, backend_center, backend_radius, layer_mask, results) : 0;
     if (found > ELISA_PHYSICS_MAX_QUERY_HITS) return ELISA_PHYSICS_CAPACITY;
     for (size_t index = 0; index < found; ++index) {
-        copy_shape_hit(results.values[index], &buffer->hits[index]);
+        if (!copy_shape_hit(&profile, results.values[index], &buffer->hits[index])) {
+            return ELISA_PHYSICS_BACKEND_FAILURE;
+        }
     }
     buffer->count = static_cast<uint32_t>(found);
     return ELISA_PHYSICS_OK;
@@ -161,13 +217,23 @@ extern "C" int32_t elisa_physics_v1_overlap_capsule(uint64_t world_generation,
     const int32_t status = elisa_physics_internal::require_world(world_generation);
     if (status != ELISA_PHYSICS_OK) return status;
     elisa_physics_internal::PhysicsService& state = elisa_physics_internal::physics_service();
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_base{};
+    XMFLOAT3 backend_tip{};
+    float backend_radius = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(base_x, base_y, base_z), backend_base) ||
+        !elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(tip_x, tip_y, tip_z), backend_tip) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, radius, backend_radius)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     probe::PhysicsQueryHit source{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
     const bool found = state.query_bridge != nullptr && state.query_bridge->overlap_capsule(
-        query_token, XMFLOAT3(base_x, base_y, base_z), XMFLOAT3(tip_x, tip_y, tip_z),
-        radius, layer_mask, source);
-    if (found) copy_shape_hit(source, result);
+        query_token, backend_base, backend_tip, backend_radius, layer_mask, source);
+    if (found && !copy_shape_hit(&profile, source, result)) return ELISA_PHYSICS_BACKEND_FAILURE;
     *hit = found ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }
@@ -183,15 +249,27 @@ extern "C" int32_t elisa_physics_v1_overlap_capsule_all(uint64_t world_generatio
     const int32_t status = elisa_physics_internal::require_world(world_generation);
     if (status != ELISA_PHYSICS_OK) return status;
     elisa_physics_internal::PhysicsService& state = elisa_physics_internal::physics_service();
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    XMFLOAT3 backend_base{};
+    XMFLOAT3 backend_tip{};
+    float backend_radius = 0.0f;
+    if (!elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(base_x, base_y, base_z), backend_base) ||
+        !elisa_physics_coordinates::to_wicked_position(&profile,
+            XMFLOAT3(tip_x, tip_y, tip_z), backend_tip) ||
+        !elisa_physics_coordinates::to_wicked_length(&profile, radius, backend_radius)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
     probe::PhysicsQueryBridge::Hits results{};
     const probe::PhysicsQueryToken query_token = state.query_bridge != nullptr
         ? state.query_bridge->acquire() : probe::PhysicsQueryToken{};
     const size_t found = state.query_bridge != nullptr ? state.query_bridge->overlap_capsule_all(
-        query_token, XMFLOAT3(base_x, base_y, base_z), XMFLOAT3(tip_x, tip_y, tip_z),
-        radius, layer_mask, results) : 0;
+        query_token, backend_base, backend_tip, backend_radius, layer_mask, results) : 0;
     if (found > ELISA_PHYSICS_MAX_QUERY_HITS) return ELISA_PHYSICS_CAPACITY;
     for (size_t index = 0; index < found; ++index) {
-        copy_shape_hit(results.values[index], &buffer->hits[index]);
+        if (!copy_shape_hit(&profile, results.values[index], &buffer->hits[index])) {
+            return ELISA_PHYSICS_BACKEND_FAILURE;
+        }
     }
     buffer->count = static_cast<uint32_t>(found);
     return ELISA_PHYSICS_OK;

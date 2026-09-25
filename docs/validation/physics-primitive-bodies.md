@@ -1,8 +1,8 @@
 # Primitive and mesh physics shapes
 
 **Status:** direct primitive bodies, shared primitive shapes, caller-array mesh
-shapes, and cooked-asset convex/triangle-mesh shapes pass the SDL3/Metal native
-smoke on macOS. P02 remains open.
+shapes, cooked-asset convex/triangle-mesh shapes, and reusable compound shapes
+pass the focused SDL3/Metal native smoke on macOS. P02 remains open.
 
 `PhysicsRuntime::BodyDesc` selects `BodyShape.Box`, `BodyShape.Sphere`, or
 `BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its
@@ -45,7 +45,20 @@ constructors validate and copy their inputs before returning, so callers may
 reuse the arrays immediately. The same vertex, index, per-shape, per-world,
 and query-proxy limits apply. `RuntimeServices::Session` exposes both
 constructors as well. Cooking happens at runtime; offline collision cook
-packages and compound shapes remain open work.
+packages remain open work.
+
+For assemblies, use `PhysicsRuntime::shape_create_compound` with one to 16
+`CompoundChild` entries, then attach the resulting handle through
+`body_create_with_shape`. Each child entry supplies a reusable shape handle and
+a local position and rotation. Nested compounds are supported. The compound
+retains every child shape until it is destroyed, so child destruction reports
+`PhysicsError.ShapeInUse` while a parent exists. A triangle mesh nested at any
+depth keeps the compound static-only. Child transforms cross the same
+right-handed Elisa to left-handed Wicked coordinate boundary as body poses.
+The focused probe checks empty input, the child limit contract, nested shape
+ownership, transformed child ray hits, the empty gap between children, and
+cleanup order. `PhysicsRuntime::raycast` queries Jolt's collision shape, so a
+broad render proxy cannot create a false hit through that gap.
 
 Dynamic bodies expose checked linear-velocity read/write and impulse operations
 through both `PhysicsRuntime` and `RuntimeServices`. Static and kinematic bodies
@@ -79,6 +92,13 @@ Validation on 2026-09-24:
 - The run used the currently available stage1 compiler product with `ELISA_ALLOW_STALE_STAGE1=1`; it validates the engine changes against that product, not later unseeded compiler edits.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-The native registry now supports reusable box, sphere, capsule, convex-hull, and
-triangle-mesh shapes. Compound shapes, broadphase layers, custom mass
-properties, and offline collision cooking remain open P02 work.
+Validation on 2026-09-25:
+
+- `scripts/elisa_build_run.py run --main test/physics_primitives_native.elisa` passed with the current Elisa compiler, SDL3/Metal, and rebuilt Wicked/Jolt archives. The run covered shared primitives, compound child transforms and lifetime, accurate ray positions on both children, the gap miss, mesh shapes, capacity, and cleanup.
+- `scripts/elisa_build_run.py run --main test/physics_app_native.elisa` passed. This isolated integration entry reuses `PhysicsAppProbe` to verify nearest/all-hit rays, sphere/capsule casts and overlaps, contact delivery, X-axis velocity and impulse conversion, and fixed-step ownership. The application smoke runner now includes it as a separate entry.
+- The run used a temporary compiler wrapper to link the compiler's matching core runtime object, plus `DEVELOPER_DIR=/Library/Developer/CommandLineTools` for the post-upgrade linker. Neither workaround changes project or system settings.
+
+The native registry now supports reusable box, sphere, capsule, convex-hull,
+triangle-mesh, and compound shapes (up to 16 children per compound, including
+nested compounds). Broadphase layers, custom mass properties, and offline
+collision cooking remain open P02 work.

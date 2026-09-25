@@ -1,0 +1,46 @@
+# Focused native integration for physics queries, contacts, and body motion.
+include "../src/runtime/application.elisa"
+include "../src/physics/queries.elisa"
+include "./physics_app_probe.elisa"
+
+module PhysicsAppNative:
+    private:
+        const module Window:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 240
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Physics Runtime Smoke",
+                width: Window::WIDTH,
+                height: Window::HEIGHT,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+                value: value
+                error failure: return 2
+            stage: mutable i32 = 0
+            result: i32 = catch PhysicsAppProbe::exercise_jolt_physics(&world, &stage):
+                value: value
+                PhysicsRuntime::PhysicsError.InvalidArgument: 111 + stage
+                PhysicsRuntime::PhysicsError.ApplicationUnavailable: 121 + stage
+                PhysicsRuntime::PhysicsError.WrongThread: 131 + stage
+                PhysicsRuntime::PhysicsError.Capacity: 141 + stage
+                PhysicsRuntime::PhysicsError.InvalidHandle: 151 + stage
+                PhysicsRuntime::PhysicsError.StaleWorld: 161 + stage
+                PhysicsRuntime::PhysicsError.BodyNotReady: 169 + stage
+                PhysicsRuntime::PhysicsError.BackendFailure: 171 + stage
+                error failure: 118
+            world_closed: bool = catch PhysicsRuntime::shutdown(&world):
+                ok: true
+                error failure: false
+            application_closed: bool = Application::shutdown()
+            return result if result != 0
+            return 3 if not world_closed
+            return 4 if not application_closed
+            0
+
+def main() -> i32:
+    PhysicsAppNative::run()
