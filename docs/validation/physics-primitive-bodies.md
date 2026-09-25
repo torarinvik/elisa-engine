@@ -134,41 +134,36 @@ Validation on 2026-09-25:
 - `test/physics_material_native_main.elisa` passed on SDL3/Metal. It rejects restitution above 1, sets materials after Jolt body creation, and observes a sphere rebound from a full-restitution floor through the RuntimeServices API.
 - The source-length, module-hygiene, and Python syntax checks passed.
 
-- The complete eleven-fixture `scripts/application_native_smoke.py` run passed
-  with SDL3/Metal and a fresh stage1 compiler product using its matching
-  runtime wrapper. It includes custom inertia, per-body material rebound,
-  physics-driven world-audio occlusion, collision layers, mesh shapes,
-  lifecycle, and render cadence coverage. The 30 Hz and 120 Hz captures match
-  pixel-for-pixel at 640x480.
-
 `PhysicsRuntime::BodyInertia` validates positive finite principal moments up to
-1e12 kg·unit². Set `body_set_inertia` or
-`RuntimeServices::physics_body_set_inertia` on a dynamic body before its first
-fixed step; later changes return `ConfigurationLocked`. The getter reads the
-moments back from the ready Jolt body in Jolt's principal-axis order. The
-descriptor currently supplies a diagonal tensor in body-local axes.
+1e12 kg·unit² and a finite, non-degenerate principal-axis rotation. Set
+`body_set_inertia` or `RuntimeServices::physics_body_set_inertia` on a dynamic
+body before its first fixed step; later changes return `ConfigurationLocked`.
+The getter reads Jolt's equivalent principal moments and body-local frame after
+creation. Jolt may reorder the moments during eigendecomposition, so the probe
+compares the reconstructed tensor rather than relying on input ordering.
 
 Validation on 2026-09-25:
 
-- Wicked commit `5f5b43f` adds the versioned rigid-body component fields and
-  passes the principal moments into Jolt's `MassAndInertiaProvided` path. The
+- Wicked commits `5f5b43f` and `23ecbb9` add versioned rigid-body component
+  fields and pass the rotated principal tensor into Jolt's
+  `MassAndInertiaProvided` path. The
   SDL3 archive rebuilt with `cmake --build build-elisa-sdl3 --target
   WickedEngine_common -j8` and `cmake --build build-elisa-sdl3 --target
   WickedEngine_ext_shaders -j8`; `nm` confirmed the new adapter symbol.
 - `scripts/elisa_build_run.py run --project . --main
   test/physics_inertia_native_main.elisa --output
   build/physics-inertia-native-smoke --native-test-probes` passed on
-  SDL3/Metal. It checks invalid descriptor rejection, `BodyNotReady` before
-  creation, exact 8/4/2 principal moments after Jolt creates the body, and
-  `ConfigurationLocked` on a late update.
+  SDL3/Metal. It checks invalid moments and rotations, `BodyNotReady` before
+  creation, tensor-equivalent readback after Jolt reorders the 8/4/2 principal
+  moments, and `ConfigurationLocked` on a late update.
 - The complete eleven-fixture `scripts/application_native_smoke.py` run passed
-  after adding `physics-inertia-smoke`; its 30 Hz and 120 Hz render captures
-  match pixel-for-pixel at 640x480.
+  against Wicked commit `23ecbb9` after adding `physics-inertia-smoke`; that
+  fixture round-trips a rotated principal frame through Jolt. Its 30 Hz and
+  120 Hz render captures match pixel-for-pixel at 640x480.
 - The source-length, module-hygiene, and whitespace checks passed.
 
 The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
-per-body friction/restitution and diagonal principal inertia. Rotated principal
-frames, center-of-mass offsets, and offline collision cooking remain open P02
-work.
+per-body friction/restitution and rotated principal inertia tensors.
+Center-of-mass offsets and offline collision cooking remain open P02 work.

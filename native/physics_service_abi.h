@@ -217,10 +217,12 @@ int32_t elisa_physics_v1_body_set_material(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation, float friction, float restitution);
 int32_t elisa_physics_v1_body_set_inertia(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation, float moment_x, float moment_y,
-    float moment_z);
+    float moment_z, float rotation_x, float rotation_y, float rotation_z,
+    float rotation_w);
 int32_t elisa_physics_v1_body_inertia(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation, float* moment_x, float* moment_y,
-    float* moment_z);
+    float* moment_z, float* rotation_x, float* rotation_y, float* rotation_z,
+    float* rotation_w);
 int32_t elisa_physics_v1_shutdown(uint64_t world_generation);
 
 // Called while the Application host is still initialized, before Wicked exits.
