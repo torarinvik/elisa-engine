@@ -1,0 +1,151 @@
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/application.elisa"
+include "../src/math/geometry.elisa"
+include "./render_scene_environment_probe_render_native.elisa"
+
+module RenderSceneSkyMapNativeTests:
+    private:
+        const MINIMUM_LIGHTING_IMAGE_CHANGE: f32 = 0.01
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sky_map_matches(
+            width: u32, height: u32, rotation_radians: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sky_map_cleared() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_lighting_frame_change(capture_reference: i32) -> f32
+
+        def sky_test_environment(exposure: f32) -> Lighting::Environment:
+            Lighting::Environment{
+                sun_color: Geometry::vec3_zero(),
+                sun_direction: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+                ambient: Geometry::vec3_zero(),
+                sky_exposure: exposure,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }
+
+    public:
+        def verify_sky_map_rendering(box: RenderScene::InstanceHandle,
+            sphere: RenderScene::InstanceHandle,
+            floor: RenderScene::InstanceHandle,
+            arc: RenderScene::ElectricArcHandle, hud_text: RenderScene::OverlayTextHandle,
+            hud_panel: RenderScene::OverlayPanelHandle) -> i32:
+            _ = catch RenderScene::set_visible(box, false):
+                ok: true
+                error failure: return 155
+            _ = catch RenderScene::set_visible(sphere, false):
+                ok: true
+                error failure: return 156
+            _ = catch RenderScene::set_visible(floor, false):
+                ok: true
+                error failure: return 157
+            _ = catch RenderScene::set_electric_arc_visible(arc, false):
+                ok: 0
+                error failure: return 158
+            _ = catch RenderScene::set_overlay_text_visible(hud_text, false):
+                ok: 0
+                error failure: return 159
+            _ = catch RenderScene::set_overlay_panel_visible(hud_panel, false):
+                ok: 0
+                error failure: return 160
+            environment: i32 = catch RenderScene::set_environment(sky_test_environment(1.25)):
+                ok: 0
+                error failure: 1
+            return 161 if environment != 0
+            projection: i32 = catch RenderScene::set_camera_perspective(1.0, 0.1, 500.0):
+                ok: 0
+                error failure: 1
+            return 162 if projection != 0
+            view: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::vec3_zero(), Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            return 163 if view != 0
+            for frame in 0..<3:
+                return 164 if Application::pump() != Application::PumpStatus.Running
+            sky_baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 165 if sky_baseline < 0.0
+            sky_status: i32 = catch RenderScene::set_sky_map("test/fixtures/sky_latlong.png", 0.5):
+                ok: 0
+                error failure: 1
+            return 166 if (sky_status != 0 or
+                elisa_render_scene_v1_test_sky_map_matches(8, 4, 0.5) != 1)
+            for frame in 0..<3:
+                return 167 if Application::pump() != Application::PumpStatus.Running
+            sky_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 168 if sky_change < 0.0
+            return 169 if sky_change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            sky_exposure_baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 170 if sky_exposure_baseline < 0.0
+            zero_sky_exposure: i32 = catch RenderScene::set_environment(sky_test_environment(0.0)):
+                ok: 0
+                error failure: 1
+            return 171 if zero_sky_exposure != 0
+            for frame in 0..<3:
+                return 172 if Application::pump() != Application::PumpStatus.Running
+            exposure_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 173 if exposure_change < 0.0
+            return 174 if exposure_change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            _ = catch RenderScene::set_environment(sky_test_environment(1.25)):
+                ok: 0
+                error failure: return 175
+            for frame in 0..<3:
+                return 176 if Application::pump() != Application::PumpStatus.Running
+            mapped_baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 182 if mapped_baseline < 0.0
+            _ = catch RenderScene::clear_sky_map():
+                ok: 0
+                error failure: return 177
+            return 178 if elisa_render_scene_v1_test_sky_map_cleared() != 1
+            for frame in 0..<3:
+                return 179 if Application::pump() != Application::PumpStatus.Running
+            cleared_sky_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 180 if cleared_sky_change < 0.0
+            return 181 if cleared_sky_change < MINIMUM_LIGHTING_IMAGE_CHANGE
+            probe_reflection: i32 = RenderSceneEnvironmentProbeRenderNativeTests::exercise()
+            return 193 + probe_reflection if probe_reflection != 0
+            _ = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 0.82, y: 0.88, z: 1.0},
+                sun_direction: Geometry::Vec3{x: -0.2, y: -1.0, z: 0.1},
+                ambient: Geometry::Vec3{x: 0.14, y: 0.18, z: 0.25},
+                sky_exposure: 1.25,
+                fog_color: Geometry::Vec3{x: 0.04, y: 0.06, z: 0.1},
+                fog_start: 12.0,
+                fog_density: 0.02,
+                fog_enabled: true,
+            }):
+                ok: 0
+                error failure: return 183
+            _ = catch RenderScene::set_camera_orthographic_height(14.0):
+                ok: 0
+                error failure: return 184
+            _ = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0}, Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: return 185
+            _ = catch RenderScene::set_visible(box, true):
+                ok: true
+                error failure: return 186
+            _ = catch RenderScene::set_visible(sphere, true):
+                ok: true
+                error failure: return 187
+            _ = catch RenderScene::set_visible(floor, true):
+                ok: true
+                error failure: return 188
+            _ = catch RenderScene::set_electric_arc_visible(arc, true):
+                ok: 0
+                error failure: return 189
+            _ = catch RenderScene::set_overlay_text_visible(hud_text, true):
+                ok: 0
+                error failure: return 190
+            _ = catch RenderScene::set_overlay_panel_visible(hud_panel, true):
+                ok: 0
+                error failure: return 191
+            for frame in 0..<3:
+                return 192 if Application::pump() != Application::PumpStatus.Running
+            0
