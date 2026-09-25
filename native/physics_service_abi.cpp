@@ -5,6 +5,8 @@
 #include "cooked_collision_geometry.h"
 #include "cooked_geometry_package.h"
 #include "jolt_shape_cache.h"
+#include "jolt_shape_cache_identity.h"
+#include "physics_cooked_geometry_validation.h"
 #include "physics_coordinate_bridge.h"
 #include "physics_service_internal.h"
 

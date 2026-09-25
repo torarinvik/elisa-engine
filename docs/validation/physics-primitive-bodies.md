@@ -83,9 +83,8 @@ python3 scripts/cook_physics_collision.py assets/rock.gltf \
 The collision cooker self-test, native raw/ELPK collision reader, and C++
 syntax check for the physics service passed on 2026-09-25. The SDL3 runtime
 fixture now exercises both bundle shape kinds. That updated Elisa fixture is
-pending execution because the refreshed stage1 compiler exits during native
-compilation; the previous cooked-geometry runtime route had passed its native
-smoke.
+covered by the native SDL3/Metal application smoke below. A full cooked
+geometry `.pkg` fixture also exercises the legacy asset loader.
 
 On first load of a collision-only package, the runtime cooks the bounded mesh
 with Jolt and serializes the complete shape tree with Jolt's
@@ -100,9 +99,11 @@ Jolt restore failures are cache misses: the runtime cooks the shape again and
 rewrites the entry when possible. Cache read/write failures never prevent the
 asset from loading. Removing `build/cache/physics` clears all saved shapes.
 
-This persistent cache currently covers collision-only raw and ELPK packages.
-Caller-owned vertex/index arrays and the legacy full cooked-render-geometry
-asset path still cook their Jolt shapes at runtime.
+This persistent cache covers collision-only raw/ELPK packages and the legacy
+full cooked-render-geometry asset path. The legacy loader still validates and
+decodes the source geometry on every request to rebuild the ray-query proxy;
+the cache skips Jolt shape cooking and restores the prebuilt Jolt shape tree.
+Caller-owned vertex/index arrays still cook their Jolt shapes at runtime.
 
 For assemblies, use `PhysicsRuntime::shape_create_compound` with one to 16
 `CompoundChild` entries, then attach the resulting handle through
@@ -259,25 +260,31 @@ Validation on 2026-09-25 (versioned shape cache):
 - The native cache-envelope test covers source and scale key changes, separate
   cache paths for different scales, shape-kind and Jolt-version mismatches,
   and CRC rejection after payload corruption.
-- The SDL3/Metal physics mesh smoke clears its project cache, verifies two cold
-  cooks, corrupts the saved entries, confirms the next request recooks, then
-  confirms a later request restores the Jolt shape and that a body using the
-  restored shape remains ray-queryable.
+- The SDL3/Metal physics mesh smoke clears its project cache, verifies three
+  cold cooks, corrupts the saved entries, confirms the next requests recook,
+  then confirms later requests restore the Jolt shapes. Bodies using both
+  restored shapes remain ray-queryable. It exercises collision-only ELPK
+  assets and the legacy full cooked-geometry `.pkg` route.
 - The native test also verifies that shape handles and bodies created from
-  restored shapes release normally. Cache persistence is limited to
-  collision-only packages; full cooked-render-geometry and caller-array routes
-  remain uncached.
+  restored shapes release normally. Legacy cooked geometry is still decoded
+  for validation and query-proxy construction on a cache hit; caller-array
+  shapes remain uncached.
 - Wicked adapter commit `7ed3901564b308a457411560466581672fc8fd66` provides
   the Jolt `SaveWithChildren` and restore bridge. The complete twelve-fixture
   SDL3/Metal smoke and `scripts/check.elisascript` passed against that pinned
   revision; the physics midpoint and final captures match at 640x480.
 - The native physics service syntax check, 600-line source policy,
   module-hygiene check, and cache-envelope test passed after the adapter split.
+- The follow-up SDL3/Metal smoke passed all twelve fixtures with cold cache
+  entries, CRC corruption fallback, successful restore, and ray-query checks
+  for both packaged-geometry routes. The run used the raw Stage1 compiler and
+  its matching runtime object because the Stage1 wrapper detected a newer
+  compiler source during the run.
 
 The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
 per-body friction/restitution and rotated principal inertia tensors.
-Versioned collision-only package serialization and invalidation now pass their
-focused native probes. Extending persistent shape caching to the legacy full
-cooked-render-geometry path remains open P02 work.
+Versioned serialization and invalidation for both collision-only and legacy
+cooked-geometry assets now pass their focused native probes. Caller-owned
+array caching remains open P02 work.
