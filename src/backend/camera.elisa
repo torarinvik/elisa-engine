@@ -54,7 +54,7 @@ module Camera:
         def resize(state: mutable State&, width: i32, height: i32, display_scale: f32) -> bool:
             next: Viewport = Viewport{x: 0, y: 0, width: width, height: height, display_scale: display_scale}
             return false if not viewport_valid(next)
-            state.viewport <- next
+            state.viewport <- move next
             true
 
         def set_viewport_region(state: mutable State&, x: i32, y: i32, width: i32, height: i32, framebuffer_width: i32, framebuffer_height: i32, display_scale: f32) -> bool:
@@ -63,7 +63,7 @@ module Camera:
             return false if width > framebuffer_width or height > framebuffer_height or x > framebuffer_width - width or y > framebuffer_height - height
             next: Viewport = Viewport{x: x, y: y, width: width, height: height, display_scale: display_scale}
             return false if not viewport_valid(next)
-            state.viewport <- next
+            state.viewport <- move next
             true
 
         # A minimized or occluded SDL window can report a zero pixel extent.
