@@ -30,7 +30,7 @@ Run the complete gate using the consistent SDL3 build:
 
 ```sh
 ELISA_RENDER_SCENE_RENDER_ONLY=1 \
-WICKED_BUILD="../WickedEngine/build-elisa-sdl3" \
+WICKED_BUILD="../amazing-labyrinth-wickedengine/build-elisa-sdl3" \
 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py
 ```
 

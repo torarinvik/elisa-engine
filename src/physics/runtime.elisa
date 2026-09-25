@@ -86,6 +86,7 @@ module PhysicsRuntime:
         @callconv(c)
         extern elisa_physics_v1_body_position(world_generation: u64, slot: u32,
             body_generation: u64, x: mutable f32&, y: mutable f32&, z: mutable f32&) -> i32
+        include "./runtime_body_pose_abi.inc"
 
         @callconv(c)
         extern elisa_physics_v1_set_sleeping(world_generation: u64, slot: u32,
@@ -206,8 +207,8 @@ module PhysicsRuntime:
             BackendFailure
 
         include "./runtime_body_create_types.inc"
+        include "./runtime_body_types.inc"
 
-        include "./runtime_body_pose_types.inc"
         struct PhysicsMaterial:
             private:
                 friction: f32
@@ -589,5 +590,6 @@ module PhysicsRuntime:
 
         include "./runtime_reusable_shapes_api.inc"
         include "./runtime_body_motion_api.inc"
+        include "./runtime_body_pose_api.inc"
         include "./runtime_body_material_api.inc"
         include "./runtime_body_inertia_api.inc"

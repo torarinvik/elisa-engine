@@ -23,7 +23,7 @@ WARMUP_RESULT = re.compile(
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wicked-root", type=Path,
-        default=Path(os.environ.get("WICKED_ROOT", ENGINE_ROOT.parent / "WickedEngine")),
+        default=Path(os.environ.get("WICKED_ROOT", ENGINE_ROOT.parent / "amazing-labyrinth-wickedengine")),
         help="WickedEngine checkout (or WICKED_ROOT)")
     parser.add_argument("--probe", type=Path,
         default=ENGINE_ROOT / "build" / "wicked-native-probe",

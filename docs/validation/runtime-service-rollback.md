@@ -168,9 +168,10 @@ Validation on 2026-09-25:
   initializes its direct and hierarchy-bound physics bodies with the same pose,
   then compares synchronized entity rotations with the live body poses. Entity
   scale remains unchanged in the flat World path.
-- The complete eleven-fixture `scripts/application_native_smoke.py` suite passes
-  with this probe enabled. The 30 Hz and 120 Hz midpoint and final physics
-  render captures remain pixel-identical at 640x480.
+- The complete twelve-fixture `scripts/application_native_smoke.py` suite passes
+  against the pinned isolated Wicked checkout with this probe enabled. The 30 Hz
+  and 120 Hz midpoint and final physics render captures remain pixel-identical
+  at 640x480.
 
 ## Generic executor dispatch with affine runtime contexts
 

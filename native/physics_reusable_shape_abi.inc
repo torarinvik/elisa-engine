@@ -1,6 +1,7 @@
 namespace {
 
 using namespace elisa_physics_internal;
+constexpr double MIN_SHAPE_BODY_ROTATION_LENGTH = 1.0e-6;
 
 ShapeSlot* resolve_shape(PhysicsService& state, uint32_t slot, uint64_t generation) {
     if (slot >= MAX_SHAPES) return nullptr;

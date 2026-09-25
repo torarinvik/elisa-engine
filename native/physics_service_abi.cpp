@@ -164,7 +164,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 
 #include "physics_create_body_abi.inc"
 #include "physics_reusable_shape_abi.inc"
-#include "physics_reusable_body_abi.inc"
+#include "physics_create_body_with_shape_abi.inc"
 #include "physics_compound_shape_abi.inc"
 #include "physics_body_motion_abi.inc"
 #include "physics_body_material_abi.inc"

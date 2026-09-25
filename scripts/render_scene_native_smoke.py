@@ -50,7 +50,7 @@ def main() -> int:
         print("render scene smoke requires the SDL3/Metal macOS native gate", file=sys.stderr)
         return 2
 
-    wicked_root = Path(os.environ.get("WICKED_ROOT", ROOT.parent / "WickedEngine")).resolve()
+    wicked_root = Path(os.environ.get("WICKED_ROOT", ROOT.parent / "amazing-labyrinth-wickedengine")).resolve()
     wicked_source = wicked_root / "WickedEngine"
     wicked_build = Path(os.environ.get("WICKED_BUILD", wicked_root / "build-elisa-sdl3")).resolve()
     libraries = wicked_build / "WickedEngine"

@@ -232,7 +232,8 @@ module PhysicsPrimitiveProbe:
                 Geometry::Vec3{x: Fixture::ROTATED_BOX_RAY_START_X,
                     y: Fixture::ROTATED_BOX_RAY_HEIGHT, z: 0.0},
                 Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
-                Fixture::ROTATED_BOX_RAY_DISTANCE, PhysicsRuntime::ALL_LAYERS)
+                Fixture::ROTATED_BOX_RAY_DISTANCE,
+                PhysicsRuntime::ALL_LAYERS)
             raise PhysicsRuntime::PhysicsError.BackendFailure if not rotated_box_hit.hit
             raise PhysicsRuntime::PhysicsError.BackendFailure if rotated_box_hit.entity == 0
             try PhysicsRuntime::body_destroy(world, rotated_box)

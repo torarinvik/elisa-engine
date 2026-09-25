@@ -228,6 +228,19 @@ Validation on 2026-09-25:
   mass properties and matching fall positions. An out-of-range offset is
   rejected before body creation. Both fixtures passed on SDL3/Metal.
 
+Validation on 2026-09-25 (isolated Wicked sync):
+
+- The full `scripts/application_native_smoke.py` suite passed all twelve
+  SDL3/Metal fixtures against Wicked revision
+  `eecdf036b26717c97fe1c7b2d00d6e199b30f4b4`, including shared and cooked mesh
+  shapes, collision layers, body pose/inertia, World synchronization, and
+  failure cleanup.
+- The 30 Hz and 120 Hz physics-to-Wicked midpoint and final captures match
+  pixel-for-pixel at 640x480. `scripts/check.elisascript` also passed with the
+  freshly seeded Stage1 compiler, Godot 4.7.2, and both Elisa Proof suites.
+- Source-length, module-hygiene, dependency-manifest, and whitespace checks
+  passed. Versioned, pre-cooked Jolt shape serialization remains open P02 work.
+
 The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
