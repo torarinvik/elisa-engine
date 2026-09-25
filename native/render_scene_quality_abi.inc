@@ -105,11 +105,15 @@ probe::NativePostProcessDesc quality_description(const ElisaRenderSceneQualityPr
 }
 
 int32_t apply_quality_profile_locked(RenderSceneService& state,
-    const ElisaRenderSceneQualityProfile& profile) {
+    const ElisaRenderSceneQualityProfile& profile, int32_t* apply_outcome = nullptr) {
     const probe::PostProcessApply result =
         probe::PostProcessBridge(*state.path).apply(quality_description(profile), false);
-    return result == probe::PostProcessApply::Invalid ?
-        ELISA_RENDER_SCENE_INVALID_ARGUMENT : ELISA_RENDER_SCENE_OK;
+    if (result == probe::PostProcessApply::Invalid) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (apply_outcome != nullptr) {
+        *apply_outcome = result == probe::PostProcessApply::Fallback ?
+            ELISA_RENDER_SCENE_QUALITY_UPSCALER_FALLBACK : ELISA_RENDER_SCENE_QUALITY_APPLIED;
+    }
+    return ELISA_RENDER_SCENE_OK;
 }
 }
 
@@ -128,18 +132,26 @@ extern "C" int32_t elisa_render_scene_v1_apply_quality_profile(
 extern "C" int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
     const ElisaRenderSceneQualityProfile* profile, int32_t shadow_quality,
     float sun_shadow_receiver_bias) {
+    int32_t ignored_outcome = ELISA_RENDER_SCENE_QUALITY_APPLIED;
+    return elisa_render_scene_v1_apply_quality_profile_with_shadow_result(
+        profile, shadow_quality, sun_shadow_receiver_bias, &ignored_outcome);
+}
+
+extern "C" int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow_result(
+    const ElisaRenderSceneQualityProfile* profile, int32_t shadow_quality,
+    float sun_shadow_receiver_bias, int32_t* apply_outcome) {
     if (!valid_quality_profile(profile) ||
         !elisa::render_scene_effects::valid_shadow_quality(shadow_quality) ||
         !std::isfinite(sun_shadow_receiver_bias) ||
         std::fabs(sun_shadow_receiver_bias) >
-            elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS) {
+            elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS || apply_outcome == nullptr) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    const int32_t status = apply_quality_profile_locked(state, *profile);
+    const int32_t status = apply_quality_profile_locked(state, *profile, apply_outcome);
     if (status != ELISA_RENDER_SCENE_OK) return status;
     elisa::render_scene_effects::apply_shadow_quality(shadow_quality);
     state.shadow_quality = shadow_quality;
@@ -156,11 +168,19 @@ extern "C" int32_t elisa_render_scene_v1_apply_quality_profile_with_shadow(
 extern "C" int32_t elisa_render_scene_v1_apply_camera_quality_profile(
     int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
     int32_t shadow_quality, float sun_shadow_receiver_bias) {
+    int32_t ignored_outcome = ELISA_RENDER_SCENE_QUALITY_APPLIED;
+    return elisa_render_scene_v1_apply_camera_quality_profile_result(
+        camera_handle, profile, shadow_quality, sun_shadow_receiver_bias, &ignored_outcome);
+}
+
+extern "C" int32_t elisa_render_scene_v1_apply_camera_quality_profile_result(
+    int64_t camera_handle, const ElisaRenderSceneQualityProfile* profile,
+    int32_t shadow_quality, float sun_shadow_receiver_bias, int32_t* apply_outcome) {
     if (!valid_quality_profile(profile) ||
         !elisa::render_scene_effects::valid_shadow_quality(shadow_quality) ||
         !std::isfinite(sun_shadow_receiver_bias) ||
         std::fabs(sun_shadow_receiver_bias) >
-            elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS) {
+            elisa::render_scene_effects::MAX_SUN_SHADOW_RECEIVER_BIAS || apply_outcome == nullptr) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
     RenderSceneService& state = service();
@@ -183,6 +203,8 @@ extern "C" int32_t elisa_render_scene_v1_apply_camera_quality_profile(
     wi::renderer::SetTemporalAAEnabled(temporal_aa);
     state.scene->weather.SetHeightFog(fog);
     if (result == probe::PostProcessApply::Invalid) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    *apply_outcome = result == probe::PostProcessApply::Fallback ?
+        ELISA_RENDER_SCENE_QUALITY_UPSCALER_FALLBACK : ELISA_RENDER_SCENE_QUALITY_APPLIED;
     slot.primary_temporal_aa_at_profile_set = temporal_aa;
     slot.primary_fog_at_profile_set = fog;
     slot.primary_tonemap_at_profile_set = primary_tonemap;
@@ -226,6 +248,10 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_rejects_invalid_flags(void
         elisa_render_scene_v1_apply_quality_profile(&duplicate_temporal) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_apply_quality_profile_with_shadow(&valid_profile, 3, 0.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_apply_quality_profile_with_shadow(&valid_profile, 2, 0.02f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_apply_quality_profile_with_shadow_result(
+            &valid_profile, 0, 0.0f, nullptr) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
+        elisa_render_scene_v1_apply_camera_quality_profile_result(
+            0, &valid_profile, 0, 0.0f, nullptr) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion(2) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion_settings(0.0f, 1.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&
         elisa_render_scene_v1_set_ambient_occlusion_settings(1.0f, 9.0f) == ELISA_RENDER_SCENE_INVALID_ARGUMENT &&

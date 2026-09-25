@@ -35,6 +35,10 @@ module Quality:
             Medium
             High
 
+        enum ApplyOutcome:
+            Applied
+            UpscalerFallback
+
         struct Profile:
             level: mutable Level
             tonemap: mutable Tonemap
