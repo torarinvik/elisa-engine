@@ -90,10 +90,22 @@ Evidence:
   - an externally stopped voice is unbound as finished;
   - listener loss, invalid time steps, and repeated detach are handled.
 
-Limits: occlusion is supplied by the caller. Physics-query occlusion waits on
-P03 query results. The mix is gain and pitch only, with no stereo panning or
-HRTF (S04). `WorldAudio` does not submit native source positions, so native
-distance attenuation stays neutral and is not applied twice.
+`WorldAudio::update_with_physics` now derives occlusion with a ray from the
+tracked listener to each emitter. The caller supplies the occluder layer mask
+and attenuation strength so listener/emitter bodies can be excluded by layer.
+Blocked rays use that strength; unobstructed rays reset occlusion to zero.
+`set_occlusion` remains available for caller-computed values. The mix is gain
+and pitch only, with no stereo panning or HRTF (S04). `WorldAudio` does not
+submit native source positions, so native distance attenuation stays neutral
+and is not applied twice.
+
+Validation on 2026-09-25 (macOS 27.0 / Apple M5, SDL3/Metal):
+
+- `test/world_audio_physics_native_main.elisa` opened a RuntimeServices session
+  with Jolt and miniaudio fallbacks, then verified a category-filtered Jolt
+  blocker applies 0.65 occlusion and removing it clears occlusion to zero.
+- `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, and
+  `git diff --check` passed.
 
 This slice also exposed a stage1 compiler miscompile. Passing `&name`, where
 `name` is already a reference parameter, silently binds the parameter's own
