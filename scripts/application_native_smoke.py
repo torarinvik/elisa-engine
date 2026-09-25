@@ -13,6 +13,7 @@ import sys
 import tempfile
 import wave
 import zlib
+import shutil
 from pathlib import Path
 
 import cook_physics_collision
@@ -176,6 +177,8 @@ def main() -> int:
             return tested.returncode
 
         for name, entry in projects:
+            if name == "physics-mesh-shapes-smoke":
+                shutil.rmtree(project / "build/cache/physics", ignore_errors=True)
             manifest = {
                 "name": name,
                 "main": str(entry),

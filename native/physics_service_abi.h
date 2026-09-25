@@ -232,6 +232,10 @@ int32_t elisa_physics_v1_body_inertia(uint64_t world_generation,
     float* moment_z, float* rotation_x, float* rotation_y, float* rotation_z,
     float* rotation_w);
 int32_t elisa_physics_v1_shutdown(uint64_t world_generation);
+#if defined(ELISA_PHYSICS_TEST_PROBE)
+int32_t elisa_physics_v1_test_shape_cache_counts(uint64_t* hits, uint64_t* misses);
+int32_t elisa_physics_v1_test_corrupt_shape_cache(void);
+#endif
 
 // Called while the Application host is still initialized, before Wicked exits.
 void elisa_physics_v1_shutdown_from_application(void);

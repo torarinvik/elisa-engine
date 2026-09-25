@@ -87,9 +87,22 @@ pending execution because the refreshed stage1 compiler exits during native
 compilation; the previous cooked-geometry runtime route had passed its native
 smoke.
 
-The runtime still asks Jolt to build its native shape from those bounded
-streams when the asset loads. Versioned, pre-cooked Jolt shape serialization
-and cache invalidation remain open P02 work.
+On first load of a collision-only package, the runtime cooks the bounded mesh
+with Jolt and serializes the complete shape tree with Jolt's
+`SaveWithChildren` API. It stores the payload in the disposable
+`build/cache/physics` directory under the project root. The cache envelope
+records its own format version, `JPH_VERSION_ID`, shape kind, payload length,
+and CRC32. Its key includes the package SHA-256, shape kind, exact scale, and
+coordinate profile. Different scales and shape kinds keep separate entries;
+editing the package invalidates and replaces that configuration's entry.
+Unknown versions, mismatched keys, malformed lengths, checksum failures, and
+Jolt restore failures are cache misses: the runtime cooks the shape again and
+rewrites the entry when possible. Cache read/write failures never prevent the
+asset from loading. Removing `build/cache/physics` clears all saved shapes.
+
+This persistent cache currently covers collision-only raw and ELPK packages.
+Caller-owned vertex/index arrays and the legacy full cooked-render-geometry
+asset path still cook their Jolt shapes at runtime.
 
 For assemblies, use `PhysicsRuntime::shape_create_compound` with one to 16
 `CompoundChild` entries, then attach the resulting handle through
@@ -239,10 +252,32 @@ Validation on 2026-09-25 (isolated Wicked sync):
   pixel-for-pixel at 640x480. `scripts/check.elisascript` also passed with the
   freshly seeded Stage1 compiler, Godot 4.7.2, and both Elisa Proof suites.
 - Source-length, module-hygiene, dependency-manifest, and whitespace checks
-  passed. Versioned, pre-cooked Jolt shape serialization remains open P02 work.
+  passed.
+
+Validation on 2026-09-25 (versioned shape cache):
+
+- The native cache-envelope test covers source and scale key changes, separate
+  cache paths for different scales, shape-kind and Jolt-version mismatches,
+  and CRC rejection after payload corruption.
+- The SDL3/Metal physics mesh smoke clears its project cache, verifies two cold
+  cooks, corrupts the saved entries, confirms the next request recooks, then
+  confirms a later request restores the Jolt shape and that a body using the
+  restored shape remains ray-queryable.
+- The native test also verifies that shape handles and bodies created from
+  restored shapes release normally. Cache persistence is limited to
+  collision-only packages; full cooked-render-geometry and caller-array routes
+  remain uncached.
+- Wicked adapter commit `7ed3901564b308a457411560466581672fc8fd66` provides
+  the Jolt `SaveWithChildren` and restore bridge. The complete twelve-fixture
+  SDL3/Metal smoke and `scripts/check.elisascript` passed against that pinned
+  revision; the physics midpoint and final captures match at 640x480.
+- The native physics service syntax check, 600-line source policy,
+  module-hygiene check, and cache-envelope test passed after the adapter split.
 
 The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
 per-body friction/restitution and rotated principal inertia tensors.
-Versioned, pre-cooked Jolt shape serialization remains open P02 work.
+Versioned collision-only package serialization and invalidation now pass their
+focused native probes. Extending persistent shape caching to the legacy full
+cooked-render-geometry path remains open P02 work.

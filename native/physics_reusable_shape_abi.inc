@@ -218,10 +218,13 @@ extern "C" int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int3
     return ELISA_PHYSICS_OK;
 }
 
-extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
+namespace {
+
+int32_t create_mesh_shape_internal(uint64_t world_generation,
     int32_t kind, const ElisaPhysicsVec3* vertices, uint32_t vertex_count,
     const uint32_t* indices, uint32_t index_count, uint32_t* slot,
-    uint64_t* shape_generation) {
+    uint64_t* shape_generation, const std::filesystem::path* cache_path = nullptr,
+    const std::string* cache_key = nullptr) {
     static_assert(sizeof(ElisaPhysicsVec3) == sizeof(XMFLOAT3),
         "Elisa mesh positions must stay tightly packed XYZ floats");
     if (slot == nullptr || shape_generation == nullptr ||
@@ -279,14 +282,52 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
         subset.indexOffset = 0;
         subset.indexCount = index_count;
 
+        std::vector<uint8_t> cached_shape;
+        bool restored_from_cache = false;
+        try {
+            restored_from_cache = cache_path != nullptr && cache_key != nullptr &&
+                elisa::physics::shape_cache::load(*cache_path, *cache_key, kind,
+                    wi::physics::GetJoltVersionID(), cached_shape);
+        } catch (...) {
+            restored_from_cache = false;
+        }
+
         wi::scene::RigidBodyPhysicsComponent cooked_shape{};
         cooked_shape.mass = 1.0f;
         cooked_shape.shape = kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH
             ? wi::scene::RigidBodyPhysicsComponent::TRIANGLE_MESH
             : wi::scene::RigidBodyPhysicsComponent::CONVEX_HULL;
-        wi::physics::CreateRigidBodyShape(cooked_shape, XMFLOAT3(1.0f, 1.0f, 1.0f),
-            &source_mesh);
+        if (restored_from_cache) {
+            try {
+                restored_from_cache = wi::physics::DeserializeRigidBodyShape(cooked_shape,
+                    cached_shape.data(), cached_shape.size());
+            } catch (...) {
+                restored_from_cache = false;
+            }
+        }
+#if defined(ELISA_PHYSICS_TEST_PROBE)
+        if (cache_path != nullptr && cache_key != nullptr) {
+            if (restored_from_cache) ++physics_service().shape_cache_hits;
+            else ++physics_service().shape_cache_misses;
+        }
+#endif
+        if (!restored_from_cache) {
+            wi::physics::CreateRigidBodyShape(cooked_shape, XMFLOAT3(1.0f, 1.0f, 1.0f),
+                &source_mesh);
+        }
         if (cooked_shape.physicsobject == nullptr) return ELISA_PHYSICS_BACKEND_FAILURE;
+
+        if (!restored_from_cache && cache_path != nullptr && cache_key != nullptr) {
+            try {
+                std::vector<uint8_t> serialized_shape;
+                if (wi::physics::SerializeRigidBodyShape(cooked_shape, serialized_shape)) {
+                    elisa::physics::shape_cache::store(*cache_path, *cache_key, kind,
+                        wi::physics::GetJoltVersionID(), serialized_shape);
+                }
+            } catch (...) {
+                // Cache serialization is an optimization; the cooked shape remains usable.
+            }
+        }
 
         shape.backend_shape = cooked_shape;
         shape.mesh_vertices = std::move(copied_vertices);
@@ -311,6 +352,16 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
     *slot = free_slot;
     *shape_generation = shape.generation;
     return ELISA_PHYSICS_OK;
+}
+
+} // namespace
+
+extern "C" int32_t elisa_physics_v1_create_mesh_shape(uint64_t world_generation,
+    int32_t kind, const ElisaPhysicsVec3* vertices, uint32_t vertex_count,
+    const uint32_t* indices, uint32_t index_count, uint32_t* slot,
+    uint64_t* shape_generation) {
+    return create_mesh_shape_internal(world_generation, kind, vertices, vertex_count,
+        indices, index_count, slot, shape_generation);
 }
 
 extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_generation,
@@ -353,10 +404,36 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
                     collision.positions[index + 2] * scale_z,
                 });
             }
-            return elisa_physics_v1_create_mesh_shape(world_generation, kind,
+            std::filesystem::path cache_path;
+            std::string cache_key;
+            bool cache_enabled = false;
+            try {
+                std::error_code filesystem_error;
+                const uint64_t source_size = std::filesystem::file_size(resolved_path,
+                    filesystem_error);
+                std::string source_digest, digest_error;
+                std::filesystem::path project_root;
+                const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+                if (!filesystem_error && source_size > 0 &&
+                    source_size <= elisa::assets::MAX_COLLISION_PACKAGE_BYTES &&
+                    elisa::assets::sha256_file(resolved_path, source_size,
+                        source_digest, digest_error) &&
+                    elisa::assets::project_asset_root(project_root) &&
+                    elisa::physics::shape_cache::make_cache_path(project_root,
+                        resolved_path, kind, scale_x, scale_y, scale_z, profile,
+                        cache_path)) {
+                    cache_enabled = elisa::physics::shape_cache::make_cache_key(
+                        source_digest, kind, scale_x, scale_y, scale_z, profile,
+                        wi::physics::GetJoltVersionID(), cache_key);
+                }
+            } catch (...) {
+                cache_enabled = false;
+            }
+            return create_mesh_shape_internal(world_generation, kind,
                 scaled_positions.data(), static_cast<uint32_t>(scaled_positions.size()),
                 collision.indices.data(), static_cast<uint32_t>(collision.indices.size()),
-                slot, shape_generation);
+                slot, shape_generation, cache_enabled ? &cache_path : nullptr,
+                cache_enabled ? &cache_key : nullptr);
         }
     } catch (...) {
         return ELISA_PHYSICS_ASSET_LOAD_FAILED;
