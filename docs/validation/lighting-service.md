@@ -47,6 +47,26 @@ and requires the sphere image to change again by the same threshold. This
 proves both captured reflections and explicit refresh reach the rendered
 material on Metal. Non-Metal runtime checks remain open.
 
+Validation record: engine commits `7e16c65`, `056971b`, `52047db`, and
+`c916a6c`. From the engine repository root, the SDL3/Metal render-only gate
+passed with exit status 0:
+
+```sh
+ELISA_RENDER_SCENE_RENDER_ONLY=1 \
+ELISA_COMPILER_BIN=../Elisa-compiler/bin/elisac-stage1 \
+ELISA_ALLOW_STALE_STAGE1=1 \
+CXX=/private/tmp/elisa-cxx-app-link-only \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+SDL_ASSERT=ignore \
+python3.14 scripts/render_scene_native_smoke.py
+```
+
+The gate builds `build/render-scene-native-smoke`, runs the public Elisa probe
+lifecycle and reflection checks, and also compares the tracked lighting and
+post-process captures. The reflection assertion reads Wicked's 3D render target
+in memory; it does not write separate probe screenshots. Cross-backend runtime
+results remain outstanding.
+
 The SDL3/Metal render-scene smoke also moves a point light between two positions
 over the same painted panel. It samples the Wicked 3D render result before and
 after `RenderScene::update_light` and requires one of the red/blue patches to
