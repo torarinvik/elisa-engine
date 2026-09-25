@@ -62,6 +62,14 @@ enum {
     ELISA_APPLICATION_INPUT_GAMEPAD_DISCONNECTED = 8,
 };
 
+enum {
+    ELISA_APPLICATION_POINTER_MOTION = 1,
+    ELISA_APPLICATION_POINTER_BUTTON = 2,
+    ELISA_APPLICATION_POINTER_WHEEL = 3,
+    ELISA_APPLICATION_POINTER_FOCUS_LOST = 4,
+    ELISA_APPLICATION_POINTER_OVERFLOW = 5,
+};
+
 uint32_t elisa_application_abi_version(void);
 const char* elisa_application_v1_project_title(void);
 int32_t elisa_application_v1_project_width(void);
@@ -81,6 +89,9 @@ int32_t elisa_application_v1_pump(void);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 // Test-only SDL window lifecycle injection used by the SDL3/Metal smoke.
 int32_t elisa_application_v1_test_set_minimized(int32_t minimized);
+int32_t elisa_application_v1_test_push_pointer_event(
+    int32_t kind, int32_t button, float x, float y, float delta_x,
+    float delta_y, uint32_t buttons, int32_t pressed);
 #endif
 // One typed scalar-output call avoids compiler-specific aggregate layout.
 // Event flags are coalesced edges since the previous successful read; window
@@ -98,6 +109,11 @@ int32_t elisa_application_v1_next_input_event(
 // gamepad axis events carry a 12-bit portable code and normalized 20-bit value.
 // Bits 38 and 39 carry the pressed/released edges for every event.
 int64_t elisa_application_v1_next_input_event_token(void);
+// Pointer events preserve framebuffer-independent SDL coordinates and motion
+// deltas without changing the compact ActionInput token ABI.
+int32_t elisa_application_v1_next_pointer_event(
+    int32_t* kind, int32_t* button, float* x, float* y,
+    float* delta_x, float* delta_y, uint32_t* buttons, int32_t* pressed);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);

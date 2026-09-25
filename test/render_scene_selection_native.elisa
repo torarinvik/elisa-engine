@@ -6,6 +6,9 @@ include "../src/math/geometry.elisa"
 module RenderSceneSelectionNativeTests:
     private:
         const ALL_LAYERS: u32 = 4294967295
+        const TEST_POINTER_MOTION: i32 = 1
+        const TEST_POINTER_BUTTON: i32 = 2
+        const TEST_POINTER_WHEEL: i32 = 3
 
         @callconv(c)
         extern elisa_render_scene_v1_test_selection_state(handle: i64) -> i32
@@ -16,9 +19,32 @@ module RenderSceneSelectionNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_last_frame_has_overlay_panel() -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_test_push_pointer_event(
+            kind: i32, button: i32, x: f32, y: f32, delta_x: f32,
+            delta_y: f32, buttons: u32, pressed: i32) -> i32
+
     public:
         def exercise(handle: RenderScene::InstanceHandle) -> i32:
             raw_handle: i64 = RenderScene::native_smoke_handle(handle)
+            return 48 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_MOTION, 0, 101.25, 88.5,
+                3.5, 0.0 - 2.25, Application::PointerButtons::RIGHT_MASK, 0) != 0
+            return 49 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::RIGHT, 101.25, 88.5, 0.0, 0.0,
+                0, 1) != 0
+            return 50 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_WHEEL, 0, 101.25, 88.5,
+                0.5, 1.25, 0, 0) != 0
+            return 51 if Application::pump() != Application::PumpStatus.Running
+            pointer_event: mutable Application::PointerEvent = zeroed
+            return 52 if not Application::next_pointer_event(&pointer_event)
+            return 53 if pointer_event.kind != Application::PointerEventKind.Motion or pointer_event.x != 101.25 or pointer_event.y != 88.5 or pointer_event.delta_x != 3.5 or pointer_event.delta_y != 0.0 - 2.25 or pointer_event.buttons != Application::PointerButtons::RIGHT_MASK
+            return 54 if not Application::next_pointer_event(&pointer_event)
+            return 55 if pointer_event.kind != Application::PointerEventKind.Button or pointer_event.button != Application::PointerButtons::RIGHT or not pointer_event.pressed or pointer_event.x != 101.25 or pointer_event.y != 88.5
+            return 56 if not Application::next_pointer_event(&pointer_event)
+            return 57 if pointer_event.kind != Application::PointerEventKind.Wheel or pointer_event.x != 101.25 or pointer_event.y != 88.5 or pointer_event.delta_x != 0.5 or pointer_event.delta_y != 1.25
+            return 58 if Application::next_pointer_event(&pointer_event)
             identity_status: i32 = catch RenderScene::set_pick_identity(handle, 7, 42):
                 ok: 0
                 error failure: 1
@@ -157,13 +183,17 @@ module RenderSceneSelectionNativeTests:
                 error failure: return 25
             return 26 if not focused
             theme.background <- UiStyle::Color(90, 8, 8, 255)
-            viewport_hit: bool = catch EditorViewport::select_at_pixel(&viewport,
-                160.0, 100.0, theme):
+            return 59 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::LEFT, 160.0, 100.0,
+                0.0, 0.0, 0, 1) != 0
+            return 60 if Application::pump() != Application::PumpStatus.Running
+            clicked_events: usize = catch EditorViewport::drain_pointer_events(
+                &viewport, theme):
                 value: value
                 error failure: return 27
-            return 28 if not viewport_hit
+            return 61 if clicked_events != 1
             viewport_selection: RenderScene::PickSelection = EditorViewport::selection(&viewport)
-            return 29 if not viewport_selection.hit or viewport_selection.result.gameplay_epoch != 7 or viewport_selection.result.gameplay_id != 42
+            return 28 if not viewport_selection.hit or viewport_selection.result.gameplay_epoch != 7 or viewport_selection.result.gameplay_id != 42
             return 30 if elisa_render_scene_v1_test_selection_state(raw_handle) != 1
             for frame in 0..<3:
                 return 31 if Application::pump() != Application::PumpStatus.Running
@@ -184,24 +214,42 @@ module RenderSceneSelectionNativeTests:
                 value: value
                 error failure: return 46
             return 47 if not restored_viewport
-            viewport_orbit: bool = catch EditorViewport::orbit_drag(&viewport,
-                8.0, -4.0):
+            return 62 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::RIGHT, 160.0, 100.0,
+                0.0, 0.0, 0, 1) != 0
+            return 63 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_MOTION, 0, 168.0, 96.0, 8.0, -4.0,
+                Application::PointerButtons::RIGHT_MASK, 0) != 0
+            return 64 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::RIGHT, 168.0, 96.0,
+                0.0, 0.0, 0, 0) != 0
+            return 65 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::MIDDLE, 160.0, 100.0,
+                0.0, 0.0, 0, 1) != 0
+            return 66 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_MOTION, 0, 162.0, 99.0, 2.0, -1.0,
+                Application::PointerButtons::MIDDLE_MASK, 0) != 0
+            return 67 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::MIDDLE, 162.0, 99.0,
+                0.0, 0.0, 0, 0) != 0
+            return 68 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_WHEEL, 0, 160.0, 100.0, 0.0, 1.0, 0, 0) != 0
+            return 69 if Application::pump() != Application::PumpStatus.Running
+            control_events: usize = catch EditorViewport::drain_pointer_events(
+                &viewport, theme):
                 value: value
-                error failure: return 33
-            viewport_pan: bool = catch EditorViewport::pan_drag(&viewport,
-                2.0, -1.0):
-                value: value
-                error failure: return 34
-            viewport_zoom: bool = catch EditorViewport::zoom_steps(&viewport, 1.0):
-                value: value
-                error failure: return 35
-            return 36 if not viewport_orbit or not viewport_pan or not viewport_zoom
-            viewport_miss: bool = catch EditorViewport::select_at_pixel(&viewport,
-                0.0, 0.0, theme):
+                error failure: return 70
+            return 71 if control_events != 7
+            return 72 if elisa_application_v1_test_push_pointer_event(
+                TEST_POINTER_BUTTON, Application::PointerButtons::LEFT, 0.0, 0.0,
+                0.0, 0.0, 0, 1) != 0
+            return 73 if Application::pump() != Application::PumpStatus.Running
+            missed_events: usize = catch EditorViewport::drain_pointer_events(
+                &viewport, theme):
                 value: value
                 error failure: return 37
-            return 38 if viewport_miss or EditorViewport::selection(&viewport).hit
-            return 39 if elisa_render_scene_v1_test_selection_state(raw_handle) != 0
+            return 74 if missed_events != 1 or EditorViewport::selection(&viewport).hit
+            return 75 if elisa_render_scene_v1_test_selection_state(raw_handle) != 0
             for frame in 0..<3:
                 return 40 if Application::pump() != Application::PumpStatus.Running
             return 41 if elisa_render_scene_v1_last_frame_has_overlay_text() != 0 or elisa_render_scene_v1_last_frame_has_overlay_panel() != 0

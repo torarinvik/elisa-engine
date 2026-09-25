@@ -10,10 +10,12 @@
 #include "wiRenderer.h"
 
 #include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_mouse.h>
 
 #include <cstddef>
 #include <chrono>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cerrno>
 #include <cstdlib>
@@ -37,6 +39,17 @@ struct QueuedInputEvent {
     int32_t chord_down = 0;
 };
 
+struct QueuedPointerEvent {
+    int32_t kind = 0;
+    int32_t button = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float delta_x = 0.0f;
+    float delta_y = 0.0f;
+    uint32_t buttons = 0;
+    int32_t pressed = 0;
+};
+
 struct OpenGamepad {
     SDL_JoystickID id = 0;
     SDL_Gamepad* handle = nullptr;
@@ -52,11 +65,16 @@ struct ApplicationService {
     uint64_t elapsed_nanos = 0;
     uint32_t pending_events = 0;
     std::array<QueuedInputEvent, INPUT_EVENT_CAPACITY> input_events{};
+    std::array<QueuedPointerEvent, INPUT_EVENT_CAPACITY> pointer_events{};
     std::array<OpenGamepad, GAMEPAD_CAPACITY> gamepads{};
     size_t input_event_count = 0;
     size_t input_event_read = 0;
+    size_t pointer_event_count = 0;
+    size_t pointer_event_read = 0;
     bool input_overflow = false;
     bool input_overflow_reported = false;
+    bool pointer_overflow = false;
+    bool pointer_overflow_reported = false;
     ElisaBackendProfile backend_profile{};
     bool backend_profile_valid = false;
     bool initialized = false;
@@ -85,6 +103,17 @@ void queue_input_event(ApplicationService& service, int32_t kind, int32_t device
     }
     service.input_events[service.input_event_count++] = QueuedInputEvent{
         kind, device, code, value, pressed ? 1 : 0, released ? 1 : 0, 0};
+}
+
+void queue_pointer_event(ApplicationService& service, int32_t kind,
+    int32_t button, float x, float y, float delta_x, float delta_y,
+    uint32_t buttons, bool pressed) {
+    if (service.pointer_event_count == INPUT_EVENT_CAPACITY) {
+        service.pointer_overflow = true;
+        return;
+    }
+    service.pointer_events[service.pointer_event_count++] = QueuedPointerEvent{
+        kind, button, x, y, delta_x, delta_y, buttons, pressed ? 1 : 0};
 }
 
 void open_gamepad(ApplicationService& service, SDL_JoystickID id) {
@@ -210,8 +239,12 @@ extern "C" int32_t elisa_application_v1_initialize(
     service.pending_events = 0;
     service.input_event_count = 0;
     service.input_event_read = 0;
+    service.pointer_event_count = 0;
+    service.pointer_event_read = 0;
     service.input_overflow = false;
     service.input_overflow_reported = false;
+    service.pointer_overflow = false;
+    service.pointer_overflow_reported = false;
     service.initialized = true;
     return ELISA_APPLICATION_OK;
 }
@@ -304,6 +337,8 @@ extern "C" int32_t elisa_application_v1_pump(void) {
         case SDL_EVENT_WINDOW_FOCUS_LOST:
             service.pending_events |= ELISA_APPLICATION_EVENT_FOCUS_LOST;
             queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, probe::INPUT_DEVICE_GLOBAL, 0, 0.0f, false, true);
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_FOCUS_LOST,
+                0, 0.0f, 0.0f, 0.0f, 0.0f, 0, false);
             break;
         case SDL_EVENT_KEY_DOWN:
             if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
@@ -320,11 +355,30 @@ extern "C" int32_t elisa_application_v1_pump(void) {
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, probe::INPUT_DEVICE_MOUSE,
                 static_cast<int64_t>(event.button.button), 1.0f, true, false);
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_BUTTON,
+                static_cast<int32_t>(event.button.button), event.button.x,
+                event.button.y, 0.0f, 0.0f, 0, true);
             break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
             queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, probe::INPUT_DEVICE_MOUSE,
                 static_cast<int64_t>(event.button.button), 0.0f, false, true);
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_BUTTON,
+                static_cast<int32_t>(event.button.button), event.button.x,
+                event.button.y, 0.0f, 0.0f, 0, false);
             break;
+        case SDL_EVENT_MOUSE_MOTION:
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_MOTION, 0,
+                event.motion.x, event.motion.y, event.motion.xrel,
+                event.motion.yrel, event.motion.state, false);
+            break;
+        case SDL_EVENT_MOUSE_WHEEL: {
+            const float direction = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED
+                ? -1.0f : 1.0f;
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_WHEEL, 0,
+                event.wheel.mouse_x, event.wheel.mouse_y,
+                event.wheel.x * direction, event.wheel.y * direction, 0, false);
+            break;
+        }
         case SDL_EVENT_GAMEPAD_ADDED:
             open_gamepad(service, event.gdevice.which);
             break;
@@ -361,6 +415,8 @@ extern "C" int32_t elisa_application_v1_pump(void) {
         case SDL_EVENT_WINDOW_MINIMIZED:
             service.pending_events |= ELISA_APPLICATION_EVENT_MINIMIZED;
             queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST, probe::INPUT_DEVICE_GLOBAL, 0, 0.0f, false, true);
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_FOCUS_LOST,
+                0, 0.0f, 0.0f, 0.0f, 0.0f, 0, false);
             break;
         case SDL_EVENT_WINDOW_RESTORED:
             service.pending_events |= ELISA_APPLICATION_EVENT_RESTORED;
@@ -391,79 +447,8 @@ extern "C" int32_t elisa_application_v1_test_set_minimized(int32_t minimized) {
     event.window.windowID = SDL_GetWindowID(service.host.window());
     return SDL_PushEvent(&event) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_FRAME_FAILED;
 }
+
 #endif
-
-extern "C" int32_t elisa_application_v1_next_input_event(
-    int32_t* kind, int32_t* device, int64_t* code, float* value,
-    int32_t* pressed, int32_t* released, int32_t* chord_down) {
-    if (kind == nullptr || device == nullptr || code == nullptr || value == nullptr ||
-        pressed == nullptr || released == nullptr || chord_down == nullptr) {
-        return ELISA_APPLICATION_INVALID_ARGUMENT;
-    }
-    ApplicationService& service = application_service();
-    std::lock_guard<std::mutex> guard(service.mutex);
-    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
-    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
-    if (service.input_event_read < service.input_event_count) {
-        const QueuedInputEvent& event = service.input_events[service.input_event_read++];
-        *kind = event.kind;
-        *device = event.device;
-        *code = event.code;
-        *value = event.value;
-        *pressed = event.pressed;
-        *released = event.released;
-        *chord_down = event.chord_down;
-        return 1;
-    }
-    if (service.input_overflow && !service.input_overflow_reported) {
-        service.input_overflow_reported = true;
-        *kind = ELISA_APPLICATION_INPUT_OVERFLOW;
-        *device = -1;
-        *code = 0;
-        *value = 0.0f;
-        *pressed = 0;
-        *released = 1;
-        *chord_down = 0;
-        return 1;
-    }
-    service.input_event_count = 0;
-    service.input_event_read = 0;
-    service.input_overflow = false;
-    service.input_overflow_reported = false;
-    return 0;
-}
-
-extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
-    ApplicationService& service = application_service();
-    std::lock_guard<std::mutex> guard(service.mutex);
-    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
-    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
-    int32_t kind = 0;
-    int32_t device = 0;
-    int64_t code = 0;
-    float value = 0.0f;
-    bool pressed = false;
-    bool released = false;
-    if (service.input_event_read < service.input_event_count) {
-        const QueuedInputEvent& event = service.input_events[service.input_event_read++];
-        kind = event.kind;
-        device = event.device;
-        code = event.code;
-        value = event.value;
-        pressed = event.pressed != 0;
-        released = event.released != 0;
-    } else if (service.input_overflow && !service.input_overflow_reported) {
-        service.input_overflow_reported = true;
-        kind = ELISA_APPLICATION_INPUT_OVERFLOW;
-    } else {
-        service.input_event_count = 0;
-        service.input_event_read = 0;
-        service.input_overflow = false;
-        service.input_overflow_reported = false;
-        return 0;
-    }
-    return probe::pack_input_event_token(kind, device, code, value, pressed, released);
-}
 
 extern "C" int32_t elisa_application_v1_frame_info(
     uint64_t* frame_count, uint64_t* elapsed_nanos, uint64_t* resize_serial,
@@ -532,6 +517,14 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     service.initialized_at = std::chrono::steady_clock::time_point{};
     service.pending_events = 0;
     service.elapsed_nanos = 0;
+    service.input_event_count = 0;
+    service.input_event_read = 0;
+    service.pointer_event_count = 0;
+    service.pointer_event_read = 0;
+    service.input_overflow = false;
+    service.input_overflow_reported = false;
+    service.pointer_overflow = false;
+    service.pointer_overflow_reported = false;
     return ELISA_APPLICATION_OK;
 }
 
@@ -560,6 +553,7 @@ extern "C" int32_t elisa_application_v1_validate_owner_thread(void) {
 
 #include "application_capture_impl.h"
 #include "application_render_probe.inc"
+#include "application_input_events.inc"
 
 extern "C" int32_t elisa_application_v1_activate_render_path(void* render_path) {
     ApplicationService& service = application_service();

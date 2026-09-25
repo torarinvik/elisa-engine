@@ -79,7 +79,10 @@ through its own visibility path.
 controls, ray picking, exact-object selection, and a retained selection overlay.
 It applies camera changes to the active Wicked view, maps primary framebuffer
 pixels to rays, and rejects a pick before changing selection when the viewport
-cannot fit the overlay. The SDL3/Metal selection smoke verifies center-pixel
-selection, orbit/pan/zoom updates, miss cleanup, and the undersized-view
-no-side-effect rule. SDL pointer-motion and wheel event routing remains to be
-connected by the editor host.
+cannot fit the overlay. SDL3 pointer events now drain through the viewport in
+arrival order: left-button presses pick, right-button drags orbit, middle-button
+drags pan, and wheel events zoom while the pointer is inside the viewport. SDL
+logical coordinates and deltas are scaled to framebuffer pixels at this
+boundary. The SDL3/Metal selection smoke injects motion, button, and wheel SDL
+events, verifies their decoded values and the resulting camera/selection
+changes, then checks miss cleanup and the undersized-view no-side-effect rule.

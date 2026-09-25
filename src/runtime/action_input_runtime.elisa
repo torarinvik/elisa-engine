@@ -1,6 +1,6 @@
 # Connect SDL3-backed application events to the portable Elisa action layer.
 include "action_input.elisa"
-include "application.elisa"
+include "application_input.elisa"
 
 module ActionInputRuntime:
     private:

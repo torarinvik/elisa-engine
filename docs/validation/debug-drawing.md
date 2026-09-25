@@ -33,10 +33,12 @@ removed on instance destruction or scene reset.
 miss, a zero-direction rejection, a real material outline enable, and an explicit
 outline clear. The backend-neutral editor orbit camera and retained world-selection overlay
 are implemented in Elisa, and `RenderScene::pick_and_select` connects one ray
-hit to its gameplay identity and exact native outline. Feeding SDL pointer and
-wheel events into those controls remains open R06 work. `EditorViewport` now
-owns camera state, orbit controls, selection identity, and the retained overlay
-as one composition. Its focused SDL3/Metal smoke selects through framebuffer
-pixels, checks the corresponding Wicked outline and visible overlay, exercises
-orbit/pan/zoom camera updates, verifies that an undersized view rejects a pick
-without changing the existing selection, and checks miss cleanup and destruction.
+hit to its gameplay identity and exact native outline. `ApplicationInput` now
+queues SDL3 pointer motion, buttons, wheel changes, focus loss, and overflow;
+`EditorViewport` consumes them in arrival order, scales logical window
+coordinates by the active display scale, and routes clicks, right-drag orbit,
+middle-drag pan, and wheel zoom. Its focused SDL3/Metal smoke injects native SDL
+events, checks event translation and viewport controls, selects through
+framebuffer pixels, verifies the corresponding Wicked outline and visible
+overlay, rejects an undersized view without changing the existing selection,
+and checks miss cleanup and destruction.

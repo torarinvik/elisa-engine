@@ -1,0 +1,322 @@
+# Portable keyboard, gamepad, and pointer events over the SDL3 application host.
+include "./application.elisa"
+
+module ApplicationInput:
+    public:
+        const API_VERSION: i32 = 1
+
+extend Application:
+    private:
+        const module InputTokenLayout:
+            KIND_MASK: i64 = 15
+            DEVICE_SHIFT: i64 = 4
+            DEVICE_MASK: i64 = 3
+            PAYLOAD_SHIFT: i64 = 6
+            AXIS_VALUE_BITS: i64 = 20
+            AXIS_VALUE_MASK: i64 = 1048575
+            AXIS_VALUE_MAX: f32 = 1048575.0
+            AXIS_CODE_SHIFT: i64 = PAYLOAD_SHIFT + AXIS_VALUE_BITS
+            AXIS_CODE_MASK: i64 = 4095
+            DIGITAL_CODE_MASK: i64 = 4294967295
+            PRESSED_SHIFT: i64 = 38
+            RELEASED_SHIFT: i64 = 39
+
+        const module InputTokenKind:
+            KEY: i32 = 1
+            MOUSE_BUTTON: i32 = 2
+            FOCUS_LOST: i32 = 3
+            OVERFLOW: i32 = 4
+            GAMEPAD_BUTTON: i32 = 5
+            GAMEPAD_AXIS: i32 = 6
+            GAMEPAD_CONNECTED: i32 = 7
+            GAMEPAD_DISCONNECTED: i32 = 8
+
+        const module PointerEventCode:
+            MOTION: i32 = 1
+            BUTTON: i32 = 2
+            WHEEL: i32 = 3
+            FOCUS_LOST: i32 = 4
+            OVERFLOW: i32 = 5
+
+        const module PortableInputCodes:
+            GAMEPAD_BUTTON_SOUTH: i64 = 1001
+            GAMEPAD_BUTTON_EAST: i64 = 1002
+            GAMEPAD_BUTTON_WEST: i64 = 1003
+            GAMEPAD_BUTTON_NORTH: i64 = 1004
+            GAMEPAD_BUTTON_BACK: i64 = 1005
+            GAMEPAD_BUTTON_GUIDE: i64 = 1006
+            GAMEPAD_BUTTON_START: i64 = 1007
+            GAMEPAD_BUTTON_LEFT_STICK: i64 = 1008
+            GAMEPAD_BUTTON_RIGHT_STICK: i64 = 1009
+            GAMEPAD_BUTTON_LEFT_SHOULDER: i64 = 1010
+            GAMEPAD_BUTTON_RIGHT_SHOULDER: i64 = 1011
+            GAMEPAD_BUTTON_DPAD_UP: i64 = 1012
+            GAMEPAD_BUTTON_DPAD_DOWN: i64 = 1013
+            GAMEPAD_BUTTON_DPAD_LEFT: i64 = 1014
+            GAMEPAD_BUTTON_DPAD_RIGHT: i64 = 1015
+            GAMEPAD_AXIS_LEFT_X_NEGATIVE: i64 = 1101
+            GAMEPAD_AXIS_LEFT_X_POSITIVE: i64 = 1102
+            GAMEPAD_AXIS_LEFT_Y_NEGATIVE: i64 = 1103
+            GAMEPAD_AXIS_LEFT_Y_POSITIVE: i64 = 1104
+            GAMEPAD_AXIS_RIGHT_X_NEGATIVE: i64 = 1105
+            GAMEPAD_AXIS_RIGHT_X_POSITIVE: i64 = 1106
+            GAMEPAD_AXIS_RIGHT_Y_NEGATIVE: i64 = 1107
+            GAMEPAD_AXIS_RIGHT_Y_POSITIVE: i64 = 1108
+            GAMEPAD_AXIS_LEFT_TRIGGER: i64 = 1109
+            GAMEPAD_AXIS_RIGHT_TRIGGER: i64 = 1110
+            KEY_A: i64 = 2001
+            KEY_D: i64 = 2002
+            KEY_E: i64 = 2003
+            KEY_Q: i64 = 2004
+            KEY_R: i64 = 2005
+            KEY_S: i64 = 2006
+            KEY_W: i64 = 2007
+            KEY_P: i64 = 2008
+            KEY_SPACE: i64 = 2009
+            KEY_ESCAPE: i64 = 2010
+            KEY_LEFT_SHIFT: i64 = 2011
+            KEY_RIGHT_SHIFT: i64 = 2012
+            KEY_ARROW_LEFT: i64 = 2013
+            KEY_ARROW_RIGHT: i64 = 2014
+            KEY_ARROW_UP: i64 = 2015
+            KEY_ARROW_DOWN: i64 = 2016
+            KEY_V: i64 = 2017
+            KEY_C: i64 = 2018
+            KEY_X: i64 = 2019
+            KEY_Z: i64 = 2020
+            KEY_TAB: i64 = 2021
+            KEY_DIGIT_1: i64 = 2022
+            KEY_DIGIT_2: i64 = 2023
+            KEY_DIGIT_3: i64 = 2024
+            KEY_H: i64 = 2025
+            KEY_LEFT_CONTROL: i64 = 2026
+            KEY_RIGHT_CONTROL: i64 = 2027
+
+        @callconv(c)
+        extern elisa_application_v1_next_input_event_token() -> i64
+
+        @callconv(c)
+        extern elisa_application_v1_next_pointer_event(kind: mutable i32&,
+            button: mutable i32&, x: mutable f32&, y: mutable f32&,
+            delta_x: mutable f32&, delta_y: mutable f32&,
+            buttons: mutable u32&, pressed: mutable i32&) -> i32
+
+    public:
+        const module PointerButtons:
+            LEFT: i32 = 1
+            MIDDLE: i32 = 2
+            RIGHT: i32 = 3
+            LEFT_MASK: u32 = 1
+            MIDDLE_MASK: u32 = 2
+            RIGHT_MASK: u32 = 4
+
+        enum InputEventKind:
+            Key
+            MouseButton
+            FocusLost
+            Overflow
+            GamepadButton
+            GamepadAxis
+            GamepadConnected
+            GamepadDisconnected
+
+        enum PointerEventKind:
+            Motion
+            Button
+            Wheel
+            FocusLost
+            Overflow
+
+        enum KeyboardKeyCode:
+            A
+            D
+            E
+            Q
+            R
+            S
+            W
+            P
+            V
+            C
+            X
+            Z
+            Tab
+            Digit1
+            Digit2
+            Digit3
+            H
+            Space
+            Escape
+            LeftShift
+            RightShift
+            LeftControl
+            RightControl
+            ArrowLeft
+            ArrowRight
+            ArrowUp
+            ArrowDown
+
+        enum GamepadButtonCode:
+            South
+            East
+            West
+            North
+            Back
+            Guide
+            Start
+            LeftStick
+            RightStick
+            LeftShoulder
+            RightShoulder
+            DpadUp
+            DpadDown
+            DpadLeft
+            DpadRight
+
+        enum GamepadAxisCode:
+            LeftXNegative
+            LeftXPositive
+            LeftYNegative
+            LeftYPositive
+            RightXNegative
+            RightXPositive
+            RightYNegative
+            RightYPositive
+            LeftTrigger
+            RightTrigger
+
+        struct InputEvent:
+            kind: mutable InputEventKind
+            device: mutable i32
+            code: mutable i64
+            value: mutable f32
+            pressed: mutable bool
+            released: mutable bool
+            chord_down: mutable bool
+            connected: mutable bool
+
+        struct PointerEvent:
+            kind: mutable PointerEventKind
+            button: mutable i32
+            x: mutable f32
+            y: mutable f32
+            delta_x: mutable f32
+            delta_y: mutable f32
+            buttons: mutable u32
+            pressed: mutable bool
+
+        def gamepad_button_code(button: GamepadButtonCode) -> i64:
+            match button:
+                GamepadButtonCode.South: PortableInputCodes::GAMEPAD_BUTTON_SOUTH
+                GamepadButtonCode.East: PortableInputCodes::GAMEPAD_BUTTON_EAST
+                GamepadButtonCode.West: PortableInputCodes::GAMEPAD_BUTTON_WEST
+                GamepadButtonCode.North: PortableInputCodes::GAMEPAD_BUTTON_NORTH
+                GamepadButtonCode.Back: PortableInputCodes::GAMEPAD_BUTTON_BACK
+                GamepadButtonCode.Guide: PortableInputCodes::GAMEPAD_BUTTON_GUIDE
+                GamepadButtonCode.Start: PortableInputCodes::GAMEPAD_BUTTON_START
+                GamepadButtonCode.LeftStick: PortableInputCodes::GAMEPAD_BUTTON_LEFT_STICK
+                GamepadButtonCode.RightStick: PortableInputCodes::GAMEPAD_BUTTON_RIGHT_STICK
+                GamepadButtonCode.LeftShoulder: PortableInputCodes::GAMEPAD_BUTTON_LEFT_SHOULDER
+                GamepadButtonCode.RightShoulder: PortableInputCodes::GAMEPAD_BUTTON_RIGHT_SHOULDER
+                GamepadButtonCode.DpadUp: PortableInputCodes::GAMEPAD_BUTTON_DPAD_UP
+                GamepadButtonCode.DpadDown: PortableInputCodes::GAMEPAD_BUTTON_DPAD_DOWN
+                GamepadButtonCode.DpadLeft: PortableInputCodes::GAMEPAD_BUTTON_DPAD_LEFT
+                GamepadButtonCode.DpadRight: PortableInputCodes::GAMEPAD_BUTTON_DPAD_RIGHT
+
+        def keyboard_key_code(key: KeyboardKeyCode) -> i64:
+            match key:
+                KeyboardKeyCode.A: PortableInputCodes::KEY_A
+                KeyboardKeyCode.D: PortableInputCodes::KEY_D
+                KeyboardKeyCode.E: PortableInputCodes::KEY_E
+                KeyboardKeyCode.Q: PortableInputCodes::KEY_Q
+                KeyboardKeyCode.R: PortableInputCodes::KEY_R
+                KeyboardKeyCode.S: PortableInputCodes::KEY_S
+                KeyboardKeyCode.W: PortableInputCodes::KEY_W
+                KeyboardKeyCode.P: PortableInputCodes::KEY_P
+                KeyboardKeyCode.V: PortableInputCodes::KEY_V
+                KeyboardKeyCode.C: PortableInputCodes::KEY_C
+                KeyboardKeyCode.X: PortableInputCodes::KEY_X
+                KeyboardKeyCode.Z: PortableInputCodes::KEY_Z
+                KeyboardKeyCode.Tab: PortableInputCodes::KEY_TAB
+                KeyboardKeyCode.Digit1: PortableInputCodes::KEY_DIGIT_1
+                KeyboardKeyCode.Digit2: PortableInputCodes::KEY_DIGIT_2
+                KeyboardKeyCode.Digit3: PortableInputCodes::KEY_DIGIT_3
+                KeyboardKeyCode.H: PortableInputCodes::KEY_H
+                KeyboardKeyCode.Space: PortableInputCodes::KEY_SPACE
+                KeyboardKeyCode.Escape: PortableInputCodes::KEY_ESCAPE
+                KeyboardKeyCode.LeftShift: PortableInputCodes::KEY_LEFT_SHIFT
+                KeyboardKeyCode.RightShift: PortableInputCodes::KEY_RIGHT_SHIFT
+                KeyboardKeyCode.LeftControl: PortableInputCodes::KEY_LEFT_CONTROL
+                KeyboardKeyCode.RightControl: PortableInputCodes::KEY_RIGHT_CONTROL
+                KeyboardKeyCode.ArrowLeft: PortableInputCodes::KEY_ARROW_LEFT
+                KeyboardKeyCode.ArrowRight: PortableInputCodes::KEY_ARROW_RIGHT
+                KeyboardKeyCode.ArrowUp: PortableInputCodes::KEY_ARROW_UP
+                KeyboardKeyCode.ArrowDown: PortableInputCodes::KEY_ARROW_DOWN
+
+        def gamepad_axis_code(axis: GamepadAxisCode) -> i64:
+            match axis:
+                GamepadAxisCode.LeftXNegative: PortableInputCodes::GAMEPAD_AXIS_LEFT_X_NEGATIVE
+                GamepadAxisCode.LeftXPositive: PortableInputCodes::GAMEPAD_AXIS_LEFT_X_POSITIVE
+                GamepadAxisCode.LeftYNegative: PortableInputCodes::GAMEPAD_AXIS_LEFT_Y_NEGATIVE
+                GamepadAxisCode.LeftYPositive: PortableInputCodes::GAMEPAD_AXIS_LEFT_Y_POSITIVE
+                GamepadAxisCode.RightXNegative: PortableInputCodes::GAMEPAD_AXIS_RIGHT_X_NEGATIVE
+                GamepadAxisCode.RightXPositive: PortableInputCodes::GAMEPAD_AXIS_RIGHT_X_POSITIVE
+                GamepadAxisCode.RightYNegative: PortableInputCodes::GAMEPAD_AXIS_RIGHT_Y_NEGATIVE
+                GamepadAxisCode.RightYPositive: PortableInputCodes::GAMEPAD_AXIS_RIGHT_Y_POSITIVE
+                GamepadAxisCode.LeftTrigger: PortableInputCodes::GAMEPAD_AXIS_LEFT_TRIGGER
+                GamepadAxisCode.RightTrigger: PortableInputCodes::GAMEPAD_AXIS_RIGHT_TRIGGER
+
+        # Keyboard, mouse-button, and gamepad transitions retain SDL arrival
+        # order; normalized gamepad axes stay within [0, 1].
+        def next_input_event(event: mutable InputEvent&) -> bool:
+            encoded: i64 = elisa_application_v1_next_input_event_token()
+            return false if encoded <= 0
+            kind: i32 = (encoded & InputTokenLayout::KIND_MASK).i32()
+            event.kind <- InputEventKind.Key if kind == Application::InputTokenKind::KEY
+            event.kind <- InputEventKind.MouseButton if kind == Application::InputTokenKind::MOUSE_BUTTON
+            event.kind <- InputEventKind.FocusLost if kind == Application::InputTokenKind::FOCUS_LOST
+            event.kind <- InputEventKind.Overflow if kind == Application::InputTokenKind::OVERFLOW
+            event.kind <- InputEventKind.GamepadButton if kind == Application::InputTokenKind::GAMEPAD_BUTTON
+            event.kind <- InputEventKind.GamepadAxis if kind == Application::InputTokenKind::GAMEPAD_AXIS
+            event.kind <- InputEventKind.GamepadConnected if kind == Application::InputTokenKind::GAMEPAD_CONNECTED
+            event.kind <- InputEventKind.GamepadDisconnected if kind == Application::InputTokenKind::GAMEPAD_DISCONNECTED
+            event.device <- ((encoded >> InputTokenLayout::DEVICE_SHIFT) & InputTokenLayout::DEVICE_MASK).i32()
+            event.pressed <- ((encoded >> InputTokenLayout::PRESSED_SHIFT) & 1) != 0
+            event.released <- ((encoded >> InputTokenLayout::RELEASED_SHIFT) & 1) != 0
+            event.connected <- true if kind == Application::InputTokenKind::GAMEPAD_CONNECTED else (event.pressed if kind == Application::InputTokenKind::GAMEPAD_DISCONNECTED else false)
+            if kind == Application::InputTokenKind::GAMEPAD_AXIS:
+                event.code <- (encoded >> InputTokenLayout::AXIS_CODE_SHIFT) & InputTokenLayout::AXIS_CODE_MASK
+                event.value <- ((encoded >> InputTokenLayout::PAYLOAD_SHIFT) & InputTokenLayout::AXIS_VALUE_MASK).f32() / InputTokenLayout::AXIS_VALUE_MAX
+            else:
+                event.code <- (encoded >> InputTokenLayout::PAYLOAD_SHIFT) & InputTokenLayout::DIGITAL_CODE_MASK
+                event.value <- 1.0 if event.pressed else 0.0
+            event.chord_down <- false
+            true
+
+        # Pointer coordinates and deltas stay in logical window units. Editor
+        # viewports apply the camera's display scale before ray construction.
+        def next_pointer_event(event: mutable PointerEvent&) -> bool:
+            kind: mutable i32 = 0
+            button: mutable i32 = 0
+            x: mutable f32 = 0.0
+            y: mutable f32 = 0.0
+            delta_x: mutable f32 = 0.0
+            delta_y: mutable f32 = 0.0
+            buttons: mutable u32 = 0
+            pressed: mutable i32 = 0
+            status: i32 = elisa_application_v1_next_pointer_event(&kind,
+                &button, &x, &y, &delta_x, &delta_y, &buttons, &pressed)
+            return false if status <= 0
+            event.kind <- PointerEventKind.Motion if kind == PointerEventCode::MOTION
+            event.kind <- PointerEventKind.Button if kind == PointerEventCode::BUTTON
+            event.kind <- PointerEventKind.Wheel if kind == PointerEventCode::WHEEL
+            event.kind <- PointerEventKind.FocusLost if kind == PointerEventCode::FOCUS_LOST
+            event.kind <- PointerEventKind.Overflow if kind == PointerEventCode::OVERFLOW
+            event.button <- button
+            event.x <- x
+            event.y <- y
+            event.delta_x <- delta_x
+            event.delta_y <- delta_y
+            event.buttons <- buttons
+            event.pressed <- pressed != 0
+            true
