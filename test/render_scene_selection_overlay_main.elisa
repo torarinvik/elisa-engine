@@ -1,0 +1,48 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+extend RenderScene:
+    public:
+        def native_smoke_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+include "render_scene_selection_native.elisa"
+
+def main() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa World Selection Overlay Smoke",
+        width: 320,
+        height: 200,
+        hidden: true,
+    }
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(
+        Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
+        Geometry::vec3_zero(),
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    sphere: RenderScene::InstanceHandle = catch RenderScene::create(
+        RenderScene::Primitive.Sphere,
+        Geometry::Transform{
+            position: Geometry::Vec3{x: 1.1, y: 0.0, z: 0.0},
+            rotation: Geometry::quat_identity(),
+            scale: Geometry::Vec3{x: 0.85, y: 0.85, z: 0.85},
+        },
+        RenderScene::Color{red: 0.1, green: 1.0, blue: 0.35, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    selection: i32 = RenderSceneSelectionNativeTests::exercise(sphere)
+    destroyed: i32 = catch RenderScene::destroy(sphere):
+        ok: 0
+        error failure: 1
+    shutdown: i32 = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 1
+    application_shutdown: bool = Application::shutdown()
+    return 5 if destroyed != 0 or shutdown != 0 or not application_shutdown
+    return 100 + selection if selection != 0
+    0

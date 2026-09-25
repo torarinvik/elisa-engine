@@ -7,4 +7,4 @@ release, and keeps the native selection state separate from Elisa gameplay IDs.
 
 Evidence: the SDL3/Wicked gate selects a real cube material, verifies the
 outline pass and material flag, clears the selection, and verifies cleanup.
-Editor-owned end-to-end selection overlays remain open R06 work.
+The retained `WorldSelectionOverlay` composes a checked pick result into a bounded panel with world epoch and entity ID labels. The SDL3/Wicked group verifies that the panel and text appear together, hide together, and release their handles.

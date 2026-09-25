@@ -224,8 +224,6 @@ def exercise_render_scene() -> i32:
         RenderScene::Color{red: 0.1, green: 1.0, blue: 0.35, alpha: 1.0}):
         value: value
         error failure: return 7
-    selection_updates: i32 = RenderSceneSelectionNativeTests::exercise(sphere)
-    return elisa_render_scene_v1_test_failed_case(232, selection_updates) if selection_updates != 0
     floor_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -544,6 +542,8 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 139 if stale_hud_panel != 1
+    selection_updates: i32 = RenderSceneSelectionNativeTests::exercise(sphere)
+    return elisa_render_scene_v1_test_failed_case(232, selection_updates) if selection_updates != 0
     destroyed: i32 = catch RenderScene::destroy(sphere):
         ok: 0
         error failure: 1

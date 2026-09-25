@@ -31,5 +31,6 @@ removed on instance destruction or scene reset.
 `test/render_scene_selection_native.elisa` is wired into render-scene smoke group
 232. It checks a transformed sphere hit after an owner-frame update, an off-target
 miss, a zero-direction rejection, a real material outline enable, and an explicit
-outline clear. Editor camera tools and composing a picked result into a retained
-world selection overlay remain separate work.
+outline clear. The backend-neutral editor orbit camera and retained world-selection overlay
+are implemented in Elisa. Wiring viewport input, pick, outline, and overlay
+lifetimes into a complete interactive editor remains open R06 work.
