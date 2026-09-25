@@ -130,6 +130,7 @@ def main() -> int:
             "hidden": True,
         }
         projects = [
+            ("world-audio-physics-smoke", ROOT / "test/world_audio_physics_native_main.elisa"),
             ("quality-settings-native-smoke", ROOT / "test/quality_settings_native_main.elisa"),
             ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),
             ("physics-runtime-query-smoke", ROOT / "test/physics_app_native.elisa"),
