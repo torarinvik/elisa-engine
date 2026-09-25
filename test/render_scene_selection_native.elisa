@@ -1,4 +1,5 @@
 include "../src/runtime/render_scene_selection.elisa"
+include "../src/tooling/world_selection_overlay.elisa"
 include "../src/math/geometry.elisa"
 
 module RenderSceneSelectionNativeTests:
@@ -7,6 +8,12 @@ module RenderSceneSelectionNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_selection_state(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_last_frame_has_overlay_panel() -> i32
 
     public:
         def exercise(handle: RenderScene::InstanceHandle) -> i32:
@@ -44,8 +51,73 @@ module RenderSceneSelectionNativeTests:
                 ok: 0
                 error failure: 1
             return 6 if selected != 0 or elisa_render_scene_v1_test_selection_state(raw_handle) != 1
+            picked_selection: RenderScene::PickSelection = catch RenderScene::pick_and_select(
+                ray, ALL_LAYERS):
+                value: value
+                error failure: return 18
+            return 19 if not picked_selection.hit or picked_selection.result.gameplay_epoch != 7 or picked_selection.result.gameplay_id != 42 or picked_selection.result.distance <= 0.0
+            return 20 if elisa_render_scene_v1_test_selection_state(raw_handle) != 1
+            missed_selection: RenderScene::PickSelection = catch RenderScene::pick_and_select(
+                Geometry::Ray3{
+                    origin: Geometry::Vec3{x: -5.0, y: 10.0, z: 8.0},
+                    direction: Geometry::vec3_normalize(Geometry::Vec3{x: 0.0, y: -10.0, z: -8.0}),
+                }, ALL_LAYERS):
+                value: value
+                error failure: return 21
+            return 22 if missed_selection.hit or elisa_render_scene_v1_test_selection_state(raw_handle) != 0
+
+            theme: mutable UiStyle::Theme = UiStyle::theme_default()
+            theme.background <- UiStyle::Color(90, 8, 8, 255)
+            panel: RenderScene::OverlayPanelHandle = catch RenderScene::create_overlay_panel(
+                12.0, 12.0, 256.0, 140.0,
+                RenderScene::Color{red: 0.06, green: 0.06, blue: 0.08, alpha: 1.0}):
+                value: value
+                error failure: return 7
+            title: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "WORLD SELECTION", 20.0, 20.0, 14,
+                RenderScene::Color{red: 1.0, green: 0.8, blue: 0.2, alpha: 1.0}):
+                value: value
+                error failure: return 7
+            world: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "world epoch: 0", 20.0, 42.0, 12,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 7
+            entity: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "entity id: 0", 20.0, 64.0, 12,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 7
+            canvas: mutable WorldSelectionOverlay::Canvas = WorldSelectionOverlay::Canvas(
+                panel, title, world, entity)
+            shown: i32 = catch WorldSelectionOverlay::show(&canvas, hit, 320, 200, theme):
+                ok: 0
+                error failure: 1
+            return 8 if shown != 0
+            for frame in 0..<3:
+                return 9 if Application::pump() != Application::PumpStatus.Running
+            return 10 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
+            return 17 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
+            invalid_pick: i32 = catch WorldSelectionOverlay::show(&canvas,
+                RenderScene::PickResult{gameplay_epoch: 0, gameplay_id: 42, distance: 1.0},
+                320, 200, theme):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 11 if invalid_pick != 1
+            hidden: i32 = catch WorldSelectionOverlay::hide(&canvas):
+                ok: 0
+                error failure: 1
+            return 12 if hidden != 0
+            for frame in 0..<3:
+                return 13 if Application::pump() != Application::PumpStatus.Running
+            return 14 if elisa_render_scene_v1_last_frame_has_overlay_text() != 0 or elisa_render_scene_v1_last_frame_has_overlay_panel() != 0
             cleared: i32 = catch RenderScene::clear_selection():
                 ok: 0
                 error failure: 1
-            return 7 if cleared != 0 or elisa_render_scene_v1_test_selection_state(raw_handle) != 0
+            return 15 if cleared != 0 or elisa_render_scene_v1_test_selection_state(raw_handle) != 0
+            destroyed_canvas: i32 = catch WorldSelectionOverlay::destroy(&canvas):
+                ok: 0
+                error failure: 1
+            return 16 if destroyed_canvas != 0 or WorldSelectionOverlay::canvas_valid(&canvas)
             0

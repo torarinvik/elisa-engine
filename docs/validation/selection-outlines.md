@@ -7,4 +7,10 @@ release, and keeps the native selection state separate from Elisa gameplay IDs.
 
 Evidence: the SDL3/Wicked gate selects a real cube material, verifies the
 outline pass and material flag, clears the selection, and verifies cleanup.
-Editor-owned end-to-end selection overlays remain open R06 work.
+`RenderScene::pick_and_select` now resolves the gameplay reference and outlines
+the exact hit object in one owner-thread call; a miss clears the previous
+outline. Group 232 verifies the returned identity, native outline state, and
+miss cleanup. The retained `WorldSelectionOverlay` composes the checked pick
+result into a bounded panel with world epoch and entity ID labels. The same
+group verifies that the panel and text appear together, hide together, and
+release their handles.

@@ -18,6 +18,13 @@ extend RenderScene:
             layer_mask: u32, gameplay_epoch: mutable i64&, gameplay_id: mutable i64&,
             distance: mutable f32&) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_pick_and_select(
+            origin_x: f32, origin_y: f32, origin_z: f32,
+            direction_x: f32, direction_y: f32, direction_z: f32,
+            layer_mask: u32, has_hit: mutable i32&,
+            gameplay_epoch: mutable i64&, gameplay_id: mutable i64&,
+            distance: mutable f32&) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_select(handle: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_clear_selection() -> i32
@@ -27,6 +34,10 @@ extend RenderScene:
             gameplay_epoch: i64
             gameplay_id: i64
             distance: f32
+
+        struct PickSelection:
+            hit: bool
+            result: PickResult
 
         def set_pick_identity(handle: InstanceHandle,
             gameplay_epoch: i64, gameplay_id: i64) -> void error[RenderSceneError]:
@@ -45,6 +56,28 @@ extend RenderScene:
                 gameplay_epoch: gameplay_epoch,
                 gameplay_id: gameplay_id,
                 distance: distance,
+            }
+
+        # Pick and outline the exact native object in one owner-thread call.
+        # A miss clears the old outline and returns hit=false.
+        def pick_and_select(ray: Geometry::Ray3,
+            layer_mask: u32) -> PickSelection error[RenderSceneError]:
+            has_hit: mutable i32 = 0
+            gameplay_epoch: mutable i64 = 0
+            gameplay_id: mutable i64 = 0
+            distance: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_pick_and_select(
+                ray.origin.x, ray.origin.y, ray.origin.z,
+                ray.direction.x, ray.direction.y, ray.direction.z,
+                layer_mask, &has_hit, &gameplay_epoch, &gameplay_id, &distance))
+            raise RenderSceneError.BackendFailure if has_hit != 0 and has_hit != 1
+            PickSelection{
+                hit: has_hit == 1,
+                result: PickResult{
+                    gameplay_epoch: gameplay_epoch,
+                    gameplay_id: gameplay_id,
+                    distance: distance,
+                },
             }
 
         def select(handle: InstanceHandle) -> void error[RenderSceneError]:

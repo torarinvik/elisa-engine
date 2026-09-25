@@ -415,6 +415,9 @@ def main() -> int:
                     escape_link.unlink(missing_ok=True)
                     texture_link.unlink(missing_ok=True)
                     dependency_link.unlink(missing_ok=True)
+    if status == 0 and os.environ.get("ELISA_RENDER_SCENE_SELECTION_ONLY") == "1":
+        print("World-selection overlay visibility, identity composition, and cleanup passed on SDL3/Metal.")
+        return 0
     if status == 0 and capture_lod_quality:
         quality_status = run([sys.executable, str(ROOT / "scripts/compare_renders.py"),
             "lod-quality", str(fine_lod_capture), str(coarse_lod_capture)])

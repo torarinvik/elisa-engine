@@ -52,12 +52,22 @@ public:
 
     bool pick(const wi::primitive::Ray& ray, uint32_t layer_mask,
         PickGameplayRef& gameplay, float& distance) const {
+        wi::ecs::Entity native_entity = wi::ecs::INVALID_ENTITY;
+        return pick(ray, layer_mask, gameplay, native_entity, distance);
+    }
+
+    // Resolve both the public gameplay identity and the private Wicked object
+    // for callers that immediately apply a native selection effect.
+    bool pick(const wi::primitive::Ray& ray, uint32_t layer_mask,
+        PickGameplayRef& gameplay, wi::ecs::Entity& native_entity,
+        float& distance) const {
         if (!finite_ray(ray)) return false;
         const auto result = scene_.Intersects(ray, wi::enums::FILTER_OBJECT_ALL, layer_mask);
         if (result.entity == wi::ecs::INVALID_ENTITY || !std::isfinite(result.distance)) return false;
         for (const Entry& entry : entries_) {
             if (entry.live && entry.native_entity == result.entity) {
                 gameplay = entry.gameplay;
+                native_entity = result.entity;
                 distance = result.distance;
                 return true;
             }
