@@ -120,4 +120,18 @@ def main() -> i32:
     return 11 if not Lighting::environment_valid(environment)
     environment.sun_direction <- Geometry::vec3_zero()
     return 12 if Lighting::environment_valid(environment)
+    probe: mutable Lighting::EnvironmentProbe = Lighting::EnvironmentProbe()
+    return 48 if not Lighting::environment_probe_valid(probe)
+    probe.resolution <- 63
+    return 49 if Lighting::environment_probe_valid(probe)
+    probe.resolution <- 64
+    probe.view_distance <- 0.0
+    return 50 if Lighting::environment_probe_valid(probe)
+    probe.view_distance <- 100.0
+    probe.update_interval <- -0.01
+    return 51 if Lighting::environment_probe_valid(probe)
+    probe.update_interval <- 1.0
+    return 52 if not Lighting::environment_probe_valid(probe)
+    probe.position <- Geometry::Vec3{x: 1.0e30, y: 0.0, z: 0.0}
+    return 53 if Lighting::environment_probe_valid(probe)
     0

@@ -1,0 +1,146 @@
+include "../src/runtime/render_scene_environment_probes.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneEnvironmentProbeNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_environment_probe_matches(
+            px: f32, py: f32, pz: f32, resolution: i32, view_distance: f32,
+            update_interval: f32, realtime: i32, multisampled: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_environment_probe_count() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_environment_probe_clear_dirty() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_environment_probe_is_dirty() -> i32
+
+        def native_probe_matches(probe: Lighting::EnvironmentProbe) -> bool:
+            elisa_render_scene_v1_test_environment_probe_matches(
+                probe.position.x, probe.position.y, probe.position.z, probe.resolution,
+                probe.view_distance, probe.update_interval,
+                1 if probe.realtime else 0, 1 if probe.multisampled else 0) == 1
+
+        def destroy_status(handle: RenderScene::EnvironmentProbeHandle) -> i32:
+            catch RenderScene::destroy_environment_probe(handle):
+                ok: 0
+                error failure: 1
+
+        def exercise_lifecycle() -> i32:
+            invalid: mutable Lighting::EnvironmentProbe = Lighting::EnvironmentProbe()
+            invalid.resolution <- 63
+            rejected_create: i32 = catch RenderScene::create_environment_probe(invalid):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 1 if rejected_create != 1 or elisa_render_scene_v1_test_environment_probe_count() != 0
+
+            initial: Lighting::EnvironmentProbe = Lighting::EnvironmentProbe()
+            handle: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 2
+            return 3 if elisa_render_scene_v1_test_environment_probe_count() != 1
+            return 4 if not native_probe_matches(initial)
+            return 5 if elisa_render_scene_v1_test_environment_probe_clear_dirty() != 1
+            return 6 if elisa_render_scene_v1_test_environment_probe_is_dirty() != 0
+
+            updated: mutable Lighting::EnvironmentProbe = initial
+            updated.position <- Geometry::Vec3{x: 2.0, y: 3.0, z: 4.0}
+            updated.resolution <- 64
+            updated.view_distance <- 50.0
+            updated.realtime <- true
+            updated.update_interval <- 0.25
+            updated.multisampled <- true
+            # Changes to capture inputs invalidate even a static probe's cached cube.
+            _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
+            _ = catch RenderScene::update_environment_probe(handle, updated):
+                ok: 0
+                error failure: return 7
+            return 8 if not native_probe_matches(updated) or elisa_render_scene_v1_test_environment_probe_is_dirty() != 1
+
+            moved: mutable Lighting::EnvironmentProbe = updated
+            moved.position <- Geometry::Vec3{x: 5.0, y: 3.0, z: 4.0}
+            _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
+            _ = catch RenderScene::update_environment_probe(handle, moved):
+                ok: 0
+                error failure: return 36
+            return 37 if not native_probe_matches(moved) or elisa_render_scene_v1_test_environment_probe_is_dirty() != 1
+
+            _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
+            _ = catch RenderScene::refresh_environment_probe(handle):
+                ok: 0
+                error failure: return 9
+            return 10 if elisa_render_scene_v1_test_environment_probe_is_dirty() != 1
+
+            invalid.resolution <- 63
+            rejected_update: i32 = catch RenderScene::update_environment_probe(handle, invalid):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 11 if rejected_update != 1 or not native_probe_matches(moved)
+            return 12 if destroy_status(handle) != 0
+            return 13 if elisa_render_scene_v1_test_environment_probe_count() != 0
+            stale: i32 = catch RenderScene::destroy_environment_probe(handle):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 14 if stale != 1
+            0
+
+        def exercise_capacity() -> i32:
+            initial: Lighting::EnvironmentProbe = Lighting::EnvironmentProbe()
+            retired: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 15
+            return 16 if destroy_status(retired) != 0
+
+            first: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 17
+            second: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 18
+            third: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 19
+            fourth: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 20
+            fifth: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 21
+            sixth: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 22
+            seventh: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 23
+            eighth: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(initial):
+                value: value
+                error failure: return 24
+            stale_after_reuse: i32 = catch RenderScene::update_environment_probe(retired, initial):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 25 if stale_after_reuse != 1
+            overflow: i32 = catch RenderScene::create_environment_probe(initial):
+                value: 0
+                RenderScene::RenderSceneError.Capacity: 1
+                error failure: 2
+            expected_count: i32 = RenderScene::MAX_ENVIRONMENT_PROBES.i32()
+            return 26 if overflow != 1 or elisa_render_scene_v1_test_environment_probe_count() != expected_count
+            return 27 if destroy_status(first) != 0
+            return 28 if destroy_status(second) != 0
+            return 29 if destroy_status(third) != 0
+            return 30 if destroy_status(fourth) != 0
+            return 31 if destroy_status(fifth) != 0
+            return 32 if destroy_status(sixth) != 0
+            return 33 if destroy_status(seventh) != 0
+            return 34 if destroy_status(eighth) != 0
+            return 35 if elisa_render_scene_v1_test_environment_probe_count() != 0
+            0
+
+    public:
+        def exercise() -> i32:
+            lifecycle_status: i32 = exercise_lifecycle()
+            return lifecycle_status if lifecycle_status != 0
+            exercise_capacity()

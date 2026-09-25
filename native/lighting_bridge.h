@@ -55,6 +55,15 @@ struct NativeEnvironmentHandle {
     uintptr_t owner = 0;
 };
 
+struct NativeEnvironmentProbeDesc {
+    XMFLOAT3 position = XMFLOAT3(0, 0, 0);
+    uint32_t resolution = 128;
+    float view_distance = 100.0f;
+    float update_interval = 0.0f;
+    bool realtime = false;
+    bool multisampled = false;
+};
+
 class LightingBridge {
 public:
     static constexpr uint32_t MAX_LIGHTS = 32;
@@ -146,11 +155,12 @@ public:
         return live(handle) ? lights_[handle.slot].entity : wi::ecs::INVALID_ENTITY;
     }
 
-    NativeEnvironmentHandle create_environment(uint32_t resolution, float view_distance, bool realtime) {
-        if (!valid_resolution(resolution) || !std::isfinite(view_distance) || view_distance == 0.0f) return {};
+    NativeEnvironmentHandle create_environment(const NativeEnvironmentProbeDesc& desc) {
+        if (!valid_environment_probe(desc)) return {};
         const uint32_t slot = free_environment();
         if (slot == MAX_ENVIRONMENTS) return {};
-        const auto entity = scene_.Entity_CreateEnvironmentProbe("elisa_environment_" + std::to_string(slot));
+        const auto entity = scene_.Entity_CreateEnvironmentProbe(
+            "elisa_environment_" + std::to_string(slot), desc.position);
         if (entity == wi::ecs::INVALID_ENTITY) return {};
         auto* probe = scene_.probes.GetComponent(entity);
         auto& state = environments_[slot];
@@ -159,12 +169,41 @@ public:
             scene_.Entity_Remove(entity);
             return {};
         }
-        probe->resolution = resolution;
-        probe->view_distance = view_distance;
-        probe->SetRealTime(realtime);
+        if (!apply_environment_probe(entity, desc)) {
+            scene_.Entity_Remove(entity);
+            return {};
+        }
         state.entity = entity;
         state.live = true;
         return {slot, state.generation, owner_};
+    }
+
+    bool update_environment(NativeEnvironmentHandle handle, const NativeEnvironmentProbeDesc& desc) {
+        if (!live(handle) || !valid_environment_probe(desc)) return false;
+        return apply_environment_probe(environments_[handle.slot].entity, desc);
+    }
+
+    bool refresh_environment(NativeEnvironmentHandle handle) {
+        if (!live(handle)) return false;
+        auto* probe = scene_.probes.GetComponent(environments_[handle.slot].entity);
+        if (probe == nullptr) return false;
+        probe->SetDirty();
+        return true;
+    }
+
+    bool environment_matches(NativeEnvironmentHandle handle, const NativeEnvironmentProbeDesc& desc) const {
+        if (!live(handle) || !valid_environment_probe(desc)) return false;
+        const wi::ecs::Entity entity = environments_[handle.slot].entity;
+        const auto* probe = scene_.probes.GetComponent(entity);
+        const auto* transform = scene_.transforms.GetComponent(entity);
+        if (probe == nullptr || transform == nullptr) return false;
+        const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
+        const XMFLOAT3 position = transform->translation_local;
+        return close(position.x, desc.position.x) && close(position.y, desc.position.y) &&
+            close(position.z, desc.position.z) && probe->resolution == desc.resolution &&
+            close(probe->view_distance, desc.view_distance) &&
+            close(probe->GetRealtimeUpdateInterval(), desc.update_interval) &&
+            probe->IsRealTime() == desc.realtime && probe->IsMSAA() == desc.multisampled;
     }
 
     bool destroy_environment(NativeEnvironmentHandle handle) {
@@ -178,6 +217,10 @@ public:
     bool live(NativeEnvironmentHandle handle) const {
         return handle.owner == owner_ && handle.slot < MAX_ENVIRONMENTS &&
             environments_[handle.slot].live && environments_[handle.slot].generation == handle.generation;
+    }
+
+    wi::ecs::Entity environment_entity(NativeEnvironmentHandle handle) const {
+        return live(handle) ? environments_[handle.slot].entity : wi::ecs::INVALID_ENTITY;
     }
 
     bool apply_environment(const NativeEnvironmentDesc& desc) {
@@ -245,6 +288,40 @@ private:
 
     static bool valid_resolution(uint32_t resolution) {
         return resolution >= 16 && resolution <= 2048 && (resolution & (resolution - 1)) == 0;
+    }
+
+    static bool valid_environment_probe(const NativeEnvironmentProbeDesc& desc) {
+        return valid_resolution(desc.resolution) && std::isfinite(desc.position.x) &&
+            std::isfinite(desc.position.y) && std::isfinite(desc.position.z) &&
+            std::fabs(desc.position.x) <= 1.0e30f && std::fabs(desc.position.y) <= 1.0e30f &&
+            std::fabs(desc.position.z) <= 1.0e30f && std::isfinite(desc.view_distance) &&
+            desc.view_distance > 0.0f && desc.view_distance <= 1000000.0f &&
+            std::isfinite(desc.update_interval) && desc.update_interval >= 0.0f &&
+            desc.update_interval <= 3600.0f;
+    }
+
+    bool apply_environment_probe(wi::ecs::Entity entity, const NativeEnvironmentProbeDesc& desc) {
+        auto* probe = scene_.probes.GetComponent(entity);
+        auto* transform = scene_.transforms.GetComponent(entity);
+        if (probe == nullptr || transform == nullptr) return false;
+        const XMFLOAT3 position = transform->translation_local;
+        const bool allocation_changed = probe->resolution != desc.resolution ||
+            probe->IsMSAA() != desc.multisampled;
+        const bool capture_changed = allocation_changed ||
+            probe->view_distance != desc.view_distance || position.x != desc.position.x ||
+            position.y != desc.position.y || position.z != desc.position.z;
+        if (allocation_changed) {
+            probe->resolution = desc.resolution;
+            probe->SetMSAA(desc.multisampled);
+        }
+        probe->view_distance = desc.view_distance;
+        probe->SetRealTime(desc.realtime);
+        probe->SetUpdateInterval(desc.update_interval);
+        transform->translation_local = desc.position;
+        transform->SetDirty();
+        transform->UpdateTransform();
+        if (capture_changed) probe->SetDirty();
+        return true;
     }
 
     static wi::scene::LightComponent::LightType light_type(NativeLightKind kind) {
@@ -336,7 +413,14 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
     spot.position = XMFLOAT3(-4.0f, 1.0f, 2.0f);
     spot.outer_cone = 0.8f;
     const auto spot_handle = bridge.create_light(spot);
-    const auto environment = bridge.create_environment(64, 50.0f, true);
+    NativeEnvironmentProbeDesc environment_desc;
+    environment_desc.position = XMFLOAT3(2.0f, 3.0f, 4.0f);
+    environment_desc.resolution = 64;
+    environment_desc.view_distance = 50.0f;
+    environment_desc.update_interval = 0.25f;
+    environment_desc.realtime = true;
+    environment_desc.multisampled = true;
+    const auto environment = bridge.create_environment(environment_desc);
     NativeEnvironmentDesc weather;
     weather.sun_color = XMFLOAT3(1.0f, 0.9f, 0.8f);
     weather.sun_direction = XMFLOAT3(-0.2f, -1.0f, 0.1f);
@@ -357,7 +441,9 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
         !check(bridge.apply_environment(weather) && !bridge.apply_environment(invalid_weather) &&
             scene.weather.skyExposure == 1.25f && scene.weather.fogDensity == 0.02f && scene.weather.IsHeightFog(),
             "lighting applies validated sky and fog policy") ||
-        !check(!bridge.create_environment(63, 1.0f, false).owner, "lighting rejects invalid environment")) return false;
+        !check(bridge.environment_matches(environment, environment_desc), "lighting configures environment probe") ||
+        !check(!bridge.create_environment(NativeEnvironmentProbeDesc{XMFLOAT3(0, 0, 0), 63, 1.0f, 0.0f, false, false}).owner,
+            "lighting rejects invalid environment")) return false;
     if (!check(bridge.destroy_light(spot_handle) && !bridge.live(spot_handle) &&
         bridge.destroy_light(point_handle) && bridge.destroy_environment(environment) &&
         scene.lights.GetCount() == lights_before, "lighting unloads resources")) return false;

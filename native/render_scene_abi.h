@@ -360,6 +360,15 @@ int32_t elisa_render_scene_v1_set_environment(
     float fog_start, float fog_density, int32_t fog_enabled);
 int32_t elisa_render_scene_v1_set_sky_map(const char* asset_path, float rotation_radians);
 int32_t elisa_render_scene_v1_clear_sky_map(void);
+// Probe resolution is a power of two from 16 through 2048. Update interval is seconds.
+int64_t elisa_render_scene_v1_create_environment_probe(
+    float px, float py, float pz, int32_t resolution, float view_distance,
+    float update_interval, int32_t realtime, int32_t multisampled);
+int32_t elisa_render_scene_v1_update_environment_probe(
+    int64_t handle, float px, float py, float pz, int32_t resolution,
+    float view_distance, float update_interval, int32_t realtime, int32_t multisampled);
+int32_t elisa_render_scene_v1_destroy_environment_probe(int64_t handle);
+int32_t elisa_render_scene_v1_refresh_environment_probe(int64_t handle);
 // Stage and commit an Elisa-planned postprocess graph. The native adapter
 // validates scalar descriptors again before the render path accepts it.
 int32_t elisa_render_scene_v1_render_graph_begin(

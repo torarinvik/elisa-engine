@@ -1,3 +1,5 @@
+include "./render_scene_environment_probes_native.elisa"
+
 module RenderSceneLightingNativeTests:
     private:
         const module NativeLightKindCode:
@@ -161,4 +163,6 @@ module RenderSceneLightingNativeTests:
                 RenderScene::RenderSceneError.UnknownHandle: 1
                 error failure: 2
             return 132 if stale != 1
+            probe_status: i32 = RenderSceneEnvironmentProbeNativeTests::exercise()
+            return 140 + probe_status if probe_status != 0
             0

@@ -9,8 +9,13 @@ module Lighting:
             MAX_FINITE_PARAMETER: f32 = 1000000000000000000000000000000.0
             MIN_SHADOW_RESOLUTION: i32 = 16
             MAX_SHADOW_RESOLUTION: i32 = 2048
+            MIN_PROBE_RESOLUTION: i32 = 16
+            MAX_PROBE_RESOLUTION: i32 = 2048
             MAX_AREA_LIGHT_DIMENSION: f32 = 1000000.0
             MAX_VOLUMETRIC_BOOST: f32 = 8.0
+            MAX_PROBE_VIEW_DISTANCE: f32 = 1000000.0
+            MAX_PROBE_UPDATE_INTERVAL: f32 = 3600.0
+            MAX_PROBE_POSITION_MAGNITUDE: f32 = 1000000.0
 
         def finite(value: f32) -> bool:
             value == value and value >= -Limits::MAX_FINITE_PARAMETER and value <= Limits::MAX_FINITE_PARAMETER
@@ -58,6 +63,24 @@ module Lighting:
             fog_density: f32
             fog_enabled: bool
 
+        struct EnvironmentProbe:
+            position: Geometry::Vec3
+            resolution: i32
+            view_distance: f32
+            realtime: bool
+            update_interval: f32
+            multisampled: bool
+
+        def EnvironmentProbe() -> EnvironmentProbe:
+            EnvironmentProbe{
+                position: Geometry::vec3_zero(),
+                resolution: 128,
+                view_distance: 100.0,
+                realtime: false,
+                update_interval: 0.0,
+                multisampled: false,
+            }
+
         def light_valid(light: Light) -> bool:
             return false if not Geometry::vec3_is_finite(light.color) or not Geometry::vec3_is_finite(light.position) or not Geometry::vec3_is_finite(light.direction)
             return false if not finite(light.intensity) or not finite(light.range) or not finite(light.inner_cone) or not finite(light.outer_cone)
@@ -80,3 +103,14 @@ module Lighting:
             return false if not finite(environment.sky_exposure) or not finite(environment.fog_start) or not finite(environment.fog_density)
             return false if environment.sky_exposure < 0.0 or environment.fog_start < 0.0 or environment.fog_density < 0.0
             Geometry::vec3_length_squared(environment.sun_direction) > Limits::ZERO_VECTOR_SQUARED
+
+        def environment_probe_valid(probe: EnvironmentProbe) -> bool:
+            return false if not Geometry::vec3_is_finite(probe.position)
+            return false if probe.position.x < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.x > Limits::MAX_PROBE_POSITION_MAGNITUDE
+            return false if probe.position.y < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.y > Limits::MAX_PROBE_POSITION_MAGNITUDE
+            return false if probe.position.z < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.z > Limits::MAX_PROBE_POSITION_MAGNITUDE
+            return false if probe.resolution < Limits::MIN_PROBE_RESOLUTION or probe.resolution > Limits::MAX_PROBE_RESOLUTION
+            return false if (probe.resolution & (probe.resolution - 1)) != 0
+            return false if not finite(probe.view_distance) or probe.view_distance <= 0.0 or probe.view_distance > Limits::MAX_PROBE_VIEW_DISTANCE
+            return false if not finite(probe.update_interval) or probe.update_interval < 0.0 or probe.update_interval > Limits::MAX_PROBE_UPDATE_INTERVAL
+            true

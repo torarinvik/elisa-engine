@@ -11,16 +11,31 @@ behind generation-checked handles and maps validated environment values into
 Wicked's weather state. Probe resolution and view distance are bounded before
 allocating a Wicked probe.
 
-Environment probes validate power-of-two resolution, view distance, and realtime
-mode before creating a Wicked probe. Light updates move native transforms and
-apply normalized directions through the Wicked component. All resources are removed through the
-bridge, so a scene unload returns the light count to its baseline.
+`Lighting::EnvironmentProbe` validates a finite position within ±1,000,000 world
+units, power-of-two resolution from 16 through 2,048, positive view distance up
+to 1,000,000, and update intervals from 0 through 3,600 seconds. The active
+`RenderScene` owns at most eight probes through opaque generation-checked handles.
+Updates move the Wicked transform and apply resolution, view distance, realtime
+mode, interval, and MSAA; changes to capture inputs mark the cube dirty, and
+`refresh_environment_probe` explicitly requests a new capture after nearby scene
+content changes. Invalid values, stale handles, and capacity overflow preserve
+the existing live set. Probes are removed through the owning scene service.
+
+Light updates move native transforms and apply normalized directions through the
+Wicked component. All resources are removed through the bridge, so a scene
+unload returns the light count to its baseline.
 
 `test/material.elisa` covers valid and invalid light and environment descriptors
 alongside the PBR contract.
 The native gate creates and moves point and spot lights, verifies Wicked transform/direction state, rejects a foreign
 handle and an invalid probe resolution, applies sky exposure and height fog,
-rejects a zero sun direction, and destroys every probe/light.
+rejects a zero sun direction, and destroys every probe/light. The SDL3/Metal
+render-scene gate additionally tests public probe creation, descriptor updates,
+position-only invalidation, explicit refresh, invalid update atomicity, stale
+handles after slot reuse, all eight slots, overflow, and complete destruction.
+The 2026-09-25 render-only smoke passed; probes are currently verified through
+Wicked component state and dirty-capture behavior, while a dedicated rendered
+reflection comparison and non-Metal runtime checks remain open.
 
 The SDL3/Metal render-scene smoke also moves a point light between two positions
 over the same painted panel. It samples the Wicked 3D render result before and
