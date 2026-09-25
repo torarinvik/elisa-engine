@@ -106,4 +106,11 @@ inline BodySlot* resolve_body(PhysicsService& state, uint32_t slot, uint64_t gen
     return body.live && body.generation == generation ? &body : nullptr;
 }
 
+inline void set_body_collision_layer(wi::scene::Scene& scene, wi::ecs::Entity entity,
+    uint32_t layer_index) {
+    wi::scene::LayerComponent* layer = scene.layers.GetComponent(entity);
+    if (layer == nullptr) layer = &scene.layers.Create(entity);
+    layer->layerMask = uint32_t(1) << layer_index;
+}
+
 } // namespace elisa_physics_internal

@@ -140,6 +140,7 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         }
         // Prime Wicked's world matrix before its physics pass reads entity scale.
         transform->UpdateTransform();
+        set_body_collision_layer(*state.scene, entity, collision_layer);
 
         wi::scene::RigidBodyPhysicsComponent& rigidbody = state.scene->rigidbodies.Create(entity);
         rigidbody.mass = kind == ELISA_PHYSICS_BODY_STATIC ? ZERO_MASS : mass;

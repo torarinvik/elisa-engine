@@ -1,5 +1,6 @@
 include "../src/runtime/application.elisa"
 include "../src/physics/runtime.elisa"
+include "../src/physics/queries.elisa"
 
 module PhysicsCollisionLayersNative:
     private:
@@ -8,11 +9,11 @@ module PhysicsCollisionLayersNative:
             HEIGHT: i32 = 240
 
         def body(world: PhysicsRuntime::World&, kind: PhysicsRuntime::BodyKind,
-            layer: u32) -> PhysicsRuntime::BodyHandle error[PhysicsRuntime::PhysicsError]:
+            layer: u32, position_x: f32) -> PhysicsRuntime::BodyHandle error[PhysicsRuntime::PhysicsError]:
             try PhysicsRuntime::body_create(world, PhysicsRuntime::BodyDesc{
                 kind: kind,
                 shape: PhysicsRuntime::BodyShape.Box,
-                position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                position: Geometry::Vec3{x: position_x, y: 0.0, z: 0.0},
                 dimensions: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
                 mass: 1.0 if kind == PhysicsRuntime::BodyKind.Dynamic else 0.0,
                 sensor: false,
@@ -28,6 +29,14 @@ module PhysicsCollisionLayersNative:
                 hidden: true,
             }
             return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            result: i32 = PhysicsCollisionLayersNative::exercise()
+            application_closed: bool = Application::shutdown()
+            return result if result != 0
+            return 21 if not application_closed
+            0
+
+    private:
+        def exercise() -> i32:
             world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
                 value: value
                 error failure: return 2
@@ -44,11 +53,11 @@ module PhysicsCollisionLayersNative:
             return 6 if config_status != 0
 
             static_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Static, 0):
+                &world, PhysicsRuntime::BodyKind.Static, 0, 0.0):
                 value: value
                 error failure: return 7
             suppressed_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Dynamic, 1):
+                &world, PhysicsRuntime::BodyKind.Dynamic, 1, 0.0):
                 value: value
                 error failure: return 8
             locked_config: i32 = catch PhysicsRuntime::set_layer_collision(&world, 0, 1, true):
@@ -56,8 +65,12 @@ module PhysicsCollisionLayersNative:
                 PhysicsRuntime::PhysicsError.ConfigurationLocked: 0
                 error failure: 9
             return 10 if locked_config != 0
+            query_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
+                &world, PhysicsRuntime::BodyKind.Static, 1, 4.0):
+                value: value
+                error failure: return 30
             allowed_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Dynamic, 0):
+                &world, PhysicsRuntime::BodyKind.Dynamic, 0, 0.0):
                 value: value
                 error failure: return 11
 
@@ -65,6 +78,35 @@ module PhysicsCollisionLayersNative:
                 value: value
                 error failure: return 12
             return 13 if tick != 1
+            category_zero_ray: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(&world,
+                Geometry::Vec3{x: 4.0, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 1):
+                value: value
+                error failure: return 22
+            return 23 if category_zero_ray.hit
+            category_one_ray: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(&world,
+                Geometry::Vec3{x: 4.0, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 2):
+                value: value
+                error failure: return 24
+            return 25 if not category_one_ray.hit
+            suppressed_ray: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(&world,
+                Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 2):
+                value: value
+                error failure: return 31
+            return 32 if not suppressed_ray.hit
+            category_zero_overlap: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_sphere(
+                &world, Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0}, 0.25, 1):
+                value: value
+                error failure: return 26
+            return 27 if category_zero_overlap.hit
+            category_one_overlap: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_sphere(
+                &world, Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0}, 0.25,
+                2):
+                value: value
+                error failure: return 28
+            return 29 if not category_one_overlap.hit
             contacts: mutable PhysicsRuntime::ContactBuffer = zeroed
             dropped: mutable u32 = 0
             contact_count: usize = catch PhysicsRuntime::poll_contacts(&world,
@@ -72,6 +114,9 @@ module PhysicsCollisionLayersNative:
                 value: value
                 error failure: return 14
             return 15 if contact_count == 0 or dropped != 0
+            for index in 0..<contact_count:
+                return 33 if (contacts.events[index].entity_a == suppressed_ray.entity or
+                    contacts.events[index].entity_b == suppressed_ray.entity)
 
             destroy_allowed: i32 = catch PhysicsRuntime::body_destroy(&world, allowed_body):
                 ok: 0
@@ -82,13 +127,15 @@ module PhysicsCollisionLayersNative:
             destroy_static: i32 = catch PhysicsRuntime::body_destroy(&world, static_body):
                 ok: 0
                 error failure: 18
+            destroy_query: i32 = catch PhysicsRuntime::body_destroy(&world, query_body):
+                ok: 0
+                error failure: 34
             world_closed: bool = catch PhysicsRuntime::shutdown(&world):
                 ok: true
                 error failure: false
-            application_closed: bool = Application::shutdown()
-            return 19 if destroy_allowed != 0 or destroy_suppressed != 0 or destroy_static != 0
+            return 19 if (destroy_allowed != 0 or destroy_suppressed != 0 or
+                destroy_static != 0 or destroy_query != 0)
             return 20 if not world_closed
-            return 21 if not application_closed
             0
 
 def main() -> i32:

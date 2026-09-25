@@ -248,6 +248,10 @@ public:
         const wi::physics::RayIntersectionResult result = wi::physics::Intersects(
             scene_, wi::primitive::Ray(origin, direction, 0.0f, max_distance));
         if (!result.IsValid()) return false;
+        const wi::scene::LayerComponent* layer = scene_.layers.GetComponent(result.entity);
+        if (layer != nullptr && (layer->GetLayerMask() & layer_mask) == 0) {
+            return raycast(token, origin, direction, max_distance, layer_mask, hit);
+        }
         const XMFLOAT3 offset = XMFLOAT3(result.position.x - origin.x,
             result.position.y - origin.y, result.position.z - origin.z);
         const float distance = offset.x * unit_direction.x +
@@ -328,9 +332,17 @@ public:
             return false;
         }
         const auto result = scene_.Intersects(wi::primitive::Sphere(center, radius), filter_mask, layer_mask);
-        if (result.entity == wi::ecs::INVALID_ENTITY) return false;
-        hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
-        return true;
+        if (result.entity != wi::ecs::INVALID_ENTITY) {
+            hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
+        }
+        wi::physics::ShapeIntersectionResult physics_result;
+        if (wi::physics::Intersects(scene_, wi::primitive::Sphere(center, radius),
+                layer_mask, physics_result) &&
+            (hit.entity == wi::ecs::INVALID_ENTITY || physics_result.depth > hit.depth)) {
+            hit = {physics_result.entity, physics_result.position, physics_result.normal,
+                0.0f, physics_result.depth};
+        }
+        return hit.entity != wi::ecs::INVALID_ENTITY;
     }
 
     size_t overlap_sphere_all(PhysicsQueryToken token, const XMFLOAT3& center,
