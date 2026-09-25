@@ -51,7 +51,7 @@ module WorldPhysics:
                     kind: kind,
                     shape: PhysicsRuntime::BodyShape.Box,
                     position: transform.position,
-                    rotation: Geometry::quat_identity(),
+                    rotation: transform.rotation,
                     dimensions: scaled_extents,
                     mass: mass,
                     sensor: false,
@@ -77,9 +77,8 @@ module WorldPhysics:
         def binding_count(bindings: Bindings&) -> usize:
             bindings.count
 
-        # Attach an axis-aligned box to the entity's current World position.
-        # The current Jolt bridge publishes position only; entity rotation and
-        # scale remain owned by World and are preserved during synchronization.
+        # Attach a scaled box to the entity's current World pose. Physics owns
+        # position and rotation after binding; World retains authored scale.
         def bind(session: RuntimeServices::Session&, world: World::World&,
             bindings: mutable Bindings&, entity: World::EntityRef,
             kind: PhysicsRuntime::BodyKind, half_extents: Geometry::Vec3,
@@ -117,6 +116,15 @@ module WorldPhysics:
             PhysicsRuntime::ServiceBodyHandles::clear(&bindings.bodies, bindings.count - 1)
             bindings.count <- bindings.count - 1
 
+        # Read a bound body's latest simulated pose without exposing its native
+        # handle through the entity-to-body binding table.
+        def body_pose(session: RuntimeServices::Session&, bindings: Bindings&,
+            entity: World::EntityRef) -> PhysicsRuntime::BodyPose error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            index: usize = binding_index(bindings, entity)
+            raise WorldPhysicsError.BindingNotFound if index == Sentinel::NO_BINDING
+            body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
+            try RuntimeServices::physics_body_pose(session, body)
+
         # Stage every pose before publishing any of them. A stale entity or body
         # therefore cannot leave half of this synchronization pass in World.
         def sync_world(session: RuntimeServices::Session&, world: mutable World::World&,
@@ -126,10 +134,10 @@ module WorldPhysics:
                 existing: mutable Geometry::Transform = Geometry::transform_identity()
                 raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(world, bindings.entities[index], &existing)
                 body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
-                position: Geometry::Vec3 = try RuntimeServices::physics_body_position(session, body)
+                pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_body_pose(session, body)
                 updated: Geometry::Transform = Geometry::Transform{
-                    position: position,
-                    rotation: existing.rotation,
+                    position: pose.position,
+                    rotation: pose.rotation,
                     scale: existing.scale,
                 }
                 raise World::WorldError.InvalidValue if not Geometry::transform_is_valid(updated)
@@ -152,10 +160,10 @@ module WorldPhysics:
                 depth: usize = WorldHierarchy::hierarchy_depth(hierarchy, bindings.entities[index].id)
                 raise WorldPhysicsError.SynchronizationFailure if depth >= WorldHierarchy::MAX_NODES
                 body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
-                position: Geometry::Vec3 = try RuntimeServices::physics_body_position(session, body)
+                pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_body_pose(session, body)
                 updated: Geometry::Transform = Geometry::Transform{
-                    position: position,
-                    rotation: existing.rotation,
+                    position: pose.position,
+                    rotation: pose.rotation,
                     scale: existing.scale,
                 }
                 raise WorldPhysicsError.SynchronizationFailure if not Geometry::transform_is_valid(updated)

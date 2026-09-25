@@ -1,0 +1,44 @@
+# Focused SDL3/Jolt gate for WorldPhysics orientation creation and sync.
+include "./world_physics_pose_probe.elisa"
+
+def main() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa World Physics Pose Smoke",
+        width: 320,
+        height: 200,
+        hidden: true,
+    }
+    requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+    requirements.services[0] <- Capabilities::BackendFeature.Input
+    requirements.services[1] <- Capabilities::BackendFeature.Rendering
+    requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+    requirements.services[3] <- Capabilities::BackendFeature.Physics
+    requirements.services[4] <- Capabilities::BackendFeature.Audio
+    requirements.service_count <- 5
+    requirements.service_fallbacks <- Capabilities::BackendFallbackProviders{
+        input: Capabilities::BackendFallbackProvider.None,
+        rendering: Capabilities::BackendFallbackProvider.None,
+        physics: Capabilities::BackendFallbackProvider.JoltPhysics,
+        audio: Capabilities::BackendFallbackProvider.MiniaudioSilent,
+        native_window: Capabilities::BackendFallbackProvider.None,
+        async_upload: Capabilities::BackendFallbackProvider.None,
+        callbacks: Capabilities::BackendFallbackProvider.None,
+        asset_loading: Capabilities::BackendFallbackProvider.None,
+    }
+    requirements.allow_service_fallbacks <- true
+    report: mutable BackendRequirements::BackendRequirementsReport = zeroed
+    session: mutable RuntimeServices::Session = RuntimeServices::Session()
+    opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+        config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+        AudioRuntime::MIN_CHANNEL_COUNT, &report)
+    if opened != RuntimeServices::OpenStatus.FallbackRequired:
+        _ = RuntimeServices::shutdown(&session)
+        return 1
+    if report.state != Capabilities::RequirementState.Fallback:
+        _ = RuntimeServices::shutdown(&session)
+        return 2
+    result: i32 = WorldPhysicsPoseProbe::run(&session)
+    closed: bool = RuntimeServices::shutdown(&session)
+    return result if result != 0
+    return 3 if not closed
+    0
