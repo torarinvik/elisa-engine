@@ -13,15 +13,17 @@ allocating a Wicked probe.
 
 `Lighting::EnvironmentProbe` validates a finite position within ±1,000,000 world
 units, positive box half-extents up to 1,000,000 units per axis, power-of-two
-resolution from 16 through 2,048, positive view distance up to 1,000,000, and
-update intervals from 0 through 3,600 seconds. The active
+resolution from 16 through 2,048, positive view distance up to 1,000,000, a
+finite nonzero rotation quaternion, and update intervals from 0 through 3,600
+seconds. Elisa normalizes rotation and maps it through the shared coordinate
+conversion before assigning Wicked's transform. The active
 `RenderScene` owns at most eight probes through opaque generation-checked handles.
-The `RenderSceneEnvironmentProbes` module is included in `src/runtime/public.elisa`,
-so application projects receive this API through the engine-owned public bundle.
-Updates move the Wicked transform and apply resolution, view distance, realtime
-mode, interval, extent, and MSAA. Extents set Wicked's probe influence box and
-update its selection bounds without needlessly recapturing the cube. Changes to
-capture inputs mark the cube dirty, and
+Updates move and rotate the Wicked transform and apply resolution, view distance,
+realtime mode, interval, extent, and MSAA. Extents and rotation set Wicked's
+probe influence box and update its selection bounds without needlessly
+recapturing the cube. The `RenderSceneEnvironmentProbes` module is included in
+`src/runtime/public.elisa`, so application projects receive this API through the
+engine-owned public bundle. Changes to capture inputs mark the cube dirty, and
 `refresh_environment_probe` explicitly requests a new capture after nearby scene
 content changes. Invalid values, stale handles, and capacity overflow preserve
 the existing live set. Probes are removed through the owning scene service.

@@ -360,14 +360,16 @@ int32_t elisa_render_scene_v1_set_environment(
     float fog_start, float fog_density, int32_t fog_enabled);
 int32_t elisa_render_scene_v1_set_sky_map(const char* asset_path, float rotation_radians);
 int32_t elisa_render_scene_v1_clear_sky_map(void);
-// Probe extents are positive half-sizes; resolution is a power of two from 16 through 2048.
-// Update interval is seconds.
+// Probe rotation is normalized on input, extents are positive half-sizes, and
+// resolution is a power of two from 16 through 2048. Update interval is seconds.
 int64_t elisa_render_scene_v1_create_environment_probe(
-    float px, float py, float pz, float extent_x, float extent_y, float extent_z,
+    float px, float py, float pz, float qx, float qy, float qz, float qw,
+    float extent_x, float extent_y, float extent_z,
     int32_t resolution, float view_distance,
     float update_interval, int32_t realtime, int32_t multisampled);
 int32_t elisa_render_scene_v1_update_environment_probe(
-    int64_t handle, float px, float py, float pz, float extent_x, float extent_y,
+    int64_t handle, float px, float py, float pz, float qx, float qy, float qz, float qw,
+    float extent_x, float extent_y,
     float extent_z, int32_t resolution,
     float view_distance, float update_interval, int32_t realtime, int32_t multisampled);
 int32_t elisa_render_scene_v1_destroy_environment_probe(int64_t handle);

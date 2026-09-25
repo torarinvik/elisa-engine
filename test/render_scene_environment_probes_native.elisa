@@ -5,7 +5,8 @@ module RenderSceneEnvironmentProbeNativeTests:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_test_environment_probe_matches(
-            px: f32, py: f32, pz: f32, extent_x: f32, extent_y: f32, extent_z: f32,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            extent_x: f32, extent_y: f32, extent_z: f32,
             resolution: i32, view_distance: f32,
             update_interval: f32, realtime: i32, multisampled: i32) -> i32
         @callconv(c)
@@ -16,8 +17,11 @@ module RenderSceneEnvironmentProbeNativeTests:
         extern elisa_render_scene_v1_test_environment_probe_is_dirty() -> i32
 
         def native_probe_matches(probe: Lighting::EnvironmentProbe) -> bool:
+            normalized_rotation: Geometry::Quat = Geometry::quat_normalize(probe.rotation)
             elisa_render_scene_v1_test_environment_probe_matches(
                 probe.position.x, probe.position.y, probe.position.z,
+                normalized_rotation.x, normalized_rotation.y,
+                normalized_rotation.z, normalized_rotation.w,
                 probe.influence_extent.x, probe.influence_extent.y, probe.influence_extent.z,
                 probe.resolution,
                 probe.view_distance, probe.update_interval,
@@ -48,6 +52,7 @@ module RenderSceneEnvironmentProbeNativeTests:
 
             updated: mutable Lighting::EnvironmentProbe = initial
             updated.position <- Geometry::Vec3{x: 2.0, y: 3.0, z: 4.0}
+            updated.rotation <- Geometry::Quat{x: 0.0, y: 1.4142135, z: 0.0, w: 1.4142135}
             updated.influence_extent <- Geometry::Vec3{x: 2.0, y: 3.0, z: 4.0}
             updated.resolution <- 64
             updated.view_distance <- 50.0
@@ -69,7 +74,15 @@ module RenderSceneEnvironmentProbeNativeTests:
                 error failure: return 36
             return 37 if not native_probe_matches(moved) or elisa_render_scene_v1_test_environment_probe_is_dirty() != 1
 
-            widened: mutable Lighting::EnvironmentProbe = moved
+            rotated: mutable Lighting::EnvironmentProbe = moved
+            rotated.rotation <- Geometry::Quat{x: 0.0, y: 0.0, z: 0.38268343, w: 0.92387953}
+            _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
+            _ = catch RenderScene::update_environment_probe(handle, rotated):
+                ok: 0
+                error failure: return 40
+            return 41 if not native_probe_matches(rotated) or elisa_render_scene_v1_test_environment_probe_is_dirty() != 0
+
+            widened: mutable Lighting::EnvironmentProbe = rotated
             widened.influence_extent <- Geometry::Vec3{x: 8.0, y: 6.0, z: 4.0}
             _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
             _ = catch RenderScene::update_environment_probe(handle, widened):

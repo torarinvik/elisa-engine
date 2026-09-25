@@ -66,6 +66,7 @@ module Lighting:
 
         struct EnvironmentProbe:
             position: Geometry::Vec3
+            rotation: Geometry::Quat
             # Positive half-extents of Wicked's axis-aligned influence volume.
             influence_extent: Geometry::Vec3
             resolution: i32
@@ -77,6 +78,7 @@ module Lighting:
         def EnvironmentProbe() -> EnvironmentProbe:
             EnvironmentProbe{
                 position: Geometry::vec3_zero(),
+                rotation: Geometry::quat_identity(),
                 influence_extent: Geometry::vec3_one(),
                 resolution: 128,
                 view_distance: 100.0,
@@ -113,6 +115,9 @@ module Lighting:
             return false if probe.position.x < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.x > Limits::MAX_PROBE_POSITION_MAGNITUDE
             return false if probe.position.y < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.y > Limits::MAX_PROBE_POSITION_MAGNITUDE
             return false if probe.position.z < -Limits::MAX_PROBE_POSITION_MAGNITUDE or probe.position.z > Limits::MAX_PROBE_POSITION_MAGNITUDE
+            return false if not Geometry::quat_is_finite(probe.rotation)
+            rotation_length: f32 = Geometry::quat_length(probe.rotation)
+            return false if not finite(rotation_length) or rotation_length <= 0.0
             return false if not Geometry::vec3_is_finite(probe.influence_extent)
             return false if probe.influence_extent.x <= 0.0 or probe.influence_extent.x > Limits::MAX_PROBE_INFLUENCE_EXTENT
             return false if probe.influence_extent.y <= 0.0 or probe.influence_extent.y > Limits::MAX_PROBE_INFLUENCE_EXTENT
