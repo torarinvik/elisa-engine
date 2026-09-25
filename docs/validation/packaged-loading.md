@@ -117,9 +117,11 @@ manifests remain accepted when their inventory contains the active backend.
   `ELISA_ENGINE_SHADER_PATH`. That path is outside the engine checkout, so the
   sandbox doesn't deny it. Packaged shaders are R13.
 - **Shader packaging.** Preflight rejects missing or incomplete configured
-  roots; schema 2 identifies bundled backend families, but shader permutation
-  manifests, offline compilation, pipeline-cache keys, and cold/warm hitch
-  measurements remain R13 work.
+  roots; schema 2 identifies bundled backend families and compiled binaries.
+  `scripts/prepare_wicked_shaders.py` can prepare Wicked's complete Metal
+  permutation set for a project and write the content manifest consumed by the
+  packager. Per-project permutation selection, pipeline-cache keys, and
+  cold/warm hitch measurements remain R13 work.
 - **Dynamic libraries.** The executable links SDL3, FreeType, HarfBuzz and zstd
   from absolute `/opt/homebrew/opt` paths. It also keeps an rpath into the
   Wicked checkout. Neither location is inside the engine checkout, so the
@@ -174,8 +176,35 @@ manifests remain accepted when their inventory contains the active backend.
 - `clang++ -std=c++17 -fsyntax-only -DELISA_APPLICATION_TEST_PROBE=1 -I native
   -I /opt/homebrew/include native/application_test_probe.cpp` passed.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.
-- `scripts/application_native_smoke.py` built the Elisa archive and native
+- The first `scripts/application_native_smoke.py` invocation built the Elisa archive and native
   sources, but the final link failed in the separately seeded Elisa compiler's
   runtime with undefined `arena_free` and `ctx_string_views_eq` symbols. The
-  application-level test probe therefore remains unverified in this run; the
-  standalone native verifier test passed independently.
+  standalone native verifier test passed independently during that attempt.
+
+## Offline Metal shader preparation
+
+Run the preparation command before packaging when an Elisa project needs its
+own compiled shader tree:
+
+```sh
+python3 scripts/prepare_wicked_shaders.py --project path/to/game \
+  --wicked-root path/to/WickedEngine --wicked-build path/to/build-elisa-sdl3
+```
+
+The command invokes the matching Wicked `offlineshadercompiler` in a temporary
+workspace, with Wicked's DXC and Metal IR converter libraries available beside
+it. It publishes compiled `.cso` permutations to `game/shaders/metal` only when
+compilation succeeds, then writes `elisa.shader-manifest.json`. The compiler
+does not modify the Wicked checkout. A failed compile leaves an existing
+project shader library and manifest intact. The macOS packager copies this
+directory and writes the final manifest after staging.
+
+Validation on 2026-09-25: `scripts/test_prepare_wicked_shaders.py` passed its
+staging, failure-preservation, and symlink-rejection cases. The real Wicked
+offline compiler prepared 398 Metal permutations in a temporary project and
+produced a schema 2 manifest listing all 398 binaries.
+
+After the Elisa compiler runtime archive was rebuilt, the application native
+smoke passed all 12 SDL3/Metal scenarios, including the two application
+lifecycle probes and pixel-identical midpoint and final physics captures. The
+earlier linker failure above records the state before that rebuild.
