@@ -472,6 +472,12 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_body_apply_impulse(session.physics, body, impulse)
 
+        def physics_body_set_material(session: Session&,
+            body: PhysicsRuntime::BodyHandle, material: PhysicsRuntime::PhysicsMaterial) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_body_set_material(session.physics, body, material)
+
         def physics_body_set_kinematic_target(session: Session&,
             body: PhysicsRuntime::BodyHandle, target: Geometry::Transform) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live

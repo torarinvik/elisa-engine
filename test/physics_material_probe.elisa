@@ -1,0 +1,98 @@
+# Verifies the public material constructor and real Jolt restitution response.
+include "../src/runtime/services.elisa"
+
+module PhysicsMaterialProbe:
+    private:
+        const module Tune:
+            FIXED_STEP_SECONDS: f32 = 1.0 / 60.0
+            FLOOR_TOP: f32 = 0.0
+            FLOOR_HALF_HEIGHT: f32 = 0.25
+            FLOOR_HALF_EXTENT: f32 = 5.0
+            BALL_RADIUS: f32 = 0.25
+            BALL_START_HEIGHT: f32 = 1.5
+            BALL_START_SPEED: f32 = -8.0
+            RESTITUTION: f32 = 1.0
+            FRICTION: f32 = 0.0
+            MIN_BOUNCE_SPEED: f32 = 0.5
+            BOUNCE_STEPS: usize = 10
+            STATIC_MASS: f32 = 0.0
+            BALL_MASS: f32 = 1.0
+            DEFAULT_COLLISION_LAYER: u32 = 0
+
+        def invalid_material_rejected() -> bool:
+            catch PhysicsRuntime::PhysicsMaterial(Tune::FRICTION, 1.1):
+                value: false
+                PhysicsRuntime::PhysicsError.InvalidArgument: true
+                error failure: false
+
+    public:
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 0.0,
+                        y: Tune::FLOOR_TOP - Tune::FLOOR_HALF_HEIGHT, z: 0.0},
+                    dimensions: Geometry::Vec3{x: Tune::FLOOR_HALF_EXTENT,
+                        y: Tune::FLOOR_HALF_HEIGHT, z: Tune::FLOOR_HALF_EXTENT},
+                    mass: Tune::STATIC_MASS,
+                    sensor: false,
+                    collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 1
+            ball: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Sphere,
+                    position: Geometry::Vec3{x: 0.0, y: Tune::BALL_START_HEIGHT, z: 0.0},
+                    dimensions: Geometry::Vec3{x: Tune::BALL_RADIUS, y: 0.0, z: 0.0},
+                    mass: Tune::BALL_MASS,
+                    sensor: false,
+                    collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 2
+            material: PhysicsRuntime::PhysicsMaterial = catch PhysicsRuntime::PhysicsMaterial(
+                Tune::FRICTION, Tune::RESTITUTION):
+                value: value
+                error failure: return 3
+            return 11 if not PhysicsMaterialProbe::invalid_material_rejected()
+            initial_step: u64 = catch RuntimeServices::physics_fixed_step(session,
+                Tune::FIXED_STEP_SECONDS):
+                value: value
+                error failure: return 5
+            return 5 if initial_step != 1
+            floor_material: bool = catch RuntimeServices::physics_body_set_material(
+                session, floor, material):
+                ok: true
+                error failure: false
+            ball_material: bool = catch RuntimeServices::physics_body_set_material(
+                session, ball, material):
+                ok: true
+                error failure: false
+            return 4 if not floor_material or not ball_material
+            velocity_set: bool = catch RuntimeServices::physics_body_set_linear_velocity(
+                session, ball, Geometry::Vec3{x: 0.0, y: Tune::BALL_START_SPEED, z: 0.0}):
+                ok: true
+                error failure: false
+            return 6 if not velocity_set
+            for _ in 0..<Tune::BOUNCE_STEPS:
+                stepped: bool = catch RuntimeServices::physics_fixed_step(session,
+                    Tune::FIXED_STEP_SECONDS):
+                    value: true
+                    error failure: false
+                return 7 if not stepped
+            velocity: Geometry::Vec3 = catch RuntimeServices::physics_body_linear_velocity(
+                session, ball):
+                value: value
+                error failure: return 8
+            return 9 if velocity.y <= Tune::MIN_BOUNCE_SPEED
+            destroyed_ball: bool = catch RuntimeServices::physics_body_destroy(session, ball):
+                ok: true
+                error failure: false
+            destroyed_floor: bool = catch RuntimeServices::physics_body_destroy(session, floor):
+                ok: true
+                error failure: false
+            return 10 if not destroyed_ball or not destroyed_floor
+            0
