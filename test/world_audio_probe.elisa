@@ -52,6 +52,20 @@ module WorldAudioProbe:
                     true
                 error failure: false
 
+        def finished_voice_update_status(session: RuntimeServices::Session&,
+            world: World::World&, emitters: mutable WorldAudio::Emitters&,
+            delta_seconds: f32, report: mutable WorldAudio::UpdateReport&) -> i32:
+            catch WorldAudio::update(session, world, emitters, delta_seconds):
+                value:
+                    report <- value
+                    0
+                WorldAudio::WorldAudioError.InvalidTimeStep: 1
+                WorldAudio::WorldAudioError.BindingTableCorrupt: 2
+                WorldAudio::WorldAudioError.AudioFailure: 3
+                RuntimeServices::RuntimeServicesError.SessionStopped: 4
+                RuntimeServices::RuntimeServicesError.AudioUnavailable: 5
+                error failure: 6
+
         def update_physics_report(session: RuntimeServices::Session&,
             world: World::World&, emitters: mutable WorldAudio::Emitters&,
             delta_seconds: f32, report: mutable WorldAudio::UpdateReport&) -> bool:
@@ -246,8 +260,12 @@ module WorldAudioProbe:
                 ok: true
                 error failure: false
             return 243 if not ended
-            return 244 if not update_report(session, world, emitters, step, &report)
-            return 245 if report.detached_finished != 1 or WorldAudio::emitter_count(emitters) != 0
+            return 144 if voice_count(session) != baseline
+            terminal_status: i32 = finished_voice_update_status(session, world,
+                emitters, step, &report)
+            return 160 + terminal_status if terminal_status != 0
+            return 146 if report.detached_finished != 1
+            return 147 if WorldAudio::emitter_count(emitters) != 0
             0
 
     public:
