@@ -77,12 +77,12 @@ module PhysicsMeshShapesNative:
                 value: value
                 error failure: return 8
             hit: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(world,
-                Geometry::Vec3{x: -0.1, y: 3.0, z: 0.1},
+                Geometry::Vec3{x: 0.1, y: 3.0, z: 0.1},
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
                 PhysicsRuntime::ALL_LAYERS):
                 value: value
                 error failure: return 9
-            return 10 if not hit.hit
+            ray_hit: bool = hit.hit
             triangle_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, triangle_body):
                 ok: 0
                 error failure: 1
@@ -100,8 +100,10 @@ module PhysicsMeshShapesNative:
             closed: i32 = catch PhysicsRuntime::shutdown(&world):
                 ok: 0
                 error failure: 1
+            application_closed: bool = Application::shutdown()
+            return 10 if not ray_hit
             return 11 if closed != 0
-            return 12 if not Application::shutdown()
+            return 12 if not application_closed
             0
 
 def main() -> i32:
