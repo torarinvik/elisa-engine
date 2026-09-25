@@ -94,9 +94,11 @@ and post-shutdown calls.
 
 `src/runtime/world_physics.elisa` adds an affine `WorldPhysics::Bindings` owner that maps
 checked World entity references to body handles held in a `PhysicsRuntime`-owned opaque
-handle pool. `bind()` creates a Jolt box at the entity's current position. `advance_and_sync()`
-consumes the session clock, steps Physics once for each due tick, and publishes body positions
-back to World after staging every pose; it preserves the entity's existing rotation and scale.
+handle pool. `bind()` creates a Jolt box at the entity's current position and orientation.
+`advance_and_sync()` consumes the session clock, steps Physics once for each due tick, and
+publishes body positions and rotations back to World after staging every pose; World-owned
+scale is preserved. `body_pose()` reads a bound body's latest position and rotation without
+exposing its native handle.
 `unbind()` destroys the Jolt body before removing the mapping, so failed destruction leaves
 cleanup retryable. The native application probe verifies a dynamic body falls from its starting
 position, its World transform is updated, entity scale survives, duplicate links are rejected,
@@ -159,6 +161,16 @@ Validation of the World-to-Physics bridge on 2026-09-21:
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh python3 scripts/application_native_smoke.py` passed both SDL3/Metal applications. The session probe attached two dynamic Jolt bodies to checked World entities, verified gravity-driven pose sync and scale preservation, rejected a duplicate binding, removed the first binding, confirmed the second continued syncing after compaction, and cleaned up both bodies.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` passed the portable suite, Godot 4.7.2 probes, both Elisa Proof suites (17/17 and 6/6), runtime scheduler checks, source-length policy, and module-hygiene policy.
+
+Validation on 2026-09-25:
+
+- The focused SDL3/Metal application probe checks that a rotated World entity
+  initializes its direct and hierarchy-bound physics bodies with the same pose,
+  then compares synchronized entity rotations with the live body poses. Entity
+  scale remains unchanged in the flat World path.
+- The complete eleven-fixture `scripts/application_native_smoke.py` suite passes
+  with this probe enabled. The 30 Hz and 120 Hz midpoint and final physics
+  render captures remain pixel-identical at 640x480.
 
 ## Generic executor dispatch with affine runtime contexts
 

@@ -4,9 +4,9 @@ include "./world_audio_probe.elisa"
 include "./runtime_physics_queries_probe.elisa"
 include "./runtime_services_audio_probe.elisa"
 include "./runtime_services_motion_probe.elisa"
+include "./world_physics_pose_probe.elisa"
 @callconv(c)
 extern elisa_audio_v1_test_request_device_recovery() -> i32
-
 module RuntimeServicesProbe:
     private:
         const module Systems:
@@ -270,7 +270,6 @@ module RuntimeServicesProbe:
                     ok: 0
                     error failure: 1
                 return 114
-
             test_status: mutable i32 = 0
             advance_status: i32 = catch WorldPhysics::advance_and_sync_hierarchy(
                 session, &hierarchy, bindings, Runtime::fixed_step_micros()):
@@ -324,7 +323,6 @@ module RuntimeServicesProbe:
                         test_status <- 120 if test_status == 0 and ElisaMath::fabsf(child_after_two.position.y - child_tick_two.position.y) > 0.001
                     if test_status == 0:
                         test_status <- RuntimePhysicsQueriesProbe::run(session)
-
             child_cleanup: i32 = catch WorldPhysics::unbind(session, &bindings, child):
                 ok: 0
                 error failure: 1
@@ -467,6 +465,8 @@ module RuntimeServicesProbe:
             return 118 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
             motion_status: i32 = RuntimeServicesMotionProbe::run(&session)
             return motion_status if motion_status != 0
+            world_pose_status: i32 = WorldPhysicsPoseProbe::run(&session)
+            return world_pose_status if world_pose_status != 0
             occupied_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             occupied: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
                 config(), &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,

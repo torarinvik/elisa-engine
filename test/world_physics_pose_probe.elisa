@@ -1,0 +1,116 @@
+# Verifies world bindings preserve body orientation on creation and sync.
+module WorldPhysicsPoseProbe:
+    private:
+        const module Tune:
+            START_HEIGHT: f32 = 8.0
+            BODY_HALF_EXTENT: f32 = 0.5
+            ROTATION_COMPONENT: f32 = 0.70710677
+            ROTATION_DOT_MINIMUM: f32 = 0.999
+
+        def authored_pose() -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: Tune::START_HEIGHT, z: 0.0},
+                rotation: Geometry::Quat{
+                    x: 0.0, y: 0.0,
+                    z: Tune::ROTATION_COMPONENT,
+                    w: Tune::ROTATION_COMPONENT},
+                scale: Geometry::Vec3{x: 1.5, y: 1.0, z: 0.75},
+            }
+
+        def rotations_match(left: Geometry::Quat, right: Geometry::Quat) -> bool:
+            dot: f32 = left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w
+            ElisaMath::fabsf(dot) >= Tune::ROTATION_DOT_MINIMUM
+
+    public:
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 1
+            entity: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 2
+            initial: Geometry::Transform = authored_pose()
+            world_status: i32 = catch World::world_set_transform(&world, entity, initial):
+                ok: 0
+                error failure: 1
+            return 3 if world_status != 0
+
+            direct_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            direct_bind_status: i32 = catch WorldPhysics::bind(session, &world,
+                &direct_bindings, entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 1.0):
+                ok: 0
+                error failure: 1
+            return 4 if direct_bind_status != 0
+            initial_body_pose: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(
+                session, direct_bindings, entity):
+                value: value
+                error failure: return 5
+            return 6 if not rotations_match(initial_body_pose.rotation, initial.rotation)
+
+            direct_step: i32 = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                ok: 0
+                error failure: 1
+            return 7 if direct_step != 0
+            direct_sync: i32 = catch WorldPhysics::sync_world(session, &world, direct_bindings):
+                ok: 0
+                error failure: 1
+            return 8 if direct_sync != 0
+            direct_world_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            return 9 if not World::world_try_transform(world, entity, &direct_world_pose)
+            direct_body_pose: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(
+                session, direct_bindings, entity):
+                value: value
+                error failure: return 10
+            return 11 if not rotations_match(direct_world_pose.rotation, direct_body_pose.rotation)
+            return 12 if direct_world_pose.scale.x != initial.scale.x or direct_world_pose.scale.z != initial.scale.z
+            direct_cleanup: i32 = catch WorldPhysics::unbind(session, &direct_bindings, entity):
+                ok: 0
+                error failure: 1
+            return 13 if direct_cleanup != 0 or WorldPhysics::binding_count(direct_bindings) != 0
+
+            hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+            if not WorldHierarchy::hierarchy_spawn(&hierarchy, entity.id, initial):
+                return 14
+            WorldHierarchy::hierarchy_update(&hierarchy)
+            hierarchy_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            hierarchy_bind_status: i32 = catch WorldPhysics::bind_hierarchy(session,
+                world, hierarchy, &hierarchy_bindings, entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 1.0):
+                ok: 0
+                error failure: 1
+            return 15 if hierarchy_bind_status != 0
+            hierarchy_body_pose: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(
+                session, hierarchy_bindings, entity):
+                value: value
+                error failure: return 16
+            return 17 if not rotations_match(hierarchy_body_pose.rotation, initial.rotation)
+
+            hierarchy_step: i32 = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                ok: 0
+                error failure: 1
+            return 18 if hierarchy_step != 0
+            hierarchy_sync: i32 = catch WorldPhysics::sync_hierarchy(session,
+                &hierarchy, hierarchy_bindings):
+                ok: 0
+                error failure: 1
+            return 19 if hierarchy_sync != 0
+            WorldHierarchy::hierarchy_update(&hierarchy)
+            hierarchy_world_pose: Geometry::Transform = WorldHierarchy::hierarchy_world(
+                hierarchy, entity.id)
+            hierarchy_body_pose_after: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(
+                session, hierarchy_bindings, entity):
+                value: value
+                error failure: return 20
+            return 21 if not rotations_match(hierarchy_world_pose.rotation,
+                hierarchy_body_pose_after.rotation)
+            hierarchy_cleanup: i32 = catch WorldPhysics::unbind(session,
+                &hierarchy_bindings, entity):
+                ok: 0
+                error failure: 1
+            return 22 if hierarchy_cleanup != 0 or WorldPhysics::binding_count(hierarchy_bindings) != 0
+            0
