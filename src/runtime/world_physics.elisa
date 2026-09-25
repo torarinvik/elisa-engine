@@ -56,6 +56,7 @@ module WorldPhysics:
                     mass: mass,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             if not PhysicsRuntime::ServiceBodyHandles::store(&bindings.bodies, bindings.count, body):
                 cleanup_ok: bool = catch RuntimeServices::physics_body_destroy(session, body):

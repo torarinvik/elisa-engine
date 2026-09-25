@@ -31,6 +31,7 @@ module PhysicsRenderCapture:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
@@ -42,6 +43,7 @@ module PhysicsRenderCapture:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             initial: Geometry::Transform = Geometry::Transform{
                 position: Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0},

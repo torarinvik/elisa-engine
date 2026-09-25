@@ -18,6 +18,7 @@ namespace {
 
 constexpr float MAX_POSITION = 1.0e6f;
 constexpr float MAX_HALF_EXTENT = 1.0e4f;
+constexpr float MAX_CENTER_OF_MASS_OFFSET = 1.0e4f;
 constexpr float MAX_MASS = 1.0e8f;
 constexpr float MAX_FIXED_DELTA = 1.0f / 30.0f;
 using namespace elisa_physics_internal;

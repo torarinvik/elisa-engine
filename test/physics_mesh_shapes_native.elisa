@@ -49,6 +49,7 @@ module PhysicsMeshShapesNative:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, hull):
                 value: value
                 error failure: return 5
@@ -60,6 +61,7 @@ module PhysicsMeshShapesNative:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, triangle_mesh):
                 value: value
                 error failure: return 6
@@ -71,6 +73,7 @@ module PhysicsMeshShapesNative:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, triangle_mesh):
                 ok: 0
                 PhysicsRuntime::PhysicsError.InvalidArgument: 1

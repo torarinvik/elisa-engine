@@ -39,6 +39,7 @@ module PhysicsMaterialProbe:
                     mass: Tune::STATIC_MASS,
                     sensor: false,
                     collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }):
                 value: value
                 error failure: return 1
@@ -52,6 +53,7 @@ module PhysicsMaterialProbe:
                     mass: Tune::BALL_MASS,
                     sensor: false,
                     collision_layer: Tune::DEFAULT_COLLISION_LAYER,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }):
                 value: value
                 error failure: return 2

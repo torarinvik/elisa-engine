@@ -35,6 +35,19 @@ module PhysicsPrimitiveProbe:
             COMPOUND_CHILD_COUNT: usize = 2
             COMPOUND_TOO_MANY_CHILDREN: usize = 17
             COMPOUND_HIT_TOLERANCE: f32 = 0.05
+            SHARED_COM_OFFSET_Y: f32 = 0.25
+            SHARED_INERTIA_TRACE_DELTA: f32 = 0.125
+            SHARED_INERTIA_TRACE_TOLERANCE: f32 = 0.01
+            MAX_CENTER_OF_MASS_OFFSET: f32 = 10000.0
+            INVALID_CENTER_OF_MASS_OFFSET: f32 = MAX_CENTER_OF_MASS_OFFSET + 1.0
+
+        def inertia_trace(inertia: PhysicsRuntime::BodyInertia) -> f32:
+            moments: Geometry::Vec3 = PhysicsRuntime::body_inertia_principal_moments(inertia)
+            moments.x + moments.y + moments.z
+
+        def close(left: f32, right: f32, tolerance: f32) -> bool:
+            difference: f32 = left - right
+            difference >= -tolerance and difference <= tolerance
 
     public:
         def exercise(world: mutable PhysicsRuntime::World&,
@@ -49,11 +62,29 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
                 error failure: 2
             raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_sphere != 0
+            invalid_center_of_mass: i32 = catch PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::vec3_zero(),
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::Vec3{
+                        x: Fixture::INVALID_CENTER_OF_MASS_OFFSET, y: 0.0, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                }):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidArgument: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_center_of_mass != 0
             invalid_rotation: i32 = catch PhysicsRuntime::body_create(world,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
@@ -64,6 +95,7 @@ module PhysicsPrimitiveProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -84,6 +116,7 @@ module PhysicsPrimitiveProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             stage <- 1
             sphere: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
@@ -96,6 +129,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             stage <- 2
             capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
@@ -108,6 +142,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             zero_capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
                 PhysicsRuntime::BodyDesc{
@@ -119,6 +154,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 })
             shared_sphere: PhysicsRuntime::ShapeHandle = try PhysicsRuntime::shape_create(world,
                 PhysicsRuntime::BodyShape.Sphere,
@@ -132,6 +168,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, shared_sphere):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -145,6 +182,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, shared_sphere)
             shared_b: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
                 PhysicsRuntime::BodyInstanceDesc{
@@ -154,6 +192,8 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::Vec3{x: 0.0,
+                        y: Fixture::SHARED_COM_OFFSET_Y, z: 0.0},
                 }, shared_sphere)
             in_use_status: i32 = catch PhysicsRuntime::shape_destroy(world, shared_sphere):
                 value: 1
@@ -183,6 +223,11 @@ module PhysicsPrimitiveProbe:
             shared_a_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_a)
             shared_b_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_b)
             raise PhysicsRuntime::PhysicsError.BackendFailure if shared_a_position.y >= Fixture::DROP_THRESHOLD or shared_b_position.y >= Fixture::DROP_THRESHOLD
+            raise PhysicsRuntime::PhysicsError.BackendFailure if not close(shared_a_position.y, shared_b_position.y, Fixture::SHARED_INERTIA_TRACE_TOLERANCE)
+            shared_a_inertia: PhysicsRuntime::BodyInertia = try PhysicsRuntime::body_inertia(world, shared_a)
+            shared_b_inertia: PhysicsRuntime::BodyInertia = try PhysicsRuntime::body_inertia(world, shared_b)
+            trace_delta: f32 = PhysicsPrimitiveProbe::inertia_trace(shared_b_inertia) - PhysicsPrimitiveProbe::inertia_trace(shared_a_inertia)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if not close(trace_delta, Fixture::SHARED_INERTIA_TRACE_DELTA, Fixture::SHARED_INERTIA_TRACE_TOLERANCE)
             rotated_box_hit: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast(world,
                 Geometry::Vec3{x: Fixture::ROTATED_BOX_RAY_START_X,
                     y: Fixture::ROTATED_BOX_RAY_HEIGHT, z: 0.0},
@@ -210,6 +255,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, shared_sphere):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidHandle: 0
@@ -277,6 +323,7 @@ module PhysicsPrimitiveProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, nested_compound)
             compound_retained: i32 = catch PhysicsRuntime::shape_destroy(world, nested_compound):
                 value: 1
@@ -337,6 +384,7 @@ module PhysicsPrimitiveProbe:
                         mass: 0.0,
                         sensor: false,
                         collision_layer: 0,
+                        center_of_mass_offset: Geometry::vec3_zero(),
                     }, capacity_shape)
                 stored: bool = PhysicsRuntime::ServiceBodyHandles::store(
                     &capacity_bodies, index, body)
@@ -349,6 +397,7 @@ module PhysicsPrimitiveProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, capacity_shape):
                 value: 1
                 PhysicsRuntime::PhysicsError.Capacity: 0
@@ -402,6 +451,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, floor_shape):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -435,6 +485,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, nested_static_compound):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -452,6 +503,7 @@ module PhysicsPrimitiveProbe:
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, floor_shape)
             stage <- 5
             floor_in_use: i32 = catch PhysicsRuntime::shape_destroy(world, floor_shape):
@@ -482,6 +534,7 @@ module PhysicsPrimitiveProbe:
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
                 }, convex_shape)
             tick: mutable u64 = 0
             stage <- 8
