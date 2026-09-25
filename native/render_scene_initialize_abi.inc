@@ -55,6 +55,7 @@ extern "C" int32_t elisa_render_scene_v1_initialize(
     state.path->scene = state.scene.get();
     state.path->camera = state.camera;
     state.path->setOcclusionCullingEnabled(false);
+    state.upscaler_capabilities = probe::query_upscaler_capabilities(wi::graphics::GetDevice());
 
     if (!state.shutdown_hook_registered) {
         if (elisa_application_v1_register_shutdown_hook(&state, on_application_shutdown) != ELISA_APPLICATION_OK) {

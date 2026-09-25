@@ -8,22 +8,33 @@ the contract to Wicked's `RenderPath3D` controls for tonemapping, bloom, FXAA,
 temporal AA, SSAO, SSR, height fog, depth effects, and render scale. Low
 quality disables fog along with the more expensive effects; invalid scale and
 thresholds are rejected before any native state changes. FSR1/FSR2 are enabled
-only when the queried adapter says they are supported; otherwise the adapter
-returns an explicit fallback after applying the rest of the profile. Temporal
-AA uses Wicked's renderer history path; Elisa profiles reject enabling it
-alongside FSR2, which already owns a temporal reconstruction pass.
+only when the active device supports the required storage formats and Wicked
+has loaded every shader pass for that path; otherwise the adapter returns an
+explicit fallback after applying the rest of the profile. The capability probe
+runs once when the render scene starts and is shared by primary and secondary
+cameras. FSR1 also requires a render scale below 1 and an internal resolution
+smaller than the display; FSR2 rejects inputs smaller than 2x2 because Wicked's
+resource setup builds a half-resolution luminance pyramid. Temporal AA uses
+Wicked's renderer history path; Elisa profiles reject enabling it alongside
+FSR2, which already owns a temporal reconstruction pass.
 `RenderScene::apply_quality_profile_with_result` and
 `set_camera_quality_profile_with_result` return
 `Quality::ApplyOutcome.UpscalerFallback` when Wicked disables a requested
 upscaler, while the compatibility wrappers retain their previous void result.
-The scene adapter currently reports all FSR1/FSR2 requests as fallbacks because
-device/format support negotiation is not wired yet; applications can now detect
-that result instead of assuming upscaling was enabled.
+The SDL3/Wicked adapter now negotiates FSR1 and FSR2 separately. FSR1 checks the
+main render-target storage format and both FSR1 shader handles. FSR2 checks the
+device's common UAV-load capability, all formats used by
+`CreateFSR2Resources`, and all eight FSR2 compute shader handles. Format probes
+create small SRV/UAV textures during scene initialization and immediately
+release them, so profile changes do not repeat device allocations.
 
 Evidence: the shared Elisa gate runs `test/quality.elisa`; the SDL3/Wicked gate
-calls `probe_postprocess_bridge` and checks both fallback and supported paths,
-including fog and temporal-AA state. The probe restores the original scene
-weather after the check. The render-scene smoke also verifies both TAA history
+calls `probe_postprocess_bridge` and checks per-path capability mapping,
+unsupported fallback, and the remaining profile state, including fog and
+temporal AA. The probe restores the original scene weather after the check. The
+result-return smoke forces a deterministic FSR1
+fallback by requesting it at native resolution, then restores the prior profile.
+The render-scene smoke also verifies both TAA history
 textures match the active internal resolution after a 0.75-to-0.5 render-scale
 transition, are released when TAA is disabled, and are recreated at the new size
 when TAA is re-enabled.
@@ -39,12 +50,14 @@ the lower render scale; the High reference retains the full internal detail.
 These images validate rendered profile output.
 
 The 2026-09-25 quality-result smoke adds Elisa assertions for the scene and
-camera fallback outcomes and verifies their other profile fields. The targeted
-stage1 build emits the Elisa archive and compiles the native sources, but cannot
-link the executable: the seeded compiler omits `arena_free`, `ctx_streq`, and
-`ctx_string_views_eq`, and this build target does not export the scene test-probe
-functions. Runtime assertions therefore remain unverified until those gates
-link.
+camera fallback outcomes and verifies their other profile fields. The
+capability-negotiation probe also covers per-upscaler availability, fallback
+state, full-resolution FSR1 rejection, and invalid temporal combinations. The
+targeted stage1 build emits the Elisa archive and compiles the native sources,
+but cannot link the executable: the seeded compiler omits `arena_free`,
+`ctx_streq`, and `ctx_string_views_eq`, and this build target does not export the
+scene test-probe functions. Runtime assertions therefore remain unverified
+until those gates link.
 
 ## Apple M5 profile cost sample
 
