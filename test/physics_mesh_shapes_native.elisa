@@ -27,18 +27,26 @@ module PhysicsMeshShapesNative:
                 error failure: 2
             return 15 if missing_asset != 1
             invalid_scale: i32 = catch PhysicsRuntime::mesh_shape_create(&world,
-                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg",
+                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra-convex.elpk",
                 Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}):
                 ok: 0
                 PhysicsRuntime::PhysicsError.InvalidArgument: 1
                 error failure: 2
             return 16 if invalid_scale != 1
+            mismatched_collision_kind: i32 = catch PhysicsRuntime::mesh_shape_create(&world,
+                PhysicsRuntime::MeshShape.ConvexHull,
+                "test/fixtures/physics-tetra-triangle.elpk", scale):
+                ok: 0
+                PhysicsRuntime::PhysicsError.InvalidArgument: 1
+                error failure: 2
+            return 17 if mismatched_collision_kind != 1
             hull: PhysicsRuntime::ShapeHandle = catch PhysicsRuntime::mesh_shape_create(&world,
-                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg", scale):
+                PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra-convex.elpk", scale):
                 value: value
                 error failure: return 3
             triangle_mesh: PhysicsRuntime::ShapeHandle = catch PhysicsRuntime::mesh_shape_create(&world,
-                PhysicsRuntime::MeshShape.TriangleMesh, "test/fixtures/physics-tetra.pkg", scale):
+                PhysicsRuntime::MeshShape.TriangleMesh,
+                "test/fixtures/physics-tetra-triangle.elpk", scale):
                 value: value
                 error failure: return 4
             hull_body: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create_with_shape(&world,

@@ -49,14 +49,47 @@ per world, and 64 MiB of body proxies per world. Missing or unreadable packages
 report `PhysicsError.AssetLoadFailed`; unsupported or degenerate geometry
 reports `InvalidArgument`.
 
+The collision-only format below bakes every supported static glTF scene
+placement into the position stream. It therefore supports multi-placement
+static scenes while retaining the runtime restriction against skinning,
+animation, and morph deformation.
+
 For runtime-generated or procedurally authored geometry, use
 `PhysicsRuntime::shape_create_triangle_mesh` or
 `shape_create_convex_hull` with indexed `Geometry::Vec3` arrays. Both
 constructors validate and copy their inputs before returning, so callers may
 reuse the arrays immediately. The same vertex, index, per-shape, per-world,
 and query-proxy limits apply. `RuntimeServices::Session` exposes both
-constructors as well. Cooking happens at runtime; offline collision cook
-packages remain open work.
+constructors as well.
+
+For authored static glTF scenes, `scripts/cook_physics_collision.py` writes
+collision-only geometry packages. It bakes the glTF node transforms, welds
+identical positions, removes degenerate triangles, checks the native vertex,
+index, coordinate, and memory limits, and can simplify the static mesh before
+output. Choose `--shape convex_hull` or `--shape triangle_mesh`; the runtime
+rejects using a package with the other shape kind. Raw `.collision` files and
+`.elpk` bundles with a `collision` section are accepted by
+`mesh_shape_create`. The cooked file contains positions and indices rather
+than render attributes.
+
+For example:
+
+```sh
+python3 scripts/cook_physics_collision.py assets/rock.gltf \
+  --asset-path assets/rock.gltf --shape convex_hull \
+  --output build/assets/rock-collision.elpk
+```
+
+The collision cooker self-test, native raw/ELPK collision reader, and C++
+syntax check for the physics service passed on 2026-09-25. The SDL3 runtime
+fixture now exercises both bundle shape kinds. That updated Elisa fixture is
+pending execution because the refreshed stage1 compiler exits during native
+compilation; the previous cooked-geometry runtime route had passed its native
+smoke.
+
+The runtime still asks Jolt to build its native shape from those bounded
+streams when the asset loads. Versioned, pre-cooked Jolt shape serialization
+and cache invalidation remain open P02 work.
 
 For assemblies, use `PhysicsRuntime::shape_create_compound` with one to 16
 `CompoundChild` entries, then attach the resulting handle through
@@ -199,4 +232,4 @@ The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
 per-body friction/restitution and rotated principal inertia tensors.
-Center-of-mass offsets and offline collision cooking remain open P02 work.
+Versioned, pre-cooked Jolt shape serialization remains open P02 work.

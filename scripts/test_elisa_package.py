@@ -14,6 +14,7 @@ import tempfile
 
 from elisa_package import MAX_SECTIONS, build_package_bytes, write_package
 from cook_gltf_meshopt_streams import INDEX_STREAM, VERTEX_STREAM, encode_streams
+import cook_physics_collision
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +69,9 @@ def main(arguments: list[str]) -> int:
     if shutil.which(compiler) is None:
         print(f"C++ compiler is unavailable: {compiler}", file=sys.stderr)
         return 2
+    collision_status = cook_physics_collision.self_test()
+    if collision_status != 0:
+        return collision_status
     sections = {"mesh": cooked_triangle_package(compressed=True), "texture": bytes(range(256))}
     legacy_sections = {"mesh": cooked_triangle_package(), "texture": bytes(range(256))}
     if b"meshopt_codec=meshoptimizer-v1.2\n" not in sections["mesh"]:
@@ -105,6 +109,14 @@ def main(arguments: list[str]) -> int:
         excess_legacy_package_path = Path(temporary) / "too-many-sections.pkg"
         excess_legacy_package_path.write_bytes(legacy_package(MAX_SECTIONS + 1))
         executable = Path(temporary) / "package-format-test"
+        collision_source = Path(temporary) / "collision-tetra.gltf"
+        cook_physics_collision.write_tetrahedron_fixture(collision_source)
+        collision_package, _collision_result = cook_physics_collision.cook_collision_package(
+            collision_source, "test/collision-tetra.gltf",
+            Path(temporary) / "collision-tetra.collision", "triangle_mesh")
+        collision_bundle, _collision_result = cook_physics_collision.cook_collision_package(
+            collision_source, "test/collision-tetra.gltf",
+            Path(temporary) / "collision-tetra.elpk", "triangle_mesh")
         meshopt = ROOT / "dependencies/meshoptimizer"
         command = [compiler, "-std=c++17", "-O2", "-I", str(ROOT / "native"),
             "-I", str(meshopt), "-I", "/opt/homebrew/include",
@@ -118,7 +130,8 @@ def main(arguments: list[str]) -> int:
             print(built.stderr or built.stdout, file=sys.stderr)
             return built.returncode
         checked = subprocess.run([str(executable), str(package), str(wide_package),
-            str(legacy_package_path), str(excess_legacy_package_path)], capture_output=True,
+            str(legacy_package_path), str(excess_legacy_package_path), str(collision_bundle),
+            str(collision_package)], capture_output=True,
             text=True, check=False)
         if checked.returncode != 0:
             print(checked.stderr or checked.stdout, file=sys.stderr)
