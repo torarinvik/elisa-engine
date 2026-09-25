@@ -78,10 +78,10 @@ The Jolt filter assigns each body a private subgroup, so bodies in the same
 category can still collide. A body's category also maps to the matching bit in
 the existing query `layer_mask`: physical pair rules decide contact, while the
 query mask independently decides which categories a physics ray or nearest
-sphere-overlap query considers. `test/physics_collision_layers_native.elisa`
+sphere/capsule-overlap query considers. `test/physics_collision_layers_native.elisa`
 verifies that a layer-1 body overlapping layer-0 bodies produces no contact,
 that same-category bodies do contact, category-filtered physics rays and sphere
-overlaps, invalid category indices, and the configuration lock.
+and capsule overlaps, invalid category indices, and the configuration lock.
 
 `test/physics_primitives_probe.elisa` verifies invalid dimensions, falling
 sphere/capsule/zero-cylinder bodies, two bodies sharing one sphere shape,
@@ -116,7 +116,7 @@ Validation on 2026-09-25:
 Validation on 2026-09-25:
 
 - Rebuilt the SDL3/Jolt Wicked archive with `cmake --build ../WickedEngine/build-elisa-sdl3 --target WickedEngine_ext_shaders -j 8`.
-- The focused `test/physics_collision_layers_native.elisa` runner passed on SDL3/Metal. It overlaps a layer-1 dynamic body with two layer-0 bodies and confirms the layer-1 entity is absent from contact events while the same-category pair still contacts. Physics rays and nearest sphere overlaps select only the requested category; invalid categories and post-creation configuration changes are rejected.
+- The focused `test/physics_collision_layers_native.elisa` runner passed on SDL3/Metal. It overlaps a layer-1 dynamic body with two layer-0 bodies and confirms the layer-1 entity is absent from contact events while the same-category pair still contacts. Physics rays and nearest sphere/capsule overlaps select only the requested category, and the capsule cast reaches the selected body. Invalid categories and post-creation configuration changes are rejected.
 - `test/application_native_main.elisa` built and linked with native test probes enabled, compiling the RuntimeServices layer-configuration wrapper.
 - The source-length, module-hygiene, and Python syntax checks passed.
 

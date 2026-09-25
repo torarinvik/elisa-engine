@@ -367,9 +367,17 @@ public:
             !std::isfinite(radius) || radius <= 0.0f) return false;
         const auto result = scene_.Intersects(
             wi::primitive::Capsule(base, tip, radius), filter_mask, layer_mask);
-        if (result.entity == wi::ecs::INVALID_ENTITY) return false;
-        hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
-        return true;
+        if (result.entity != wi::ecs::INVALID_ENTITY) {
+            hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
+        }
+        wi::physics::ShapeIntersectionResult physics_result;
+        if (wi::physics::Intersects(scene_, wi::primitive::Capsule(base, tip, radius),
+                layer_mask, physics_result) &&
+            (hit.entity == wi::ecs::INVALID_ENTITY || physics_result.depth > hit.depth)) {
+            hit = {physics_result.entity, physics_result.position, physics_result.normal,
+                0.0f, physics_result.depth};
+        }
+        return hit.entity != wi::ecs::INVALID_ENTITY;
     }
 
     size_t overlap_capsule_all(PhysicsQueryToken token, const XMFLOAT3& base,

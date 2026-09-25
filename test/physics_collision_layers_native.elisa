@@ -107,6 +107,25 @@ module PhysicsCollisionLayersNative:
                 value: value
                 error failure: return 28
             return 29 if not category_one_overlap.hit
+            category_zero_capsule: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_capsule(
+                &world, Geometry::Vec3{x: 4.0, y: -0.3, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 0.3, z: 0.0}, 0.25, 1):
+                value: value
+                error failure: return 35
+            return 36 if category_zero_capsule.hit
+            category_one_capsule: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_capsule(
+                &world, Geometry::Vec3{x: 4.0, y: -0.3, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 0.3, z: 0.0}, 0.25, 2):
+                value: value
+                error failure: return 37
+            return 38 if not category_one_capsule.hit
+            category_one_capsule_cast: PhysicsQueries::ShapeHit = catch PhysicsQueries::capsule_cast(
+                &world, Geometry::Vec3{x: 4.0, y: 2.0, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 2.5, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 4.0, 0.25, 2):
+                value: value
+                error failure: return 39
+            return 40 if not category_one_capsule_cast.hit
             contacts: mutable PhysicsRuntime::ContactBuffer = zeroed
             dropped: mutable u32 = 0
             contact_count: usize = catch PhysicsRuntime::poll_contacts(&world,
