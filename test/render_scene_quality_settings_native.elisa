@@ -3,6 +3,12 @@ module RenderSceneQualitySettingsNativeTests:
     private:
         const module Limits:
             SETTLE_FRAME_COUNT: i32 = 3
+            QUALITY_PROFILE_HIGH: u32 = 0
+            QUALITY_PROFILE_MEDIUM: u32 = 1
+            QUALITY_PROFILE_LOW: u32 = 2
+            QUALITY_PROFILE_COUNT: u32 = 3
+            QUALITY_COST_WARMUP_FRAME_COUNT: u32 = 10
+            QUALITY_COST_SAMPLE_FRAME_COUNT: u32 = 21
 
         @callconv(c)
         extern elisa_render_scene_v1_test_postprocess_matches(tonemap: i32, exposure: f32) -> i32
@@ -27,6 +33,10 @@ module RenderSceneQualitySettingsNativeTests:
         extern elisa_render_scene_v1_test_temporal_history_resources(
             expected_scale: f32, expected_valid: i32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_quality_profile_cost(
+            profile_id: u32, warmup_frames: u32, sample_count: u32) -> i32
+
         def capture_profile(profile: Quality::Profile&, variable: cstr,
             failure_code: i32) -> i32:
             applied: i32 = catch RenderScene::apply_quality_profile(profile):
@@ -37,6 +47,17 @@ module RenderSceneQualitySettingsNativeTests:
                 return failure_code + 2 if Application::pump() != Application::PumpStatus.Running
             capture_path: cstr = Application::environment_value(variable)
             return failure_code + 3 if capture_path != "" and not Application::save_screenshot(capture_path)
+            0
+
+        def measure_profile_cost(profile: Quality::Profile&, profile_id: u32,
+            failure_code: i32) -> i32:
+            applied: i32 = catch RenderScene::apply_quality_profile(profile):
+                ok: 0
+                error failure: return failure_code
+            return failure_code + 1 if applied != 0
+            return failure_code + 2 if elisa_render_scene_v1_test_quality_profile_cost(
+                profile_id, Limits::QUALITY_COST_WARMUP_FRAME_COUNT,
+                Limits::QUALITY_COST_SAMPLE_FRAME_COUNT) != 0
             0
 
     public:
@@ -155,3 +176,12 @@ module RenderSceneQualitySettingsNativeTests:
             return restored_profile if restored_profile != 0
             return 136 if elisa_render_scene_v1_test_temporal_history_resources(0.75, 1) != 1
             0
+
+        def measure_selected_profile_cost(profile_id: u32) -> i32:
+            return 154 if profile_id >= Limits::QUALITY_PROFILE_COUNT
+            profile: mutable Quality::Profile = Quality::Profile()
+            if profile_id == Limits::QUALITY_PROFILE_HIGH:
+                profile <- Quality::high()
+            elif profile_id == Limits::QUALITY_PROFILE_LOW:
+                profile <- Quality::low()
+            measure_profile_cost(&profile, profile_id, 137)

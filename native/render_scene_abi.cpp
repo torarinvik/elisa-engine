@@ -165,8 +165,8 @@ void update_snapshot_lod_selection(RenderSceneService& state);
 int32_t primary_view_width(const RenderSceneService& state);
 int32_t primary_view_height(const RenderSceneService& state);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-void lod_gpu_timing_begin_render();
-void lod_gpu_timing_end_render();
+void render_path_gpu_timing_begin_render();
+void render_path_gpu_timing_end_render();
 #endif
 #include "render_scene_path.inc"
 RenderSceneService& service() {
