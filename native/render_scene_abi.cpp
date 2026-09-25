@@ -65,9 +65,13 @@ constexpr float DEFAULT_CAMERA_NEAR_CLIP = 0.01f;
 constexpr float DEFAULT_CAMERA_FAR_CLIP = 1000.0f;
 constexpr float DEFAULT_CAMERA_FOV_RADIANS = XM_PIDIV4;
 constexpr size_t MAX_RENDER_LIGHTS = probe::LightingBridge::MAX_LIGHTS;
+constexpr size_t MAX_RENDER_ENVIRONMENT_PROBES = probe::LightingBridge::MAX_ENVIRONMENTS;
 constexpr size_t MAX_RENDER_CAMERAS = 8;
 constexpr unsigned CAMERA_HANDLE_SLOT_BITS = 4;
 constexpr uint64_t CAMERA_HANDLE_SLOT_MASK = (uint64_t(1) << CAMERA_HANDLE_SLOT_BITS) - 1;
+constexpr unsigned ENVIRONMENT_PROBE_HANDLE_SLOT_BITS = 4;
+constexpr uint64_t ENVIRONMENT_PROBE_HANDLE_SLOT_MASK =
+    (uint64_t(1) << ENVIRONMENT_PROBE_HANDLE_SLOT_BITS) - 1;
 constexpr size_t MAX_OVERLAY_TEXT_MEASURE_CACHE_ENTRIES = 256;
 #include "render_scene_text_internal.inc"
 #include "render_scene_panel_internal.inc"
@@ -100,6 +104,7 @@ struct RenderSceneService {
     std::unique_ptr<wi::RenderPath3D> path;
     std::array<InstanceSlot, MAX_INSTANCES> instances{};
     std::array<RenderLightSlot, MAX_RENDER_LIGHTS> lights{};
+    std::array<RenderEnvironmentProbeSlot, MAX_RENDER_ENVIRONMENT_PROBES> environment_probes{};
     std::array<RenderCameraSlot, MAX_RENDER_CAMERAS> cameras{};
     PrimaryViewportState primary_viewport{};
     std::array<ElectricArcSlot, MAX_ELECTRIC_ARCS> electric_arcs{};
@@ -337,6 +342,10 @@ void reset_unlocked(RenderSceneService& state) {
         state.scene.reset();
     }
     state.lights = {};
+    for (RenderEnvironmentProbeSlot& probe : state.environment_probes) {
+        probe.native = {};
+        probe.live = false;
+    }
     state.cameras = {};
     state.primary_viewport = {};
     for (InstanceSlot& instance : state.instances) clear_snapshot_instance(state, instance);
@@ -524,6 +533,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_material_abi.inc"
 #include "render_scene_environment_abi.inc"
 #include "render_scene_lighting_abi.inc"
+#include "render_scene_environment_probe_abi.inc"
 #include "render_scene_visibility_abi.inc"
 #include "render_scene_quality_abi.inc"
 #include "render_scene_text_abi.inc"

@@ -2,6 +2,11 @@ struct RenderLightSlot {
     probe::NativeLightHandle native{};
     bool live = false;
 };
+struct RenderEnvironmentProbeSlot {
+    probe::NativeEnvironmentHandle native{};
+    uint32_t generation = 0;
+    bool live = false;
+};
 struct RenderCameraSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     std::unique_ptr<wi::RenderPath3D> pipeline;

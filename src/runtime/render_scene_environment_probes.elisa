@@ -1,0 +1,55 @@
+# Public bounded capture-probe handles for the active RenderScene.
+include "../backend/lighting.elisa"
+include "./render_scene.elisa"
+
+module RenderSceneEnvironmentProbes:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_create_environment_probe(
+            px: f32, py: f32, pz: f32, resolution: i32, view_distance: f32,
+            update_interval: f32, realtime: i32, multisampled: i32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_update_environment_probe(handle: i64,
+            px: f32, py: f32, pz: f32, resolution: i32, view_distance: f32,
+            update_interval: f32, realtime: i32, multisampled: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_destroy_environment_probe(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_refresh_environment_probe(handle: i64) -> i32
+
+    public:
+        const MAX_ENVIRONMENT_PROBES: usize = 8
+
+        struct EnvironmentProbeHandle:
+            private:
+                native_value: i64
+
+        def create_environment_probe(probe: Lighting::EnvironmentProbe) -> EnvironmentProbeHandle error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Lighting::environment_probe_valid(probe)
+            native_value: i64 = elisa_render_scene_v1_create_environment_probe(
+                probe.position.x, probe.position.y, probe.position.z, probe.resolution,
+                probe.view_distance, probe.update_interval,
+                1 if probe.realtime else 0, 1 if probe.multisampled else 0)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            EnvironmentProbeHandle{native_value: native_value}
+
+        def update_environment_probe(handle: EnvironmentProbeHandle,
+            probe: Lighting::EnvironmentProbe) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if not Lighting::environment_probe_valid(probe)
+            try check_status(elisa_render_scene_v1_update_environment_probe(handle.native_value,
+                probe.position.x, probe.position.y, probe.position.z, probe.resolution,
+                probe.view_distance, probe.update_interval,
+                1 if probe.realtime else 0, 1 if probe.multisampled else 0))
+
+        def destroy_environment_probe(handle: EnvironmentProbeHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_destroy_environment_probe(handle.native_value))
+
+        # Request a new capture after scene content changes around a static probe.
+        def refresh_environment_probe(handle: EnvironmentProbeHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_refresh_environment_probe(handle.native_value))
