@@ -9,6 +9,13 @@ module PhysicsPrimitiveProbe:
             ZERO_CAPSULE_X: f32 = 14.0
             SHARED_SPHERE_A_X: f32 = 18.0
             SHARED_SPHERE_B_X: f32 = 21.0
+            ROTATED_BOX_CENTER_X: f32 = 40.0
+            ROTATED_BOX_HALF_LENGTH: f32 = 1.0
+            ROTATED_BOX_HALF_THICKNESS: f32 = 0.2
+            ROTATION_QUARTER_TURN_COMPONENT: f32 = 0.70710677
+            ROTATED_BOX_RAY_START_X: f32 = 38.0
+            ROTATED_BOX_RAY_HEIGHT: f32 = 0.5
+            ROTATED_BOX_RAY_DISTANCE: f32 = 4.0
             START_HEIGHT: f32 = 4.0
             DROP_THRESHOLD: f32 = 3.8
             SPHERE_RADIUS: f32 = 0.4
@@ -66,9 +73,14 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     shape: PhysicsRuntime::BodyShape.Box,
-                    position: Geometry::Vec3{x: 40.0, y: 0.0, z: 0.0},
-                    rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710677, w: 0.70710677},
-                    dimensions: Geometry::Vec3{x: 1.0, y: 0.2, z: 0.2},
+                    position: Geometry::Vec3{x: Fixture::ROTATED_BOX_CENTER_X, y: 0.0, z: 0.0},
+                    rotation: Geometry::Quat{
+                        x: 0.0, y: 0.0,
+                        z: Fixture::ROTATION_QUARTER_TURN_COMPONENT,
+                        w: Fixture::ROTATION_QUARTER_TURN_COMPONENT},
+                    dimensions: Geometry::Vec3{x: Fixture::ROTATED_BOX_HALF_LENGTH,
+                        y: Fixture::ROTATED_BOX_HALF_THICKNESS,
+                        z: Fixture::ROTATED_BOX_HALF_THICKNESS},
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -172,8 +184,10 @@ module PhysicsPrimitiveProbe:
             shared_b_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_b)
             raise PhysicsRuntime::PhysicsError.BackendFailure if shared_a_position.y >= Fixture::DROP_THRESHOLD or shared_b_position.y >= Fixture::DROP_THRESHOLD
             rotated_box_hit: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast(world,
-                Geometry::Vec3{x: 38.0, y: 0.5, z: 0.0},
-                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, 4.0,
+                Geometry::Vec3{x: Fixture::ROTATED_BOX_RAY_START_X,
+                    y: Fixture::ROTATED_BOX_RAY_HEIGHT, z: 0.0},
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
+                Fixture::ROTATED_BOX_RAY_DISTANCE,
                 PhysicsRuntime::ALL_LAYERS)
             raise PhysicsRuntime::PhysicsError.BackendFailure if not rotated_box_hit.hit
             raise PhysicsRuntime::PhysicsError.BackendFailure if rotated_box_hit.entity == 0

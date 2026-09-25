@@ -3,7 +3,7 @@ include "./physics_inertia_probe.elisa"
 
 def main() -> i32:
     config: Application::Config = Application::Config{
-        title: "Elisa Physics Inertia Smoke",
+        title: "Elisa Physics Pose and Inertia Smoke",
         width: 320,
         height: 200,
         hidden: true,

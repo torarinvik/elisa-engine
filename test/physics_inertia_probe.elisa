@@ -1,4 +1,4 @@
-# Verifies the public inertia contract against Jolt's live body properties.
+# Verifies oriented body-pose and inertia contracts against live Jolt bodies.
 include "../src/runtime/services.elisa"
 
 module PhysicsInertiaProbe:
@@ -66,10 +66,10 @@ module PhysicsInertiaProbe:
             body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
                 session, PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
-                    shape: PhysicsRuntime::BodyShape.Sphere,
+                    shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: 10.0, z: 0.0},
                     rotation: body_rotation,
-                    dimensions: Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.75, z: 1.0},
                     mass: Tune::MASS,
                     sensor: false,
                     collision_layer: Tune::DEFAULT_COLLISION_LAYER,

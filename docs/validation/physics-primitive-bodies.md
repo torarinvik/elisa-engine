@@ -16,7 +16,12 @@ for their initial orientation. Use `Geometry::quat_identity()` for an unrotated
 body. `body_pose` and `RuntimeServices::physics_body_pose` return the body
 position and orientation in Elisa coordinates; `body_position` remains the
 position-only convenience getter. Non-finite or degenerate orientation values
-are rejected before the native body slot is allocated.
+are rejected before the native body slot is allocated. The native boundary
+converts both directions between Elisa's right-handed coordinates and Wicked's
+left-handed coordinates; direct primitives, reusable mesh shapes, and compound
+bodies all apply the authored orientation. Probes cover invalid quaternions on
+direct and shared-shape creation, plus a rotated-box raycast that would miss if
+the query ignored the body's orientation.
 
 For shared primitives, create a world-scoped `ShapeHandle` with
 `PhysicsRuntime::shape_create`, then create bodies using
@@ -181,8 +186,9 @@ Validation on 2026-09-25 (body orientation and pose):
   body orientations. The primitive fixture rejects degenerate quaternions for
   direct and reusable-shape bodies and raycasts through a rotated box at a
   position that would miss if the orientation were ignored.
-- The inertia fixture checks `BodyPose` rotation before and after a fixed step.
-  The complete suite's 30 Hz and 120 Hz render captures remain pixel-identical
-  at 640x480.
+- The inertia fixture checks `BodyPose` rotation before and after a fixed step,
+  using an asymmetric box so the orientation is physically observable. It also
+  exercises rotated inertia through `RuntimeServices`. The complete suite's
+  30 Hz and 120 Hz render captures remain pixel-identical at 640x480.
 - `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, the
   dependency-manifest validator, and whitespace checks pass.
