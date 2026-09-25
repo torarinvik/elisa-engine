@@ -1,4 +1,4 @@
-include "../src/world/events.elisa"
+include "../src/world/schedule.elisa"
 
 def main() -> i32:
     queue: mutable WorldEvents::Queue = WorldEvents::Queue()
@@ -53,4 +53,98 @@ def main() -> i32:
         error failure: 2
     return 14 if rejected != 1
     return 15 if WorldEvents::end_frame(&queue) != 1
+
+    scheduled_entity: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+        value: value
+        error failure: return 16
+    frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+    _ = catch WorldSchedule::begin_frame(&frame):
+        ok: 0
+        error failure: return 17
+    _ = catch WorldSchedule::subscribe(&frame, 7, WorldEvents::Phase.Simulation):
+        ok: 0
+        error failure: return 18
+    _ = catch WorldSchedule::emit_world(&frame, &world, WorldEvents::Event{
+        phase: WorldEvents::Phase.Simulation,
+        kind: WorldEvents::EventKind.Despawn,
+        listener_id: 7,
+        entity: scheduled_entity,
+        payload: 0,
+        delivered: false,
+    }):
+        ok: 0
+        error failure: return 19
+    commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+    return 20 if not WorldCommands::world_despawn(&commands, scheduled_entity)
+    input_commit: bool = catch WorldSchedule::commit(&frame, &commands, &world):
+        value: value
+        error failure: false
+    return 21 if input_commit or WorldCommands::world_command_count(&commands) != 1
+    _ = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation):
+        ok: 0
+        error failure: return 22
+    read: mutable WorldAccess::Token = catch WorldSchedule::acquire_read(&frame):
+        value: value
+        error failure: return 23
+    blocked_commit: bool = catch WorldSchedule::commit(&frame, &commands, &world):
+        value: value
+        error failure: false
+    return 24 if blocked_commit or not World::world_is_live(&world, scheduled_entity)
+    blocked_advance: i32 = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics):
+        ok: 1
+        WorldSchedule::Error.AccessConflict: 0
+        error failure: 2
+    return 25 if blocked_advance != 0
+    blocked_end: i32 = catch WorldSchedule::end_frame(&frame):
+        value: 1
+        WorldSchedule::Error.AccessConflict: 0
+        error failure: 2
+    return 26 if blocked_end != 0
+    _ = catch WorldSchedule::release_access(&frame, &read):
+        ok: 0
+        error failure: return 27
+    delivered: usize = catch WorldSchedule::dispatch_current(&frame):
+        value: value
+        error failure: return 28
+    return 29 if delivered != 1
+    event: WorldEvents::Event = catch WorldSchedule::dispatched_event_at(&frame, &world, 0):
+        value: value
+        error failure: return 30
+    return 31 if event.kind != WorldEvents::EventKind.Despawn or event.entity.world_epoch != scheduled_entity.world_epoch or event.entity.id != scheduled_entity.id or not event.delivered
+    write: mutable WorldAccess::Token = catch WorldSchedule::acquire_write(&frame):
+        value: value
+        error failure: return 41
+    blocked_write_commit: bool = catch WorldSchedule::commit(&frame, &commands, &world):
+        value: value
+        error failure: false
+    return 42 if blocked_write_commit or not World::world_is_live(&world, scheduled_entity)
+    _ = catch WorldSchedule::release_access(&frame, &write):
+        ok: 0
+        error failure: return 43
+    delivered_again: usize = catch WorldSchedule::dispatch_current(&frame):
+        value: value
+        error failure: return 32
+    return 33 if delivered_again != 0
+    committed: bool = catch WorldSchedule::commit(&frame, &commands, &world):
+        value: value
+        error failure: false
+    return 34 if not committed or WorldCommands::world_command_count(&commands) != 0
+    return 35 if World::world_is_live(&world, scheduled_entity)
+    stale_event: i32 = catch WorldSchedule::dispatched_event_at(&frame, &world, 0):
+        value: 1
+        WorldSchedule::Error.InvalidEntity: 0
+        error failure: 2
+    return 36 if stale_event != 0
+    _ = catch WorldSchedule::unsubscribe(&frame, 7):
+        ok: 0
+        error failure: return 37
+    for next in [WorldEvents::Phase.Physics, WorldEvents::Phase.Animation,
+        WorldEvents::Phase.Render, WorldEvents::Phase.Audio]:
+        _ = catch WorldSchedule::advance_phase(&frame, next):
+            ok: 0
+            error failure: return 38
+    ended: usize = catch WorldSchedule::end_frame(&frame):
+        value: value
+        error failure: return 39
+    return 40 if ended != 1
     0
