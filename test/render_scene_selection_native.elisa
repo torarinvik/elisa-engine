@@ -24,9 +24,22 @@ module RenderSceneSelectionNativeTests:
             kind: i32, button: i32, x: f32, y: f32, delta_x: f32,
             delta_y: f32, buttons: u32, pressed: i32) -> i32
 
+        def discard_pointer_events() -> usize:
+            event: mutable Application::PointerEvent = zeroed
+            processed: mutable usize = 0
+            while Application::next_pointer_event(&event) |processed, event|:
+                processed <- processed + 1
+            processed
+
     public:
         def exercise(handle: RenderScene::InstanceHandle) -> i32:
             raw_handle: i64 = RenderScene::native_smoke_handle(handle)
+            visible_target: i32 = catch RenderScene::set_visible(handle, true):
+                ok: 0
+                error failure: 1
+            return 46 if visible_target != 0
+            return 47 if Application::pump() != Application::PumpStatus.Running
+            _ = discard_pointer_events()
             return 48 if elisa_application_v1_test_push_pointer_event(
                 TEST_POINTER_MOTION, 0, 101.25, 88.5,
                 3.5, 0.0 - 2.25, Application::PointerButtons::RIGHT_MASK, 0) != 0
@@ -49,14 +62,14 @@ module RenderSceneSelectionNativeTests:
                 ok: 0
                 error failure: 1
             return 1 if identity_status != 0
-            return 2 if Application::pump() != Application::PumpStatus.Running
+            return 74 if Application::pump() != Application::PumpStatus.Running
             ray: Geometry::Ray3 = Geometry::Ray3{
-                origin: Geometry::Vec3{x: 1.1, y: 10.0, z: 8.0},
-                direction: Geometry::vec3_normalize(Geometry::Vec3{x: 0.0, y: -10.0, z: -8.0}),
+                origin: Geometry::Vec3{x: 1.1, y: 10.0, z: 0.0},
+                direction: Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0},
             }
             hit: RenderScene::PickResult = catch RenderScene::pick(ray, ALL_LAYERS):
                 value: value
-                error failure: return 2
+                error failure: return 75
             return 3 if hit.gameplay_epoch != 7 or hit.gameplay_id != 42 or hit.distance <= 0.0
             miss: i32 = catch RenderScene::pick(Geometry::Ray3{
                 origin: Geometry::Vec3{x: -5.0, y: 10.0, z: 8.0},

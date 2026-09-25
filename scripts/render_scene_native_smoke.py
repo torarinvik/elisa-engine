@@ -362,6 +362,8 @@ def main() -> int:
     shadow_receiver_variant_capture = build / "render-scene-shadow-receiver-variant.png"
     shadow_rasterizer_baseline_capture = build / "render-scene-shadow-rasterizer-baseline.png"
     shadow_rasterizer_variant_capture = build / "render-scene-shadow-rasterizer-variant.png"
+    postprocess_high_capture = build / "render-scene-postprocess-high.png"
+    postprocess_low_capture = build / "render-scene-postprocess-low.png"
     captures = [mirrored_normal_capture, mirrored_normal_no_occlusion_capture,
         clearcoat_baseline_capture, clearcoat_coated_capture,
         point_light_left_capture, point_light_right_capture,
@@ -369,7 +371,8 @@ def main() -> int:
         lighting_outdoor_capture, lighting_indoor_capture,
         lighting_transparent_capture, lighting_opaque_capture,
         shadow_receiver_baseline_capture, shadow_receiver_variant_capture,
-        shadow_rasterizer_baseline_capture, shadow_rasterizer_variant_capture]
+        shadow_rasterizer_baseline_capture, shadow_rasterizer_variant_capture,
+        postprocess_high_capture, postprocess_low_capture]
     for capture in captures:
         capture.unlink(missing_ok=True)
     runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
@@ -389,6 +392,8 @@ def main() -> int:
     runtime_env["ELISA_SHADOW_RECEIVER_VARIANT_CAPTURE"] = str(shadow_receiver_variant_capture)
     runtime_env["ELISA_SHADOW_RASTERIZER_BASELINE_CAPTURE"] = str(shadow_rasterizer_baseline_capture)
     runtime_env["ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE"] = str(shadow_rasterizer_variant_capture)
+    runtime_env["ELISA_POSTPROCESS_HIGH_CAPTURE"] = str(postprocess_high_capture)
+    runtime_env["ELISA_POSTPROCESS_LOW_CAPTURE"] = str(postprocess_low_capture)
     lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
     capture_lod_quality = not render_only or lod_fixture_available
     if capture_lod_quality:
@@ -447,8 +452,18 @@ def main() -> int:
             print("Lighting reference comparison failed.", file=sys.stderr)
             return lighting_status
     if status == 0:
+        postprocess_command = [sys.executable,
+            str(ROOT / "scripts/compare_postprocess_references.py"),
+            "--capture-dir", str(build)]
+        if os.environ.get("ELISA_UPDATE_POSTPROCESS_REFERENCES") == "1":
+            postprocess_command.append("--update")
+        postprocess_status = run(postprocess_command)
+        if postprocess_status != 0:
+            print("Post-process quality reference comparison failed.", file=sys.stderr)
+            return postprocess_status
+    if status == 0:
         if render_only:
-            print("Elisa UI, sun shadows, indoor/outdoor lighting, point lights and authored glTF material references rendered by Wicked; visual checks passed.")
+            print("Elisa UI, sun shadows, indoor/outdoor lighting, point lights, authored glTF materials and High/Low post-process references rendered by Wicked; visual checks passed.")
             return 0
         print("Elisa cooked mesh rendered by Wicked; path rejection, handle validation, and cleanup passed.")
         maze_status = run([

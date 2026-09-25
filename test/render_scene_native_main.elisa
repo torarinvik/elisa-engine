@@ -503,7 +503,7 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 101 if stale_electric_arc != 1
-    return 102 if elisa_render_scene_v1_test_arc_capacity() != 1
+    return 102 if elisa_render_scene_v1_test_arc_capacity() != 1 or RenderSceneVisibilityNativeTests::restore_hidden_instances(box, sphere, floor) != 0
     destroyed_hud_text: i32 = catch RenderScene::destroy_overlay_text(hud_text):
         ok: 0
         error failure: 1
