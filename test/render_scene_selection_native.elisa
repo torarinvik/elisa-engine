@@ -1,5 +1,6 @@
 include "../src/runtime/render_scene_selection.elisa"
 include "../src/tooling/world_selection_overlay.elisa"
+include "../src/tooling/editor_viewport.elisa"
 include "../src/math/geometry.elisa"
 
 module RenderSceneSelectionNativeTests:
@@ -120,4 +121,92 @@ module RenderSceneSelectionNativeTests:
                 ok: 0
                 error failure: 1
             return 16 if destroyed_canvas != 0 or WorldSelectionOverlay::canvas_valid(&canvas)
+
+            viewport_panel: RenderScene::OverlayPanelHandle = catch RenderScene::create_overlay_panel(
+                12.0, 12.0, 256.0, 140.0,
+                RenderScene::Color{red: 0.06, green: 0.06, blue: 0.08, alpha: 1.0}):
+                value: value
+                error failure: return 23
+            viewport_title: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "WORLD SELECTION", 20.0, 20.0, 14,
+                RenderScene::Color{red: 1.0, green: 0.8, blue: 0.2, alpha: 1.0}):
+                value: value
+                error failure: return 23
+            viewport_world: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "world epoch: 0", 20.0, 42.0, 12,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 23
+            viewport_entity: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "entity id: 0", 20.0, 64.0, 12,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 23
+            viewport_canvas: mutable WorldSelectionOverlay::Canvas = WorldSelectionOverlay::Canvas(
+                viewport_panel, viewport_title, viewport_world, viewport_entity)
+            viewport_camera: Camera::State = Camera::State(320, 200)
+            viewport: mutable EditorViewport::Viewport = EditorViewport::Viewport(
+                viewport_camera, viewport_canvas)
+            initialized_viewport: i32 = catch EditorViewport::initialize(&viewport):
+                ok: 0
+                error failure: 1
+            return 24 if initialized_viewport != 0
+            focused: bool = catch EditorViewport::focus(&viewport,
+                Geometry::Vec3{x: 1.1, y: 0.0, z: 0.0}, 10.0):
+                value: value
+                error failure: return 25
+            return 26 if not focused
+            theme.background <- UiStyle::Color(90, 8, 8, 255)
+            viewport_hit: bool = catch EditorViewport::select_at_pixel(&viewport,
+                160.0, 100.0, theme):
+                value: value
+                error failure: return 27
+            return 28 if not viewport_hit
+            viewport_selection: RenderScene::PickSelection = EditorViewport::selection(&viewport)
+            return 29 if not viewport_selection.hit or viewport_selection.result.gameplay_epoch != 7 or viewport_selection.result.gameplay_id != 42
+            return 30 if elisa_render_scene_v1_test_selection_state(raw_handle) != 1
+            for frame in 0..<3:
+                return 31 if Application::pump() != Application::PumpStatus.Running
+            return 32 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0 or elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
+            small_viewport: bool = catch EditorViewport::resize(&viewport,
+                200, 150, 1.0):
+                value: value
+                error failure: return 43
+            return 44 if not small_viewport
+            undersized_pick: i32 = catch EditorViewport::select_at_pixel(&viewport,
+                100.0, 75.0, theme):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 45 if undersized_pick != 1 or elisa_render_scene_v1_test_selection_state(raw_handle) != 1
+            restored_viewport: bool = catch EditorViewport::resize(&viewport,
+                320, 200, 1.0):
+                value: value
+                error failure: return 46
+            return 47 if not restored_viewport
+            viewport_orbit: bool = catch EditorViewport::orbit_drag(&viewport,
+                8.0, -4.0):
+                value: value
+                error failure: return 33
+            viewport_pan: bool = catch EditorViewport::pan_drag(&viewport,
+                2.0, -1.0):
+                value: value
+                error failure: return 34
+            viewport_zoom: bool = catch EditorViewport::zoom_steps(&viewport, 1.0):
+                value: value
+                error failure: return 35
+            return 36 if not viewport_orbit or not viewport_pan or not viewport_zoom
+            viewport_miss: bool = catch EditorViewport::select_at_pixel(&viewport,
+                0.0, 0.0, theme):
+                value: value
+                error failure: return 37
+            return 38 if viewport_miss or EditorViewport::selection(&viewport).hit
+            return 39 if elisa_render_scene_v1_test_selection_state(raw_handle) != 0
+            for frame in 0..<3:
+                return 40 if Application::pump() != Application::PumpStatus.Running
+            return 41 if elisa_render_scene_v1_last_frame_has_overlay_text() != 0 or elisa_render_scene_v1_last_frame_has_overlay_panel() != 0
+            destroyed_viewport: i32 = catch EditorViewport::destroy(&viewport):
+                ok: 0
+                error failure: 1
+            return 42 if destroyed_viewport != 0 or EditorViewport::viewport_valid(&viewport)
             0
