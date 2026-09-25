@@ -267,8 +267,11 @@ Validation on 2026-09-25 (versioned shape cache):
   assets and the legacy full cooked-geometry `.pkg` route.
 - The native test also verifies that shape handles and bodies created from
   restored shapes release normally. Legacy cooked geometry is still decoded
-  for validation and query-proxy construction on a cache hit; caller-array
-  shapes remain uncached.
+  for validation and query-proxy construction on a cache hit. Caller-array
+  meshes are keyed by a canonical digest of converted vertices and indices,
+  shape kind, coordinate profile, and Jolt version. The array smoke verifies
+  cold/warm loads, corruption-triggered recooking, and a ray-queryable body
+  built from a restored shape.
 - Wicked adapter commit `7ed3901564b308a457411560466581672fc8fd66` provides
   the Jolt `SaveWithChildren` and restore bridge. The complete twelve-fixture
   SDL3/Metal smoke and `scripts/check.elisascript` passed against that pinned
@@ -285,6 +288,7 @@ The native registry supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
 per-body friction/restitution and rotated principal inertia tensors.
-Versioned serialization and invalidation for both collision-only and legacy
-cooked-geometry assets now pass their focused native probes. Caller-owned
-array caching remains open P02 work.
+Versioned serialization and invalidation for collision-only assets, legacy
+cooked geometry, and caller-owned array meshes pass their focused native and
+SDL3/Metal probes. Array cache identities change with vertex data, index data,
+shape kind, coordinate profile, or Jolt version.

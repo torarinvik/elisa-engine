@@ -7,6 +7,16 @@ module PhysicsMeshShapesNative:
             WIDTH: i32 = 320
             HEIGHT: i32 = 240
 
+        def create_array_hull(world: PhysicsRuntime::World&) -> PhysicsRuntime::ShapeHandle error[PhysicsRuntime::PhysicsError]:
+            vertices: Geometry::Vec3[4] = [
+                Geometry::Vec3{x: -0.5, y: 0.0, z: -0.5},
+                Geometry::Vec3{x: 0.5, y: 0.0, z: -0.5},
+                Geometry::Vec3{x: 0.0, y: 0.0, z: 0.5},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+            ]
+            indices: u32[12] = [0, 1, 3, 1, 2, 3, 2, 0, 3, 0, 2, 1]
+            PhysicsRuntime::shape_create_convex_hull(world, &vertices[0], 4, &indices[0], 12)
+
     public:
         @callconv(c)
         extern elisa_physics_v1_test_shape_cache_counts(hits: mutable u64&,
@@ -59,6 +69,12 @@ module PhysicsMeshShapesNative:
                 PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg", scale):
                 value: value
                 error failure: return 25
+            array_cold: PhysicsRuntime::ShapeHandle = catch create_array_hull(&world):
+                value: value
+                error failure: return 31
+            array_warm: PhysicsRuntime::ShapeHandle = catch create_array_hull(&world):
+                value: value
+                error failure: return 32
             corrupt_status: i32 = elisa_physics_v1_test_corrupt_shape_cache()
             return 23 if corrupt_status != 0
             recovered_hull: PhysicsRuntime::ShapeHandle = catch PhysicsRuntime::mesh_shape_create(&world,
@@ -77,10 +93,16 @@ module PhysicsMeshShapesNative:
                 PhysicsRuntime::MeshShape.ConvexHull, "test/fixtures/physics-tetra.pkg", scale):
                 value: value
                 error failure: return 27
+            array_recovered: PhysicsRuntime::ShapeHandle = catch create_array_hull(&world):
+                value: value
+                error failure: return 33
+            array_cached: PhysicsRuntime::ShapeHandle = catch create_array_hull(&world):
+                value: value
+                error failure: return 34
             cache_hits: mutable u64 = 0
             cache_misses: mutable u64 = 0
             cache_status: i32 = elisa_physics_v1_test_shape_cache_counts(&cache_hits, &cache_misses)
-            return 19 if cache_status != 0 or cache_hits != 2 or cache_misses != 5
+            return 19 if cache_status != 0 or cache_hits != 4 or cache_misses != 7
             hull_body: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create_with_shape(&world,
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
@@ -129,6 +151,18 @@ module PhysicsMeshShapesNative:
                 }, cached_legacy_hull):
                 value: value
                 error failure: return 28
+            array_cached_body: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create_with_shape(&world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    position: Geometry::Vec3{x: 11.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                }, array_cached):
+                value: value
+                error failure: return 35
             rejected_dynamic: i32 = catch PhysicsRuntime::body_create_with_shape(&world,
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
@@ -167,6 +201,13 @@ module PhysicsMeshShapesNative:
                 value: value
                 error failure: return 29
             cached_legacy_ray_hit: bool = cached_legacy_hit.hit
+            array_hit: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(world,
+                Geometry::Vec3{x: 11.1, y: 3.0, z: 0.1},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS):
+                value: value
+                error failure: return 36
+            array_ray_hit: bool = array_hit.hit
             triangle_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, triangle_body):
                 ok: 0
                 error failure: 1
@@ -174,6 +215,9 @@ module PhysicsMeshShapesNative:
                 ok: 0
                 error failure: 1
             cached_legacy_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, cached_legacy_body):
+                ok: 0
+                error failure: 1
+            array_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, array_cached_body):
                 ok: 0
                 error failure: 1
             hull_body_destroyed: i32 = catch PhysicsRuntime::body_destroy(world, hull_body):
@@ -200,8 +244,20 @@ module PhysicsMeshShapesNative:
             legacy_shape_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, legacy_hull):
                 ok: 0
                 error failure: 1
-            return 13 if triangle_body_destroyed != 0 or hull_body_destroyed != 0 or cached_hull_body_destroyed != 0 or cached_legacy_body_destroyed != 0
-            return 14 if triangle_shape_destroyed != 0 or hull_shape_destroyed != 0 or cached_hull_shape_destroyed != 0 or recovered_hull_shape_destroyed != 0 or cached_legacy_shape_destroyed != 0 or recovered_legacy_shape_destroyed != 0 or legacy_shape_destroyed != 0
+            array_cold_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, array_cold):
+                ok: 0
+                error failure: 1
+            array_warm_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, array_warm):
+                ok: 0
+                error failure: 1
+            array_recovered_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, array_recovered):
+                ok: 0
+                error failure: 1
+            array_cached_destroyed: i32 = catch PhysicsRuntime::shape_destroy(world, array_cached):
+                ok: 0
+                error failure: 1
+            return 13 if triangle_body_destroyed != 0 or hull_body_destroyed != 0 or cached_hull_body_destroyed != 0 or cached_legacy_body_destroyed != 0 or array_body_destroyed != 0
+            return 14 if triangle_shape_destroyed != 0 or hull_shape_destroyed != 0 or cached_hull_shape_destroyed != 0 or recovered_hull_shape_destroyed != 0 or cached_legacy_shape_destroyed != 0 or recovered_legacy_shape_destroyed != 0 or legacy_shape_destroyed != 0 or array_cold_destroyed != 0 or array_warm_destroyed != 0 or array_recovered_destroyed != 0 or array_cached_destroyed != 0
             closed: i32 = catch PhysicsRuntime::shutdown(&world):
                 ok: 0
                 error failure: 1
@@ -209,6 +265,7 @@ module PhysicsMeshShapesNative:
             return 10 if not ray_hit
             return 22 if not cached_ray_hit
             return 30 if not cached_legacy_ray_hit
+            return 37 if not array_ray_hit
             return 11 if closed != 0
             return 12 if not application_closed
             0
