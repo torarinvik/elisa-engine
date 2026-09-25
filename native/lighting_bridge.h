@@ -57,6 +57,7 @@ struct NativeEnvironmentHandle {
 
 struct NativeEnvironmentProbeDesc {
     XMFLOAT3 position = XMFLOAT3(0, 0, 0);
+    XMFLOAT4 rotation = XMFLOAT4(0, 0, 0, 1);
     XMFLOAT3 influence_extent = XMFLOAT3(1, 1, 1);
     uint32_t resolution = 128;
     float view_distance = 100.0f;
@@ -201,9 +202,12 @@ public:
         const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
         const XMFLOAT3 position = transform->translation_local;
         const XMFLOAT3 extent = transform->scale_local;
+        const XMFLOAT4 rotation = transform->rotation_local;
         return close(position.x, desc.position.x) && close(position.y, desc.position.y) &&
             close(position.z, desc.position.z) && close(extent.x, desc.influence_extent.x) &&
             close(extent.y, desc.influence_extent.y) && close(extent.z, desc.influence_extent.z) &&
+            close(rotation.x, desc.rotation.x) && close(rotation.y, desc.rotation.y) &&
+            close(rotation.z, desc.rotation.z) && close(rotation.w, desc.rotation.w) &&
             probe->resolution == desc.resolution &&
             close(probe->view_distance, desc.view_distance) &&
             close(probe->GetRealtimeUpdateInterval(), desc.update_interval) &&
@@ -243,6 +247,11 @@ public:
     }
 
 private:
+    static constexpr float MAX_PROBE_POSITION_MAGNITUDE = 1000000.0f;
+    static constexpr float MAX_PROBE_ROTATION_COMPONENT = 1000000.0f;
+    static constexpr float MAX_PROBE_INFLUENCE_EXTENT = 1000000.0f;
+    static constexpr float MAX_PROBE_VIEW_DISTANCE = 1000000.0f;
+    static constexpr float MAX_PROBE_UPDATE_INTERVAL = 3600.0f;
     struct LightState { wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY; uint32_t generation = 0; bool live = false; };
     struct EnvironmentState { wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY; uint32_t generation = 0; bool live = false; };
 
@@ -295,18 +304,29 @@ private:
     }
 
     static bool valid_environment_probe(const NativeEnvironmentProbeDesc& desc) {
+        const float rotation_length_squared = desc.rotation.x * desc.rotation.x +
+            desc.rotation.y * desc.rotation.y + desc.rotation.z * desc.rotation.z +
+            desc.rotation.w * desc.rotation.w;
         return valid_resolution(desc.resolution) && std::isfinite(desc.position.x) &&
             std::isfinite(desc.position.y) && std::isfinite(desc.position.z) &&
-            std::fabs(desc.position.x) <= 1.0e30f && std::fabs(desc.position.y) <= 1.0e30f &&
-            std::fabs(desc.position.z) <= 1.0e30f && std::isfinite(desc.view_distance) &&
+            std::fabs(desc.position.x) <= MAX_PROBE_POSITION_MAGNITUDE &&
+            std::fabs(desc.position.y) <= MAX_PROBE_POSITION_MAGNITUDE &&
+            std::fabs(desc.position.z) <= MAX_PROBE_POSITION_MAGNITUDE &&
+            std::isfinite(desc.rotation.x) && std::fabs(desc.rotation.x) <= MAX_PROBE_ROTATION_COMPONENT &&
+            std::isfinite(desc.rotation.y) && std::fabs(desc.rotation.y) <= MAX_PROBE_ROTATION_COMPONENT &&
+            std::isfinite(desc.rotation.z) && std::fabs(desc.rotation.z) <= MAX_PROBE_ROTATION_COMPONENT &&
+            std::isfinite(desc.rotation.w) && std::fabs(desc.rotation.w) <= MAX_PROBE_ROTATION_COMPONENT &&
+            std::isfinite(rotation_length_squared) && rotation_length_squared > 0.0f &&
+            std::isfinite(desc.view_distance) &&
             std::isfinite(desc.influence_extent.x) && std::isfinite(desc.influence_extent.y) &&
             std::isfinite(desc.influence_extent.z) && desc.influence_extent.x > 0.0f &&
             desc.influence_extent.y > 0.0f && desc.influence_extent.z > 0.0f &&
-            desc.influence_extent.x <= 1000000.0f && desc.influence_extent.y <= 1000000.0f &&
-            desc.influence_extent.z <= 1000000.0f &&
-            desc.view_distance > 0.0f && desc.view_distance <= 1000000.0f &&
+            desc.influence_extent.x <= MAX_PROBE_INFLUENCE_EXTENT &&
+            desc.influence_extent.y <= MAX_PROBE_INFLUENCE_EXTENT &&
+            desc.influence_extent.z <= MAX_PROBE_INFLUENCE_EXTENT &&
+            desc.view_distance > 0.0f && desc.view_distance <= MAX_PROBE_VIEW_DISTANCE &&
             std::isfinite(desc.update_interval) && desc.update_interval >= 0.0f &&
-            desc.update_interval <= 3600.0f;
+            desc.update_interval <= MAX_PROBE_UPDATE_INTERVAL;
     }
 
     bool apply_environment_probe(wi::ecs::Entity entity, const NativeEnvironmentProbeDesc& desc) {
@@ -327,6 +347,7 @@ private:
         probe->SetRealTime(desc.realtime);
         probe->SetUpdateInterval(desc.update_interval);
         transform->translation_local = desc.position;
+        transform->rotation_local = desc.rotation;
         transform->scale_local = desc.influence_extent;
         transform->SetDirty();
         transform->UpdateTransform();
@@ -425,6 +446,7 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
     const auto spot_handle = bridge.create_light(spot);
     NativeEnvironmentProbeDesc environment_desc;
     environment_desc.position = XMFLOAT3(2.0f, 3.0f, 4.0f);
+    environment_desc.rotation = XMFLOAT4(0.0f, 0.38268343f, 0.0f, 0.92387953f);
     environment_desc.influence_extent = XMFLOAT3(2.0f, 3.0f, 4.0f);
     environment_desc.resolution = 64;
     environment_desc.view_distance = 50.0f;
@@ -458,8 +480,11 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
             invalid_environment.resolution = 63;
             NativeEnvironmentProbeDesc invalid_extent;
             invalid_extent.influence_extent = XMFLOAT3(1.0f, 0.0f, 1.0f);
+            NativeEnvironmentProbeDesc invalid_rotation;
+            invalid_rotation.rotation = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
             return !bridge.create_environment(invalid_environment).owner &&
-                !bridge.create_environment(invalid_extent).owner;
+                !bridge.create_environment(invalid_extent).owner &&
+                !bridge.create_environment(invalid_rotation).owner;
         }(), "lighting rejects invalid environment")) return false;
     if (!check(bridge.destroy_light(spot_handle) && !bridge.live(spot_handle) &&
         bridge.destroy_light(point_handle) && bridge.destroy_environment(environment) &&
