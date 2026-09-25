@@ -54,6 +54,7 @@ module WorldPhysics:
                     dimensions: scaled_extents,
                     mass: mass,
                     sensor: false,
+                    collision_layer: 0,
                 })
             if not PhysicsRuntime::ServiceBodyHandles::store(&bindings.bodies, bindings.count, body):
                 cleanup_ok: bool = catch RuntimeServices::physics_body_destroy(session, body):

@@ -2,6 +2,11 @@
 module RuntimeServicesMotionProbe:
     public:
         def run(session: mutable RuntimeServices::Session&) -> i32:
+            layer_config: i32 = catch RuntimeServices::physics_set_layer_collision(
+                session, 2, 3, false):
+                ok: 0
+                error failure: 22
+            return 23 if layer_config != 0
             body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(session,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
@@ -10,6 +15,7 @@ module RuntimeServicesMotionProbe:
                     dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }):
                 value: value
                 error failure: return 1

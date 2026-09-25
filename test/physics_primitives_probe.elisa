@@ -40,6 +40,7 @@ module PhysicsPrimitiveProbe:
                     dimensions: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -54,6 +55,7 @@ module PhysicsPrimitiveProbe:
                     dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 })
             stage <- 2
             capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
@@ -64,6 +66,7 @@ module PhysicsPrimitiveProbe:
                     dimensions: Geometry::Vec3{x: Fixture::CAPSULE_RADIUS, y: Fixture::CAPSULE_CYLINDER_HALF_HEIGHT, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 })
             zero_capsule: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
                 PhysicsRuntime::BodyDesc{
@@ -73,6 +76,7 @@ module PhysicsPrimitiveProbe:
                     dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 })
             shared_sphere: PhysicsRuntime::ShapeHandle = try PhysicsRuntime::shape_create(world,
                 PhysicsRuntime::BodyShape.Sphere,
@@ -83,6 +87,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, shared_sphere)
             shared_b: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
                 PhysicsRuntime::BodyInstanceDesc{
@@ -90,6 +95,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_B_X, y: Fixture::START_HEIGHT, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, shared_sphere)
             in_use_status: i32 = catch PhysicsRuntime::shape_destroy(world, shared_sphere):
                 value: 1
@@ -136,6 +142,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, shared_sphere):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidHandle: 0
@@ -201,6 +208,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: Fixture::COMPOUND_BODY_X, y: Fixture::COMPOUND_BODY_Y, z: 0.0},
                     mass: 0.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, nested_compound)
             compound_retained: i32 = catch PhysicsRuntime::shape_destroy(world, nested_compound):
                 value: 1
@@ -259,6 +267,7 @@ module PhysicsPrimitiveProbe:
                         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                         mass: 0.0,
                         sensor: false,
+                        collision_layer: 0,
                     }, capacity_shape)
                 stored: bool = PhysicsRuntime::ServiceBodyHandles::store(
                     &capacity_bodies, index, body)
@@ -269,6 +278,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 0.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, capacity_shape):
                 value: 1
                 PhysicsRuntime::PhysicsError.Capacity: 0
@@ -320,6 +330,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, floor_shape):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -351,6 +362,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, nested_static_compound):
                 value: 1
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
@@ -366,6 +378,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 0.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, floor_shape)
             stage <- 5
             floor_in_use: i32 = catch PhysicsRuntime::shape_destroy(world, floor_shape):
@@ -394,6 +407,7 @@ module PhysicsPrimitiveProbe:
                     position: Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
+                    collision_layer: 0,
                 }, convex_shape)
             tick: mutable u64 = 0
             stage <- 8

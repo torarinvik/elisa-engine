@@ -15,6 +15,7 @@ module PhysicsRuntime:
             SHAPE_IN_USE: i32 = -8
             BODY_NOT_READY: i32 = -9
             ASSET_LOAD_FAILED: i32 = -10
+            CONFIGURATION_LOCKED: i32 = -11
             BODY_STATIC: i32 = 0
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
@@ -38,7 +39,7 @@ module PhysicsRuntime:
             shape: i32,
             position_x: f32, position_y: f32, position_z: f32,
             dimension_x: f32, dimension_y: f32, dimension_z: f32, mass: f32,
-            sensor: i32,
+            sensor: i32, collision_layer: u32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
 
         include "./runtime_reusable_shapes_abi_declarations.inc"
@@ -109,6 +110,7 @@ module PhysicsRuntime:
             raise PhysicsError.ShapeInUse if status == Status::SHAPE_IN_USE
             raise PhysicsError.BodyNotReady if status == Status::BODY_NOT_READY
             raise PhysicsError.AssetLoadFailed if status == Status::ASSET_LOAD_FAILED
+            raise PhysicsError.ConfigurationLocked if status == Status::CONFIGURATION_LOCKED
             raise PhysicsError.BackendFailure if status != Status::OK
         def kind_code(kind: BodyKind) -> i32:
             match kind:
@@ -192,6 +194,7 @@ module PhysicsRuntime:
             StaleWorld
             ShapeInUse
             BodyNotReady
+            ConfigurationLocked
             AssetLoadFailed
             BackendFailure
 
@@ -204,6 +207,7 @@ module PhysicsRuntime:
             dimensions: Geometry::Vec3
             mass: f32
             sensor: bool
+            collision_layer: u32
 
         struct BodyHandle:
             private:
@@ -225,6 +229,8 @@ module PhysicsRuntime:
                 generation: mutable u64
                 tick: mutable u64
                 live: mutable bool
+
+        include "./runtime_layer_collision_api.inc"
 
         # PhysicsRuntime owns initialization and copies of native-backed
         # handles. Other modules retain this affine pool without exposing or
@@ -371,20 +377,6 @@ module PhysicsRuntime:
             try check_status(elisa_physics_v1_clear_contacts(state.generation))
             dropped <- native_dropped
             count.usize()
-
-        def service_body_create(state: ServiceState&,
-            description: BodyDesc) -> BodyHandle error[PhysicsError]:
-            raise PhysicsError.ApplicationUnavailable if not state.live
-            slot: mutable u32 = 0
-            generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_body(state.generation,
-                kind_code(description.kind), shape_code(description.shape),
-                description.position.x, description.position.y, description.position.z,
-                description.dimensions.x, description.dimensions.y,
-                description.dimensions.z, description.mass, 1 if description.sensor else 0,
-                &slot, &generation)
-            try check_status(status)
-            BodyHandle{world_generation: state.generation, slot: slot, generation: generation}
 
         def service_body_position(state: ServiceState&,
             body: BodyHandle) -> Geometry::Vec3 error[PhysicsError]:
@@ -541,18 +533,7 @@ module PhysicsRuntime:
             raise PhysicsError.ApplicationUnavailable if not world.live
             world.generation
 
-        def body_create(world: World&, description: BodyDesc) -> BodyHandle error[PhysicsError]:
-            raise PhysicsError.ApplicationUnavailable if not world.live
-            slot: mutable u32 = 0
-            generation: mutable u64 = 0
-            status: i32 = elisa_physics_v1_create_body(world.generation,
-                kind_code(description.kind), shape_code(description.shape),
-                description.position.x, description.position.y, description.position.z,
-                description.dimensions.x, description.dimensions.y,
-                description.dimensions.z, description.mass, 1 if description.sensor else 0,
-                &slot, &generation)
-            try check_status(status)
-            BodyHandle{world_generation: world.generation, slot: slot, generation: generation}
+        include "./runtime_body_create_api.inc"
 
         def body_position(world: World&, body: BodyHandle) -> Geometry::Vec3 error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live

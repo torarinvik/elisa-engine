@@ -389,6 +389,13 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_poll_contacts(session.physics, buffer, dropped)
 
+        def physics_set_layer_collision(session: Session&, layer_a: u32,
+            layer_b: u32, enabled: bool) -> void error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_set_layer_collision(session.physics,
+                layer_a, layer_b, enabled)
+
         def physics_body_create(session: Session&, description: PhysicsRuntime::BodyDesc) -> PhysicsRuntime::BodyHandle error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)

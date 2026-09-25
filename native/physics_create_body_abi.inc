@@ -69,11 +69,12 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
     int32_t shape,
     float position_x, float position_y, float position_z,
     float dimension_x, float dimension_y, float dimension_z, float mass,
-    int32_t sensor,
+    int32_t sensor, uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation) {
     if (slot == nullptr || body_generation == nullptr ||
         kind < ELISA_PHYSICS_BODY_STATIC || kind > ELISA_PHYSICS_BODY_DYNAMIC ||
         shape < ELISA_PHYSICS_SHAPE_BOX || shape > ELISA_PHYSICS_SHAPE_CAPSULE ||
+        collision_layer >= wi::physics::COLLISION_LAYER_COUNT ||
         (sensor != SENSOR_DISABLED && sensor != SENSOR_ENABLED) ||
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
@@ -162,6 +163,12 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         }
         rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
         rigidbody.SetSensor(sensor == SENSOR_ENABLED);
+        rigidbody.collision_layer = collision_layer;
+        rigidbody.collision_filter_subgroup = free_slot;
+        if (!wi::physics::RegisterCollisionLayerBody(*state.scene, free_slot, collision_layer)) {
+            state.scene->Entity_Remove(entity);
+            return ELISA_PHYSICS_BACKEND_FAILURE;
+        }
         body_slot.entity = entity;
         ++body_slot.generation;
         body_slot.live = true;
@@ -181,5 +188,6 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
     uint32_t* slot, uint64_t* body_generation) {
     return elisa_physics_v1_create_body(world_generation, kind, ELISA_PHYSICS_SHAPE_BOX,
         position_x, position_y, position_z, half_x, half_y, half_z, mass, sensor,
+        0,
         slot, body_generation);
 }
