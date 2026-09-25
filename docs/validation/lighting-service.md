@@ -15,6 +15,8 @@ allocating a Wicked probe.
 units, power-of-two resolution from 16 through 2,048, positive view distance up
 to 1,000,000, and update intervals from 0 through 3,600 seconds. The active
 `RenderScene` owns at most eight probes through opaque generation-checked handles.
+The `RenderSceneEnvironmentProbes` module is included in `src/runtime/public.elisa`,
+so application projects receive this API through the engine-owned public bundle.
 Updates move the Wicked transform and apply resolution, view distance, realtime
 mode, interval, and MSAA; changes to capture inputs mark the cube dirty, and
 `refresh_environment_probe` explicitly requests a new capture after nearby scene
@@ -33,9 +35,11 @@ rejects a zero sun direction, and destroys every probe/light. The SDL3/Metal
 render-scene gate additionally tests public probe creation, descriptor updates,
 position-only invalidation, explicit refresh, invalid update atomicity, stale
 handles after slot reuse, all eight slots, overflow, and complete destruction.
-The 2026-09-25 render-only smoke passed; probes are currently verified through
-Wicked component state and dirty-capture behavior, while a dedicated rendered
-reflection comparison and non-Metal runtime checks remain open.
+On 2026-09-25, the isolated engine's SDL3/Metal render-only smoke passed with a
+fresh stage1 compiler product and matching runtime wrapper. Probes are currently
+verified through Wicked component state and dirty-capture behavior, while a
+dedicated rendered reflection comparison and non-Metal runtime checks remain
+open.
 
 The SDL3/Metal render-scene smoke also moves a point light between two positions
 over the same painted panel. It samples the Wicked 3D render result before and
