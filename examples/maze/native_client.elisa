@@ -140,6 +140,7 @@ module MazeNativeClient:
                     kind: PhysicsRuntime::BodyKind.Static,
                     shape: PhysicsRuntime::BodyShape.Box,
                     position: MazeLayout::maze_cell_position(1, 2, 0.0),
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Actions::TEST_OBSTACLE_HALF_EXTENT,
                         y: Actions::TEST_OBSTACLE_HALF_EXTENT, z: Actions::TEST_OBSTACLE_HALF_EXTENT},
                     mass: 0.0,

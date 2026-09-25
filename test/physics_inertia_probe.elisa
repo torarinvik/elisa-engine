@@ -20,6 +20,10 @@ module PhysicsInertiaProbe:
             difference: f32 = left - right
             difference >= -Tune::MOMENT_TOLERANCE and difference <= Tune::MOMENT_TOLERANCE
 
+        def rotation_matches(left: Geometry::Quat, right: Geometry::Quat) -> bool:
+            dot: f32 = left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w
+            close(dot, 1.0) or close(dot, -1.0)
+
         def invalid_inertia_rejected() -> bool:
             identity: Geometry::Quat = Geometry::quat_identity()
             catch PhysicsRuntime::BodyInertia(Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}, identity):
@@ -56,11 +60,15 @@ module PhysicsInertiaProbe:
 
     public:
         def run(session: mutable RuntimeServices::Session&) -> i32:
+            body_rotation: Geometry::Quat = Geometry::Quat{
+                x: 0.0, y: 0.0, z: Tune::PRINCIPAL_ROTATION_Z,
+                w: Tune::PRINCIPAL_ROTATION_Z}
             body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
                 session, PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
                     position: Geometry::Vec3{x: 0.0, y: 10.0, z: 0.0},
+                    rotation: body_rotation,
                     dimensions: Geometry::Vec3{x: 0.5, y: 0.0, z: 0.0},
                     mass: Tune::MASS,
                     sensor: false,
@@ -68,6 +76,12 @@ module PhysicsInertiaProbe:
                 }):
                 value: value
                 error failure: return 1
+            initial_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_body_pose(
+                session, body):
+                value: value
+                error failure: return 13
+            return 14 if not PhysicsInertiaProbe::rotation_matches(
+                initial_pose.rotation, body_rotation)
             inertia: PhysicsRuntime::BodyInertia = catch PhysicsRuntime::BodyInertia(
                 Geometry::Vec3{x: Tune::REQUESTED_MOMENT_X,
                     y: Tune::REQUESTED_MOMENT_Y, z: Tune::REQUESTED_MOMENT_Z},
@@ -92,6 +106,12 @@ module PhysicsInertiaProbe:
                 value: true
                 error failure: false
             return 6 if not stepped
+            stepped_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_body_pose(
+                session, body):
+                value: value
+                error failure: return 15
+            return 16 if not PhysicsInertiaProbe::rotation_matches(
+                stepped_pose.rotation, body_rotation)
             moments: PhysicsRuntime::BodyInertia = catch RuntimeServices::physics_body_inertia(
                 session, body):
                 value: value

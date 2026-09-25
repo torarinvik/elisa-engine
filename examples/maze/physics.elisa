@@ -26,6 +26,7 @@ module MazePhysics:
                 kind: PhysicsRuntime::BodyKind.Static,
                 shape: PhysicsRuntime::BodyShape.Box,
                 position: MazeLayout::maze_cell_position(x, y, Tune::WALL_HEIGHT),
+                rotation: Geometry::quat_identity(),
                 dimensions: Geometry::Vec3{x: half_extent, y: half_extent, z: half_extent},
                 mass: 0.0,
                 sensor: false,
@@ -38,6 +39,7 @@ module MazePhysics:
                 shape: PhysicsRuntime::BodyShape.Box,
                 position: MazeLayout::maze_cell_position(
                     MazeGame::maze_key_x(), MazeGame::maze_key_y(), Tune::WALL_HEIGHT),
+                rotation: Geometry::quat_identity(),
                 dimensions: Geometry::Vec3{x: Tune::KEY_SENSOR_HALF_EXTENT,
                     y: Tune::KEY_SENSOR_HALF_EXTENT, z: Tune::KEY_SENSOR_HALF_EXTENT},
                 mass: 0.0,

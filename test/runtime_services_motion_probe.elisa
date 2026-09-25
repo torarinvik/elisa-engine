@@ -12,6 +12,7 @@ module RuntimeServicesMotionProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 20.0, y: 50.0, z: 20.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
                     mass: 1.0,
                     sensor: false,

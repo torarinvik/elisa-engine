@@ -37,6 +37,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
                     position: Geometry::Vec3{x: Fixture::SPHERE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -46,12 +47,39 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::PhysicsError.InvalidArgument: 0
                 error failure: 2
             raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_sphere != 0
+            invalid_rotation: i32 = catch PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::vec3_zero(),
+                    rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0},
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                }):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidArgument: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_rotation != 0
+            rotated_box: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 40.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710677, w: 0.70710677},
+                    dimensions: Geometry::Vec3{x: 1.0, y: 0.2, z: 0.2},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                })
             stage <- 1
             sphere: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
                 PhysicsRuntime::BodyDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
                     position: Geometry::Vec3{x: Fixture::SPHERE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -63,6 +91,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Capsule,
                     position: Geometry::Vec3{x: Fixture::CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Fixture::CAPSULE_RADIUS, y: Fixture::CAPSULE_CYLINDER_HALF_HEIGHT, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -73,6 +102,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Capsule,
                     position: Geometry::Vec3{x: Fixture::ZERO_CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -81,10 +111,25 @@ module PhysicsPrimitiveProbe:
             shared_sphere: PhysicsRuntime::ShapeHandle = try PhysicsRuntime::shape_create(world,
                 PhysicsRuntime::BodyShape.Sphere,
                 Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0})
+            invalid_shared_rotation: i32 = catch PhysicsRuntime::body_create_with_shape(world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X,
+                        y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                    collision_layer: 0,
+                }, shared_sphere):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidArgument: 0
+                error failure: 2
+            raise PhysicsRuntime::PhysicsError.BackendFailure if invalid_shared_rotation != 0
             shared_a: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -93,6 +138,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_B_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -125,6 +171,13 @@ module PhysicsPrimitiveProbe:
             shared_a_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_a)
             shared_b_position: Geometry::Vec3 = try PhysicsRuntime::body_position(world, shared_b)
             raise PhysicsRuntime::PhysicsError.BackendFailure if shared_a_position.y >= Fixture::DROP_THRESHOLD or shared_b_position.y >= Fixture::DROP_THRESHOLD
+            rotated_box_hit: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast(world,
+                Geometry::Vec3{x: 38.0, y: 0.5, z: 0.0},
+                Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, 4.0,
+                PhysicsRuntime::ALL_LAYERS)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if not rotated_box_hit.hit
+            raise PhysicsRuntime::PhysicsError.BackendFailure if rotated_box_hit.entity == 0
+            try PhysicsRuntime::body_destroy(world, rotated_box)
             try PhysicsRuntime::body_destroy(world, sphere)
             try PhysicsRuntime::body_destroy(world, capsule)
             try PhysicsRuntime::body_destroy(world, zero_capsule)
@@ -140,6 +193,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -206,6 +260,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: Fixture::COMPOUND_BODY_X, y: Fixture::COMPOUND_BODY_Y, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -265,6 +320,7 @@ module PhysicsPrimitiveProbe:
                     PhysicsRuntime::BodyInstanceDesc{
                         kind: PhysicsRuntime::BodyKind.Static,
                         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                        rotation: Geometry::quat_identity(),
                         mass: 0.0,
                         sensor: false,
                         collision_layer: 0,
@@ -276,6 +332,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -328,6 +385,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -360,6 +418,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -376,6 +435,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -405,6 +465,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,

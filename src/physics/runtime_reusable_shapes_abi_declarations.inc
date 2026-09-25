@@ -30,6 +30,7 @@
         @callconv(c)
         extern elisa_physics_v1_create_body_with_shape(world_generation: u64,
             kind: i32, position_x: f32, position_y: f32, position_z: f32,
+            rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32,
             mass: f32, sensor: i32, collision_layer: u32,
             shape_slot: u32, shape_generation: u64,
             body_slot: mutable u32&, body_generation: mutable u64&) -> i32

@@ -45,6 +45,7 @@ module PhysicsMeshShapesNative:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 3.0, y: 2.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -55,6 +56,7 @@ module PhysicsMeshShapesNative:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -65,6 +67,7 @@ module PhysicsMeshShapesNative:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 6.0, y: 2.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,

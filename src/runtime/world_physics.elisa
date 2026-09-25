@@ -51,6 +51,7 @@ module WorldPhysics:
                     kind: kind,
                     shape: PhysicsRuntime::BodyShape.Box,
                     position: transform.position,
+                    rotation: Geometry::quat_identity(),
                     dimensions: scaled_extents,
                     mass: mass,
                     sensor: false,

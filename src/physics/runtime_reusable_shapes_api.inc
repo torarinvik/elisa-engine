@@ -14,6 +14,7 @@
         struct BodyInstanceDesc:
             kind: BodyKind
             position: Geometry::Vec3
+            rotation: Geometry::Quat
             mass: f32
             sensor: bool
             collision_layer: u32
@@ -109,7 +110,9 @@
             generation: mutable u64 = 0
             status: i32 = elisa_physics_v1_create_body_with_shape(world.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
-                description.position.z, description.mass, 1 if description.sensor else 0,
+                description.position.z, description.rotation.x, description.rotation.y,
+                description.rotation.z, description.rotation.w, description.mass,
+                1 if description.sensor else 0,
                 description.collision_layer,
                 shape.slot, shape.generation, &slot, &generation)
             try check_status(status)
@@ -182,7 +185,9 @@
             generation: mutable u64 = 0
             status: i32 = elisa_physics_v1_create_body_with_shape(state.generation,
                 kind_code(description.kind), description.position.x, description.position.y,
-                description.position.z, description.mass, 1 if description.sensor else 0,
+                description.position.z, description.rotation.x, description.rotation.y,
+                description.rotation.z, description.rotation.w, description.mass,
+                1 if description.sensor else 0,
                 description.collision_layer,
                 shape.slot, shape.generation, &slot, &generation)
             try check_status(status)

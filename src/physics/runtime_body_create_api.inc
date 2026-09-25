@@ -6,6 +6,8 @@
             status: i32 = elisa_physics_v1_create_body(state.generation,
                 kind_code(description.kind), shape_code(description.shape),
                 description.position.x, description.position.y, description.position.z,
+                description.rotation.x, description.rotation.y,
+                description.rotation.z, description.rotation.w,
                 description.dimensions.x, description.dimensions.y,
                 description.dimensions.z, description.mass, 1 if description.sensor else 0,
                 description.collision_layer, &slot, &generation)
@@ -19,6 +21,8 @@
             status: i32 = elisa_physics_v1_create_body(world.generation,
                 kind_code(description.kind), shape_code(description.shape),
                 description.position.x, description.position.y, description.position.z,
+                description.rotation.x, description.rotation.y,
+                description.rotation.z, description.rotation.w,
                 description.dimensions.x, description.dimensions.y,
                 description.dimensions.z, description.mass, 1 if description.sensor else 0,
                 description.collision_layer, &slot, &generation)

@@ -14,6 +14,7 @@ module PhysicsCollisionLayersNative:
                 kind: kind,
                 shape: PhysicsRuntime::BodyShape.Box,
                 position: Geometry::Vec3{x: position_x, y: position_y, z: 0.0},
+                rotation: Geometry::quat_identity(),
                 dimensions: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
                 mass: 1.0 if kind == PhysicsRuntime::BodyKind.Dynamic else 0.0,
                 sensor: false,
