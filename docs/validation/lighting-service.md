@@ -81,9 +81,13 @@ and the packed value used by the shader.
 
 `RenderScene::set_sun_shadow_rasterizer_bias` changes the caster's constant and
 slope depth bias on Wicked's Metal and Vulkan backends. Metal applies these
-values as dynamic encoder state; Vulkan uses dynamic pipeline state. Direct3D
-12 and PS5 currently return `RenderSceneError.UnsupportedFeature` because
-their rasterizer values are baked into cached pipelines. The SDL3/Metal
+values as dynamic encoder state; Vulkan uses dynamic pipeline state. Wicked's
+Direct3D 12 backend also supports the setting when `D3D12_OPTIONS16` reports
+dynamic depth bias: it opts only the two shadow rasterizer pipelines into
+dynamic bias and updates command-list state. Older D3D12 runtimes or adapters
+continue to return `RenderSceneError.UnsupportedFeature`. The PS5 backend still
+reports that error. D3D12 and PS5 runtime visual validation remains pending on
+their target systems. The SDL3/Metal
 reference renders the same isolated caster and receiver with the default
 `(-1, -4)` and variant `(256, -2)` values, requires at least a `0.01` full-frame
 patch-luminance change, confirms the single- and double-sided shadow states
