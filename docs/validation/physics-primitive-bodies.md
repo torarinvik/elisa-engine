@@ -241,3 +241,9 @@ Validation on 2026-09-25 (body orientation and pose):
 - `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, the
   dependency-manifest validator, and whitespace checks pass.
 
+
+Validation on 2026-09-25 (isolated mainline sync):
+
+- The isolated Wicked adapter was rebuilt with per-instance center-of-mass offsets.
+- All 12 SDL3/Metal native application fixtures pass with the current stage1 compiler, including collision-only cooked meshes, center-of-mass and rotated-body physics, quality settings, and pixel-identical 30/120 Hz render captures.
+- The collision-package self-test, source-length, module-hygiene, and dependency-manifest checks pass. Versioned Jolt shape serialization remains open.
