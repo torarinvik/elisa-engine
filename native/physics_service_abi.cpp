@@ -2,6 +2,7 @@
 
 #include "coordinate_transform_bridge.h"
 #include "coordinate_conventions.h"
+#include "cooked_collision_geometry.h"
 #include "cooked_geometry_package.h"
 #include "physics_coordinate_bridge.h"
 #include "physics_service_internal.h"

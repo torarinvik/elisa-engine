@@ -324,12 +324,46 @@ extern "C" int32_t elisa_physics_v1_create_mesh_shape_from_asset(uint64_t world_
     if (status != ELISA_PHYSICS_OK) return status;
 
     std::filesystem::path resolved_path;
-    elisa::assets::CookedGeometry geometry;
     std::string load_error;
     try {
         if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path) ||
-            !elisa::assets::verify_bundle_dependencies(resolved_path, load_error) ||
-            !elisa::assets::load_cooked_geometry_asset(resolved_path.string(), geometry, load_error)) {
+            !elisa::assets::verify_bundle_dependencies(resolved_path, load_error)) {
+            return ELISA_PHYSICS_ASSET_LOAD_FAILED;
+        }
+    } catch (...) {
+        return ELISA_PHYSICS_ASSET_LOAD_FAILED;
+    }
+    elisa::assets::CookedCollisionGeometry collision;
+    try {
+        if (elisa::assets::load_cooked_collision_geometry_asset(
+                resolved_path.string(), collision, load_error)) {
+            if ((kind == ELISA_PHYSICS_SHAPE_CONVEX_HULL &&
+                    collision.shape != "convex_hull") ||
+                (kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH &&
+                    collision.shape != "triangle_mesh")) {
+                return ELISA_PHYSICS_INVALID_ARGUMENT;
+            }
+            const size_t vertex_count = collision.positions.size() / 3;
+            std::vector<ElisaPhysicsVec3> scaled_positions;
+            scaled_positions.reserve(vertex_count);
+            for (size_t index = 0; index < collision.positions.size(); index += 3) {
+                scaled_positions.push_back(ElisaPhysicsVec3{
+                    collision.positions[index] * scale_x,
+                    collision.positions[index + 1] * scale_y,
+                    collision.positions[index + 2] * scale_z,
+                });
+            }
+            return elisa_physics_v1_create_mesh_shape(world_generation, kind,
+                scaled_positions.data(), static_cast<uint32_t>(scaled_positions.size()),
+                collision.indices.data(), static_cast<uint32_t>(collision.indices.size()),
+                slot, shape_generation);
+        }
+    } catch (...) {
+        return ELISA_PHYSICS_ASSET_LOAD_FAILED;
+    }
+    elisa::assets::CookedGeometry geometry;
+    try {
+        if (!elisa::assets::load_cooked_geometry_asset(resolved_path.string(), geometry, load_error)) {
             return ELISA_PHYSICS_ASSET_LOAD_FAILED;
         }
     } catch (...) {

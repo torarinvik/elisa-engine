@@ -15,6 +15,8 @@ import wave
 import zlib
 from pathlib import Path
 
+import cook_physics_collision
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -108,6 +110,14 @@ def write_physics_mesh_fixture(project: Path) -> None:
         "indices_b64=" + encode(indices, "<12I"),
         "",
     )), encoding="ascii")
+    collision_source = fixture.with_name("physics-tetra.gltf")
+    cook_physics_collision.write_tetrahedron_fixture(collision_source)
+    cook_physics_collision.cook_collision_package(collision_source,
+        "test/fixtures/physics-tetra.gltf", fixture.with_name("physics-tetra-convex.elpk"),
+        "convex_hull")
+    cook_physics_collision.cook_collision_package(collision_source,
+        "test/fixtures/physics-tetra.gltf", fixture.with_name("physics-tetra-triangle.elpk"),
+        "triangle_mesh")
 
 
 def main() -> int:
