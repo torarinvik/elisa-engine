@@ -2,6 +2,7 @@
 # engine-owned build command. Projects can import these names without knowing
 # the engine checkout's filesystem layout.
 include "./application.elisa"
+include "./application_input.elisa"
 include "./application_capture.elisa"
 include "./action_input.elisa"
 include "./action_input_runtime.elisa"

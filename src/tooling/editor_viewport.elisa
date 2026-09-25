@@ -1,6 +1,7 @@
 # Own one editor camera and its retained selection presentation. Platform
 # adapters feed pointer deltas and logical framebuffer coordinates here.
 include "../backend/camera.elisa"
+include "../runtime/application_input.elisa"
 include "../runtime/render_scene_selection.elisa"
 include "../ui/style.elisa"
 include "editor_camera.elisa"
@@ -18,6 +19,8 @@ module EditorViewport:
                 orbit: mutable EditorCamera::Orbit
                 overlay: mutable WorldSelectionOverlay::Canvas
                 selection: mutable RenderScene::PickSelection
+                orbit_dragging: mutable bool
+                pan_dragging: mutable bool
                 live: mutable bool
 
         def Viewport(camera: Camera::State,
@@ -34,6 +37,8 @@ module EditorViewport:
                         distance: 0.0,
                     },
                 },
+                orbit_dragging: false,
+                pan_dragging: false,
                 live: true,
             }
 
@@ -108,6 +113,54 @@ module EditorViewport:
             return false if not EditorCamera::zoom_steps(&viewport.orbit, steps)
             try Apply::camera(viewport)
             true
+
+        # SDL pointer values arrive in logical window coordinates. Scale them
+        # once at this boundary so all camera controls and picks use pixels.
+        def handle_pointer_event(viewport: mutable Viewport&,
+            event: Application::PointerEvent, theme: UiStyle::Theme) -> bool error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not viewport_valid(viewport)
+            raise RenderScene::RenderSceneError.InvalidValue if event.x - event.x != 0.0 or event.y - event.y != 0.0 or event.delta_x - event.delta_x != 0.0 or event.delta_y - event.delta_y != 0.0
+            area: Camera::Viewport = Camera::viewport(&viewport.camera)
+            pixel_x: f32 = event.x * area.display_scale
+            pixel_y: f32 = event.y * area.display_scale
+            delta_x: f32 = event.delta_x * area.display_scale
+            delta_y: f32 = event.delta_y * area.display_scale
+            if event.kind == Application::PointerEventKind.Button:
+                if event.button == Application::PointerButtons::RIGHT:
+                    viewport.orbit_dragging <- event.pressed
+                if event.button == Application::PointerButtons::MIDDLE:
+                    viewport.pan_dragging <- event.pressed
+                if event.button == Application::PointerButtons::LEFT and event.pressed:
+                    return select_at_pixel(viewport, pixel_x, pixel_y, theme)
+                return false
+            if event.kind == Application::PointerEventKind.Motion:
+                viewport.orbit_dragging <- (event.buttons & Application::PointerButtons::RIGHT_MASK) != 0
+                viewport.pan_dragging <- (event.buttons & Application::PointerButtons::MIDDLE_MASK) != 0
+                if viewport.pan_dragging:
+                    return try pan_drag(viewport, delta_x, delta_y)
+                if viewport.orbit_dragging:
+                    return try orbit_drag(viewport, delta_x, delta_y)
+                return false
+            if event.kind == Application::PointerEventKind.Wheel:
+                return false if pixel_x < 0.0 or pixel_y < 0.0 or pixel_x >= area.width.f32() or pixel_y >= area.height.f32()
+                return try zoom_steps(viewport, event.delta_y)
+            if event.kind == Application::PointerEventKind.FocusLost or event.kind == Application::PointerEventKind.Overflow:
+                viewport.orbit_dragging <- false
+                viewport.pan_dragging <- false
+            false
+
+        # Drain one SDL frame's pointer events in arrival order. The loop's
+        # carried state is only the count, current event, and owned viewport.
+        def drain_pointer_events(viewport: mutable Viewport&,
+            theme: UiStyle::Theme) -> usize error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if not viewport_valid(viewport)
+            processed: mutable usize = 0
+            event: mutable Application::PointerEvent = zeroed
+            while Application::next_pointer_event(&event) |processed, event, viewport, theme|:
+                handled: bool = try handle_pointer_event(viewport, event, theme)
+                _ = handled
+                processed <- processed + 1
+            processed
 
         # This controller owns the primary editor viewport. Pixel coordinates
         # and the retained overlay use the same framebuffer origin at (0, 0).
