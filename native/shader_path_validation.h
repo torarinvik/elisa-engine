@@ -11,6 +11,15 @@
 namespace elisa::shader {
 
 constexpr size_t MAX_ROOT_LENGTH = 4096;
+inline const char* current_backend() {
+#if defined(__APPLE__)
+    return "metal";
+#elif defined(_WIN32)
+    return "hlsl6";
+#else
+    return "spirv";
+#endif
+}
 inline bool manifest_is_valid(const std::filesystem::path& root, const char* configured) {
     if (configured == nullptr || configured[0] == '\0') return true;
     std::error_code error;
@@ -30,7 +39,7 @@ inline bool manifest_is_valid(const std::filesystem::path& root, const char* con
     std::string content(static_cast<size_t>(manifest_size), '\0');
     if (!content.empty()) stream.read(content.data(), static_cast<std::streamsize>(content.size()));
     if (!stream || stream.gcount() != static_cast<std::streamsize>(content.size())) return false;
-    return verify_shader_manifest(canonical_root, content);
+    return verify_shader_manifest(canonical_root, content, current_backend());
 }
 
 inline int root_status(const char* configured, const char* manifest) {

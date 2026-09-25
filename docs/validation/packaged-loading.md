@@ -102,12 +102,14 @@ requires this status. It also runs the normal startup and failure-cleanup
 cases to prove that valid configured roots still initialize and shut down.
 
 The macOS packager writes `shaders/elisa.shader-manifest.json` beside the
-compiled shader tree. Its schema version, sorted binary paths, byte sizes, and
-SHA-256 digests produce a deterministic `fingerprint`; the relocated launcher
-exports `ELISA_ENGINE_SHADER_MANIFEST` along with the shader root. The runtime
-recomputes those digests before loading the packaged shader tree, so edited,
-missing, or newly added compiled files fail preflight instead of silently
-changing the shader inputs.
+compiled shader tree. Schema 2 records the sorted Wicked backends represented by
+the files plus sorted binary paths, byte sizes, and SHA-256 digests in a
+deterministic `fingerprint`; the relocated launcher exports
+`ELISA_ENGINE_SHADER_MANIFEST` along with the shader root. The runtime checks
+that its active backend is declared and matches the actual files, then
+recomputes those digests before loading the packaged shader tree. Edited,
+missing, unlisted, or backend-mismatched binaries fail preflight. Schema 1
+manifests remain accepted when their inventory contains the active backend.
 
 ## Limits
 
@@ -115,9 +117,9 @@ changing the shader inputs.
   `ELISA_ENGINE_SHADER_PATH`. That path is outside the engine checkout, so the
   sandbox doesn't deny it. Packaged shaders are R13.
 - **Shader packaging.** Preflight rejects missing or incomplete configured
-  roots, but versioned shader bundles, permutation manifests, offline
-  compilation, pipeline-cache keys, and cold/warm hitch measurements remain
-  R13 work.
+  roots; schema 2 identifies bundled backend families, but shader permutation
+  manifests, offline compilation, pipeline-cache keys, and cold/warm hitch
+  measurements remain R13 work.
 - **Dynamic libraries.** The executable links SDL3, FreeType, HarfBuzz and zstd
   from absolute `/opt/homebrew/opt` paths. It also keeps an rpath into the
   Wicked checkout. Neither location is inside the engine checkout, so the
@@ -162,3 +164,18 @@ changing the shader inputs.
   scripts/test_package_macos_app.py` passed all six packaging tests, including
   deterministic and content-sensitive shader manifest fingerprints and
   launcher export of the relocated manifest path.
+
+## Validation on 2026-09-25
+
+- `/opt/homebrew/bin/python3.14 scripts/test_package_macos_app.py` passed all
+  eleven tests. The suite builds and runs
+  `test/shader_manifest_validation_native.cpp`, covering schema 1 compatibility,
+  schema 2 backend matching, tampered and unlisted files, and backend mismatch.
+- `clang++ -std=c++17 -fsyntax-only -DELISA_APPLICATION_TEST_PROBE=1 -I native
+  -I /opt/homebrew/include native/application_test_probe.cpp` passed.
+- `python3 scripts/check_source_length.py` and `git diff --check` passed.
+- `scripts/application_native_smoke.py` built the Elisa archive and native
+  sources, but the final link failed in the separately seeded Elisa compiler's
+  runtime with undefined `arena_free` and `ctx_string_views_eq` symbols. The
+  application-level test probe therefore remains unverified in this run; the
+  standalone native verifier test passed independently.
