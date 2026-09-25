@@ -107,7 +107,8 @@ probe::NativePostProcessDesc quality_description(const ElisaRenderSceneQualityPr
 int32_t apply_quality_profile_locked(RenderSceneService& state,
     const ElisaRenderSceneQualityProfile& profile, int32_t* apply_outcome = nullptr) {
     const probe::PostProcessApply result =
-        probe::PostProcessBridge(*state.path).apply(quality_description(profile), false);
+        probe::PostProcessBridge(*state.path).apply(
+            quality_description(profile), state.upscaler_capabilities);
     if (result == probe::PostProcessApply::Invalid) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     if (apply_outcome != nullptr) {
         *apply_outcome = result == probe::PostProcessApply::Fallback ?
@@ -199,7 +200,7 @@ extern "C" int32_t elisa_render_scene_v1_apply_camera_quality_profile_result(
     const wi::renderer::Tonemap primary_tonemap = state.path->getTonemap();
     const float primary_scale = state.path->resolutionScale;
     const probe::PostProcessApply result = probe::PostProcessBridge(*slot.pipeline).apply(
-        quality_description(*profile), false);
+        quality_description(*profile), state.upscaler_capabilities);
     wi::renderer::SetTemporalAAEnabled(temporal_aa);
     state.scene->weather.SetHeightFog(fog);
     if (result == probe::PostProcessApply::Invalid) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;

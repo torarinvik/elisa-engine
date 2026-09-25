@@ -123,14 +123,19 @@ module RenderSceneQualitySettingsNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 118 if invalid_temporal_upscaler != 1
-            profile.upscaler <- Quality::Upscaler.None
+            profile.upscaler <- Quality::Upscaler.Fsr1
+            profile.render_scale <- 1.0
             fallback_outcome: Quality::ApplyOutcome = catch RenderScene::apply_quality_profile_with_result(&profile):
                 outcome: outcome
                 error failure: return 120
             return 121 if fallback_outcome != Quality::ApplyOutcome.UpscalerFallback
-            return 122 if elisa_render_scene_v1_test_quality_profile_matches(
-                2, 0.75, 1.4, 1, 1, 1, 1, 1, 0, 0) != 1
             profile.upscaler <- Quality::Upscaler.None
+            profile.render_scale <- 0.75
+            fallback_restore_status: i32 = catch RenderScene::apply_quality_profile(&profile):
+                ok: 0
+                error failure: 1
+            return 122 if fallback_restore_status != 0 or elisa_render_scene_v1_test_quality_profile_matches(
+                2, 0.75, 1.4, 1, 1, 1, 1, 1, 0, 0) != 1
             profile.render_scale <- 1.1
             invalid_profile: i32 = catch RenderScene::apply_quality_profile(&profile):
                 ok: 0
