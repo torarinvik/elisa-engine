@@ -15,7 +15,7 @@ std::array<bool, MAX_OVERLAY_PANELS> lod_probe_saved_panel_hidden{};
 std::array<bool, MAX_OVERLAY_IMAGES> lod_probe_saved_image_hidden{};
 bool lod_probe_isolated = false;
 
-struct LodGpuTimingState {
+struct RenderPathGpuTimingState {
     wi::graphics::GPUQueryHeap heap;
     wi::graphics::GPUBuffer readback;
     uint32_t query_count = 0;
@@ -25,31 +25,31 @@ struct LodGpuTimingState {
     std::vector<std::pair<uint32_t, uint32_t>> ranges;
 };
 
-LodGpuTimingState lod_gpu_timing;
+RenderPathGpuTimingState render_path_gpu_timing;
 
 } // namespace
 
 namespace {
 
-void lod_gpu_timing_begin_render() {
-    if (!lod_gpu_timing.capturing || lod_gpu_timing.next_query >= lod_gpu_timing.query_count) return;
+void render_path_gpu_timing_begin_render() {
+    if (!render_path_gpu_timing.capturing || render_path_gpu_timing.next_query >= render_path_gpu_timing.query_count) return;
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (device == nullptr) return;
-    lod_gpu_timing.open_begin = lod_gpu_timing.next_query++;
+    render_path_gpu_timing.open_begin = render_path_gpu_timing.next_query++;
     const wi::graphics::CommandList command_list = device->BeginCommandList();
-    device->QueryEnd(&lod_gpu_timing.heap, lod_gpu_timing.open_begin, command_list);
+    device->QueryEnd(&render_path_gpu_timing.heap, render_path_gpu_timing.open_begin, command_list);
 }
 
-void lod_gpu_timing_end_render() {
-    if (!lod_gpu_timing.capturing || lod_gpu_timing.open_begin == UINT32_MAX ||
-        lod_gpu_timing.next_query >= lod_gpu_timing.query_count) return;
+void render_path_gpu_timing_end_render() {
+    if (!render_path_gpu_timing.capturing || render_path_gpu_timing.open_begin == UINT32_MAX ||
+        render_path_gpu_timing.next_query >= render_path_gpu_timing.query_count) return;
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (device == nullptr) return;
-    const uint32_t end = lod_gpu_timing.next_query++;
+    const uint32_t end = render_path_gpu_timing.next_query++;
     const wi::graphics::CommandList command_list = device->BeginCommandList();
-    device->QueryEnd(&lod_gpu_timing.heap, end, command_list);
-    lod_gpu_timing.ranges.emplace_back(lod_gpu_timing.open_begin, end);
-    lod_gpu_timing.open_begin = UINT32_MAX;
+    device->QueryEnd(&render_path_gpu_timing.heap, end, command_list);
+    render_path_gpu_timing.ranges.emplace_back(render_path_gpu_timing.open_begin, end);
+    render_path_gpu_timing.open_begin = UINT32_MAX;
 }
 
 } // namespace
@@ -161,42 +161,42 @@ extern "C" int32_t elisa_render_scene_v1_test_lod_frame_times(
     }
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (device == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    if (lod_gpu_timing.capturing) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-    lod_gpu_timing = LodGpuTimingState{};
-    lod_gpu_timing.query_count = sample_count * 2;
+    if (render_path_gpu_timing.capturing) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    render_path_gpu_timing = RenderPathGpuTimingState{};
+    render_path_gpu_timing.query_count = sample_count * 2;
     wi::graphics::GPUQueryHeapDesc query_desc;
     query_desc.type = wi::graphics::GpuQueryType::TIMESTAMP;
-    query_desc.query_count = lod_gpu_timing.query_count;
-    if (!device->CreateQueryHeap(&query_desc, &lod_gpu_timing.heap)) {
-        lod_gpu_timing = LodGpuTimingState{};
+    query_desc.query_count = render_path_gpu_timing.query_count;
+    if (!device->CreateQueryHeap(&query_desc, &render_path_gpu_timing.heap)) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     wi::graphics::GPUBufferDesc readback_desc;
     readback_desc.usage = wi::graphics::Usage::READBACK;
-    readback_desc.size = uint64_t(lod_gpu_timing.query_count) * sizeof(uint64_t);
-    if (!device->CreateBuffer(&readback_desc, nullptr, &lod_gpu_timing.readback)) {
-        lod_gpu_timing = LodGpuTimingState{};
+    readback_desc.size = uint64_t(render_path_gpu_timing.query_count) * sizeof(uint64_t);
+    if (!device->CreateBuffer(&readback_desc, nullptr, &render_path_gpu_timing.readback)) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     wi::graphics::CommandList reset_command_list = device->BeginCommandList();
-    device->QueryReset(&lod_gpu_timing.heap, 0, lod_gpu_timing.query_count, reset_command_list);
+    device->QueryReset(&render_path_gpu_timing.heap, 0, render_path_gpu_timing.query_count, reset_command_list);
     device->SubmitCommandLists();
     device->WaitForGPU();
     for (uint32_t frame = 0; frame < warmup_frames; ++frame) {
         if (elisa_application_v1_pump() != ELISA_APPLICATION_RUNNING) {
-            lod_gpu_timing = LodGpuTimingState{};
+            render_path_gpu_timing = RenderPathGpuTimingState{};
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
         device->WaitForGPU();
     }
     std::vector<uint64_t> samples;
     samples.reserve(sample_count);
-    lod_gpu_timing.capturing = true;
+    render_path_gpu_timing.capturing = true;
     for (uint32_t frame = 0; frame < sample_count; ++frame) {
         const auto started = std::chrono::steady_clock::now();
         if (elisa_application_v1_pump() != ELISA_APPLICATION_RUNNING) {
-            lod_gpu_timing.capturing = false;
-            lod_gpu_timing = LodGpuTimingState{};
+            render_path_gpu_timing.capturing = false;
+            render_path_gpu_timing = RenderPathGpuTimingState{};
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
         device->WaitForGPU();
@@ -204,29 +204,29 @@ extern "C" int32_t elisa_render_scene_v1_test_lod_frame_times(
             std::chrono::steady_clock::now() - started).count();
         samples.push_back(static_cast<uint64_t>(std::max<int64_t>(elapsed, 0)));
     }
-    lod_gpu_timing.capturing = false;
-    if (lod_gpu_timing.ranges.size() != sample_count || lod_gpu_timing.open_begin != UINT32_MAX) {
-        lod_gpu_timing = LodGpuTimingState{};
+    render_path_gpu_timing.capturing = false;
+    if (render_path_gpu_timing.ranges.size() != sample_count || render_path_gpu_timing.open_begin != UINT32_MAX) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     wi::graphics::CommandList resolve_command_list = device->BeginCommandList();
-    device->QueryResolve(&lod_gpu_timing.heap, 0, lod_gpu_timing.query_count,
-        &lod_gpu_timing.readback, 0, resolve_command_list);
+    device->QueryResolve(&render_path_gpu_timing.heap, 0, render_path_gpu_timing.query_count,
+        &render_path_gpu_timing.readback, 0, resolve_command_list);
     device->SubmitCommandLists();
     device->WaitForGPU();
-    const uint64_t* query_results = static_cast<const uint64_t*>(lod_gpu_timing.readback.mapped_data);
+    const uint64_t* query_results = static_cast<const uint64_t*>(render_path_gpu_timing.readback.mapped_data);
     const uint64_t timestamp_frequency = device->GetTimestampFrequency();
     if (query_results == nullptr || timestamp_frequency == 0) {
-        lod_gpu_timing = LodGpuTimingState{};
+        render_path_gpu_timing = RenderPathGpuTimingState{};
         return ELISA_RENDER_SCENE_BACKEND_FAILED;
     }
     std::vector<uint64_t> gpu_samples;
     gpu_samples.reserve(sample_count);
-    for (const auto& range : lod_gpu_timing.ranges) {
+    for (const auto& range : render_path_gpu_timing.ranges) {
         const uint64_t start_tick = query_results[range.first];
         const uint64_t end_tick = query_results[range.second];
         if (end_tick < start_tick) {
-            lod_gpu_timing = LodGpuTimingState{};
+            render_path_gpu_timing = RenderPathGpuTimingState{};
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
         const long double microseconds = static_cast<long double>(end_tick - start_tick) * 1000000.0L /
@@ -248,6 +248,127 @@ extern "C" int32_t elisa_render_scene_v1_test_lod_frame_times(
         expected_level, sample_count,
         static_cast<unsigned long long>(gpu_median),
         static_cast<unsigned long long>(gpu_p95));
-    lod_gpu_timing = LodGpuTimingState{};
+    render_path_gpu_timing = RenderPathGpuTimingState{};
+    return ELISA_RENDER_SCENE_OK;
+}
+
+// Measure the same RenderPath3D GPU interval for a stable, warmed quality
+// profile, alongside Wicked's application-level GPU allocation samples.
+extern "C" int32_t elisa_render_scene_v1_test_quality_profile_cost(
+        uint32_t profile_id, uint32_t warmup_frames, uint32_t sample_count) {
+    constexpr uint32_t PROFILE_COUNT = 3;
+    constexpr uint32_t MAX_WARMUP_FRAMES = 60;
+    constexpr uint32_t MIN_SAMPLE_COUNT = 5;
+    constexpr uint32_t MAX_SAMPLE_COUNT = 120;
+    constexpr const char* PROFILE_NAMES[PROFILE_COUNT] = {"high", "medium", "low"};
+    if (profile_id >= PROFILE_COUNT || warmup_frames == 0 || warmup_frames > MAX_WARMUP_FRAMES ||
+        sample_count < MIN_SAMPLE_COUNT || sample_count > MAX_SAMPLE_COUNT) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    {
+        RenderSceneService& state = service();
+        std::lock_guard<std::mutex> guard(state.mutex);
+        if (!state.initialized || state.path == nullptr) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+        if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    }
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr || render_path_gpu_timing.capturing) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+
+    render_path_gpu_timing = RenderPathGpuTimingState{};
+    render_path_gpu_timing.query_count = sample_count * 2;
+    wi::graphics::GPUQueryHeapDesc query_desc;
+    query_desc.type = wi::graphics::GpuQueryType::TIMESTAMP;
+    query_desc.query_count = render_path_gpu_timing.query_count;
+    if (!device->CreateQueryHeap(&query_desc, &render_path_gpu_timing.heap)) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    wi::graphics::GPUBufferDesc readback_desc;
+    readback_desc.usage = wi::graphics::Usage::READBACK;
+    readback_desc.size = uint64_t(render_path_gpu_timing.query_count) * sizeof(uint64_t);
+    if (!device->CreateBuffer(&readback_desc, nullptr, &render_path_gpu_timing.readback)) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    wi::graphics::CommandList reset_command_list = device->BeginCommandList();
+    device->QueryReset(&render_path_gpu_timing.heap, 0, render_path_gpu_timing.query_count, reset_command_list);
+    device->SubmitCommandLists();
+    device->WaitForGPU();
+    for (uint32_t frame = 0; frame < warmup_frames; ++frame) {
+        if (elisa_application_v1_pump() != ELISA_APPLICATION_RUNNING) {
+            render_path_gpu_timing = RenderPathGpuTimingState{};
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        device->WaitForGPU();
+    }
+
+    const wi::graphics::GraphicsDevice::MemoryUsage initial_memory = device->GetMemoryUsage();
+    std::vector<uint64_t> memory_samples;
+    memory_samples.reserve(sample_count);
+    render_path_gpu_timing.capturing = true;
+    for (uint32_t frame = 0; frame < sample_count; ++frame) {
+        if (elisa_application_v1_pump() != ELISA_APPLICATION_RUNNING) {
+            render_path_gpu_timing.capturing = false;
+            render_path_gpu_timing = RenderPathGpuTimingState{};
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        device->WaitForGPU();
+        memory_samples.push_back(device->GetMemoryUsage().usage);
+    }
+    render_path_gpu_timing.capturing = false;
+    if (render_path_gpu_timing.ranges.size() != sample_count || render_path_gpu_timing.open_begin != UINT32_MAX) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+
+    wi::graphics::CommandList resolve_command_list = device->BeginCommandList();
+    device->QueryResolve(&render_path_gpu_timing.heap, 0, render_path_gpu_timing.query_count,
+        &render_path_gpu_timing.readback, 0, resolve_command_list);
+    device->SubmitCommandLists();
+    device->WaitForGPU();
+    const uint64_t* query_results = static_cast<const uint64_t*>(render_path_gpu_timing.readback.mapped_data);
+    const uint64_t timestamp_frequency = device->GetTimestampFrequency();
+    if (query_results == nullptr || timestamp_frequency == 0) {
+        render_path_gpu_timing = RenderPathGpuTimingState{};
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    std::vector<uint64_t> gpu_samples;
+    gpu_samples.reserve(sample_count);
+    for (const auto& range : render_path_gpu_timing.ranges) {
+        const uint64_t start_tick = query_results[range.first];
+        const uint64_t end_tick = query_results[range.second];
+        if (end_tick < start_tick) {
+            render_path_gpu_timing = RenderPathGpuTimingState{};
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        const long double microseconds = static_cast<long double>(end_tick - start_tick) * 1000000.0L /
+            static_cast<long double>(timestamp_frequency);
+        gpu_samples.push_back(static_cast<uint64_t>(microseconds));
+    }
+    std::sort(gpu_samples.begin(), gpu_samples.end());
+    std::sort(memory_samples.begin(), memory_samples.end());
+    const size_t p95_index = (size_t(sample_count) * 95 + 99) / 100 - 1;
+    const uint64_t gpu_median = gpu_samples[sample_count / 2];
+    const uint64_t gpu_p95 = gpu_samples[p95_index];
+    const uint64_t memory_median = memory_samples[sample_count / 2];
+    const uint64_t memory_peak = memory_samples.back();
+    const long long peak_delta = memory_peak >= initial_memory.usage
+        ? static_cast<long long>(memory_peak - initial_memory.usage)
+        : -static_cast<long long>(initial_memory.usage - memory_peak);
+    std::fprintf(stdout,
+        "Quality profile cost: profile=%s backend=%s adapter=%s warmup=%u samples=%u "
+        "gpu_median_us=%llu gpu_p95_us=%llu vram_start_bytes=%llu "
+        "vram_median_bytes=%llu vram_peak_bytes=%llu vram_peak_delta_bytes=%lld "
+        "vram_budget_bytes=%llu\n",
+        PROFILE_NAMES[profile_id], device->GetTag(), device->GetAdapterName().c_str(),
+        warmup_frames, sample_count,
+        static_cast<unsigned long long>(gpu_median),
+        static_cast<unsigned long long>(gpu_p95),
+        static_cast<unsigned long long>(initial_memory.usage),
+        static_cast<unsigned long long>(memory_median),
+        static_cast<unsigned long long>(memory_peak), peak_delta,
+        static_cast<unsigned long long>(initial_memory.budget));
+    std::fflush(stdout);
+    render_path_gpu_timing = RenderPathGpuTimingState{};
     return ELISA_RENDER_SCENE_OK;
 }

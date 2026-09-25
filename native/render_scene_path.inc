@@ -92,11 +92,11 @@ public:
             debug_draw_->flush();
         }
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-        lod_gpu_timing_begin_render();
+        render_path_gpu_timing_begin_render();
 #endif
         wi::RenderPath3D::Render();
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-        lod_gpu_timing_end_render();
+        render_path_gpu_timing_end_render();
 #endif
     }
 

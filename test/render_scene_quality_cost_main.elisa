@@ -1,0 +1,87 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_quality_profile.elisa"
+include "../src/math/geometry.elisa"
+include "./render_scene_quality_settings_native.elisa"
+
+const module Setup:
+    QUALITY_PROFILE_SETTLE_FRAME_COUNT: i32 = 8
+
+def exercise_quality_cost() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa Quality Profile Cost Probe",
+        width: 320,
+        height: 200,
+        hidden: true,
+    }
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(
+        Geometry::Vec3{x: 0.0, y: 10.0, z: 8.0},
+        Geometry::vec3_zero(),
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    box: RenderScene::InstanceHandle = catch RenderScene::create(
+        RenderScene::Primitive.Box,
+        Geometry::Transform{
+            position: Geometry::Vec3{x: -1.1, y: 0.0, z: 0.0},
+            rotation: Geometry::quat_identity(),
+            scale: Geometry::Vec3{x: 1.1, y: 0.8, z: 1.1},
+        },
+        RenderScene::Color{red: 0.1, green: 0.45, blue: 1.0, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    sphere: RenderScene::InstanceHandle = catch RenderScene::create(
+        RenderScene::Primitive.Sphere,
+        Geometry::Transform{
+            position: Geometry::Vec3{x: 1.1, y: 0.0, z: 0.0},
+            rotation: Geometry::quat_identity(),
+            scale: Geometry::Vec3{x: 0.85, y: 0.85, z: 0.85},
+        },
+        RenderScene::Color{red: 0.1, green: 1.0, blue: 0.35, alpha: 1.0}):
+        value: value
+        error failure: return 5
+    floor: RenderScene::InstanceHandle = catch RenderScene::create(
+        RenderScene::Primitive.Plane,
+        Geometry::Transform{
+            position: Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
+            rotation: Geometry::quat_identity(),
+            scale: Geometry::Vec3{x: 6.0, y: 1.0, z: 6.0},
+        },
+        RenderScene::Color{red: 0.9, green: 0.05, blue: 0.3, alpha: 1.0}):
+        value: value
+        error failure: return 6
+    pipeline_wait: i32 = catch RenderScene::wait_for_pipelines(30000):
+        ok: 0
+        error failure: 1
+    return 7 if pipeline_wait != 0
+    for frame in 0..<8:
+        return 8 if Application::pump() != Application::PumpStatus.Running
+    quality_status: i32 = RenderSceneQualitySettingsNativeTests::exercise()
+    return quality_status if quality_status != 0
+    for frame in 0..<Setup::QUALITY_PROFILE_SETTLE_FRAME_COUNT:
+        return 9 if Application::pump() != Application::PumpStatus.Running
+    profile_name: cstr = Application::environment_value("ELISA_QUALITY_COST_PROFILE")
+    profile_id: u32 =
+        if profile_name == "high":
+            0
+        elif profile_name == "medium":
+            1
+        elif profile_name == "low":
+            2
+        else:
+            return 10
+    cost_status: i32 = RenderSceneQualitySettingsNativeTests::measure_selected_profile_cost(profile_id)
+    return cost_status if cost_status != 0
+    0
+
+def main() -> i32:
+    result: i32 = exercise_quality_cost()
+    return 31 if not Application::shutdown()
+    result

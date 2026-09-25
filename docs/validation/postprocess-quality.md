@@ -29,8 +29,31 @@ shared image metric with per-channel peak tolerance 0.35 and mean tolerance
 0.025, allowing device-level shading variation while detecting missing effects
 or a profile rendered with the wrong settings. The Low reference visibly uses
 the lower render scale; the High reference retains the full internal detail.
-These images validate rendered profile output, while measured GPU/VRAM costs
-remain open R07 work.
+These images validate rendered profile output.
+
+## Apple M5 profile cost sample
+
+The focused SDL3/Metal cost smoke starts a fresh process for each preset. It
+uses the same hidden 320×200 window, camera, box/sphere/floor scene, and
+baseline quality checks, waits ten frames after applying a preset, and samples
+21 completed frames. GPU time is Wicked's timestamp interval around
+`RenderPath3D::Render()`. Memory is Wicked's Metal `currentAllocatedSize()`
+reported for the application; it includes renderer, scene, and engine
+allocations, so the total is a scene-level working-set reference rather than
+the isolated cost of each effect.
+
+One run on an Apple M5 with macOS 27.0 produced:
+
+| Profile | GPU median / p95 | Steady allocation median | Sample peak | Peak rise during samples |
+| --- | ---: | ---: | ---: | ---: |
+| Low | 938 / 945 μs | 397.59 MiB | 397.78 MiB | 0.72 MiB |
+| Medium | 1,342 / 1,392 μs | 404.80 MiB | 405.08 MiB | 0.91 MiB |
+| High | 2,777 / 2,808 μs | 418.39 MiB | 418.95 MiB | 1.47 MiB |
+
+These are reference measurements for this small scene and device. Render-path
+times vary with GPU load; memory totals include the common baseline allocations
+and should not be read as per-effect deltas. Other GPU backends and larger game
+scenes still need measurements.
 
 The public `RenderScene` API also exposes direct SSAO and FXAA toggles for
 applications that manage a scene without the backend profile bridge. The
@@ -60,9 +83,12 @@ comparison script also accepts `--capture-dir`, `--reference-dir`, and
 `--update` for focused use.
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 ELISA_UPDATE_POSTPROCESS_REFERENCES=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — builds High/Low captures, updates the reduced references, and runs all render-scene assertions and image comparisons.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 ELISA_RENDER_SCENE_PROFILE_COST_ONLY=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — builds the focused probe and measures each preset in its own SDL3/Metal process.
 - `/opt/homebrew/bin/python3.14 scripts/compare_postprocess_references.py` — compares the most recent High/Low captures against the checked-in references.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` — full shared suite exited 0; both Elisa Proof suites proved all 23 obligations with certificate replay.
 - `/opt/homebrew/bin/python3 scripts/check_source_length.py`, `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-This verifies profile changes reach Wicked's runtime state and rendered output;
-measured GPU/VRAM costs remain R07 work.
+This verifies profile changes reach Wicked's runtime state and rendered output,
+and records one Apple M5 GPU/VRAM reference sample. Cross-backend cost
+validation and settings persistence beyond the game setting remain open R07
+work.

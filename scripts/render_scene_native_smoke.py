@@ -88,7 +88,11 @@ def main() -> int:
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
     render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1"
-    if render_only:
+    profile_cost_only = os.environ.get("ELISA_RENDER_SCENE_PROFILE_COST_ONLY") == "1"
+    if profile_cost_only and not render_only:
+        print("profile-cost-only mode requires ELISA_RENDER_SCENE_RENDER_ONLY=1", file=sys.stderr)
+        return 2
+    if render_only and not profile_cost_only:
         (build / "cooked").mkdir(parents=True, exist_ok=True)
     if not render_only:
         ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
@@ -255,7 +259,7 @@ def main() -> int:
         if fixture_status != 0:
             return fixture_status
 
-    if render_only:
+    if render_only and not profile_cost_only:
         # The native test rewrites this bundle while checking checksum
         # rejection. Restore the source copy before every render-only run so
         # reruns don't start with the already-mutated variant from a prior run.
@@ -283,7 +287,8 @@ def main() -> int:
     executable = build / "render-scene-native-smoke"
     native_main = Path(os.environ.get(
         "ELISA_RENDER_SCENE_NATIVE_MAIN",
-        ROOT / "test/render_scene_native_main.elisa",
+        ROOT / ("test/render_scene_quality_cost_main.elisa" if profile_cost_only
+            else "test/render_scene_native_main.elisa"),
     )).resolve()
     if not native_main.is_file():
         print(f"native smoke main does not exist: {native_main}", file=sys.stderr)
@@ -373,37 +378,50 @@ def main() -> int:
         shadow_receiver_baseline_capture, shadow_receiver_variant_capture,
         shadow_rasterizer_baseline_capture, shadow_rasterizer_variant_capture,
         postprocess_high_capture, postprocess_low_capture]
-    for capture in captures:
-        capture.unlink(missing_ok=True)
-    runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
-    runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
-        mirrored_normal_no_occlusion_capture)
-    runtime_env["ELISA_CLEARCOAT_BASELINE_CAPTURE"] = str(clearcoat_baseline_capture)
-    runtime_env["ELISA_CLEARCOAT_COATED_CAPTURE"] = str(clearcoat_coated_capture)
-    runtime_env["ELISA_POINT_LIGHT_LEFT_CAPTURE"] = str(point_light_left_capture)
-    runtime_env["ELISA_POINT_LIGHT_RIGHT_CAPTURE"] = str(point_light_right_capture)
-    runtime_env["ELISA_SHADOWS_DISABLED_CAPTURE"] = str(shadows_disabled_capture)
-    runtime_env["ELISA_SHADOWS_ENABLED_CAPTURE"] = str(shadows_enabled_capture)
-    runtime_env["ELISA_LIGHTING_OUTDOOR_CAPTURE"] = str(lighting_outdoor_capture)
-    runtime_env["ELISA_LIGHTING_INDOOR_CAPTURE"] = str(lighting_indoor_capture)
-    runtime_env["ELISA_LIGHTING_TRANSPARENT_CAPTURE"] = str(lighting_transparent_capture)
-    runtime_env["ELISA_LIGHTING_OPAQUE_CAPTURE"] = str(lighting_opaque_capture)
-    runtime_env["ELISA_SHADOW_RECEIVER_BASELINE_CAPTURE"] = str(shadow_receiver_baseline_capture)
-    runtime_env["ELISA_SHADOW_RECEIVER_VARIANT_CAPTURE"] = str(shadow_receiver_variant_capture)
-    runtime_env["ELISA_SHADOW_RASTERIZER_BASELINE_CAPTURE"] = str(shadow_rasterizer_baseline_capture)
-    runtime_env["ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE"] = str(shadow_rasterizer_variant_capture)
-    runtime_env["ELISA_POSTPROCESS_HIGH_CAPTURE"] = str(postprocess_high_capture)
-    runtime_env["ELISA_POSTPROCESS_LOW_CAPTURE"] = str(postprocess_low_capture)
-    lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
-    capture_lod_quality = not render_only or lod_fixture_available
-    if capture_lod_quality:
-        fine_lod_capture.unlink(missing_ok=True)
-        coarse_lod_capture.unlink(missing_ok=True)
-        runtime_env["ELISA_LOD_FINE_CAPTURE"] = str(fine_lod_capture)
-        runtime_env["ELISA_LOD_COARSE_CAPTURE"] = str(coarse_lod_capture)
+    capture_lod_quality = False
+    if not profile_cost_only:
+        for capture in captures:
+            capture.unlink(missing_ok=True)
+        runtime_env["ELISA_MIRRORED_NORMAL_CAPTURE"] = str(mirrored_normal_capture)
+        runtime_env["ELISA_MIRRORED_NORMAL_NO_OCCLUSION_CAPTURE"] = str(
+            mirrored_normal_no_occlusion_capture)
+        runtime_env["ELISA_CLEARCOAT_BASELINE_CAPTURE"] = str(clearcoat_baseline_capture)
+        runtime_env["ELISA_CLEARCOAT_COATED_CAPTURE"] = str(clearcoat_coated_capture)
+        runtime_env["ELISA_POINT_LIGHT_LEFT_CAPTURE"] = str(point_light_left_capture)
+        runtime_env["ELISA_POINT_LIGHT_RIGHT_CAPTURE"] = str(point_light_right_capture)
+        runtime_env["ELISA_SHADOWS_DISABLED_CAPTURE"] = str(shadows_disabled_capture)
+        runtime_env["ELISA_SHADOWS_ENABLED_CAPTURE"] = str(shadows_enabled_capture)
+        runtime_env["ELISA_LIGHTING_OUTDOOR_CAPTURE"] = str(lighting_outdoor_capture)
+        runtime_env["ELISA_LIGHTING_INDOOR_CAPTURE"] = str(lighting_indoor_capture)
+        runtime_env["ELISA_LIGHTING_TRANSPARENT_CAPTURE"] = str(lighting_transparent_capture)
+        runtime_env["ELISA_LIGHTING_OPAQUE_CAPTURE"] = str(lighting_opaque_capture)
+        runtime_env["ELISA_SHADOW_RECEIVER_BASELINE_CAPTURE"] = str(shadow_receiver_baseline_capture)
+        runtime_env["ELISA_SHADOW_RECEIVER_VARIANT_CAPTURE"] = str(shadow_receiver_variant_capture)
+        runtime_env["ELISA_SHADOW_RASTERIZER_BASELINE_CAPTURE"] = str(shadow_rasterizer_baseline_capture)
+        runtime_env["ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE"] = str(shadow_rasterizer_variant_capture)
+        runtime_env["ELISA_POSTPROCESS_HIGH_CAPTURE"] = str(postprocess_high_capture)
+        runtime_env["ELISA_POSTPROCESS_LOW_CAPTURE"] = str(postprocess_low_capture)
+        lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
+        capture_lod_quality = not render_only or lod_fixture_available
+        if capture_lod_quality:
+            fine_lod_capture.unlink(missing_ok=True)
+            coarse_lod_capture.unlink(missing_ok=True)
+            runtime_env["ELISA_LOD_FINE_CAPTURE"] = str(fine_lod_capture)
+            runtime_env["ELISA_LOD_COARSE_CAPTURE"] = str(coarse_lod_capture)
     with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory:
         if render_only:
-            status = run([str(executable), "alwaysactive"], cwd=Path(working_directory), env=runtime_env)
+            if profile_cost_only:
+                status = 0
+                for profile in ("low", "medium", "high"):
+                    profile_env = runtime_env.copy()
+                    profile_env["ELISA_QUALITY_COST_PROFILE"] = profile
+                    status = run([str(executable), "alwaysactive"],
+                        cwd=Path(working_directory), env=profile_env)
+                    if status != 0:
+                        break
+            else:
+                status = run([str(executable), "alwaysactive"],
+                    cwd=Path(working_directory), env=runtime_env)
         else:
             with tempfile.TemporaryDirectory(prefix="Elisa cooked mesh path escape ") as outside_directory:
                 outside_package = Path(outside_directory) / "outside.pkg"
@@ -422,6 +440,9 @@ def main() -> int:
                     dependency_link.unlink(missing_ok=True)
     if status == 0 and os.environ.get("ELISA_RENDER_SCENE_SELECTION_ONLY") == "1":
         print("World-selection overlay visibility, identity composition, and cleanup passed on SDL3/Metal.")
+        return 0
+    if status == 0 and profile_cost_only:
+        print("High/Medium/Low quality profile GPU and allocation measurements completed on SDL3/Metal.")
         return 0
     if status == 0 and capture_lod_quality:
         quality_status = run([sys.executable, str(ROOT / "scripts/compare_renders.py"),
