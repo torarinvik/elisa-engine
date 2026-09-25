@@ -137,6 +137,38 @@ module PhysicsCollisionLayersNative:
                 value: value
                 error failure: return 37
             return 38 if not category_one_capsule.hit
+            category_zero_sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            category_zero_sphere_overlap_count: usize = catch PhysicsQueries::overlap_sphere_all(
+                &world, Geometry::Vec3{x: 4.0, y: 4.0, z: 0.0}, 0.25, 1,
+                category_zero_sphere_overlaps):
+                value: value
+                error failure: return 49
+            return 50 if category_zero_sphere_overlap_count != 0 or category_zero_sphere_overlaps.count != 0
+            category_one_sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            category_one_sphere_overlap_count: usize = catch PhysicsQueries::overlap_sphere_all(
+                &world, Geometry::Vec3{x: 4.0, y: 4.0, z: 0.0}, 0.25, 2,
+                category_one_sphere_overlaps):
+                value: value
+                error failure: return 51
+            return 52 if (category_one_sphere_overlap_count != 1 or
+                category_one_sphere_overlaps.count != category_one_sphere_overlap_count)
+            category_zero_capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            category_zero_capsule_overlap_count: usize = catch PhysicsQueries::overlap_capsule_all(
+                &world, Geometry::Vec3{x: 4.0, y: 3.7, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 4.3, z: 0.0}, 0.25, 1,
+                category_zero_capsule_overlaps):
+                value: value
+                error failure: return 54
+            return 55 if category_zero_capsule_overlap_count != 0 or category_zero_capsule_overlaps.count != 0
+            category_one_capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            category_one_capsule_overlap_count: usize = catch PhysicsQueries::overlap_capsule_all(
+                &world, Geometry::Vec3{x: 4.0, y: 3.7, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 4.3, z: 0.0}, 0.25, 2,
+                category_one_capsule_overlaps):
+                value: value
+                error failure: return 56
+            return 57 if (category_one_capsule_overlap_count != 1 or
+                category_one_capsule_overlaps.count != category_one_capsule_overlap_count)
             category_one_capsule_cast: PhysicsQueries::ShapeHit = catch PhysicsQueries::capsule_cast(
                 &world, Geometry::Vec3{x: 4.0, y: 2.0, z: 0.0},
                 Geometry::Vec3{x: 4.0, y: 2.5, z: 0.0},

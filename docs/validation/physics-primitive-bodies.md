@@ -78,7 +78,9 @@ The Jolt filter assigns each body a private subgroup, so bodies in the same
 category can still collide. A body's category also maps to the matching bit in
 the existing query `layer_mask`: physical pair rules decide contact, while the
 query mask independently decides which categories a physics ray or nearest
-sphere/capsule-overlap query considers. `test/physics_collision_layers_native.elisa`
+sphere/capsule-overlap query considers. All-hit sphere and capsule overlaps merge
+unique managed Jolt-body hits with scene-query hits and honor the same category
+mask. `test/physics_collision_layers_native.elisa`
 verifies that a layer-1 body overlapping layer-0 bodies produces no contact,
 that same-category bodies do contact, category-filtered physics rays and sphere
 and capsule overlaps, invalid category indices, and the configuration lock.
@@ -117,6 +119,7 @@ Validation on 2026-09-25:
 
 - Rebuilt the SDL3/Jolt Wicked archive with `cmake --build ../WickedEngine/build-elisa-sdl3 --target WickedEngine_ext_shaders -j 8`.
 - The focused `test/physics_collision_layers_native.elisa` runner passed on SDL3/Metal. It overlaps a layer-1 dynamic body with two layer-0 bodies and confirms the layer-1 entity is absent from contact events while the same-category pair still contacts. Physics nearest/all-hit rays and nearest sphere/capsule overlaps select only the requested category; all-hit results preserve distance order, and the capsule cast reaches the selected body. Invalid categories and post-creation configuration changes are rejected.
+- Sphere and capsule all-hit overlaps now also include managed Jolt bodies. The focused collision-layer fixture checks mask misses, exactly one selected-category hit, and consistent bounded-buffer counts for both shapes.
 - `test/application_native_main.elisa` built and linked with native test probes enabled, compiling the RuntimeServices layer-configuration wrapper.
 - The source-length, module-hygiene, and Python syntax checks passed.
 

@@ -364,6 +364,10 @@ public:
         wi::vector<wi::scene::Scene::SphereIntersectionResult> results;
         scene_.IntersectsAll(results, wi::primitive::Sphere(center, radius), filter_mask, layer_mask);
         append_overlaps(results, hits);
+        wi::physics::ShapeIntersectionResult physics_results[MAX_HITS];
+        const size_t physics_count = wi::physics::IntersectsAll(scene_,
+            wi::primitive::Sphere(center, radius), layer_mask, physics_results, MAX_HITS);
+        append_physics_overlaps(physics_results, physics_count, hits);
         return hits.count;
     }
 
@@ -398,6 +402,10 @@ public:
         wi::vector<wi::scene::Scene::CapsuleIntersectionResult> results;
         scene_.IntersectsAll(results, wi::primitive::Capsule(base, tip, radius), filter_mask, layer_mask);
         append_overlaps(results, hits);
+        wi::physics::ShapeIntersectionResult physics_results[MAX_HITS];
+        const size_t physics_count = wi::physics::IntersectsAll(scene_,
+            wi::primitive::Capsule(base, tip, radius), layer_mask, physics_results, MAX_HITS);
+        append_physics_overlaps(physics_results, physics_count, hits);
         return hits.count;
     }
 
@@ -411,6 +419,14 @@ private:
             }
             hits.values[hits.count++] = {
                 result.entity, result.position, result.normal, 0.0f, result.depth};
+        }
+    }
+
+    static void append_physics_overlaps(const wi::physics::ShapeIntersectionResult* results, size_t count, Hits& hits) {
+        for (size_t index = 0; index < count && hits.count < MAX_HITS; ++index) {
+            const auto& result = results[index];
+            if (result.entity == wi::ecs::INVALID_ENTITY || contains_entity(hits, result.entity)) continue;
+            hits.values[hits.count++] = {result.entity, result.position, result.normal, 0.0f, result.depth};
         }
     }
 
