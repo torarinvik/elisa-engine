@@ -94,10 +94,16 @@ module WorldAccess:
             raise AccessError.ActiveBorrow if frame.readers != 0 or frame.writer or frame.structural
             frame.phase <- next
 
+        def can_advance(frame: Frame&, next: Phase) -> bool:
+            frame.active and phase_value(next) == phase_value(frame.phase) + 1 and frame.readers == 0 and not frame.writer and not frame.structural
+
         def end_frame(frame: mutable Frame&) -> void error[AccessError]:
             raise AccessError.InactiveFrame if not frame.active
             raise AccessError.ActiveBorrow if frame.readers != 0 or frame.writer or frame.structural
             frame.active <- false
+
+        def can_end_frame(frame: Frame&) -> bool:
+            frame.active and frame.readers == 0 and not frame.writer and not frame.structural
 
         def frame_active(frame: Frame&) -> bool:
             frame.active

@@ -1,0 +1,165 @@
+# One phase owner for world access, event delivery, and structural commits.
+# Events are observed under a read token; world changes enter through the
+# deferred command buffer after that token has been released.
+include "./access.elisa"
+include "./events.elisa"
+include "./phase_commands.elisa"
+
+module WorldSchedule:
+    private:
+        def access_phase(phase: WorldEvents::Phase) -> WorldAccess::Phase:
+            return WorldAccess::Phase.Input if phase == WorldEvents::Phase.Input
+            return WorldAccess::Phase.Simulation if phase == WorldEvents::Phase.Simulation
+            return WorldAccess::Phase.Physics if phase == WorldEvents::Phase.Physics
+            return WorldAccess::Phase.Animation if phase == WorldEvents::Phase.Animation
+            return WorldAccess::Phase.Render if phase == WorldEvents::Phase.Render
+            WorldAccess::Phase.Audio
+
+        def phases_aligned(frame: Frame&) -> bool:
+            WorldAccess::current_phase(frame.access) == access_phase(
+                WorldEvents::current_phase(frame.events))
+
+        def acquire_access(frame: mutable Frame&, kind: WorldAccess::AccessKind) -> WorldAccess::Token error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            raise Error.PhaseMismatch if not phases_aligned(frame)
+            catch WorldAccess::acquire(&frame.access,
+                access_phase(WorldEvents::current_phase(frame.events)), kind):
+                value: value
+                error failure: raise Error.AccessConflict
+
+    public:
+        enum Error:
+            AlreadyActive
+            InactiveFrame
+            PhaseMismatch
+            InvalidPhase
+            AccessConflict
+            EventRejected
+            EventUnavailable
+            InvalidEntity
+
+        affine struct Frame:
+            private:
+                access: mutable WorldAccess::Frame
+                events: mutable WorldEvents::Queue
+                active: mutable bool
+
+        def Frame() -> Frame:
+            Frame{access: WorldAccess::Frame(), events: WorldEvents::Queue(), active: false}
+
+        def begin_frame(frame: mutable Frame&) -> void error[Error]:
+            raise Error.AlreadyActive if frame.active
+            WorldAccess::begin_frame(&frame.access)
+            WorldEvents::begin_frame(&frame.events)
+            frame.active <- true
+
+        def current_phase(frame: Frame&) -> WorldEvents::Phase:
+            WorldEvents::current_phase(frame.events)
+
+        def subscribe(frame: mutable Frame&, listener_id: i64,
+            phase: WorldEvents::Phase) -> void error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            accepted: bool = catch WorldEvents::subscribe(&frame.events, listener_id, phase):
+                ok: true
+                error failure: false
+            raise Error.EventRejected if not accepted
+
+        def unsubscribe(frame: mutable Frame&, listener_id: i64) -> void error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            accepted: bool = catch WorldEvents::unsubscribe(&frame.events, listener_id):
+                ok: true
+                error failure: false
+            raise Error.EventRejected if not accepted
+
+        def emit_world(frame: mutable Frame&, world: World::World&,
+            event: WorldEvents::Event) -> void error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            raise Error.PhaseMismatch if not phases_aligned(frame)
+            accepted: bool = catch WorldEvents::emit_world(&frame.events, world, event):
+                ok: true
+                error failure: false
+            raise Error.EventRejected if not accepted
+
+        def advance_phase(frame: mutable Frame&,
+            next: WorldEvents::Phase) -> void error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            raise Error.PhaseMismatch if not phases_aligned(frame)
+            raise Error.AccessConflict if not WorldAccess::can_advance(frame.access,
+                access_phase(next))
+            raise Error.InvalidPhase if not WorldEvents::can_advance_phase(frame.events, next)
+            access_advanced: bool = catch WorldAccess::advance(&frame.access, access_phase(next)):
+                ok: true
+                error failure: false
+            raise Error.AccessConflict if not access_advanced
+            events_advanced: bool = catch WorldEvents::advance_phase(&frame.events, next):
+                ok: true
+                error failure: false
+            raise Error.EventRejected if not events_advanced
+
+        def acquire_read(frame: mutable Frame&) -> WorldAccess::Token error[Error]:
+            acquire_access(frame, WorldAccess::AccessKind.Read)
+
+        def acquire_write(frame: mutable Frame&) -> WorldAccess::Token error[Error]:
+            acquire_access(frame, WorldAccess::AccessKind.Write)
+
+        def release_access(frame: mutable Frame&, token: mutable WorldAccess::Token&) -> void error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            released: bool = catch WorldAccess::release(&frame.access, token):
+                ok: true
+                error failure: false
+            raise Error.AccessConflict if not released
+
+        def dispatch_current(frame: mutable Frame&) -> usize error[Error]:
+            token: mutable WorldAccess::Token = try acquire_read(frame)
+            dispatched: usize = catch WorldEvents::dispatch(&frame.events,
+                WorldEvents::current_phase(frame.events)):
+                value: value
+                error failure: 0
+            released: bool = catch release_access(frame, &token):
+                ok: true
+                error failure: false
+            raise Error.AccessConflict if not released
+            dispatched
+
+        def dispatched_event_at(frame: mutable Frame&, world: World::World&,
+            ordinal: usize) -> WorldEvents::Event error[Error]:
+            token: mutable WorldAccess::Token = try acquire_read(frame)
+            selected: WorldEvents::Event = catch WorldEvents::dispatched_event_at(&frame.events,
+                WorldEvents::current_phase(frame.events), ordinal):
+                value: value
+                error failure: WorldEvents::Event{
+                    phase: WorldEvents::current_phase(frame.events),
+                    kind: WorldEvents::EventKind.Spawn,
+                    listener_id: 0,
+                    entity: World::EntityRef{world_epoch: 0, id: 0},
+                    payload: 0,
+                    delivered: false,
+                }
+            event_found: bool = selected.entity.id != 0
+            entity_valid: bool = event_found and World::world_is_live(world, selected.entity)
+            released: bool = catch release_access(frame, &token):
+                ok: true
+                error failure: false
+            raise Error.AccessConflict if not released
+            raise Error.EventUnavailable if not event_found
+            raise Error.InvalidEntity if not entity_valid
+            selected
+
+        def commit(frame: mutable Frame&, buffer: mutable WorldCommands::WorldBuffer&,
+            world: mutable World::World&) -> bool error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            raise Error.PhaseMismatch if not phases_aligned(frame)
+            WorldPhaseCommands::commit(&frame.access, buffer, world)
+
+        def end_frame(frame: mutable Frame&) -> usize error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            raise Error.PhaseMismatch if not phases_aligned(frame)
+            raise Error.AccessConflict if not WorldAccess::can_end_frame(frame.access)
+            raise Error.EventRejected if not WorldEvents::can_end_frame(frame.events)
+            access_ended: bool = catch WorldAccess::end_frame(&frame.access):
+                ok: true
+                error failure: false
+            raise Error.AccessConflict if not access_ended
+            delivered: usize = WorldEvents::end_frame(&frame.events)
+            frame.active <- false
+            delivered

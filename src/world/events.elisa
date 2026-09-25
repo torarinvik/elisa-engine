@@ -51,6 +51,7 @@ module WorldEvents:
             UnknownListener
             InvalidListener
             InvalidEntity
+            InvalidIndex
 
         struct Event:
             phase: Phase
@@ -94,6 +95,9 @@ module WorldEvents:
                 raise EventError.PhaseRegression if phase_value(next) != phase_value(queue.phase) + 1
                 queue.phase <- next
 
+            def can_advance_phase(queue: Queue&, next: Phase) -> bool:
+                queue.frame_active and phase_value(next) == phase_value(queue.phase) + 1
+
             def subscribe(queue: mutable Queue&, listener_id: i64, phase: Phase) -> void error[EventError]:
                 raise EventError.InvalidListener if listener_id <= 0
                 raise EventError.DuplicateListener if subscription_slot(queue, listener_id) != Limits::INVALID_SLOT
@@ -133,9 +137,30 @@ module WorldEvents:
                 queue.delivered <- queue.delivered + delivered_now
                 delivered_now
 
+            def dispatched_event_at(queue: Queue&, phase: Phase, ordinal: usize) -> Event error[EventError]:
+                raise EventError.InactiveFrame if not queue.frame_active
+                raise EventError.InvalidPhase if phase_value(phase) != phase_value(queue.phase)
+                found: mutable bool = false
+                seen: mutable usize = 0
+                selected: mutable Event = Event{phase: phase, kind: EventKind.Spawn,
+                    listener_id: 0, entity: World::EntityRef{world_epoch: 0, id: 0},
+                    payload: 0, delivered: false}
+                for index in 0..<queue.event_count |found, seen, selected, queue|:
+                    event: Event = queue.events[index]
+                    if event.phase == phase and event.delivered:
+                        if seen == ordinal:
+                            selected <- event
+                            found <- true
+                        seen <- seen + 1
+                raise EventError.InvalidIndex if not found
+                selected
+
             def end_frame(queue: mutable Queue&) -> usize:
                 queue.frame_active <- false
                 queue.delivered
+
+            def can_end_frame(queue: Queue&) -> bool:
+                queue.frame_active
 
             def event_count(queue: Queue&) -> usize:
                 queue.event_count
