@@ -33,7 +33,7 @@ required artifacts before the native driver starts.
 
 | Library | Identity in this checkout | Build/use entry point | Label | Owner and missing work |
 |---|---|---|---|---|
-| WickedEngine | sibling checkout `5f5b43f807aaa170d45d754f141473a0a3fd8a7d`; includes SDL3, Jolt collision/query support, reusable mesh shapes, and managed principal-inertia overrides | `scripts/wicked_probe.elisascript`, `native/wicked_probe.cpp`, `native/render_scene_abi.cpp` | Probe | Native backend owner; F05 still has small process-heap changes and macOS framework allocations across repeated device cycles. |
+| WickedEngine | sibling checkout `23ecbb9542d017aa95b157f1a95478700628fd16`; includes SDL3, Jolt collision/query support, reusable mesh shapes, and managed rotated principal-inertia overrides | `scripts/wicked_probe.elisascript`, `native/wicked_probe.cpp`, `native/render_scene_abi.cpp` | Probe | Native backend owner; F05 still has small process-heap changes and macOS framework allocations across repeated device cycles. |
 | SDL3 | Homebrew/system install selected by `WICKED_SDL3_INCLUDE_DIR` and `WICKED_SDL3_LIB_DIR`; presence is machine-specific | `src/backend/sdl3.elisa`, Wicked driver | Adapter | Platform owner; F03 records a reproducible toolchain and F09 completes lifecycle behavior. |
 | Jolt | Linked transitively from Wicked `libJolt.a` | `native/wicked_probe.cpp` physics path | Probe | Physics owner; P01 makes one explicit Elisa-owned step/query service. |
 | cgltf | `snapshot-2026-09-18`, SHA-256 `efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9` | `native/asset_import.h`, `scripts/cook_assets.py` | Adapter | Asset owner; A05 completes normalized scene, skin, morph, and animation import. |

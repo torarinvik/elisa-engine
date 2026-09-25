@@ -12,6 +12,7 @@ module PhysicsInertiaProbe:
             EXPECTED_MOMENT_X: f32 = 8.0
             EXPECTED_MOMENT_Y: f32 = 4.0
             EXPECTED_MOMENT_Z: f32 = 2.0
+            PRINCIPAL_ROTATION_Z: f32 = 0.70710678118
             MOMENT_TOLERANCE: f32 = 0.0001
             DEFAULT_COLLISION_LAYER: u32 = 0
 
@@ -20,10 +21,38 @@ module PhysicsInertiaProbe:
             difference >= -Tune::MOMENT_TOLERANCE and difference <= Tune::MOMENT_TOLERANCE
 
         def invalid_inertia_rejected() -> bool:
-            catch PhysicsRuntime::BodyInertia(Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}):
+            identity: Geometry::Quat = Geometry::quat_identity()
+            catch PhysicsRuntime::BodyInertia(Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}, identity):
                 value: false
                 PhysicsRuntime::PhysicsError.InvalidArgument: true
                 error failure: false
+
+        def invalid_inertia_rotation_rejected() -> bool:
+            catch PhysicsRuntime::BodyInertia(Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+                Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0}):
+                value: false
+                PhysicsRuntime::PhysicsError.InvalidArgument: true
+                error failure: false
+
+        def inertia_tensor_apply(inertia: PhysicsRuntime::BodyInertia,
+            vector: Geometry::Vec3) -> Geometry::Vec3:
+            moments: Geometry::Vec3 = PhysicsRuntime::body_inertia_principal_moments(inertia)
+            rotation: Geometry::Quat = PhysicsRuntime::body_inertia_principal_rotation(inertia)
+            principal_vector: Geometry::Vec3 = Geometry::quat_rotate(
+                Geometry::quat_conjugate(rotation), vector)
+            weighted_vector: Geometry::Vec3 = Geometry::Vec3{
+                x: principal_vector.x * moments.x,
+                y: principal_vector.y * moments.y,
+                z: principal_vector.z * moments.z,
+            }
+            Geometry::quat_rotate(rotation, weighted_vector)
+
+        def same_inertia_tensor(left: PhysicsRuntime::BodyInertia,
+            right: PhysicsRuntime::BodyInertia) -> bool:
+            x_axis: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+            y_axis: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}
+            z_axis: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}
+            close(inertia_tensor_apply(left, x_axis).x, inertia_tensor_apply(right, x_axis).x) and close(inertia_tensor_apply(left, x_axis).y, inertia_tensor_apply(right, x_axis).y) and close(inertia_tensor_apply(left, x_axis).z, inertia_tensor_apply(right, x_axis).z) and close(inertia_tensor_apply(left, y_axis).x, inertia_tensor_apply(right, y_axis).x) and close(inertia_tensor_apply(left, y_axis).y, inertia_tensor_apply(right, y_axis).y) and close(inertia_tensor_apply(left, y_axis).z, inertia_tensor_apply(right, y_axis).z) and close(inertia_tensor_apply(left, z_axis).x, inertia_tensor_apply(right, z_axis).x) and close(inertia_tensor_apply(left, z_axis).y, inertia_tensor_apply(right, z_axis).y) and close(inertia_tensor_apply(left, z_axis).z, inertia_tensor_apply(right, z_axis).z)
 
     public:
         def run(session: mutable RuntimeServices::Session&) -> i32:
@@ -41,10 +70,13 @@ module PhysicsInertiaProbe:
                 error failure: return 1
             inertia: PhysicsRuntime::BodyInertia = catch PhysicsRuntime::BodyInertia(
                 Geometry::Vec3{x: Tune::REQUESTED_MOMENT_X,
-                    y: Tune::REQUESTED_MOMENT_Y, z: Tune::REQUESTED_MOMENT_Z}):
+                    y: Tune::REQUESTED_MOMENT_Y, z: Tune::REQUESTED_MOMENT_Z},
+                Geometry::Quat{x: 0.0, y: 0.0, z: Tune::PRINCIPAL_ROTATION_Z,
+                    w: Tune::PRINCIPAL_ROTATION_Z}):
                 value: value
                 error failure: return 2
             return 3 if not PhysicsInertiaProbe::invalid_inertia_rejected()
+            return 11 if not PhysicsInertiaProbe::invalid_inertia_rotation_rejected()
             configured: bool = catch RuntimeServices::physics_body_set_inertia(
                 session, body, inertia):
                 ok: true
@@ -60,11 +92,13 @@ module PhysicsInertiaProbe:
                 value: true
                 error failure: false
             return 6 if not stepped
-            moments: Geometry::Vec3 = catch RuntimeServices::physics_body_inertia(
+            moments: PhysicsRuntime::BodyInertia = catch RuntimeServices::physics_body_inertia(
                 session, body):
                 value: value
                 error failure: return 7
-            return 8 if not PhysicsInertiaProbe::close(moments.x, Tune::EXPECTED_MOMENT_X) or not PhysicsInertiaProbe::close(moments.y, Tune::EXPECTED_MOMENT_Y) or not PhysicsInertiaProbe::close(moments.z, Tune::EXPECTED_MOMENT_Z)
+            readback: Geometry::Vec3 = PhysicsRuntime::body_inertia_principal_moments(moments)
+            return 8 if not PhysicsInertiaProbe::close(readback.x, Tune::EXPECTED_MOMENT_X) or not PhysicsInertiaProbe::close(readback.y, Tune::EXPECTED_MOMENT_Y) or not PhysicsInertiaProbe::close(readback.z, Tune::EXPECTED_MOMENT_Z)
+            return 12 if not PhysicsInertiaProbe::same_inertia_tensor(inertia, moments)
             late_update: bool = catch RuntimeServices::physics_body_set_inertia(
                 session, body, inertia):
                 ok: false
