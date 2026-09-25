@@ -5,6 +5,7 @@ include "./services.elisa"
 include "../world/world.elisa"
 include "../audio/spatial.elisa"
 include "../math/geometry.elisa"
+include "../physics/runtime.elisa"
 
 module WorldAudio:
     public:
@@ -54,6 +55,9 @@ module WorldAudio:
     private:
         const module Sentinel:
             NO_EMITTER: usize = WorldAudio::MAX_EMITTERS
+
+        const module Tune:
+            OCCLUSION_ENDPOINT_EPSILON: f32 = 0.02
 
         const module Mix:
             OK: i32 = 0
@@ -115,6 +119,20 @@ module WorldAudio:
                 occlusion: occlusion,
                 live: true,
             }
+
+        def ray_occlusion(session: RuntimeServices::Session&,
+            listener: SpatialAudio::Listener, source: SpatialAudio::Source,
+            layer_mask: u32, strength: f32) -> f32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            offset: Geometry::Vec3 = Geometry::vec3_sub(source.position, listener.position)
+            distance_squared: f32 = Geometry::vec3_length_squared(offset)
+            return 0.0 if distance_squared <= 0.0
+            distance: f32 = Geometry::sqrt_f32(distance_squared)
+            direction: Geometry::Vec3 = Geometry::vec3_scale(offset, 1.0 / distance)
+            hit: PhysicsRuntime::RayHit = try RuntimeServices::physics_raycast(
+                session, listener.position, direction, distance, layer_mask)
+            return 0.0 if not hit.hit
+            return 0.0 if hit.distance + Tune::OCCLUSION_ENDPOINT_EPSILON >= distance
+            strength
 
         def push_mix(session: RuntimeServices::Session&, voice: AudioRuntime::VoiceHandle,
             source: SpatialAudio::Source, listener: SpatialAudio::Listener) -> i32:
@@ -340,4 +358,46 @@ module WorldAudio:
                 detached_despawned: despawned,
                 detached_finished: finished,
                 listener_lost: listener_lost,
+            }
+
+        # Refresh source/listener poses, then use only the requested physics
+        # layers as acoustic occluders. The strength is applied to blocked
+        # rays; zero disables attenuation while preserving the query result.
+        def update_with_physics(session: RuntimeServices::Session&, world: World::World&,
+            emitters: mutable Emitters&, delta_seconds: f32, occluder_layer_mask: u32,
+            occlusion_strength: f32) -> UpdateReport error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldAudioError]:
+            raise WorldAudioError.InvalidSettings if occluder_layer_mask == 0
+            raise WorldAudioError.InvalidSettings if not (finite(occlusion_strength) and occlusion_strength >= 0.0 and occlusion_strength <= 1.0)
+            report: mutable UpdateReport = try update(session, world, emitters, delta_seconds)
+            staged: mutable SpatialAudio::Source[WorldAudio::MAX_EMITTERS] = zeroed
+            for index in 0..<emitters.count |session, emitters, staged|:
+                previous: SpatialAudio::Source = try emitter_source(emitters, emitters.entities[index])
+                occlusion: f32 = try ray_occlusion(session, emitters.listener,
+                    previous, occluder_layer_mask, occlusion_strength)
+                staged[index] <- occluded_source(previous, occlusion)
+
+            removed: mutable bool[WorldAudio::MAX_EMITTERS] = zeroed
+            removed_finished: mutable usize = 0
+            for index in 0..<emitters.count |session, emitters, staged, removed, removed_finished|:
+                stored: bool = catch SpatialAudio::source_update(&emitters.sources, staged[index]):
+                    ok: true
+                    error failure: false
+                raise WorldAudioError.BindingTableCorrupt if not stored
+                voice: AudioRuntime::VoiceHandle = try voice_at(emitters, index)
+                mixed: i32 = push_mix(session, voice, staged[index], emitters.listener)
+                if mixed == Mix::VOICE_GONE:
+                    removed[index] <- true
+                    removed_finished <- removed_finished + 1
+                else:
+                    try check_service(mixed)
+            total: usize = emitters.count
+            for offset in 0..<total |emitters, removed|:
+                index: usize = total - 1 - offset
+                if removed[index]:
+                    try remove_at(emitters, index)
+            UpdateReport{
+                updated: report.updated - removed_finished,
+                detached_despawned: report.detached_despawned,
+                detached_finished: report.detached_finished + removed_finished,
+                listener_lost: report.listener_lost,
             }

@@ -5,6 +5,13 @@
 # safely instead of leaving stale native voices behind.
 module WorldAudioProbe:
     private:
+        const module Tune:
+            OCCLUDER_LAYER: u32 = 31
+            OCCLUDER_MASK: u32 = 2147483648
+            OCCLUSION_STRENGTH: f32 = 0.65
+            OCCLUDER_HALF_EXTENT: f32 = 0.2
+            PHYSICS_STEP_SECONDS: f32 = 1.0 / 60.0
+
         def pose_at(x: f32, y: f32, z: f32, rotation: Geometry::Quat) -> Geometry::Transform:
             Geometry::Transform{
                 position: Geometry::Vec3{x: x, y: y, z: z},
@@ -44,6 +51,63 @@ module WorldAudioProbe:
                     report <- value
                     true
                 error failure: false
+
+        def update_physics_report(session: RuntimeServices::Session&,
+            world: World::World&, emitters: mutable WorldAudio::Emitters&,
+            delta_seconds: f32, report: mutable WorldAudio::UpdateReport&) -> bool:
+            catch WorldAudio::update_with_physics(session, world, emitters,
+                delta_seconds, Tune::OCCLUDER_MASK, Tune::OCCLUSION_STRENGTH):
+                value:
+                    report <- value
+                    true
+                error failure: false
+
+        def physics_occlusion_probe(session: RuntimeServices::Session&,
+            world: World::World&, emitters: mutable WorldAudio::Emitters&,
+            close: World::EntityRef, step: f32) -> i32:
+            obstacle: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.5},
+                    dimensions: Geometry::Vec3{x: Tune::OCCLUDER_HALF_EXTENT,
+                        y: Tune::OCCLUDER_HALF_EXTENT, z: Tune::OCCLUDER_HALF_EXTENT},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Tune::OCCLUDER_LAYER,
+                }):
+                value: value
+                error failure: return 132
+            obstacle_tick: u64 = catch RuntimeServices::physics_fixed_step(
+                session, Tune::PHYSICS_STEP_SECONDS):
+                value: value
+                error failure: return 133
+            return 134 if obstacle_tick == 0
+            physics_report: mutable WorldAudio::UpdateReport = zeroed
+            return 135 if not update_physics_report(session, world, emitters,
+                step, &physics_report) or physics_report.updated != 2
+            blocked_source: SpatialAudio::Source = catch WorldAudio::emitter_source(emitters, close):
+                value: value
+                error failure: return 136
+            return 137 if not near(blocked_source.occlusion, Tune::OCCLUSION_STRENGTH)
+
+            removed_obstacle: bool = catch RuntimeServices::physics_body_destroy(session, obstacle):
+                ok: true
+                error failure: false
+            return 138 if not removed_obstacle
+            clear_tick: u64 = catch RuntimeServices::physics_fixed_step(
+                session, Tune::PHYSICS_STEP_SECONDS):
+                value: value
+                error failure: return 139
+            return 140 if clear_tick <= obstacle_tick
+            clear_report: mutable WorldAudio::UpdateReport = zeroed
+            return 141 if not update_physics_report(session, world, emitters,
+                step, &clear_report) or clear_report.updated != 2
+            clear_source: SpatialAudio::Source = catch WorldAudio::emitter_source(emitters, close):
+                value: value
+                error failure: return 142
+            return 143 if clear_source.occlusion != 0.0
+            0
 
         def voice_count(session: RuntimeServices::Session&) -> usize:
             catch RuntimeServices::audio_active_voice_count(session):
@@ -164,6 +228,8 @@ module WorldAudioProbe:
                 value: value
                 error failure: return 236
             return 237 if occluded_source.occlusion != 0.5
+            physics_status: i32 = physics_occlusion_probe(session, world, emitters, close, step)
+            return physics_status if physics_status != 0
 
             # Despawning an entity stops and detaches its voice on the next update.
             return 238 if voice_count(session) != baseline + 2
