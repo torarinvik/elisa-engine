@@ -45,6 +45,12 @@ returns copied `PhysicsQueryHit` values to the host.
   and return an explicit capacity error only inside the native fixed bound.
   `RuntimeServices::physics_raycast_all` routes this buffer through an affine
   session without exposing native storage.
+- `PhysicsRuntime::RayQueryFilter` and `raycast_all_filtered` let callers select
+  scene objects, scene colliders, and Jolt physics bodies independently.
+  `RuntimeServices::physics_raycast_all_filtered` provides the same selection
+  through an affine session. The default filter and the original unfiltered API
+  include all three categories; selecting none returns an empty buffer. The C
+  ABI uses backend-neutral target bits and keeps Wicked filter constants private.
 - `PhysicsQueries` exposes bounded sphere and capsule casts plus nearest and
   all-hit sphere and capsule overlaps. `ShapeHit` copies the entity, contact
   position/normal, cast distance, and overlap penetration depth; each all-hit
@@ -84,9 +90,33 @@ the scene or listener object.
 
 The Elisa application smoke creates static and dynamic bodies plus a static
 sensor volume, advances the fixed-step world, verifies public nearest and
-all-hit physics rays, checks nearest-hit ordering, exercises both shape casts
+all-hit physics rays, verifies scene-object-only, physics-body-only, and
+empty-target all-hit queries in direct and session APIs, checks nearest-hit
+ordering, exercises both shape casts
 and nearest/all-hit overlaps, rejects invalid zero directions, and polls
 `PhysicsRuntime::ContactBuffer`. It requires real non-trigger and trigger
 `ContactKind.Added` events, then destroys the sensor and requires a trigger
 `ContactKind.Removed` event, with zero dropped events. This proves the public
 binding reaches the same Jolt callback queue used by the native gate.
+
+## Focused filter validation (2026-09-26)
+
+- The generated `application_native_main.elisa` native app passed with the
+  direct and session filter assertions enabled. The session case advances one
+  physics tick after creating its static body, matching the runtime's body-ready
+  lifecycle before asking Jolt to query it.
+- `elisascript scripts/wicked_probe.elisascript texture` rebuilt the native
+  Wicked probe and passed its KTX2 upload smoke. The subsequent `frame` run
+  passed `probe_physics_queries`, including object-only, collider-only,
+  physics-only, and empty filters. It then completed the full native frame,
+  screenshot, scene restart, host lifecycle, and orderly shutdown checks.
+- The frame gate exposed a cooked-package diagnostic reader that accepted only
+  raw `*_b64` geometry streams while the cooker writes `*_meshopt_b64` streams.
+  `native/package_load.h` now delegates to the shared bounded geometry loader,
+  which supports both formats. The probe reports a specific loader error when
+  package validation fails.
+- The combined `wicked_probe ... build` invocation passed its CLI runner tests
+  but reached ElisaScript's runtime time limit during its longer application
+  smoke sequence. The focused native application and complete `frame` phase
+  passed independently; the combined script’s full 12-project smoke sequence
+  remains unverified in one invocation.

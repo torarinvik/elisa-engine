@@ -49,7 +49,7 @@
 #include "render_snapshot_bridge.h"
 #include "physics_body_bridge.h"
 #include "physics_interpolation_probe.h"
-#include "physics_query_bridge.h"
+#include "physics_query_probe.h"
 #include "physics_contact_bridge.h"
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
@@ -268,8 +268,8 @@ int main(int argc, char** argv) {
                 manifest_dir / ".." / "build" / "cooked" / (asset_path.stem().string() + ".pkg");
             const CookedPackage package = load_cooked_package(package_path.lexically_normal().string());
             cooked_package = package;
-            std::fprintf(stdout, "cooked package: loaded=%d format=%s triangles=%lld positions=%lld\n",
-                package.loaded ? 1 : 0, package.format.c_str(), package.triangles, package.positions);
+            std::fprintf(stdout, "cooked package: loaded=%d format=%s triangles=%lld positions=%lld error=%s\n",
+                package.loaded ? 1 : 0, package.format.c_str(), package.triangles, package.positions, package.error.c_str());
             if (!check(package.loaded, "cooked package format") ||
                 !check(package.triangles == summary.triangles && package.positions == summary.positions,
                     "cooked package counts match the import")) {

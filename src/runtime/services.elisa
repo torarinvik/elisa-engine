@@ -347,6 +347,15 @@ module RuntimeServices:
             try PhysicsRuntime::service_raycast_all(session.physics, origin, direction,
                 max_distance, layer_mask, buffer)
 
+        def physics_raycast_all_filtered(session: Session&, origin: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
+            filter: PhysicsRuntime::RayQueryFilter,
+            buffer: mutable PhysicsRuntime::RayHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsRuntime::service_raycast_all_filtered(session.physics, origin,
+                direction, max_distance, layer_mask, filter, buffer)
+
         def physics_sphere_cast(session: Session&, center: Geometry::Vec3,
             direction: Geometry::Vec3, max_distance: f32, radius: f32,
             layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:

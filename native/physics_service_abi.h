@@ -46,6 +46,13 @@ enum {
     ELISA_PHYSICS_MAX_COMPOUND_CHILDREN = 16,
 };
 
+enum {
+    ELISA_PHYSICS_QUERY_SCENE_OBJECTS = 1u << 0,
+    ELISA_PHYSICS_QUERY_SCENE_COLLIDERS = 1u << 1,
+    ELISA_PHYSICS_QUERY_PHYSICS_BODIES = 1u << 2,
+    ELISA_PHYSICS_QUERY_ALL = (1u << 3) - 1u,
+};
+
 typedef struct ElisaPhysicsRayHit {
     uint64_t entity;
     float position_x;
@@ -163,6 +170,11 @@ int32_t elisa_physics_v1_raycast_all(uint64_t world_generation,
     float origin_x, float origin_y, float origin_z,
     float direction_x, float direction_y, float direction_z,
     float max_distance, uint32_t layer_mask,
+    ElisaPhysicsRayHitBuffer* buffer);
+int32_t elisa_physics_v1_raycast_all_filtered(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, uint32_t layer_mask, uint32_t query_targets,
     ElisaPhysicsRayHitBuffer* buffer);
 int32_t elisa_physics_v1_sphere_cast(uint64_t world_generation,
     float center_x, float center_y, float center_z,

@@ -2,6 +2,55 @@
 module RuntimePhysicsQueriesProbe:
     public:
         def run(session: RuntimeServices::Session&) -> i32:
+            query_body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(session,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 500.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                }):
+                value: value
+                error failure: return 132
+            query_body_tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                value: value
+                error failure: return 139
+            physics_only: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+                scene_objects: false,
+                scene_colliders: false,
+                physics_bodies: true,
+            }
+            filtered_hits: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+            filtered_count: usize = catch RuntimeServices::physics_raycast_all_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS, physics_only, &filtered_hits):
+                value: value
+                error failure: return 133
+            return 134 + filtered_count.i32() if filtered_count != 1
+            return 138 if filtered_hits.hits[0].entity == 0
+            no_targets: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+                scene_objects: false,
+                scene_colliders: false,
+                physics_bodies: false,
+            }
+            empty_filtered_hits: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+            empty_filtered_count: usize = catch RuntimeServices::physics_raycast_all_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS, no_targets, &empty_filtered_hits):
+                value: value
+                error failure: return 135
+            return 136 if empty_filtered_count != 0 or empty_filtered_hits.count != 0
+            query_body_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, query_body):
+                ok: 0
+                error failure: 1
+            return 137 if query_body_destroyed != 0
             query_hit: PhysicsRuntime::RayHit = catch RuntimeServices::physics_raycast(session,
                 Geometry::Vec3{x: 100.0, y: 100.0, z: 100.0},
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 1.0,
