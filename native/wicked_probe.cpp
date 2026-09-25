@@ -67,6 +67,7 @@
 #include "lighting_bridge.h"
 #include "pbr_material_bridge.h"
 #include "coordinate_reference_probe.h"
+#include "shader_warmup_probe.h"
 using namespace probe;
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
@@ -94,9 +95,7 @@ int main(int argc, char** argv) {
     const auto camera_y = std::stof(manifest["camera_y"]);
     const auto camera_z = std::stof(manifest["camera_z"]);
     std::filesystem::current_path(argv[1]);
-    const std::string shader_root = std::string(argv[1]) + "/shaders/";
-    wi::renderer::SetShaderPath(shader_root);
-    wi::renderer::SetShaderSourcePath(shader_root);
+    configure_probe_shader_paths(argv[1]);
     std::fprintf(stdout, "wicked %s\n", wi::version::GetVersionString());
     NativeApplication application_host;
     NativeApplication::Config application_config;
@@ -147,6 +146,7 @@ int main(int argc, char** argv) {
         !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
         return 1;
     }
+    if (std::getenv("ELISA_SHADER_WARMUP_PROBE") != nullptr) return run_shader_warmup_probe(application_host, application, scene, object, camera, manifest);
     int fog_radius = 0;
     int fog_player_x = 0;
     int fog_player_y = 0;
