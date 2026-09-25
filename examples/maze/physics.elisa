@@ -1,0 +1,99 @@
+# Native maze collision geometry and query-backed gameplay gates. The grid
+# remains the authored topology; Jolt sweeps prevent moves through physical
+# walls, and its key sensor must overlap before the game grants the key.
+include "./game.elisa"
+include "./layout.elisa"
+include "../../src/math/geometry.elisa"
+include "../../src/runtime/services.elisa"
+include "../../src/physics/queries.elisa"
+
+module MazePhysics:
+    private:
+        const module Tune:
+            WALL_LAYER: u32 = 0
+            KEY_LAYER: u32 = 1
+            WALL_QUERY_MASK: u32 = 1
+            KEY_QUERY_MASK: u32 = 2
+            PLAYER_RADIUS: f32 = 0.08
+            KEY_SENSOR_HALF_EXTENT: f32 = 0.15
+            KEY_QUERY_RADIUS: f32 = 0.2
+            PHYSICS_STEP_SECONDS: f32 = 1.0 / 60.0
+            WALL_HEIGHT: f32 = 0.0
+
+        def wall_description(x: i64, y: i64) -> PhysicsRuntime::BodyDesc:
+            half_extent: f32 = MazeLayout::maze_wall_half_extent()
+            PhysicsRuntime::BodyDesc{
+                kind: PhysicsRuntime::BodyKind.Static,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: MazeLayout::maze_cell_position(x, y, Tune::WALL_HEIGHT),
+                dimensions: Geometry::Vec3{x: half_extent, y: half_extent, z: half_extent},
+                mass: 0.0,
+                sensor: false,
+                collision_layer: Tune::WALL_LAYER,
+            }
+
+        def key_description() -> PhysicsRuntime::BodyDesc:
+            PhysicsRuntime::BodyDesc{
+                kind: PhysicsRuntime::BodyKind.Static,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: MazeLayout::maze_cell_position(
+                    MazeGame::maze_key_x(), MazeGame::maze_key_y(), Tune::WALL_HEIGHT),
+                dimensions: Geometry::Vec3{x: Tune::KEY_SENSOR_HALF_EXTENT,
+                    y: Tune::KEY_SENSOR_HALF_EXTENT, z: Tune::KEY_SENSOR_HALF_EXTENT},
+                mass: 0.0,
+                sensor: true,
+                collision_layer: Tune::KEY_LAYER,
+            }
+
+        def wall_clear(session: RuntimeServices::Session&, state: Maze::MazeState&,
+            direction: Maze::MazeMove) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            return true if direction == Maze::MazeMove.Idle
+            vector: Geometry::Vec3 = match direction:
+                Maze::MazeMove.North:
+                    Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0}
+                Maze::MazeMove.South:
+                    Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}
+                Maze::MazeMove.West:
+                    Geometry::Vec3{x: -1.0, y: 0.0, z: 0.0}
+                Maze::MazeMove.East:
+                    Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+                Maze::MazeMove.Idle:
+                    Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}
+            origin: Geometry::Vec3 = MazeLayout::maze_cell_position(
+                state.player_x, state.player_y, Tune::WALL_HEIGHT)
+            hit: PhysicsQueries::ShapeHit = try RuntimeServices::physics_sphere_cast(
+                session, origin, vector, MazeLayout::maze_cell_pitch(),
+                Tune::PLAYER_RADIUS, Tune::WALL_QUERY_MASK)
+            not hit.hit
+
+        def key_sensor_overlaps(session: RuntimeServices::Session&,
+            x: i64, y: i64) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            buffer: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            position: Geometry::Vec3 = MazeLayout::maze_cell_position(x, y, Tune::WALL_HEIGHT)
+            count: usize = try RuntimeServices::physics_overlap_sphere_all(session,
+                position, Tune::KEY_QUERY_RADIUS, Tune::KEY_QUERY_MASK, buffer)
+            count == 1 and buffer.count == count
+
+    public:
+        def arena_create(session: mutable RuntimeServices::Session&) -> usize error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            walls: MazeLayout::WallList = MazeLayout::maze_layout_cells()
+            for index in 0..<walls.count |session, walls|:
+                _ = try RuntimeServices::physics_body_create(session,
+                    wall_description(walls.xs[index], walls.ys[index]))
+            _ = try RuntimeServices::physics_body_create(session, key_description())
+            tick: u64 = try RuntimeServices::physics_fixed_step(
+                session, Tune::PHYSICS_STEP_SECONDS)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if tick != 1
+            walls.count + 1
+
+        def game_step(session: RuntimeServices::Session&,
+            game: mutable MazeGame::MazeGame&, direction: Maze::MazeMove) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            return false if game.status != MazeGame::GameStatus.Playing
+            target: Maze::MazeState = Maze::maze_next_position(game.grid, direction)
+            clear: bool = try wall_clear(session, game.grid, direction)
+            key_contact: mutable bool = false
+            if (target.player_x == MazeGame::maze_key_x() and
+                target.player_y == MazeGame::maze_key_y()):
+                key_contact <- try key_sensor_overlaps(session,
+                    target.player_x, target.player_y)
+            MazeGame::game_step_with_queries(game, direction, clear, key_contact)

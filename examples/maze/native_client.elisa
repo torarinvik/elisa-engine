@@ -1,6 +1,7 @@
 # Interactive SDL3/Metal client for the Elisa-owned maze world. This client
 # never reads the diagnostic scene manifest; it extracts World snapshots.
 include "./game.elisa"
+include "./physics.elisa"
 include "./presentation.elisa"
 include "./render_assets.elisa"
 include "./trace.elisa"
@@ -17,6 +18,9 @@ module MazeNativeClient:
             RESTART: i64 = 7
             QUIT: i64 = 8
             SELF_TEST_FRAMES: usize = 10
+            PHYSICS_WALL_LAYER: u32 = 0
+            TEST_OBSTACLE_HALF_EXTENT: f32 = 0.15
+            PHYSICS_STEP_SECONDS: f32 = 1.0 / 60.0
             ASSET_LOAD_NANOS: u64 = 30000000000
             CAMERA_VERTICAL_SIZE: f32 = 10.0
             FONT_SIZE: i32 = 18
@@ -42,13 +46,15 @@ module MazeNativeClient:
             requirements.services[0] <- Capabilities::BackendFeature.Input
             requirements.services[1] <- Capabilities::BackendFeature.Rendering
             requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
-            requirements.service_count <- 3
+            requirements.services[3] <- Capabilities::BackendFeature.Physics
+            requirements.service_count <- 4
             requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+            requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
+            requirements.allow_service_fallbacks <- true
             if with_audio_fallback:
-                requirements.services[3] <- Capabilities::BackendFeature.Audio
-                requirements.service_count <- 4
+                requirements.services[4] <- Capabilities::BackendFeature.Audio
+                requirements.service_count <- 5
                 requirements.service_fallbacks.audio <- Capabilities::BackendFallbackProvider.MiniaudioDefault
-                requirements.allow_service_fallbacks <- true
             requirements
 
         def bind_key(input: mutable ActionInput::Input&, action: i64,
@@ -93,8 +99,8 @@ module MazeNativeClient:
                 MazeGame::GameStatus.Exited:
                     "Exiting maze"
 
-        def apply_actions(game: mutable MazeGame::MazeGame,
-            input: ActionInput::Input&) -> bool:
+        def apply_actions(session: RuntimeServices::Session&,
+            game: mutable MazeGame::MazeGame, input: ActionInput::Input&) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             if ActionInput::action_pressed(input, Actions::START) and game.status == MazeGame::GameStatus.Menu:
                 MazeGame::game_start(game)
                 return true
@@ -109,15 +115,42 @@ module MazeNativeClient:
                 MazeGame::game_restart(game)
                 return true
             if ActionInput::action_pressed(input, Actions::MOVE_NORTH):
-                MazeGame::game_step(game, Maze::MazeMove.North)
+                try MazePhysics::game_step(session, game, Maze::MazeMove.North)
             elif ActionInput::action_pressed(input, Actions::MOVE_SOUTH):
-                MazeGame::game_step(game, Maze::MazeMove.South)
+                try MazePhysics::game_step(session, game, Maze::MazeMove.South)
             elif ActionInput::action_pressed(input, Actions::MOVE_WEST):
-                MazeGame::game_step(game, Maze::MazeMove.West)
+                try MazePhysics::game_step(session, game, Maze::MazeMove.West)
             elif ActionInput::action_pressed(input, Actions::MOVE_EAST):
-                MazeGame::game_step(game, Maze::MazeMove.East)
+                try MazePhysics::game_step(session, game, Maze::MazeMove.East)
             else:
                 false
+
+        def apply_actions_result(session: RuntimeServices::Session&,
+            game: mutable MazeGame::MazeGame, input: ActionInput::Input&) -> i32:
+            changed: bool = catch apply_actions(session, game, input):
+                value: value
+                error failure: return 0
+            return 1 if changed
+            2
+
+        def verify_physical_barrier(session: mutable RuntimeServices::Session&,
+            game: mutable MazeGame::MazeGame&) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            obstacle: PhysicsRuntime::BodyHandle = try RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: MazeLayout::maze_cell_position(1, 2, 0.0),
+                    dimensions: Geometry::Vec3{x: Actions::TEST_OBSTACLE_HALF_EXTENT,
+                        y: Actions::TEST_OBSTACLE_HALF_EXTENT, z: Actions::TEST_OBSTACLE_HALF_EXTENT},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Actions::PHYSICS_WALL_LAYER,
+                })
+            _ = try RuntimeServices::physics_fixed_step(session, Actions::PHYSICS_STEP_SECONDS)
+            moved: bool = try MazePhysics::game_step(session, game, Maze::MazeMove.South)
+            try RuntimeServices::physics_body_destroy(session, obstacle)
+            _ = try RuntimeServices::physics_fixed_step(session, Actions::PHYSICS_STEP_SECONDS)
+            not moved and game.grid.player_x == 1 and game.grid.player_y == 1 and game.grid.moves == 0
 
         def sync_game_scene(game: MazeGame::MazeGame&,
             scene: mutable MazePresentation::MazeScene&,
@@ -146,14 +179,22 @@ module MazeNativeClient:
                 ok: true
                 error failure: false
 
-        def scripted_native_smoke(game: mutable MazeGame::MazeGame&,
+        def scripted_native_smoke(session: mutable RuntimeServices::Session&,
+            game: mutable MazeGame::MazeGame&,
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
             presenter: mutable RenderScene::SnapshotPresenter&) -> i32:
             MazeGame::game_start(game)
+            collision_gate: bool = catch verify_physical_barrier(session, game):
+                value: value
+                error failure: return 50
+            return 51 if not collision_gate
             script: Maze::MazeMove[Actions::SELF_TEST_FRAMES] = MazeTrace::maze_win_script()
-            for index in 0..<Actions::SELF_TEST_FRAMES |game, scene, snapshot, presenter, script|:
-                return 41 if not MazeGame::game_step(game, script[index])
+            for index in 0..<Actions::SELF_TEST_FRAMES |session, game, scene, snapshot, presenter, script|:
+                moved: bool = catch MazePhysics::game_step(session, game, script[index]):
+                    value: value
+                    error failure: return 49
+                return 41 if not moved
                 return 42 if not sync_game_scene(game, scene, snapshot, presenter)
             return 43 if not MazeGame::game_won(game)
             return 44 if RenderSnapshot::snapshot_count(snapshot) != 39
@@ -206,8 +247,11 @@ module MazeNativeClient:
                             failure <- 66 if not exit_requested
                             running <- false
                         else:
-                            changed: bool = apply_actions(game, input)
-                            if changed:
+                            action_result: i32 = apply_actions_result(session, game, input)
+                            if action_result == 0:
+                                failure <- 67
+                                running <- false
+                            elif action_result == 1:
                                 if not sync_game_scene(game, scene, snapshot, presenter):
                                     failure <- 64
                                     running <- false
@@ -235,11 +279,11 @@ module MazeNativeClient:
                 config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
                 AudioRuntime::MIN_CHANNEL_COUNT, &report)
             if opened != RuntimeServices::OpenStatus.Ready:
-                if not with_audio_fallback or opened != RuntimeServices::OpenStatus.FallbackRequired:
+                if opened != RuntimeServices::OpenStatus.FallbackRequired:
                     _ = RuntimeServices::shutdown(&session)
                     return 1
             if report.state != Capabilities::RequirementState.Ready:
-                if not with_audio_fallback or report.state != Capabilities::RequirementState.Fallback:
+                if report.state != Capabilities::RequirementState.Fallback:
                     _ = RuntimeServices::shutdown(&session)
                     return 2
             run_status: i32 = run_after_host(&session, config, self_test)
@@ -319,6 +363,10 @@ module MazeNativeClient:
             loaded: i32 = load_assets(session)
             return 0 if loaded == -1
             return loaded if loaded != 0
+            arena_bodies: usize = catch MazePhysics::arena_create(session):
+                value: value
+                error failure: return 72
+            return 73 if arena_bodies != MazeLayout::maze_layout_count() + 1
 
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
@@ -351,7 +399,7 @@ module MazeNativeClient:
                 return 14 if not resized
             result: mutable i32 = 0
             if self_test:
-                result <- scripted_native_smoke(&game, &scene, &snapshot, &presenter)
+                result <- scripted_native_smoke(session, &game, &scene, &snapshot, &presenter)
             else:
                 result <- interactive_loop(session, &game, &scene, &snapshot, &presenter,
                     status_text, &input)

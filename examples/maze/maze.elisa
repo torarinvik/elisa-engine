@@ -83,6 +83,9 @@ module Maze:
                     Maze::MazeState{player_x: state.player_x, player_y: state.player_y, moves: state.moves} if blocked else Maze::MazeState{player_x: nx, player_y: ny, moves: state.moves + 1}
 
     public:
+        def maze_next_position(state: MazeState&, direction: MazeMove) -> MazeState:
+            Steps::next_position(state, direction)
+
         def maze_try_move(state: mutable MazeState&, direction: MazeMove) -> bool:
             next: MazeState = Steps::next_position(state, direction)
             moved: bool = next.player_x != state.player_x or next.player_y != state.player_y

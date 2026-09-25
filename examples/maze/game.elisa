@@ -246,17 +246,18 @@ module MazeGame:
                     game.settings <- settings
                     push_cue(game, MazeGame::Tune::CUE_CLICK)
 
-                def step(game: mutable MazeGame&, direction: Maze::MazeMove) -> bool:
+                def step(game: mutable MazeGame&, direction: Maze::MazeMove,
+                    collision_clear: bool, key_contact: bool) -> bool:
                     return false if game.status != MazeGame::GameStatus.Playing
                     tent: mutable Maze::MazeState = Maze::MazeState{player_x: game.grid.player_x, player_y: game.grid.player_y, moves: game.grid.moves}
                     moved: bool = Maze::maze_try_move(&tent, direction)
-                    return push_blocked(game) if not moved
+                    return push_blocked(game) if not moved or not collision_clear
                     return push_door(game) if MazeGame::door_blocked(game, tent.player_x, tent.player_y)
                     game.grid <- tent
                     refresh_stream(game)
                     on_key: bool = MazeGame::is_key(game.grid.player_x, game.grid.player_y)
-                    game.has_key <- true if on_key and not game.has_key
-                    push_cue(game, MazeGame::Tune::CUE_KEY) if on_key and game.has_key
+                    game.has_key <- true if on_key and key_contact and not game.has_key
+                    push_cue(game, MazeGame::Tune::CUE_KEY) if on_key and key_contact and game.has_key
                     return on_hazard(game) if MazeGame::is_hazard(game.grid.player_x, game.grid.player_y)
                     return on_goal(game) if Maze::maze_at_goal(game.grid)
                     push_cue(game, MazeGame::Tune::CUE_STEP)
@@ -308,4 +309,8 @@ module MazeGame:
             Flow::apply_settings(game, settings)
 
         def game_step(game: mutable MazeGame&, direction: Maze::MazeMove) -> bool:
-            Flow::step(game, direction)
+            Flow::step(game, direction, true, true)
+
+        def game_step_with_queries(game: mutable MazeGame&, direction: Maze::MazeMove,
+            collision_clear: bool, key_contact: bool) -> bool:
+            Flow::step(game, direction, collision_clear, key_contact)
