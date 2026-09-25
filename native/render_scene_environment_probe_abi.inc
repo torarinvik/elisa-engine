@@ -2,26 +2,34 @@
 namespace {
 constexpr float MAX_ENVIRONMENT_PROBE_VIEW_DISTANCE = 1000000.0f;
 constexpr float MAX_ENVIRONMENT_PROBE_UPDATE_INTERVAL = 3600.0f;
+constexpr float MAX_ENVIRONMENT_PROBE_INFLUENCE_EXTENT = 1000000.0f;
 constexpr int32_t MIN_ENVIRONMENT_PROBE_RESOLUTION = 16;
 constexpr int32_t MAX_ENVIRONMENT_PROBE_RESOLUTION = 2048;
 
 bool valid_environment_probe_values(
-    float px, float py, float pz, int32_t resolution, float view_distance,
+    float px, float py, float pz, float extent_x, float extent_y, float extent_z,
+    int32_t resolution, float view_distance,
     float update_interval, int32_t realtime, int32_t multisampled) {
     if (!bounded(px) || !bounded(py) || !bounded(pz) ||
         !bounded(view_distance, MAX_ENVIRONMENT_PROBE_VIEW_DISTANCE) ||
         !bounded(update_interval, MAX_ENVIRONMENT_PROBE_UPDATE_INTERVAL) ||
+        !bounded(extent_x, MAX_ENVIRONMENT_PROBE_INFLUENCE_EXTENT) ||
+        !bounded(extent_y, MAX_ENVIRONMENT_PROBE_INFLUENCE_EXTENT) ||
+        !bounded(extent_z, MAX_ENVIRONMENT_PROBE_INFLUENCE_EXTENT) ||
         (realtime != 0 && realtime != 1) || (multisampled != 0 && multisampled != 1)) return false;
     return resolution >= MIN_ENVIRONMENT_PROBE_RESOLUTION &&
         resolution <= MAX_ENVIRONMENT_PROBE_RESOLUTION && (resolution & (resolution - 1)) == 0 &&
-        view_distance > 0.0f && update_interval >= 0.0f;
+        view_distance > 0.0f && extent_x > 0.0f && extent_y > 0.0f && extent_z > 0.0f &&
+        update_interval >= 0.0f;
 }
 
 probe::NativeEnvironmentProbeDesc make_environment_probe_desc(
-    float px, float py, float pz, int32_t resolution, float view_distance,
+    float px, float py, float pz, float extent_x, float extent_y, float extent_z,
+    int32_t resolution, float view_distance,
     float update_interval, int32_t realtime, int32_t multisampled) {
     probe::NativeEnvironmentProbeDesc desc;
     desc.position = probe::coordinates::to_wicked(XMFLOAT3(px, py, pz));
+    desc.influence_extent = XMFLOAT3(extent_x, extent_y, extent_z);
     desc.resolution = uint32_t(resolution);
     desc.view_distance = view_distance;
     desc.update_interval = update_interval;
@@ -56,9 +64,11 @@ bool valid_environment_probe_handle(
 }
 
 extern "C" int64_t elisa_render_scene_v1_create_environment_probe(
-    float px, float py, float pz, int32_t resolution, float view_distance,
+    float px, float py, float pz, float extent_x, float extent_y, float extent_z,
+    int32_t resolution, float view_distance,
     float update_interval, int32_t realtime, int32_t multisampled) {
-    if (!valid_environment_probe_values(px, py, pz, resolution, view_distance,
+    if (!valid_environment_probe_values(px, py, pz, extent_x, extent_y, extent_z,
+        resolution, view_distance,
         update_interval, realtime, multisampled)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -66,7 +76,7 @@ extern "C" int64_t elisa_render_scene_v1_create_environment_probe(
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     if (state.lighting == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     const probe::NativeEnvironmentProbeDesc desc = make_environment_probe_desc(px, py, pz,
-        resolution, view_distance, update_interval, realtime, multisampled);
+        extent_x, extent_y, extent_z, resolution, view_distance, update_interval, realtime, multisampled);
     const probe::NativeEnvironmentHandle native = state.lighting->create_environment(desc);
     if (native.owner == 0 || native.slot >= MAX_RENDER_ENVIRONMENT_PROBES) return ELISA_RENDER_SCENE_CAPACITY;
     RenderEnvironmentProbeSlot& slot = state.environment_probes[native.slot];
@@ -81,9 +91,11 @@ extern "C" int64_t elisa_render_scene_v1_create_environment_probe(
 }
 
 extern "C" int32_t elisa_render_scene_v1_update_environment_probe(
-    int64_t handle, float px, float py, float pz, int32_t resolution,
+    int64_t handle, float px, float py, float pz, float extent_x, float extent_y,
+    float extent_z, int32_t resolution,
     float view_distance, float update_interval, int32_t realtime, int32_t multisampled) {
-    if (!valid_environment_probe_values(px, py, pz, resolution, view_distance,
+    if (!valid_environment_probe_values(px, py, pz, extent_x, extent_y, extent_z,
+        resolution, view_distance,
         update_interval, realtime, multisampled)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -92,7 +104,7 @@ extern "C" int32_t elisa_render_scene_v1_update_environment_probe(
     size_t slot = MAX_RENDER_ENVIRONMENT_PROBES;
     if (!valid_environment_probe_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     const probe::NativeEnvironmentProbeDesc desc = make_environment_probe_desc(px, py, pz,
-        resolution, view_distance, update_interval, realtime, multisampled);
+        extent_x, extent_y, extent_z, resolution, view_distance, update_interval, realtime, multisampled);
     return state.lighting->update_environment(state.environment_probes[slot].native, desc) ?
         ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
@@ -124,15 +136,17 @@ extern "C" int32_t elisa_render_scene_v1_refresh_environment_probe(int64_t handl
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 extern "C" int32_t elisa_render_scene_v1_test_environment_probe_matches(
-    float px, float py, float pz, int32_t resolution,
+    float px, float py, float pz, float extent_x, float extent_y, float extent_z,
+    int32_t resolution,
     float view_distance, float update_interval, int32_t realtime, int32_t multisampled) {
-    if (!valid_environment_probe_values(px, py, pz, resolution, view_distance,
+    if (!valid_environment_probe_values(px, py, pz, extent_x, extent_y, extent_z,
+        resolution, view_distance,
         update_interval, realtime, multisampled)) return 0;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized || !on_owner_thread(state) || state.lighting == nullptr) return 0;
     const probe::NativeEnvironmentProbeDesc desc = make_environment_probe_desc(px, py, pz,
-        resolution, view_distance, update_interval, realtime, multisampled);
+        extent_x, extent_y, extent_z, resolution, view_distance, update_interval, realtime, multisampled);
     for (const RenderEnvironmentProbeSlot& slot : state.environment_probes) {
         if (slot.live && state.lighting->environment_matches(slot.native, desc)) return 1;
     }

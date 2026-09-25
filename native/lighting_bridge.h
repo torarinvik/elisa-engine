@@ -57,6 +57,7 @@ struct NativeEnvironmentHandle {
 
 struct NativeEnvironmentProbeDesc {
     XMFLOAT3 position = XMFLOAT3(0, 0, 0);
+    XMFLOAT3 influence_extent = XMFLOAT3(1, 1, 1);
     uint32_t resolution = 128;
     float view_distance = 100.0f;
     float update_interval = 0.0f;
@@ -199,8 +200,11 @@ public:
         if (probe == nullptr || transform == nullptr) return false;
         const auto close = [](float left, float right) { return std::fabs(left - right) < 0.0001f; };
         const XMFLOAT3 position = transform->translation_local;
+        const XMFLOAT3 extent = transform->scale_local;
         return close(position.x, desc.position.x) && close(position.y, desc.position.y) &&
-            close(position.z, desc.position.z) && probe->resolution == desc.resolution &&
+            close(position.z, desc.position.z) && close(extent.x, desc.influence_extent.x) &&
+            close(extent.y, desc.influence_extent.y) && close(extent.z, desc.influence_extent.z) &&
+            probe->resolution == desc.resolution &&
             close(probe->view_distance, desc.view_distance) &&
             close(probe->GetRealtimeUpdateInterval(), desc.update_interval) &&
             probe->IsRealTime() == desc.realtime && probe->IsMSAA() == desc.multisampled;
@@ -295,6 +299,11 @@ private:
             std::isfinite(desc.position.y) && std::isfinite(desc.position.z) &&
             std::fabs(desc.position.x) <= 1.0e30f && std::fabs(desc.position.y) <= 1.0e30f &&
             std::fabs(desc.position.z) <= 1.0e30f && std::isfinite(desc.view_distance) &&
+            std::isfinite(desc.influence_extent.x) && std::isfinite(desc.influence_extent.y) &&
+            std::isfinite(desc.influence_extent.z) && desc.influence_extent.x > 0.0f &&
+            desc.influence_extent.y > 0.0f && desc.influence_extent.z > 0.0f &&
+            desc.influence_extent.x <= 1000000.0f && desc.influence_extent.y <= 1000000.0f &&
+            desc.influence_extent.z <= 1000000.0f &&
             desc.view_distance > 0.0f && desc.view_distance <= 1000000.0f &&
             std::isfinite(desc.update_interval) && desc.update_interval >= 0.0f &&
             desc.update_interval <= 3600.0f;
@@ -318,6 +327,7 @@ private:
         probe->SetRealTime(desc.realtime);
         probe->SetUpdateInterval(desc.update_interval);
         transform->translation_local = desc.position;
+        transform->scale_local = desc.influence_extent;
         transform->SetDirty();
         transform->UpdateTransform();
         if (capture_changed) probe->SetDirty();
@@ -415,6 +425,7 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
     const auto spot_handle = bridge.create_light(spot);
     NativeEnvironmentProbeDesc environment_desc;
     environment_desc.position = XMFLOAT3(2.0f, 3.0f, 4.0f);
+    environment_desc.influence_extent = XMFLOAT3(2.0f, 3.0f, 4.0f);
     environment_desc.resolution = 64;
     environment_desc.view_distance = 50.0f;
     environment_desc.update_interval = 0.25f;
@@ -442,8 +453,14 @@ inline bool probe_lighting_bridge(wi::scene::Scene& scene) {
             scene.weather.skyExposure == 1.25f && scene.weather.fogDensity == 0.02f && scene.weather.IsHeightFog(),
             "lighting applies validated sky and fog policy") ||
         !check(bridge.environment_matches(environment, environment_desc), "lighting configures environment probe") ||
-        !check(!bridge.create_environment(NativeEnvironmentProbeDesc{XMFLOAT3(0, 0, 0), 63, 1.0f, 0.0f, false, false}).owner,
-            "lighting rejects invalid environment")) return false;
+        !check([&] {
+            NativeEnvironmentProbeDesc invalid_environment;
+            invalid_environment.resolution = 63;
+            NativeEnvironmentProbeDesc invalid_extent;
+            invalid_extent.influence_extent = XMFLOAT3(1.0f, 0.0f, 1.0f);
+            return !bridge.create_environment(invalid_environment).owner &&
+                !bridge.create_environment(invalid_extent).owner;
+        }(), "lighting rejects invalid environment")) return false;
     if (!check(bridge.destroy_light(spot_handle) && !bridge.live(spot_handle) &&
         bridge.destroy_light(point_handle) && bridge.destroy_environment(environment) &&
         scene.lights.GetCount() == lights_before, "lighting unloads resources")) return false;

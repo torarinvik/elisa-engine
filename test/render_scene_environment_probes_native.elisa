@@ -5,7 +5,8 @@ module RenderSceneEnvironmentProbeNativeTests:
     private:
         @callconv(c)
         extern elisa_render_scene_v1_test_environment_probe_matches(
-            px: f32, py: f32, pz: f32, resolution: i32, view_distance: f32,
+            px: f32, py: f32, pz: f32, extent_x: f32, extent_y: f32, extent_z: f32,
+            resolution: i32, view_distance: f32,
             update_interval: f32, realtime: i32, multisampled: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_test_environment_probe_count() -> i32
@@ -16,7 +17,9 @@ module RenderSceneEnvironmentProbeNativeTests:
 
         def native_probe_matches(probe: Lighting::EnvironmentProbe) -> bool:
             elisa_render_scene_v1_test_environment_probe_matches(
-                probe.position.x, probe.position.y, probe.position.z, probe.resolution,
+                probe.position.x, probe.position.y, probe.position.z,
+                probe.influence_extent.x, probe.influence_extent.y, probe.influence_extent.z,
+                probe.resolution,
                 probe.view_distance, probe.update_interval,
                 1 if probe.realtime else 0, 1 if probe.multisampled else 0) == 1
 
@@ -45,6 +48,7 @@ module RenderSceneEnvironmentProbeNativeTests:
 
             updated: mutable Lighting::EnvironmentProbe = initial
             updated.position <- Geometry::Vec3{x: 2.0, y: 3.0, z: 4.0}
+            updated.influence_extent <- Geometry::Vec3{x: 2.0, y: 3.0, z: 4.0}
             updated.resolution <- 64
             updated.view_distance <- 50.0
             updated.realtime <- true
@@ -65,6 +69,14 @@ module RenderSceneEnvironmentProbeNativeTests:
                 error failure: return 36
             return 37 if not native_probe_matches(moved) or elisa_render_scene_v1_test_environment_probe_is_dirty() != 1
 
+            widened: mutable Lighting::EnvironmentProbe = moved
+            widened.influence_extent <- Geometry::Vec3{x: 8.0, y: 6.0, z: 4.0}
+            _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
+            _ = catch RenderScene::update_environment_probe(handle, widened):
+                ok: 0
+                error failure: return 38
+            return 39 if not native_probe_matches(widened) or elisa_render_scene_v1_test_environment_probe_is_dirty() != 0
+
             _ = elisa_render_scene_v1_test_environment_probe_clear_dirty()
             _ = catch RenderScene::refresh_environment_probe(handle):
                 ok: 0
@@ -76,7 +88,7 @@ module RenderSceneEnvironmentProbeNativeTests:
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
-            return 11 if rejected_update != 1 or not native_probe_matches(moved)
+            return 11 if rejected_update != 1 or not native_probe_matches(widened)
             return 12 if destroy_status(handle) != 0
             return 13 if elisa_render_scene_v1_test_environment_probe_count() != 0
             stale: i32 = catch RenderScene::destroy_environment_probe(handle):

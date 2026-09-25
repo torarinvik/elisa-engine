@@ -122,6 +122,9 @@ def main() -> i32:
     return 12 if Lighting::environment_valid(environment)
     probe: mutable Lighting::EnvironmentProbe = Lighting::EnvironmentProbe()
     return 48 if not Lighting::environment_probe_valid(probe)
+    probe.influence_extent <- Geometry::Vec3{x: 0.0, y: 1.0, z: 1.0}
+    return 54 if Lighting::environment_probe_valid(probe)
+    probe.influence_extent <- Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}
     probe.resolution <- 63
     return 49 if Lighting::environment_probe_valid(probe)
     probe.resolution <- 64
