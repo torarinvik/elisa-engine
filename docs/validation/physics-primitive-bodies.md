@@ -13,7 +13,10 @@ Each body descriptor also carries an initial `Geometry::Quat` orientation.
 body's position and rotation after creation and simulation. The native boundary
 converts both directions between Elisa's right-handed coordinates and Wicked's
 left-handed coordinates. Primitive, reusable mesh, and compound-body creation
-all apply the authored orientation.
+all apply the authored orientation. Non-finite or degenerate quaternions are
+rejected before allocating a body slot; the primitive probe checks both direct
+and shared-shape creation. A rotated-box raycast checks that the physics query
+uses the authored orientation.
 The ABI keeps Wicked and Jolt types private. Zero-cylinder capsules map to
 spheres because Jolt rejects zero-height capsules. Direct bodies scale unit
 shapes and keep scene-query proxy geometry aligned with their physics shape.
@@ -166,6 +169,9 @@ Validation on 2026-09-25:
   creation and after a fixed simulation step, using a non-spherical box so its
   orientation is physically observable. It passes with rotated inertia through
   the `RuntimeServices` pose getter.
+- `test/physics_primitives_native.elisa` passes with regressions for degenerate
+  direct and shared-shape quaternions and a ray through a rotated box. The ray
+  would miss if the native body ignored its authored orientation.
 - The complete eleven-fixture `scripts/application_native_smoke.py` run passed
   against Wicked commit `23ecbb9` after adding `physics-inertia-smoke`; that
   fixture round-trips a rotated principal frame through Jolt. Its 30 Hz and
