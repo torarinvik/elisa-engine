@@ -8,10 +8,12 @@ pass the focused SDL3/Metal native smoke on macOS. P02 remains open.
 `BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its
 radius. Capsule uses `x` as its radius and `y` as the half-height of its
 straight cylindrical section. Unused sphere/capsule dimensions must be zero.
-Each body descriptor also carries an initial `Geometry::Quat` orientation.
+Each body descriptor also carries an initial `Geometry::Quat` orientation in
+`(x, y, z, w)` order. Use `Geometry::quat_identity()` for an unrotated body.
 `PhysicsRuntime::body_pose` and `RuntimeServices::physics_body_pose` return the
-body's position and rotation after creation and simulation. The native boundary
-converts both directions between Elisa's right-handed coordinates and Wicked's
+body's position and rotation after creation and simulation; `body_position`
+remains the position-only convenience getter. The native boundary converts
+both directions between Elisa's right-handed coordinates and Wicked's
 left-handed coordinates. Primitive, reusable mesh, and compound-body creation
 all apply the authored orientation. Non-finite or degenerate quaternions are
 rejected before allocating a body slot; the primitive probe checks both direct
