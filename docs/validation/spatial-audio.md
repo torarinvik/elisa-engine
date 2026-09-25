@@ -83,6 +83,10 @@ Evidence:
   - NaN or infinite position, velocity, range, cone, and occlusion are rejected;
   - a caller-supplied `live: false` is stored as live;
   - a rejected update leaves the stored source unchanged.
+- `test/world_audio_physics_probe.elisa` is a focused Jolt regression run by
+  its own hidden SDL3/Metal application fixture. It inserts a selected-layer
+  blocker between listener and emitter, verifies the configured 0.65 attenuation,
+  removes the body, and verifies occlusion returns to zero.
 - `test/world_audio_probe.elisa` runs inside the SDL3/Metal application smoke
   with the silent miniaudio route. It checks:
   - rejected attachments (empty voice, zero forward, NaN or inverted range,
@@ -98,24 +102,11 @@ Evidence:
   - an externally stopped voice is unbound as finished;
   - listener loss, invalid time steps, and repeated detach are handled.
 
-`WorldAudio::update_with_physics` now derives occlusion with a ray from the
-tracked listener to each emitter. The caller supplies the occluder layer mask
-and attenuation strength so listener/emitter bodies can be excluded by layer.
-Blocked rays use that strength; unobstructed rays reset occlusion to zero.
-`set_occlusion` remains available for caller-computed values. The mix is gain
-and pitch only, with no stereo panning or HRTF. `WorldAudio` does not submit
-native source positions, so native distance attenuation stays neutral and is
-not applied twice. Physics occlusion performs one ray per emitter per update
-and uses one caller-selected strength; transmission, diffraction, and room
-effects remain part of S04.
-
-Validation on 2026-09-25 (macOS 27.0 / Apple M5, SDL3/Metal):
-
-- `test/world_audio_physics_native_main.elisa` opened a RuntimeServices session
-  with Jolt and miniaudio fallbacks, then verified a category-filtered Jolt
-  blocker applies 0.65 occlusion and removing it clears occlusion to zero.
-- `scripts/check_source_length.py`, `scripts/check_module_hygiene.py`, and
-  `git diff --check` passed.
+Limits: physics occlusion performs one ray per emitter per update and uses a
+single caller-selected strength; transmission, diffraction and room effects
+remain part of S04. The mix is gain and pitch only, with no stereo panning or
+HRTF. `WorldAudio` does not submit native source positions, so native distance
+attenuation stays neutral and is not applied twice.
 
 This slice also exposed a stage1 compiler miscompile. Passing `&name`, where
 `name` is already a reference parameter, silently binds the parameter's own
@@ -140,11 +131,14 @@ Validation on 2026-09-21 (macOS 27.0 / Apple M5, SDL3/Metal):
   passed, including both proof suites (17/17 and 6/6 certificates replayed).
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`,
   and `git diff --check` passed.
-- On 2026-09-25, the complete eight-fixture SDL3/Metal
+- On 2026-09-25, the complete ten-fixture SDL3/Metal
   `scripts/application_native_smoke.py` suite passed with the selected Wicked
-  SDL3 backend. Its world-audio fixture places a Jolt box between listener and
-  source, verifies attenuation, removes the box, and verifies the clear-ray
-  mix is restored. It also externally stops a live voice, verifies it leaves
-  the native active-voice count immediately, and confirms the following Elisa
-  update reports exactly one finished detach with no remaining binding.
-  Source-length and module-hygiene checks passed.
+  SDL3 backend and a fresh stage1 compiler product plus its matching runtime
+  wrapper. Its dedicated WorldAudio Jolt fixture verifies attenuation from a
+  selected-layer blocker and clear-ray restoration after removal. The attached-
+  voice fixture also checks despawn, listener loss and finished-voice cleanup;
+  an externally stopped voice leaves the native active-voice count immediately,
+  and the following Elisa update reports exactly one finished detach with no
+  remaining binding. The per-body material fixture verifies full-restitution
+  rebound. The 30 Hz and 120 Hz render captures match at 640x480. Source-length,
+  module-hygiene and whitespace checks passed.
