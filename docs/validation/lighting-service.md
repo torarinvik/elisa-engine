@@ -39,10 +39,13 @@ render-scene gate additionally tests public probe creation, descriptor updates,
 position-only invalidation, explicit refresh, invalid update atomicity, stale
 handles after slot reuse, all eight slots, overflow, and complete destruction.
 On 2026-09-25, the isolated engine's SDL3/Metal render-only smoke passed with a
-fresh stage1 compiler product and matching runtime wrapper. Probes are currently
-verified through Wicked component state and dirty-capture behavior, while a
-dedicated rendered reflection comparison and non-Metal runtime checks remain
-open.
+fresh stage1 compiler product and matching runtime wrapper. The probe fixture
+checks influence-extent updates without recapture, captures a red emissive box
+into a static probe, and requires the resulting metallic sphere to change a 5×5
+rendered patch by at least 0.01 mean luminance. It then hides the source, changes
+it to blue, explicitly refreshes the probe, and requires the sphere image to
+change again by the same threshold. This verifies rendered reflections and
+refresh on Metal; non-Metal runtime checks remain open.
 
 The SDL3/Metal render-scene smoke also moves a point light between two positions
 over the same painted panel. It samples the Wicked 3D render result before and

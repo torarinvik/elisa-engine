@@ -1,0 +1,135 @@
+include "../src/runtime/render_scene_environment_probes.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneEnvironmentProbeRenderNativeTests:
+    private:
+        const MINIMUM_REFLECTION_CHANGE: f32 = 0.01
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_lighting_frame_change(capture_reference: i32) -> f32
+
+        def pump_frames(count: i32) -> i32:
+            for frame in 0..<count:
+                return 1 if Application::pump() != Application::PumpStatus.Running
+            0
+
+        def destroy_instance(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::destroy(handle):
+                ok: 0
+                error failure: 1
+
+        def verify_capture_refresh(source: RenderScene::InstanceHandle,
+            probe: RenderScene::EnvironmentProbeHandle) -> i32:
+            reference: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 15 if reference < 0.0
+            _ = catch RenderScene::set_emissive(source, RenderScene::Emission{
+                color: Geometry::Vec3{x: 0.02, y: 0.02, z: 1.0}, strength: 5.0}):
+                ok: 0
+                error failure: return 16
+            _ = catch RenderScene::set_visible(source, true):
+                ok: true
+                error failure: return 17
+            _ = catch RenderScene::refresh_environment_probe(probe):
+                ok: 0
+                error failure: return 18
+            return 19 if pump_frames(1) != 0
+            _ = catch RenderScene::set_visible(source, false):
+                ok: true
+                error failure: return 20
+            return 21 if pump_frames(3) != 0
+            changed: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 22 if changed < 0.0
+            return 23 if changed < MINIMUM_REFLECTION_CHANGE
+            0
+
+    public:
+        def exercise() -> i32:
+            environment_status: i32 = catch RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::vec3_zero(),
+                sun_direction: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0},
+                ambient: Geometry::vec3_zero(),
+                sky_exposure: 0.0,
+                fog_color: Geometry::vec3_zero(),
+                fog_start: 0.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            }):
+                ok: 0
+                error failure: 1
+            return 1 if environment_status != 0
+            _ = catch RenderScene::set_sun_shadows(false):
+                ok: 0
+                error failure: return 2
+            _ = catch RenderScene::set_camera_orthographic_height(8.0):
+                ok: 0
+                error failure: return 3
+            _ = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 8.0, z: 8.0},
+                Geometry::Vec3{x: 0.0, y: 0.7, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: return 4
+
+            source: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box,
+                Geometry::Transform{position: Geometry::Vec3{x: -2.0, y: 0.7, z: 0.0},
+                    rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 0.55, y: 0.55, z: 0.55}},
+                RenderScene::Color{red: 1.0, green: 0.02, blue: 0.02, alpha: 1.0}):
+                value: value
+                error failure: return 5
+            target: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Sphere,
+                Geometry::Transform{position: Geometry::Vec3{x: 2.0, y: 0.8, z: 0.0},
+                    rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 0.8, y: 0.8, z: 0.8}},
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 6
+            _ = catch RenderScene::set_lit_material(source, 0.7, 0.0):
+                ok: 0
+                error failure: return 7
+            _ = catch RenderScene::set_emissive(source, RenderScene::Emission{
+                color: Geometry::Vec3{x: 1.0, y: 0.02, z: 0.02}, strength: 5.0}):
+                ok: 0
+                error failure: return 8
+            _ = catch RenderScene::set_lit_material(target, 0.03, 1.0):
+                ok: 0
+                error failure: return 9
+            return 10 if pump_frames(3) != 0
+            _ = catch RenderScene::set_visible(source, false):
+                ok: true
+                error failure: return 11
+            return 12 if pump_frames(3) != 0
+            baseline: f32 = elisa_render_scene_v1_test_lighting_frame_change(1)
+            return 13 if baseline < 0.0
+
+            _ = catch RenderScene::set_visible(source, true):
+                ok: true
+                error failure: return 24
+            probe_desc: mutable Lighting::EnvironmentProbe = Lighting::EnvironmentProbe()
+            probe_desc.position <- Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}
+            probe_desc.influence_extent <- Geometry::Vec3{x: 8.0, y: 8.0, z: 8.0}
+            probe_desc.resolution <- 64
+            probe_desc.view_distance <- 30.0
+            probe: RenderScene::EnvironmentProbeHandle = catch RenderScene::create_environment_probe(probe_desc):
+                value: value
+                error failure: return 14
+            return 25 if pump_frames(3) != 0
+            _ = catch RenderScene::set_visible(source, false):
+                ok: true
+                error failure: return 26
+            return 27 if pump_frames(3) != 0
+            reflection_change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 28 if reflection_change < 0.0
+            return 29 if reflection_change < MINIMUM_REFLECTION_CHANGE
+
+            refresh_status: i32 = verify_capture_refresh(source, probe)
+            return refresh_status if refresh_status != 0
+            _ = catch RenderScene::destroy_environment_probe(probe):
+                ok: 0
+                error failure: return 30
+            return 31 if destroy_instance(target) != 0
+            return 32 if destroy_instance(source) != 0
+            _ = catch RenderScene::set_sun_shadows(true):
+                ok: 0
+                error failure: return 33
+            0
