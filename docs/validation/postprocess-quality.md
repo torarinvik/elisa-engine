@@ -19,7 +19,18 @@ including fog and temporal-AA state. The probe restores the original scene
 weather after the check. The render-scene smoke also verifies both TAA history
 textures match the active internal resolution after a 0.75-to-0.5 render-scale
 transition, are released when TAA is disabled, and are recreated at the new size
-when TAA is re-enabled. Measured GPU/VRAM costs remain open R07 work.
+when TAA is re-enabled.
+
+The same smoke captures the High and Low profiles after three settling frames,
+then restores the prior profile and rechecks its TAA history. The checked-in
+references in `docs/validation/references/postprocess/` are SDL3/Metal captures
+reduced to 160x100 with nearest-neighbour sampling. The comparison uses the
+shared image metric with per-channel peak tolerance 0.35 and mean tolerance
+0.025, allowing device-level shading variation while detecting missing effects
+or a profile rendered with the wrong settings. The Low reference visibly uses
+the lower render scale; the High reference retains the full internal detail.
+These images validate rendered profile output, while measured GPU/VRAM costs
+remain open R07 work.
 
 The public `RenderScene` API also exposes direct SSAO and FXAA toggles for
 applications that manage a scene without the backend profile bridge. The
@@ -41,9 +52,17 @@ and receiver bias before changing native state.
 Low/Medium/High presets select 512/1024/2048-pixel 2D maps and a
 quarter-resolution cube map; profile presets include the same shadow tier.
 
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — SDL3/Metal render-scene smoke exited 0, including the history-resource transitions and authored lighting/material image checks.
+To refresh the profile references from a native capture, set
+`ELISA_UPDATE_POSTPROCESS_REFERENCES=1` for the render-scene smoke. To compare
+against the checked-in images without changing them, run
+`python3 scripts/compare_postprocess_references.py` after the smoke. The
+comparison script also accepts `--capture-dir`, `--reference-dir`, and
+`--update` for focused use.
+
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 ELISA_UPDATE_POSTPROCESS_REFERENCES=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — builds High/Low captures, updates the reduced references, and runs all render-scene assertions and image comparisons.
+- `/opt/homebrew/bin/python3.14 scripts/compare_postprocess_references.py` — compares the most recent High/Low captures against the checked-in references.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh elisascript scripts/check.elisascript` — full shared suite exited 0; both Elisa Proof suites proved all 23 obligations with certificate replay.
 - `/opt/homebrew/bin/python3 scripts/check_source_length.py`, `/opt/homebrew/bin/python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-This verifies setting changes reach Wicked's runtime state; authored image
-references and measured GPU/VRAM costs remain R07 work.
+This verifies profile changes reach Wicked's runtime state and rendered output;
+measured GPU/VRAM costs remain R07 work.

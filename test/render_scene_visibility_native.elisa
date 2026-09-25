@@ -16,6 +16,11 @@ module RenderSceneVisibilityNativeTests:
                 ok: 0
                 error failure: 1
 
+        def show_instance(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::set_visible(handle, true):
+                ok: 0
+                error failure: 1
+
         def exercise(handle: RenderScene::InstanceHandle) -> i32:
             policy: RenderScene::VisibilityPolicy = RenderScene::VisibilityPolicy(
                 DRAW_DISTANCE, LOD_BIAS, LAYER_MASK, false)
@@ -52,4 +57,12 @@ module RenderSceneVisibilityNativeTests:
             return 7 if disable_occlusion != 0
             return 8 if elisa_render_scene_v1_test_visibility_policy(raw_handle,
                 1000.0, 0.0, 4294967295, 1, 0) != 1
+            0
+
+        def restore_hidden_instances(box: RenderScene::InstanceHandle,
+            sphere: RenderScene::InstanceHandle,
+            floor: RenderScene::InstanceHandle) -> i32:
+            return 9 if show_instance(box) != 0
+            return 10 if show_instance(sphere) != 0
+            return 11 if show_instance(floor) != 0
             0

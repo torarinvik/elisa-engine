@@ -1,6 +1,9 @@
 # Native smoke coverage for the public presentation quality controls.
 module RenderSceneQualitySettingsNativeTests:
     private:
+        const module Limits:
+            SETTLE_FRAME_COUNT: i32 = 3
+
         @callconv(c)
         extern elisa_render_scene_v1_test_postprocess_matches(tonemap: i32, exposure: f32) -> i32
 
@@ -23,6 +26,18 @@ module RenderSceneQualitySettingsNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_temporal_history_resources(
             expected_scale: f32, expected_valid: i32) -> i32
+
+        def capture_profile(profile: Quality::Profile&, variable: cstr,
+            failure_code: i32) -> i32:
+            applied: i32 = catch RenderScene::apply_quality_profile(profile):
+                ok: 0
+                error failure: return failure_code
+            return failure_code + 1 if applied != 0
+            for frame in 0..<Limits::SETTLE_FRAME_COUNT:
+                return failure_code + 2 if Application::pump() != Application::PumpStatus.Running
+            capture_path: cstr = Application::environment_value(variable)
+            return failure_code + 3 if capture_path != "" and not Application::save_screenshot(capture_path)
+            0
 
     public:
         def exercise() -> i32:
@@ -128,4 +143,15 @@ module RenderSceneQualitySettingsNativeTests:
                 error failure: 1
             return 125 if temporal_restored != 0 or Application::pump() != Application::PumpStatus.Running
             return 126 if elisa_render_scene_v1_test_temporal_history_resources(0.75, 1) != 1
+            high_profile: mutable Quality::Profile = Quality::high()
+            high_capture: i32 = capture_profile(&high_profile,
+                "ELISA_POSTPROCESS_HIGH_CAPTURE", 127)
+            return high_capture if high_capture != 0
+            low_profile: mutable Quality::Profile = Quality::low()
+            low_capture: i32 = capture_profile(&low_profile,
+                "ELISA_POSTPROCESS_LOW_CAPTURE", 131)
+            return low_capture if low_capture != 0
+            restored_profile: i32 = capture_profile(&profile, "", 135)
+            return restored_profile if restored_profile != 0
+            return 136 if elisa_render_scene_v1_test_temporal_history_resources(0.75, 1) != 1
             0
