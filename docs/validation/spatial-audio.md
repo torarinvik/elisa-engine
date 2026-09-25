@@ -46,6 +46,12 @@ Native code receives only a per-voice gain and Doppler pitch ratio:
   sets `listener_lost`.
 - `set_occlusion` feeds a caller-computed occlusion value in [0, 1]. `detach`
   stops the voice before unlinking it, so a failed stop can be retried.
+- `update_with_physics` refreshes world transforms and derives occlusion with
+  one filtered physics ray from the listener to each emitter. The caller chooses
+  a nonzero layer mask and occlusion strength; a hit between the endpoints
+  applies that strength, while a miss or a hit at the source endpoint leaves
+  the source unobstructed. This keeps acoustic filtering in Elisa and lets a
+  game select which physics categories can block sound without a native shim.
 
 The native mixer gets `elisa_audio_v1_set_voice_spatial(slot, generation, gain,
 pitch_ratio)`. It accepts only finite values, gain in [0, 1], pitch in
@@ -86,6 +92,8 @@ Evidence:
     gain, while one beyond its range is silent;
   - a hitch step resets velocity;
   - valid occlusion is applied, and NaN or unknown-entity occlusion is rejected;
+  - a real Jolt body on the selected layer attenuates a source ray, then removal
+    of that body restores the unobstructed mix;
   - a despawned entity's voice is stopped and unbound;
   - an externally stopped voice is unbound as finished;
   - listener loss, invalid time steps, and repeated detach are handled.
@@ -95,9 +103,11 @@ tracked listener to each emitter. The caller supplies the occluder layer mask
 and attenuation strength so listener/emitter bodies can be excluded by layer.
 Blocked rays use that strength; unobstructed rays reset occlusion to zero.
 `set_occlusion` remains available for caller-computed values. The mix is gain
-and pitch only, with no stereo panning or HRTF (S04). `WorldAudio` does not
-submit native source positions, so native distance attenuation stays neutral
-and is not applied twice.
+and pitch only, with no stereo panning or HRTF. `WorldAudio` does not submit
+native source positions, so native distance attenuation stays neutral and is
+not applied twice. Physics occlusion performs one ray per emitter per update
+and uses one caller-selected strength; transmission, diffraction, and room
+effects remain part of S04.
 
 Validation on 2026-09-25 (macOS 27.0 / Apple M5, SDL3/Metal):
 
@@ -130,3 +140,8 @@ Validation on 2026-09-21 (macOS 27.0 / Apple M5, SDL3/Metal):
   passed, including both proof suites (17/17 and 6/6 certificates replayed).
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`,
   and `git diff --check` passed.
+- On 2026-09-25, the complete eight-fixture SDL3/Metal
+  `scripts/application_native_smoke.py` suite passed with the selected Wicked
+  SDL3 backend. Its world-audio fixture places a Jolt box between listener and
+  source, verifies attenuation, removes the box, and verifies the clear-ray
+  mix is restored. Source-length and module-hygiene checks passed.
