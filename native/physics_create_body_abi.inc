@@ -6,6 +6,7 @@ constexpr float ZERO_DIMENSION = 0.0f;
 constexpr float ZERO_MASS = 0.0f;
 constexpr float UNIT_SHAPE_RADIUS = 1.0f;
 constexpr float UNIT_BOX_HALF_EXTENT = 1.0f;
+constexpr double MIN_BODY_CREATE_ROTATION_LENGTH = 1.0e-6;
 constexpr int32_t SENSOR_DISABLED = 0;
 constexpr int32_t SENSOR_ENABLED = 1;
 constexpr uint32_t CAPSULE_RING_COUNT = CAPSULE_HEMISPHERE_STEPS * 2 + 2;
@@ -68,6 +69,7 @@ wi::ecs::Entity create_capsule_proxy(wi::scene::Scene& scene, const std::string&
 extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     int32_t shape,
     float position_x, float position_y, float position_z,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w,
     float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor, uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation) {
@@ -77,6 +79,8 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         collision_layer >= wi::physics::COLLISION_LAYER_COUNT ||
         (sensor != SENSOR_DISABLED && sensor != SENSOR_ENABLED) ||
         !std::isfinite(position_x) || !std::isfinite(position_y) || !std::isfinite(position_z) ||
+        !std::isfinite(rotation_x) || !std::isfinite(rotation_y) ||
+        !std::isfinite(rotation_z) || !std::isfinite(rotation_w) ||
         std::fabs(position_x) > MAX_POSITION || std::fabs(position_y) > MAX_POSITION ||
         std::fabs(position_z) > MAX_POSITION || !std::isfinite(dimension_x) ||
         !std::isfinite(dimension_y) || !std::isfinite(dimension_z) ||
@@ -85,6 +89,13 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         dimension_z < ZERO_DIMENSION || dimension_z > MAX_HALF_EXTENT || !std::isfinite(mass) ||
         mass < ZERO_MASS || mass > MAX_MASS ||
         (kind == ELISA_PHYSICS_BODY_DYNAMIC && mass <= ZERO_MASS)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    const double rotation_length = std::sqrt(double(rotation_x) * rotation_x +
+        double(rotation_y) * rotation_y + double(rotation_z) * rotation_z +
+        double(rotation_w) * rotation_w);
+    if (!std::isfinite(rotation_length) ||
+        rotation_length <= MIN_BODY_CREATE_ROTATION_LENGTH) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     if ((shape == ELISA_PHYSICS_SHAPE_BOX &&
@@ -133,7 +144,8 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         }
         const ElisaCoordinateProfile profile = elisa_coordinate_profile();
         const ElisaTransformPayload authored{{position_x, position_y, position_z},
-            {0.0f, 0.0f, 0.0f, 1.0f}, {scale_x, scale_y, scale_z}};
+            {rotation_x, rotation_y, rotation_z, rotation_w},
+            {scale_x, scale_y, scale_z}};
         if (!probe::submit_elisa_transform(&profile, &authored, transform)) {
             state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_INVALID_ARGUMENT;
@@ -188,7 +200,8 @@ extern "C" int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_
     int32_t sensor,
     uint32_t* slot, uint64_t* body_generation) {
     return elisa_physics_v1_create_body(world_generation, kind, ELISA_PHYSICS_SHAPE_BOX,
-        position_x, position_y, position_z, half_x, half_y, half_z, mass, sensor,
+        position_x, position_y, position_z, 0.0f, 0.0f, 0.0f, 1.0f,
+        half_x, half_y, half_z, mass, sensor,
         0,
         slot, body_generation);
 }

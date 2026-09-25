@@ -84,6 +84,7 @@ module WorldAudioProbe:
                     kind: PhysicsRuntime::BodyKind.Static,
                     shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.5},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Tune::OCCLUDER_HALF_EXTENT,
                         y: Tune::OCCLUDER_HALF_EXTENT, z: Tune::OCCLUDER_HALF_EXTENT},
                     mass: 0.0,

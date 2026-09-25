@@ -37,6 +37,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
                     position: Geometry::Vec3{x: Fixture::SPHERE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -52,6 +53,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Sphere,
                     position: Geometry::Vec3{x: Fixture::SPHERE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -63,6 +65,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Capsule,
                     position: Geometry::Vec3{x: Fixture::CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Fixture::CAPSULE_RADIUS, y: Fixture::CAPSULE_CYLINDER_HALF_HEIGHT, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -73,6 +76,7 @@ module PhysicsPrimitiveProbe:
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     shape: PhysicsRuntime::BodyShape.Capsule,
                     position: Geometry::Vec3{x: Fixture::ZERO_CAPSULE_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: Fixture::SPHERE_RADIUS, y: 0.0, z: 0.0},
                     mass: 1.0,
                     sensor: false,
@@ -85,6 +89,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -93,6 +98,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_B_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -140,6 +146,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: Fixture::SHARED_SPHERE_A_X, y: Fixture::START_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -206,6 +213,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: Fixture::COMPOUND_BODY_X, y: Fixture::COMPOUND_BODY_Y, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -265,6 +273,7 @@ module PhysicsPrimitiveProbe:
                     PhysicsRuntime::BodyInstanceDesc{
                         kind: PhysicsRuntime::BodyKind.Static,
                         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                        rotation: Geometry::quat_identity(),
                         mass: 0.0,
                         sensor: false,
                         collision_layer: 0,
@@ -276,6 +285,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -328,6 +338,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -360,6 +371,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,
@@ -376,6 +388,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Static,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 0.0,
                     sensor: false,
                     collision_layer: 0,
@@ -405,6 +418,7 @@ module PhysicsPrimitiveProbe:
                 PhysicsRuntime::BodyInstanceDesc{
                     kind: PhysicsRuntime::BodyKind.Dynamic,
                     position: Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     mass: 1.0,
                     sensor: false,
                     collision_layer: 0,

@@ -162,6 +162,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 
 #include "physics_create_body_abi.inc"
 #include "physics_reusable_shape_abi.inc"
+#include "physics_reusable_body_abi.inc"
 #include "physics_compound_shape_abi.inc"
 #include "physics_body_motion_abi.inc"
 #include "physics_body_material_abi.inc"
@@ -443,6 +444,35 @@ extern "C" int32_t elisa_physics_v1_body_position(uint64_t world_generation,
     *x = pose.position[0];
     *y = pose.position[1];
     *z = pose.position[2];
+    return ELISA_PHYSICS_OK;
+}
+
+extern "C" int32_t elisa_physics_v1_body_pose(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, float* position_x, float* position_y,
+    float* position_z, float* rotation_x, float* rotation_y, float* rotation_z,
+    float* rotation_w) {
+    if (position_x == nullptr || position_y == nullptr || position_z == nullptr ||
+        rotation_x == nullptr || rotation_y == nullptr || rotation_z == nullptr ||
+        rotation_w == nullptr) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    const wi::scene::TransformComponent* transform =
+        state.scene->transforms.GetComponent(body->entity);
+    ElisaTransformPayload pose{};
+    const ElisaCoordinateProfile profile = elisa_coordinate_profile();
+    if (!probe::read_elisa_transform(&profile, transform, &pose)) {
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+    *position_x = pose.position[0];
+    *position_y = pose.position[1];
+    *position_z = pose.position[2];
+    *rotation_x = pose.rotation_xyzw[0];
+    *rotation_y = pose.rotation_xyzw[1];
+    *rotation_z = pose.rotation_xyzw[2];
+    *rotation_w = pose.rotation_xyzw[3];
     return ELISA_PHYSICS_OK;
 }
 

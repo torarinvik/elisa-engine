@@ -121,6 +121,7 @@ int32_t elisa_physics_v1_create_box(uint64_t world_generation, int32_t kind,
 int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     int32_t shape,
     float position_x, float position_y, float position_z,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w,
     float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor, uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation);
@@ -141,7 +142,9 @@ int32_t elisa_physics_v1_create_compound_shape(uint64_t world_generation,
 int32_t elisa_physics_v1_destroy_shape(uint64_t world_generation,
     uint32_t slot, uint64_t shape_generation);
 int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_generation, int32_t kind,
-    float position_x, float position_y, float position_z, float mass, int32_t sensor,
+    float position_x, float position_y, float position_z,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w,
+    float mass, int32_t sensor,
     uint32_t collision_layer,
     uint32_t shape_slot, uint64_t shape_generation,
     uint32_t* body_slot, uint64_t* body_generation);
@@ -197,6 +200,9 @@ int32_t elisa_physics_v1_contact_at(uint64_t world_generation, uint32_t index,
 int32_t elisa_physics_v1_clear_contacts(uint64_t world_generation);
 int32_t elisa_physics_v1_body_position(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, float* x, float* y, float* z);
+int32_t elisa_physics_v1_body_pose(uint64_t world_generation, uint32_t slot,
+    uint64_t body_generation, float* position_x, float* position_y, float* position_z,
+    float* rotation_x, float* rotation_y, float* rotation_z, float* rotation_w);
 int32_t elisa_physics_v1_set_sleeping(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, int32_t sleeping);
 int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generation, uint32_t slot,

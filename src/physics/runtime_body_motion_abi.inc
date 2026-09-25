@@ -44,3 +44,4 @@
             status: i32 = elisa_physics_v1_body_apply_impulse(world_generation,
                 body.slot, body.generation, impulse.x, impulse.y, impulse.z)
             try check_status(status)
+        include "./runtime_body_pose_abi.inc"

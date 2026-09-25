@@ -38,6 +38,7 @@ module PhysicsRuntime:
         extern elisa_physics_v1_create_body(world_generation: u64, kind: i32,
             shape: i32,
             position_x: f32, position_y: f32, position_z: f32,
+            rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32,
             dimension_x: f32, dimension_y: f32, dimension_z: f32, mass: f32,
             sensor: i32, collision_layer: u32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
@@ -205,6 +206,7 @@ module PhysicsRuntime:
             kind: BodyKind
             shape: BodyShape
             position: Geometry::Vec3
+            rotation: Geometry::Quat
             # Box: half-extents. Sphere: x is radius. Capsule: x is radius,
             # y is the half-height of its straight cylindrical section.
             dimensions: Geometry::Vec3
@@ -212,6 +214,7 @@ module PhysicsRuntime:
             sensor: bool
             collision_layer: u32
 
+        include "./runtime_body_pose_types.inc"
         struct PhysicsMaterial:
             private:
                 friction: f32

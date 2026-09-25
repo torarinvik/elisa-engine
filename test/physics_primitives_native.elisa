@@ -18,6 +18,7 @@ module PhysicsPrimitivesNative:
                     kind: PhysicsRuntime::BodyKind.Static,
                     shape: PhysicsRuntime::BodyShape.Box,
                     position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+                    rotation: Geometry::quat_identity(),
                     dimensions: Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5},
                     mass: 0.0,
                     sensor: false,

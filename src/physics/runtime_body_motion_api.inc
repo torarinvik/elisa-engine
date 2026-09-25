@@ -27,3 +27,4 @@
             body: BodyHandle, impulse: Geometry::Vec3) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             try native_body_apply_impulse(world.generation, body, impulse)
+        include "./runtime_body_pose_api.inc"

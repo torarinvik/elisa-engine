@@ -8,6 +8,12 @@ pass the focused SDL3/Metal native smoke on macOS. P02 remains open.
 `BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its
 radius. Capsule uses `x` as its radius and `y` as the half-height of its
 straight cylindrical section. Unused sphere/capsule dimensions must be zero.
+Each body descriptor also carries an initial `Geometry::Quat` orientation.
+`PhysicsRuntime::body_pose` and `RuntimeServices::physics_body_pose` return the
+body's position and rotation after creation and simulation. The native boundary
+converts both directions between Elisa's right-handed coordinates and Wicked's
+left-handed coordinates. Primitive, reusable mesh, and compound-body creation
+all apply the authored orientation.
 The ABI keeps Wicked and Jolt types private. Zero-cylinder capsules map to
 spheres because Jolt rejects zero-height capsules. Direct bodies scale unit
 shapes and keep scene-query proxy geometry aligned with their physics shape.
@@ -156,6 +162,10 @@ Validation on 2026-09-25:
   SDL3/Metal. It checks invalid moments and rotations, `BodyNotReady` before
   creation, tensor-equivalent readback after Jolt reorders the 8/4/2 principal
   moments, and `ConfigurationLocked` on a late update.
+- The same probe now verifies the authored body quaternion immediately after
+  creation and after a fixed simulation step, using a non-spherical box so its
+  orientation is physically observable. It passes with rotated inertia through
+  the `RuntimeServices` pose getter.
 - The complete eleven-fixture `scripts/application_native_smoke.py` run passed
   against Wicked commit `23ecbb9` after adding `physics-inertia-smoke`; that
   fixture round-trips a rotated principal frame through Jolt. Its 30 Hz and
