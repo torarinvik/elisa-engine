@@ -246,12 +246,8 @@ public:
             direction.x * inverse_length, direction.y * inverse_length,
             direction.z * inverse_length);
         const wi::physics::RayIntersectionResult result = wi::physics::Intersects(
-            scene_, wi::primitive::Ray(origin, direction, 0.0f, max_distance));
+            scene_, wi::primitive::Ray(origin, direction, 0.0f, max_distance), layer_mask);
         if (!result.IsValid()) return false;
-        const wi::scene::LayerComponent* layer = scene_.layers.GetComponent(result.entity);
-        if (layer != nullptr && (layer->GetLayerMask() & layer_mask) == 0) {
-            return raycast(token, origin, direction, max_distance, layer_mask, hit);
-        }
         const XMFLOAT3 offset = XMFLOAT3(result.position.x - origin.x,
             result.position.y - origin.y, result.position.z - origin.z);
         const float distance = offset.x * unit_direction.x +
@@ -278,10 +274,22 @@ public:
             hits.values[hits.count++] = {
                 result.entity, result.position, result.normal, result.distance, 0.0f};
         }
-        PhysicsQueryHit physics_hit;
-        if (hits.count < MAX_HITS && raycast_physics(token, origin, direction,
-                max_distance, layer_mask, physics_hit) && !contains_entity(hits, physics_hit.entity)) {
-            hits.values[hits.count++] = physics_hit;
+        std::array<wi::physics::RayIntersectionResult, MAX_HITS> physics_results{};
+        const size_t physics_count = wi::physics::IntersectsAll(scene_, ray, layer_mask,
+            physics_results.data(), physics_results.size());
+        const float inverse_length = 1.0f / std::sqrt(length_squared(direction));
+        const XMFLOAT3 unit_direction = XMFLOAT3(direction.x * inverse_length,
+            direction.y * inverse_length, direction.z * inverse_length);
+        for (size_t index = 0; index < physics_count && hits.count < MAX_HITS; ++index) {
+            const auto& result = physics_results[index];
+            if (!result.IsValid() || contains_entity(hits, result.entity)) continue;
+            const XMFLOAT3 offset = XMFLOAT3(result.position.x - origin.x,
+                result.position.y - origin.y, result.position.z - origin.z);
+            const float distance = offset.x * unit_direction.x + offset.y * unit_direction.y +
+                offset.z * unit_direction.z;
+            if (!std::isfinite(distance) || distance < 0.0f || distance > max_distance) continue;
+            hits.values[hits.count++] = {
+                result.entity, result.position, result.normal, distance, 0.0f};
         }
         std::sort(hits.values.begin(), hits.values.begin() + hits.count,
             [](const PhysicsQueryHit& left, const PhysicsQueryHit& right) {

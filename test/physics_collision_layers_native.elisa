@@ -9,11 +9,11 @@ module PhysicsCollisionLayersNative:
             HEIGHT: i32 = 240
 
         def body(world: PhysicsRuntime::World&, kind: PhysicsRuntime::BodyKind,
-            layer: u32, position_x: f32) -> PhysicsRuntime::BodyHandle error[PhysicsRuntime::PhysicsError]:
+            layer: u32, position_x: f32, position_y: f32) -> PhysicsRuntime::BodyHandle error[PhysicsRuntime::PhysicsError]:
             try PhysicsRuntime::body_create(world, PhysicsRuntime::BodyDesc{
                 kind: kind,
                 shape: PhysicsRuntime::BodyShape.Box,
-                position: Geometry::Vec3{x: position_x, y: 0.0, z: 0.0},
+                position: Geometry::Vec3{x: position_x, y: position_y, z: 0.0},
                 dimensions: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
                 mass: 1.0 if kind == PhysicsRuntime::BodyKind.Dynamic else 0.0,
                 sensor: false,
@@ -53,11 +53,11 @@ module PhysicsCollisionLayersNative:
             return 6 if config_status != 0
 
             static_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Static, 0, 0.0):
+                &world, PhysicsRuntime::BodyKind.Static, 0, 0.0, 0.0):
                 value: value
                 error failure: return 7
             suppressed_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Dynamic, 1, 0.0):
+                &world, PhysicsRuntime::BodyKind.Dynamic, 1, 0.0, 0.0):
                 value: value
                 error failure: return 8
             locked_config: i32 = catch PhysicsRuntime::set_layer_collision(&world, 0, 1, true):
@@ -66,11 +66,19 @@ module PhysicsCollisionLayersNative:
                 error failure: 9
             return 10 if locked_config != 0
             query_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Static, 1, 4.0):
+                &world, PhysicsRuntime::BodyKind.Static, 1, 4.0, 0.0):
                 value: value
                 error failure: return 30
+            category_zero_query_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
+                &world, PhysicsRuntime::BodyKind.Static, 0, 4.0, 0.0):
+                value: value
+                error failure: return 46
+            query_upper_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
+                &world, PhysicsRuntime::BodyKind.Static, 1, 4.0, 4.0):
+                value: value
+                error failure: return 41
             allowed_body: PhysicsRuntime::BodyHandle = catch PhysicsCollisionLayersNative::body(
-                &world, PhysicsRuntime::BodyKind.Dynamic, 0, 0.0):
+                &world, PhysicsRuntime::BodyKind.Dynamic, 0, 0.0, 0.0):
                 value: value
                 error failure: return 11
 
@@ -79,17 +87,27 @@ module PhysicsCollisionLayersNative:
                 error failure: return 12
             return 13 if tick != 1
             category_zero_ray: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(&world,
-                Geometry::Vec3{x: 4.0, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 8.0, z: 0.0},
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 1):
                 value: value
                 error failure: return 22
-            return 23 if category_zero_ray.hit
+            return 23 if not category_zero_ray.hit
             category_one_ray: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(&world,
-                Geometry::Vec3{x: 4.0, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 8.0, z: 0.0},
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 2):
                 value: value
                 error failure: return 24
             return 25 if not category_one_ray.hit
+            return 48 if category_zero_ray.entity == category_one_ray.entity
+            category_one_all_rays: mutable PhysicsRuntime::RayHitBuffer = PhysicsRuntime::RayHitBuffer()
+            category_one_all_ray_count: usize = catch PhysicsRuntime::raycast_all(&world,
+                Geometry::Vec3{x: 4.0, y: 8.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 2, &category_one_all_rays):
+                value: value
+                error failure: return 42
+            return 43 if (category_one_all_ray_count < 2 or
+                category_one_all_rays.count != category_one_all_ray_count)
+            return 44 if category_one_all_rays.hits[0].distance > category_one_all_rays.hits[1].distance
             suppressed_ray: PhysicsRuntime::RayHit = catch PhysicsRuntime::raycast(&world,
                 Geometry::Vec3{x: 0.0, y: 5.0, z: 0.0},
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0, 2):
@@ -97,25 +115,25 @@ module PhysicsCollisionLayersNative:
                 error failure: return 31
             return 32 if not suppressed_ray.hit
             category_zero_overlap: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_sphere(
-                &world, Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0}, 0.25, 1):
+                &world, Geometry::Vec3{x: 4.0, y: 4.0, z: 0.0}, 0.25, 1):
                 value: value
                 error failure: return 26
             return 27 if category_zero_overlap.hit
             category_one_overlap: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_sphere(
-                &world, Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0}, 0.25,
+                &world, Geometry::Vec3{x: 4.0, y: 4.0, z: 0.0}, 0.25,
                 2):
                 value: value
                 error failure: return 28
             return 29 if not category_one_overlap.hit
             category_zero_capsule: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_capsule(
-                &world, Geometry::Vec3{x: 4.0, y: -0.3, z: 0.0},
-                Geometry::Vec3{x: 4.0, y: 0.3, z: 0.0}, 0.25, 1):
+                &world, Geometry::Vec3{x: 4.0, y: 3.7, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 4.3, z: 0.0}, 0.25, 1):
                 value: value
                 error failure: return 35
             return 36 if category_zero_capsule.hit
             category_one_capsule: PhysicsQueries::ShapeHit = catch PhysicsQueries::overlap_capsule(
-                &world, Geometry::Vec3{x: 4.0, y: -0.3, z: 0.0},
-                Geometry::Vec3{x: 4.0, y: 0.3, z: 0.0}, 0.25, 2):
+                &world, Geometry::Vec3{x: 4.0, y: 3.7, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 4.3, z: 0.0}, 0.25, 2):
                 value: value
                 error failure: return 37
             return 38 if not category_one_capsule.hit
@@ -149,11 +167,19 @@ module PhysicsCollisionLayersNative:
             destroy_query: i32 = catch PhysicsRuntime::body_destroy(&world, query_body):
                 ok: 0
                 error failure: 34
+            destroy_category_zero_query: i32 = catch PhysicsRuntime::body_destroy(&world,
+                category_zero_query_body):
+                ok: 0
+                error failure: 47
+            destroy_query_upper: i32 = catch PhysicsRuntime::body_destroy(&world, query_upper_body):
+                ok: 0
+                error failure: 45
             world_closed: bool = catch PhysicsRuntime::shutdown(&world):
                 ok: true
                 error failure: false
             return 19 if (destroy_allowed != 0 or destroy_suppressed != 0 or
-                destroy_static != 0 or destroy_query != 0)
+                destroy_static != 0 or destroy_query != 0 or destroy_query_upper != 0 or
+                destroy_category_zero_query != 0)
             return 20 if not world_closed
             0
 
