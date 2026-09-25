@@ -537,6 +537,7 @@ extern "C" int32_t elisa_physics_v1_create_body_with_shape(uint64_t world_genera
                 return ELISA_PHYSICS_INVALID_ARGUMENT;
             }
             transform->UpdateTransform();
+            set_body_collision_layer(*state.scene, entity, collision_layer);
             mesh->precomputed_rigidbody_physics_shape = shape->backend_shape;
             wi::scene::RigidBodyPhysicsComponent& rigidbody = state.scene->rigidbodies.Create(entity);
             rigidbody.shape = shape->kind == ELISA_PHYSICS_SHAPE_TRIANGLE_MESH
