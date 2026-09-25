@@ -131,13 +131,14 @@ Validation on 2026-09-21 (macOS 27.0 / Apple M5, SDL3/Metal):
   passed, including both proof suites (17/17 and 6/6 certificates replayed).
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`,
   and `git diff --check` passed.
-- On 2026-09-25, the complete nine-fixture SDL3/Metal
+- On 2026-09-25, the complete ten-fixture SDL3/Metal
   `scripts/application_native_smoke.py` suite passed with the selected Wicked
-  SDL3 backend. Its world-audio fixtures separately verify a focused
-  listener-to-emitter Jolt ray and the broader attached-voice lifecycle. The
-  latter places a Jolt box between listener and source, verifies attenuation,
-  removes the box, and verifies the clear-ray mix is restored. It also
-  externally stops a live voice, verifies it leaves
-  the native active-voice count immediately, and confirms the following Elisa
-  update reports exactly one finished detach with no remaining binding.
-  Source-length and module-hygiene checks passed.
+  SDL3 backend and a fresh stage1 compiler product plus its matching runtime
+  wrapper. Its dedicated WorldAudio Jolt fixture verifies attenuation from a
+  selected-layer blocker and clear-ray restoration after removal. The attached-
+  voice fixture also checks despawn, listener loss and finished-voice cleanup;
+  an externally stopped voice leaves the native active-voice count immediately,
+  and the following Elisa update reports exactly one finished detach with no
+  remaining binding. The per-body material fixture verifies full-restitution
+  rebound. The 30 Hz and 120 Hz render captures match at 640x480. Source-length,
+  module-hygiene and whitespace checks passed.

@@ -134,6 +134,12 @@ Validation on 2026-09-25:
 - `test/physics_material_native_main.elisa` passed on SDL3/Metal. It rejects restitution above 1, sets materials after Jolt body creation, and observes a sphere rebound from a full-restitution floor through the RuntimeServices API.
 - The source-length, module-hygiene, and Python syntax checks passed.
 
+- The complete ten-fixture `scripts/application_native_smoke.py` run also
+  passed with SDL3/Metal and a fresh stage1 compiler product using its matching
+  runtime wrapper. This includes the focused per-body material rebound and
+  physics-driven world-audio occlusion fixtures, plus lifecycle and render
+  cadence coverage. The 30 Hz and 120 Hz captures match at 640x480.
+
 The native registry now supports reusable box, sphere, capsule, convex-hull,
 triangle-mesh, and compound shapes (up to 16 children per compound, including
 nested compounds), a bounded 32-category physical collision matrix, and
