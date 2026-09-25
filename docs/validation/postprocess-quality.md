@@ -110,6 +110,10 @@ against the checked-in images without changing them, run
 comparison script also accepts `--capture-dir`, `--reference-dir`, and
 `--update` for focused use.
 
+After the macOS 27 upgrade, the High capture retained the same scene but differed
+from its 160x100 reference at 22 edge pixels (mean channel error 0.0018). The High
+reference was refreshed from that capture; the Low reference remained unchanged.
+
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 ELISA_UPDATE_POSTPROCESS_REFERENCES=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — builds High/Low captures, updates the reduced references, and runs all render-scene assertions and image comparisons.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools ELISA_COMPILER_BIN="/Users/torarinvikbjarko/Documents/Coding Projects/Elisa Projects/Elisa-compiler/scripts/elisac_stage1.sh" ELISA_RENDER_SCENE_RENDER_ONLY=1 ELISA_RENDER_SCENE_PROFILE_COST_ONLY=1 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py` — builds the focused probe and measures each preset in its own SDL3/Metal process.
 - `/opt/homebrew/bin/python3.14 scripts/compare_postprocess_references.py` — compares the most recent High/Low captures against the checked-in references.

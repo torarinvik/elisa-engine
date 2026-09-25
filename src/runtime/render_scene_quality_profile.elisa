@@ -70,7 +70,7 @@ extend RenderScene:
             return Quality::ApplyOutcome.UpscalerFallback if apply_outcome == NativeQualityOutcome::UPSCALER_FALLBACK
             Quality::ApplyOutcome.Applied
         def apply_quality_profile(profile: Quality::Profile&) -> void error[RenderSceneError]:
-            _ = try apply_quality_profile_with_result(profile)
+            try apply_quality_profile_with_result(profile)
         def set_camera_quality_profile_with_result(handle: CameraHandle,
             profile: Quality::Profile&) -> Quality::ApplyOutcome error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not Quality::profile_valid(profile)
@@ -89,4 +89,4 @@ extend RenderScene:
             Quality::ApplyOutcome.Applied
         def set_camera_quality_profile(handle: CameraHandle,
             profile: Quality::Profile&) -> void error[RenderSceneError]:
-            _ = try set_camera_quality_profile_with_result(handle, profile)
+            try set_camera_quality_profile_with_result(handle, profile)
