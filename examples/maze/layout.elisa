@@ -4,14 +4,30 @@
 # backends/scene_manifest.txt carries this list to the native probe, and
 # test/maze.elisa checks the list against Maze::is_wall for every cell.
 include "./maze.elisa"
+include "../../src/math/geometry.elisa"
 
 module MazeLayout:
     private:
         const module Grid:
             WIDTH: usize = 8
             HEIGHT: usize = 8
+            ORIGIN: f32 = -2.1
+            CELL_PITCH: f32 = 0.6
 
     public:
+        def maze_cell_pitch() -> f32:
+            Grid::CELL_PITCH
+
+        def maze_wall_half_extent() -> f32:
+            Grid::CELL_PITCH * 0.5
+
+        def maze_cell_position(x: i64, y: i64, height: f32) -> Geometry::Vec3:
+            Geometry::Vec3{
+                x: Grid::ORIGIN + x.f32() * Grid::CELL_PITCH,
+                y: height,
+                z: Grid::ORIGIN + y.f32() * Grid::CELL_PITCH,
+            }
+
         struct WallList:
             xs: mutable i64[64]
             ys: mutable i64[64]

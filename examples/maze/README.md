@@ -37,6 +37,14 @@ texture are resident. It then registers the materials and builds the maze. A
 bundle that fails to load, or loading that takes more than 30 seconds, exits
 with status 17.
 
+The native client also requests Jolt through `RuntimeServices`. It creates
+static collision boxes from the shared maze layout and a separate collision
+category for the key sensor. Every move uses a sphere cast against walls, and
+the game grants the key only after an all-hit sphere overlap finds that sensor.
+The native self-test inserts a temporary blocker into an otherwise open cell,
+checks that physics prevents the move, removes it, then completes the key-and-
+door route.
+
 Press **Space** to start, use the arrow keys or **WASD** to move, press **P** to
 pause or resume, **R** to restart, and **Escape** or the window close button to
 quit.
