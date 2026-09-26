@@ -35,6 +35,29 @@ module ActionInputRuntime:
                 count <- count + 1
             count
 
+        # Route one portable event to a local player. Keyboard/mouse can be
+        # assigned to one player by the caller; gamepad events only reach the
+        # player whose stable connection slot matches `gamepad_slot`.
+        def apply_player_event(input: mutable ActionInput::Input&,
+            event: Application::InputEvent, gamepad_slot: i32,
+            include_keyboard: bool) -> void:
+            if event.kind == Application::InputEventKind.Key:
+                apply_device_event(input, ActionInput::Device.Keyboard, event) if include_keyboard
+            elif event.kind == Application::InputEventKind.MouseButton:
+                apply_device_event(input, ActionInput::Device.Mouse, event) if include_keyboard
+            elif event.kind == Application::InputEventKind.GamepadButton:
+                apply_device_event(input, ActionInput::Device.Gamepad, event) if event.device_slot == gamepad_slot
+            elif event.kind == Application::InputEventKind.GamepadAxis:
+                apply_device_event(input, ActionInput::Device.Gamepad, event) if event.device_slot == gamepad_slot
+            elif event.kind == Application::InputEventKind.GamepadConnected:
+                ActionInput::set_connected(input, ActionInput::Device.Gamepad, true) if event.device_slot == gamepad_slot
+            elif event.kind == Application::InputEventKind.GamepadDisconnected:
+                if event.device_slot == gamepad_slot:
+                    ActionInput::clear_device_state(input, ActionInput::Device.Gamepad)
+                    ActionInput::set_connected(input, ActionInput::Device.Gamepad, false)
+            elif event.kind == Application::InputEventKind.FocusLost or event.kind == Application::InputEventKind.Overflow:
+                clear_transient_state(input)
+
         # This translator is public so portable games and tests can share the
         # exact device, focus, overflow, and hotplug behavior.
         def apply_application_event(input: mutable ActionInput::Input&,
