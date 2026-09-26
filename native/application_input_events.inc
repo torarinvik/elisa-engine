@@ -91,6 +91,7 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
     float value = 0.0f;
     bool pressed = false;
     bool released = false;
+    int32_t device_slot = 0;
     if (service.input_event_read < service.input_event_count) {
         const QueuedInputEvent& event = service.input_events[service.input_event_read++];
         kind = event.kind;
@@ -99,6 +100,7 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
         value = event.value;
         pressed = event.pressed != 0;
         released = event.released != 0;
+        device_slot = event.device_slot;
     } else if (service.input_overflow && !service.input_overflow_reported) {
         service.input_overflow_reported = true;
         kind = ELISA_APPLICATION_INPUT_OVERFLOW;
@@ -109,7 +111,7 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
         service.input_overflow_reported = false;
         return 0;
     }
-    return probe::pack_input_event_token(kind, device, code, value, pressed, released);
+    return probe::pack_input_event_token(kind, device, code, value, pressed, released, device_slot);
 }
 
 extern "C" int32_t elisa_application_v1_next_pointer_event(
@@ -152,4 +154,3 @@ extern "C" int32_t elisa_application_v1_next_pointer_event(
     service.pointer_overflow_reported = false;
     return 0;
 }
-

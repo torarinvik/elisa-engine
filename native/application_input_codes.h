@@ -24,6 +24,9 @@ constexpr uint32_t INPUT_TOKEN_PAYLOAD_SHIFT = INPUT_TOKEN_KIND_BITS + INPUT_TOK
 constexpr uint32_t INPUT_TOKEN_AXIS_CODE_SHIFT = INPUT_TOKEN_PAYLOAD_SHIFT + INPUT_TOKEN_AXIS_VALUE_BITS;
 constexpr uint32_t INPUT_TOKEN_PRESSED_SHIFT = INPUT_TOKEN_AXIS_CODE_SHIFT + INPUT_TOKEN_AXIS_CODE_BITS;
 constexpr uint32_t INPUT_TOKEN_RELEASED_SHIFT = INPUT_TOKEN_PRESSED_SHIFT + 1;
+constexpr uint32_t INPUT_TOKEN_DEVICE_SLOT_SHIFT = INPUT_TOKEN_RELEASED_SHIFT + 1;
+constexpr uint32_t INPUT_TOKEN_DEVICE_SLOT_BITS = 4;
+constexpr uint32_t INPUT_TOKEN_DEVICE_SLOT_MASK = (1u << INPUT_TOKEN_DEVICE_SLOT_BITS) - 1u;
 constexpr uint32_t INPUT_TOKEN_KIND_MASK = (1u << INPUT_TOKEN_KIND_BITS) - 1u;
 constexpr uint32_t INPUT_TOKEN_DEVICE_MASK = (1u << INPUT_TOKEN_DEVICE_BITS) - 1u;
 constexpr uint32_t INPUT_TOKEN_AXIS_CODE_MASK = (1u << INPUT_TOKEN_AXIS_CODE_BITS) - 1u;
@@ -31,7 +34,7 @@ constexpr uint32_t INPUT_TOKEN_AXIS_VALUE_MASK = (1u << INPUT_TOKEN_AXIS_VALUE_B
 constexpr uint64_t INPUT_TOKEN_DIGITAL_CODE_MASK = (uint64_t(1) << 32) - 1;
 
 inline int64_t pack_input_event_token(int32_t kind, int32_t device, int64_t code,
-    float value, bool pressed, bool released) {
+    float value, bool pressed, bool released, int32_t device_slot = 0) {
     uint32_t payload = uint32_t(code);
     if (kind == ELISA_APPLICATION_INPUT_GAMEPAD_AXIS) {
         const uint32_t portable_code = uint32_t(code) & INPUT_TOKEN_AXIS_CODE_MASK;
@@ -44,7 +47,8 @@ inline int64_t pack_input_event_token(int32_t kind, int32_t device, int64_t code
         (uint64_t(device & INPUT_TOKEN_DEVICE_MASK) << INPUT_TOKEN_DEVICE_SHIFT) |
         (uint64_t(payload) << INPUT_TOKEN_PAYLOAD_SHIFT) |
         (pressed ? uint64_t(1) << INPUT_TOKEN_PRESSED_SHIFT : 0) |
-        (released ? uint64_t(1) << INPUT_TOKEN_RELEASED_SHIFT : 0);
+        (released ? uint64_t(1) << INPUT_TOKEN_RELEASED_SHIFT : 0) |
+        (uint64_t(device_slot & INPUT_TOKEN_DEVICE_SLOT_MASK) << INPUT_TOKEN_DEVICE_SLOT_SHIFT);
     return int64_t(packed);
 }
 
