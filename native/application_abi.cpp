@@ -20,6 +20,8 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
+#include <SDL3/SDL_messagebox.h>
 #include <mutex>
 #include <limits>
 #include <string>
@@ -201,6 +203,22 @@ extern "C" int32_t elisa_application_v1_project_height(void) {
 extern "C" int32_t elisa_application_v1_project_hidden(void) {
     const char* value = std::getenv("ELISA_PROJECT_HIDDEN");
     return value != nullptr && std::strcmp(value, "1") == 0 ? 1 : 0;
+}
+
+extern "C" int32_t elisa_application_v1_show_error(const char* title, const char* message) {
+    if (!valid_title(title) || message == nullptr || message[0] == '\0' ||
+        strnlen(message, 4097) > 4096) {
+        return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (service.owner_thread != std::thread::id{} && !on_owner_thread(service)) {
+        return ELISA_APPLICATION_WRONG_THREAD;
+    }
+    std::fprintf(stderr, "%s: %s\n", title, message);
+    if (elisa_application_v1_project_hidden() != 0) return ELISA_APPLICATION_OK;
+    return SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, message, nullptr)
+        ? ELISA_APPLICATION_OK : ELISA_APPLICATION_FRAME_FAILED;
 }
 
 extern "C" int32_t elisa_application_v1_initialize(

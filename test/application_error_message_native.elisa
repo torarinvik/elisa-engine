@@ -1,0 +1,5 @@
+def main() -> i32:
+    return 1 if Application::show_error("", "message")
+    return 2 if Application::show_error("Test", "")
+    return 3 if not Application::show_error("Startup test", "A required resource is missing.")
+    0

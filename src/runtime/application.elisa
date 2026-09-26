@@ -52,6 +52,9 @@ module Application:
         extern elisa_application_v1_project_hidden() -> i32
 
         @callconv(c)
+        extern elisa_application_v1_show_error(title: cstr, message: cstr) -> i32
+
+        @callconv(c)
         extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
 
         @callconv(c)
@@ -350,3 +353,9 @@ module Application:
         # it is zero before initialization and after shutdown.
         def uptime_nanos() -> u64:
             elisa_application_v1_uptime_nanos()
+
+        # A bounded native error dialog, with stderr-only delivery for hidden
+        # applications. Call on the application owner thread, even on startup
+        # failure before initialization. Messages are limited to 4096 bytes.
+        def show_error(title: cstr, message: cstr) -> bool:
+            elisa_application_v1_show_error(title, message) == NativeStatus::OK
