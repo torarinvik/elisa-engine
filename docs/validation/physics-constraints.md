@@ -1,10 +1,12 @@
 # Physics constraints and grabs
 
 `PhysicsRuntime` and `RuntimeServices` expose generation-checked handles for
-fixed, point, distance, hinge, and slider constraints. A descriptor names two
-managed body handles, a world-space anchor, and a frame rotation. Distance and
-slider limits use Elisa world units; hinge limits use radians. The frame's
-local up axis drives hinges and its local right axis drives sliders.
+fixed, point, distance, hinge, slider, cone, six-degree-of-freedom, and
+swing-twist constraints. A descriptor names two managed body handles, a
+world-space anchor, and a frame rotation. Distance and slider limits use Elisa
+world units; six-degree-of-freedom translation limits use three local axes;
+hinge, cone, swing, and twist limits use radians. The frame's local up axis
+drives hinges and its local right axis drives sliders.
 
 Hinge and slider motors accept a target velocity and a maximum torque or force.
 Setting velocity to zero disables the motor. Distance-based breaking is
@@ -30,19 +32,19 @@ through the established physics contact API.
 
 ## Validation
 
-The hidden SDL3/Metal `physics-constraints-smoke` creates a point joint, checks
-that it is not broken, drives a bounded slider motor, verifies a separate
-slider breaks at its configured separation, destroys a point-joint endpoint
-and checks handle invalidation, and grabs/moves/releases a body. It also checks
-that a ray miss maps to `NoHit` and destroying a grabbed body cancels its grab
-handle. The test runs through the public Elisa API and native Jolt scene:
+The hidden SDL3/Metal `physics-constraints-smoke` creates point, cone,
+six-degree-of-freedom, and swing-twist joints and checks their live state. It
+also drives a bounded slider motor, verifies a separate slider breaks at its
+configured separation, destroys a point-joint endpoint and checks handle
+invalidation, and grabs/moves/releases a body. A ray miss maps to `NoHit`, and
+destroying a grabbed body cancels its handle. The test runs through the public
+Elisa API and native Jolt scene:
 
 ```sh
 ELISA_NATIVE_SMOKE_ONLY=physics-constraints-smoke \
   python3 scripts/application_native_smoke.py
 ```
 
-P06 remains in progress. Cone, six-degree-of-freedom, and swing-twist
-constraints are not public yet, and an authored door/lift/jointed-object sample
-with broader lifecycle coverage is still needed before the plan's completion
+P06 remains in progress. An authored door/lift/jointed-object sample with
+broader lifecycle coverage is still needed before the plan's completion
 criteria are met.

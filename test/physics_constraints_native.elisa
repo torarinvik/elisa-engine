@@ -24,6 +24,30 @@ module PhysicsConstraintsNative:
                 center_of_mass_offset: Geometry::vec3_zero(),
             })
 
+        def joint_pair(world: PhysicsRuntime::World&,
+            kind: PhysicsRuntime::ConstraintKind, position: Geometry::Vec3) -> PhysicsRuntime::ConstraintHandle error[PhysicsRuntime::PhysicsError]:
+            fixed_body: PhysicsRuntime::BodyHandle = try PhysicsConstraintsNative::body(
+                world, PhysicsRuntime::BodyKind.Static, position)
+            moving_body: PhysicsRuntime::BodyHandle = try PhysicsConstraintsNative::body(
+                world, PhysicsRuntime::BodyKind.Dynamic, position)
+            description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(kind, fixed_body, moving_body,
+                    position, Geometry::quat_identity())
+            description.disable_collision <- true
+            if kind == PhysicsRuntime::ConstraintKind.Cone:
+                description.cone_half_angle <- 0.5
+            if kind == PhysicsRuntime::ConstraintKind.SixDOF:
+                description.translation_min <- Geometry::Vec3{x: -0.25, y: -0.25, z: -0.25}
+                description.translation_max <- Geometry::Vec3{x: 0.25, y: 0.25, z: 0.25}
+                description.rotation_min <- Geometry::Vec3{x: -0.5, y: -0.5, z: -0.5}
+                description.rotation_max <- Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}
+            if kind == PhysicsRuntime::ConstraintKind.SwingTwist:
+                description.swing_normal_half_cone_angle <- 0.5
+                description.swing_plane_half_cone_angle <- 0.5
+                description.swing_min_twist_angle <- -0.5
+                description.swing_max_twist_angle <- 0.5
+            try PhysicsRuntime::constraint_create(world, description)
+
     public:
         def run() -> i32:
             config: Application::Config = Application::Config{
@@ -146,6 +170,27 @@ module PhysicsConstraintsNative:
                 try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
             break_state: bool = try PhysicsRuntime::constraint_is_broken(&world, break_slider)
             return 27 if not break_state
+
+            cone: PhysicsRuntime::ConstraintHandle = catch PhysicsConstraintsNative::joint_pair(
+                &world, PhysicsRuntime::ConstraintKind.Cone,
+                Geometry::Vec3{x: 13.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 30
+            six_dof: PhysicsRuntime::ConstraintHandle = catch PhysicsConstraintsNative::joint_pair(
+                &world, PhysicsRuntime::ConstraintKind.SixDOF,
+                Geometry::Vec3{x: 15.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 31
+            swing_twist: PhysicsRuntime::ConstraintHandle = catch PhysicsConstraintsNative::joint_pair(
+                &world, PhysicsRuntime::ConstraintKind.SwingTwist,
+                Geometry::Vec3{x: 17.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 32
+            try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            cone_broken: bool = try PhysicsRuntime::constraint_is_broken(&world, cone)
+            six_dof_broken: bool = try PhysicsRuntime::constraint_is_broken(&world, six_dof)
+            swing_twist_broken: bool = try PhysicsRuntime::constraint_is_broken(&world, swing_twist)
+            return 33 if cone_broken or six_dof_broken or swing_twist_broken
 
             grabbable: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
                 &world, PhysicsRuntime::BodyKind.Dynamic,

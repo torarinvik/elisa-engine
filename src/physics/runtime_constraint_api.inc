@@ -11,6 +11,12 @@
                     Status::CONSTRAINT_HINGE
                 ConstraintKind.Slider:
                     Status::CONSTRAINT_SLIDER
+                ConstraintKind.Cone:
+                    Status::CONSTRAINT_CONE
+                ConstraintKind.SixDOF:
+                    Status::CONSTRAINT_SIX_DOF
+                ConstraintKind.SwingTwist:
+                    Status::CONSTRAINT_SWING_TWIST
 
         def native_constraint_create(world_generation: u64,
             description: ConstraintDesc) -> ConstraintHandle error[PhysicsError]:
@@ -29,6 +35,16 @@
                 description.lower_limit, description.upper_limit,
                 description.target_velocity, description.max_motor_force,
                 description.break_distance, 1 if description.disable_collision else 0,
+                description.cone_half_angle,
+                description.translation_min.x, description.translation_min.y,
+                description.translation_min.z, description.translation_max.x,
+                description.translation_max.y, description.translation_max.z,
+                description.rotation_min.x, description.rotation_min.y,
+                description.rotation_min.z, description.rotation_max.x,
+                description.rotation_max.y, description.rotation_max.z,
+                description.swing_normal_half_cone_angle,
+                description.swing_plane_half_cone_angle,
+                description.swing_min_twist_angle, description.swing_max_twist_angle,
                 &slot, &generation)
             try check_status(status)
             ConstraintHandle{world_generation: world_generation, slot: slot,

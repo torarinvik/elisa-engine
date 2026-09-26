@@ -25,6 +25,9 @@ module PhysicsRuntime:
             CONSTRAINT_DISTANCE: i32 = 2
             CONSTRAINT_HINGE: i32 = 3
             CONSTRAINT_SLIDER: i32 = 4
+            CONSTRAINT_CONE: i32 = 5
+            CONSTRAINT_SIX_DOF: i32 = 6
+            CONSTRAINT_SWING_TWIST: i32 = 7
             GRAB_FIXED: i32 = 0
             GRAB_POINT: i32 = 1
             SHAPE_BOX: i32 = 0
@@ -127,6 +130,13 @@ module PhysicsRuntime:
             rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32,
             lower_limit: f32, upper_limit: f32, target_velocity: f32,
             max_motor_force: f32, break_distance: f32, disable_collision: i32,
+            cone_half_angle: f32,
+            translation_min_x: f32, translation_min_y: f32, translation_min_z: f32,
+            translation_max_x: f32, translation_max_y: f32, translation_max_z: f32,
+            rotation_min_x: f32, rotation_min_y: f32, rotation_min_z: f32,
+            rotation_max_x: f32, rotation_max_y: f32, rotation_max_z: f32,
+            swing_normal_half_cone_angle: f32, swing_plane_half_cone_angle: f32,
+            swing_min_twist_angle: f32, swing_max_twist_angle: f32,
             slot: mutable u32&, constraint_generation: mutable u64&) -> i32
         @callconv(c)
         extern elisa_physics_v1_constraint_set_motor(world_generation: u64,

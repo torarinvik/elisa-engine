@@ -51,9 +51,16 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
     float rotation_x, float rotation_y, float rotation_z, float rotation_w,
     float lower_limit, float upper_limit, float target_velocity,
     float max_motor_force, float break_distance, int32_t disable_collision,
+    float cone_half_angle,
+    float translation_min_x, float translation_min_y, float translation_min_z,
+    float translation_max_x, float translation_max_y, float translation_max_z,
+    float rotation_min_x, float rotation_min_y, float rotation_min_z,
+    float rotation_max_x, float rotation_max_y, float rotation_max_z,
+    float swing_normal_half_cone_angle, float swing_plane_half_cone_angle,
+    float swing_min_twist_angle, float swing_max_twist_angle,
     uint32_t* slot, uint64_t* constraint_generation) {
     if (slot == nullptr || constraint_generation == nullptr ||
-        kind < ELISA_PHYSICS_CONSTRAINT_FIXED || kind > ELISA_PHYSICS_CONSTRAINT_SLIDER ||
+        kind < ELISA_PHYSICS_CONSTRAINT_FIXED || kind > ELISA_PHYSICS_CONSTRAINT_SWING_TWIST ||
         !std::isfinite(anchor_x) || !std::isfinite(anchor_y) || !std::isfinite(anchor_z) ||
         std::fabs(anchor_x) > MAX_POSITION || std::fabs(anchor_y) > MAX_POSITION ||
         std::fabs(anchor_z) > MAX_POSITION || !std::isfinite(rotation_x) ||
@@ -65,6 +72,15 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
         !std::isfinite(max_motor_force) || max_motor_force < 0.0f ||
         max_motor_force > MAX_CONSTRAINT_MOTOR_FORCE || !std::isfinite(break_distance) ||
         break_distance < 0.0f || break_distance > MAX_CONSTRAINT_BREAK_DISTANCE ||
+        !std::isfinite(cone_half_angle) || !valid_constraint_limit(translation_min_x) ||
+        !valid_constraint_limit(translation_min_y) || !valid_constraint_limit(translation_min_z) ||
+        !valid_constraint_limit(translation_max_x) || !valid_constraint_limit(translation_max_y) ||
+        !valid_constraint_limit(translation_max_z) || !std::isfinite(rotation_min_x) ||
+        !std::isfinite(rotation_min_y) || !std::isfinite(rotation_min_z) ||
+        !std::isfinite(rotation_max_x) || !std::isfinite(rotation_max_y) ||
+        !std::isfinite(rotation_max_z) || !std::isfinite(swing_normal_half_cone_angle) ||
+        !std::isfinite(swing_plane_half_cone_angle) ||
+        !std::isfinite(swing_min_twist_angle) || !std::isfinite(swing_max_twist_angle) ||
         (disable_collision != 0 && disable_collision != 1)) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
@@ -79,11 +95,46 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
     if ((!has_motor && (target_velocity != 0.0f || max_motor_force != 0.0f)) ||
         (target_velocity != 0.0f && max_motor_force <= 0.0f) ||
         ((kind == ELISA_PHYSICS_CONSTRAINT_FIXED || kind == ELISA_PHYSICS_CONSTRAINT_POINT) &&
-            (lower_limit != 0.0f || upper_limit != 0.0f))) {
+            (lower_limit != 0.0f || upper_limit != 0.0f)) ||
+        (kind != ELISA_PHYSICS_CONSTRAINT_SIX_DOF &&
+            (translation_min_x != 0.0f || translation_min_y != 0.0f ||
+             translation_min_z != 0.0f || translation_max_x != 0.0f ||
+             translation_max_y != 0.0f || translation_max_z != 0.0f ||
+             rotation_min_x != 0.0f || rotation_min_y != 0.0f ||
+             rotation_min_z != 0.0f || rotation_max_x != 0.0f ||
+             rotation_max_y != 0.0f || rotation_max_z != 0.0f)) ||
+        (kind != ELISA_PHYSICS_CONSTRAINT_CONE && cone_half_angle != 0.0f) ||
+        (kind != ELISA_PHYSICS_CONSTRAINT_DISTANCE &&
+         kind != ELISA_PHYSICS_CONSTRAINT_HINGE && kind != ELISA_PHYSICS_CONSTRAINT_SLIDER &&
+            (lower_limit != 0.0f || upper_limit != 0.0f)) ||
+        (kind != ELISA_PHYSICS_CONSTRAINT_SWING_TWIST &&
+            (swing_normal_half_cone_angle != 0.0f ||
+             swing_plane_half_cone_angle != 0.0f || swing_min_twist_angle != 0.0f ||
+             swing_max_twist_angle != 0.0f))) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
     if (kind == ELISA_PHYSICS_CONSTRAINT_HINGE &&
         (lower_limit < -XM_PI || upper_limit > XM_PI)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (kind == ELISA_PHYSICS_CONSTRAINT_CONE &&
+        (cone_half_angle < 0.0f || cone_half_angle > XM_PI)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (kind == ELISA_PHYSICS_CONSTRAINT_SIX_DOF &&
+        (translation_min_x > translation_max_x || translation_min_y > translation_max_y ||
+         translation_min_z > translation_max_z || rotation_min_x > rotation_max_x ||
+         rotation_min_y > rotation_max_y || rotation_min_z > rotation_max_z ||
+         rotation_min_x < -XM_PI || rotation_min_y < -XM_PI || rotation_min_z < -XM_PI ||
+         rotation_max_x > XM_PI || rotation_max_y > XM_PI || rotation_max_z > XM_PI)) {
+        return ELISA_PHYSICS_INVALID_ARGUMENT;
+    }
+    if (kind == ELISA_PHYSICS_CONSTRAINT_SWING_TWIST &&
+        (swing_normal_half_cone_angle < 0.0f || swing_normal_half_cone_angle > XM_PI ||
+         swing_plane_half_cone_angle < 0.0f || swing_plane_half_cone_angle > XM_PI ||
+         swing_min_twist_angle < -XM_PI || swing_min_twist_angle > XM_PI ||
+         swing_max_twist_angle < -XM_PI || swing_max_twist_angle > XM_PI ||
+         swing_min_twist_angle > swing_max_twist_angle)) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
 
@@ -162,6 +213,41 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
                 return ELISA_PHYSICS_INVALID_ARGUMENT;
             }
             break;
+        case ELISA_PHYSICS_CONSTRAINT_CONE:
+            component.type = wi::scene::PhysicsConstraintComponent::Type::Cone;
+            component.cone_constraint.half_cone_angle = cone_half_angle;
+            break;
+        case ELISA_PHYSICS_CONSTRAINT_SIX_DOF:
+            component.type = wi::scene::PhysicsConstraintComponent::Type::SixDOF;
+            component.six_dof.minTranslationAxes = XMFLOAT3(
+                translation_min_x * profile.metres_per_unit,
+                translation_min_y * profile.metres_per_unit,
+                translation_min_z * profile.metres_per_unit);
+            component.six_dof.maxTranslationAxes = XMFLOAT3(
+                translation_max_x * profile.metres_per_unit,
+                translation_max_y * profile.metres_per_unit,
+                translation_max_z * profile.metres_per_unit);
+            component.six_dof.minRotationAxes = XMFLOAT3(
+                rotation_min_x, rotation_min_y, rotation_min_z);
+            component.six_dof.maxRotationAxes = XMFLOAT3(
+                rotation_max_x, rotation_max_y, rotation_max_z);
+            if (!std::isfinite(component.six_dof.minTranslationAxes.x) ||
+                !std::isfinite(component.six_dof.minTranslationAxes.y) ||
+                !std::isfinite(component.six_dof.minTranslationAxes.z) ||
+                !std::isfinite(component.six_dof.maxTranslationAxes.x) ||
+                !std::isfinite(component.six_dof.maxTranslationAxes.y) ||
+                !std::isfinite(component.six_dof.maxTranslationAxes.z)) {
+                state.scene->Entity_Remove(entity);
+                return ELISA_PHYSICS_INVALID_ARGUMENT;
+            }
+            break;
+        case ELISA_PHYSICS_CONSTRAINT_SWING_TWIST:
+            component.type = wi::scene::PhysicsConstraintComponent::Type::SwingTwist;
+            component.swing_twist.normal_half_cone_angle = swing_normal_half_cone_angle;
+            component.swing_twist.plane_half_cone_angle = swing_plane_half_cone_angle;
+            component.swing_twist.min_twist_angle = swing_min_twist_angle;
+            component.swing_twist.max_twist_angle = swing_max_twist_angle;
+            break;
         default:
             state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_INVALID_ARGUMENT;
@@ -238,7 +324,7 @@ extern "C" int32_t elisa_physics_v1_constraint_is_broken(uint64_t world_generati
     const int32_t status = resolve_constraint_component(state, slot,
         constraint_generation, record, component);
     if (status != ELISA_PHYSICS_OK) return status;
-    if (component->physicsobject == nullptr) return ELISA_PHYSICS_BODY_NOT_READY;
+    if (!wi::physics::IsConstraintReady(*component)) return ELISA_PHYSICS_BODY_NOT_READY;
     *broken = wi::physics::IsConstraintBroken(*component) ? 1 : 0;
     return ELISA_PHYSICS_OK;
 }

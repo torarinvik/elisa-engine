@@ -40,6 +40,9 @@ enum {
     ELISA_PHYSICS_CONSTRAINT_DISTANCE = 2,
     ELISA_PHYSICS_CONSTRAINT_HINGE = 3,
     ELISA_PHYSICS_CONSTRAINT_SLIDER = 4,
+    ELISA_PHYSICS_CONSTRAINT_CONE = 5,
+    ELISA_PHYSICS_CONSTRAINT_SIX_DOF = 6,
+    ELISA_PHYSICS_CONSTRAINT_SWING_TWIST = 7,
 };
 
 enum {
@@ -299,6 +302,13 @@ int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
     float rotation_x, float rotation_y, float rotation_z, float rotation_w,
     float lower_limit, float upper_limit, float target_velocity,
     float max_motor_force, float break_distance, int32_t disable_collision,
+    float cone_half_angle,
+    float translation_min_x, float translation_min_y, float translation_min_z,
+    float translation_max_x, float translation_max_y, float translation_max_z,
+    float rotation_min_x, float rotation_min_y, float rotation_min_z,
+    float rotation_max_x, float rotation_max_y, float rotation_max_z,
+    float swing_normal_half_cone_angle, float swing_plane_half_cone_angle,
+    float swing_min_twist_angle, float swing_max_twist_angle,
     uint32_t* slot, uint64_t* constraint_generation);
 int32_t elisa_physics_v1_constraint_set_motor(uint64_t world_generation,
     uint32_t slot, uint64_t constraint_generation,
