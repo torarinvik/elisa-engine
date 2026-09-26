@@ -28,6 +28,15 @@ def collect(manifest: Path, roots: dict[str, Path], output: Path) -> int:
         data = source.read_bytes()
         if not data or hashlib.sha256(data).hexdigest() != entry["sha256"]:
             raise ValueError(f"notice source changed: {name}")
+        if "excerpt" in entry:
+            excerpt = entry["excerpt"]
+            offset, length = excerpt["offset"], excerpt["bytes"]
+            if (type(offset) is not int or type(length) is not int or offset < 0
+                    or length <= 0 or offset + length > len(data)):
+                raise ValueError(f"invalid notice excerpt: {name}")
+            data = data[offset:offset + length]
+            if hashlib.sha256(data).hexdigest() != excerpt["sha256"]:
+                raise ValueError(f"notice excerpt changed: {name}")
         verified.append((name, data))
     if output.exists():
         raise ValueError("notice destination already exists; select a new destination")

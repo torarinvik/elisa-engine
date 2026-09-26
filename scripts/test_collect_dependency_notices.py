@@ -37,3 +37,25 @@ class NoticeCollectionTests(unittest.TestCase):
                 "root": "engine", "path": "../LICENSE", "sha256": "0" * 64}]}))
             with self.assertRaisesRegex(ValueError, "escapes root"):
                 collect(manifest, {"engine": source_root}, root / "output")
+
+    def test_excerpts_are_bounded_and_independently_verified(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            data = b"code\n/* notice */\ncode"
+            notice = b"/* notice */"
+            (root / "source.h").write_bytes(data)
+            entry = {"name": "Embedded", "root": "engine", "path": "source.h",
+                "sha256": hashlib.sha256(data).hexdigest(), "excerpt": {
+                    "offset": 5, "bytes": len(notice), "sha256": hashlib.sha256(notice).hexdigest()}}
+            manifest = root / "catalog.json"
+            def write():
+                manifest.write_text(json.dumps({"schema": 1, "sources": [entry]}))
+            write()
+            self.assertEqual(collect(manifest, {"engine": root}, root / "valid"), 1)
+            self.assertEqual((root / "valid/Embedded.txt").read_bytes(), notice)
+            for offset in (-1, 999, 4):
+                entry["excerpt"]["offset"] = offset
+                write()
+                with self.assertRaises(ValueError):
+                    collect(manifest, {"engine": root}, root / "invalid")
+                self.assertFalse((root / "invalid").exists())

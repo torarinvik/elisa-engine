@@ -1,155 +1,155 @@
 {
-  "schema": 1,
   "complete": false,
-  "sources": [
-    {
-      "name": "WickedEngine",
-      "root": "wicked",
-      "path": "LICENSE.txt",
-      "sha256": "5c48360ddec789b6333413d2e52a1f3b45174dfd9f8d8575c78dc64a6d877f9f"
-    },
-    {
-      "name": "SDL3",
-      "root": "brew",
-      "path": "opt/sdl3/LICENSE.txt",
-      "sha256": "1c040b8271b37e5076359f8fd54240e371114112924d2df81ef87c7d6a1dfdfd"
-    },
-    {
-      "name": "ufbx",
-      "root": "engine",
-      "path": "dependencies/ufbx/LICENSE",
-      "sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391"
-    },
-    {
-      "name": "basisu",
-      "root": "engine",
-      "path": "dependencies/basisu/LICENSE",
-      "sha256": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c"
-    },
-    {
-      "name": "ozz-animation",
-      "root": "engine",
-      "path": "dependencies/ozz/LICENSE.md",
-      "sha256": "3ddd93e9888fe70b9d61675ceb1c4278a579dc67171678f015de114efe815852"
-    },
-    {
-      "name": "recastnavigation",
-      "root": "engine",
-      "path": "dependencies/recast/License.txt",
-      "sha256": "ffad87821cce7cfd3be00b63ffadd01b04e83a4c6a0bcc68f06362ffd42d705e"
-    },
-    {
-      "name": "GameNetworkingSockets",
-      "root": "engine",
-      "path": "dependencies/gns/LICENSE",
-      "sha256": "6fedd796d51d7f996e0b3dc7c1c9f6a67603bec7a2cfb9f418e0c6607a1ca647"
-    },
-    {
-      "name": "tracy",
-      "root": "engine",
-      "path": "dependencies/tracy/LICENSE",
-      "sha256": "27ab6b51e57f7e263a6e953d9c8984cd26e69d2f7606bde81e4b3048acf30732"
-    },
-    {
-      "name": "harfbuzz",
-      "root": "brew",
-      "path": "opt/harfbuzz/COPYING",
-      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
-    },
-    {
-      "name": "zstd",
-      "root": "brew",
-      "path": "opt/zstd/LICENSE",
-      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
-    },
-    {
-      "name": "zstd-gpl-alternative",
-      "root": "brew",
-      "path": "opt/zstd/COPYING",
-      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505"
-    },
-    {
-      "name": "cgltf",
-      "root": "engine",
-      "path": "dependencies/cgltf/cgltf.h",
-      "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9",
-      "excerpt": {
-        "offset": 204590,
-        "bytes": 1164,
-        "sha256": "657c0513f9a2f17033bac1c552a2a21d64b8e412f3bdf9fc0c94d95e15e17257"
-      }
-    },
-    {
-      "name": "meshoptimizer",
-      "root": "engine",
-      "path": "dependencies/meshoptimizer/meshoptimizer.h",
-      "sha256": "21a72040a75bacf6ddefb7e74f1cf566af1e68ea5e4dc0db598278f4681e0b87",
-      "excerpt": {
-        "offset": 103665,
-        "bytes": 1137,
-        "sha256": "29a5ba6b6988bc9d151d7b7af15276562562e4860de81a33314a93e0eec4456f"
-      }
-    },
-    {
-      "name": "MikkTSpace",
-      "root": "engine",
-      "path": "dependencies/mikktspace/mikktspace.h",
-      "sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0",
-      "excerpt": {
-        "offset": 62,
-        "bytes": 932,
-        "sha256": "cc78dcb9901d1f0cb893e099ad183fe8c4305d53e15bdce08e2cf5f57fb1e359"
-      }
-    },
-    {
-      "name": "miniaudio",
-      "root": "engine",
-      "path": "dependencies/miniaudio/miniaudio.h",
-      "sha256": "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410",
-      "excerpt": {
-        "offset": 4023176,
-        "bytes": 2604,
-        "sha256": "c6aba4ade0407b7cc952ef1253bcac50991bb6eed7b5b8a83c9f5b9d5627d8d6"
-      }
-    },
-    {
-      "name": "xatlas",
-      "root": "engine",
-      "path": "dependencies/xatlas/xatlas.h",
-      "sha256": "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd",
-      "excerpt": {
-        "offset": 0,
-        "bytes": 1258,
-        "sha256": "3647c97f08c8a52ba8a5bef00d929bfdc328fc7476dd30288a5c460fc200b25e"
-      }
-    },
-    {
-      "name": "FAudio",
-      "root": "wicked",
-      "path": "WickedEngine/Utility/FAudio/include/FAudio.h",
-      "sha256": "932d8f7fa0b5eef1953ab6e5d92ad1d7599d32999eb89fa365ae18401675df70",
-      "excerpt": {
-        "offset": 0,
-        "bytes": 1054,
-        "sha256": "18325126e220d6898c4a8d1e3896a7b8c0e10e15b9d08bc6630f403bf4981215"
-      }
-    },
-    {
-      "name": "Lua",
-      "root": "wicked",
-      "path": "WickedEngine/LUA/lua.h",
-      "sha256": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930",
-      "excerpt": {
-        "offset": 14677,
-        "bytes": 1264,
-        "sha256": "b4c1d8aa86e7b7329d3aeb3e7674f6248973f35040a0d6906991927c7145b73e"
-      }
-    }
-  ],
   "remaining": [
     "Additional embedded subcomponent notices (including cgltf/jsmn and Wicked utility headers)",
     "Wicked vendored dependency closure",
     "FreeType license alternatives and referenced notice files",
     "Transitive shared-library notice coverage"
+  ],
+  "schema": 1,
+  "sources": [
+    {
+      "name": "WickedEngine",
+      "path": "LICENSE.txt",
+      "root": "wicked",
+      "sha256": "5c48360ddec789b6333413d2e52a1f3b45174dfd9f8d8575c78dc64a6d877f9f"
+    },
+    {
+      "name": "SDL3",
+      "path": "opt/sdl3/LICENSE.txt",
+      "root": "brew",
+      "sha256": "1c040b8271b37e5076359f8fd54240e371114112924d2df81ef87c7d6a1dfdfd"
+    },
+    {
+      "name": "ufbx",
+      "path": "dependencies/ufbx/LICENSE",
+      "root": "engine",
+      "sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391"
+    },
+    {
+      "name": "basisu",
+      "path": "dependencies/basisu/LICENSE",
+      "root": "engine",
+      "sha256": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c"
+    },
+    {
+      "name": "ozz-animation",
+      "path": "dependencies/ozz/LICENSE.md",
+      "root": "engine",
+      "sha256": "3ddd93e9888fe70b9d61675ceb1c4278a579dc67171678f015de114efe815852"
+    },
+    {
+      "name": "recastnavigation",
+      "path": "dependencies/recast/License.txt",
+      "root": "engine",
+      "sha256": "ffad87821cce7cfd3be00b63ffadd01b04e83a4c6a0bcc68f06362ffd42d705e"
+    },
+    {
+      "name": "GameNetworkingSockets",
+      "path": "dependencies/gns/LICENSE",
+      "root": "engine",
+      "sha256": "6fedd796d51d7f996e0b3dc7c1c9f6a67603bec7a2cfb9f418e0c6607a1ca647"
+    },
+    {
+      "name": "tracy",
+      "path": "dependencies/tracy/LICENSE",
+      "root": "engine",
+      "sha256": "27ab6b51e57f7e263a6e953d9c8984cd26e69d2f7606bde81e4b3048acf30732"
+    },
+    {
+      "name": "harfbuzz",
+      "path": "opt/harfbuzz/COPYING",
+      "root": "brew",
+      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+    },
+    {
+      "name": "zstd",
+      "path": "opt/zstd/LICENSE",
+      "root": "brew",
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    },
+    {
+      "name": "zstd-gpl-alternative",
+      "path": "opt/zstd/COPYING",
+      "root": "brew",
+      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505"
+    },
+    {
+      "excerpt": {
+        "bytes": 1164,
+        "offset": 204590,
+        "sha256": "657c0513f9a2f17033bac1c552a2a21d64b8e412f3bdf9fc0c94d95e15e17257"
+      },
+      "name": "cgltf",
+      "path": "dependencies/cgltf/cgltf.h",
+      "root": "engine",
+      "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9"
+    },
+    {
+      "excerpt": {
+        "bytes": 1137,
+        "offset": 103665,
+        "sha256": "29a5ba6b6988bc9d151d7b7af15276562562e4860de81a33314a93e0eec4456f"
+      },
+      "name": "meshoptimizer",
+      "path": "dependencies/meshoptimizer/meshoptimizer.h",
+      "root": "engine",
+      "sha256": "21a72040a75bacf6ddefb7e74f1cf566af1e68ea5e4dc0db598278f4681e0b87"
+    },
+    {
+      "excerpt": {
+        "bytes": 932,
+        "offset": 62,
+        "sha256": "cc78dcb9901d1f0cb893e099ad183fe8c4305d53e15bdce08e2cf5f57fb1e359"
+      },
+      "name": "MikkTSpace",
+      "path": "dependencies/mikktspace/mikktspace.h",
+      "root": "engine",
+      "sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0"
+    },
+    {
+      "excerpt": {
+        "bytes": 2604,
+        "offset": 4023176,
+        "sha256": "c6aba4ade0407b7cc952ef1253bcac50991bb6eed7b5b8a83c9f5b9d5627d8d6"
+      },
+      "name": "miniaudio",
+      "path": "dependencies/miniaudio/miniaudio.h",
+      "root": "engine",
+      "sha256": "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410"
+    },
+    {
+      "excerpt": {
+        "bytes": 1258,
+        "offset": 0,
+        "sha256": "3647c97f08c8a52ba8a5bef00d929bfdc328fc7476dd30288a5c460fc200b25e"
+      },
+      "name": "xatlas",
+      "path": "dependencies/xatlas/xatlas.h",
+      "root": "engine",
+      "sha256": "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd"
+    },
+    {
+      "excerpt": {
+        "bytes": 1054,
+        "offset": 0,
+        "sha256": "18325126e220d6898c4a8d1e3896a7b8c0e10e15b9d08bc6630f403bf4981215"
+      },
+      "name": "FAudio",
+      "path": "WickedEngine/Utility/FAudio/include/FAudio.h",
+      "root": "wicked",
+      "sha256": "932d8f7fa0b5eef1953ab6e5d92ad1d7599d32999eb89fa365ae18401675df70"
+    },
+    {
+      "excerpt": {
+        "bytes": 1264,
+        "offset": 14677,
+        "sha256": "b4c1d8aa86e7b7329d3aeb3e7674f6248973f35040a0d6906991927c7145b73e"
+      },
+      "name": "Lua",
+      "path": "WickedEngine/LUA/lua.h",
+      "root": "wicked",
+      "sha256": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930"
+    }
   ]
 }

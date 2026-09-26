@@ -272,3 +272,15 @@ embedded header notices, Wicked's vendored closure, FreeType's referenced
 license alternatives, and transitive shared-library coverage. Collected files
 can be placed inside a project and declared through `package.notices`; this
 initial collection is not yet the complete distribution notice set.
+
+The catalog now includes seven hash-verified source excerpts: cgltf,
+meshoptimizer, MikkTSpace, miniaudio, xatlas, FAudio, and Lua. Each excerpt has
+an explicit byte range and its own hash, in addition to the full source hash;
+collection preserves comments and original bytes rather than rewriting terms.
+Three collector tests pass, including excerpt bounds and altered-range checks.
+
+The maze declares eighteen collected notice texts plus their provenance catalog
+in `package.notices`, with snapshots under `examples/maze/third_party/notices`.
+A rebuilt real app was checked byte-for-byte against every snapshot. The
+shipped catalog still marks coverage incomplete and names the outstanding
+embedded subcomponents, Wicked utilities, FreeType, and transitive libraries.
