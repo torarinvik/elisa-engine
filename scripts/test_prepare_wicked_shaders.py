@@ -101,6 +101,29 @@ class PrepareWickedShadersTests(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertEqual(list(outside.iterdir()), [])
 
+    @mock.patch.object(prepare.sys, "platform", "darwin")
+    def test_selection_publishes_only_requested_outputs(self) -> None:
+        self.write_compiler()
+        selection = Path(self.tempdir.name) / "selection.json"
+        selection.write_text('["nested/permutation.cso"]')
+        self.assertEqual(prepare.prepare(self.project, self.wicked, None, self.compiler, selection), 0)
+        root = self.project / "shaders"
+        self.assertFalse((root / "metal/basic.cso").exists())
+        manifest = json.loads((root / prepare.SHADER_MANIFEST_NAME).read_text())
+        self.assertEqual([entry["path"] for entry in manifest["files"]], ["metal/nested/permutation.cso"])
+
+    @mock.patch.object(prepare.sys, "platform", "darwin")
+    def test_unknown_selection_preserves_library(self) -> None:
+        self.write_compiler()
+        self.assertEqual(prepare.prepare(self.project, self.wicked, None, self.compiler), 0)
+        root = self.project / "shaders"
+        before = (root / prepare.SHADER_MANIFEST_NAME).read_bytes()
+        selection = Path(self.tempdir.name) / "selection.json"
+        selection.write_text('["missing.cso"]')
+        self.assertEqual(prepare.prepare(self.project, self.wicked, None, self.compiler, selection), 1)
+        self.assertEqual((root / prepare.SHADER_MANIFEST_NAME).read_bytes(), before)
+        self.assertTrue((root / "metal/basic.cso").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -116,3 +116,21 @@ A real-library rebuild from 398 to 397 binaries removed the omitted output
 and changed the shader manifest fingerprint. This addresses stale generated
 files; per-project permutation selection and pipeline archive identity keys
 remain open.
+
+## Project permutation selection
+
+`prepare_wicked_shaders.py --project PROJECT --permutations selection.json`
+accepts a nonempty JSON array of paths relative to the Metal output directory,
+for example `["objectVS.cso", "nested/variant.cso"]`. Names must match actual
+compiler outputs; the example is illustrative, not a complete game shader set.
+Malformed, duplicate, escaping, and unknown names fail without publication.
+Omitting the option publishes the complete compiler set. Custom files remain
+preserved, and formerly generated outputs outside the selection are removed.
+
+The pinned offline compiler still compiles all permutations before selection.
+This feature controls publication and package size, not compilation cost. A
+project must validate its selection against every supported rendering feature;
+the content manifest proves file identity, not workload coverage. Fourteen
+shader tests pass, and selected publication of three real Metal binaries
+produced the matching manifest. Runtime coverage of a reduced game-specific
+selection and compile-time filtering remain open.

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from package_macos_app import PackageError, SHADER_MANIFEST_NAME
 from shader_library_publish import publish
+from shader_permutation_selection import read_selection, select_binaries
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -34,13 +35,21 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="WickedEngine build directory (or WICKED_BUILD; defaults to build-elisa-sdl3)")
     parser.add_argument("--compiler", type=Path,
         help="offlineshadercompiler executable (defaults to the selected Wicked build)")
+    parser.add_argument("--permutations", type=Path,
+        help="JSON array of Metal-relative .cso paths to publish (default: all)")
     return parser.parse_args(argv)
 
 
 def prepare(project: Path, wicked_root: Path, wicked_build: Path | None,
-    compiler: Path | None) -> int:
+    compiler: Path | None, permutations: Path | None = None) -> int:
     if sys.platform != "darwin":
         print("Wicked Metal shader preparation currently requires macOS.", file=sys.stderr)
+        return 2
+
+    try:
+        selection = read_selection(permutations)
+    except (OSError, PackageError) as error:
+        print(f"Invalid shader permutation selection: {error}", file=sys.stderr)
         return 2
 
     project = project.expanduser().resolve()
@@ -101,6 +110,7 @@ def prepare(project: Path, wicked_root: Path, wicked_build: Path | None,
             return 1
 
         try:
+            binaries = select_binaries(compiled_root, binaries, selection)
             fingerprint = publish(shader_root, compiled_root, binaries)
         except (OSError, PackageError) as error:
             print(f"Could not publish the prepared shader library: {error}", file=sys.stderr)
@@ -113,7 +123,7 @@ def prepare(project: Path, wicked_root: Path, wicked_build: Path | None,
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
-    return prepare(args.project, args.wicked_root, args.wicked_build, args.compiler)
+    return prepare(args.project, args.wicked_root, args.wicked_build, args.compiler, args.permutations)
 
 
 if __name__ == "__main__":
