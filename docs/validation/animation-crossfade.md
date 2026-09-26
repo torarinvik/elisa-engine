@@ -53,3 +53,11 @@ scene gate passed with `ELISA_RENDER_SCENE_RENDER_ONLY=1` using those fixtures,
 the explicit runtime object above, and the optimized Homebrew Wicked build.
 All existing visual comparisons also passed. The smoke bridge disables RTTI
 because it uses none and must link with Wicked's RTTI-disabled build.
+
+The runner now discovers the runtime inside an installed Stage1 snapshot by
+reading its generated launcher's literal target. The explicit runtime override
+in the recorded command is optional for that installation layout; explicit
+CLI/environment overrides still take precedence. Discovery does not execute
+wrapper commands or fall back to a different runtime when the snapshot's
+runtime is missing. Focused tests cover snapshot selection, missing-runtime
+rejection, and wrappers containing additional commands.
