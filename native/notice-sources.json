@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "complete": false,
+  "sources": [
+    {
+      "name": "WickedEngine",
+      "root": "wicked",
+      "path": "LICENSE.txt",
+      "sha256": "5c48360ddec789b6333413d2e52a1f3b45174dfd9f8d8575c78dc64a6d877f9f"
+    },
+    {
+      "name": "SDL3",
+      "root": "brew",
+      "path": "opt/sdl3/LICENSE.txt",
+      "sha256": "1c040b8271b37e5076359f8fd54240e371114112924d2df81ef87c7d6a1dfdfd"
+    },
+    {
+      "name": "ufbx",
+      "root": "engine",
+      "path": "dependencies/ufbx/LICENSE",
+      "sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391"
+    },
+    {
+      "name": "basisu",
+      "root": "engine",
+      "path": "dependencies/basisu/LICENSE",
+      "sha256": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c"
+    },
+    {
+      "name": "ozz-animation",
+      "root": "engine",
+      "path": "dependencies/ozz/LICENSE.md",
+      "sha256": "3ddd93e9888fe70b9d61675ceb1c4278a579dc67171678f015de114efe815852"
+    },
+    {
+      "name": "recastnavigation",
+      "root": "engine",
+      "path": "dependencies/recast/License.txt",
+      "sha256": "ffad87821cce7cfd3be00b63ffadd01b04e83a4c6a0bcc68f06362ffd42d705e"
+    },
+    {
+      "name": "GameNetworkingSockets",
+      "root": "engine",
+      "path": "dependencies/gns/LICENSE",
+      "sha256": "6fedd796d51d7f996e0b3dc7c1c9f6a67603bec7a2cfb9f418e0c6607a1ca647"
+    },
+    {
+      "name": "tracy",
+      "root": "engine",
+      "path": "dependencies/tracy/LICENSE",
+      "sha256": "27ab6b51e57f7e263a6e953d9c8984cd26e69d2f7606bde81e4b3048acf30732"
+    },
+    {
+      "name": "harfbuzz",
+      "root": "brew",
+      "path": "opt/harfbuzz/COPYING",
+      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+    },
+    {
+      "name": "zstd",
+      "root": "brew",
+      "path": "opt/zstd/LICENSE",
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    },
+    {
+      "name": "zstd-gpl-alternative",
+      "root": "brew",
+      "path": "opt/zstd/COPYING",
+      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505"
+    }
+  ],
+  "remaining": [
+    "Embedded source-header notices",
+    "Wicked vendored dependency closure",
+    "FreeType license alternatives and referenced notice files",
+    "Transitive shared-library notice coverage"
+  ]
+}

@@ -256,3 +256,19 @@ The current optimized maze executable records `minos 27.0`, and its rebuilt
 bundle was verified to contain `LSMinimumSystemVersion = 27.0`. Twenty-two
 packaging/deployment-target tests pass. This metadata expresses a minimum
 requirement, not runtime validation on older hardware or OS releases.
+
+## Notice source catalog
+
+`native/notice-sources.json` records relative source locations and SHA-256
+hashes for eleven standalone notice texts. Run
+`python3 scripts/collect_dependency_notices.py --output NEW_DIRECTORY` to
+collect their original bytes plus the catalog. Collection rejects changed
+source hashes, escaping paths, and an existing destination. The current
+machine successfully collected all eleven files; focused tests verify exact
+bytes, source-drift rejection, and path bounds.
+
+The catalog deliberately records `complete: false` and its remaining work:
+embedded header notices, Wicked's vendored closure, FreeType's referenced
+license alternatives, and transitive shared-library coverage. Collected files
+can be placed inside a project and declared through `package.notices`; this
+initial collection is not yet the complete distribution notice set.
