@@ -6,9 +6,9 @@ Recast intermediate buffers and the Detour mesh/query objects through one
 
 ## Evidence
 
-Run from the engine root:
+Run the integrated Wicked probe from the engine root:
 
-```text
+```sh
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 ELISA_ALLOW_STALE_STAGE1=1 \
 ELISA_COMPILER_BIN="$PWD/../Elisa-compiler/scripts/elisac_stage1.sh" \
@@ -36,11 +36,28 @@ letting a pending caller use a replaced tile. The copied serialized tile is
 available to a future versioned cook cache; multi-tile async streaming is still
 open.
 
+## Boundary hardening, 2026-09-26
+
+Before allocating Recast heightfields, the adapter now validates finite agent
+and cell settings, bounds derived configuration scales, and caps the grid at
+16,384 cells per axis and 1,048,576 cells total. Triangle area annotations must
+fit Detour's 64-entry area table; custom walkable areas retain their IDs while
+sharing the common walkable polygon flag.
+
+The fixture additionally covers custom area IDs, an infinite agent setting,
+and an oversized grid. Run the boundary harness with sanitizers:
+
+```sh
+python3 scripts/run_boundary_sanitized.py
+```
+
+The Recast/Detour fixture passed under AddressSanitizer and UndefinedBehaviorSanitizer; the full boundary harness and its asset-worker ThreadSanitizer check also passed.
+
 ## Scope
 
 This is an integrated native adapter used by the real Wicked validation host,
 not yet a complete gameplay navigation service. The existing Elisa maze still
 uses its bounded BFS policy. N01 remains open for multi-room/stair bake assets,
-area/link metadata, and debug overlays; N02 remains open for gameplay agent
-corridor following and richer area/link queries. N03 and N04 are not claimed by
-this probe.
+persistent tile caching, and debug overlays. N02 remains open for multi-tile
+streaming, area costs, off-mesh links, and Elisa-owned gameplay queries. N03
+and N04 are not claimed by this probe.

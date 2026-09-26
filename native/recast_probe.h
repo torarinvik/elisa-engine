@@ -7,6 +7,7 @@
 #include "probe_core.h"
 
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -90,11 +91,50 @@ inline bool probe_recast_navigation() {
         probe::nav::QueryStatus::NoPath, "detour reports filtered query")) {
         return false;
     }
+    std::vector<unsigned char> annotated_areas(input.triangle_count, 7);
+    probe::nav::BakeInput annotated = input;
+    annotated.areas = annotated_areas.data();
+    probe::nav::NavMeshArtifact annotated_artifact;
+    probe::nav::PathResult annotated_path;
+    if (!check(probe::nav::bake(annotated, annotated_artifact, error) &&
+        annotated_artifact.query_path(start, end, extents, annotated_path, 1) ==
+            probe::nav::QueryStatus::Success,
+        "detour preserves custom area annotations as traversable polygons")) {
+        return false;
+    }
+    std::vector<unsigned char> invalid_areas(input.triangle_count, DT_MAX_AREAS);
+    probe::nav::NavMeshArtifact rejected;
+    probe::nav::BakeInput invalid_area_input = input;
+    invalid_area_input.areas = invalid_areas.data();
+    if (!check(!probe::nav::bake(invalid_area_input, rejected, error),
+        "recast rejects areas outside Detour's filter range")) {
+        return false;
+    }
+    probe::nav::BakeInput invalid_profile = input;
+    invalid_profile.agent.slope = std::numeric_limits<float>::infinity();
+    if (!check(!probe::nav::bake(invalid_profile, rejected, error),
+        "recast rejects non-finite agent profiles")) {
+        return false;
+    }
+    const float large_vertices[12] = {
+        0.0f, 0.0f, 0.0f, 2000.0f, 0.0f, 0.0f,
+        2000.0f, 0.0f, 2000.0f, 0.0f, 0.0f, 2000.0f,
+    };
+    const int large_indices[6] = {0, 2, 1, 0, 3, 2};
+    probe::nav::BakeInput oversized = input;
+    oversized.vertices = large_vertices;
+    oversized.vertex_count = 4;
+    oversized.indices = large_indices;
+    oversized.triangle_count = 2;
+    oversized.cell_size = 0.1f;
+    if (!check(!probe::nav::bake(oversized, rejected, error),
+        "recast rejects excessive grid allocation before rasterizing")) {
+        return false;
+    }
     std::vector<int> bad_indices = indices;
     bad_indices[0] = input.vertex_count + 1;
     probe::nav::BakeInput malformed = input;
     malformed.indices = bad_indices.data();
-    probe::nav::NavMeshArtifact rejected;
     if (!check(!probe::nav::bake(malformed, rejected, error), "recast rejects bad indices")) {
         return false;
     }
