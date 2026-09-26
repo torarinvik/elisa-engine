@@ -536,7 +536,18 @@ int main(int argc, char** argv) {
     if (!check(physics_start_y - physics_end_y >= 0.2f, "physics box fell under gravity")) {
         return 1;
     }
-    wi::graphics::GetDevice()->WaitForGPU();
+    wi::graphics::GraphicsDevice* graphics_device = wi::graphics::GetDevice();
+    const uint64_t completed_probe_frame = graphics_device->GetFrameCount();
+    if (!check(graphics_device->SupportsFrameCompletionQuery(), "nonblocking frame completion support")) {
+        return 1;
+    }
+    if (!check(!graphics_device->IsFrameComplete(completed_probe_frame + 1), "future frame is not complete")) {
+        return 1;
+    }
+    graphics_device->WaitForGPU();
+    if (!check(graphics_device->IsFrameComplete(completed_probe_frame), "waited frame reports complete")) {
+        return 1;
+    }
     if (!check(render_path.GetRenderResult3D().IsValid(), "render target")) {
         return 1;
     }
