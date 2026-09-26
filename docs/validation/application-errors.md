@@ -13,8 +13,19 @@ dialog. Dialog failure returns false but retains the stderr diagnostic. No
 platform library or native shim is needed in the Elisa game project.
 
 Validation on 2026-09-26: `test/application_error_message_native.elisa`, built
-through the generic application runner in a hidden 320x320 test project,
+through the generic application runner in a hidden 320x200 test project,
 rejects empty titles and messages, then successfully reports a missing-resource
-message before renderer initialization. Source-length, module hygiene and
-whitespace checks pass. Interactive native-dialog appearance and accessibility
-remain a manual release check.
+message before renderer initialization. The fixture is part of
+`scripts/application_native_smoke.py`. Source-length, module hygiene, runner
+unit tests, and whitespace checks pass. The full SDL3/Metal application smoke
+matrix passed all 13 projects with this fixture included; the message appeared
+on stderr and no modal was opened for the hidden project. Interactive native-
+dialog appearance and accessibility remain a manual release check. Reproduce
+from the repository root with:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN="../Elisa-compiler/bin/elisac-stage1" \
+ELISA_RUNTIME_OBJ="../Elisa-compiler/build/runtime/elisacore_runtime.o" \
+/opt/homebrew/bin/python3 scripts/application_native_smoke.py
+```

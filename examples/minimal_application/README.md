@@ -26,4 +26,7 @@ unset, the runner asks `brew --prefix` and `brew --prefix sdl3`. Direct include
 and library directory overrides are also available as `WICKED_SDL3_INCLUDE_DIR`,
 `WICKED_SDL3_LIB_DIR`, `WICKED_BREW_INCLUDE_DIR`, and `WICKED_BREW_LIB_DIR`.
 Use `ELISA_COMPILER_BIN` and `CXX` to select the Elisa compiler and native linker.
+The runner finds the matching `build/runtime/elisacore_runtime.o` beside the
+compiler; set `ELISA_RUNTIME_OBJ` or pass `--runtime-object` when it is stored
+elsewhere.
 Equivalent per-invocation options are shown by `elisa_build_run.py --help`.
