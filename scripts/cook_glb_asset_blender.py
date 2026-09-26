@@ -297,6 +297,30 @@ def main():
         for action in actions:
             action.use_fake_user = True
         actions = retarget_clips(armature, source_armature, actions)
+    elif armature.animation_data is not None:
+        # glTF imports embedded clips as an active action and NLA strips. Keep
+        # those authored clips when no replacement animation source is given;
+        # previously the FBX staging export silently discarded them.
+        candidates = []
+        if armature.animation_data.action is not None:
+            candidates.append(armature.animation_data.action)
+        for track in armature.animation_data.nla_tracks:
+            for strip in track.strips:
+                if strip.action is not None:
+                    candidates.append(strip.action)
+        actions = []
+        seen = set()
+        for action in candidates:
+            if action not in seen and action.frame_range[1] - action.frame_range[0] >= 1.0:
+                actions.append(action)
+                seen.add(action)
+        if len(actions) > MAX_CLIPS:
+            raise RuntimeError(f"GLB must provide at most {MAX_CLIPS} non-static clips; found {len(actions)}")
+        names = [clip_name(action) for action in actions]
+        if any(not name for name in names) or len(set(names)) != len(names):
+            raise RuntimeError("GLB has empty or duplicate clip names")
+        for action in actions:
+            action.use_fake_user = True
 
     keep_objects = {armature, *meshes}
     for item in list(bpy.context.scene.objects):
