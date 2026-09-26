@@ -144,12 +144,89 @@
         "bytes": 1264,
         "sha256": "b4c1d8aa86e7b7329d3aeb3e7674f6248973f35040a0d6906991927c7145b73e"
       }
+    },
+    {
+      "name": "glib",
+      "root": "brew",
+      "path": "opt/glib/LGPL-2.1-or-later.txt",
+      "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb"
+    },
+    {
+      "name": "graphite2",
+      "root": "brew",
+      "path": "opt/graphite2/LICENSE",
+      "sha256": "cab46cd45adbfea4b1d0f14b033c70062c73074fa0b56532c2f351576ddf455e"
+    },
+    {
+      "name": "graphite2-copyright",
+      "root": "brew",
+      "path": "opt/graphite2/COPYING",
+      "sha256": "2c272829ff23f182c8bf7ea12fedea69b0ae148663123ed5240c117cb129c9c1"
+    },
+    {
+      "name": "libpng",
+      "root": "brew",
+      "path": "opt/libpng/LICENSE",
+      "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526"
+    },
+    {
+      "name": "pcre2",
+      "root": "brew",
+      "path": "opt/pcre2/LICENCE.md",
+      "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811"
     }
   ],
   "remaining": [
     "Additional embedded subcomponent notices (including cgltf/jsmn and Wicked utility headers)",
     "Wicked vendored dependency closure",
     "FreeType license alternatives and referenced notice files",
-    "Transitive shared-library notice coverage"
-  ]
+    "FreeType/libintl shared-library notices and completeness review of library-specific copyright notices"
+  ],
+  "bundled_libraries": {
+    "libSDL3.0.dylib": {
+      "notices": [
+        "SDL3"
+      ]
+    },
+    "libfreetype.6.dylib": {
+      "notices": [],
+      "remaining": "FTL/GPL alternatives and referenced notice files"
+    },
+    "libglib-2.0.0.dylib": {
+      "notices": [
+        "glib"
+      ]
+    },
+    "libgraphite2.3.dylib": {
+      "notices": [
+        "graphite2",
+        "graphite2-copyright"
+      ]
+    },
+    "libharfbuzz.0.dylib": {
+      "notices": [
+        "harfbuzz"
+      ]
+    },
+    "libintl.8.dylib": {
+      "notices": [],
+      "remaining": "libintl runtime license and copyright texts; gettext tool COPYING is not used as a substitute"
+    },
+    "libpcre2-8.0.dylib": {
+      "notices": [
+        "pcre2"
+      ]
+    },
+    "libpng16.16.dylib": {
+      "notices": [
+        "libpng"
+      ]
+    },
+    "libzstd.1.dylib": {
+      "notices": [
+        "zstd",
+        "zstd-gpl-alternative"
+      ]
+    }
+  }
 }

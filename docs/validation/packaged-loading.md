@@ -284,3 +284,16 @@ in `package.notices`, with snapshots under `examples/maze/third_party/notices`.
 A rebuilt real app was checked byte-for-byte against every snapshot. The
 shipped catalog still marks coverage incomplete and names the outstanding
 embedded subcomponents, Wicked utilities, FreeType, and transitive libraries.
+
+The collection now contains twenty-three texts, adding GLib, Graphite2's
+license and copyright files, libpng, and PCRE2 from the installed packages.
+`bundled_libraries` maps the nine dylib names in the current optimized app to
+catalog entries. Run `scripts/check_bundled_notices.py --app APP --output REPORT`
+to compare packaged notice bytes with their catalog hashes and identify new,
+missing, ambiguous, or changed notices. It returns failure until both the
+catalog and mapped file coverage are complete.
+
+The actual rebuilt app verified seven of nine shared-library mappings; FreeType
+and libintl remain explicitly unresolved. A focused test covers missing,
+modified, and unmapped notices. The overall catalog remains incomplete for
+Wicked's vendored and embedded dependency closure as well.
