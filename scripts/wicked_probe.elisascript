@@ -27,7 +27,7 @@ def main(arguments: darray[sview]) -> i64:
         return dependency_status
     wicked_root: Path =
         configured: sview = get_environment_or("WICKED_ROOT", "")
-        path(configured) if configured != "" else root.joinpath("../amazing-labyrinth-wickedengine")
+        path(configured) if configured != "" else root.joinpath("../WickedEngine")
     wicked_build: Path =
         configured: sview = get_environment_or("WICKED_BUILD", "")
         path(configured) if configured != "" else wicked_root.joinpath("build-elisa-sdl3")

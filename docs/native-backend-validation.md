@@ -70,8 +70,8 @@ godot --headless --path backends/godot --script backends/godot/probe.gd
 ```
 
 The Wicked checkout is pinned at revision
-`7ed3901564b308a457411560466581672fc8fd66` in the sibling
-`../amazing-labyrinth-wickedengine` checkout. Its arm64 Debug/O0 build provides
+`4eba78554ca473be90a4619496c0f4ed1c7bbe5e` in the sibling
+`../WickedEngine` checkout. Its arm64 Debug/O0 build provides
 Wicked, Jolt, Utility, FAudio, and Lua. The native driver is:
 
 ```sh

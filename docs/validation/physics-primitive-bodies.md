@@ -272,10 +272,12 @@ Validation on 2026-09-25 (versioned shape cache):
   shape kind, coordinate profile, and Jolt version. The array smoke verifies
   cold/warm loads, corruption-triggered recooking, and a ray-queryable body
   built from a restored shape.
-- Wicked adapter commit `7ed3901564b308a457411560466581672fc8fd66` provides
-  the Jolt `SaveWithChildren` and restore bridge. The complete twelve-fixture
-  SDL3/Metal smoke and `scripts/check.elisascript` passed against that pinned
-  revision; the physics midpoint and final captures match at 640x480.
+- Wicked adapter commit `4eba78554ca473be90a4619496c0f4ed1c7bbe5e` restores
+  the Jolt `SaveWithChildren` and restore bridge in the newer SDL3 checkout.
+  The full 13-fixture SDL3/Metal application smoke passes against this revision,
+  including cache misses, corruption-triggered recooking, restored-shape queries,
+  and pixel-identical 30/120 Hz physics captures. The render-only scene and
+  visual regression suite also pass.
 - The native physics service syntax check, 600-line source policy,
   module-hygiene check, and cache-envelope test passed after the adapter split.
 - The follow-up SDL3/Metal smoke passed all twelve fixtures with cold cache

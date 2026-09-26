@@ -52,7 +52,7 @@ def brew_prefix(formula: str | None = None) -> Path | None:
 def resolve_native_paths(args: argparse.Namespace) -> dict[str, Path]:
     wicked_root = configured_path(args.wicked_root, "WICKED_ROOT")
     if wicked_root is None:
-        wicked_root = (ENGINE_ROOT.parent / "amazing-labyrinth-wickedengine").resolve()
+        wicked_root = (ENGINE_ROOT.parent / "WickedEngine").resolve()
     wicked_build = configured_path(args.wicked_build, "WICKED_BUILD") or wicked_root / "build-elisa-sdl3"
 
     brew_root = configured_path(args.brew_prefix, "WICKED_BREW_PREFIX", "HOMEBREW_PREFIX")

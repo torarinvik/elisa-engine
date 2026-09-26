@@ -18,7 +18,7 @@ Validation command:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 ELISA_PERSISTENT_HOST=1 ELISA_PERSISTENT_SELF_TEST=1 \
 build/wicked-native-probe \
-  "$PWD/../amazing-labyrinth-wickedengine/WickedEngine" \
+  "$PWD/../WickedEngine/WickedEngine" \
   "$PWD/backends/scene_manifest.txt" \
   "$PWD/build/persistent-test.png" alwaysactive
 ```

@@ -29,7 +29,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--project", type=Path, required=True,
         help="Elisa project that will receive the prepared shader library")
     parser.add_argument("--wicked-root", type=Path,
-        default=Path(os.environ.get("WICKED_ROOT", ENGINE_ROOT.parent / "amazing-labyrinth-wickedengine")),
+        default=Path(os.environ.get("WICKED_ROOT", ENGINE_ROOT.parent / "WickedEngine")),
         help="WickedEngine checkout (or WICKED_ROOT)")
     parser.add_argument("--wicked-build", type=Path,
         help="WickedEngine build directory (or WICKED_BUILD; defaults to build-elisa-sdl3)")
