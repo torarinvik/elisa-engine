@@ -6,8 +6,19 @@
       ]
     },
     "libfreetype.6.dylib": {
-      "notices": [],
-      "remaining": "FTL/GPL alternatives and referenced notice files"
+      "notices": [
+        "freetype-overview",
+        "freetype-FTL",
+        "freetype-GPLv2",
+        "freetype-bdf",
+        "freetype-pcf",
+        "freetype-hash",
+        "freetype-zlib",
+        "freetype-harfbuzz-ft",
+        "freetype-harfbuzz-decls",
+        "freetype-harfbuzz-types",
+        "freetype-harfbuzz-scripts"
+      ]
     },
     "libglib-2.0.0.dylib": {
       "notices": [
@@ -26,8 +37,11 @@
       ]
     },
     "libintl.8.dylib": {
-      "notices": [],
-      "remaining": "libintl runtime license and copyright texts; gettext tool COPYING is not used as a substitute"
+      "notices": [
+        "libintl-overview",
+        "libintl-LGPL",
+        "libintl-copyright"
+      ]
     },
     "libpcre2-8.0.dylib": {
       "notices": [
@@ -50,8 +64,7 @@
   "remaining": [
     "Additional embedded subcomponent notices (including cgltf/jsmn and Wicked utility headers)",
     "Wicked vendored dependency closure",
-    "FreeType license alternatives and referenced notice files",
-    "FreeType/libintl shared-library notices and completeness review of library-specific copyright notices"
+    "Completeness review of library-specific copyright notices and distribution obligations"
   ],
   "schema": 1,
   "sources": [
@@ -227,6 +240,188 @@
       "path": "opt/pcre2/LICENCE.md",
       "root": "brew",
       "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811"
+    },
+    {
+      "name": "freetype-overview",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/LICENSE.TXT",
+        "member_sha256": "bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-overview.txt",
+      "root": "engine",
+      "sha256": "bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b"
+    },
+    {
+      "name": "freetype-FTL",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/docs/FTL.TXT",
+        "member_sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-FTL.txt",
+      "root": "engine",
+      "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+    },
+    {
+      "name": "freetype-GPLv2",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/docs/GPLv2.TXT",
+        "member_sha256": "c4120c6752c910c299e3bd9cb3a46ff262c268303ca2069b61f92f10a5656c18",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-GPLv2.txt",
+      "root": "engine",
+      "sha256": "c4120c6752c910c299e3bd9cb3a46ff262c268303ca2069b61f92f10a5656c18"
+    },
+    {
+      "name": "freetype-bdf",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/src/bdf/README",
+        "member_sha256": "7984455e7e5a9faba3797c8bf095fbe10cc846316b7320aff8c58402e22b82fe",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-bdf.txt",
+      "root": "engine",
+      "sha256": "7984455e7e5a9faba3797c8bf095fbe10cc846316b7320aff8c58402e22b82fe"
+    },
+    {
+      "name": "freetype-pcf",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/src/pcf/README",
+        "member_sha256": "18d9782898d9eac04476e2f744678137b2a889689ed3e923e052fc396a86f86b",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-pcf.txt",
+      "root": "engine",
+      "sha256": "18d9782898d9eac04476e2f744678137b2a889689ed3e923e052fc396a86f86b"
+    },
+    {
+      "name": "freetype-hash",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1231,
+        "member": "freetype-2.14.3/src/base/fthash.c",
+        "member_sha256": "693e5a54b3ce30140975a94a3369dbe706eb1f280c69e80da426d39cc45b94ef",
+        "offset": 135,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-hash.txt",
+      "root": "engine",
+      "sha256": "fa04727dc6e4a77fd2e7cf3980ac6a3690103a1712679b28664c15ec491bcbc3"
+    },
+    {
+      "name": "freetype-zlib",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1327,
+        "member": "freetype-2.14.3/src/gzip/zlib.h",
+        "member_sha256": "c86a25c27f74cb97b8fa07b175f479f063d5064ace9995b4684063643c81cf1b",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-zlib.txt",
+      "root": "engine",
+      "sha256": "fbab901f75feb30106921191b00a52ed14fb439e49ad0e42bc7b329438c34d24"
+    },
+    {
+      "name": "freetype-harfbuzz-ft",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1147,
+        "member": "freetype-2.14.3/src/autofit/ft-hb-ft.c",
+        "member_sha256": "84dd5ddff1cec222e1755b4962faf45836238dfa3a46854dabd969eb4e50f8be",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-ft.txt",
+      "root": "engine",
+      "sha256": "02538fb019fe962c58be4863a2fc6d21e5b072f4681ca3ea96bf813f31487e43"
+    },
+    {
+      "name": "freetype-harfbuzz-decls",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1147,
+        "member": "freetype-2.14.3/src/autofit/ft-hb-decls.h",
+        "member_sha256": "ed05eec3b5657f98a0c106fa4aa2e5a4bc7f0864e5d34bd5989eee6d8b718bcf",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-decls.txt",
+      "root": "engine",
+      "sha256": "02538fb019fe962c58be4863a2fc6d21e5b072f4681ca3ea96bf813f31487e43"
+    },
+    {
+      "name": "freetype-harfbuzz-types",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1147,
+        "member": "freetype-2.14.3/src/autofit/ft-hb-types.h",
+        "member_sha256": "f106bf7cc41f52cd70907266a74a293c57bc5f71285b01c36bf198ad8b1c6234",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-types.txt",
+      "root": "engine",
+      "sha256": "02538fb019fe962c58be4863a2fc6d21e5b072f4681ca3ea96bf813f31487e43"
+    },
+    {
+      "name": "freetype-harfbuzz-scripts",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1196,
+        "member": "freetype-2.14.3/src/autofit/hb-script-list.h",
+        "member_sha256": "0627d9f6a59a8b09e562e8aeaf414300899308725350beeb50b62b8657399576",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-scripts.txt",
+      "root": "engine",
+      "sha256": "e5a971e2d0bc82700ab3c71aa42b25343fbfedefa7409aee43f46fb8edb24afe"
+    },
+    {
+      "name": "libintl-overview",
+      "origin": {
+        "archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+        "member": "gettext-1.0/gettext-runtime/COPYING",
+        "member_sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0",
+        "url": "https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.gz"
+      },
+      "path": "native/notices/upstream/libintl-overview.txt",
+      "root": "engine",
+      "sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0"
+    },
+    {
+      "name": "libintl-LGPL",
+      "origin": {
+        "archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+        "member": "gettext-1.0/gettext-runtime/intl/COPYING.LIB",
+        "member_sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+        "url": "https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.gz"
+      },
+      "path": "native/notices/upstream/libintl-LGPL.txt",
+      "root": "engine",
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+    },
+    {
+      "name": "libintl-copyright",
+      "origin": {
+        "archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+        "bytes": 779,
+        "member": "gettext-1.0/gettext-runtime/intl/gettextP.h",
+        "member_sha256": "5cdf6c864943ef72114c47fc1eedbe51300fd1979ffe1998ef0ed5636fa77d1b",
+        "offset": 0,
+        "url": "https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.gz"
+      },
+      "path": "native/notices/upstream/libintl-copyright.txt",
+      "root": "engine",
+      "sha256": "c40793eaf9fc98ca98ae85678e5b5cc12e6cefa93a6b5b0750dfd247be062a5d"
     }
   ]
 }

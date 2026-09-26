@@ -297,3 +297,17 @@ The actual rebuilt app verified seven of nine shared-library mappings; FreeType
 and libintl remain explicitly unresolved. A focused test covers missing,
 modified, and unmapped notices. The overall catalog remains incomplete for
 Wicked's vendored and embedded dependency closure as well.
+
+FreeType 2.14.3 and gettext 1.0 source archives were retrieved from the URLs in
+Homebrew's installed recipes and verified against those recipes' SHA-256
+values. The catalog now includes FreeType's overview, FTL/GPL alternatives,
+BDF/PCF notices, and referenced source copyright blocks, plus libintl's own
+runtime overview, LGPL text, and copyright block. These snapshots record the
+upstream archive hash, member path/hash, and excerpt byte range where used.
+They are kept under `native/notices/upstream` so collection remains offline.
+
+The expanded maze package contains thirty-seven notice texts. All nine bundled
+dylib mappings now verify against packaged bytes; four collector/audit tests
+pass. The overall catalog is still marked incomplete for additional vendored
+and embedded components and the final notice-completeness review. A verified
+file mapping does not change that overall status.
