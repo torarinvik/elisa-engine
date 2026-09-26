@@ -26,7 +26,7 @@
       "kind": "git",
       "path_environment": "WICKED_ROOT",
       "path_default": "../amazing-labyrinth-wickedengine",
-      "revision": "d6717a9f2b99836ab1bc7133a86a90389d401fdc",
+      "revision": "680e6ccd0cd89475d808203eacd1823618b2b417",
       "artifacts": [
         "build-elisa-sdl3/WickedEngine/libWickedEngine.a",
         "build-elisa-sdl3/WickedEngine/libJolt.a"

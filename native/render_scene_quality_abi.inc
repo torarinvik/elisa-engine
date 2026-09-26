@@ -385,3 +385,93 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_quality_profile_matches(
             slot.primary_sun_shadow_receiver_bias_at_profile_set) < 0.000001f ? 1 : 0;
 }
 #endif
+
+// 0 = existing raster lighting, 1 = screen-space GI/reflections,
+// 2 = hardware ray-traced GI/reflections when both device and shaders support it.
+constexpr float ELISA_RT_DIFFUSE_RANGE = 12.0f;
+constexpr float ELISA_RT_REFLECTION_RANGE = 40.0f;
+extern "C" int32_t elisa_render_scene_v1_set_indirect_lighting(int32_t requested) {
+    if (requested < 0 || requested > 2) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    auto* device = wi::graphics::GetDevice();
+    using namespace wi::enums;
+    const bool screen = probe::shader_is_available(CSTYPE_POSTPROCESS_SSGI) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_SSGI_DEINTERLEAVE) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_SSGI_UPSAMPLE);
+    const bool ray = device && device->CheckCapability(wi::graphics::GraphicsDeviceCapability::RAYTRACING) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_RTREFLECTION) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE_SPATIAL) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE_TEMPORAL) &&
+        probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE_UPSAMPLE);
+    const int applied = requested == 2 && ray ? 2 : requested > 0 && screen ? 1 : 0;
+    auto& path = *state.path;
+    path.setRaytracedDiffuseRange(ELISA_RT_DIFFUSE_RANGE);
+    path.setRaytracedReflectionsRange(ELISA_RT_REFLECTION_RANGE);
+    const bool use_ray_tracing = applied == 2;
+    const bool use_screen_space = applied == 1;
+    // Turn off the previous path before creating the replacement resources;
+    // Wicked reuses its SSR target for ray-traced reflections.
+    if (path.getRaytracedDiffuseEnabled() && !use_ray_tracing)
+        path.setRaytracedDiffuseEnabled(false);
+    if (path.getRaytracedReflectionEnabled() && !use_ray_tracing)
+        path.setRaytracedReflectionsEnabled(false);
+    if (path.getSSGIEnabled() && !use_screen_space) path.setSSGIEnabled(false);
+    if (path.getSSREnabled() != use_screen_space) path.setSSREnabled(use_screen_space);
+    if (path.getSSGIEnabled() != use_screen_space) path.setSSGIEnabled(use_screen_space);
+    if (!path.getRaytracedDiffuseEnabled() && use_ray_tracing)
+        path.setRaytracedDiffuseEnabled(true);
+    if (!path.getRaytracedReflectionEnabled() && use_ray_tracing)
+        path.setRaytracedReflectionsEnabled(true);
+    std::fprintf(stderr, "Elisa indirect lighting: requested=%d applied=%d hardware_rt=%d\n", requested, applied, ray);
+    return applied;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_render_scale(float scale) {
+    if (!std::isfinite(scale) || scale < 0.5f || scale > 1.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    state.path->resolutionScale = scale;
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_adaptive_resolution(float target_fps, float minimum) {
+    if (!std::isfinite(target_fps) || (target_fps != 0 && (target_fps < 30 || target_fps > 240)) ||
+        !std::isfinite(minimum) || minimum < 0.5f || minimum > 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    state.adaptive_resolution.configure(target_fps, minimum);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+extern "C" int32_t elisa_render_scene_v1_test_indirect_lighting_matches(int32_t mode) {
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr || mode < 0 || mode > 2)
+        return 0;
+    const auto& path = *state.path;
+    const bool screen_space = mode == 1;
+    const bool ray_traced = mode == 2;
+    return path.getSSREnabled() == screen_space && path.getSSGIEnabled() == screen_space &&
+        path.getRaytracedDiffuseEnabled() == ray_traced &&
+        path.getRaytracedReflectionEnabled() == ray_traced ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_resolution_settings_match(
+    float scale, float target_fps, float minimum) {
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    return std::fabs(state.path->resolutionScale - scale) < 0.000001f &&
+        std::fabs(state.adaptive_resolution.target - target_fps) < 0.000001f &&
+        std::fabs(state.adaptive_resolution.minimum - minimum) < 0.000001f ? 1 : 0;
+}
+#endif

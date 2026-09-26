@@ -87,7 +87,8 @@ def main() -> int:
 
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
-    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1"
+    controls_only = os.environ.get("ELISA_RENDER_SCENE_CONTROLS_ONLY") == "1"
+    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only
     profile_cost_only = os.environ.get("ELISA_RENDER_SCENE_PROFILE_COST_ONLY") == "1"
     if profile_cost_only and not render_only:
         print("profile-cost-only mode requires ELISA_RENDER_SCENE_RENDER_ONLY=1", file=sys.stderr)
@@ -288,8 +289,9 @@ def main() -> int:
     executable = build / "render-scene-native-smoke"
     native_main = Path(os.environ.get(
         "ELISA_RENDER_SCENE_NATIVE_MAIN",
-        ROOT / ("test/render_scene_quality_cost_main.elisa" if profile_cost_only
-            else "test/render_scene_native_main.elisa"),
+        ROOT / ("test/render_scene_renderer_controls_main.elisa" if controls_only else
+            "test/render_scene_quality_cost_main.elisa" if profile_cost_only else
+            "test/render_scene_native_main.elisa"),
     )).resolve()
     if not native_main.is_file():
         print(f"native smoke main does not exist: {native_main}", file=sys.stderr)
@@ -444,6 +446,9 @@ def main() -> int:
                     dependency_link.unlink(missing_ok=True)
     if status == 0 and os.environ.get("ELISA_RENDER_SCENE_SELECTION_ONLY") == "1":
         print("World-selection overlay visibility, identity composition, and cleanup passed on SDL3/Metal.")
+        return 0
+    if status == 0 and controls_only:
+        print("Render controls, static LOD generation, and fallbacks passed on SDL3/Metal.")
         return 0
     if status == 0 and profile_cost_only:
         print("High/Medium/Low quality profile GPU and allocation measurements completed on SDL3/Metal.")

@@ -25,6 +25,12 @@ public:
     }
 
     void Update(float dt) override {
+        if (state_) {
+            const float next_scale = state_->adaptive_resolution.advance(dt, resolutionScale);
+            if (next_scale != resolutionScale)
+                std::fprintf(stderr, "Elisa adaptive resolution: %.4f -> %.4f\n", resolutionScale, next_scale);
+            resolutionScale = next_scale;
+        }
         wi::RenderPath3D::Update(dt);
         if (state_ == nullptr || state_->scene == nullptr) return;
         const float elapsed = std::max(dt, 0.0f);
