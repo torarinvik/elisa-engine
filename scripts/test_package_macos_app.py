@@ -39,6 +39,7 @@ class PackageMacosAppTests(unittest.TestCase):
         touch(self.project / "assets" / ".DS_Store")
         touch(self.project / "shaders" / "metal" / "basic.cso")
         touch(self.project / "shaders" / "metal" / "basic.wishadermeta")
+        touch(self.project / "shaders" / packager.SHADER_GENERATED_INVENTORY_NAME)
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()

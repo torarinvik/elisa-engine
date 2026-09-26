@@ -99,6 +99,7 @@ MAX_RESOURCE_ENTRIES = 256
 
 SHADER_METADATA_SUFFIX = ".wishadermeta"
 SHADER_MANIFEST_NAME = "elisa.shader-manifest.json"
+SHADER_GENERATED_INVENTORY_NAME = "elisa.metal-generated.json"
 SHADER_MANIFEST_SCHEMA = 2
 SHADER_BINARY_SUFFIXES = frozenset({".cso", ".spv"})
 SHADER_BACKENDS = frozenset({"hlsl6", "metal", "spirv"})
@@ -113,7 +114,8 @@ def ignore_shader_metadata(directory: str, names: list[str]) -> set[str]:
     # machine. Wicked treats a compiled shader without metadata as up to date,
     # which is exactly what a relocated bundle without the source tree needs.
     return ignore_litter(directory, names) | {
-        name for name in names if name.endswith(SHADER_METADATA_SUFFIX)}
+        name for name in names if name.endswith(SHADER_METADATA_SUFFIX)
+        or name == SHADER_GENERATED_INVENTORY_NAME}
 
 
 def shader_manifest(shader_root: Path) -> dict[str, object]:

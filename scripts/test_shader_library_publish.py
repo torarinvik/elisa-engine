@@ -73,3 +73,35 @@ class ShaderPublicationTests(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual((backups[0] / "metal/old.cso").read_bytes(), b"old shader")
         self.assertEqual((backups[0] / publisher.SHADER_MANIFEST_NAME).read_bytes(), b"original manifest")
+
+    def test_rebuild_removes_obsolete_outputs_but_keeps_custom_shaders(self):
+        publisher.publish(self.root, self.compiled, [self.binary])
+        replacement = self.compiled / "replacement.cso"
+        replacement.write_bytes(b"replacement")
+        publisher.publish(self.root, self.compiled, [replacement])
+        self.assertFalse((self.root / "metal/new.cso").exists())
+        self.assertEqual((self.root / "metal/replacement.cso").read_bytes(), b"replacement")
+        self.assertEqual((self.root / "metal/old.cso").read_bytes(), b"old shader")
+        self.assertEqual(len(publisher.shader_manifest(self.root)["files"]), 2)
+
+    def test_edited_generated_output_is_preserved_on_rebuild(self):
+        publisher.publish(self.root, self.compiled, [self.binary])
+        edited = self.root / "metal/new.cso"
+        edited.write_bytes(b"local edit")
+        original_manifest = (self.root / publisher.SHADER_MANIFEST_NAME).read_bytes()
+        with self.assertRaisesRegex(publisher.PackageError, "modified locally"):
+            publisher.publish(self.root, self.compiled, [self.binary])
+        self.assertEqual(edited.read_bytes(), b"local edit")
+        self.assertEqual((self.root / publisher.SHADER_MANIFEST_NAME).read_bytes(), original_manifest)
+
+    def test_inventory_cannot_delete_outside_shader_root(self):
+        import json
+        from shader_generated_inventory import INVENTORY_NAME
+        outside = self.base / "outside.cso"
+        outside.write_bytes(b"keep")
+        (self.root / INVENTORY_NAME).write_text(json.dumps({
+            "schema": 1, "files": {"metal/../../outside.cso": "0" * 64}}))
+        with self.assertRaises(publisher.PackageError):
+            publisher.publish(self.root, self.compiled, [self.binary])
+        self.assertEqual(outside.read_bytes(), b"keep")
+        self.assert_original()

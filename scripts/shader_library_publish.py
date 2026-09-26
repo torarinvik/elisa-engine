@@ -8,6 +8,7 @@ import shutil
 import tempfile
 
 from package_macos_app import PackageError, SHADER_MANIFEST_NAME, shader_manifest
+from shader_generated_inventory import digest, reconcile
 
 
 def reject_symlinks(root: Path) -> None:
@@ -30,6 +31,9 @@ def publish(shader_root: Path, compiled_root: Path, binaries: list[Path]) -> str
             shutil.copytree(shader_root, stage)
         else:
             stage.mkdir()
+        generated = {"metal/" + source.relative_to(compiled_root).as_posix(): digest(source)
+            for source in binaries}
+        reconcile(stage, generated)
         for source in binaries:
             destination = stage / "metal" / source.relative_to(compiled_root)
             destination.parent.mkdir(parents=True, exist_ok=True)
