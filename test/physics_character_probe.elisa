@@ -21,9 +21,24 @@ module PhysicsCharacterProbe:
             CEILING_BOTTOM: f32 = 1.0
             WALK_SPEED: f32 = 2.0
             JUMP_SPEED: f32 = 5.0
+            CHARACTER_MASS: f32 = 70.0
+            CHARACTER_MAX_SLOPE_ANGLE: f32 = 0.7853982
+            CHARACTER_GRAVITY_FACTOR: f32 = 1.0
             LAYER_WALL_HALF_WIDTH: f32 = 0.1
             LAYER_WALL_HALF_HEIGHT: f32 = 0.75
             LAYER_PASS_CLEARANCE: f32 = 0.35
+            RAMP_START_X: f32 = 98.5
+            RAMP_CENTER_X: f32 = 99.5
+            RAMP_CENTER_Y: f32 = 1.0
+            RAMP_HALF_WIDTH: f32 = 3.0
+            RAMP_HALF_HEIGHT: f32 = 0.15
+            RAMP_HALF_DEPTH: f32 = 2.0
+            RAMP_HALF_SINE: f32 = 0.17364818
+            RAMP_HALF_COSINE: f32 = 0.98480775
+            RAMP_START_HEIGHT: f32 = 1.8
+            RAMP_MIN_ASCENT_X: f32 = 0.8
+            RAMP_MIN_ASCENT_Y: f32 = 0.3
+            RAMP_MOVEMENT_STEPS: usize = 100
             MOVEMENT_STEPS: usize = 30
             SETTLE_STEPS: usize = 20
             LAYER_MOVEMENT_STEPS: usize = 180
@@ -105,13 +120,20 @@ module PhysicsCharacterProbe:
                 collision_layer: collision_layer,
             }
 
+        def character_description_at(x: f32, y: f32,
+            cylinder_half_height: f32, collision_layer: u32) -> PhysicsRuntime::CharacterDesc:
+            PhysicsRuntime::CharacterDesc(
+                Geometry::Vec3{x: x, y: y, z: 0.0},
+                Geometry::quat_identity(), Fixture::CAPSULE_RADIUS,
+                cylinder_half_height, Fixture::CHARACTER_MASS,
+                Fixture::CHARACTER_MAX_SLOPE_ANGLE,
+                Fixture::CHARACTER_GRAVITY_FACTOR,
+                collision_layer)
+
         def character_description(x: f32, cylinder_half_height: f32,
             collision_layer: u32) -> PhysicsRuntime::CharacterDesc:
-            PhysicsRuntime::CharacterDesc(
-                Geometry::Vec3{x: x, y: Fixture::FLOOR_TOP, z: 0.0},
-                Geometry::quat_identity(), Fixture::CAPSULE_RADIUS,
-                cylinder_half_height, 70.0, 0.7853982, 1.0,
-                collision_layer)
+            character_description_at(x, Fixture::FLOOR_TOP,
+                cylinder_half_height, collision_layer)
 
         def layer_filter_scenario(session: mutable RuntimeServices::Session&,
             expect_pass: bool) -> i32:
@@ -168,6 +190,64 @@ module PhysicsCharacterProbe:
                 ok: 0
                 error failure: 1
             return 248 if not character_destroyed or wall_destroyed != 0 or floor_destroyed != 0
+            0
+
+        def slope_scenario(session: mutable RuntimeServices::Session&) -> i32:
+            ramp: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::RAMP_CENTER_X,
+                        y: Fixture::RAMP_CENTER_Y, z: 0.0},
+                    rotation: Geometry::Quat{x: 0.0, y: 0.0,
+                        z: Fixture::RAMP_HALF_SINE, w: Fixture::RAMP_HALF_COSINE},
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: Fixture::RAMP_HALF_WIDTH,
+                        y: Fixture::RAMP_HALF_HEIGHT, z: Fixture::RAMP_HALF_DEPTH},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Fixture::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 250
+            character: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description_at(Fixture::RAMP_START_X,
+                    Fixture::RAMP_START_HEIGHT, Fixture::STANDING_HALF_HEIGHT,
+                    Fixture::DEFAULT_COLLISION_LAYER)):
+                value: value
+                error failure: return 251
+            settled: i32 = advance(session, Fixture::SETTLE_STEPS * 2)
+            return 252 if settled != 0
+            start_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, character):
+                value: value
+                error failure: return 253
+            return 254 if start_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            start_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 255
+            walked: i32 = walk(session, character, Fixture::RAMP_MOVEMENT_STEPS)
+            return 256 if walked != 0
+            end_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, character):
+                value: value
+                error failure: return 257
+            end_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 258
+            return 259 if end_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            return 260 if end_pose.position.x < start_pose.position.x + Fixture::RAMP_MIN_ASCENT_X
+            return 261 if end_pose.position.y < start_pose.position.y + Fixture::RAMP_MIN_ASCENT_Y
+            character_destroyed: bool = catch RuntimeServices::physics_character_destroy(
+                session, character):
+                value: true
+                error failure: false
+            ramp_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, ramp):
+                value: 0
+                error failure: 1
+            return 262 if not character_destroyed or ramp_destroyed != 0
             0
 
     public:
@@ -337,4 +417,6 @@ module PhysicsCharacterProbe:
             return layer_pair_enabled if layer_pair_enabled != 0
             filtered_layers: i32 = layer_filter_scenario(session, false)
             return filtered_layers if filtered_layers != 0
+            slope: i32 = slope_scenario(session)
+            return slope if slope != 0
             0
