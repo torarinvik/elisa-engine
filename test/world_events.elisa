@@ -8,13 +8,20 @@ def main() -> i32:
     entity: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
         value: value
         error failure: return 2
-    WorldEvents::begin_frame(&queue)
+    _ = catch WorldEvents::begin_frame(&queue):
+        ok: 0
+        error failure: return 153
     _ = catch WorldEvents::subscribe(&queue, 7, WorldEvents::Phase.Simulation):
         ok: 0
         error failure: return 3
     _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity: entity, payload: 3, delivered: false}):
         ok: 0
         error failure: return 4
+    rebegin: i32 = catch WorldEvents::begin_frame(&queue):
+        ok: 1
+        WorldEvents::EventError.AlreadyActive: 0
+        error failure: 2
+    return 151 if rebegin != 0 or WorldEvents::event_count(&queue) != 1
     return 5 if WorldEvents::event_count(&queue) != 1
     wrong_phase: i32 = catch WorldEvents::dispatch(&queue, WorldEvents::Phase.Simulation):
         value: 1
@@ -74,6 +81,11 @@ def main() -> i32:
     }):
         ok: 0
         error failure: return 19
+    schedule_rebegin: i32 = catch WorldSchedule::begin_frame(&frame):
+        ok: 1
+        WorldSchedule::Error.AlreadyActive: 0
+        error failure: 2
+    return 152 if schedule_rebegin != 0
     commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
     return 20 if not WorldCommands::world_despawn(&commands, scheduled_entity)
     input_commit: bool = catch WorldSchedule::commit(&frame, &commands, &world):

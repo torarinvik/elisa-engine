@@ -43,6 +43,7 @@ module WorldEvents:
             AudioCue
 
         enum EventError:
+            AlreadyActive
             InactiveFrame
             InvalidPhase
             PhaseRegression
@@ -80,7 +81,8 @@ module WorldEvents:
             def Queue() -> Queue:
                 Queue{events: zeroed, event_count: 0, subscriptions: zeroed, phase: Phase.Input, frame_active: false, delivered: 0}
 
-            def begin_frame(queue: mutable Queue&) -> void:
+            def begin_frame(queue: mutable Queue&) -> void error[EventError]:
+                raise EventError.AlreadyActive if queue.frame_active
                 queue.events <- zeroed
                 queue.event_count <- 0
                 queue.phase <- Phase.Input

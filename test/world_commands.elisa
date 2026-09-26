@@ -4,12 +4,20 @@ using WorldHierarchy
 
 def phase_test() -> i32:
     frame: mutable WorldAccess::Frame = WorldAccess::Frame()
-    WorldAccess::begin_frame(&frame)
+    _ = catch WorldAccess::begin_frame(&frame):
+        ok: 0
+        error failure: return 123
     return 100 if not WorldAccess::frame_active(&frame) or WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
     read: mutable WorldAccess::Token = catch WorldAccess::acquire(
         &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Read):
         value: value
         error failure: return 101
+    rebegin_with_read: i32 = catch WorldAccess::begin_frame(&frame):
+        ok: 1
+        WorldAccess::AccessError.AlreadyActive: 0
+        error failure: 2
+    return 121 if rebegin_with_read != 0 or not WorldAccess::token_live(read)
+    return 122 if WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
     write_conflict: i32 = catch WorldAccess::acquire(
         &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
         value: 1

@@ -17,6 +17,7 @@ module WorldAccess:
             Structural
 
         enum AccessError:
+            AlreadyActive
             InactiveFrame
             PhaseRegression
             ActiveBorrow
@@ -54,7 +55,8 @@ module WorldAccess:
         def current_phase(frame: Frame&) -> Phase:
             frame.phase
 
-        def begin_frame(frame: mutable Frame&) -> void:
+        def begin_frame(frame: mutable Frame&) -> void error[AccessError]:
+            raise AccessError.AlreadyActive if frame.active
             frame.phase <- Phase.Input
             frame.active <- true
             frame.readers <- 0

@@ -18,8 +18,9 @@ failure restores the captured `World::Rollback::Snapshot`.
 
 `src/world/access.elisa` adds an affine six-phase access frame. Read and write
 tokens conflict as expected, structural tokens are exclusive, input and render
-reject structural mutation, and a frame cannot advance or end while a token is
-live. `src/world/phase_commands.elisa` acquires that structural token around a
+reject structural mutation, and a frame cannot restart, advance, or end while a
+token is live. `src/world/events.elisa` likewise rejects a second start without
+clearing queued events. `src/world/phase_commands.elisa` acquires that structural token around a
 primary-world commit, and the phase section of `test/world_commands.elisa`
 covers the phase boundary, conflict, and release rules.
 
