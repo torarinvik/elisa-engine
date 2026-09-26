@@ -130,6 +130,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_dithered_opacity(handle: i64, opacity: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_cast_shadow(handle: i64, enabled: i32) -> i32

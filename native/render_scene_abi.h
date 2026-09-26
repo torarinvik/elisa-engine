@@ -349,6 +349,9 @@ int32_t elisa_render_scene_v1_set_sun_shadow_rasterizer_bias(
 int32_t elisa_render_scene_v1_set_sun_cascade_distances(
     float near_cascade_end, float middle_cascade_end, float far_cascade_end);
 int32_t elisa_render_scene_v1_set_color(int64_t handle, float red, float green, float blue, float alpha);
+// Opaque-pass coverage fade. The material remains depth-writing and any
+// existing alpha mask is preserved while coverage changes per instance.
+int32_t elisa_render_scene_v1_set_dithered_opacity(int64_t handle, float opacity);
 int32_t elisa_render_scene_v1_set_alpha_mode(int64_t handle, int32_t mode, float cutoff, int32_t double_sided);
 int32_t elisa_render_scene_v1_set_cast_shadow(int64_t handle, int32_t enabled);
 // Texture slots: 0 base color, 1 normal, 2 packed surface, 3 emissive.
