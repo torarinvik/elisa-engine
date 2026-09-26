@@ -18,12 +18,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import plistlib
 import re
 import shlex
 import shutil
 import stat
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -325,6 +327,50 @@ exec \"$resources/{binary_name}\" \"$@\"
 
 
 def package_app(project: Path, executable: Path, output: Path, name: str,
+    bundle_id: str, version: str, icon: Path | None = None,
+    resource_paths: list[Path] | None = None,
+    window: tuple[str, int, int] | None = None,
+    shader_root: Path | None = None,
+    notice_paths: list[Path] | None = None) -> Path:
+    project = project.expanduser().resolve()
+    output = output.expanduser().resolve()
+    app = output if output.suffix == ".app" else output.with_suffix(".app")
+    if app == project or app in project.parents:
+        raise PackageError("bundle output must not replace or contain the source project")
+    inputs = [executable, shader_root or project / "shaders", project / "build/cooked"]
+    inputs.extend(project / path for path in (resource_paths if resource_paths is not None else [Path("assets")]))
+    inputs.extend(project / path for path in notice_paths or [])
+    if icon is not None:
+        inputs.append(icon)
+    for source in inputs:
+        source = source.expanduser().resolve()
+        if (app == source or app in source.parents or
+                source in app.parents):
+            raise PackageError(f"bundle output overlaps a required packaging input: {source}")
+    app.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".elisa-app-stage-", dir=app.parent) as folder:
+        staged = _assemble_app(project, executable, Path(folder) / app.name, name,
+            bundle_id, version, icon, resource_paths, window, shader_root, notice_paths)
+        backup = Path(tempfile.mkdtemp(prefix=".elisa-app-backup-", dir=app.parent))
+        backup.rmdir()
+        previous = app.exists()
+        if previous:
+            os.replace(app, backup)
+        try:
+            os.replace(staged, app)
+        except OSError:
+            if previous:
+                try:
+                    os.replace(backup, app)
+                except OSError as error:
+                    raise PackageError(f"app publication and rollback failed; previous bundle retained at {backup}") from error
+            raise
+        if previous:
+            shutil.rmtree(backup)
+    return app
+
+
+def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     bundle_id: str, version: str, icon: Path | None = None,
     resource_paths: list[Path] | None = None,
     window: tuple[str, int, int] | None = None,

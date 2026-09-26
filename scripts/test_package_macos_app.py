@@ -11,6 +11,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import package_macos_app as packager
@@ -144,6 +145,45 @@ class PackageMacosAppTests(unittest.TestCase):
         for entries in (["notice.txt", "notice.txt"], ["empty.txt"]):
             with self.subTest(entries=entries), self.assertRaises(packager.PackageError):
                 packager.manifest_notices({"package": {"notices": entries}}, self.project)
+
+    def test_failed_rebuild_keeps_previous_app(self) -> None:
+        manifest = self.write_manifest({})
+        app = self.package(manifest)
+        original = (app / "Contents/Info.plist").read_bytes()
+        (self.project / "shaders/metal/basic.cso").unlink()
+        with self.assertRaises(packager.PackageError):
+            self.package(manifest)
+        self.assertEqual((app / "Contents/Info.plist").read_bytes(), original)
+        self.assertTrue((app / "Contents/Resources/shaders/metal/basic.cso").exists())
+
+    def test_failed_publication_restores_previous_app(self) -> None:
+        manifest = self.write_manifest({})
+        app = self.package(manifest)
+        marker = app / "previous-version"
+        marker.write_bytes(b"previous")
+        replace = os.replace
+        def fail_stage(source, destination):
+            if Path(source).parent.name.startswith(".elisa-app-stage-"):
+                raise OSError("publication failure")
+            return replace(source, destination)
+        with mock.patch.object(packager.os, "replace", side_effect=fail_stage):
+            with self.assertRaises(OSError):
+                self.package(manifest)
+        self.assertEqual(marker.read_bytes(), b"previous")
+        self.assertEqual(list(app.parent.glob(".elisa-app-backup-*")), [])
+
+    def test_bundle_cannot_be_created_inside_resource_source(self) -> None:
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game",
+                self.project / "assets/Recursive.app", "Game", "org.elisa.game", "1.0")
+        self.assertFalse((self.project / "assets/Recursive.app").exists())
+
+    def test_missing_cooked_directory_cannot_become_output_parent(self) -> None:
+        shutil.rmtree(self.project / "build/cooked")
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game",
+                self.project / "build/cooked/Recursive.app", "Game", "org.elisa.game", "1.0")
+        self.assertFalse((self.project / "build/cooked").exists())
 
     def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
         manifest = packager.shader_manifest(self.project / "shaders")

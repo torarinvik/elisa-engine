@@ -226,3 +226,17 @@ runtime resource allowlist. Sixteen packaging tests pass, including identical
 license basenames in different dependency directories and invalid notice lists.
 This provides distribution plumbing; the complete notice inventory for the
 linked dependency closure is still outstanding in Q02.
+
+## Preserving an existing app during rebuild
+
+The macOS packager now assembles and signs a replacement in a sibling temporary
+directory before publishing it. Failed assembly leaves the previous bundle
+intact. Publication renames the previous bundle to a backup and restores it if
+the replacement rename fails; if restoration also fails, the error names the
+retained backup. Output paths overlapping packaging inputs are rejected,
+including outputs inside an input directory that does not yet exist.
+
+Twenty packaging tests pass. A real optimized maze app rebuilt through this
+path passed two relocated launches with source, Homebrew, and outbound network
+access denied. Publication uses two renames, so concurrent launches during
+the replacement window and crash-atomic replacement are not guaranteed.
