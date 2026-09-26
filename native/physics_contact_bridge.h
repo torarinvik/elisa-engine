@@ -4,7 +4,7 @@
 // probe creates two ordinary Wicked rigid bodies so this covers registration,
 // worker callback handoff, entity identity, and teardown ordering.
 #include "physics_body_bridge.h"
-#include "physics_query_bridge.h"
+#include "physics_contact_queue.h"
 
 namespace probe {
 

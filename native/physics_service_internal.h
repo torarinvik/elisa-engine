@@ -3,6 +3,7 @@
 // Shared private state for the split physics ABI translation units. This file
 // is native-only; no Wicked or Jolt type crosses the C ABI.
 #include "application_abi.h"
+#include "physics_contact_queue.h"
 #include "physics_query_bridge.h"
 #include "physics_service_abi.h"
 #include "wiPhysics.h"

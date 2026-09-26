@@ -51,6 +51,7 @@
 #include "physics_body_bridge.h"
 #include "physics_interpolation_probe.h"
 #include "physics_query_probe.h"
+#include "physics_contact_queue.h"
 #include "physics_contact_bridge.h"
 #include "action_input_bridge.h"
 #include "camera_bridge.h"
