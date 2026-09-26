@@ -15,7 +15,10 @@ includes `src/runtime/public.elisa`, which provides `Application`,
 project without requiring engine-relative include paths,
 compiles the Elisa entry point to an archive, rejects game-owned C exports from
 the compiler's ABI manifest, and links that archive with the shared native
-facade. All child tools receive argument arrays; project, source, dependency,
+facade and the Elisa runtime object. The runner discovers
+`build/runtime/elisacore_runtime.o` next to the selected compiler, or accepts
+`--runtime-object` / `ELISA_RUNTIME_OBJ` when the runtime is stored elsewhere.
+All child tools receive argument arrays; project, source, dependency,
 and output paths may contain spaces. `run` starts the executable with the
 project directory as its working directory.
 

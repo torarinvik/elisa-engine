@@ -117,12 +117,15 @@ class BuildRunCliTests(unittest.TestCase):
             }), encoding="utf-8")
             wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
             compiler, linker, log_dir = write_fake_tools(root)
+            runtime_object = root / "Elisa runtime with spaces" / "elisacore_runtime.o"
+            touch(runtime_object)
             environment = {
                 "WICKED_ROOT": str(wicked_root),
                 "WICKED_BUILD": str(wicked_build),
                 "WICKED_SDL3_ROOT": str(sdl_root),
                 "WICKED_BREW_PREFIX": str(brew_root),
                 "ELISA_COMPILER_BIN": str(compiler),
+                "ELISA_RUNTIME_OBJ": str(runtime_object),
                 "CXX": str(linker),
                 "FAKE_LOG_DIR": str(log_dir),
             }
@@ -159,6 +162,18 @@ class BuildRunCliTests(unittest.TestCase):
         self.assertIn(str(SCRIPT.parent.parent / "native/render_scene_abi.cpp"), linker_args)
         self.assertIn(str(SCRIPT.parent.parent / "dependencies/basisu/transcoder/basisu_transcoder.cpp"), linker_args)
         self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
+        self.assertIn(str(runtime_object.resolve()), linker_args)
+
+    def test_runtime_object_is_discovered_beside_compiler(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Elisa compiler runtime ") as temporary_directory:
+            root = Path(temporary_directory)
+            compiler = root / "bin/elisac-stage1"
+            runtime_object = root / "build/runtime/elisacore_runtime.o"
+            touch(compiler)
+            touch(runtime_object)
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(runner.resolve_runtime_object(None, str(compiler)), runtime_object.resolve())
 
     def test_wicked_abi_guard_checks_every_linked_archive(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa Wicked ABI guard ") as temporary_directory:
@@ -191,12 +206,15 @@ class BuildRunCliTests(unittest.TestCase):
             output = project / "game"
             wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
             compiler, linker, log_dir = write_fake_tools(root)
+            runtime_object = root / "runtime/elisacore_runtime.o"
+            touch(runtime_object)
             environment = {
                 "WICKED_ROOT": str(wicked_root),
                 "WICKED_BUILD": str(wicked_build),
                 "WICKED_SDL3_ROOT": str(sdl_root),
                 "WICKED_BREW_PREFIX": str(brew_root),
                 "ELISA_COMPILER_BIN": str(compiler),
+                "ELISA_RUNTIME_OBJ": str(runtime_object),
                 "CXX": str(linker),
                 "FAKE_LOG_DIR": str(log_dir),
             }
@@ -516,12 +534,15 @@ class BuildRunCliTests(unittest.TestCase):
             output = project / "game"
             wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
             compiler, linker, log_dir = write_fake_tools(root)
+            runtime_object = root / "runtime/elisacore_runtime.o"
+            touch(runtime_object)
             environment = {
                 "WICKED_ROOT": str(wicked_root),
                 "WICKED_BUILD": str(wicked_build),
                 "WICKED_SDL3_ROOT": str(sdl_root),
                 "WICKED_BREW_PREFIX": str(brew_root),
                 "ELISA_COMPILER_BIN": str(compiler),
+                "ELISA_RUNTIME_OBJ": str(runtime_object),
                 "CXX": str(linker),
                 "FAKE_LOG_DIR": str(log_dir),
                 "FAKE_EXPORT": "1",
@@ -548,12 +569,15 @@ class BuildRunCliTests(unittest.TestCase):
             output.write_text("stale", encoding="utf-8")
             wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
             compiler, linker, log_dir = write_fake_tools(root)
+            runtime_object = root / "runtime/elisacore_runtime.o"
+            touch(runtime_object)
             environment = {
                 "WICKED_ROOT": str(wicked_root),
                 "WICKED_BUILD": str(wicked_build),
                 "WICKED_SDL3_ROOT": str(sdl_root),
                 "WICKED_BREW_PREFIX": str(brew_root),
                 "ELISA_COMPILER_BIN": str(compiler),
+                "ELISA_RUNTIME_OBJ": str(runtime_object),
                 "CXX": str(linker),
                 "FAKE_LOG_DIR": str(log_dir),
                 "FAKE_COMPILER_STATUS": "17",

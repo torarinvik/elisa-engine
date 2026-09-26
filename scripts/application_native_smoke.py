@@ -152,6 +152,7 @@ def main() -> int:
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
             ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
+            ("application-error-message-smoke", ROOT / "test/application_error_message_native.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
         ]
         physics_captures = ROOT / "build/validation/physics-render-cadence"

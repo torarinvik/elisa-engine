@@ -141,6 +141,33 @@ def default_native_compiler() -> str:
     return "/usr/bin/clang++" if sys.platform == "darwin" else "clang++"
 
 
+def resolve_runtime_object(argument: str | None, compiler: str) -> Path:
+    configured = configured_path(argument, "ELISA_RUNTIME_OBJ")
+    if configured is not None:
+        if not configured.is_file():
+            raise BuildConfigurationError(f"Elisa runtime object does not exist: {configured}")
+        return configured
+
+    compiler_file = Path(compiler).expanduser()
+    if not compiler_file.is_file():
+        located = shutil.which(compiler)
+        if located is None:
+            raise BuildConfigurationError(
+                "Cannot locate the Elisa compiler to find its runtime object; "
+                "set --runtime-object or ELISA_RUNTIME_OBJ"
+            )
+        compiler_file = Path(located)
+    compiler_file = compiler_file.resolve()
+    for compiler_root in (compiler_file.parent.parent, compiler_file.parent):
+        candidate = compiler_root / "build/runtime/elisacore_runtime.o"
+        if candidate.is_file():
+            return candidate
+    raise BuildConfigurationError(
+        "Elisa runtime object was not found next to the compiler; "
+        "set --runtime-object or ELISA_RUNTIME_OBJ"
+    )
+
+
 def validate_wicked_archive_abi(paths: dict[str, Path], compiler: str) -> int:
     libraries = paths["libraries"]
     utility = libraries / "Utility"
@@ -175,6 +202,7 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         command.add_argument("--brew-include-dir", help="override dependency include directory")
         command.add_argument("--brew-lib-dir", help="override dependency library directory")
         command.add_argument("--compiler", help="Elisa compiler (or ELISA_COMPILER_BIN)")
+        command.add_argument("--runtime-object", help="Elisa runtime object (or ELISA_RUNTIME_OBJ)")
         command.add_argument("--cxx", help="native C++ compiler (or CXX)")
         command.add_argument("--native-test-probes", action="store_true",
             help="compile test-only native adapter fault-injection probes")
@@ -306,7 +334,7 @@ def audit_archive(archive: Path) -> None:
 
 def native_link_command(cxx: str, archive: Path, staged_output: Path,
     build_dir: Path, paths: dict[str, Path], native_test_probes: bool = False,
-    optimize: bool = False) -> list[str]:
+    optimize: bool = False, runtime_object: Path | None = None) -> list[str]:
     wicked_source = paths["wicked_source"]
     libraries = paths["libraries"]
     utility = libraries / "Utility"
@@ -342,13 +370,18 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         str(ENGINE_ROOT / "native/user_data_abi.cpp"),
         str(paths["basisu_transcoder"] / "basisu_transcoder.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
-        str(archive), str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
+        str(archive),
+    ]
+    if runtime_object is not None:
+        command.append(str(runtime_object))
+    command.extend([
+        str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),
         str(libraries / "LUA/libLUA.a"),
         "-L", str(sdl_library), "-lSDL3", "-L", str(brew_library),
         "-lfreetype", "-lharfbuzz", "-lzstd", "-Wl,-rpath,@executable_path",
         "-Wl,-rpath," + str(wicked_source),
-    ]
+    ])
     if native_test_probes:
         command.extend(["-DELISA_APPLICATION_TEST_PROBE=1", "-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1"])
     for framework in FRAMEWORKS:
@@ -366,14 +399,14 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
     paths = resolve_native_paths(args)
     validate_native_files(paths)
     cxx = args.cxx or os.environ.get("CXX", default_native_compiler())
+    compiler = args.compiler or os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
+    runtime_object = resolve_runtime_object(args.runtime_object, compiler)
     abi_status = validate_wicked_archive_abi(paths, cxx)
     if abi_status != 0:
         return abi_status, None, None
     status = cook_declared_assets(project, config)
     if status != 0:
         return status, None, None
-    compiler = args.compiler or os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
-
     with tempfile.TemporaryDirectory(prefix="Elisa application build ", dir=output.parent) as temporary_directory:
         build_dir = Path(temporary_directory)
         wrapper = build_dir / "application_entry.elisa"
@@ -385,7 +418,8 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return status, None, None
         audit_archive(archive)
         command = native_link_command(cxx, archive, staged_output, build_dir, paths,
-            args.native_test_probes, args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1")
+            args.native_test_probes, args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
+            runtime_object)
         status = run_command(command, cwd=project)
         if status != 0:
             return status, None, None
