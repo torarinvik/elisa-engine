@@ -1,19 +1,23 @@
 # Wicked shader warm-up measurement
 
-`scripts/shader_warmup_benchmark.py` measures two process launches against one
-temporary Metal shader-output directory. The first launch starts with an empty
-cache (plus a marker file needed by Wicked's path preflight); it records the
-shader binaries Wicked compiles and measures its first rendered frame. A second
-launch uses the same directory and must produce no additional `.cso` files.
-Both launches render nine frames and report the first frame separately from
-the median and p95 of the later eight frames. The executable must already be
-built by `scripts/wicked_probe.elisascript texture`.
+`scripts/shader_warmup_benchmark.py` measures three process launches against
+one temporary Metal shader directory: cold shaders with pipeline capture,
+cached shaders alone, and cached shaders with the captured Metal archive.
+Each launch renders nine frames and reports the first frame separately from
+the median and p95 of the later eight frames. The gate requires a nonempty
+archive, successful load, and no additional `.cso` files in either cached run.
+Build the executable first with `scripts/wicked_probe.elisascript texture`.
 
 Run it on a macOS machine with the repository's configured Wicked SDL3/Metal
 build:
 
 ```sh
-python3 scripts/shader_warmup_benchmark.py
+WICKED_BUILD="../WickedEngine/build-elisa-sdl3-homebrew" \
+CXX=/opt/homebrew/opt/llvm/bin/clang++ \
+PYTHON_BIN=/opt/homebrew/bin/python3 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+elisascript scripts/wicked_probe.elisascript texture
+/opt/homebrew/bin/python3 scripts/shader_warmup_benchmark.py
 ```
 
 The script accepts `--wicked-root` and `--probe` for non-default checkouts and
@@ -43,9 +47,40 @@ performance threshold. The 392 runtime-requested binaries are also not the
 same set as the 398 permutations emitted by the offline compiler: the latter
 prepares additional engine variants.
 
-Wicked's Metal pipeline-state objects still live only in process memory in this
-path. Reusing `.cso` files avoids repeating shader compilation, but each process
-still creates its pipeline states. A persistent Metal binary archive and a
-project-specific permutation inventory remain future R13 work; the runtime
-shader manifest currently verifies file identity and backend coverage, not
-pipeline-cache keys.
+## Persistent Metal archive (2026-09-26)
+
+The Wicked backend accepts `WICKED_METAL_PIPELINE_ARCHIVE_CAPTURE` for an
+opt-in development capture, or `WICKED_METAL_PIPELINE_ARCHIVE` for read-only
+loading. Capture records compute, ordinary render, and mesh pipeline
+descriptors, then serializes on device shutdown and atomically publishes the
+result from a unique temporary file. The destination parent must already
+exist. Normal launches leave both variables unset. Configuring both disables
+the archive. Missing or invalid archives fall back to ordinary pipeline creation.
+The geometry-emulation helper path is not captured. Native fallback checks
+for missing/corrupt load files, a missing capture parent, and conflicting
+settings each completed nine rendered frames. Dangling symlink and FIFO
+capture destinations were rejected without modifying them; both fallbacks
+also rendered nine frames.
+
+A consistent Homebrew Clang 23.1.1 optimized build on macOS 27 / Apple M5
+produced this trial:
+
+| Measurement | Cold + capture | Shader cache | Shader cache + archive |
+| --- | ---: | ---: | ---: |
+| Process launch | 20,940 ms | 1,057 ms | 1,052 ms |
+| New shader binaries | 392 | 0 | 0 |
+| First frame | 527.2 ms | 7.1 ms | 6.8 ms |
+| Later median / p95 | 8.0 / 9.1 ms | 8.0 / 8.8 ms | 8.1 / 9.1 ms |
+
+The archive was 60,258,432 bytes. This proves capture and subsequent loading;
+it does not establish a meaningful speedup over the driver's existing cache.
+A repeat after the final path checks passed with 392/0/0 new shaders, a
+60,258,528-byte archive, and launch times of 11,534/792/872 ms.
+Cold capture includes the cost of recording pipeline functions and is not
+directly comparable to the earlier uncaptured cold trials above.
+
+Project-specific permutation selection, archive identity/invalidation keys,
+and packaged archive distribution remain R13 work. Metal can compile cache
+misses normally; a load message alone does not prove every pipeline was a hit.
+See [the optimized-build validation](wicked-abi-consistency.md) for the
+compiler setting required by this Metal wrapper on the current toolchain.

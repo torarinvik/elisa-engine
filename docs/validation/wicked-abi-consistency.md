@@ -40,3 +40,29 @@ use a consistent lower-optimization build or fix the compiler/build setup, then
 rebuild every C++ archive and Elisa's native bridge with the same compiler and
 standard-library ABI. Re-run the ABI check and shutdown reproducer before
 shipping that optimized build.
+
+## Consistent optimized build on macOS 27 (2026-09-26)
+
+A fresh `build-elisa-sdl3-homebrew` build with Homebrew Clang 23.1.1,
+`RelWithDebInfo` (`-O2`), SDL3 enabled, RTTI and IPO disabled now builds the
+`WickedEngine_ext_shaders` target. C, C++, and Objective-C++ all use that
+Homebrew toolchain. The ABI gate reports `230101` for the compiler and all
+five archives (WickedEngine, Jolt, Utility, FAudio, LUA). Use
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools` for this SDK/linker pair.
+
+The first consistent optimized build trapped during `wi::gpusortlib::Initialize`
+in `GraphicsDevice_Metal::CreateBuffer2`. Its disassembly contains `brk #1`
+immediately after `NS::SharedPtr` releases its initially null object. The
+Metal C++ wrappers forward null receivers to Objective-C nil messaging;
+CMake now sets `-fno-delete-null-pointer-checks` on `wiGraphicsDevice_Metal.cpp`
+to preserve that behavior under optimization. After rebuilding and relinking
+with the same toolchain, the complete native texture probe initializes Wicked
+and passes KTX2 HDR upload validation. A tiny standalone wrapper test did not
+reproduce the failure; the full optimized native probe is the regression check.
+
+Two SDK compatibility fixes are also required: enable Darwin declarations
+before `wiHelper.cpp` includes the file-dialog header that selects a restrictive
+POSIX namespace, and include `<filesystem>` explicitly in `wiAppleHelper.mm`.
+Apple Clang 21 still crashes compiling `wiPrimitive.cpp` and `wiTerrain.cpp`
+in the separate optimized Apple build. That incomplete diagnostic build must
+not be used as an engine dependency.
