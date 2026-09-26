@@ -84,6 +84,9 @@ module Application:
         @callconv(c)
         extern elisa_application_v1_uptime_nanos() -> u64
 
+        @callconv(c)
+        extern elisa_application_v1_random_seed() -> u64
+
     public:
         struct Config:
             title: cstr
@@ -351,6 +354,10 @@ module Application:
 
         # Monotonic host uptime is useful for bounded startup/load telemetry;
         # it is zero before initialization and after shutdown.
+        # A fresh host seed; record it to replay procedural content.
+        def random_seed() -> u64:
+            elisa_application_v1_random_seed()
+
         def uptime_nanos() -> u64:
             elisa_application_v1_uptime_nanos()
 

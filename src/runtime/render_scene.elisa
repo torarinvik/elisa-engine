@@ -53,7 +53,7 @@ module RenderScene:
             raise RenderSceneError.UnsupportedFeature if status == NativeStatus::UNSUPPORTED_FEATURE
             raise RenderSceneError.BackendFailure if status != NativeStatus::OK
     public:
-        const MAX_INSTANCES: usize = 512
+        const MAX_INSTANCES: usize = 4096
         const MAX_ELECTRIC_ARCS: usize = 1024
         const MAX_SNAPSHOT_ENTRIES: usize = 256
         const MAX_OVERLAY_PANELS: usize = 64

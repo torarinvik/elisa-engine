@@ -47,11 +47,12 @@
 #include <unordered_map>
 #include <vector>
 namespace {
-constexpr size_t MAX_INSTANCES = 512;
+constexpr size_t MAX_INSTANCES = 4096;
 // An instance or snapshot row without a shared snapshot mesh.
 constexpr size_t NO_SHARED_MESH = std::numeric_limits<size_t>::max();
 constexpr size_t MAX_ELECTRIC_ARCS = 1024;
-constexpr unsigned HANDLE_SLOT_BITS = 11;
+constexpr unsigned HANDLE_SLOT_BITS = 13;
+static_assert(MAX_INSTANCES < (size_t(1) << HANDLE_SLOT_BITS), "instance handles must encode every slot plus null");
 constexpr uint64_t HANDLE_SLOT_MASK = (uint64_t(1) << HANDLE_SLOT_BITS) - 1;
 constexpr uint64_t MAX_GENERATION = uint64_t(std::numeric_limits<int64_t>::max()) >> HANDLE_SLOT_BITS;
 constexpr int32_t MAX_VIEWPORT = 16384;
