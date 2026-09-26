@@ -75,6 +75,7 @@ const char* elisa_application_v1_project_title(void);
 int32_t elisa_application_v1_project_width(void);
 int32_t elisa_application_v1_project_height(void);
 int32_t elisa_application_v1_project_hidden(void);
+int32_t elisa_application_v1_show_error(const char* title, const char* message);
 int32_t elisa_application_v1_initialize(const char* title, int32_t width, int32_t height, int32_t hidden);
 // Returns the validated startup-time native service and resource profile.
 int32_t elisa_application_v1_backend_profile(
