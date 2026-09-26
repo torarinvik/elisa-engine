@@ -4,16 +4,29 @@ module PhysicsCharacterProbe:
         const module Fixture:
             START_X: f32 = -20.0
             COVER_X: f32 = 20.0
+            LAYER_START_X: f32 = 127.0
+            LAYER_WALL_X: f32 = 130.0
+            LAYER_WALL_HALF_DEPTH: f32 = 1.0
+            LAYER_BLOCK_TOLERANCE: f32 = 0.05
+            BLOCKER_COLLISION_LAYER: u32 = 0
+            CHARACTER_COLLISION_LAYER: u32 = 1
+            DEFAULT_COLLISION_LAYER: u32 = 0
             FLOOR_TOP: f32 = 0.0
             FLOOR_HALF_WIDTH: f32 = 60.0
+            LAYER_FLOOR_HALF_WIDTH: f32 = 180.0
+            FLOOR_HALF_HEIGHT: f32 = 0.25
             CAPSULE_RADIUS: f32 = 0.25
             STANDING_HALF_HEIGHT: f32 = 0.45
             CROUCHED_HALF_HEIGHT: f32 = 0.1
             CEILING_BOTTOM: f32 = 1.0
             WALK_SPEED: f32 = 2.0
             JUMP_SPEED: f32 = 5.0
+            LAYER_WALL_HALF_WIDTH: f32 = 0.1
+            LAYER_WALL_HALF_HEIGHT: f32 = 0.75
+            LAYER_PASS_CLEARANCE: f32 = 0.35
             MOVEMENT_STEPS: usize = 30
             SETTLE_STEPS: usize = 20
+            LAYER_MOVEMENT_STEPS: usize = 180
 
         def advance(session: mutable RuntimeServices::Session&,
             count: usize) -> i32:
@@ -25,8 +38,8 @@ module PhysicsCharacterProbe:
             0
 
         def walk(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle) -> i32:
-            for _ in 0..<Fixture::MOVEMENT_STEPS |session, character|:
+            character: PhysicsRuntime::CharacterHandle, steps: usize) -> i32:
+            for _ in 0..<steps |session, character|:
                 drive_status: i32 = catch RuntimeServices::physics_character_move(session,
                     character, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
                     Fixture::WALK_SPEED, 0.0, false):
@@ -44,7 +57,7 @@ module PhysicsCharacterProbe:
             final_x: mutable f32&) -> i32:
             character: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
                 session, character_description(-40.0,
-                    Fixture::STANDING_HALF_HEIGHT)):
+                    Fixture::STANDING_HALF_HEIGHT, Fixture::DEFAULT_COLLISION_LAYER)):
                 value: value
                 error failure: return 1
             settle: i32 = advance(session, Fixture::SETTLE_STEPS)
@@ -77,30 +90,91 @@ module PhysicsCharacterProbe:
             return 7 if not destroyed
             0
 
-        def floor_description() -> PhysicsRuntime::BodyDesc:
+        def floor_description(collision_layer: u32,
+            half_width: f32) -> PhysicsRuntime::BodyDesc:
             PhysicsRuntime::BodyDesc{
                 kind: PhysicsRuntime::BodyKind.Static,
                 shape: PhysicsRuntime::BodyShape.Box,
                 position: Geometry::Vec3{x: 0.0, y: Fixture::FLOOR_TOP - 0.25, z: 0.0},
                 rotation: Geometry::quat_identity(),
                 center_of_mass_offset: Geometry::vec3_zero(),
-                dimensions: Geometry::Vec3{x: Fixture::FLOOR_HALF_WIDTH,
-                    y: 0.25, z: 5.0},
+                dimensions: Geometry::Vec3{x: half_width,
+                    y: Fixture::FLOOR_HALF_HEIGHT, z: 5.0},
                 mass: 0.0,
                 sensor: false,
-                collision_layer: 0,
+                collision_layer: collision_layer,
             }
 
-        def character_description(x: f32, cylinder_half_height: f32) -> PhysicsRuntime::CharacterDesc:
+        def character_description(x: f32, cylinder_half_height: f32,
+            collision_layer: u32) -> PhysicsRuntime::CharacterDesc:
             PhysicsRuntime::CharacterDesc(
                 Geometry::Vec3{x: x, y: Fixture::FLOOR_TOP, z: 0.0},
                 Geometry::quat_identity(), Fixture::CAPSULE_RADIUS,
-                cylinder_half_height, 70.0, 0.7853982, 1.0, 0)
+                cylinder_half_height, 70.0, 0.7853982, 1.0,
+                collision_layer)
+
+        def layer_filter_scenario(session: mutable RuntimeServices::Session&,
+            expect_pass: bool) -> i32:
+            floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, floor_description(Fixture::CHARACTER_COLLISION_LAYER,
+                    Fixture::LAYER_FLOOR_HALF_WIDTH)):
+                value: value
+                error failure: return 240
+            wall: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::LAYER_WALL_X,
+                        y: Fixture::LAYER_WALL_HALF_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: Fixture::LAYER_WALL_HALF_WIDTH,
+                        y: Fixture::LAYER_WALL_HALF_HEIGHT,
+                        z: Fixture::LAYER_WALL_HALF_DEPTH},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Fixture::BLOCKER_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 241
+            character: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description(Fixture::LAYER_START_X,
+                    Fixture::STANDING_HALF_HEIGHT, Fixture::CHARACTER_COLLISION_LAYER)):
+                value: value
+                error failure: return 242
+            settled: i32 = advance(session, Fixture::SETTLE_STEPS)
+            return 243 if settled != 0
+            walked: i32 = walk(session, character, Fixture::LAYER_MOVEMENT_STEPS)
+            return 244 if walked != 0
+            pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 245
+            if expect_pass:
+                return 246 if (pose.position.x < Fixture::LAYER_WALL_X +
+                    Fixture::LAYER_WALL_HALF_WIDTH + Fixture::LAYER_PASS_CLEARANCE)
+            else:
+                return 247 if (pose.position.x > Fixture::LAYER_WALL_X -
+                    Fixture::LAYER_WALL_HALF_WIDTH - Fixture::CAPSULE_RADIUS +
+                    Fixture::LAYER_BLOCK_TOLERANCE)
+            character_destroyed: bool = catch RuntimeServices::physics_character_destroy(
+                session, character):
+                ok: true
+                error failure: false
+            wall_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, wall):
+                ok: 0
+                error failure: 1
+            floor_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, floor):
+                ok: 0
+                error failure: 1
+            return 248 if not character_destroyed or wall_destroyed != 0 or floor_destroyed != 0
+            0
 
     public:
         def run(session: mutable RuntimeServices::Session&) -> i32:
             floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
-                session, floor_description()):
+                session, floor_description(Fixture::DEFAULT_COLLISION_LAYER,
+                    Fixture::FLOOR_HALF_WIDTH)):
                 value: value
                 error failure: return 200
             cover: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
@@ -114,19 +188,19 @@ module PhysicsCharacterProbe:
                     dimensions: Geometry::Vec3{x: 1.0, y: 0.2, z: 1.0},
                     mass: 0.0,
                     sensor: false,
-                    collision_layer: 0,
+                    collision_layer: Fixture::DEFAULT_COLLISION_LAYER,
                 }):
                 value: value
                 error failure: return 201
 
             walker: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
                 session, character_description(Fixture::START_X,
-                    Fixture::STANDING_HALF_HEIGHT)):
+                    Fixture::STANDING_HALF_HEIGHT, Fixture::DEFAULT_COLLISION_LAYER)):
                 value: value
                 error failure: return 202
             croucher: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
                 session, character_description(Fixture::COVER_X,
-                    Fixture::CROUCHED_HALF_HEIGHT)):
+                    Fixture::CROUCHED_HALF_HEIGHT, Fixture::DEFAULT_COLLISION_LAYER)):
                 value: value
                 error failure: return 203
             settle_status: i32 = advance(session, Fixture::SETTLE_STEPS)
@@ -154,7 +228,7 @@ module PhysicsCharacterProbe:
                 error failure: return 211
             return 212 if blocked_stand
 
-            movement_status: i32 = walk(session, walker)
+            movement_status: i32 = walk(session, walker, Fixture::MOVEMENT_STEPS)
             return 213 if movement_status != 0
             moved_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
                 session, walker):
@@ -185,12 +259,13 @@ module PhysicsCharacterProbe:
                     dimensions: Geometry::Vec3{x: 3.0, y: 0.25, z: 3.0},
                     mass: 1.0,
                     sensor: false,
-                    collision_layer: 0,
+                    collision_layer: Fixture::DEFAULT_COLLISION_LAYER,
                 }):
                 value: value
                 error failure: return 220
             rider: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
-                session, character_description(70.0, Fixture::STANDING_HALF_HEIGHT)):
+                session, character_description(70.0, Fixture::STANDING_HALF_HEIGHT,
+                    Fixture::DEFAULT_COLLISION_LAYER)):
                 value: value
                 error failure: return 221
             platform_settle: i32 = advance(session, Fixture::SETTLE_STEPS)
@@ -246,4 +321,20 @@ module PhysicsCharacterProbe:
                 value: 0
                 error failure: 1
             return 231 if destroy_walker != 0 or destroy_croucher != 0 or destroy_rider != 0 or destroy_platform != 0 or destroy_cover != 0 or destroy_floor != 0
+            layer_pair_disabled: i32 = catch RuntimeServices::physics_set_layer_collision(
+                session, Fixture::BLOCKER_COLLISION_LAYER,
+                Fixture::CHARACTER_COLLISION_LAYER, false):
+                ok: 0
+                error failure: 232
+            return layer_pair_disabled if layer_pair_disabled != 0
+            isolated_layers: i32 = layer_filter_scenario(session, true)
+            return isolated_layers if isolated_layers != 0
+            layer_pair_enabled: i32 = catch RuntimeServices::physics_set_layer_collision(
+                session, Fixture::BLOCKER_COLLISION_LAYER,
+                Fixture::CHARACTER_COLLISION_LAYER, true):
+                ok: 0
+                error failure: 249
+            return layer_pair_enabled if layer_pair_enabled != 0
+            filtered_layers: i32 = layer_filter_scenario(session, false)
+            return filtered_layers if filtered_layers != 0
             0
