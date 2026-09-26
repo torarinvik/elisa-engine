@@ -1,0 +1,37 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+
+def exercise() -> i32 error[RenderScene::RenderSceneError]:
+    try RenderScene::initialize(320, 200, 10.0)
+    rig: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg",
+        Geometry::transform_identity(), RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
+    try RenderScene::play_animation(rig, "lift", false, 1.0, 0.0)
+    try RenderScene::advance_animation(rig, 0.1)
+    try RenderScene::play_animation_at(rig, "lift", 0.6, 0.0, 0.3)
+    progress: f32 = try RenderScene::animation_progress(rig)
+    return 2 if progress < 0.599 or progress > 0.601
+    try RenderScene::advance_animation(rig, 0.2)
+    held: f32 = try RenderScene::animation_progress(rig)
+    return 3 if held != progress
+    invalid: bool = catch RenderScene::play_animation_at(rig, "lift", 1.1, 1.0, 0.3):
+        ok: false
+        RenderScene::RenderSceneError.InvalidValue: true
+        error failure: false
+    return 4 if not invalid
+    after_invalid: f32 = try RenderScene::animation_progress(rig)
+    return 5 if after_invalid != held
+    try RenderScene::play_animation_at(rig, "lift", 1.0, 1.0, 0.0)
+    ending: f32 = try RenderScene::animation_progress(rig)
+    return 6 if ending < 0.999
+    try RenderScene::destroy(rig)
+    0
+
+def main() -> i32:
+    config: Application::Config = Application::Config{title: "Animation phase", width: 320, height: 200, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    result: i32 = catch exercise():
+        value: value
+        error failure: 7
+    RenderScene::shutdown()
+    Application::shutdown()
+    result

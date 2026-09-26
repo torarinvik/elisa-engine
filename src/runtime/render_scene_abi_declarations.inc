@@ -92,6 +92,9 @@
         extern elisa_render_scene_v1_play_animation_blended(handle: i64, clip_name: cstr,
             loop: i32, speed: f32, blend_seconds: f32, flags: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_play_animation_at(handle: i64, clip_name: cstr,
+            phase: f32, speed: f32, blend_seconds: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_animation_speed(handle: i64, speed: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_visibility_policy(handle: i64,

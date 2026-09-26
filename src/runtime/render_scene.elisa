@@ -321,6 +321,12 @@ module RenderScene:
             same: i32 = BLEND_CONTINUE_SAME_CLIP if transition.continue_same_clip else 0
             try check_status(elisa_render_scene_v1_play_animation_blended(handle.native_value,
                 clip_name, loop_value, speed, blend_seconds, eased + phase + same))
+        # Blend into a non-looping clip at normalized progress [0, 1].
+        def play_animation_at(handle: InstanceHandle, clip_name: cstr, phase: f32,
+            speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_play_animation_at(handle.native_value,
+                clip_name, phase, speed, blend_seconds))
+
         # Retime the active clip without restarting it or starting a fade.
         def set_animation_speed(handle: InstanceHandle, speed: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_animation_speed(handle.native_value, speed))

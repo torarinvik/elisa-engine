@@ -13,7 +13,7 @@ float clip_phase(const InstanceSlot& instance, int32_t clip_index, float time) {
 }
 
 int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, float speed,
-    float blend_seconds, int32_t flags) {
+    float blend_seconds, int32_t flags, float start_phase = -1.0f) {
     if ((loop != 0 && loop != 1) || !finite(speed) || speed < -16.0f || speed > 16.0f ||
         !finite(blend_seconds) || blend_seconds < 0.0f || blend_seconds > 10.0f ||
         (flags & ~ANIMATION_BLEND_FLAG_MASK) != 0) {
@@ -62,6 +62,7 @@ int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, flo
         const float duration = instance.animation_clips[size_t(next_clip)].duration_seconds;
         instance.animation_time = loop != 0 ? std::nextafter(duration, 0.0f) : duration;
     }
+    if (start_phase >= 0.0f) instance.animation_time = start_phase * instance.animation_clips[size_t(next_clip)].duration_seconds;
     instance.animation_speed = speed;
     instance.animation_loop = loop != 0;
     instance.blend_elapsed = 0.0f;
@@ -79,6 +80,12 @@ extern "C" int32_t elisa_render_scene_v1_play_animation(
 extern "C" int32_t elisa_render_scene_v1_play_animation_blended(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds, int32_t flags) {
     return start_animation(handle, clip_name, loop, speed, blend_seconds, flags);
+}
+
+extern "C" int32_t elisa_render_scene_v1_play_animation_at(
+    int64_t handle, const char* clip_name, float phase, float speed, float blend_seconds) {
+    if (!finite(phase) || phase < 0.0f || phase > 1.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    return start_animation(handle, clip_name, 0, speed, blend_seconds, ANIMATION_BLEND_EASED, phase);
 }
 
 // Retimes the active clip in place. Speed-only changes must not restart the
