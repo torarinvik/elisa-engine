@@ -30,41 +30,65 @@ module PhysicsQueries:
             hits: NativeShapeHit[16]
             count: u32
 
+        struct NativeQueryTargets:
+            scene_objects: i32
+            scene_colliders: i32
+            physics_bodies: i32
+
+        def native_query_targets(filter: PhysicsRuntime::PhysicsQueryFilter) -> NativeQueryTargets:
+            NativeQueryTargets{
+                scene_objects: 1 if filter.scene_objects else 0,
+                scene_colliders: 1 if filter.scene_colliders else 0,
+                physics_bodies: 1 if filter.physics_bodies else 0,
+            }
+
         @callconv(c)
-        extern elisa_physics_v1_sphere_cast(world_generation: u64,
+        extern elisa_physics_v1_sphere_cast_filtered(world_generation: u64,
             center_x: f32, center_y: f32, center_z: f32,
             direction_x: f32, direction_y: f32, direction_z: f32,
             max_distance: f32, radius: f32, layer_mask: u32,
+            include_scene_objects: i32, include_scene_colliders: i32,
+            include_physics_bodies: i32,
             result: mutable NativeShapeHit&, hit: mutable i32&) -> i32
 
         @callconv(c)
-        extern elisa_physics_v1_capsule_cast(world_generation: u64,
+        extern elisa_physics_v1_capsule_cast_filtered(world_generation: u64,
             base_x: f32, base_y: f32, base_z: f32,
             tip_x: f32, tip_y: f32, tip_z: f32,
             direction_x: f32, direction_y: f32, direction_z: f32,
             max_distance: f32, radius: f32, layer_mask: u32,
+            include_scene_objects: i32, include_scene_colliders: i32,
+            include_physics_bodies: i32,
             result: mutable NativeShapeHit&, hit: mutable i32&) -> i32
 
         @callconv(c)
-        extern elisa_physics_v1_overlap_sphere(world_generation: u64,
+        extern elisa_physics_v1_overlap_sphere_filtered(world_generation: u64,
             center_x: f32, center_y: f32, center_z: f32, radius: f32, layer_mask: u32,
+            include_scene_objects: i32, include_scene_colliders: i32,
+            include_physics_bodies: i32,
             result: mutable NativeShapeHit&, hit: mutable i32&) -> i32
 
         @callconv(c)
-        extern elisa_physics_v1_overlap_sphere_all(world_generation: u64,
+        extern elisa_physics_v1_overlap_sphere_all_filtered(world_generation: u64,
             center_x: f32, center_y: f32, center_z: f32, radius: f32, layer_mask: u32,
+            include_scene_objects: i32, include_scene_colliders: i32,
+            include_physics_bodies: i32,
             buffer: mutable NativeShapeHitBuffer&) -> i32
 
         @callconv(c)
-        extern elisa_physics_v1_overlap_capsule(world_generation: u64,
+        extern elisa_physics_v1_overlap_capsule_filtered(world_generation: u64,
             base_x: f32, base_y: f32, base_z: f32,
             tip_x: f32, tip_y: f32, tip_z: f32, radius: f32, layer_mask: u32,
+            include_scene_objects: i32, include_scene_colliders: i32,
+            include_physics_bodies: i32,
             result: mutable NativeShapeHit&, hit: mutable i32&) -> i32
 
         @callconv(c)
-        extern elisa_physics_v1_overlap_capsule_all(world_generation: u64,
+        extern elisa_physics_v1_overlap_capsule_all_filtered(world_generation: u64,
             base_x: f32, base_y: f32, base_z: f32,
             tip_x: f32, tip_y: f32, tip_z: f32, radius: f32, layer_mask: u32,
+            include_scene_objects: i32, include_scene_colliders: i32,
+            include_physics_bodies: i32,
             buffer: mutable NativeShapeHitBuffer&) -> i32
 
         def check_status(status: i32) -> void error[PhysicsRuntime::PhysicsError]:
@@ -100,55 +124,73 @@ module PhysicsQueries:
 
         def sphere_cast_generation(generation: u64, center: Geometry::Vec3,
             direction: Geometry::Vec3, max_distance: f32, radius: f32,
-            layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            layer_mask: u32, filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             native: mutable NativeShapeHit = zeroed
             found: mutable i32 = 0
-            try check_status(elisa_physics_v1_sphere_cast(generation,
+            targets: NativeQueryTargets = native_query_targets(filter)
+            try check_status(elisa_physics_v1_sphere_cast_filtered(generation,
                 center.x, center.y, center.z, direction.x, direction.y, direction.z,
-                max_distance, radius, layer_mask, &native, &found))
+                max_distance, radius, layer_mask, targets.scene_objects,
+                targets.scene_colliders, targets.physics_bodies, &native, &found))
             shape_hit(native, found)
 
         def capsule_cast_generation(generation: u64, base: Geometry::Vec3,
             tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
-            radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             native: mutable NativeShapeHit = zeroed
             found: mutable i32 = 0
-            try check_status(elisa_physics_v1_capsule_cast(generation,
+            targets: NativeQueryTargets = native_query_targets(filter)
+            try check_status(elisa_physics_v1_capsule_cast_filtered(generation,
                 base.x, base.y, base.z, tip.x, tip.y, tip.z,
                 direction.x, direction.y, direction.z, max_distance, radius,
-                layer_mask, &native, &found))
+                layer_mask, targets.scene_objects, targets.scene_colliders,
+                targets.physics_bodies, &native, &found))
             shape_hit(native, found)
 
         def overlap_sphere_generation(generation: u64, center: Geometry::Vec3,
-            radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             native: mutable NativeShapeHit = zeroed
             found: mutable i32 = 0
-            try check_status(elisa_physics_v1_overlap_sphere(generation,
-                center.x, center.y, center.z, radius, layer_mask, &native, &found))
+            targets: NativeQueryTargets = native_query_targets(filter)
+            try check_status(elisa_physics_v1_overlap_sphere_filtered(generation,
+                center.x, center.y, center.z, radius, layer_mask, targets.scene_objects,
+                targets.scene_colliders, targets.physics_bodies, &native, &found))
             shape_hit(native, found)
 
         def overlap_sphere_all_generation(generation: u64, center: Geometry::Vec3,
-            radius: f32, layer_mask: u32, buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
+            radius: f32, layer_mask: u32, filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
             native: mutable NativeShapeHitBuffer = zeroed
-            try check_status(elisa_physics_v1_overlap_sphere_all(generation,
-                center.x, center.y, center.z, radius, layer_mask, &native))
+            targets: NativeQueryTargets = native_query_targets(filter)
+            try check_status(elisa_physics_v1_overlap_sphere_all_filtered(generation,
+                center.x, center.y, center.z, radius, layer_mask, targets.scene_objects,
+                targets.scene_colliders, targets.physics_bodies, &native))
             try copy_buffer(native, buffer)
 
         def overlap_capsule_generation(generation: u64, base: Geometry::Vec3,
-            tip: Geometry::Vec3, radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             native: mutable NativeShapeHit = zeroed
             found: mutable i32 = 0
-            try check_status(elisa_physics_v1_overlap_capsule(generation,
+            targets: NativeQueryTargets = native_query_targets(filter)
+            try check_status(elisa_physics_v1_overlap_capsule_filtered(generation,
                 base.x, base.y, base.z, tip.x, tip.y, tip.z, radius, layer_mask,
+                targets.scene_objects, targets.scene_colliders, targets.physics_bodies,
                 &native, &found))
             shape_hit(native, found)
 
         def overlap_capsule_all_generation(generation: u64, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
             buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
             native: mutable NativeShapeHitBuffer = zeroed
-            try check_status(elisa_physics_v1_overlap_capsule_all(generation,
-                base.x, base.y, base.z, tip.x, tip.y, tip.z, radius, layer_mask, &native))
+            targets: NativeQueryTargets = native_query_targets(filter)
+            try check_status(elisa_physics_v1_overlap_capsule_all_filtered(generation,
+                base.x, base.y, base.z, tip.x, tip.y, tip.z, radius, layer_mask,
+                targets.scene_objects, targets.scene_colliders, targets.physics_bodies,
+                &native))
             try copy_buffer(native, buffer)
 
     public:
@@ -173,64 +215,163 @@ module PhysicsQueries:
             direction: Geometry::Vec3, max_distance: f32, radius: f32,
             layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::world_generation(world)
-            try sphere_cast_generation(generation, center, direction, max_distance, radius, layer_mask)
+            try sphere_cast_generation(generation, center, direction, max_distance, radius,
+                layer_mask, PhysicsRuntime::PhysicsQueryFilter())
+
+        def sphere_cast_filtered(world: PhysicsRuntime::World&, center: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::world_generation(world)
+            try sphere_cast_generation(generation, center, direction, max_distance, radius,
+                layer_mask, filter)
 
         def capsule_cast(world: PhysicsRuntime::World&, base: Geometry::Vec3,
             tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
             radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::world_generation(world)
-            try capsule_cast_generation(generation, base, tip, direction, max_distance, radius, layer_mask)
+            try capsule_cast_generation(generation, base, tip, direction, max_distance, radius,
+                layer_mask, PhysicsRuntime::PhysicsQueryFilter())
+
+        def capsule_cast_filtered(world: PhysicsRuntime::World&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
+            radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::world_generation(world)
+            try capsule_cast_generation(generation, base, tip, direction, max_distance,
+                radius, layer_mask, filter)
 
         def overlap_sphere(world: PhysicsRuntime::World&, center: Geometry::Vec3,
             radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::world_generation(world)
-            try overlap_sphere_generation(generation, center, radius, layer_mask)
+            try overlap_sphere_generation(generation, center, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter())
+
+        def overlap_sphere_filtered(world: PhysicsRuntime::World&,
+            center: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::world_generation(world)
+            try overlap_sphere_generation(generation, center, radius, layer_mask, filter)
 
         def overlap_sphere_all(world: PhysicsRuntime::World&, center: Geometry::Vec3,
             radius: f32, layer_mask: u32, buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::world_generation(world)
-            try overlap_sphere_all_generation(generation, center, radius, layer_mask, buffer)
+            try overlap_sphere_all_generation(generation, center, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter(), buffer)
+
+        def overlap_sphere_all_filtered(world: PhysicsRuntime::World&,
+            center: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::world_generation(world)
+            try overlap_sphere_all_generation(generation, center, radius, layer_mask,
+                filter, buffer)
 
         def overlap_capsule(world: PhysicsRuntime::World&, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::world_generation(world)
-            try overlap_capsule_generation(generation, base, tip, radius, layer_mask)
+            try overlap_capsule_generation(generation, base, tip, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter())
+
+        def overlap_capsule_filtered(world: PhysicsRuntime::World&,
+            base: Geometry::Vec3, tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::world_generation(world)
+            try overlap_capsule_generation(generation, base, tip, radius, layer_mask, filter)
 
         def overlap_capsule_all(world: PhysicsRuntime::World&, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32,
             buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::world_generation(world)
-            try overlap_capsule_all_generation(generation, base, tip, radius, layer_mask, buffer)
+            try overlap_capsule_all_generation(generation, base, tip, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter(), buffer)
+
+        def overlap_capsule_all_filtered(world: PhysicsRuntime::World&,
+            base: Geometry::Vec3, tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::world_generation(world)
+            try overlap_capsule_all_generation(generation, base, tip, radius, layer_mask,
+                filter, buffer)
 
         def service_sphere_cast(state: PhysicsRuntime::ServiceState&, center: Geometry::Vec3,
             direction: Geometry::Vec3, max_distance: f32, radius: f32,
             layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::service_generation(state)
-            try sphere_cast_generation(generation, center, direction, max_distance, radius, layer_mask)
+            try sphere_cast_generation(generation, center, direction, max_distance, radius,
+                layer_mask, PhysicsRuntime::PhysicsQueryFilter())
+
+        def service_sphere_cast_filtered(state: PhysicsRuntime::ServiceState&,
+            center: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
+            radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::service_generation(state)
+            try sphere_cast_generation(generation, center, direction, max_distance,
+                radius, layer_mask, filter)
 
         def service_capsule_cast(state: PhysicsRuntime::ServiceState&, base: Geometry::Vec3,
             tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
             radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::service_generation(state)
-            try capsule_cast_generation(generation, base, tip, direction, max_distance, radius, layer_mask)
+            try capsule_cast_generation(generation, base, tip, direction, max_distance, radius,
+                layer_mask, PhysicsRuntime::PhysicsQueryFilter())
+
+        def service_capsule_cast_filtered(state: PhysicsRuntime::ServiceState&,
+            base: Geometry::Vec3, tip: Geometry::Vec3, direction: Geometry::Vec3,
+            max_distance: f32, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::service_generation(state)
+            try capsule_cast_generation(generation, base, tip, direction, max_distance,
+                radius, layer_mask, filter)
 
         def service_overlap_sphere(state: PhysicsRuntime::ServiceState&, center: Geometry::Vec3,
             radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::service_generation(state)
-            try overlap_sphere_generation(generation, center, radius, layer_mask)
+            try overlap_sphere_generation(generation, center, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter())
+
+        def service_overlap_sphere_filtered(state: PhysicsRuntime::ServiceState&,
+            center: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::service_generation(state)
+            try overlap_sphere_generation(generation, center, radius, layer_mask, filter)
 
         def service_overlap_sphere_all(state: PhysicsRuntime::ServiceState&, center: Geometry::Vec3,
             radius: f32, layer_mask: u32, buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::service_generation(state)
-            try overlap_sphere_all_generation(generation, center, radius, layer_mask, buffer)
+            try overlap_sphere_all_generation(generation, center, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter(), buffer)
+
+        def service_overlap_sphere_all_filtered(state: PhysicsRuntime::ServiceState&,
+            center: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::service_generation(state)
+            try overlap_sphere_all_generation(generation, center, radius, layer_mask,
+                filter, buffer)
 
         def service_overlap_capsule(state: PhysicsRuntime::ServiceState&, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::service_generation(state)
-            try overlap_capsule_generation(generation, base, tip, radius, layer_mask)
+            try overlap_capsule_generation(generation, base, tip, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter())
+
+        def service_overlap_capsule_filtered(state: PhysicsRuntime::ServiceState&,
+            base: Geometry::Vec3, tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> ShapeHit error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::service_generation(state)
+            try overlap_capsule_generation(generation, base, tip, radius, layer_mask, filter)
 
         def service_overlap_capsule_all(state: PhysicsRuntime::ServiceState&, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32,
             buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
             generation: u64 = try PhysicsRuntime::service_generation(state)
-            try overlap_capsule_all_generation(generation, base, tip, radius, layer_mask, buffer)
+            try overlap_capsule_all_generation(generation, base, tip, radius, layer_mask,
+                PhysicsRuntime::PhysicsQueryFilter(), buffer)
+
+        def service_overlap_capsule_all_filtered(state: PhysicsRuntime::ServiceState&,
+            base: Geometry::Vec3, tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable ShapeHitBuffer&) -> usize error[PhysicsRuntime::PhysicsError]:
+            generation: u64 = try PhysicsRuntime::service_generation(state)
+            try overlap_capsule_all_generation(generation, base, tip, radius, layer_mask,
+                filter, buffer)

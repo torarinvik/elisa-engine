@@ -1,5 +1,70 @@
 # Session-routed physics query and contact polling smoke.
 module RuntimePhysicsQueriesProbe:
+    private:
+        def verify_filtered_shape_services(session: RuntimeServices::Session&,
+            filter: PhysicsRuntime::PhysicsQueryFilter, expect_hit: bool) -> i32:
+            sphere_cast_hit: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_sphere_cast_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0, 0.25,
+                PhysicsRuntime::ALL_LAYERS, filter):
+                value: value
+                error failure: return 31
+            return 1 if sphere_cast_hit.hit != expect_hit
+            return 2 if expect_hit and sphere_cast_hit.entity == 0
+
+            capsule_cast_hit: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_capsule_cast_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 500.0, y: 4.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0, 0.25,
+                PhysicsRuntime::ALL_LAYERS, filter):
+                value: value
+                error failure: return 32
+            return 3 if capsule_cast_hit.hit != expect_hit
+            return 4 if expect_hit and capsule_cast_hit.entity == 0
+
+            sphere_overlap_hit: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_overlap_sphere_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 0.0, z: 0.0}, 0.75,
+                PhysicsRuntime::ALL_LAYERS, filter):
+                value: value
+                error failure: return 33
+            return 5 if sphere_overlap_hit.hit != expect_hit
+            return 6 if expect_hit and sphere_overlap_hit.entity == 0
+
+            sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            sphere_overlap_count: usize = catch RuntimeServices::physics_overlap_sphere_all_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 0.0, z: 0.0}, 0.75,
+                PhysicsRuntime::ALL_LAYERS, filter, &sphere_overlaps):
+                value: value
+                error failure: return 34
+            return 7 if sphere_overlaps.count != sphere_overlap_count
+            if expect_hit:
+                return 8 if sphere_overlap_count == 0
+            else:
+                return 8 if sphere_overlap_count != 0
+
+            capsule_overlap_hit: PhysicsQueries::ShapeHit = catch RuntimeServices::physics_overlap_capsule_filtered(session,
+                Geometry::Vec3{x: 500.0, y: -1.0, z: 0.0},
+                Geometry::Vec3{x: 500.0, y: 1.0, z: 0.0}, 0.5,
+                PhysicsRuntime::ALL_LAYERS, filter):
+                value: value
+                error failure: return 35
+            return 9 if capsule_overlap_hit.hit != expect_hit
+            return 10 if expect_hit and capsule_overlap_hit.entity == 0
+
+            capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            capsule_overlap_count: usize = catch RuntimeServices::physics_overlap_capsule_all_filtered(session,
+                Geometry::Vec3{x: 500.0, y: -1.0, z: 0.0},
+                Geometry::Vec3{x: 500.0, y: 1.0, z: 0.0}, 0.5,
+                PhysicsRuntime::ALL_LAYERS, filter, &capsule_overlaps):
+                value: value
+                error failure: return 36
+            return 11 if capsule_overlaps.count != capsule_overlap_count
+            if expect_hit:
+                return 12 if capsule_overlap_count == 0
+            else:
+                return 12 if capsule_overlap_count != 0
+            0
+
     public:
         def run(session: RuntimeServices::Session&) -> i32:
             query_body: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(session,
@@ -20,7 +85,7 @@ module RuntimePhysicsQueriesProbe:
                 Runtime::fixed_step_seconds()):
                 value: value
                 error failure: return 139
-            physics_only: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+            physics_only: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
                 scene_objects: false,
                 scene_colliders: false,
                 physics_bodies: true,
@@ -34,7 +99,10 @@ module RuntimePhysicsQueriesProbe:
                 error failure: return 133
             return 134 + filtered_count.i32() if filtered_count != 1
             return 138 if filtered_hits.hits[0].entity == 0
-            no_targets: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+            shape_filter_status: i32 = RuntimePhysicsQueriesProbe::verify_filtered_shape_services(
+                session, physics_only, true)
+            return 140 + shape_filter_status if shape_filter_status != 0
+            no_targets: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
                 scene_objects: false,
                 scene_colliders: false,
                 physics_bodies: false,
@@ -47,6 +115,9 @@ module RuntimePhysicsQueriesProbe:
                 value: value
                 error failure: return 135
             return 136 if empty_filtered_count != 0 or empty_filtered_hits.count != 0
+            empty_shape_filter_status: i32 = RuntimePhysicsQueriesProbe::verify_filtered_shape_services(
+                session, no_targets, false)
+            return 160 + empty_shape_filter_status if empty_shape_filter_status != 0
             query_body_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, query_body):
                 ok: 0
                 error failure: 1

@@ -1,5 +1,5 @@
         private:
-            def ray_query_targets(filter: RayQueryFilter) -> u32:
+            def ray_query_targets(filter: PhysicsQueryFilter) -> u32:
                 targets: mutable u32 = 0
                 targets <- targets | Status::QUERY_SCENE_OBJECTS if filter.scene_objects
                 targets <- targets | Status::QUERY_SCENE_COLLIDERS if filter.scene_colliders
@@ -60,11 +60,11 @@
                 direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
                 buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
                 try service_raycast_all_filtered(state, origin, direction,
-                    max_distance, layer_mask, RayQueryFilter(), buffer)
+                    max_distance, layer_mask, PhysicsQueryFilter(), buffer)
 
             def service_raycast_all_filtered(state: ServiceState&,
                 origin: Geometry::Vec3, direction: Geometry::Vec3,
-                max_distance: f32, layer_mask: u32, filter: RayQueryFilter,
+                max_distance: f32, layer_mask: u32, filter: PhysicsQueryFilter,
                 buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
                 raise PhysicsError.ApplicationUnavailable if not state.live
                 native: mutable NativeRayHitBuffer = zeroed
@@ -84,11 +84,11 @@
                 direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
                 buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
                 try raycast_all_filtered(world, origin, direction, max_distance,
-                    layer_mask, RayQueryFilter(), buffer)
+                    layer_mask, PhysicsQueryFilter(), buffer)
 
             def raycast_all_filtered(world: World&, origin: Geometry::Vec3,
                 direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
-                filter: RayQueryFilter, buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
+                filter: PhysicsQueryFilter, buffer: mutable RayHitBuffer&) -> usize error[PhysicsError]:
                 raise PhysicsError.ApplicationUnavailable if not world.live
                 native: mutable NativeRayHitBuffer = zeroed
                 try check_status(elisa_physics_v1_raycast_all_filtered(world.generation,

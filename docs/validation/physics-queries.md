@@ -45,18 +45,21 @@ returns copied `PhysicsQueryHit` values to the host.
   and return an explicit capacity error only inside the native fixed bound.
   `RuntimeServices::physics_raycast_all` routes this buffer through an affine
   session without exposing native storage.
-- `PhysicsRuntime::RayQueryFilter` and `raycast_all_filtered` let callers select
-  scene objects, scene colliders, and Jolt physics bodies independently.
-  `RuntimeServices::physics_raycast_all_filtered` provides the same selection
-  through an affine session. The default filter and the original unfiltered API
-  include all three categories; selecting none returns an empty buffer. The C
-  ABI uses backend-neutral target bits and keeps Wicked filter constants private.
+- `PhysicsRuntime::PhysicsQueryFilter` lets callers select scene objects, scene
+  colliders, and Jolt physics bodies independently for filtered all-hit rays and
+  all six sphere/capsule query forms. `RuntimeServices` exposes the same filtered
+  routes through an affine session. The default filter and original unfiltered
+  APIs include all three categories; selecting none returns misses and empty
+  buffers. The C ABI uses backend-neutral target bits and keeps Wicked filter
+  constants private.
 - `PhysicsQueries` exposes bounded sphere and capsule casts plus nearest and
   all-hit sphere and capsule overlaps. `ShapeHit` copies the entity, contact
   position/normal, cast distance, and overlap penetration depth; each all-hit
   call uses a fixed 16-entry `ShapeHitBuffer`. Direct world calls and all six
   session routes preserve the same `PhysicsError` mapping and reject non-finite
-  or non-positive radii, distances, and directions.
+  or non-positive radii, distances, and directions. Overlap penetration depths
+  are reported as non-negative values, including Wicked collider results whose
+  native signed separation value is negative.
 - Managed Elisa physics boxes are represented as scaled Wicked cube entities in
   addition to their Jolt rigid bodies. This keeps scene-BVH shape queries and
   Jolt ray queries aligned on the same entity without exposing native handles.
@@ -91,9 +94,10 @@ the scene or listener object.
 The Elisa application smoke creates static and dynamic bodies plus a static
 sensor volume, advances the fixed-step world, verifies public nearest and
 all-hit physics rays, verifies scene-object-only, physics-body-only, and
-empty-target all-hit queries in direct and session APIs, checks nearest-hit
-ordering, exercises both shape casts
-and nearest/all-hit overlaps, rejects invalid zero directions, and polls
+empty-target ray queries in direct and session APIs, and runs every sphere and
+capsule cast/overlap form through direct and session APIs with physics-only and
+empty filters. It checks nearest-hit ordering, exercises the unfiltered shape
+queries, rejects invalid zero directions, and polls
 `PhysicsRuntime::ContactBuffer`. It requires real non-trigger and trigger
 `ContactKind.Added` events, then destroys the sensor and requires a trigger
 `ContactKind.Removed` event, with zero dropped events. This proves the public
@@ -115,6 +119,12 @@ binding reaches the same Jolt callback queue used by the native gate.
   `native/package_load.h` now delegates to the shared bounded geometry loader,
   which supports both formats. The probe reports a specific loader error when
   package validation fails.
+- The rebuilt Wicked query probe now checks object-only and collider-only
+  sphere/capsule casts and nearest/all-hit overlaps in addition to the ray
+  filters. The focused application smoke passes each of the six filtered shape
+  operations through both direct-world and session APIs for physics-only hits
+  and empty-target misses. This gate also covers successful bounded-cast
+  refinement at the collider boundary and non-negative penetration depths.
 - The combined `wicked_probe ... build` invocation passed its CLI runner tests
   but reached ElisaScript's runtime time limit during its longer application
   smoke sequence. The focused native application and complete `frame` phase
