@@ -14,17 +14,45 @@ def main() -> i32:
     PhysicsInterpolation::clear_teleport(&buffer)
     return 6 if PhysicsInterpolation::last_tick(&buffer) != 2 or not PhysicsInterpolation::interpolation_valid(&buffer)
 
+    # Antipodal quaternions encode the same pose; blending through zero must
+    # still preserve that orientation.
+    antipodal_start: Geometry::Transform = Geometry::transform_identity()
+    antipodal_end: Geometry::Transform = Geometry::Transform{
+        position: identity.position,
+        rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: -1.0},
+        scale: identity.scale,
+    }
+    antipodal: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(antipodal_start)
+    return 7 if not PhysicsInterpolation::commit(&antipodal, antipodal_end, 1, false)
+    antipodal_midpoint: Geometry::Transform = PhysicsInterpolation::sample(&antipodal, 0.5)
+    return 8 if antipodal_midpoint.rotation.w < 0.999
+
+    # Crossing from +170 to -170 degrees is a 20 degree turn through 180,
+    # not a 340 degree turn through the identity orientation.
+    positive_170: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0,
+        z: 0.9961947, w: 0.08715574}
+    negative_170: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0,
+        z: 0.0 - 0.9961947, w: 0.08715574}
+    turn_start: Geometry::Transform = Geometry::Transform{
+        position: identity.position, rotation: positive_170, scale: identity.scale}
+    turn_end: Geometry::Transform = Geometry::Transform{
+        position: identity.position, rotation: negative_170, scale: identity.scale}
+    short_turn: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(turn_start)
+    return 9 if not PhysicsInterpolation::commit(&short_turn, turn_end, 1, false)
+    short_turn_midpoint: Geometry::Transform = PhysicsInterpolation::sample(&short_turn, 0.5)
+    return 10 if short_turn_midpoint.rotation.z < 0.999 or short_turn_midpoint.rotation.w > 0.01 or short_turn_midpoint.rotation.w < -0.01
+
     slow: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(identity)
     fast: mutable PhysicsInterpolation::Buffer = PhysicsInterpolation::Buffer(identity)
     for tick in 3..<6 |slow, fast, tick|:
         pose: Geometry::Transform = Geometry::transform_translate(identity,
             Geometry::Vec3{x: tick.f32(), y: 0.0, z: 0.0})
-        return 7 if not PhysicsInterpolation::commit(&slow, pose, tick.i64(), false)
-        return 8 if not PhysicsInterpolation::commit(&fast, pose, tick.i64(), false)
+        return 11 if not PhysicsInterpolation::commit(&slow, pose, tick.i64(), false)
+        return 12 if not PhysicsInterpolation::commit(&fast, pose, tick.i64(), false)
         for frame in 0..<30 |slow, frame|:
             _ = PhysicsInterpolation::sample(&slow, (frame % 10).f32() / 10.0)
         for frame in 0..<120 |fast, frame|:
             _ = PhysicsInterpolation::sample(&fast, (frame % 20).f32() / 20.0)
-    return 9 if PhysicsInterpolation::last_tick(&slow) != 5 or PhysicsInterpolation::last_tick(&fast) != 5
-    return 10 if PhysicsInterpolation::sample(&slow, 1.0).position.x != PhysicsInterpolation::sample(&fast, 1.0).position.x
+    return 13 if PhysicsInterpolation::last_tick(&slow) != 5 or PhysicsInterpolation::last_tick(&fast) != 5
+    return 14 if PhysicsInterpolation::sample(&slow, 1.0).position.x != PhysicsInterpolation::sample(&fast, 1.0).position.x
     0

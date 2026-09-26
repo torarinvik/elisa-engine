@@ -11,6 +11,25 @@ module PhysicsInterpolation:
         def blend(start: f32, finish: f32, alpha: f32) -> f32:
             start + (finish - start) * alpha
 
+        def quat_dot(left: Geometry::Quat, right: Geometry::Quat) -> f32:
+            left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w
+
+        def quat_negate(value: Geometry::Quat) -> Geometry::Quat:
+            Geometry::Quat{x: 0.0 - value.x, y: 0.0 - value.y,
+                z: 0.0 - value.z, w: 0.0 - value.w}
+
+        # q and -q encode the same orientation. Flip the destination when the
+        # dot product is negative so normalized linear interpolation follows
+        # the shortest arc instead of rotating almost a full revolution.
+        def quat_blend(start: Geometry::Quat, finish: Geometry::Quat, alpha: f32) -> Geometry::Quat:
+            endpoint: Geometry::Quat = finish if quat_dot(start, finish) >= 0.0 else quat_negate(finish)
+            Geometry::quat_normalize(Geometry::Quat{
+                x: blend(start.x, endpoint.x, alpha),
+                y: blend(start.y, endpoint.y, alpha),
+                z: blend(start.z, endpoint.z, alpha),
+                w: blend(start.w, endpoint.w, alpha),
+            })
+
         def transform_blend(start: Geometry::Transform, finish: Geometry::Transform, alpha: f32) -> Geometry::Transform:
             Geometry::Transform{
                 position: Geometry::Vec3{
@@ -18,12 +37,7 @@ module PhysicsInterpolation:
                     y: blend(start.position.y, finish.position.y, alpha),
                     z: blend(start.position.z, finish.position.z, alpha),
                 },
-                rotation: Geometry::quat_normalize(Geometry::Quat{
-                    x: blend(start.rotation.x, finish.rotation.x, alpha),
-                    y: blend(start.rotation.y, finish.rotation.y, alpha),
-                    z: blend(start.rotation.z, finish.rotation.z, alpha),
-                    w: blend(start.rotation.w, finish.rotation.w, alpha),
-                }),
+                rotation: quat_blend(start.rotation, finish.rotation, alpha),
                 scale: Geometry::Vec3{
                     x: blend(start.scale.x, finish.scale.x, alpha),
                     y: blend(start.scale.y, finish.scale.y, alpha),

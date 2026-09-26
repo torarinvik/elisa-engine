@@ -50,3 +50,8 @@ read-only target composition does not publish it, advances one fixed tick,
 then checks the half-alpha `WorldRendering` snapshot is between the old and
 new physics poses while the authoritative hierarchy remains at the new pose.
 The focused SDL3/Metal client built and ran successfully on macOS 27.
+
+The portable interpolation test also covers quaternion sign equivalence and
+shortest-path blending across the ±180° boundary. Physics poses may use either
+sign for the same quaternion, so the interpolation endpoint is sign-corrected
+before normalized linear blending.
