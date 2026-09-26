@@ -1,0 +1,54 @@
+include "../examples/maze/lighting.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/math/geometry.elisa"
+
+module MazeLightingNativeTests:
+    private:
+        const EXPECTED_LIGHT_KIND: i32 = 1
+        const EXPECTED_INTENSITY: f32 = 5.0
+        const EXPECTED_RANGE: f32 = 2.1
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_light_matches(kind: i32,
+            red: f32, green: f32, blue: f32,
+            px: f32, py: f32, pz: f32, dx: f32, dy: f32, dz: f32,
+            intensity: f32, range: f32, inner_cone: f32, outer_cone: f32,
+            casts_shadow: i32, shadow_resolution: i32,
+            rectangle_width: f32, rectangle_height: f32,
+            volumetrics_enabled: i32, volumetric_boost: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_light_count() -> i32
+
+        def matches_player_light(position: Geometry::Vec3) -> bool:
+            elisa_render_scene_v1_test_light_matches(EXPECTED_LIGHT_KIND,
+                1.0, 0.72, 0.42,
+                position.x, position.y, position.z,
+                0.0, 0.0, 0.0,
+                EXPECTED_INTENSITY, EXPECTED_RANGE, 0.0, 0.0,
+                0, 0, 0.0, 0.0, 0, 0.0) == 1
+
+    public:
+        def exercise() -> i32:
+            lighting: mutable MazeLighting::Runtime = MazeLighting::Runtime()
+            previous_lights: i32 = elisa_render_scene_v1_test_light_count()
+            started: i32 = catch MazeLighting::start(&lighting, 1, 2):
+                ok: 0
+                error failure: 1
+            return 1 if started != 0
+            return 2 if elisa_render_scene_v1_test_light_count() != previous_lights + 1
+            first_position: Geometry::Vec3 = MazeLayout::maze_cell_position(1, 2, 1.2)
+            return 3 if not matches_player_light(first_position)
+
+            updated: i32 = catch MazeLighting::follow_player(&lighting, 5, 4):
+                ok: 0
+                error failure: 1
+            return 4 if updated != 0
+            second_position: Geometry::Vec3 = MazeLayout::maze_cell_position(5, 4, 1.2)
+            return 5 if not matches_player_light(second_position)
+
+            closed: i32 = catch MazeLighting::shutdown(&lighting):
+                ok: 0
+                error failure: 1
+            return 6 if closed != 0
+            return 7 if elisa_render_scene_v1_test_light_count() != previous_lights
+            0

@@ -45,6 +45,11 @@ The native self-test inserts a temporary blocker into an otherwise open cell,
 checks that physics prevents the move, removes it, then completes the key-and-
 door route.
 
+Lighting is authored by the Elisa client as well: it configures the sun,
+ambient light, and height fog, then moves a warm point light with the player
+after each successful cell move. The game owns the light's checked handle and
+destroys it before shutting down the render scene.
+
 Press **Space** to start, use the arrow keys or **WASD** to move, press **P** to
 pause or resume, **R** to restart, and **Escape** or the window close button to
 quit.

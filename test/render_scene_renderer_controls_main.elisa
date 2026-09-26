@@ -2,6 +2,7 @@
 # maze/render demonstration, so failures stay local to this ABI surface.
 include "../src/runtime/render_scene.elisa"
 include "./render_scene_renderer_controls_native.elisa"
+include "./maze_lighting_native.elisa"
 
 @callconv(c)
 extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
@@ -22,7 +23,11 @@ def main() -> i32:
         _ = elisa_application_v1_shutdown()
         return 3
     result: i32 = RenderSceneRendererControlsNativeTests::exercise()
+    lighting_result: mutable i32 = 0
+    if result == 0:
+        lighting_result <- MazeLightingNativeTests::exercise()
     shutdown_status: i32 = elisa_application_v1_shutdown()
     return result if result != 0
+    return lighting_result if lighting_result != 0
     return 31 if shutdown_status != 0
     result

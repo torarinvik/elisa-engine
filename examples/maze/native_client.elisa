@@ -5,6 +5,7 @@ include "./physics.elisa"
 include "./presentation.elisa"
 include "./render_assets.elisa"
 include "./trace.elisa"
+include "./lighting.elisa"
 
 module MazeNativeClient:
     private:
@@ -157,7 +158,8 @@ module MazeNativeClient:
         def sync_game_scene(game: MazeGame::MazeGame&,
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
-            presenter: mutable RenderScene::SnapshotPresenter&) -> bool:
+            presenter: mutable RenderScene::SnapshotPresenter&,
+            lighting: mutable MazeLighting::Runtime&) -> bool:
             updated: bool = catch MazePresentation::scene_update(scene, game):
                 ok: true
                 error failure: false
@@ -166,7 +168,12 @@ module MazeNativeClient:
                 ok: true
                 error failure: false
             return false if not extracted
-            catch RenderSnapshotScene::sync(presenter, snapshot):
+            submitted: bool = catch RenderSnapshotScene::sync(presenter, snapshot):
+                ok: true
+                error failure: false
+            return false if not submitted
+            catch MazeLighting::follow_player(lighting,
+                game.grid.player_x, game.grid.player_y):
                 ok: true
                 error failure: false
 
@@ -185,24 +192,25 @@ module MazeNativeClient:
             game: mutable MazeGame::MazeGame&,
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
-            presenter: mutable RenderScene::SnapshotPresenter&) -> i32:
+            presenter: mutable RenderScene::SnapshotPresenter&,
+            lighting: mutable MazeLighting::Runtime&) -> i32:
             MazeGame::game_start(game)
             collision_gate: bool = catch verify_physical_barrier(session, game):
                 value: value
                 error failure: return 50
             return 51 if not collision_gate
             script: Maze::MazeMove[Actions::SELF_TEST_FRAMES] = MazeTrace::maze_win_script()
-            for index in 0..<Actions::SELF_TEST_FRAMES |session, game, scene, snapshot, presenter, script|:
+            for index in 0..<Actions::SELF_TEST_FRAMES |session, game, scene, snapshot, presenter, lighting, script|:
                 moved: bool = catch MazePhysics::game_step(session, game, script[index]):
                     value: value
                     error failure: return 49
                 return 41 if not moved
-                return 42 if not sync_game_scene(game, scene, snapshot, presenter)
+                return 42 if not sync_game_scene(game, scene, snapshot, presenter, lighting)
             return 43 if not MazeGame::game_won(game)
             return 44 if RenderSnapshot::snapshot_count(snapshot) != 39
             return 45 if RenderScene::instance_count() != 39
             MazeGame::game_restart(game)
-            return 46 if not sync_game_scene(game, scene, snapshot, presenter)
+            return 46 if not sync_game_scene(game, scene, snapshot, presenter, lighting)
             return 47 if RenderSnapshot::snapshot_count(snapshot) != 40
             return 48 if RenderScene::instance_count() != 40
             0
@@ -212,12 +220,13 @@ module MazeNativeClient:
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
             presenter: mutable RenderScene::SnapshotPresenter&,
+            lighting: mutable MazeLighting::Runtime&,
             status_text: RenderScene::OverlayTextHandle,
             input: mutable ActionInput::Input&) -> i32:
             running: mutable bool = true
             resize_serial: mutable u64 = 0
             failure: mutable i32 = 0
-            while running |session, game, scene, snapshot, presenter, status_text, input, resize_serial, failure|:
+            while running |session, game, scene, snapshot, presenter, lighting, status_text, input, resize_serial, failure|:
                 pump: Application::PumpStatus = catch RuntimeServices::pump(session):
                     value: value
                     error failure: Application::PumpStatus.Failed
@@ -254,7 +263,7 @@ module MazeNativeClient:
                                 failure <- 67
                                 running <- false
                             elif action_result == 1:
-                                if not sync_game_scene(game, scene, snapshot, presenter):
+                                if not sync_game_scene(game, scene, snapshot, presenter, lighting):
                                     failure <- 64
                                     running <- false
                                 else:
@@ -371,6 +380,12 @@ module MazeNativeClient:
             return 73 if arena_bodies != MazeLayout::maze_layout_count() + 1
 
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+            lighting: mutable MazeLighting::Runtime = MazeLighting::Runtime()
+            lighting_started: bool = catch MazeLighting::start(&lighting,
+                game.grid.player_x, game.grid.player_y):
+                ok: true
+                error failure: false
+            return 16 if not lighting_started
             scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
                 value: value
                 error failure: return 7
@@ -401,10 +416,15 @@ module MazeNativeClient:
                 return 14 if not resized
             result: mutable i32 = 0
             if self_test:
-                result <- scripted_native_smoke(session, &game, &scene, &snapshot, &presenter)
+                result <- scripted_native_smoke(session, &game, &scene, &snapshot,
+                    &presenter, &lighting)
             else:
                 result <- interactive_loop(session, &game, &scene, &snapshot, &presenter,
-                    status_text, &input)
+                    &lighting, status_text, &input)
+            lighting_closed: bool = catch MazeLighting::shutdown(&lighting):
+                ok: true
+                error failure: false
+            return 17 if not lighting_closed
             return result if result != 0
             clear_status: bool = catch RenderSnapshotScene::clear(&presenter):
                 ok: true

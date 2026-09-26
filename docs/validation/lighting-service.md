@@ -209,3 +209,29 @@ WICKED_BUILD="../WickedEngine/build-elisa-sdl3" \
 The comparator can also be run directly with
 `/opt/homebrew/bin/python3.14 scripts/compare_lighting_references.py` after a
 smoke capture.
+
+## Gameplay-owned sample lighting
+
+`examples/maze/lighting.elisa` configures the maze's sun, ambient light, and
+height fog, then keeps one checked point-light handle in a private Elisa
+runtime object. `MazeNativeClient` moves that light only after a successful
+gameplay update and destroys it before clearing the render scene. The focused
+`MazeLightingNativeTests` fixture runs setup, movement to two different cells,
+and teardown through the public `RenderScene` API; a native Wicked probe checks
+the resulting light fields and confirms the live-light count returns to its
+baseline. The controls-only SDL3/Metal smoke passed on macOS 27.0 / Apple M5.
+
+Run the focused runtime check from the engine root with:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_ALLOW_STALE_STAGE1=1 \
+ELISA_COMPILER_BIN='../Elisa-compiler/scripts/elisac_stage1.sh' \
+ELISA_RENDER_SCENE_CONTROLS_ONLY=1 \
+/opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py
+```
+
+The full interactive maze executable did not reach native linking with the
+checked-in Stage1 compiler product: its archive step declined 11 larger maze
+entry and fixture functions. Those compiler declines remain separate from the
+focused lighting result, so the full gameplay view is not yet verified.
