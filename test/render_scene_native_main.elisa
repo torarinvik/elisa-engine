@@ -38,6 +38,7 @@ include "./render_scene_animation_blend_native.elisa"
 include "./render_scene_animation_root_motion_native.elisa"
 include "./render_graph_native.elisa"
 include "./render_scene_effects_native.elisa"
+include "./render_scene_native_helpers.elisa"
 using Maze
 using MazeGame
 using MazeTrace
@@ -56,19 +57,6 @@ extern elisa_render_scene_v1_test_arc_capacity() -> i32
 extern elisa_render_scene_v1_test_quality_matches(ambient_occlusion: i32, fxaa: i32) -> i32
 @callconv(c)
 extern elisa_render_scene_v1_test_quality_rejects_invalid_flags() -> i32
-def check_arc_batch_capacity(handle: RenderScene::ElectricArcHandle) -> i32:
-    batch: mutable RenderScene::ElectricArcBatch = RenderScene::ElectricArcBatch()
-    for index in 0..<RenderScene::MAX_ELECTRIC_ARCS:
-        _ = catch RenderScene::electric_arc_batch_append(&batch, handle):
-            ok: 0
-            error failure: return 1
-    return 1 if RenderScene::electric_arc_batch_count(batch) != RenderScene::MAX_ELECTRIC_ARCS
-    overflow: i32 = catch RenderScene::electric_arc_batch_append(&batch, handle):
-        ok: 0
-        RenderScene::RenderSceneError.Capacity: 1
-        error failure: 2
-    return 0 if overflow == 1 and RenderScene::electric_arc_batch_count(batch) == RenderScene::MAX_ELECTRIC_ARCS
-    2
 def exercise_render_scene() -> i32:
     config: Application::Config = Application::Config{
         title: "Elisa Render Scene Smoke",
@@ -156,7 +144,7 @@ def exercise_render_scene() -> i32:
         ok: 0
         error failure: 1
     return 91 if arc_update != 0
-    return 92 if check_arc_batch_capacity(electric_arc) != 0
+    return 92 if RenderSceneNativeHelpers::check_arc_batch_capacity(electric_arc) != 0
     arc_hidden: i32 = catch RenderScene::set_electric_arc_visible(electric_arc, false):
         ok: 0
         error failure: 1
