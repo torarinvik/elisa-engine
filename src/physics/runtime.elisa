@@ -137,7 +137,10 @@ module PhysicsRuntime:
             rotation_max_x: f32, rotation_max_y: f32, rotation_max_z: f32,
             swing_normal_half_cone_angle: f32, swing_plane_half_cone_angle: f32,
             swing_min_twist_angle: f32, swing_max_twist_angle: f32,
-            slot: mutable u32&, constraint_generation: mutable u64&) -> i32
+            slot: mutable u32&) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_constraint_generation(world_generation: u64,
+            slot: u32) -> u64
         @callconv(c)
         extern elisa_physics_v1_constraint_set_motor(world_generation: u64,
             slot: u32, constraint_generation: u64,

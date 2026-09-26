@@ -45,6 +45,10 @@ ELISA_NATIVE_SMOKE_ONLY=physics-constraints-smoke \
   python3 scripts/application_native_smoke.py
 ```
 
-P06 remains in progress. An authored door/lift/jointed-object sample with
-broader lifecycle coverage is still needed before the plan's completion
-criteria are met.
+`examples/physics_interactables` adds a public-API sample with a motorized
+hinge door, vertical slider lift, and point-jointed pendulum. Its hidden
+acceptance client verifies door/lift travel, checks that all three joints stay
+intact, and separately verifies vertical slider motor travel through the
+`RuntimeServices` session route. The direct `PhysicsRuntime` smoke also checks
+a rotated vertical slider and its limits. Both the sample and constraint
+smokes passed on 2026-09-26.

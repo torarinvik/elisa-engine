@@ -151,6 +151,7 @@ def main() -> int:
             ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),
             ("physics-runtime-query-smoke", ROOT / "test/physics_app_native.elisa"),
             ("physics-constraints-smoke", ROOT / "test/physics_constraints_native.elisa"),
+            ("physics-interactables-smoke", ROOT / "examples/physics_interactables/self_test_main.elisa"),
             ("physics-collision-layers-smoke", ROOT / "test/physics_collision_layers_native.elisa"),
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),

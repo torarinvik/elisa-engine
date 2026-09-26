@@ -111,6 +111,8 @@ enum ElisaKeyboardCode : int32_t {
     KEY_H = 2025,
     KEY_LEFT_CONTROL = 2026,
     KEY_RIGHT_CONTROL = 2027,
+    KEY_J = 2028,
+    KEY_L = 2029,
 };
 
 constexpr int32_t keyboard_key_code(SDL_Keycode key) {
@@ -132,6 +134,8 @@ constexpr int32_t keyboard_key_code(SDL_Keycode key) {
     case SDLK_2: return KEY_DIGIT_2;
     case SDLK_3: return KEY_DIGIT_3;
     case SDLK_H: return KEY_H;
+    case SDLK_J: return KEY_J;
+    case SDLK_L: return KEY_L;
     case SDLK_SPACE: return KEY_SPACE;
     case SDLK_ESCAPE: return KEY_ESCAPE;
     case SDLK_LSHIFT: return KEY_LEFT_SHIFT;

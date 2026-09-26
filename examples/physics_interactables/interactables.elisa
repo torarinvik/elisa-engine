@@ -1,0 +1,452 @@
+# Door, lift, and pendulum sample built from Elisa's public runtime APIs.
+module PhysicsInteractables:
+    private:
+        const module Tune:
+            WIDTH: i32 = 1280
+            HEIGHT: i32 = 800
+            LAYER: u32 = 0
+            FIXED_STEP: f32 = 1.0 / 60.0
+            ACTION_DOOR: i64 = 1
+            ACTION_LIFT: i64 = 2
+            ACTION_PENDULUM: i64 = 3
+            ACTION_QUIT: i64 = 4
+            CAMERA_FOV: f32 = 1.0
+            CAMERA_NEAR: f32 = 0.1
+            CAMERA_FAR: f32 = 500.0
+            INITIAL_TICKS: usize = 4
+            TEST_TICKS: usize = 90
+            DOOR_MOTOR_SPEED: f32 = 4.0
+            DOOR_MOTOR_TORQUE: f32 = 800.0
+            LIFT_MOTOR_SPEED: f32 = 0.8
+            LIFT_MOTOR_FORCE: f32 = 160.0
+            MIN_DOOR_TRAVEL: f32 = 0.15
+            MIN_LIFT_TRAVEL: f32 = 0.2
+            LIFT_X: f32 = 2.5
+            PENDULUM_X: f32 = 4.5
+
+        struct BodyVisual:
+            body: PhysicsRuntime::BodyHandle
+            visual: RenderScene::InstanceHandle
+            half_extents: Geometry::Vec3
+
+        struct Scene:
+            door: BodyVisual
+            lift: BodyVisual
+            pendulum: BodyVisual
+
+        def color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
+            RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0}
+
+        def bind_key(input: mutable ActionInput::Input&, action: i64,
+            key: Application::KeyboardKeyCode) -> bool:
+            ActionInput::bind_checked(input, ActionInput::Binding{
+                action: action,
+                device: ActionInput::Device.Keyboard,
+                code: Application::keyboard_key_code(key),
+                chord_code: 0,
+                deadzone: 0.0,
+                context: ActionInput::Context.Gameplay,
+                live: true,
+            }) == ActionInput::BindResult.Bound
+
+        def bind_controls(input: mutable ActionInput::Input&) -> bool:
+            return false if not bind_key(input, Tune::ACTION_DOOR, Application::KeyboardKeyCode.E)
+            return false if not bind_key(input, Tune::ACTION_LIFT, Application::KeyboardKeyCode.L)
+            return false if not bind_key(input, Tune::ACTION_PENDULUM, Application::KeyboardKeyCode.J)
+            return false if not bind_key(input, Tune::ACTION_QUIT, Application::KeyboardKeyCode.Escape)
+            true
+
+        def add_box(session: RuntimeServices::Session&,
+            kind: PhysicsRuntime::BodyKind, center: Geometry::Vec3,
+            half_extents: Geometry::Vec3, mass: f32, sensor: bool,
+            tint: RenderScene::Color) -> BodyVisual error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            body: PhysicsRuntime::BodyHandle = try RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: kind,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: center,
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: half_extents,
+                    mass: mass,
+                    sensor: sensor,
+                    collision_layer: Tune::LAYER,
+                })
+            visual: RenderScene::InstanceHandle = try RenderScene::create(
+                RenderScene::Primitive.Box,
+                Geometry::Transform{position: center,
+                    rotation: Geometry::quat_identity(), scale: half_extents}, tint)
+            BodyVisual{body: body, visual: visual, half_extents: half_extents}
+
+        def add_anchor(session: RuntimeServices::Session&,
+            center: Geometry::Vec3) -> PhysicsRuntime::BodyHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_body_create(session,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: center,
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: 0.25, y: 0.25, z: 0.25},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Tune::LAYER,
+                })
+
+        def create_scene(session: RuntimeServices::Session&) -> Scene error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            _ = try add_box(session, PhysicsRuntime::BodyKind.Static,
+                Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
+                Geometry::Vec3{x: 8.0, y: 0.25, z: 4.0}, 0.0, false,
+                color(0.19, 0.23, 0.28))
+            _ = try RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::Transform{position: Geometry::Vec3{x: -3.0, y: 1.5, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: 0.14, y: 1.5, z: 0.14}},
+                color(0.32, 0.34, 0.37))
+            _ = try RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::Transform{position: Geometry::Vec3{x: Tune::LIFT_X, y: 1.6, z: -0.45},
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: 0.12, y: 1.6, z: 0.12}},
+                color(0.32, 0.34, 0.37))
+            _ = try RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::Transform{position: Geometry::Vec3{x: Tune::PENDULUM_X, y: 3.0, z: -0.45},
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: 0.12, y: 1.4, z: 0.12}},
+                color(0.32, 0.34, 0.37))
+
+            door: BodyVisual = try add_box(session, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: -2.15, y: 1.5, z: 0.0},
+                Geometry::Vec3{x: 0.85, y: 1.0, z: 0.1}, 8.0, false,
+                color(0.72, 0.28, 0.12))
+
+            lift: BodyVisual = try add_box(session, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::LIFT_X, y: 1.5, z: 0.0},
+                Geometry::Vec3{x: 0.8, y: 0.16, z: 0.7}, 12.0, false,
+                color(0.14, 0.52, 0.82))
+
+            pendulum: BodyVisual = try add_box(session, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::PENDULUM_X, y: 2.0, z: 0.0},
+                Geometry::Vec3{x: 0.35, y: 0.35, z: 0.35}, 4.0, false,
+                color(0.9, 0.7, 0.12))
+
+            Scene{door: door, lift: lift, pendulum: pendulum}
+
+        def update_body(session: RuntimeServices::Session&,
+            visual: BodyVisual&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_body_pose(
+                session, visual.body)
+            try RenderScene::update_transform(visual.visual, Geometry::Transform{
+                position: pose.position,
+                rotation: pose.rotation,
+                scale: visual.half_extents,
+            })
+
+        def update_scene(session: RuntimeServices::Session&,
+            scene: Scene&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            _ = try update_body(session, scene.door)
+            _ = try update_body(session, scene.lift)
+            _ = try update_body(session, scene.pendulum)
+
+        def initialize_scene(session: RuntimeServices::Session&) -> Scene error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+            width: i32 = Tune::WIDTH if frame.pixel_width <= 0 else frame.pixel_width
+            height: i32 = Tune::HEIGHT if frame.pixel_height <= 0 else frame.pixel_height
+            try RenderScene::initialize(width, height, 12.0)
+            try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
+                Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
+            try RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.5, y: 5.0, z: 11.0},
+                Geometry::Vec3{x: 0.5, y: 1.4, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+            scene: Scene = try create_scene(session)
+            _ = try RenderScene::create_overlay_text(
+                "E door | L lift | J swing pendulum | Esc quit",
+                18.0, 18.0, 20, color(1.0, 1.0, 1.0))
+            return move scene
+
+        def settle(session: mutable RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            for _ in 0..<Tune::INITIAL_TICKS |session|:
+                _ = try RuntimeServices::physics_fixed_step(session, Tune::FIXED_STEP)
+
+        def advance_test(session: mutable RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            for _ in 0..<Tune::TEST_TICKS |session|:
+                _ = try RuntimeServices::physics_fixed_step(session, Tune::FIXED_STEP)
+
+        def constraints_intact(session: RuntimeServices::Session&,
+            door_hinge: PhysicsRuntime::ConstraintHandle&,
+            lift_slider: PhysicsRuntime::ConstraintHandle&,
+            pendulum_joint: PhysicsRuntime::ConstraintHandle&) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            door_broken: bool = try RuntimeServices::physics_constraint_is_broken(
+                session, door_hinge)
+            lift_broken: bool = try RuntimeServices::physics_constraint_is_broken(
+                session, lift_slider)
+            pendulum_broken: bool = try RuntimeServices::physics_constraint_is_broken(
+                session, pendulum_joint)
+            not door_broken and not lift_broken and not pendulum_broken
+
+        def settle_status(session: mutable RuntimeServices::Session&) -> i32:
+            catch settle(session):
+                value: 0
+                error failure: 40
+
+        def door_motor_status(session: RuntimeServices::Session&,
+            door_hinge: PhysicsRuntime::ConstraintHandle&) -> i32:
+            catch RuntimeServices::physics_constraint_set_motor(session,
+                door_hinge, Tune::DOOR_MOTOR_SPEED, Tune::DOOR_MOTOR_TORQUE):
+                value: 0
+                error failure: 58
+
+        def lift_motor_status(session: RuntimeServices::Session&,
+            lift_slider: PhysicsRuntime::ConstraintHandle&) -> i32:
+            catch RuntimeServices::physics_constraint_set_motor(session,
+                lift_slider, Tune::LIFT_MOTOR_SPEED, Tune::LIFT_MOTOR_FORCE):
+                value: 0
+                error failure: 44
+
+        def advance_status(session: mutable RuntimeServices::Session&) -> i32:
+            catch advance_test(session):
+                value: 0
+                error failure: 45
+
+        def vertical_motor_probe(session: mutable RuntimeServices::Session&) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            position: Geometry::Vec3 = Geometry::Vec3{x: 20.0, y: 4.0, z: 0.0}
+            anchor: PhysicsRuntime::BodyHandle = try add_anchor(session, position)
+            body: PhysicsRuntime::BodyHandle = try RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: position,
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: 0.8, y: 0.16, z: 0.7},
+                    mass: 12.0,
+                    sensor: false,
+                    collision_layer: Tune::LAYER,
+                })
+            frame: Geometry::Quat = Geometry::Quat{
+                x: 0.0, y: 0.0, z: -0.70710678, w: 0.70710678}
+            description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Slider,
+                    anchor, body, position, frame)
+            description.lower_limit <- -0.5
+            description.upper_limit <- 1.3
+            description.disable_collision <- true
+            handle: mutable PhysicsRuntime::ConstraintHandle =
+                PhysicsRuntime::ConstraintHandle()
+            _ = try RuntimeServices::physics_constraint_create(session,
+                description, handle)
+            _ = try RuntimeServices::physics_fixed_step(session,
+                Tune::FIXED_STEP)
+            start: Geometry::Vec3 = try RuntimeServices::physics_body_position(
+                session, body)
+            try RuntimeServices::physics_constraint_set_motor(session,
+                handle, 4.0, 5000.0)
+            for _ in 0..<Tune::TEST_TICKS |session|:
+                _ = try RuntimeServices::physics_fixed_step(session,
+                    Tune::FIXED_STEP)
+            finish: Geometry::Vec3 = try RuntimeServices::physics_body_position(
+                session, body)
+            finish.y - start.y >= Tune::MIN_LIFT_TRAVEL
+
+        def constraints_status(session: RuntimeServices::Session&,
+            door_hinge: PhysicsRuntime::ConstraintHandle&,
+            lift_slider: PhysicsRuntime::ConstraintHandle&,
+            pendulum_joint: PhysicsRuntime::ConstraintHandle&) -> i32:
+            intact: bool = catch constraints_intact(session,
+                door_hinge, lift_slider, pendulum_joint):
+                value: value
+                error failure: return 48
+            return 49 if not intact
+            0
+
+        def run_test(session: mutable RuntimeServices::Session&,
+            scene: Scene&, door_hinge: PhysicsRuntime::ConstraintHandle&,
+            lift_slider: PhysicsRuntime::ConstraintHandle&,
+            pendulum_joint: PhysicsRuntime::ConstraintHandle&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            return 40 if settle_status(session) != 0
+            door_start: Geometry::Vec3 = try RuntimeServices::physics_body_position(
+                session, scene.door.body)
+            lift_start: Geometry::Vec3 = try RuntimeServices::physics_body_position(
+                session, scene.lift.body)
+            door_motor_result: i32 = door_motor_status(session, door_hinge)
+            return door_motor_result if door_motor_result != 0
+            lift_motor_result: i32 = lift_motor_status(session, lift_slider)
+            return lift_motor_result if lift_motor_result != 0
+            probe_passed: bool = try vertical_motor_probe(session)
+            return 13 if not probe_passed
+            return 45 if advance_status(session) != 0
+            door_end: Geometry::Vec3 = try RuntimeServices::physics_body_position(
+                session, scene.door.body)
+            lift_end: Geometry::Vec3 = try RuntimeServices::physics_body_position(
+                session, scene.lift.body)
+            door_travel: f32 = Geometry::vec3_length(
+                Geometry::vec3_sub(door_end, door_start))
+            return 10 if door_travel < Tune::MIN_DOOR_TRAVEL
+            return 11 if lift_end.y - lift_start.y < Tune::MIN_LIFT_TRAVEL
+            return 48 if constraints_status(session, door_hinge,
+                lift_slider, pendulum_joint) == 48
+            return 12 if constraints_status(session, door_hinge,
+                lift_slider, pendulum_joint) == 49
+            _ = try update_scene(session, scene)
+            0
+
+        def run_interactive(session: mutable RuntimeServices::Session&,
+            scene: Scene&, door_hinge: PhysicsRuntime::ConstraintHandle&,
+            lift_slider: PhysicsRuntime::ConstraintHandle&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError]:
+            input: mutable ActionInput::Input = ActionInput::Input()
+            return 20 if not bind_controls(&input)
+            running: mutable bool = true
+            door_open: mutable bool = false
+            lift_raised: mutable bool = false
+            previous_elapsed_nanos: mutable u64 = 0
+            resize_serial: mutable u64 = 0
+            clock: mutable Runtime::StepClock = Runtime::StepClock()
+            while running |session, scene, input, door_hinge, lift_slider, door_open, lift_raised, previous_elapsed_nanos, resize_serial, clock|:
+                pump: Application::PumpStatus = try RuntimeServices::pump(session)
+                if pump == Application::PumpStatus.ExitRequested:
+                    running <- false
+                elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
+                    return 21
+                if running and pump == Application::PumpStatus.Running:
+                    frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                    _ = ActionInputRuntime::begin_frame(input)
+                    if ActionInput::action_pressed(input, Tune::ACTION_QUIT):
+                        running <- false
+                    if ActionInput::action_pressed(input, Tune::ACTION_DOOR):
+                        speed: f32 = -Tune::DOOR_MOTOR_SPEED if door_open else Tune::DOOR_MOTOR_SPEED
+                        try RuntimeServices::physics_constraint_set_motor(session,
+                            door_hinge, speed, Tune::DOOR_MOTOR_TORQUE)
+                        door_open <- not door_open
+                    if ActionInput::action_pressed(input, Tune::ACTION_LIFT):
+                        speed: f32 = -Tune::LIFT_MOTOR_SPEED if lift_raised else Tune::LIFT_MOTOR_SPEED
+                        try RuntimeServices::physics_constraint_set_motor(session,
+                            lift_slider, speed, Tune::LIFT_MOTOR_FORCE)
+                        lift_raised <- not lift_raised
+                    if ActionInput::action_pressed(input, Tune::ACTION_PENDULUM):
+                        try RuntimeServices::physics_body_apply_impulse(session,
+                            scene.pendulum.body,
+                            Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0})
+                    elapsed_delta: i64 = ((frame.elapsed_nanos -
+                        previous_elapsed_nanos) / 1000).i64()
+                    previous_elapsed_nanos <- frame.elapsed_nanos
+                    due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
+                    for _ in 0..<due_steps |session|:
+                        _ = try RuntimeServices::physics_fixed_step(session,
+                            Runtime::fixed_step_seconds())
+                    _ = try update_scene(session, scene)
+                    if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
+                        _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
+                        resize_serial <- frame.resize_serial
+            0
+
+    public:
+        def run(self_test: bool) -> i32:
+            config: mutable Application::Config = Application::default_config()
+            config.title <- "Elisa Physics Interactables"
+            config.width <- Tune::WIDTH
+            config.height <- Tune::HEIGHT
+            config.hidden <- self_test
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            requirements.services[0] <- Capabilities::BackendFeature.Input
+            requirements.services[1] <- Capabilities::BackendFeature.Rendering
+            requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+            requirements.services[3] <- Capabilities::BackendFeature.Physics
+            requirements.service_count <- 4
+            requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+            requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
+            requirements.allow_service_fallbacks <- true
+            report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
+                _ = RuntimeServices::shutdown(&session)
+                return 1
+            if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
+                _ = RuntimeServices::shutdown(&session)
+                return 2
+            result: i32 = catch run_after_open(&session, self_test):
+                value: value
+                error failure: 3
+            render_closed: mutable bool = true
+            if RenderScene::is_initialized():
+                render_closed <- catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+            app_closed: bool = RuntimeServices::shutdown(&session)
+            return 4 if not render_closed or not app_closed
+            result
+
+    private:
+        def create_door_hinge(session: RuntimeServices::Session&,
+            body: PhysicsRuntime::BodyHandle,
+            output: mutable PhysicsRuntime::ConstraintHandle&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            anchor: PhysicsRuntime::BodyHandle = try add_anchor(session,
+                Geometry::Vec3{x: -3.0, y: 1.5, z: 0.0})
+            description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Hinge,
+                    anchor, body, Geometry::Vec3{x: -3.0, y: 1.5, z: 0.0},
+                    Geometry::quat_identity())
+            description.lower_limit <- -1.3
+            description.upper_limit <- 1.3
+            description.disable_collision <- true
+            _ = try RuntimeServices::physics_constraint_create(session,
+                description, output)
+
+        def create_lift_slider(session: RuntimeServices::Session&,
+            body: PhysicsRuntime::BodyHandle,
+            output: mutable PhysicsRuntime::ConstraintHandle&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            anchor: PhysicsRuntime::BodyHandle = try add_anchor(session,
+                Geometry::Vec3{x: Tune::LIFT_X, y: 1.5, z: 0.0})
+            frame: Geometry::Quat = Geometry::Quat{
+                x: 0.0, y: 0.0, z: -0.70710678, w: 0.70710678}
+            description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Slider,
+                    anchor, body,
+                    Geometry::Vec3{x: Tune::LIFT_X, y: 1.5, z: 0.0}, frame)
+            description.lower_limit <- 0.0
+            description.upper_limit <- 1.3
+            description.disable_collision <- true
+            _ = try RuntimeServices::physics_constraint_create(session,
+                description, output)
+
+        def create_pendulum_joint(session: RuntimeServices::Session&,
+            body: PhysicsRuntime::BodyHandle,
+            output: mutable PhysicsRuntime::ConstraintHandle&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            anchor: PhysicsRuntime::BodyHandle = try add_anchor(session,
+                Geometry::Vec3{x: Tune::PENDULUM_X, y: 3.1, z: 0.0})
+            description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Point,
+                    anchor, body,
+                    Geometry::Vec3{x: Tune::PENDULUM_X, y: 3.1, z: 0.0},
+                    Geometry::quat_identity())
+            description.disable_collision <- true
+            _ = try RuntimeServices::physics_constraint_create(session,
+                description, output)
+
+        def run_after_open(session: mutable RuntimeServices::Session&,
+            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError]:
+            scene: Scene = catch initialize_scene(session):
+                value: value
+                error failure: return 30
+            door_hinge: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
+            _ = try create_door_hinge(session, scene.door.body, door_hinge)
+            lift_slider: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
+            _ = try create_lift_slider(session, scene.lift.body, lift_slider)
+            pendulum_joint: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
+            _ = try create_pendulum_joint(session, scene.pendulum.body,
+                pendulum_joint)
+            _ = catch RuntimeServices::physics_fixed_step(session, Tune::FIXED_STEP):
+                value: value
+                error failure: return 31
+            if self_test:
+                _ = try RuntimeServices::pump(session)
+                catch run_test(session, scene, door_hinge, lift_slider,
+                    pendulum_joint):
+                    value: value
+                    error failure: return 32
+            else:
+                catch run_interactive(session, scene, door_hinge, lift_slider):
+                    value: value
+                    error failure: return 33

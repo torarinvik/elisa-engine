@@ -1,0 +1,4 @@
+include "./interactables.elisa"
+
+def main() -> i32:
+    PhysicsInteractables::run(false)

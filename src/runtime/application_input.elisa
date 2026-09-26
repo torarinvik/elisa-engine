@@ -93,6 +93,8 @@ extend Application:
             KEY_H: i64 = 2025
             KEY_LEFT_CONTROL: i64 = 2026
             KEY_RIGHT_CONTROL: i64 = 2027
+            KEY_J: i64 = 2028
+            KEY_L: i64 = 2029
 
         @callconv(c)
         extern elisa_application_v1_next_input_event_token() -> i64
@@ -147,6 +149,8 @@ extend Application:
             Digit2
             Digit3
             H
+            J
+            L
             Space
             Escape
             LeftShift
@@ -247,6 +251,8 @@ extend Application:
                 KeyboardKeyCode.Digit2: PortableInputCodes::KEY_DIGIT_2
                 KeyboardKeyCode.Digit3: PortableInputCodes::KEY_DIGIT_3
                 KeyboardKeyCode.H: PortableInputCodes::KEY_H
+                KeyboardKeyCode.J: PortableInputCodes::KEY_J
+                KeyboardKeyCode.L: PortableInputCodes::KEY_L
                 KeyboardKeyCode.Space: PortableInputCodes::KEY_SPACE
                 KeyboardKeyCode.Escape: PortableInputCodes::KEY_ESCAPE
                 KeyboardKeyCode.LeftShift: PortableInputCodes::KEY_LEFT_SHIFT

@@ -55,3 +55,6 @@
                 world_generation: u64
                 slot: u32
                 generation: u64
+
+        def ConstraintHandle() -> ConstraintHandle:
+            ConstraintHandle{world_generation: 0, slot: 0, generation: 0}

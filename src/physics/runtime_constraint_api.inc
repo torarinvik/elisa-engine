@@ -19,12 +19,12 @@
                     Status::CONSTRAINT_SWING_TWIST
 
         def native_constraint_create(world_generation: u64,
-            description: ConstraintDesc) -> ConstraintHandle error[PhysicsError]:
+            description: ConstraintDesc,
+            output: mutable ConstraintHandle&) -> void error[PhysicsError]:
             raise PhysicsError.StaleWorld if description.body_a.world_generation != world_generation or description.body_b.world_generation != world_generation
             raise PhysicsError.InvalidArgument if description.body_a.slot == description.body_b.slot and description.body_a.generation == description.body_b.generation
             raise PhysicsError.InvalidArgument if not Geometry::vec3_is_finite(description.anchor) or not Geometry::quat_is_finite(description.frame_rotation) or Geometry::quat_length(description.frame_rotation) <= 0.000001
             slot: mutable u32 = 0
-            generation: mutable u64 = 0
             status: i32 = elisa_physics_v1_create_constraint(world_generation,
                 description.body_a.slot, description.body_a.generation,
                 description.body_b.slot, description.body_b.generation,
@@ -45,24 +45,36 @@
                 description.swing_normal_half_cone_angle,
                 description.swing_plane_half_cone_angle,
                 description.swing_min_twist_angle, description.swing_max_twist_angle,
-                &slot, &generation)
+                &slot)
             try check_status(status)
-            ConstraintHandle{world_generation: world_generation, slot: slot,
-                generation: generation}
+            generation: u64 = elisa_physics_v1_constraint_generation(world_generation,
+                slot)
+            raise PhysicsError.InvalidHandle if generation == 0
+            output <- ConstraintHandle{world_generation: world_generation,
+                slot: slot, generation: generation}
 
     public:
         def service_constraint_create(state: ServiceState&,
             description: ConstraintDesc) -> ConstraintHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
-            try native_constraint_create(state.generation, description)
+            output: mutable ConstraintHandle = ConstraintHandle()
+            _ = try native_constraint_create(state.generation, description, output)
+            output
+
+        def service_constraint_create_into(state: ServiceState&,
+            description: ConstraintDesc, output: mutable ConstraintHandle&) -> void error[PhysicsError]:
+            raise PhysicsError.ApplicationUnavailable if not state.live
+            _ = try native_constraint_create(state.generation, description, output)
 
         def constraint_create(world: World&,
             description: ConstraintDesc) -> ConstraintHandle error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
-            try native_constraint_create(world.generation, description)
+            output: mutable ConstraintHandle = ConstraintHandle()
+            _ = try native_constraint_create(world.generation, description, output)
+            output
 
         def service_constraint_set_motor(state: ServiceState&,
-            constraint: ConstraintHandle, target_velocity: f32,
+            constraint: ConstraintHandle&, target_velocity: f32,
             max_motor_force: f32) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
             raise PhysicsError.StaleWorld if constraint.world_generation != state.generation
@@ -70,7 +82,7 @@
                 constraint.slot, constraint.generation, target_velocity, max_motor_force))
 
         def constraint_set_motor(world: World&,
-            constraint: ConstraintHandle, target_velocity: f32,
+            constraint: ConstraintHandle&, target_velocity: f32,
             max_motor_force: f32) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             raise PhysicsError.StaleWorld if constraint.world_generation != world.generation
@@ -78,7 +90,7 @@
                 constraint.slot, constraint.generation, target_velocity, max_motor_force))
 
         def service_constraint_is_broken(state: ServiceState&,
-            constraint: ConstraintHandle) -> bool error[PhysicsError]:
+            constraint: ConstraintHandle&) -> bool error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
             raise PhysicsError.StaleWorld if constraint.world_generation != state.generation
             broken: mutable i32 = 0
@@ -87,7 +99,7 @@
             broken != 0
 
         def constraint_is_broken(world: World&,
-            constraint: ConstraintHandle) -> bool error[PhysicsError]:
+            constraint: ConstraintHandle&) -> bool error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             raise PhysicsError.StaleWorld if constraint.world_generation != world.generation
             broken: mutable i32 = 0
@@ -96,14 +108,14 @@
             broken != 0
 
         def service_constraint_destroy(state: ServiceState&,
-            constraint: ConstraintHandle) -> void error[PhysicsError]:
+            constraint: ConstraintHandle&) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
             raise PhysicsError.StaleWorld if constraint.world_generation != state.generation
             try check_status(elisa_physics_v1_destroy_constraint(state.generation,
                 constraint.slot, constraint.generation))
 
         def constraint_destroy(world: World&,
-            constraint: ConstraintHandle) -> void error[PhysicsError]:
+            constraint: ConstraintHandle&) -> void error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             raise PhysicsError.StaleWorld if constraint.world_generation != world.generation
             try check_status(elisa_physics_v1_destroy_constraint(world.generation,

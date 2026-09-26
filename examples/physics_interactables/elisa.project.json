@@ -1,0 +1,11 @@
+{
+  "name": "elisa-physics-interactables",
+  "main": "main.elisa",
+  "output": "build/elisa-physics-interactables",
+  "application": {
+    "title": "Elisa Physics Interactables",
+    "width": 1280,
+    "height": 800,
+    "hidden": false
+  }
+}

@@ -58,8 +58,8 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
     float rotation_max_x, float rotation_max_y, float rotation_max_z,
     float swing_normal_half_cone_angle, float swing_plane_half_cone_angle,
     float swing_min_twist_angle, float swing_max_twist_angle,
-    uint32_t* slot, uint64_t* constraint_generation) {
-    if (slot == nullptr || constraint_generation == nullptr ||
+    uint32_t* slot) {
+    if (slot == nullptr ||
         kind < ELISA_PHYSICS_CONSTRAINT_FIXED || kind > ELISA_PHYSICS_CONSTRAINT_SWING_TWIST ||
         !std::isfinite(anchor_x) || !std::isfinite(anchor_y) || !std::isfinite(anchor_z) ||
         std::fabs(anchor_x) > MAX_POSITION || std::fabs(anchor_y) > MAX_POSITION ||
@@ -172,6 +172,10 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
             state.scene->Entity_Remove(entity);
             return ELISA_PHYSICS_INVALID_ARGUMENT;
         }
+        // The physics service advances this Scene without Wicked's normal
+        // transform propagation pass. Constraint axes read the frame's world
+        // basis immediately, so publish the authored rotation here.
+        transform->UpdateTransform();
         wi::scene::PhysicsConstraintComponent& component = state.scene->constraints.Create(entity);
         component.bodyA = body_a->entity;
         component.bodyB = body_b->entity;
@@ -272,8 +276,15 @@ extern "C" int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
     record.kind = kind;
     record.live = true;
     *slot = free_slot;
-    *constraint_generation = record.generation;
     return ELISA_PHYSICS_OK;
+}
+
+extern "C" uint64_t elisa_physics_v1_constraint_generation(uint64_t world_generation,
+    uint32_t slot) {
+    if (require_world(world_generation) != ELISA_PHYSICS_OK) return 0;
+    PhysicsService& state = physics_service();
+    if (slot >= MAX_CONSTRAINTS || !state.constraints[slot].live) return 0;
+    return state.constraints[slot].generation;
 }
 
 extern "C" int32_t elisa_physics_v1_constraint_set_motor(uint64_t world_generation,

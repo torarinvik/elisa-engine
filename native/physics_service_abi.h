@@ -309,7 +309,9 @@ int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
     float rotation_max_x, float rotation_max_y, float rotation_max_z,
     float swing_normal_half_cone_angle, float swing_plane_half_cone_angle,
     float swing_min_twist_angle, float swing_max_twist_angle,
-    uint32_t* slot, uint64_t* constraint_generation);
+    uint32_t* slot);
+uint64_t elisa_physics_v1_constraint_generation(uint64_t world_generation,
+    uint32_t slot);
 int32_t elisa_physics_v1_constraint_set_motor(uint64_t world_generation,
     uint32_t slot, uint64_t constraint_generation,
     float target_velocity, float max_motor_force);
