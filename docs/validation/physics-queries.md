@@ -40,9 +40,10 @@ returns copied `PhysicsQueryHit` values to the host.
   normal, and distance data. Invalid direction or distance inputs fail with
   `PhysicsError.InvalidArgument`, while a valid miss returns `hit = false`.
 - `PhysicsRuntime::raycast_all` exposes the same copied hit record through a
-  fixed 16-hit `RayHitBuffer`. Results are sorted by distance, include the
-  nearest physics-body hit when it is not already present in the scene query,
-  and return an explicit capacity error only inside the native fixed bound.
+  fixed 16-hit `RayHitBuffer`. Results retain the nearest 16 unique entities
+  across scene and Jolt candidates, sorted by distance with an entity tie-break;
+  the bounded merge does not let a full scene result set hide a closer physics
+  body. The public buffer reports its count without allocating native storage.
   `RuntimeServices::physics_raycast_all` routes this buffer through an affine
   session without exposing native storage.
 - `PhysicsRuntime::PhysicsQueryFilter` lets callers select scene objects, scene
@@ -104,6 +105,11 @@ queries, rejects invalid zero directions, and polls
 `ContactKind.Added` events, then destroys the sensor and requires a trigger
 `ContactKind.Removed` event, with zero dropped events. This proves the public
 binding reaches the same Jolt callback queue used by the native gate.
+
+The native Wicked query probe also creates more than 16 scene-ray candidates
+and a closer Jolt body on a separate scene layer. Its bounded all-hit assertion
+requires the physics-only body to remain the nearest result and checks the
+merged results stay in distance order.
 
 ## Focused filter validation (2026-09-26)
 

@@ -22,6 +22,35 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
     secondary_transform->translation_local = XMFLOAT3(0, 0, 3);
     secondary_transform->UpdateTransform();
     secondary_layer->layerMask = 1u << 3;
+    std::array<wi::ecs::Entity, 20> overflow_entities{};
+    for (size_t index = 0; index < overflow_entities.size(); ++index) {
+        overflow_entities[index] = scene.Entity_CreateCube("elisa_query_overflow");
+        auto* overflow_transform = scene.transforms.GetComponent(overflow_entities[index]);
+        auto* overflow_layer = scene.layers.GetComponent(overflow_entities[index]);
+        if (!check(overflow_entities[index] != wi::ecs::INVALID_ENTITY &&
+                overflow_transform != nullptr && overflow_layer != nullptr,
+                "query overflow scene entities")) return false;
+        overflow_transform->translation_local = XMFLOAT3(0, 0,
+            3.5f + static_cast<float>(index) * 0.12f);
+        overflow_transform->scale_local = XMFLOAT3(0.08f, 0.08f, 0.08f);
+        overflow_transform->UpdateTransform();
+        overflow_layer->layerMask = 1u << 3;
+    }
+    const auto physics_target = scene.Entity_CreateCube("elisa_query_physics_target");
+    auto* physics_transform = scene.transforms.GetComponent(physics_target);
+    auto* physics_layer = scene.layers.GetComponent(physics_target);
+    if (!check(physics_target != wi::ecs::INVALID_ENTITY && physics_transform != nullptr &&
+            physics_layer != nullptr, "query overflow physics entity")) return false;
+    auto& physics_body = scene.rigidbodies.Create(physics_target);
+    physics_body.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
+    physics_body.mass = 0.0f;
+    physics_body.box.halfextents = XMFLOAT3(0.3f, 0.3f, 0.3f);
+    physics_body.collision_layer = 1u << 3;
+    physics_transform->translation_local = XMFLOAT3(0, 0, -2.0f);
+    physics_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
+    physics_transform->UpdateTransform();
+    physics_layer->layerMask = 1u << 2;
+    scene.Update(0.0f);
     scene.Update(0.0f);
 
     PhysicsQueryBridge bridge(scene);
@@ -92,6 +121,18 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
         !check(bridge.raycast_all(token, XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1),
             10.0f, 1u << 3, hits, wi::enums::FILTER_NONE, false) == 0 && hits.count == 0,
             "query empty filter")) return false;
+    const size_t merged_hit_count = bridge.raycast_all(token,
+        XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 10.0f, 1u << 3, hits);
+    if (!check(merged_hit_count == PhysicsQueryBridge::MAX_HITS &&
+            hits.values[0].entity == physics_target,
+            "query all keeps nearest physics hit when scene buffer fills")) return false;
+    for (size_t index = 1; index < hits.count; ++index) {
+        if (!check(hits.values[index - 1].distance <= hits.values[index].distance,
+                "query all results sorted after source merge")) return false;
+    }
+    for (const wi::ecs::Entity entity : overflow_entities) scene.Entity_Remove(entity);
+    scene.Entity_Remove(physics_target);
+    scene.Update(0.0f);
     const auto collider_entity = scene.Entity_CreateTransform("elisa_query_collider");
     auto* collider_transform = scene.transforms.GetComponent(collider_entity);
     if (!check(collider_entity != wi::ecs::INVALID_ENTITY && collider_transform != nullptr,

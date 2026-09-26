@@ -299,10 +299,9 @@ public:
         const wi::primitive::Ray ray(origin, direction, 0.0f, max_distance);
         scene_.IntersectsAll(results, ray, filter_mask, layer_mask);
         for (const auto& result : results) {
-            if (hits.count == MAX_HITS || result.entity == wi::ecs::INVALID_ENTITY ||
-                result.distance > max_distance) break;
-            hits.values[hits.count++] = {
-                result.entity, result.position, result.normal, result.distance, 0.0f};
+            if (result.entity == wi::ecs::INVALID_ENTITY || result.distance > max_distance) continue;
+            insert_nearest(hits, {result.entity, result.position, result.normal,
+                result.distance, 0.0f});
         }
         std::array<wi::physics::RayIntersectionResult, MAX_HITS> physics_results{};
         const size_t physics_count = include_physics_bodies
@@ -311,20 +310,20 @@ public:
         const float inverse_length = 1.0f / std::sqrt(length_squared(direction));
         const XMFLOAT3 unit_direction = XMFLOAT3(direction.x * inverse_length,
             direction.y * inverse_length, direction.z * inverse_length);
-        for (size_t index = 0; index < physics_count && hits.count < MAX_HITS; ++index) {
+        for (size_t index = 0; index < physics_count; ++index) {
             const auto& result = physics_results[index];
-            if (!result.IsValid() || contains_entity(hits, result.entity)) continue;
+            if (!result.IsValid()) continue;
             const XMFLOAT3 offset = XMFLOAT3(result.position.x - origin.x,
                 result.position.y - origin.y, result.position.z - origin.z);
             const float distance = offset.x * unit_direction.x + offset.y * unit_direction.y +
                 offset.z * unit_direction.z;
             if (!std::isfinite(distance) || distance < 0.0f || distance > max_distance) continue;
-            hits.values[hits.count++] = {
-                result.entity, result.position, result.normal, distance, 0.0f};
+            insert_nearest(hits, {result.entity, result.position, result.normal,
+                distance, 0.0f});
         }
         std::sort(hits.values.begin(), hits.values.begin() + hits.count,
             [](const PhysicsQueryHit& left, const PhysicsQueryHit& right) {
-                return left.distance < right.distance;
+                return precedes(left, right);
             });
         return hits.count;
     }
@@ -438,6 +437,40 @@ public:
     }
 
 private:
+    static bool precedes(const PhysicsQueryHit& left, const PhysicsQueryHit& right) {
+        if (left.distance != right.distance) return left.distance < right.distance;
+        return left.entity < right.entity;
+    }
+
+    static bool insert_nearest(Hits& hits, const PhysicsQueryHit& candidate) {
+        if (candidate.entity == wi::ecs::INVALID_ENTITY ||
+            !std::isfinite(candidate.distance) || candidate.distance < 0.0f) return false;
+        for (size_t index = 0; index < hits.count; ++index) {
+            if (hits.values[index].entity != candidate.entity) continue;
+            if (!precedes(candidate, hits.values[index])) return false;
+            for (size_t next = index + 1; next < hits.count; ++next) {
+                hits.values[next - 1] = hits.values[next];
+            }
+            --hits.count;
+            break;
+        }
+        if (hits.count == MAX_HITS && !precedes(candidate, hits.values[hits.count - 1])) {
+            return false;
+        }
+        size_t insertion = hits.count;
+        if (hits.count < MAX_HITS) {
+            ++hits.count;
+        } else {
+            insertion = MAX_HITS - 1;
+        }
+        while (insertion > 0 && precedes(candidate, hits.values[insertion - 1])) {
+            hits.values[insertion] = hits.values[insertion - 1];
+            --insertion;
+        }
+        hits.values[insertion] = candidate;
+        return true;
+    }
+
     template <typename Result, typename Shape>
     bool overlap_scene(const Shape& shape, uint32_t filter_mask, uint32_t layer_mask,
         PhysicsQueryHit& hit) const {
