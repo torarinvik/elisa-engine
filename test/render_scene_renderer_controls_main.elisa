@@ -1,0 +1,28 @@
+# Focused native entry point for render controls that does not compile the full
+# maze/render demonstration, so failures stay local to this ABI surface.
+include "../src/runtime/render_scene.elisa"
+include "./render_scene_renderer_controls_native.elisa"
+
+@callconv(c)
+extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
+@callconv(c)
+extern elisa_application_v1_shutdown() -> i32
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+
+def main() -> i32:
+    return 1 if elisa_application_v1_initialize("Elisa Render Controls Smoke", 320, 200, 1) != 0
+    init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 1
+    if init_status != 0:
+        _ = elisa_application_v1_shutdown()
+        return 2
+    if elisa_application_v1_pump() != 1:
+        _ = elisa_application_v1_shutdown()
+        return 3
+    result: i32 = RenderSceneRendererControlsNativeTests::exercise()
+    shutdown_status: i32 = elisa_application_v1_shutdown()
+    return result if result != 0
+    return 31 if shutdown_status != 0
+    result

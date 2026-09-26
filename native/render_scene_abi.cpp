@@ -1,4 +1,6 @@
 #include "render_scene_abi.h"
+#include "adaptive_resolution.h"
+#include "Utility/meshoptimizer/meshoptimizer.h"
 #include "application_abi.h"
 #include "wiHelper.h"
 #include "wiApplication.h"
@@ -47,11 +49,12 @@
 #include <unordered_map>
 #include <vector>
 namespace {
-constexpr size_t MAX_INSTANCES = 512;
+constexpr size_t MAX_INSTANCES = 4096;
 // An instance or snapshot row without a shared snapshot mesh.
 constexpr size_t NO_SHARED_MESH = std::numeric_limits<size_t>::max();
 constexpr size_t MAX_ELECTRIC_ARCS = 1024;
-constexpr unsigned HANDLE_SLOT_BITS = 11;
+constexpr unsigned HANDLE_SLOT_BITS = 13;
+static_assert(MAX_INSTANCES < (size_t(1) << HANDLE_SLOT_BITS), "instance handles must encode every slot plus null");
 constexpr uint64_t HANDLE_SLOT_MASK = (uint64_t(1) << HANDLE_SLOT_BITS) - 1;
 constexpr uint64_t MAX_GENERATION = uint64_t(std::numeric_limits<int64_t>::max()) >> HANDLE_SLOT_BITS;
 constexpr int32_t MAX_VIEWPORT = 16384;
@@ -98,6 +101,7 @@ struct ElectricArcSlot {
     bool live = false;
 };
 struct RenderSceneService {
+    elisa::rendering::AdaptiveResolution adaptive_resolution;
     std::mutex mutex;
     elisa::render_graph::Executor render_graph;
     std::unique_ptr<wi::scene::Scene> scene;
@@ -129,6 +133,7 @@ struct RenderSceneService {
     SnapshotAssetRequests snapshot_asset_requests;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
+    int64_t static_lod_test_probe_handle = 0;
     size_t camera_viewports_composed = 0;
     uint64_t snapshot_test_transaction_api_calls = 0;
     uint64_t snapshot_test_last_transaction_api_calls = 0;
@@ -311,6 +316,7 @@ size_t find_free_arc_slot(const RenderSceneService& state) {
 }
 void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance);
 void reset_unlocked(RenderSceneService& state) {
+    state.adaptive_resolution = {};
     if (state.initialized) {
         wi::jobsystem::WaitForAllJobs();
         if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
@@ -360,6 +366,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_test_transaction_api_calls = 0;
     state.snapshot_test_last_transaction_api_calls = 0;
     state.camera_viewports_composed = 0;
+    state.static_lod_test_probe_handle = 0;
 #endif
     state.snapshot_rows = {};
     state.snapshot_retire_handles = {};

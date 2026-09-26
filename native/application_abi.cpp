@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <chrono>
+#include <random>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -583,4 +584,14 @@ extern "C" int32_t elisa_application_v1_register_shutdown_hook(
     if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
     return service.host.add_shutdown_hook(context, function)
         ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
+}
+
+// Non-deterministic gameplay seed, available before opening a window.
+extern "C" uint64_t elisa_application_v1_random_seed(void) {
+    try {
+        std::random_device source;
+        return (static_cast<uint64_t>(source()) << 32) ^ source();
+    } catch (...) {
+        return static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    }
 }

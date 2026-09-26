@@ -178,6 +178,10 @@
         @callconv(c)
         extern elisa_render_scene_v1_set_tonemap(tonemap: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_generate_static_lods(handle: i64, levels: i32, ratio: f32, max_error: f32) -> i32
+        extern elisa_render_scene_v1_set_indirect_lighting(requested: i32) -> i32
+        extern elisa_render_scene_v1_set_adaptive_resolution(target_fps: f32, minimum: f32) -> i32
+        extern elisa_render_scene_v1_set_render_scale(scale: f32) -> i32
         extern elisa_render_scene_v1_set_exposure(exposure: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_shadow_quality(quality: i32) -> i32

@@ -428,6 +428,10 @@ int32_t elisa_render_scene_v1_set_ambient_occlusion_settings(float range, float 
 int32_t elisa_render_scene_v1_set_fxaa(int32_t enabled);
 int32_t elisa_render_scene_v1_set_tonemap(int32_t tonemap);
 int32_t elisa_render_scene_v1_set_exposure(float exposure);
+int32_t elisa_render_scene_v1_generate_static_lods(int64_t handle, int32_t levels, float ratio, float error);
+int32_t elisa_render_scene_v1_set_indirect_lighting(int32_t requested);
+int32_t elisa_render_scene_v1_set_render_scale(float scale);
+int32_t elisa_render_scene_v1_set_adaptive_resolution(float target_fps, float minimum);
 int32_t elisa_render_scene_v1_set_shadow_quality(int32_t quality);
 enum {
     ELISA_RENDER_SCENE_QUALITY_TONEMAP_REINHARD = 0,

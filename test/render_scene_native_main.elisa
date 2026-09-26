@@ -30,6 +30,7 @@ include "./render_scene_environment_native.elisa"
 include "./render_scene_lighting_native.elisa"
 include "./render_scene_arc_depth_native.elisa"
 include "./render_scene_quality_settings_native.elisa"
+include "./render_scene_renderer_controls_native.elisa"
 include "./render_scene_visibility_native.elisa"
 include "./render_scene_mesh_instance_native.elisa"
 include "./render_scene_animation_submission_native.elisa"
@@ -287,6 +288,8 @@ def exercise_render_scene() -> i32:
     return 109 if elisa_render_scene_v1_test_quality_rejects_invalid_flags() != 1
     quality_settings: i32 = RenderSceneQualitySettingsNativeTests::exercise()
     return quality_settings if quality_settings != 0
+    renderer_controls: i32 = RenderSceneRendererControlsNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(281, renderer_controls) if renderer_controls != 0
     bad_update: i32 = catch RenderScene::update_transform(box, invalid_transform):
         ok: 0
         RenderScene::RenderSceneError.InvalidValue: 1

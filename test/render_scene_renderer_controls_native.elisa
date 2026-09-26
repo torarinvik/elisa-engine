@@ -1,0 +1,113 @@
+# Native smoke coverage for runtime render controls and generated static LODs.
+include "../src/runtime/render_scene.elisa"
+include "../src/math/geometry.elisa"
+
+module RenderSceneRendererControlsNativeTests:
+    private:
+        const module NativeMode:
+            RASTER: i32 = 0
+            SCREEN_SPACE: i32 = 1
+            RAY_TRACED: i32 = 2
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_indirect_lighting_matches(mode: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_resolution_settings_match(
+            scale: f32, target_fps: f32, minimum: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_static_lod_layout(levels: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_pump() -> i32
+
+        def mode_code(mode: RenderScene::IndirectLighting) -> i32:
+            match mode:
+                RenderScene::IndirectLighting.Raster: NativeMode::RASTER
+                RenderScene::IndirectLighting.ScreenSpace: NativeMode::SCREEN_SPACE
+                RenderScene::IndirectLighting.RayTraced: NativeMode::RAY_TRACED
+
+        def check_mode(requested: RenderScene::IndirectLighting) -> i32 error[RenderScene::RenderSceneError]:
+            applied: RenderScene::IndirectLighting = try RenderScene::set_indirect_lighting(requested)
+            return 1 if elisa_render_scene_v1_test_indirect_lighting_matches(mode_code(applied)) == 0
+            return 2 if elisa_application_v1_pump() != 1
+            0
+
+    public:
+        def exercise() -> i32:
+            scale_status: i32 = catch RenderScene::set_render_scale(0.75):
+                ok: 0
+                error failure: 1
+            return 1 if scale_status != 0 or elisa_render_scene_v1_test_resolution_settings_match(0.75, 0.0, 0.75) == 0
+
+            bad_scale: i32 = catch RenderScene::set_render_scale(1.1):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 2 if bad_scale != 1
+
+            bad_target: i32 = catch RenderScene::set_adaptive_resolution(20.0, 0.75):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 3 if bad_target != 1
+
+            adaptive_status: i32 = catch RenderScene::set_adaptive_resolution(60.0, 0.75):
+                ok: 0
+                error failure: 1
+            return 4 if adaptive_status != 0 or elisa_render_scene_v1_test_resolution_settings_match(0.75, 60.0, 0.75) == 0
+            disable_adaptive: i32 = catch RenderScene::set_adaptive_resolution(0.0, 0.75):
+                ok: 0
+                error failure: 1
+            return 5 if disable_adaptive != 0 or elisa_render_scene_v1_test_resolution_settings_match(0.75, 0.0, 0.75) == 0
+            restore_scale: i32 = catch RenderScene::set_render_scale(1.0):
+                ok: 0
+                error failure: 1
+            return 6 if restore_scale != 0
+
+            raster_mode: i32 = catch check_mode(RenderScene::IndirectLighting.Raster):
+                value: value
+                error failure: -1
+            return 7 if raster_mode != 0
+            screen_mode: i32 = catch check_mode(RenderScene::IndirectLighting.ScreenSpace):
+                value: value
+                error failure: -1
+            return 8 if screen_mode != 0
+            ray_mode: i32 = catch check_mode(RenderScene::IndirectLighting.RayTraced):
+                value: value
+                error failure: -1
+            return 9 if ray_mode != 0
+            reset_mode: i32 = catch check_mode(RenderScene::IndirectLighting.Raster):
+                value: value
+                error failure: -1
+            return 10 if reset_mode != 0
+
+            lod_transform: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: 100.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 0.25, y: 0.25, z: 0.25},
+            }
+            lod_source: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Sphere, lod_transform,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 11
+            generated_lods: i32 = catch RenderScene::generate_static_lods(lod_source, 3, 0.5, 0.01):
+                ok: 0
+                error failure: 1
+            if generated_lods != 0 or elisa_render_scene_v1_test_static_lod_layout(3) == 0:
+                _ = catch RenderScene::destroy(lod_source):
+                    ok: 0
+                    error failure: 1
+                return 12
+            return 14 if elisa_application_v1_pump() != 1
+            repeated_generation: i32 = catch RenderScene::generate_static_lods(lod_source, 3, 0.5, 0.01):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            destroyed_lod_source: i32 = catch RenderScene::destroy(lod_source):
+                ok: 0
+                error failure: 1
+            return 13 if repeated_generation != 1 or destroyed_lod_source != 0
+            0

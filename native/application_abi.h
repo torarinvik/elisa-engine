@@ -127,6 +127,7 @@ uint64_t elisa_application_v1_frame_count(void);
 // Monotonic nanoseconds since the current application host initialized.
 // Returns zero while the host is stopped.
 uint64_t elisa_application_v1_uptime_nanos(void);
+uint64_t elisa_application_v1_random_seed(void);
 // Process environment reads for review and automation flags. A missing or
 // empty variable yields "" (never NULL); the integer form yields `fallback`
 // when the variable is missing or not a whole decimal number.

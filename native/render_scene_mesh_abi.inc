@@ -230,3 +230,116 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh_instance(
     instance.live = true;
     return int64_t(encode_handle(slot, generation));
 }
+
+// Generate shared, material-preserving static mesh LODs once at load time.
+// Physics and instance transforms remain independent of these render indices.
+constexpr int32_t MIN_STATIC_LOD_LEVELS = 2;
+constexpr int32_t MAX_STATIC_LOD_LEVELS = 4;
+constexpr float MIN_STATIC_LOD_RATIO = 0.1f;
+constexpr float MAX_STATIC_LOD_RATIO = 0.8f;
+constexpr float MAX_STATIC_LOD_ERROR = 0.05f;
+extern "C" int32_t elisa_render_scene_v1_generate_static_lods(int64_t handle,
+    int32_t levels, float ratio, float error) {
+    if (levels < MIN_STATIC_LOD_LEVELS || levels > MAX_STATIC_LOD_LEVELS ||
+        !std::isfinite(ratio) || ratio < MIN_STATIC_LOD_RATIO || ratio > MAX_STATIC_LOD_RATIO ||
+        !std::isfinite(error) || error <= 0 || error > MAX_STATIC_LOD_ERROR)
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    if (!shared_source_static(state, state.instances[slot])) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& mesh = *state.scene->meshes.GetComponent(state.instances[slot].entity);
+    constexpr size_t MAX_INDEX_VALUE = std::numeric_limits<uint32_t>::max();
+    if (mesh.subsets_per_lod != 0 || mesh.indices.empty() || mesh.vertex_positions.empty() ||
+        mesh.subsets.empty() || mesh.indices.size() % 3 != 0 ||
+        mesh.indices.size() > MAX_INDEX_VALUE || mesh.vertex_positions.size() > MAX_INDEX_VALUE ||
+        mesh.subsets.size() > MAX_INDEX_VALUE / size_t(levels))
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    size_t additional_indices = 0;
+    for (const auto& subset : mesh.subsets) {
+        if (subset.indexCount == 0 || subset.indexCount % 3 != 0 ||
+            subset.indexOffset > mesh.indices.size() ||
+            subset.indexCount > mesh.indices.size() - subset.indexOffset ||
+            additional_indices > MAX_INDEX_VALUE - size_t(subset.indexCount) * size_t(levels - 1))
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        additional_indices += size_t(subset.indexCount) * size_t(levels - 1);
+    }
+    if (additional_indices > MAX_INDEX_VALUE - mesh.indices.size())
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    for (const XMFLOAT3& position : mesh.vertex_positions) {
+        if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z))
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    for (uint32_t index : mesh.indices) {
+        if (index >= mesh.vertex_positions.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    auto indices = mesh.indices;
+    auto subsets = mesh.subsets;
+    const uint32_t count = uint32_t(subsets.size());
+    try {
+        for (int32_t level = 1; level < levels; ++level) {
+            for (uint32_t part = 0; part < count; ++part) {
+                auto subset = mesh.subsets[part];
+                const auto* source = mesh.indices.data() + subset.indexOffset;
+                wi::vector<uint32_t> reduced(subset.indexCount);
+                if (subset.indexCount > 0) {
+                    const size_t target = std::max(size_t(3), size_t(subset.indexCount *
+                        std::pow(ratio, level)) / 3 * 3);
+                    const size_t actual = meshopt_simplify(reduced.data(), source, subset.indexCount,
+                        &mesh.vertex_positions[0].x, mesh.vertex_positions.size(), sizeof(XMFLOAT3),
+                        target, error);
+                    reduced.resize(actual);
+                    // Never erase a material region, even on very small meshes.
+                    if (reduced.empty()) reduced.assign(source, source + subset.indexCount);
+                }
+                subset.indexOffset = uint32_t(indices.size());
+                subset.indexCount = uint32_t(reduced.size());
+                indices.insert(indices.end(), reduced.begin(), reduced.end());
+                subsets.push_back(subset);
+            }
+        }
+        mesh.indices.swap(indices);
+        mesh.subsets.swap(subsets);
+        mesh.subsets_per_lod = count;
+        mesh.CreateRenderData();
+    } catch (...) {
+        // Preserve the source data if GPU resource creation fails.
+        if (mesh.subsets_per_lod != 0) {
+            mesh.indices.swap(indices); mesh.subsets.swap(subsets); mesh.subsets_per_lod = 0;
+            try { mesh.CreateRenderData(); } catch (...) {}
+        }
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    std::fprintf(stderr, "Elisa static LOD: %zu base triangles, %d levels\n", indices.size()/3, levels);
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    state.static_lod_test_probe_handle = handle;
+#endif
+    return ELISA_RENDER_SCENE_OK;
+}
+
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+extern "C" int32_t elisa_render_scene_v1_test_static_lod_layout(int32_t expected_levels) {
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    size_t slot = MAX_INSTANCES;
+    if (!state.initialized || !on_owner_thread(state) || expected_levels < MIN_STATIC_LOD_LEVELS ||
+        expected_levels > MAX_STATIC_LOD_LEVELS ||
+        !valid_handle(state, state.static_lod_test_probe_handle, slot)) return 0;
+    const auto* mesh = state.scene->meshes.GetComponent(state.instances[slot].entity);
+    if (mesh == nullptr || mesh->subsets_per_lod == 0 ||
+        mesh->subsets.size() != size_t(mesh->subsets_per_lod) * size_t(expected_levels)) return 0;
+    for (const auto& subset : mesh->subsets) {
+        if (subset.indexCount == 0 || subset.indexCount % 3 != 0 ||
+            subset.indexOffset > mesh->indices.size() ||
+            subset.indexCount > mesh->indices.size() - subset.indexOffset) return 0;
+        for (size_t index = subset.indexOffset;
+            index < size_t(subset.indexOffset) + subset.indexCount; ++index) {
+            if (mesh->indices[index] >= mesh->vertex_positions.size()) return 0;
+        }
+    }
+    return 1;
+}
+#endif
