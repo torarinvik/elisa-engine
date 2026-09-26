@@ -202,6 +202,10 @@ visibility, audio cues as data, menu flow, restart, and saved settings.
 Backends render derived transforms and play cue IDs; they never decide
 movement or win/loss.
 
+`examples/character_course/` is the playable Jolt character controller sample.
+It uses the public runtime API for movement, jumping, crouching, collision
+shapes, and rendering; its README documents the controls and hidden smoke test.
+
 Gameplay-adjacent ownership lives in small policy modules, each gated by
 tests: `src/physics/policy.elisa` (one solver per body, kinematic from
 Elisa, dynamic from the solver, tick-boundary commits),

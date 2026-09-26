@@ -24,6 +24,14 @@ corner and remains grounded. Only the two cross-iteration validation flags are
 carried by the scoped loop; each requested move, fixed tick, and sampled pose
 stays local to the iteration.
 
+`examples/character_course` is a playable project built from the public
+`RuntimeServices`, `PhysicsRuntime`, `ActionInput`, and `RenderScene` modules.
+Its visible collision course includes the same step, a crouch-height tunnel, a
+20-degree ramp, a raised platform, and a wall end to clear. The separate
+`self_test_main.elisa` entry creates the complete course in a hidden SDL3 window
+and checks the character settles, traverses the step, and gains the expected
+height before shutdown.
+
 Run the integrated Jolt/Wicked case on macOS with:
 
 ```sh
@@ -42,8 +50,12 @@ Validation on 2026-09-26:
   Wicked/Jolt archive. The `world-physics-pose-smoke` ran the shared
   `PhysicsCharacterProbe` through `WorldPhysics` and completed both bounded step
   ascent and corner sliding fixtures.
+- Both `elisa_build_run.py build --project examples/character_course` and the
+  alternate `self_test_main.elisa` entry built against the public runtime. The
+  hidden `elisa-character-course-self-test` then passed on SDL3/Metal.
 - `scripts/check_module_hygiene.py`, `scripts/check_source_length.py`, and
   `git diff --check` passed.
 
-Corner sliding and an authored interactive obstacle course remain open under
-P05.
+P05 character movement and the interactive course are complete. Broader vehicle,
+constraint, ragdoll, and navigation gameplay remain tracked under P06–P09 and
+N01–N04.

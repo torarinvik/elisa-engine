@@ -1,0 +1,375 @@
+# Playable Jolt character course built entirely from public Elisa runtime APIs.
+module CharacterCourse:
+    private:
+        const module Tune:
+            ACTION_FORWARD: i64 = 1
+            ACTION_BACKWARD: i64 = 2
+            ACTION_LEFT: i64 = 3
+            ACTION_RIGHT: i64 = 4
+            ACTION_JUMP: i64 = 5
+            ACTION_CROUCH: i64 = 6
+            ACTION_QUIT: i64 = 7
+            CHARACTER_LAYER: u32 = 0
+            CHARACTER_RADIUS: f32 = 0.25
+            STANDING_HALF_HEIGHT: f32 = 0.45
+            CROUCHED_HALF_HEIGHT: f32 = 0.1
+            CHARACTER_MASS: f32 = 70.0
+            MAX_SLOPE_ANGLE: f32 = 0.7853982
+            MAX_STEP_HEIGHT: f32 = 0.35
+            GRAVITY_FACTOR: f32 = 1.0
+            WALK_SPEED: f32 = 4.0
+            JUMP_SPEED: f32 = 5.0
+            START_X: f32 = -11.5
+            START_Y: f32 = 2.0
+            START_Z: f32 = 0.0
+            FLOOR_HALF_WIDTH: f32 = 15.0
+            FLOOR_HALF_HEIGHT: f32 = 0.25
+            FLOOR_HALF_DEPTH: f32 = 7.0
+            STEP_X: f32 = -8.3
+            OBSTACLE_STEP_HEIGHT: f32 = 0.2
+            STEP_HALF_WIDTH: f32 = 0.4
+            STEP_CLEAR_X: f32 = -7.65
+            TUNNEL_X: f32 = -5.5
+            TUNNEL_HALF_LENGTH: f32 = 1.5
+            TUNNEL_HALF_WIDTH: f32 = 0.15
+            TUNNEL_WALL_HALF_HEIGHT: f32 = 0.6
+            TUNNEL_ROOF_BOTTOM: f32 = 1.0
+            TUNNEL_ROOF_HALF_HEIGHT: f32 = 0.2
+            RAMP_CENTER_X: f32 = 0.5
+            RAMP_CENTER_Y: f32 = 1.0
+            RAMP_HALF_LENGTH: f32 = 3.0
+            RAMP_HALF_HEIGHT: f32 = 0.15
+            RAMP_HALF_DEPTH: f32 = 2.5
+            RAMP_HALF_SINE: f32 = 0.17364818
+            RAMP_HALF_COSINE: f32 = 0.98480775
+            PLATFORM_CENTER_X: f32 = 5.5
+            PLATFORM_CENTER_Y: f32 = 1.8
+            PLATFORM_HALF_WIDTH: f32 = 2.5
+            PLATFORM_HALF_HEIGHT: f32 = 0.2
+            PLATFORM_HALF_DEPTH: f32 = 5.0
+            CORNER_WALL_X: f32 = 8.0
+            CORNER_WALL_HALF_WIDTH: f32 = 0.2
+            CORNER_WALL_HALF_HEIGHT: f32 = 1.5
+            CORNER_WALL_CENTER_Y: f32 = 3.5
+            CORNER_WALL_CENTER_Z: f32 = -2.0
+            CORNER_WALL_HALF_DEPTH: f32 = 2.0
+            GOAL_X: f32 = 13.0
+            GOAL_HEIGHT: f32 = 0.8
+            GOAL_Z: f32 = 2.0
+            GOAL_TOLERANCE: f32 = 0.8
+            CAMERA_OFFSET_X: f32 = -8.0
+            CAMERA_OFFSET_Y: f32 = 6.0
+            CAMERA_OFFSET_Z: f32 = 9.0
+            CAMERA_TARGET_HEIGHT: f32 = 0.5
+            CAMERA_FOV: f32 = 1.0
+            CAMERA_NEAR: f32 = 0.1
+            CAMERA_FAR: f32 = 500.0
+            INITIAL_STEP_COUNT: usize = 40
+            SELF_TEST_TICKS: usize = 150
+            SELF_TEST_MIN_PROGRESS: f32 = 2.5
+            SELF_TEST_MIN_STEP_RISE: f32 = 0.1
+            PHYSICS_LAYER_MASK: u32 = 1
+
+        def bind_key(input: mutable ActionInput::Input&, action: i64,
+            key: Application::KeyboardKeyCode) -> bool:
+            ActionInput::bind_checked(input, ActionInput::Binding{
+                action: action,
+                device: ActionInput::Device.Keyboard,
+                code: Application::keyboard_key_code(key),
+                chord_code: 0,
+                deadzone: 0.0,
+                context: ActionInput::Context.Gameplay,
+                live: true,
+            }) == ActionInput::BindResult.Bound
+
+        def bind_controls(input: mutable ActionInput::Input&) -> bool:
+            return false if not bind_key(input, Tune::ACTION_FORWARD, Application::KeyboardKeyCode.W)
+            return false if not bind_key(input, Tune::ACTION_FORWARD, Application::KeyboardKeyCode.ArrowUp)
+            return false if not bind_key(input, Tune::ACTION_BACKWARD, Application::KeyboardKeyCode.S)
+            return false if not bind_key(input, Tune::ACTION_BACKWARD, Application::KeyboardKeyCode.ArrowDown)
+            return false if not bind_key(input, Tune::ACTION_LEFT, Application::KeyboardKeyCode.A)
+            return false if not bind_key(input, Tune::ACTION_LEFT, Application::KeyboardKeyCode.ArrowLeft)
+            return false if not bind_key(input, Tune::ACTION_RIGHT, Application::KeyboardKeyCode.D)
+            return false if not bind_key(input, Tune::ACTION_RIGHT, Application::KeyboardKeyCode.ArrowRight)
+            return false if not bind_key(input, Tune::ACTION_JUMP, Application::KeyboardKeyCode.Space)
+            return false if not bind_key(input, Tune::ACTION_CROUCH, Application::KeyboardKeyCode.C)
+            return false if not bind_key(input, Tune::ACTION_QUIT, Application::KeyboardKeyCode.Escape)
+            true
+
+        def box_color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
+            RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0}
+
+        def add_static_box(session: RuntimeServices::Session&,
+            center: Geometry::Vec3, half_extents: Geometry::Vec3,
+            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            _ = try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
+                kind: PhysicsRuntime::BodyKind.Static,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: center,
+                rotation: rotation,
+                center_of_mass_offset: Geometry::vec3_zero(),
+                dimensions: half_extents,
+                mass: 0.0,
+                sensor: false,
+                collision_layer: Tune::CHARACTER_LAYER,
+            })
+            half_scale: Geometry::Vec3 = Geometry::Vec3{
+                x: half_extents.x, y: half_extents.y, z: half_extents.z}
+            _ = try RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::Transform{position: center, rotation: rotation,
+                    scale: half_scale}, color)
+
+        def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: 0.0, y: -Tune::FLOOR_HALF_HEIGHT, z: 0.0},
+                Geometry::Vec3{x: Tune::FLOOR_HALF_WIDTH,
+                    y: Tune::FLOOR_HALF_HEIGHT, z: Tune::FLOOR_HALF_DEPTH},
+                Geometry::quat_identity(), box_color(0.19, 0.22, 0.26))
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::STEP_X, y: Tune::OBSTACLE_STEP_HEIGHT * 0.5, z: 0.0},
+                Geometry::Vec3{x: Tune::STEP_HALF_WIDTH,
+                    y: Tune::OBSTACLE_STEP_HEIGHT * 0.5, z: 2.0},
+                Geometry::quat_identity(), box_color(0.9, 0.42, 0.12))
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::TUNNEL_X,
+                    y: Tune::TUNNEL_ROOF_BOTTOM + Tune::TUNNEL_ROOF_HALF_HEIGHT, z: 0.0},
+                Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
+                    y: Tune::TUNNEL_ROOF_HALF_HEIGHT, z: 1.5},
+                Geometry::quat_identity(), box_color(0.2, 0.42, 0.72))
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::TUNNEL_X, y: Tune::TUNNEL_WALL_HALF_HEIGHT,
+                    z: -1.5 - Tune::TUNNEL_HALF_WIDTH},
+                Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
+                    y: Tune::TUNNEL_WALL_HALF_HEIGHT, z: Tune::TUNNEL_HALF_WIDTH},
+                Geometry::quat_identity(), box_color(0.16, 0.32, 0.56))
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::TUNNEL_X, y: Tune::TUNNEL_WALL_HALF_HEIGHT,
+                    z: 1.5 + Tune::TUNNEL_HALF_WIDTH},
+                Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
+                    y: Tune::TUNNEL_WALL_HALF_HEIGHT, z: Tune::TUNNEL_HALF_WIDTH},
+                Geometry::quat_identity(), box_color(0.16, 0.32, 0.56))
+            ramp_rotation: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0,
+                z: Tune::RAMP_HALF_SINE, w: Tune::RAMP_HALF_COSINE}
+            ramp_half_extents: Geometry::Vec3 = Geometry::Vec3{
+                x: Tune::RAMP_HALF_LENGTH, y: Tune::RAMP_HALF_HEIGHT,
+                z: Tune::RAMP_HALF_DEPTH}
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::RAMP_CENTER_X, y: Tune::RAMP_CENTER_Y, z: 0.0},
+                ramp_half_extents, ramp_rotation, box_color(0.16, 0.62, 0.36))
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::PLATFORM_CENTER_X,
+                    y: Tune::PLATFORM_CENTER_Y, z: 0.0},
+                Geometry::Vec3{x: Tune::PLATFORM_HALF_WIDTH,
+                    y: Tune::PLATFORM_HALF_HEIGHT, z: Tune::PLATFORM_HALF_DEPTH},
+                Geometry::quat_identity(), box_color(0.72, 0.62, 0.18))
+            _ = try add_static_box(session,
+                Geometry::Vec3{x: Tune::CORNER_WALL_X,
+                    y: Tune::CORNER_WALL_CENTER_Y, z: Tune::CORNER_WALL_CENTER_Z},
+                Geometry::Vec3{x: Tune::CORNER_WALL_HALF_WIDTH,
+                    y: Tune::CORNER_WALL_HALF_HEIGHT,
+                    z: Tune::CORNER_WALL_HALF_DEPTH},
+                Geometry::quat_identity(), box_color(0.68, 0.2, 0.18))
+            goal_position: Geometry::Vec3 = Geometry::Vec3{
+                x: Tune::GOAL_X, y: Tune::GOAL_HEIGHT, z: Tune::GOAL_Z}
+            _ = try RenderScene::create(RenderScene::Primitive.Sphere,
+                Geometry::Transform{position: goal_position,
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: 0.8, y: 0.8, z: 0.8}},
+                box_color(0.18, 0.9, 0.38))
+
+        def create_character(session: RuntimeServices::Session&) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_character_create(session,
+                PhysicsRuntime::CharacterDesc(
+                    Geometry::Vec3{x: Tune::START_X, y: Tune::START_Y, z: Tune::START_Z},
+                    Geometry::quat_identity(), Tune::CHARACTER_RADIUS,
+                    Tune::STANDING_HALF_HEIGHT, Tune::CHARACTER_MASS,
+                    Tune::MAX_SLOPE_ANGLE, Tune::MAX_STEP_HEIGHT,
+                    Tune::GRAVITY_FACTOR, Tune::CHARACTER_LAYER))
+
+        def movement_direction(input: ActionInput::Input&) -> Geometry::Vec3:
+            direction: mutable Geometry::Vec3 = Geometry::vec3_zero()
+            direction.x <- 1.0 if ActionInput::action_down(input, Tune::ACTION_FORWARD)
+            direction.x <- -1.0 if ActionInput::action_down(input, Tune::ACTION_BACKWARD)
+            direction.z <- -1.0 if ActionInput::action_down(input, Tune::ACTION_LEFT)
+            direction.z <- 1.0 if ActionInput::action_down(input, Tune::ACTION_RIGHT)
+            Geometry::vec3_normalize(direction)
+
+        def update_camera(pose: PhysicsRuntime::BodyPose) -> void error[RenderScene::RenderSceneError]:
+            eye: Geometry::Vec3 = Geometry::Vec3{
+                x: pose.position.x + Tune::CAMERA_OFFSET_X,
+                y: pose.position.y + Tune::CAMERA_OFFSET_Y,
+                z: pose.position.z + Tune::CAMERA_OFFSET_Z}
+            target: Geometry::Vec3 = Geometry::Vec3{
+                x: pose.position.x,
+                y: pose.position.y + Tune::CAMERA_TARGET_HEIGHT,
+                z: pose.position.z}
+            try RenderScene::set_camera_look_at(eye, target,
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+
+        def update_avatar(handle: RenderScene::InstanceHandle,
+            pose: PhysicsRuntime::BodyPose, crouched: bool) -> void error[RenderScene::RenderSceneError]:
+            cylinder_half_height: f32 = Tune::CROUCHED_HALF_HEIGHT if crouched else Tune::STANDING_HALF_HEIGHT
+            half_height: f32 = cylinder_half_height + Tune::CHARACTER_RADIUS
+            try RenderScene::update_transform(handle, Geometry::Transform{
+                position: pose.position,
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: Tune::CHARACTER_RADIUS * 2.0,
+                    y: half_height * 2.0, z: Tune::CHARACTER_RADIUS * 2.0},
+            })
+
+        def simulate_test(session: mutable RuntimeServices::Session&,
+            character: PhysicsRuntime::CharacterHandle) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            for _ in 0..<Tune::INITIAL_STEP_COUNT |session|:
+                _ = try RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds())
+            initial: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                session, character)
+            max_height: mutable f32 = initial.position.y
+            crossed_step: mutable bool = false
+            for _ in 0..<Tune::SELF_TEST_TICKS |session, character, max_height, crossed_step|:
+                try RuntimeServices::physics_character_move(session, character,
+                    Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, Tune::WALK_SPEED,
+                    0.0, false)
+                _ = try RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds())
+                pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                    session, character)
+                max_height <- pose.position.y if pose.position.y > max_height
+                crossed_step <- true if pose.position.x > Tune::STEP_CLEAR_X
+            return 30 if not crossed_step
+            return 31 if max_height < initial.position.y + Tune::SELF_TEST_MIN_STEP_RISE
+            final_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                session, character)
+            return 32 if final_pose.position.x < initial.position.x + Tune::SELF_TEST_MIN_PROGRESS
+            0
+
+        def interactive_loop(session: mutable RuntimeServices::Session&,
+            input: mutable ActionInput::Input, character: PhysicsRuntime::CharacterHandle,
+            avatar: RenderScene::InstanceHandle,
+            instruction: RenderScene::OverlayTextHandle) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError]:
+            running: mutable bool = true
+            crouched: mutable bool = false
+            goal_reached: mutable bool = false
+            jump_queued: mutable bool = false
+            previous_elapsed_nanos: mutable u64 = 0
+            resize_serial: mutable u64 = 0
+            clock: mutable Runtime::StepClock = Runtime::StepClock()
+            while running |session, input, character, avatar, instruction, crouched, goal_reached, jump_queued, previous_elapsed_nanos, resize_serial, clock|:
+                pump: Application::PumpStatus = try RuntimeServices::pump(session)
+                if pump == Application::PumpStatus.ExitRequested:
+                    running <- false
+                elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
+                    return 40
+                if running and pump == Application::PumpStatus.Running:
+                    frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                    _ = ActionInputRuntime::begin_frame(input)
+                    if ActionInput::action_pressed(input, Tune::ACTION_QUIT):
+                        running <- false
+                    else:
+                        desired_crouch: bool = ActionInput::action_down(input, Tune::ACTION_CROUCH)
+                        if desired_crouch != crouched:
+                            half_height: f32 = Tune::CROUCHED_HALF_HEIGHT if desired_crouch else Tune::STANDING_HALF_HEIGHT
+                            changed: bool = try RuntimeServices::physics_character_set_capsule(
+                                session, character, Tune::CHARACTER_RADIUS, half_height)
+                            crouched <- desired_crouch if changed
+                            if changed:
+                                text: cstr = "Crouched | WASD/Arrows move | Space jump | Esc quit" if crouched else "Standing | WASD/Arrows move | Space jump | Hold C | Esc quit"
+                                _ = try RenderScene::set_overlay_text(instruction, text)
+                            else:
+                                _ = try RenderScene::set_overlay_text(instruction,
+                                    "Blocked above: stay crouched | WASD move | Esc quit")
+                        jump_queued <- true if ActionInput::action_pressed(input, Tune::ACTION_JUMP)
+                        elapsed_delta: i64 = ((frame.elapsed_nanos -
+                            previous_elapsed_nanos) / 1000).i64()
+                        previous_elapsed_nanos <- frame.elapsed_nanos
+                        due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
+                        direction: Geometry::Vec3 = movement_direction(input)
+                        for _ in 0..<due_steps |session, character, direction, jump_queued|:
+                            jump_speed: f32 = Tune::JUMP_SPEED if jump_queued else 0.0
+                            try RuntimeServices::physics_character_move(session,
+                                character, direction, Tune::WALK_SPEED, jump_speed, false)
+                            jump_queued <- false
+                            _ = try RuntimeServices::physics_fixed_step(session,
+                                Runtime::fixed_step_seconds())
+                        pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                            session, character)
+                        _ = try update_avatar(avatar, pose, crouched)
+                        _ = try update_camera(pose)
+                        if not goal_reached and ElisaMath::fabsf(pose.position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(pose.position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE:
+                            _ = try RenderScene::set_overlay_text(instruction,
+                                "Course complete! | Esc quit")
+                            goal_reached <- true
+                        if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
+                            _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
+                            resize_serial <- frame.resize_serial
+            0
+
+        def run_after_open(session: mutable RuntimeServices::Session&,
+            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError]:
+            frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+            width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
+            height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
+            try RenderScene::initialize(width, height, 12.0)
+            try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
+                Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
+            _ = try create_course(session)
+            character: PhysicsRuntime::CharacterHandle = try create_character(session)
+            avatar_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                session, character)
+            avatar: RenderScene::InstanceHandle = try RenderScene::create(
+                RenderScene::Primitive.Sphere,
+                Geometry::Transform{position: avatar_pose.position,
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::Vec3{x: Tune::CHARACTER_RADIUS * 2.0,
+                        y: (Tune::STANDING_HALF_HEIGHT + Tune::CHARACTER_RADIUS) * 2.0,
+                        z: Tune::CHARACTER_RADIUS * 2.0}},
+                box_color(0.16, 0.58, 0.92))
+            _ = try update_camera(avatar_pose)
+            instruction: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                "WASD/Arrows move | Space jump | Hold C crouch | Esc quit",
+                18.0, 18.0, 20, box_color(1.0, 1.0, 1.0))
+            _ = try RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds())
+            if self_test:
+                _ = try RuntimeServices::pump(session)
+                simulate_test(session, character)
+            else:
+                input: mutable ActionInput::Input = ActionInput::Input()
+                return 33 if not bind_controls(&input)
+                interactive_loop(session, &input, character, avatar, instruction)
+
+    public:
+        def run(self_test: bool) -> i32:
+            config: mutable Application::Config = Application::default_config()
+            config.hidden <- true if self_test
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            requirements.services[0] <- Capabilities::BackendFeature.Input
+            requirements.services[1] <- Capabilities::BackendFeature.Rendering
+            requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+            requirements.services[3] <- Capabilities::BackendFeature.Physics
+            requirements.service_count <- 4
+            requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+            requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
+            requirements.allow_service_fallbacks <- true
+            report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
+                _ = RuntimeServices::shutdown(&session)
+                return 1
+            if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
+                _ = RuntimeServices::shutdown(&session)
+                return 2
+            result: i32 = catch run_after_open(&session, self_test):
+                value: value
+                error failure: 3
+            render_closed: mutable bool = true
+            if RenderScene::is_initialized():
+                render_closed <- catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+            app_closed: bool = RuntimeServices::shutdown(&session)
+            return 4 if not render_closed or not app_closed
+            result

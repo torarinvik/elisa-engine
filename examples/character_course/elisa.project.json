@@ -1,0 +1,11 @@
+{
+  "name": "elisa-character-course",
+  "main": "main.elisa",
+  "output": "build/elisa-character-course",
+  "application": {
+    "title": "Elisa Character Course",
+    "width": 1280,
+    "height": 800,
+    "hidden": false
+  }
+}

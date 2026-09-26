@@ -1,0 +1,4 @@
+include "./course.elisa"
+
+def main() -> i32:
+    CharacterCourse::run(true)
