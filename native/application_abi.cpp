@@ -103,14 +103,7 @@ bool has_gamepad(const ApplicationService& service, SDL_JoystickID id) {
     return false;
 }
 
-int32_t gamepad_device_slot(const ApplicationService& service, SDL_JoystickID id) {
-    for (size_t index = 0; index < service.gamepads.size(); ++index) {
-        if (service.gamepads[index].handle != nullptr && service.gamepads[index].id == id) {
-            return int32_t(index + 1);
-        }
-    }
-    return 0;
-}
+int32_t gamepad_device_slot(const ApplicationService& service, SDL_JoystickID id);
 
 void queue_input_event(ApplicationService& service, int32_t kind, int32_t device,
     int64_t code, float value, bool pressed, bool released, int32_t device_slot = 0) {

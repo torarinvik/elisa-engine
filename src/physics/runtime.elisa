@@ -16,9 +16,17 @@ module PhysicsRuntime:
             BODY_NOT_READY: i32 = -9
             ASSET_LOAD_FAILED: i32 = -10
             CONFIGURATION_LOCKED: i32 = -11
+            NO_HIT: i32 = -12
             BODY_STATIC: i32 = 0
             BODY_KINEMATIC: i32 = 1
             BODY_DYNAMIC: i32 = 2
+            CONSTRAINT_FIXED: i32 = 0
+            CONSTRAINT_POINT: i32 = 1
+            CONSTRAINT_DISTANCE: i32 = 2
+            CONSTRAINT_HINGE: i32 = 3
+            CONSTRAINT_SLIDER: i32 = 4
+            GRAB_FIXED: i32 = 0
+            GRAB_POINT: i32 = 1
             SHAPE_BOX: i32 = 0
             SHAPE_SPHERE: i32 = 1
             SHAPE_CAPSULE: i32 = 2
@@ -112,6 +120,39 @@ module PhysicsRuntime:
         extern elisa_physics_v1_destroy_body(world_generation: u64,
             slot: u32, body_generation: u64) -> i32
         @callconv(c)
+        extern elisa_physics_v1_create_constraint(world_generation: u64,
+            body_a_slot: u32, body_a_generation: u64,
+            body_b_slot: u32, body_b_generation: u64, kind: i32,
+            anchor_x: f32, anchor_y: f32, anchor_z: f32,
+            rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32,
+            lower_limit: f32, upper_limit: f32, target_velocity: f32,
+            max_motor_force: f32, break_distance: f32, disable_collision: i32,
+            slot: mutable u32&, constraint_generation: mutable u64&) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_constraint_set_motor(world_generation: u64,
+            slot: u32, constraint_generation: u64,
+            target_velocity: f32, max_motor_force: f32) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_constraint_is_broken(world_generation: u64,
+            slot: u32, constraint_generation: u64, broken: mutable i32&) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_destroy_constraint(world_generation: u64,
+            slot: u32, constraint_generation: u64) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_grab_begin(world_generation: u64,
+            origin_x: f32, origin_y: f32, origin_z: f32,
+            direction_x: f32, direction_y: f32, direction_z: f32,
+            kind: i32, break_distance: f32,
+            slot: mutable u32&, grab_generation: mutable u64&) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_grab_update(world_generation: u64,
+            slot: u32, grab_generation: u64,
+            origin_x: f32, origin_y: f32, origin_z: f32,
+            direction_x: f32, direction_y: f32, direction_z: f32) -> i32
+        @callconv(c)
+        extern elisa_physics_v1_grab_end(world_generation: u64,
+            slot: u32, grab_generation: u64) -> i32
+        @callconv(c)
         extern elisa_physics_v1_shutdown(world_generation: u64) -> i32
         def check_status(status: i32) -> void error[PhysicsError]:
             raise PhysicsError.InvalidArgument if status == Status::INVALID_ARGUMENT
@@ -125,6 +166,7 @@ module PhysicsRuntime:
             raise PhysicsError.BodyNotReady if status == Status::BODY_NOT_READY
             raise PhysicsError.AssetLoadFailed if status == Status::ASSET_LOAD_FAILED
             raise PhysicsError.ConfigurationLocked if status == Status::CONFIGURATION_LOCKED
+            raise PhysicsError.NoHit if status == Status::NO_HIT
             raise PhysicsError.BackendFailure if status != Status::OK
         def kind_code(kind: BodyKind) -> i32:
             match kind:
@@ -224,6 +266,7 @@ module PhysicsRuntime:
             BodyNotReady
             ConfigurationLocked
             AssetLoadFailed
+            NoHit
             BackendFailure
 
         include "./runtime_body_create_types.inc"
@@ -245,6 +288,9 @@ module PhysicsRuntime:
                 world_generation: u64
                 slot: u32
                 generation: u64
+
+        include "./runtime_constraint_types.inc"
+        include "./runtime_grab_types.inc"
 
         affine struct World:
             private:
@@ -520,3 +566,5 @@ module PhysicsRuntime:
         include "./runtime_body_material_api.inc"
         include "./runtime_body_inertia_api.inc"
         include "./runtime_character_api.inc"
+        include "./runtime_constraint_api.inc"
+        include "./runtime_grab_api.inc"

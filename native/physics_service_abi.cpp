@@ -40,6 +40,7 @@ static_assert(offsetof(ElisaPhysicsRayHitBuffer, count) == 640,
 void shutdown_world() {
     PhysicsService& state = physics_service();
     if (!state.initialized) return;
+    destroy_all_grabs(state);
     if (state.scene != nullptr) {
         wi::physics::SetContactEventListener(*state.scene, nullptr);
     }
@@ -57,6 +58,14 @@ void shutdown_world() {
         body.character_step_height = 0.0f;
         body.live = false;
         body.character = false;
+    }
+    for (ConstraintSlot& constraint : state.constraints) {
+        constraint.entity = wi::ecs::INVALID_ENTITY;
+        constraint.body_a_slot = MAX_BODIES;
+        constraint.body_b_slot = MAX_BODIES;
+        constraint.body_a_generation = 0;
+        constraint.body_b_generation = 0;
+        constraint.live = false;
     }
     for (ShapeSlot& shape : state.shapes) {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
@@ -181,6 +190,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 #include "physics_body_motion_abi.inc"
 #include "physics_body_material_abi.inc"
 #include "physics_body_inertia_abi.inc"
+#include "physics_constraint_abi.inc"
 
 extern "C" int32_t elisa_physics_v1_fixed_step(uint64_t world_generation,
     float delta_seconds, uint64_t* tick) {
@@ -508,6 +518,8 @@ extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
     if (body->mesh_proxy_geometry_bytes > state.mesh_proxy_geometry_bytes) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }
+    destroy_body_constraints(state, slot, body_generation);
+    destroy_all_grabs(state);
     wi::physics::UnregisterCollisionLayerBody(*state.scene, slot);
     state.scene->Entity_Remove(body->entity);
     body->entity = wi::ecs::INVALID_ENTITY;

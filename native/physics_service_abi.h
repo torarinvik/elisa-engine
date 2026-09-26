@@ -20,12 +20,26 @@ enum {
     ELISA_PHYSICS_BODY_NOT_READY = -9,
     ELISA_PHYSICS_ASSET_LOAD_FAILED = -10,
     ELISA_PHYSICS_CONFIGURATION_LOCKED = -11,
+    ELISA_PHYSICS_NO_HIT = -12,
 };
 
 enum {
     ELISA_PHYSICS_BODY_STATIC = 0,
     ELISA_PHYSICS_BODY_KINEMATIC = 1,
     ELISA_PHYSICS_BODY_DYNAMIC = 2,
+};
+
+enum {
+    ELISA_PHYSICS_GRAB_FIXED = 0,
+    ELISA_PHYSICS_GRAB_POINT = 1,
+};
+
+enum {
+    ELISA_PHYSICS_CONSTRAINT_FIXED = 0,
+    ELISA_PHYSICS_CONSTRAINT_POINT = 1,
+    ELISA_PHYSICS_CONSTRAINT_DISTANCE = 2,
+    ELISA_PHYSICS_CONSTRAINT_HINGE = 3,
+    ELISA_PHYSICS_CONSTRAINT_SLIDER = 4,
 };
 
 enum {
@@ -278,6 +292,32 @@ int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generation, uint32_
     float rotation_x, float rotation_y, float rotation_z, float rotation_w);
 int32_t elisa_physics_v1_destroy_body(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation);
+int32_t elisa_physics_v1_create_constraint(uint64_t world_generation,
+    uint32_t body_a_slot, uint64_t body_a_generation,
+    uint32_t body_b_slot, uint64_t body_b_generation, int32_t kind,
+    float anchor_x, float anchor_y, float anchor_z,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w,
+    float lower_limit, float upper_limit, float target_velocity,
+    float max_motor_force, float break_distance, int32_t disable_collision,
+    uint32_t* slot, uint64_t* constraint_generation);
+int32_t elisa_physics_v1_constraint_set_motor(uint64_t world_generation,
+    uint32_t slot, uint64_t constraint_generation,
+    float target_velocity, float max_motor_force);
+int32_t elisa_physics_v1_constraint_is_broken(uint64_t world_generation,
+    uint32_t slot, uint64_t constraint_generation, int32_t* broken);
+int32_t elisa_physics_v1_destroy_constraint(uint64_t world_generation,
+    uint32_t slot, uint64_t constraint_generation);
+int32_t elisa_physics_v1_grab_begin(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    int32_t kind, float break_distance,
+    uint32_t* slot, uint64_t* grab_generation);
+int32_t elisa_physics_v1_grab_update(uint64_t world_generation,
+    uint32_t slot, uint64_t grab_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z);
+int32_t elisa_physics_v1_grab_end(uint64_t world_generation,
+    uint32_t slot, uint64_t grab_generation);
 int32_t elisa_physics_v1_body_linear_velocity(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation,
     float* velocity_x, float* velocity_y, float* velocity_z);

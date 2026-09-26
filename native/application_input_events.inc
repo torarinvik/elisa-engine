@@ -1,3 +1,16 @@
+namespace {
+
+int32_t gamepad_device_slot(const ApplicationService& service, SDL_JoystickID id) {
+    for (size_t index = 0; index < service.gamepads.size(); ++index) {
+        if (service.gamepads[index].handle != nullptr && service.gamepads[index].id == id) {
+            return int32_t(index + 1);
+        }
+    }
+    return 0;
+}
+
+} // namespace
+
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 extern "C" int32_t elisa_application_v1_test_push_pointer_event(
     int32_t kind, int32_t button, float x, float y, float delta_x,

@@ -584,6 +584,8 @@ module RuntimeServices:
             try PhysicsRuntime::service_body_destroy(session.physics, body)
 
         include "./services_character_api.inc"
+        include "./services_constraint_api.inc"
+        include "./services_grab_api.inc"
 
         def shutdown(session: mutable Session&) -> bool:
             close_state(session)

@@ -1,0 +1,220 @@
+# Native Jolt smoke for generation-checked constraints and motorized sliders.
+include "../src/runtime/application.elisa"
+include "../src/physics/runtime.elisa"
+
+module PhysicsConstraintsNative:
+    private:
+        const module Window:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 240
+            FIXED_STEP: f32 = 1.0 / 30.0
+            MOTOR_TICKS: u32 = 18
+
+        def body(world: PhysicsRuntime::World&, kind: PhysicsRuntime::BodyKind,
+            position: Geometry::Vec3) -> PhysicsRuntime::BodyHandle error[PhysicsRuntime::PhysicsError]:
+            try PhysicsRuntime::body_create(world, PhysicsRuntime::BodyDesc{
+                kind: kind,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: position,
+                rotation: Geometry::quat_identity(),
+                dimensions: Geometry::Vec3{x: 0.25, y: 0.25, z: 0.25},
+                mass: 1.0 if kind == PhysicsRuntime::BodyKind.Dynamic else 0.0,
+                sensor: false,
+                collision_layer: 0,
+                center_of_mass_offset: Geometry::vec3_zero(),
+            })
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Physics Constraints Smoke",
+                width: Window::WIDTH,
+                height: Window::HEIGHT,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            result: i32 = catch PhysicsConstraintsNative::exercise():
+                value: value
+                error failure: 3
+            application_closed: bool = Application::shutdown()
+            return result if result != 0
+            return 2 if not application_closed
+            0
+
+    private:
+        def exercise() -> i32 error[PhysicsRuntime::PhysicsError]:
+            world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+                value: value
+                error failure: return 3
+
+            anchor_body: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Static,
+                Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 4
+            attached_body: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 1.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 5
+            point_description: PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Point,
+                    anchor_body, attached_body,
+                    Geometry::Vec3{x: 0.5, y: 4.0, z: 0.0}, Geometry::quat_identity())
+            point_constraint: PhysicsRuntime::ConstraintHandle = catch PhysicsRuntime::constraint_create(&world, point_description):
+                value: value
+                error failure: return 6
+
+            slider_base: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Static,
+                Geometry::Vec3{x: 5.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 7
+            slider_body: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 5.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 8
+            slider_description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Slider,
+                    slider_base, slider_body, Geometry::Vec3{x: 5.0, y: 4.0, z: 0.0},
+                    Geometry::quat_identity())
+            slider_description.lower_limit <- -0.75
+            slider_description.upper_limit <- 0.75
+            slider_description.disable_collision <- true
+            slider: PhysicsRuntime::ConstraintHandle = catch PhysicsRuntime::constraint_create(&world, slider_description):
+                value: value
+                error failure: return 9
+
+            try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            point_broken: bool = catch PhysicsRuntime::constraint_is_broken(&world, point_constraint):
+                value: value
+                error failure: return 10
+            return 11 if point_broken
+            empty_ray: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: 20.0, y: 20.0, z: 20.0},
+                direction: Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
+            }
+            no_hit_status: i32 = catch PhysicsRuntime::grab_begin(&world, empty_ray,
+                PhysicsRuntime::GrabKind.Point, 0.0):
+                value: 1
+                PhysicsRuntime::PhysicsError.NoHit: 0
+                error failure: 2
+            return 29 if no_hit_status != 0
+            try PhysicsRuntime::constraint_set_motor(&world, slider, 1.5, 100.0)
+
+            start_pose: Geometry::Vec3 = catch PhysicsRuntime::body_position(&world, slider_body):
+                value: value
+                error failure: return 12
+            for index in 0..<Window::MOTOR_TICKS:
+                try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            end_pose: Geometry::Vec3 = catch PhysicsRuntime::body_position(&world, slider_body):
+                value: value
+                error failure: return 13
+            travel: f32 = Geometry::vec3_length(Geometry::vec3_sub(end_pose, start_pose))
+            return 14 if travel < 0.1
+            return 17 if travel > 1.0
+            slider_broken: bool = catch PhysicsRuntime::constraint_is_broken(&world, slider):
+                value: value
+                error failure: return 18
+            return 19 if slider_broken
+
+            break_base: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Static,
+                Geometry::Vec3{x: 7.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 24
+            break_body: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 7.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 25
+            break_description: mutable PhysicsRuntime::ConstraintDesc =
+                PhysicsRuntime::ConstraintDesc(PhysicsRuntime::ConstraintKind.Slider,
+                    break_base, break_body, Geometry::Vec3{x: 7.0, y: 4.0, z: 0.0},
+                    Geometry::quat_identity())
+            break_description.lower_limit <- -1.0
+            break_description.upper_limit <- 1.0
+            break_description.break_distance <- 0.15
+            break_description.disable_collision <- true
+            break_slider: PhysicsRuntime::ConstraintHandle = catch PhysicsRuntime::constraint_create(&world, break_description):
+                value: value
+                error failure: return 26
+            try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            try PhysicsRuntime::constraint_set_motor(&world, break_slider, 1.5, 100.0)
+            for index in 0..<8:
+                try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            break_state: bool = try PhysicsRuntime::constraint_is_broken(&world, break_slider)
+            return 27 if not break_state
+
+            grabbable: PhysicsRuntime::BodyHandle = catch PhysicsConstraintsNative::body(
+                &world, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 9.0, y: 4.0, z: 0.0}):
+                value: value
+                error failure: return 20
+            try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            grab_start: Geometry::Vec3 = try PhysicsRuntime::body_position(&world, grabbable)
+            grab_ray: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: 9.0, y: grab_start.y, z: 5.0},
+                direction: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0},
+            }
+            grab: PhysicsRuntime::GrabHandle = catch PhysicsRuntime::grab_begin(&world,
+                grab_ray, PhysicsRuntime::GrabKind.Point, 1.0):
+                value: value
+                error failure: return 21
+            moved_ray: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: 10.0, y: grab_start.y, z: 5.0},
+                direction: grab_ray.direction,
+            }
+            try PhysicsRuntime::grab_update(&world, grab, moved_ray)
+            try PhysicsRuntime::fixed_step(&world, Window::FIXED_STEP)
+            grab_end_pose: Geometry::Vec3 = try PhysicsRuntime::body_position(&world, grabbable)
+            grab_travel: f32 = Geometry::vec3_length(Geometry::vec3_sub(
+                grab_end_pose, grab_start))
+            return 22 if grab_travel < 0.1
+            try PhysicsRuntime::grab_end(&world, grab)
+            stale_grab_status: i32 = catch PhysicsRuntime::grab_update(&world, grab, moved_ray):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidHandle: 0
+                error failure: 2
+            return 23 if stale_grab_status != 0
+            live_body_pose: Geometry::Vec3 = try PhysicsRuntime::body_position(&world, grabbable)
+            live_body_ray: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: live_body_pose.x, y: live_body_pose.y, z: 5.0},
+                direction: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0},
+            }
+            canceled_grab: PhysicsRuntime::GrabHandle = try PhysicsRuntime::grab_begin(&world,
+                live_body_ray, PhysicsRuntime::GrabKind.Fixed, 1.0)
+            try PhysicsRuntime::body_destroy(&world, grabbable)
+            canceled_status: i32 = catch PhysicsRuntime::grab_end(&world, canceled_grab):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidHandle: 0
+                error failure: 2
+            return 28 if canceled_status != 0
+
+            try PhysicsRuntime::body_destroy(&world, anchor_body)
+            dependent_status: i32 = catch PhysicsRuntime::constraint_is_broken(&world,
+                point_constraint):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidHandle: 0
+                error failure: 2
+            return 15 if dependent_status != 0
+
+            try PhysicsRuntime::constraint_destroy(&world, slider)
+            destroyed_status: i32 = catch PhysicsRuntime::constraint_is_broken(&world, slider):
+                value: 1
+                PhysicsRuntime::PhysicsError.InvalidHandle: 0
+                error failure: 2
+            return 16 if destroyed_status != 0
+
+            try PhysicsRuntime::body_destroy(&world, attached_body)
+            try PhysicsRuntime::body_destroy(&world, slider_body)
+            try PhysicsRuntime::body_destroy(&world, slider_base)
+            try PhysicsRuntime::constraint_destroy(&world, break_slider)
+            try PhysicsRuntime::body_destroy(&world, break_body)
+            try PhysicsRuntime::body_destroy(&world, break_base)
+            try PhysicsRuntime::shutdown(&world)
+            0
+
+def main() -> i32:
+    PhysicsConstraintsNative::run()

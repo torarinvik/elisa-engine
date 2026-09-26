@@ -8,6 +8,7 @@
 #include "wiPhysics.h"
 
 #include <array>
+#include <cfloat>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -16,6 +17,8 @@
 namespace elisa_physics_internal {
 
 constexpr uint32_t MAX_BODIES = 64;
+constexpr uint32_t MAX_CONSTRAINTS = 64;
+constexpr uint32_t MAX_GRABS = 32;
 constexpr uint32_t MAX_SHAPES = 64;
 constexpr uint32_t MAX_COMPOUND_CHILDREN = ELISA_PHYSICS_MAX_COMPOUND_CHILDREN;
 constexpr uint32_t INVALID_SHAPE_SLOT = MAX_SHAPES;
@@ -42,6 +45,25 @@ struct ShapeReference {
     uint64_t generation = 0;
 };
 
+struct ConstraintSlot {
+    wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
+    uint64_t generation = 0;
+    uint32_t body_a_slot = MAX_BODIES;
+    uint32_t body_b_slot = MAX_BODIES;
+    uint64_t body_a_generation = 0;
+    uint64_t body_b_generation = 0;
+    int32_t kind = ELISA_PHYSICS_CONSTRAINT_FIXED;
+    bool live = false;
+};
+
+struct GrabSlot {
+    wi::physics::PickDragOperation operation{};
+    uint64_t generation = 0;
+    float break_distance = FLT_MAX;
+    int32_t kind = ELISA_PHYSICS_GRAB_FIXED;
+    bool live = false;
+};
+
 struct ShapeSlot {
     wi::scene::RigidBodyPhysicsComponent backend_shape{};
     std::vector<XMFLOAT3> mesh_vertices;
@@ -64,6 +86,8 @@ struct PhysicsService {
     std::unique_ptr<probe::PhysicsQueryBridge> query_bridge;
     std::unique_ptr<probe::PhysicsContactQueueListener> contact_listener;
     std::array<BodySlot, MAX_BODIES> bodies{};
+    std::array<ConstraintSlot, MAX_CONSTRAINTS> constraints{};
+    std::array<GrabSlot, MAX_GRABS> grabs{};
     std::array<ShapeSlot, MAX_SHAPES> shapes{};
     std::array<probe::PhysicsContactEvent, MAX_CONTACT_EVENTS> pending_contacts{};
     probe::PhysicsContactQueue contact_queue;
@@ -108,6 +132,48 @@ inline BodySlot* resolve_body(PhysicsService& state, uint32_t slot, uint64_t gen
     if (slot >= MAX_BODIES) return nullptr;
     BodySlot& body = state.bodies[slot];
     return body.live && body.generation == generation ? &body : nullptr;
+}
+
+inline ConstraintSlot* resolve_constraint(PhysicsService& state, uint32_t slot,
+    uint64_t generation) {
+    if (slot >= MAX_CONSTRAINTS) return nullptr;
+    ConstraintSlot& constraint = state.constraints[slot];
+    return constraint.live && constraint.generation == generation ? &constraint : nullptr;
+}
+
+inline void destroy_constraint(PhysicsService& state, ConstraintSlot& constraint) {
+    if (constraint.live && state.scene != nullptr &&
+        constraint.entity != wi::ecs::INVALID_ENTITY) {
+        state.scene->Entity_Remove(constraint.entity);
+    }
+    constraint.entity = wi::ecs::INVALID_ENTITY;
+    constraint.body_a_slot = MAX_BODIES;
+    constraint.body_b_slot = MAX_BODIES;
+    constraint.body_a_generation = 0;
+    constraint.body_b_generation = 0;
+    constraint.live = false;
+}
+
+inline void destroy_body_constraints(PhysicsService& state, uint32_t body_slot,
+    uint64_t body_generation) {
+    for (ConstraintSlot& constraint : state.constraints) {
+        if (constraint.live &&
+            ((constraint.body_a_slot == body_slot &&
+                constraint.body_a_generation == body_generation) ||
+             (constraint.body_b_slot == body_slot &&
+                constraint.body_b_generation == body_generation))) {
+            destroy_constraint(state, constraint);
+        }
+    }
+}
+
+inline void destroy_grab(GrabSlot& grab) {
+    grab.operation.internal_state.reset();
+    grab.live = false;
+}
+
+inline void destroy_all_grabs(PhysicsService& state) {
+    for (GrabSlot& grab : state.grabs) destroy_grab(grab);
 }
 
 inline void set_body_collision_layer(wi::scene::Scene& scene, wi::ecs::Entity entity,
