@@ -84,3 +84,19 @@ and packaged archive distribution remain R13 work. Metal can compile cache
 misses normally; a load message alone does not prove every pipeline was a hit.
 See [the optimized-build validation](wicked-abi-consistency.md) for the
 compiler setting required by this Metal wrapper on the current toolchain.
+
+## Offline publication failure handling
+
+Shader preparation now stages the complete replacement library and its
+content manifest before changing the project tree. Existing custom shaders
+and other backends are preserved. Copy or manifest errors leave the original
+tree untouched; a failed publication rename restores it. If restoration also
+fails, the error reports the retained backup location. Symbolic links anywhere
+in the source or existing shader tree are rejected.
+
+Publication uses two same-filesystem renames, with a brief missing-directory
+window. Do not launch readers or run concurrent preparation against that project
+during publication. This is rollback protection, not a crash-atomic exchange.
+Eight preparation/publication tests pass, including injected copy, manifest,
+publication, and rollback failures. A separate real-library check published
+398 Metal binaries and recomputed the identical content manifest.

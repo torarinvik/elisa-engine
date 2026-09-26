@@ -10,15 +10,14 @@ checkout or publishes a partial shader set when compilation fails.
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from package_macos_app import PackageError, SHADER_MANIFEST_NAME, shader_manifest
+from package_macos_app import PackageError, SHADER_MANIFEST_NAME
+from shader_library_publish import publish
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -36,27 +35,6 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--compiler", type=Path,
         help="offlineshadercompiler executable (defaults to the selected Wicked build)")
     return parser.parse_args(argv)
-
-
-def replace_manifest(shader_root: Path) -> str:
-    manifest = shader_manifest(shader_root)
-    destination = shader_root / SHADER_MANIFEST_NAME
-    temporary = destination.with_name(destination.name + ".tmp")
-    try:
-        temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8")
-        os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return str(manifest["fingerprint"])
-
-
-def ensure_no_symlink_parents(path: Path, root: Path) -> None:
-    current = root
-    for part in path.relative_to(root).parts:
-        current /= part
-        if current.is_symlink():
-            raise PackageError(f"prepared shader path must not traverse a symbolic link: {current}")
 
 
 def prepare(project: Path, wicked_root: Path, wicked_build: Path | None,
@@ -123,23 +101,8 @@ def prepare(project: Path, wicked_root: Path, wicked_build: Path | None,
             return 1
 
         try:
-            backend_root.mkdir(parents=True, exist_ok=True)
-            manifest_path = shader_root / SHADER_MANIFEST_NAME
-            manifest_path.unlink(missing_ok=True)
-            for source in binaries:
-                relative = source.relative_to(compiled_root)
-                destination = backend_root / relative
-                ensure_no_symlink_parents(destination.parent, backend_root)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                temporary_binary = destination.with_name(destination.name + ".tmp")
-                try:
-                    shutil.copyfile(source, temporary_binary)
-                    os.replace(temporary_binary, destination)
-                finally:
-                    temporary_binary.unlink(missing_ok=True)
-            fingerprint = replace_manifest(shader_root)
+            fingerprint = publish(shader_root, compiled_root, binaries)
         except (OSError, PackageError) as error:
-            (shader_root / SHADER_MANIFEST_NAME).unlink(missing_ok=True)
             print(f"Could not publish the prepared shader library: {error}", file=sys.stderr)
             return 1
 
