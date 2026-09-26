@@ -59,7 +59,16 @@ def main() -> i32:
     stale_child: mutable Geometry::Transform = Geometry::transform_identity()
     return 25 if WorldHierarchy::hierarchy_try_world(&checked, 2, &stale_child)
     return 26 if WorldHierarchy::hierarchy_depth(&checked, 2) != WorldHierarchy::MAX_NODES
+    pending_child: mutable Geometry::Transform = Geometry::transform_identity()
+    pending_depth: mutable usize = 0
+    return 27 if not WorldHierarchy::hierarchy_try_target_world(
+        &checked, 2, &pending_child, &pending_depth)
+    return 28 if pending_depth != 1 or pending_child.position.x != 8.0
+    return 29 if WorldHierarchy::hierarchy_world(&checked, 2).position.x != 3.0
+    pending_sample: Geometry::Transform = WorldHierarchy::hierarchy_sample(
+        &checked, 2, 0.5)
+    return 30 if pending_sample.position.x != 3.0
     WorldHierarchy::hierarchy_update(&checked)
-    return 27 if not WorldHierarchy::hierarchy_try_world(&checked, 2, &stale_child)
-    return 28 if stale_child.position.x != 8.0
+    return 31 if not WorldHierarchy::hierarchy_try_world(&checked, 2, &stale_child)
+    return 32 if stale_child.position.x != 8.0
     0

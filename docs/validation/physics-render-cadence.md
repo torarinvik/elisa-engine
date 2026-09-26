@@ -45,4 +45,8 @@ frame-advance routes now propagate their underlying physics errors. The
 same client binds a dynamic body followed by a kinematic body, removes the
 dynamic row, then checks that the kinematic target still reaches Jolt through
 the session clock. It repeats target delivery through hierarchy bindings.
+For the hierarchy route, it leaves the local target dirty, verifies the
+read-only target composition does not publish it, advances one fixed tick,
+then checks the half-alpha `WorldRendering` snapshot is between the old and
+new physics poses while the authoritative hierarchy remains at the new pose.
 The focused SDL3/Metal client built and ran successfully on macOS 27.

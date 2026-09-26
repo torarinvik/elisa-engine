@@ -13,6 +13,26 @@ module WorldPhysicsPoseProbe:
             HIERARCHY_KINEMATIC_TARGET_X: f32 = 8.0
             HIERARCHY_KINEMATIC_TARGET_Y: f32 = 7.0
             KINEMATIC_TARGET_TOLERANCE: f32 = 0.01
+            INTERPOLATION_ALPHA: f32 = 0.5
+            VISUAL_ASSET_HIGH: u64 = 7
+            VISUAL_MESH_LOW: u64 = 1
+            VISUAL_MATERIAL_LOW: u64 = 2
+            RENDER_ID: i64 = 301
+            UNIT_BOUNDS: f32 = 1.0
+
+        def probe_visual() -> Assets::VisualAsset:
+            Assets::VisualAsset{
+                mesh: Assets::AssetId{high: Tune::VISUAL_ASSET_HIGH,
+                    low: Tune::VISUAL_MESH_LOW},
+                material: Assets::AssetId{high: Tune::VISUAL_ASSET_HIGH,
+                    low: Tune::VISUAL_MATERIAL_LOW},
+                local_bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -Tune::UNIT_BOUNDS,
+                        y: -Tune::UNIT_BOUNDS, z: -Tune::UNIT_BOUNDS},
+                    maximum: Geometry::Vec3{x: Tune::UNIT_BOUNDS,
+                        y: Tune::UNIT_BOUNDS, z: Tune::UNIT_BOUNDS},
+                },
+            }
 
         def authored_pose() -> Geometry::Transform:
             Geometry::Transform{
@@ -194,6 +214,14 @@ module WorldPhysicsPoseProbe:
                 ok: 0
                 error failure: 1
             return 42 if hierarchy_kinematic_bind != 0
+            prior_hierarchy_pose: Geometry::Transform = WorldHierarchy::hierarchy_world(
+                hierarchy, entity.id)
+            render_bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+            render_bind: i32 = catch WorldRendering::bind(&render_bindings, &world,
+                entity, Tune::RENDER_ID, probe_visual(), Geometry::transform_identity()):
+                ok: 0
+                error failure: 1
+            return 49 if render_bind != 0
             hierarchy_target: Geometry::Transform = Geometry::Transform{
                 position: Geometry::Vec3{x: Tune::HIERARCHY_KINEMATIC_TARGET_X,
                     y: Tune::HIERARCHY_KINEMATIC_TARGET_Y, z: 0.0},
@@ -202,7 +230,13 @@ module WorldPhysicsPoseProbe:
             }
             return 43 if not WorldHierarchy::hierarchy_set_local(
                 &hierarchy, entity.id, hierarchy_target, false)
-            WorldHierarchy::hierarchy_update(&hierarchy)
+            target_preview: mutable Geometry::Transform = Geometry::transform_identity()
+            target_depth: mutable usize = 0
+            preview_valid: bool = WorldHierarchy::hierarchy_try_target_world(
+                hierarchy, entity.id, &target_preview, &target_depth)
+            return 50 if not preview_valid or target_depth != 0
+            return 51 if target_preview.position.x != Tune::HIERARCHY_KINEMATIC_TARGET_X or target_preview.position.y != Tune::HIERARCHY_KINEMATIC_TARGET_Y
+            return 52 if WorldHierarchy::hierarchy_world(hierarchy, entity.id).position.x != prior_hierarchy_pose.position.x
             hierarchy_kinematic_frame: RuntimeServices::SimulationFrame = catch WorldPhysics::advance_and_sync_hierarchy(
                 session, &hierarchy, hierarchy_kinematic_bindings,
                 Runtime::fixed_step_micros()):
@@ -213,6 +247,22 @@ module WorldPhysicsPoseProbe:
                 hierarchy, entity.id)
             return 46 if ElisaMath::fabsf(hierarchy_kinematic_pose.position.x - Tune::HIERARCHY_KINEMATIC_TARGET_X) > Tune::KINEMATIC_TARGET_TOLERANCE
             return 47 if ElisaMath::fabsf(hierarchy_kinematic_pose.position.y - Tune::HIERARCHY_KINEMATIC_TARGET_Y) > Tune::KINEMATIC_TARGET_TOLERANCE
+            expected_sample_x: f32 = (prior_hierarchy_pose.position.x + hierarchy_kinematic_pose.position.x) * Tune::INTERPOLATION_ALPHA
+            hierarchy_sample: Geometry::Transform = WorldHierarchy::hierarchy_sample(
+                hierarchy, entity.id, Tune::INTERPOLATION_ALPHA)
+            return 53 if ElisaMath::fabsf(hierarchy_sample.position.x - expected_sample_x) > Tune::KINEMATIC_TARGET_TOLERANCE
+            render_snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            render_extract: i32 = catch WorldRendering::extract_hierarchy(&world,
+                &hierarchy, &render_bindings, Tune::INTERPOLATION_ALPHA,
+                &render_snapshot):
+                ok: 0
+                error failure: 1
+            return 54 if render_extract != 0 or RenderSnapshot::snapshot_count(render_snapshot) != 1
+            rendered_pose: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(
+                render_snapshot, 0)
+            return 55 if ElisaMath::fabsf(rendered_pose.transform.position.x - expected_sample_x) > Tune::KINEMATIC_TARGET_TOLERANCE
+            return 56 if WorldHierarchy::hierarchy_world(hierarchy, entity.id).position.x != hierarchy_kinematic_pose.position.x
+            return 57 if not WorldRendering::unbind(&render_bindings, entity, Tune::RENDER_ID)
             hierarchy_kinematic_cleanup: i32 = catch WorldPhysics::unbind(session,
                 &hierarchy_kinematic_bindings, entity):
                 ok: 0

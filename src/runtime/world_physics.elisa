@@ -85,8 +85,9 @@ module WorldPhysics:
             for index in 0..<bindings.count |session, hierarchy, bindings|:
                 if bindings.kinds[index] == PhysicsRuntime::BodyKind.Kinematic:
                     target: mutable Geometry::Transform = Geometry::transform_identity()
-                    raise WorldPhysicsError.EntityUnavailable if not WorldHierarchy::hierarchy_try_world(
-                        hierarchy, bindings.entities[index].id, &target)
+                    target_depth: mutable usize = 0
+                    raise WorldPhysicsError.EntityUnavailable if not WorldHierarchy::hierarchy_try_target_world(
+                        hierarchy, bindings.entities[index].id, &target, &target_depth)
                     body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(
                         &bindings.bodies, index)
                     try RuntimeServices::physics_body_set_kinematic_target(session, body, target)
@@ -183,10 +184,9 @@ module WorldPhysics:
             order: mutable usize[WorldPhysics::MAX_BINDINGS] = zeroed
             for index in 0..<bindings.count |session, hierarchy, bindings, poses, depths, order|:
                 existing: mutable Geometry::Transform = Geometry::transform_identity()
-                raise WorldPhysicsError.SynchronizationFailure if not WorldHierarchy::hierarchy_try_world(
-                    hierarchy, bindings.entities[index].id, &existing)
-                depth: usize = WorldHierarchy::hierarchy_depth(hierarchy, bindings.entities[index].id)
-                raise WorldPhysicsError.SynchronizationFailure if depth >= WorldHierarchy::MAX_NODES
+                depth: mutable usize = 0
+                raise WorldPhysicsError.SynchronizationFailure if not WorldHierarchy::hierarchy_try_target_world(
+                    hierarchy, bindings.entities[index].id, &existing, &depth)
                 body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
                 pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_body_pose(session, body)
                 updated: Geometry::Transform = Geometry::Transform{
