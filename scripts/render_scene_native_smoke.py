@@ -283,6 +283,7 @@ def main() -> int:
             gltf_morph_self_test.write_animated_package(morph_transition, second_animation=True)
 
     compiler = os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
+    runtime_object = elisa_build_run.resolve_runtime_object(None, compiler)
     archive = build / "render-scene-native-smoke.a"
     executable = build / "render-scene-native-smoke"
     native_main = Path(os.environ.get(
@@ -332,7 +333,8 @@ def main() -> int:
         str(ROOT / "native/physics_shape_service_abi.cpp"),
         str(basisu_transcoder / "basisu_transcoder.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
-        str(archive), str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
+        str(archive), str(runtime_object),
+        str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),
         str(libraries / "LUA/libLUA.a"),
         "-L", str(sdl_library), "-lSDL3", "-L", str(brew_library),
