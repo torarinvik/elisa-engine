@@ -349,7 +349,7 @@ module RuntimeServices:
 
         def physics_raycast_all_filtered(session: Session&, origin: Geometry::Vec3,
             direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
-            filter: PhysicsRuntime::RayQueryFilter,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
             buffer: mutable PhysicsRuntime::RayHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
@@ -364,6 +364,14 @@ module RuntimeServices:
             try PhysicsQueries::service_sphere_cast(session.physics, center, direction,
                 max_distance, radius, layer_mask)
 
+        def physics_sphere_cast_filtered(session: Session&, center: Geometry::Vec3,
+            direction: Geometry::Vec3, max_distance: f32, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_sphere_cast_filtered(session.physics, center,
+                direction, max_distance, radius, layer_mask, filter)
+
         def physics_capsule_cast(session: Session&, base: Geometry::Vec3,
             tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
             radius: f32, layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
@@ -372,11 +380,28 @@ module RuntimeServices:
             try PhysicsQueries::service_capsule_cast(session.physics, base, tip, direction,
                 max_distance, radius, layer_mask)
 
+        def physics_capsule_cast_filtered(session: Session&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, direction: Geometry::Vec3, max_distance: f32,
+            radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_capsule_cast_filtered(session.physics, base, tip,
+                direction, max_distance, radius, layer_mask, filter)
+
         def physics_overlap_sphere(session: Session&, center: Geometry::Vec3,
             radius: f32, layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsQueries::service_overlap_sphere(session.physics, center, radius, layer_mask)
+
+        def physics_overlap_sphere_filtered(session: Session&, center: Geometry::Vec3,
+            radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_sphere_filtered(session.physics, center,
+                radius, layer_mask, filter)
 
         def physics_overlap_sphere_all(session: Session&, center: Geometry::Vec3,
             radius: f32, layer_mask: u32, buffer: mutable PhysicsQueries::ShapeHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
@@ -385,11 +410,27 @@ module RuntimeServices:
             try PhysicsQueries::service_overlap_sphere_all(session.physics, center, radius,
                 layer_mask, buffer)
 
+        def physics_overlap_sphere_all_filtered(session: Session&, center: Geometry::Vec3,
+            radius: f32, layer_mask: u32, filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable PhysicsQueries::ShapeHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_sphere_all_filtered(session.physics,
+                center, radius, layer_mask, filter, buffer)
+
         def physics_overlap_capsule(session: Session&, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsQueries::service_overlap_capsule(session.physics, base, tip, radius, layer_mask)
+
+        def physics_overlap_capsule_filtered(session: Session&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter) -> PhysicsQueries::ShapeHit error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_capsule_filtered(session.physics, base,
+                tip, radius, layer_mask, filter)
 
         def physics_overlap_capsule_all(session: Session&, base: Geometry::Vec3,
             tip: Geometry::Vec3, radius: f32, layer_mask: u32,
@@ -398,6 +439,15 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsQueries::service_overlap_capsule_all(session.physics, base, tip, radius,
                 layer_mask, buffer)
+
+        def physics_overlap_capsule_all_filtered(session: Session&, base: Geometry::Vec3,
+            tip: Geometry::Vec3, radius: f32, layer_mask: u32,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
+            buffer: mutable PhysicsQueries::ShapeHitBuffer&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
+            try PhysicsQueries::service_overlap_capsule_all_filtered(session.physics,
+                base, tip, radius, layer_mask, filter, buffer)
 
         def physics_poll_contacts(session: Session&, buffer: PhysicsRuntime::ContactBuffer&,
             dropped: mutable u32&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:

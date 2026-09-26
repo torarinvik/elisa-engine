@@ -303,16 +303,16 @@ public:
         const XMFLOAT3& direction, float max_distance, float radius,
         uint32_t layer_mask, PhysicsQueryHit& hit,
         uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
-            wi::enums::FILTER_OBJECT_ALL) const {
+            wi::enums::FILTER_OBJECT_ALL, bool include_physics_bodies = true) const {
         if (!finite_vector(center) || !std::isfinite(radius) || radius <= 0.0f) {
             return false;
         }
         return cast_shape(token, direction, max_distance, hit,
-            [this, token, center, radius, layer_mask, filter_mask](const XMFLOAT3& offset,
+            [this, token, center, radius, layer_mask, filter_mask, include_physics_bodies](const XMFLOAT3& offset,
                 PhysicsQueryHit& candidate) {
                 return overlap_sphere(token,
                     XMFLOAT3(center.x + offset.x, center.y + offset.y, center.z + offset.z),
-                    radius, layer_mask, candidate, filter_mask);
+                    radius, layer_mask, candidate, filter_mask, include_physics_bodies);
             });
     }
 
@@ -320,32 +320,31 @@ public:
         const XMFLOAT3& tip, const XMFLOAT3& direction, float max_distance,
         float radius, uint32_t layer_mask, PhysicsQueryHit& hit,
         uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
-            wi::enums::FILTER_OBJECT_ALL) const {
+            wi::enums::FILTER_OBJECT_ALL, bool include_physics_bodies = true) const {
         if (!finite_vector(base) || !finite_vector(tip) || !std::isfinite(radius) ||
             radius <= 0.0f) return false;
         return cast_shape(token, direction, max_distance, hit,
-            [this, token, base, tip, radius, layer_mask, filter_mask](const XMFLOAT3& offset,
+            [this, token, base, tip, radius, layer_mask, filter_mask, include_physics_bodies](const XMFLOAT3& offset,
                 PhysicsQueryHit& candidate) {
                 return overlap_capsule(token,
                     XMFLOAT3(base.x + offset.x, base.y + offset.y, base.z + offset.z),
                     XMFLOAT3(tip.x + offset.x, tip.y + offset.y, tip.z + offset.z),
-                    radius, layer_mask, candidate, filter_mask);
+                    radius, layer_mask, candidate, filter_mask, include_physics_bodies);
             });
     }
 
     bool overlap_sphere(PhysicsQueryToken token, const XMFLOAT3& center,
         float radius, uint32_t layer_mask, PhysicsQueryHit& hit,
         uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
-            wi::enums::FILTER_OBJECT_ALL) const {
+            wi::enums::FILTER_OBJECT_ALL, bool include_physics_bodies = true) const {
         if (!valid(token) || !finite_vector(center) || !std::isfinite(radius) || radius <= 0.0f) {
             return false;
         }
-        const auto result = scene_.Intersects(wi::primitive::Sphere(center, radius), filter_mask, layer_mask);
-        if (result.entity != wi::ecs::INVALID_ENTITY) {
-            hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
-        }
+        hit = {};
+        overlap_scene<wi::scene::Scene::SphereIntersectionResult>(
+            wi::primitive::Sphere(center, radius), filter_mask, layer_mask, hit);
         wi::physics::ShapeIntersectionResult physics_result;
-        if (wi::physics::Intersects(scene_, wi::primitive::Sphere(center, radius),
+        if (include_physics_bodies && wi::physics::Intersects(scene_, wi::primitive::Sphere(center, radius),
                 layer_mask, physics_result) &&
             (hit.entity == wi::ecs::INVALID_ENTITY || physics_result.depth > hit.depth)) {
             hit = {physics_result.entity, physics_result.position, physics_result.normal,
@@ -357,7 +356,7 @@ public:
     size_t overlap_sphere_all(PhysicsQueryToken token, const XMFLOAT3& center,
         float radius, uint32_t layer_mask, Hits& hits,
         uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
-            wi::enums::FILTER_OBJECT_ALL) const {
+            wi::enums::FILTER_OBJECT_ALL, bool include_physics_bodies = true) const {
         hits.count = 0;
         if (!valid(token) || !finite_vector(center) || !std::isfinite(radius) || radius <= 0.0f) {
             return 0;
@@ -366,8 +365,8 @@ public:
         scene_.IntersectsAll(results, wi::primitive::Sphere(center, radius), filter_mask, layer_mask);
         append_overlaps(results, hits);
         wi::physics::ShapeIntersectionResult physics_results[MAX_HITS];
-        const size_t physics_count = wi::physics::IntersectsAll(scene_,
-            wi::primitive::Sphere(center, radius), layer_mask, physics_results, MAX_HITS);
+        const size_t physics_count = include_physics_bodies ? wi::physics::IntersectsAll(scene_,
+            wi::primitive::Sphere(center, radius), layer_mask, physics_results, MAX_HITS) : 0;
         append_physics_overlaps(physics_results, physics_count, hits);
         return hits.count;
     }
@@ -375,16 +374,14 @@ public:
     bool overlap_capsule(PhysicsQueryToken token, const XMFLOAT3& base,
         const XMFLOAT3& tip, float radius, uint32_t layer_mask, PhysicsQueryHit& hit,
         uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
-            wi::enums::FILTER_OBJECT_ALL) const {
+            wi::enums::FILTER_OBJECT_ALL, bool include_physics_bodies = true) const {
         if (!valid(token) || !finite_vector(base) || !finite_vector(tip) ||
             !std::isfinite(radius) || radius <= 0.0f) return false;
-        const auto result = scene_.Intersects(
-            wi::primitive::Capsule(base, tip, radius), filter_mask, layer_mask);
-        if (result.entity != wi::ecs::INVALID_ENTITY) {
-            hit = {result.entity, result.position, result.normal, 0.0f, result.depth};
-        }
+        hit = {};
+        overlap_scene<wi::scene::Scene::CapsuleIntersectionResult>(
+            wi::primitive::Capsule(base, tip, radius), filter_mask, layer_mask, hit);
         wi::physics::ShapeIntersectionResult physics_result;
-        if (wi::physics::Intersects(scene_, wi::primitive::Capsule(base, tip, radius),
+        if (include_physics_bodies && wi::physics::Intersects(scene_, wi::primitive::Capsule(base, tip, radius),
                 layer_mask, physics_result) &&
             (hit.entity == wi::ecs::INVALID_ENTITY || physics_result.depth > hit.depth)) {
             hit = {physics_result.entity, physics_result.position, physics_result.normal,
@@ -396,7 +393,7 @@ public:
     size_t overlap_capsule_all(PhysicsQueryToken token, const XMFLOAT3& base,
         const XMFLOAT3& tip, float radius, uint32_t layer_mask, Hits& hits,
         uint32_t filter_mask = wi::enums::FILTER_COLLIDER |
-            wi::enums::FILTER_OBJECT_ALL) const {
+            wi::enums::FILTER_OBJECT_ALL, bool include_physics_bodies = true) const {
         hits.count = 0;
         if (!valid(token) || !finite_vector(base) || !finite_vector(tip) ||
             !std::isfinite(radius) || radius <= 0.0f) return 0;
@@ -404,13 +401,37 @@ public:
         scene_.IntersectsAll(results, wi::primitive::Capsule(base, tip, radius), filter_mask, layer_mask);
         append_overlaps(results, hits);
         wi::physics::ShapeIntersectionResult physics_results[MAX_HITS];
-        const size_t physics_count = wi::physics::IntersectsAll(scene_,
-            wi::primitive::Capsule(base, tip, radius), layer_mask, physics_results, MAX_HITS);
+        const size_t physics_count = include_physics_bodies ? wi::physics::IntersectsAll(scene_,
+            wi::primitive::Capsule(base, tip, radius), layer_mask, physics_results, MAX_HITS) : 0;
         append_physics_overlaps(physics_results, physics_count, hits);
         return hits.count;
     }
 
 private:
+    template <typename Result, typename Shape>
+    bool overlap_scene(const Shape& shape, uint32_t filter_mask, uint32_t layer_mask,
+        PhysicsQueryHit& hit) const {
+        const auto nearest = scene_.Intersects(shape, filter_mask, layer_mask);
+        if (nearest.entity != wi::ecs::INVALID_ENTITY) {
+            hit = {nearest.entity, nearest.position, nearest.normal, 0.0f,
+                std::abs(nearest.depth)};
+        }
+        if ((filter_mask & wi::enums::FILTER_COLLIDER) == 0) {
+            return hit.entity != wi::ecs::INVALID_ENTITY;
+        }
+
+        wi::vector<Result> collider_results;
+        scene_.IntersectsAll(collider_results, shape, wi::enums::FILTER_COLLIDER, layer_mask);
+        for (const auto& result : collider_results) {
+            if (result.entity == wi::ecs::INVALID_ENTITY) continue;
+            const float depth = std::abs(result.depth);
+            if (hit.entity == wi::ecs::INVALID_ENTITY || depth > hit.depth) {
+                hit = {result.entity, result.position, result.normal, 0.0f, depth};
+            }
+        }
+        return hit.entity != wi::ecs::INVALID_ENTITY;
+    }
+
     template <typename Result>
     static void append_overlaps(const wi::vector<Result>& results, Hits& hits) {
         for (const auto& result : results) {
@@ -419,7 +440,7 @@ private:
                 continue;
             }
             hits.values[hits.count++] = {
-                result.entity, result.position, result.normal, 0.0f, result.depth};
+                result.entity, result.position, result.normal, 0.0f, std::abs(result.depth)};
         }
     }
 
@@ -469,8 +490,10 @@ private:
                 const float middle = (lower + upper) * 0.5f;
                 const XMFLOAT3 middle_offset = XMFLOAT3(
                     unit_direction.x * middle, unit_direction.y * middle, unit_direction.z * middle);
-                if (probe(middle_offset, candidate)) {
+                PhysicsQueryHit refined_candidate;
+                if (probe(middle_offset, refined_candidate)) {
                     upper = middle;
+                    candidate = refined_candidate;
                 } else {
                     lower = middle;
                 }

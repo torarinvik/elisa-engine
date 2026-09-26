@@ -197,7 +197,7 @@ module PhysicsRuntime:
             hits: mutable RayHit[16]
             count: mutable usize
 
-        struct RayQueryFilter:
+        struct PhysicsQueryFilter:
             scene_objects: bool
             scene_colliders: bool
             physics_bodies: bool
@@ -208,8 +208,8 @@ module PhysicsRuntime:
         def RayHitBuffer() -> RayHitBuffer:
             RayHitBuffer{hits: zeroed, count: 0}
 
-        def RayQueryFilter() -> RayQueryFilter:
-            RayQueryFilter{scene_objects: true, scene_colliders: true,
+        def PhysicsQueryFilter() -> PhysicsQueryFilter:
+            PhysicsQueryFilter{scene_objects: true, scene_colliders: true,
                 physics_bodies: true}
 
         error PhysicsError:

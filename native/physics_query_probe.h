@@ -59,6 +59,27 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
             3.0f, 1u << 3, hits) == 2 && contains_entity(hits, target) &&
             contains_entity(hits, secondary), "query capsule all overlaps")) return false;
 
+    const uint32_t object_filter = wi::enums::FILTER_OBJECT_ALL;
+    if (!check(bridge.sphere_cast(token, XMFLOAT3(0, 0, -5), XMFLOAT3(0, 0, 1),
+            10.0f, 0.25f, 1u << 3, hit, object_filter, false) && hit.entity == target,
+            "query object-only sphere cast") ||
+        !check(bridge.capsule_cast(token, XMFLOAT3(0, 0, -5), XMFLOAT3(0, 0, -4),
+            XMFLOAT3(0, 0, 1), 10.0f, 0.25f, 1u << 3, hit, object_filter, false) &&
+            hit.entity == target, "query object-only capsule cast") ||
+        !check(bridge.overlap_sphere(token, XMFLOAT3(0, 0, -1.5f), 1.0f,
+            1u << 3, hit, object_filter, false) && hit.entity == target,
+            "query object-only sphere overlap") ||
+        !check(bridge.overlap_sphere_all(token, XMFLOAT3(0, 0, 1.5f), 2.0f,
+            1u << 3, hits, object_filter, false) == 2 && contains_entity(hits, target) &&
+            contains_entity(hits, secondary), "query object-only sphere all overlaps") ||
+        !check(bridge.overlap_capsule(token, XMFLOAT3(0, 0, -2), XMFLOAT3(0, 0, 2),
+            1.0f, 1u << 3, hit, object_filter, false) && hit.entity == target,
+            "query object-only capsule overlap") ||
+        !check(bridge.overlap_capsule_all(token, XMFLOAT3(0, 0, 1.4f),
+            XMFLOAT3(0, 0, 1.6f), 3.0f, 1u << 3, hits, object_filter, false) == 2 &&
+            contains_entity(hits, target) && contains_entity(hits, secondary),
+            "query object-only capsule all overlaps")) return false;
+
     if (!check(bridge.raycast_all(token, XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1),
             10.0f, 1u << 3, hits) > 0 && hits.count <= PhysicsQueryBridge::MAX_HITS,
             "query bounded all hits")) return false;
@@ -88,6 +109,29 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
         wi::enums::FILTER_COLLIDER, false);
     if (!check(collider_hits >= 1 && contains_entity(hits, collider_entity),
             "query scene-collider filter")) return false;
+    const uint32_t collider_filter = wi::enums::FILTER_COLLIDER;
+    if (!check(bridge.overlap_sphere(token, XMFLOAT3(0, 0, 6), 0.75f,
+            1u << 3, hit, collider_filter, false) && hit.entity == collider_entity,
+            "query collider-only sphere overlap") ||
+        !check(bridge.overlap_sphere(token, XMFLOAT3(0, 0, 5.3125f), 0.25f,
+            1u << 3, hit, collider_filter, false) && hit.entity == collider_entity,
+            "query collider-only swept sphere overlap") ||
+        !check(bridge.sphere_cast(token, XMFLOAT3(0, 0, 0), XMFLOAT3(0, 0, 1),
+            10.0f, 0.25f, 1u << 3, hit, collider_filter, false),
+            "query collider-only sphere cast")) return false;
+    if (!check(hit.entity == collider_entity, "query collider-only sphere cast entity") ||
+        !check(bridge.capsule_cast(token, XMFLOAT3(0, 0, 0), XMFLOAT3(0, 0, 1),
+            XMFLOAT3(0, 0, 1), 10.0f, 0.25f, 1u << 3, hit, collider_filter, false) &&
+            hit.entity == collider_entity, "query collider-only capsule cast") ||
+        !check(bridge.overlap_sphere_all(token, XMFLOAT3(0, 0, 6), 0.75f,
+            1u << 3, hits, collider_filter, false) == 1 &&
+            contains_entity(hits, collider_entity), "query collider-only sphere all overlaps") ||
+        !check(bridge.overlap_capsule(token, XMFLOAT3(0, 0, 5), XMFLOAT3(0, 0, 7),
+            0.5f, 1u << 3, hit, collider_filter, false) && hit.entity == collider_entity,
+            "query collider-only capsule overlap") ||
+        !check(bridge.overlap_capsule_all(token, XMFLOAT3(0, 0, 5), XMFLOAT3(0, 0, 7),
+            0.5f, 1u << 3, hits, collider_filter, false) == 1 &&
+            contains_entity(hits, collider_entity), "query collider-only capsule all overlaps")) return false;
     scene.Entity_Remove(collider_entity);
     scene.Entity_Remove(target);
     scene.Entity_Remove(secondary);

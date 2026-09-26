@@ -10,6 +10,67 @@ module PhysicsAppProbe:
         const QUERY_OVERLAP_RADIUS: f32 = 0.75
         const QUERY_TOLERANCE: f32 = 0.05
 
+    private:
+        def verify_filtered_shape_queries(world: PhysicsRuntime::World&,
+            filter: PhysicsRuntime::PhysicsQueryFilter,
+            expect_hit: bool) -> void error[PhysicsRuntime::PhysicsError]:
+            sphere_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::sphere_cast_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsAppProbe::QUERY_RADIUS, PhysicsRuntime::ALL_LAYERS, filter)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_cast_hit.hit != expect_hit
+            raise PhysicsRuntime::PhysicsError.BackendFailure if expect_hit and sphere_cast_hit.entity == 0
+
+            capsule_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::capsule_cast_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 6.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsAppProbe::QUERY_RADIUS, PhysicsRuntime::ALL_LAYERS, filter)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_cast_hit.hit != expect_hit
+            raise PhysicsRuntime::PhysicsError.BackendFailure if expect_hit and capsule_cast_hit.entity == 0
+
+            sphere_overlap_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::overlap_sphere_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X,
+                    y: PhysicsAppProbe::QUERY_OVERLAP_CENTER_Y, z: 0.0},
+                PhysicsAppProbe::QUERY_OVERLAP_RADIUS, PhysicsRuntime::ALL_LAYERS, filter)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_overlap_hit.hit != expect_hit
+            raise PhysicsRuntime::PhysicsError.BackendFailure if expect_hit and sphere_overlap_hit.entity == 0
+
+            sphere_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            sphere_overlap_count: usize = try PhysicsQueries::overlap_sphere_all_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X,
+                    y: PhysicsAppProbe::QUERY_OVERLAP_CENTER_Y, z: 0.0},
+                PhysicsAppProbe::QUERY_OVERLAP_RADIUS, PhysicsRuntime::ALL_LAYERS,
+                filter, sphere_overlaps)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_overlaps.count != sphere_overlap_count
+            if expect_hit:
+                raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_overlap_count == 0
+            else:
+                raise PhysicsRuntime::PhysicsError.BackendFailure if sphere_overlap_count != 0
+
+            capsule_overlap_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::overlap_capsule_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X,
+                    y: PhysicsAppProbe::QUERY_ANCHOR_Y - 1.0, z: 0.0},
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X,
+                    y: PhysicsAppProbe::QUERY_ANCHOR_Y + 1.0, z: 0.0},
+                PhysicsAppProbe::QUERY_RADIUS, PhysicsRuntime::ALL_LAYERS, filter)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_overlap_hit.hit != expect_hit
+            raise PhysicsRuntime::PhysicsError.BackendFailure if expect_hit and capsule_overlap_hit.entity == 0
+
+            capsule_overlaps: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
+            capsule_overlap_count: usize = try PhysicsQueries::overlap_capsule_all_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X,
+                    y: PhysicsAppProbe::QUERY_ANCHOR_Y - 1.0, z: 0.0},
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X,
+                    y: PhysicsAppProbe::QUERY_ANCHOR_Y + 1.0, z: 0.0},
+                2.0, PhysicsRuntime::ALL_LAYERS, filter, capsule_overlaps)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_overlaps.count != capsule_overlap_count
+            if expect_hit:
+                raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_overlap_count == 0
+            else:
+                raise PhysicsRuntime::PhysicsError.BackendFailure if capsule_overlap_count != 0
+
+    public:
         def fixed_step_pair(world: mutable PhysicsRuntime::World&) -> u64 error[PhysicsRuntime::PhysicsError]:
             try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
             try PhysicsRuntime::fixed_step(world, PhysicsAppProbe::FIXED_STEP_SECONDS)
@@ -155,7 +216,7 @@ module PhysicsAppProbe:
             raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[0].distance > ray.distance + 0.001
             for index in 1..<all_ray_count:
                 raise PhysicsRuntime::PhysicsError.BackendFailure if all_rays.hits[index].distance + 0.001 < all_rays.hits[index - 1].distance
-            physics_only_filter: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+            physics_only_filter: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
                 scene_objects: false,
                 scene_colliders: false,
                 physics_bodies: true,
@@ -166,7 +227,7 @@ module PhysicsAppProbe:
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
                 PhysicsRuntime::ALL_LAYERS, physics_only_filter, physics_only_rays)
             raise PhysicsRuntime::PhysicsError.BackendFailure if physics_only_count != 1 or physics_only_rays.hits[0].entity != ray.entity
-            no_query_targets: PhysicsRuntime::RayQueryFilter = PhysicsRuntime::RayQueryFilter{
+            no_query_targets: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
                 scene_objects: false,
                 scene_colliders: false,
                 physics_bodies: false,
@@ -177,6 +238,8 @@ module PhysicsAppProbe:
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
                 PhysicsRuntime::ALL_LAYERS, no_query_targets, no_target_rays)
             raise PhysicsRuntime::PhysicsError.BackendFailure if no_target_count != 0 or no_target_rays.count != 0
+            try PhysicsAppProbe::verify_filtered_shape_queries(world, physics_only_filter, true)
+            try PhysicsAppProbe::verify_filtered_shape_queries(world, no_query_targets, false)
             stage <- 71
             sphere_cast_hit: PhysicsQueries::ShapeHit = try PhysicsQueries::sphere_cast(world,
                 Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},

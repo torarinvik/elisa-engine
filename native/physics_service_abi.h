@@ -201,6 +201,41 @@ int32_t elisa_physics_v1_overlap_capsule_all(uint64_t world_generation,
     float base_x, float base_y, float base_z,
     float tip_x, float tip_y, float tip_z, float radius, uint32_t layer_mask,
     ElisaPhysicsShapeHitBuffer* buffer);
+int32_t elisa_physics_v1_sphere_cast_filtered(uint64_t world_generation,
+    float center_x, float center_y, float center_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, float radius, uint32_t layer_mask,
+    int32_t include_scene_objects, int32_t include_scene_colliders,
+    int32_t include_physics_bodies,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_capsule_cast_filtered(uint64_t world_generation,
+    float base_x, float base_y, float base_z,
+    float tip_x, float tip_y, float tip_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, float radius, uint32_t layer_mask,
+    int32_t include_scene_objects, int32_t include_scene_colliders,
+    int32_t include_physics_bodies,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_overlap_sphere_filtered(uint64_t world_generation,
+    float center_x, float center_y, float center_z, float radius, uint32_t layer_mask,
+    int32_t include_scene_objects, int32_t include_scene_colliders,
+    int32_t include_physics_bodies,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_overlap_sphere_all_filtered(uint64_t world_generation,
+    float center_x, float center_y, float center_z, float radius, uint32_t layer_mask,
+    int32_t include_scene_objects, int32_t include_scene_colliders,
+    int32_t include_physics_bodies, ElisaPhysicsShapeHitBuffer* buffer);
+int32_t elisa_physics_v1_overlap_capsule_filtered(uint64_t world_generation,
+    float base_x, float base_y, float base_z,
+    float tip_x, float tip_y, float tip_z, float radius, uint32_t layer_mask,
+    int32_t include_scene_objects, int32_t include_scene_colliders,
+    int32_t include_physics_bodies,
+    ElisaPhysicsShapeHit* result, int32_t* hit);
+int32_t elisa_physics_v1_overlap_capsule_all_filtered(uint64_t world_generation,
+    float base_x, float base_y, float base_z,
+    float tip_x, float tip_y, float tip_z, float radius, uint32_t layer_mask,
+    int32_t include_scene_objects, int32_t include_scene_colliders,
+    int32_t include_physics_bodies, ElisaPhysicsShapeHitBuffer* buffer);
 int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
     ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,
     uint32_t* dropped);
