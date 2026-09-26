@@ -54,6 +54,27 @@ module RenderSceneAnimationBlendNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
 
+        def play_at(handle: RenderScene::InstanceHandle, phase: f32, speed: f32) -> i32:
+            catch RenderScene::play_animation_at(handle, CLIP, phase, speed, 0.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+
+        def explicit_phase_checks(rig: RenderScene::InstanceHandle) -> i32:
+            raw: i64 = RenderScene::native_smoke_handle(rig)
+            return 47 if play_at(rig, 0.75, 1.0) != 0 or not near(progress(rig), 0.75)
+            return 48 if elisa_render_scene_v1_test_animation_joint_y(raw, 3, 1.75) == 0
+            # Non-looping playback clamps at the end instead of wrapping.
+            return 49 if not advance(rig, 0.5) or not near(progress(rig), 1.0)
+            return 50 if play_at(rig, 0.25, -1.0) != 0 or not near(progress(rig), 0.25)
+            return 51 if not advance(rig, 0.5) or not near(progress(rig), 0.0)
+            # Rejection preserves the current pose and progress.
+            return 52 if play_at(rig, -0.1, 1.0) != 1 or play_at(rig, 1.1, 1.0) != 1
+            return 53 if not near(progress(rig), 0.0)
+            return 54 if play_at(rig, 1.0, 0.0) != 0 or not advance(rig, 0.5)
+            return 55 if not near(progress(rig), 1.0)
+            0
+
         def phase_checks(rig: RenderScene::InstanceHandle) -> i32:
             raw_rig: i64 = RenderScene::native_smoke_handle(rig)
             started: bool = catch RenderScene::play_animation(rig, CLIP, true, 1.0, 0.0):
@@ -147,6 +168,8 @@ module RenderSceneAnimationBlendNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
+            explicit_status: i32 = explicit_phase_checks(rig)
+            return explicit_status if explicit_status != 0
             phase_status: i32 = phase_checks(rig)
             return phase_status if phase_status != 0
             fade_status: i32 = fade_checks(rig)

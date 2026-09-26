@@ -298,6 +298,7 @@ int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_play_animation_blended(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds, int32_t flags);
+int32_t elisa_render_scene_v1_play_animation_at(int64_t handle, const char* clip_name, float phase, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_set_animation_speed(int64_t handle, float speed);
 int32_t elisa_render_scene_v1_stop_animation(int64_t handle, float blend_seconds);
 int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float delta_seconds);

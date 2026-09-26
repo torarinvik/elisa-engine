@@ -24,8 +24,32 @@ have interruption-continuity coverage.
 Run the complete SDL3/Metal gate on macOS with:
 
 ```sh
-DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py
+ELISA_RUNTIME_OBJ="../elisa-compiler/build/runtime/elisacore_runtime.o" \
+WICKED_BUILD="../WickedEngine/build-elisa-sdl3-homebrew" \
+CXX=/opt/homebrew/opt/llvm/bin/clang++ \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+/opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py
 ```
 
 The full gate cooks all fixtures, runs native RenderScene coverage including
 animation case group 270, and launches the packaged maze outside the checkout.
+
+## Explicit start phase
+
+`RenderScene::play_animation_at` starts a non-looping clip at normalized phase
+0 through 1, with bounded signed speed and an eased transition. It was pulled
+from the Labyrinth worktree on 2026-09-26. A zero blend applies the requested
+pose immediately; a positive blend retains the existing outgoing pose logic.
+This starts playback at a phase rather than seeking an already-running clip.
+
+Case group 270 now checks a start at phase 0.75 against joint Y=1.75, forward
+clamping at phase 1, reverse playback from phase 0.25 clamping at phase 0,
+rejection of phases outside the range without changing progress, and a paused
+clip at phase 1. Existing tests continue to cover eased crossfades and
+interrupted pose continuity.
+
+Validation on 2026-09-26: the fixture-cooking stage passed, and the native
+scene gate passed with `ELISA_RENDER_SCENE_RENDER_ONLY=1` using those fixtures,
+the explicit runtime object above, and the optimized Homebrew Wicked build.
+All existing visual comparisons also passed. The smoke bridge disables RTTI
+because it uses none and must link with Wicked's RTTI-disabled build.
