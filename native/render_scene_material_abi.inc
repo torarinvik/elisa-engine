@@ -25,8 +25,11 @@ extern "C" int32_t elisa_render_scene_v1_set_dithered_opacity(
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
-    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(state.instances[slot].entity);
-    wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(state.instances[slot].entity);
+    const InstanceSlot& instance = state.instances[slot];
+    wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(instance.entity);
+    if (material == nullptr && instance.shared_source != wi::ecs::INVALID_ENTITY)
+        material = state.scene->materials.GetComponent(instance.shared_source);
     if (material == nullptr || object == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
 
     // Wicked interprets object color alpha as inverse dither coverage in its
