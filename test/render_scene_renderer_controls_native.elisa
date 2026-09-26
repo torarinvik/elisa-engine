@@ -4,6 +4,11 @@ include "../src/math/geometry.elisa"
 
 module RenderSceneRendererControlsNativeTests:
     private:
+        const module NativeMode:
+            RASTER: i32 = 0
+            SCREEN_SPACE: i32 = 1
+            RAY_TRACED: i32 = 2
+
         @callconv(c)
         extern elisa_render_scene_v1_test_indirect_lighting_matches(mode: i32) -> i32
 
@@ -14,15 +19,19 @@ module RenderSceneRendererControlsNativeTests:
         @callconv(c)
         extern elisa_render_scene_v1_test_static_lod_layout(levels: i32) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_pump() -> i32
+
         def mode_code(mode: RenderScene::IndirectLighting) -> i32:
             match mode:
-                RenderScene::IndirectLighting.Raster: 0
-                RenderScene::IndirectLighting.ScreenSpace: 1
-                RenderScene::IndirectLighting.RayTraced: 2
+                RenderScene::IndirectLighting.Raster: NativeMode::RASTER
+                RenderScene::IndirectLighting.ScreenSpace: NativeMode::SCREEN_SPACE
+                RenderScene::IndirectLighting.RayTraced: NativeMode::RAY_TRACED
 
         def check_mode(requested: RenderScene::IndirectLighting) -> i32 error[RenderScene::RenderSceneError]:
             applied: RenderScene::IndirectLighting = try RenderScene::set_indirect_lighting(requested)
             return 1 if elisa_render_scene_v1_test_indirect_lighting_matches(mode_code(applied)) == 0
+            return 2 if elisa_application_v1_pump() != 1
             0
 
     public:
@@ -92,6 +101,7 @@ module RenderSceneRendererControlsNativeTests:
                     ok: 0
                     error failure: 1
                 return 12
+            return 14 if elisa_application_v1_pump() != 1
             repeated_generation: i32 = catch RenderScene::generate_static_lods(lod_source, 3, 0.5, 0.01):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1

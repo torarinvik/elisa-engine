@@ -23,6 +23,10 @@ module RenderScene:
             NORMAL: i32 = 1
             SURFACE: i32 = 2
             EMISSIVE: i32 = 3
+        const module NativeIndirectLighting:
+            RASTER: i32 = 0
+            SCREEN_SPACE: i32 = 1
+            RAY_TRACED: i32 = 2
         const module NativeLightKindCode:
             DIRECTIONAL: i32 = 0
             POINT: i32 = 1
@@ -517,16 +521,15 @@ module RenderScene:
         def set_indirect_lighting(mode: IndirectLighting) -> IndirectLighting error[RenderSceneError]:
             requested: i32 =
                 match mode:
-                    IndirectLighting.Raster: 0
-                    IndirectLighting.ScreenSpace: 1
-                    IndirectLighting.RayTraced: 2
+                    IndirectLighting.Raster: NativeIndirectLighting::RASTER
+                    IndirectLighting.ScreenSpace: NativeIndirectLighting::SCREEN_SPACE
+                    IndirectLighting.RayTraced: NativeIndirectLighting::RAY_TRACED
             applied: i32 = elisa_render_scene_v1_set_indirect_lighting(requested)
             if applied < 0:
                 try check_status(applied)
-            match applied:
-                2: IndirectLighting.RayTraced
-                1: IndirectLighting.ScreenSpace
-                _: IndirectLighting.Raster
+            return IndirectLighting.RayTraced if applied == NativeIndirectLighting::RAY_TRACED
+            return IndirectLighting.ScreenSpace if applied == NativeIndirectLighting::SCREEN_SPACE
+            IndirectLighting.Raster
 
         # Changes only 3D resolution; overlays retain native resolution.
         # target_fps=0 disables adaptation. Changes are bounded and spaced apart.

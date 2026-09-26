@@ -7,6 +7,8 @@ include "./render_scene_renderer_controls_native.elisa"
 extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
 @callconv(c)
 extern elisa_application_v1_shutdown() -> i32
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
 
 def main() -> i32:
     return 1 if elisa_application_v1_initialize("Elisa Render Controls Smoke", 320, 200, 1) != 0
@@ -16,10 +18,11 @@ def main() -> i32:
     if init_status != 0:
         _ = elisa_application_v1_shutdown()
         return 2
+    if elisa_application_v1_pump() != 1:
+        _ = elisa_application_v1_shutdown()
+        return 3
     result: i32 = RenderSceneRendererControlsNativeTests::exercise()
     shutdown_status: i32 = elisa_application_v1_shutdown()
-    if result != 0:
-        return 30 + result if result >= 0
-        return 200 - result
+    return result if result != 0
     return 31 if shutdown_status != 0
     result

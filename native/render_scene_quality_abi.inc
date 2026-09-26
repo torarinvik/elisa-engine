@@ -386,12 +386,14 @@ extern "C" int32_t elisa_render_scene_v1_test_camera_quality_profile_matches(
 }
 #endif
 
-// 0 = existing raster lighting, 1 = screen-space GI/reflections,
-// 2 = hardware ray-traced GI/reflections when both device and shaders support it.
+constexpr int32_t INDIRECT_LIGHTING_RASTER = 0;
+constexpr int32_t INDIRECT_LIGHTING_SCREEN_SPACE = 1;
+constexpr int32_t INDIRECT_LIGHTING_RAY_TRACED = 2;
 constexpr float ELISA_RT_DIFFUSE_RANGE = 12.0f;
 constexpr float ELISA_RT_REFLECTION_RANGE = 40.0f;
 extern "C" int32_t elisa_render_scene_v1_set_indirect_lighting(int32_t requested) {
-    if (requested < 0 || requested > 2) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (requested < INDIRECT_LIGHTING_RASTER || requested > INDIRECT_LIGHTING_RAY_TRACED)
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     auto& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
@@ -407,12 +409,14 @@ extern "C" int32_t elisa_render_scene_v1_set_indirect_lighting(int32_t requested
         probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE_SPATIAL) &&
         probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE_TEMPORAL) &&
         probe::shader_is_available(CSTYPE_POSTPROCESS_RTDIFFUSE_UPSAMPLE);
-    const int applied = requested == 2 && ray ? 2 : requested > 0 && screen ? 1 : 0;
+    const int applied = requested == INDIRECT_LIGHTING_RAY_TRACED && ray ?
+        INDIRECT_LIGHTING_RAY_TRACED : requested > INDIRECT_LIGHTING_RASTER && screen ?
+        INDIRECT_LIGHTING_SCREEN_SPACE : INDIRECT_LIGHTING_RASTER;
     auto& path = *state.path;
     path.setRaytracedDiffuseRange(ELISA_RT_DIFFUSE_RANGE);
     path.setRaytracedReflectionsRange(ELISA_RT_REFLECTION_RANGE);
-    const bool use_ray_tracing = applied == 2;
-    const bool use_screen_space = applied == 1;
+    const bool use_ray_tracing = applied == INDIRECT_LIGHTING_RAY_TRACED;
+    const bool use_screen_space = applied == INDIRECT_LIGHTING_SCREEN_SPACE;
     // Turn off the previous path before creating the replacement resources;
     // Wicked reuses its SSR target for ray-traced reflections.
     if (path.getRaytracedDiffuseEnabled() && !use_ray_tracing)
@@ -455,11 +459,12 @@ extern "C" int32_t elisa_render_scene_v1_set_adaptive_resolution(float target_fp
 extern "C" int32_t elisa_render_scene_v1_test_indirect_lighting_matches(int32_t mode) {
     auto& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr || mode < 0 || mode > 2)
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr ||
+        mode < INDIRECT_LIGHTING_RASTER || mode > INDIRECT_LIGHTING_RAY_TRACED)
         return 0;
     const auto& path = *state.path;
-    const bool screen_space = mode == 1;
-    const bool ray_traced = mode == 2;
+    const bool screen_space = mode == INDIRECT_LIGHTING_SCREEN_SPACE;
+    const bool ray_traced = mode == INDIRECT_LIGHTING_RAY_TRACED;
     return path.getSSREnabled() == screen_space && path.getSSGIEnabled() == screen_space &&
         path.getRaytracedDiffuseEnabled() == ray_traced &&
         path.getRaytracedReflectionEnabled() == ray_traced ? 1 : 0;
