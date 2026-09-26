@@ -52,12 +52,25 @@ These images validate rendered profile output.
 The 2026-09-25 quality-result smoke adds Elisa assertions for the scene and
 camera fallback outcomes and verifies their other profile fields. The
 capability-negotiation probe also covers per-upscaler availability, fallback
-state, full-resolution FSR1 rejection, and invalid temporal combinations. The
-targeted stage1 build emits the Elisa archive and compiles the native sources,
-but cannot link the executable: the seeded compiler omits `arena_free`,
-`ctx_streq`, and `ctx_string_views_eq`, and this build target does not export the
-scene test-probe functions. Runtime assertions therefore remain unverified
-until those gates link.
+state, full-resolution FSR1 rejection, and invalid temporal combinations.
+
+The dedicated render-scene build now links the matching Elisa runtime object,
+discovered beside the compiler or supplied through `ELISA_RUNTIME_OBJ`. On
+2026-09-26 the full render-only SDL3/Metal smoke completed successfully. Its
+Elisa assertions exercised both scene and camera fallback outcomes, and the
+High/Low captures matched their tracked references. This resolves the earlier
+link-blocked status on this host; successful FSR reconstruction and runtime
+visual validation on other GPU backends remain open.
+
+From the repository root, reproduce with:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN="../Elisa-compiler/bin/elisac-stage1" \
+ELISA_RUNTIME_OBJ="../Elisa-compiler/build/runtime/elisacore_runtime.o" \
+ELISA_RENDER_SCENE_RENDER_ONLY=1 \
+/opt/homebrew/bin/python3 scripts/render_scene_native_smoke.py
+```
 
 ## Apple M5 profile cost sample
 

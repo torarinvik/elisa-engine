@@ -69,6 +69,13 @@ post-process captures. The reflection assertion reads Wicked's 3D render target
 in memory; it does not write separate probe screenshots. Cross-backend runtime
 results remain outstanding.
 
+On 2026-09-26, the same render-only gate passed after the build script began
+linking the compiler's matching `elisacore_runtime.o`. The direct `/usr/bin/clang++`
+link succeeded without a wrapper, and the run passed the reflection and public
+light-update assertions, LOD quality comparison, mirrored-normal and occlusion
+comparisons, all 12 tracked lighting/shadow images, and both post-process images.
+Vulkan runtime visuals and Direct3D 12/PS5 execution remain unverified.
+
 The SDL3/Metal render-scene smoke also moves a point light between two positions
 over the same painted panel. It samples the Wicked 3D render result before and
 after `RenderScene::update_light` and requires one of the red/blue patches to
