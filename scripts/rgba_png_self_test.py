@@ -16,6 +16,7 @@ def main() -> int:
     harness = r'''
 #include "native/rgba_png.h"
 #include <cstdint>
+#include <cstring>
 #include <vector>
 int main(int argc, char** argv) {
     const std::vector<uint8_t> bgra = {
@@ -30,6 +31,9 @@ int main(int argc, char** argv) {
             elisa::capture::PixelOrder::BGRA, argv[1])) return 3;
     if (elisa::capture::save_rgba_png(nullptr, 0, 2, 2, 8,
             elisa::capture::PixelOrder::RGBA, argv[1])) return 4;
+    const uint32_t packed = 1023u | (512u << 10) | (3u << 30);
+    if (!elisa::capture::save_rgba_png(reinterpret_cast<const uint8_t*>(&packed), 4, 1, 1, 4,
+            elisa::capture::PixelOrder::RGB10A2, argv[2])) return 5;
     return 0;
 }
 '''
@@ -38,10 +42,12 @@ int main(int argc, char** argv) {
         source = root / "harness.cpp"
         binary = root / "harness"
         image = root / "capture.png"
+        packed_image = root / "packed.png"
         source.write_text(harness, encoding="utf-8")
         subprocess.run([compiler, "-std=c++17", "-I", str(ROOT), str(source), "-o", str(binary)], check=True)
-        subprocess.run([str(binary), str(image)], check=True)
+        subprocess.run([str(binary), str(image), str(packed_image)], check=True)
         encoded = image.read_bytes()
+        packed_encoded = packed_image.read_bytes()
 
     if encoded[:8] != b"\x89PNG\r\n\x1a\n":
         raise ValueError("invalid PNG signature")
@@ -67,7 +73,18 @@ int main(int argc, char** argv) {
         raise ValueError(f"unexpected RGBA scanlines: {pixels!r}")
     if chunks.get(b"IEND") != [b""] or offset != len(encoded):
         raise ValueError("missing IEND or trailing bytes")
-    print("RGBA PNG self-test passed (BGRA swap, padded rows, bounds, CRC, pixels).")
+    packed_offset = 8
+    packed_data = bytearray()
+    while packed_offset < len(packed_encoded):
+        chunk_size = struct.unpack_from(">I", packed_encoded, packed_offset)[0]
+        chunk_type = packed_encoded[packed_offset + 4:packed_offset + 8]
+        chunk_data = packed_encoded[packed_offset + 8:packed_offset + 8 + chunk_size]
+        if chunk_type == b"IDAT":
+            packed_data.extend(chunk_data)
+        packed_offset += 12 + chunk_size
+    if zlib.decompress(packed_data) != bytes((0, 255, 127, 0, 255)):
+        raise ValueError("unexpected R10G10B10A2 conversion")
+    print("RGBA PNG self-test passed (BGRA swap, packed 10-bit, padded rows, bounds, CRC, pixels).")
     return 0
 
 

@@ -152,6 +152,7 @@ def main() -> int:
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
             ("application-native-smoke", ROOT / "test/application_native_main.elisa"),
+            ("application-async-capture-smoke", ROOT / "test/application_capture_async_main.elisa"),
             ("application-error-message-smoke", ROOT / "test/application_error_message_native.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
         ]
@@ -193,7 +194,9 @@ def main() -> int:
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
             environment["ELISA_PROJECT_ROOT"] = str(project)
             screenshot = project / f"{name}-frame.png"
+            async_screenshot = project / f"{name}-async-frame.png"
             environment["ELISA_SMOKE_SCREENSHOT_PATH"] = str(screenshot)
+            environment["ELISA_ASYNC_SMOKE_SCREENSHOT_PATH"] = str(async_screenshot)
             environment["ELISA_PHYSICS_30HZ_CAPTURE_PATH"] = str(physics_captures / "physics-30hz.png")
             environment["ELISA_PHYSICS_120HZ_CAPTURE_PATH"] = str(physics_captures / "physics-120hz.png")
             environment["ELISA_PHYSICS_30HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-30hz-mid.png")
@@ -204,6 +207,18 @@ def main() -> int:
                 if header != PNG_SIGNATURE:
                     print("Native application smoke did not write a PNG screenshot.", file=sys.stderr)
                     return 1
+            if status == 0 and name == "application-async-capture-smoke":
+                async_screenshot = Path(environment["ELISA_ASYNC_SMOKE_SCREENSHOT_PATH"])
+                async_image = decode_capture_png(async_screenshot.read_bytes()) if async_screenshot.exists() else None
+                if async_image is None or async_image[0] <= 0 or async_image[1] <= 0:
+                    print("Asynchronous capture smoke did not write a valid RGBA PNG.", file=sys.stderr)
+                    return 1
+                print(f"Asynchronous application capture decoded at {async_image[0]}x{async_image[1]} pixels.")
+                async_image = decode_capture_png(async_screenshot.read_bytes()) if async_screenshot.exists() else None
+                if async_image is None or async_image[0] <= 0 or async_image[1] <= 0:
+                    print("Native application smoke did not write a valid asynchronous PNG capture.", file=sys.stderr)
+                    return 1
+                print(f"Asynchronous capture decoded at {async_image[0]}x{async_image[1]} pixels.")
             if status == 0 and name == "physics-render-capture-smoke":
                 capture_pairs = (
                     ("midpoint", physics_captures / "physics-30hz-mid.png",

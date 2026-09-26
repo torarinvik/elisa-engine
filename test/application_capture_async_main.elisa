@@ -1,0 +1,46 @@
+# Bounded Metal readback queue smoke. The harness supplies a temporary PNG
+# path and checks the decoded image after this Elisa-owned entry returns.
+include "../src/runtime/public.elisa"
+
+def run_capture_smoke() -> i32:
+    config: Application::Config = Application::default_config()
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    return 2 if Application::pump() != Application::PumpStatus.Running
+
+    path: cstr = Application::environment_value("ELISA_ASYNC_SMOKE_SCREENSHOT_PATH")
+    first_ticket: mutable u64 = 0
+    second_ticket: mutable u64 = 0
+    third_ticket: mutable u64 = 0
+    fourth_ticket: mutable u64 = 0
+    overflow_ticket: mutable u64 = 0
+    return 3 if not Application::request_screenshot(path, &first_ticket)
+    return 4 if not Application::request_screenshot(path, &second_ticket)
+    return 5 if not Application::request_screenshot(path, &third_ticket)
+    return 6 if not Application::request_screenshot(path, &fourth_ticket)
+    return 7 if Application::request_screenshot(path, &overflow_ticket)
+    return 8 if overflow_ticket != 0
+    return 9 if not Application::cancel_screenshot(first_ticket)
+
+    return 11 if Application::pump() != Application::PumpStatus.Running
+    return 11 if Application::pump() != Application::PumpStatus.Running
+    return 11 if Application::pump() != Application::PumpStatus.Running
+
+    ignored_frame: mutable u64 = 0
+    ignored_width: mutable u32 = 0
+    ignored_height: mutable u32 = 0
+    return 10 if Application::poll_screenshot(first_ticket, &ignored_frame, &ignored_width, &ignored_height) != ApplicationCapture::SCREENSHOT_CANCELLED
+
+    frame_count: mutable u64 = 0
+    width: mutable u32 = 0
+    height: mutable u32 = 0
+    status: i32 = Application::poll_screenshot(second_ticket, &frame_count, &width, &height)
+    return 12 if status != ApplicationCapture::SCREENSHOT_COMPLETE
+    return 13 if frame_count != 1 or width == 0 or height == 0
+    return 14 if not Application::cancel_screenshot(third_ticket)
+    return 15 if not Application::cancel_screenshot(fourth_ticket)
+    0
+
+def main() -> i32:
+    result: i32 = run_capture_smoke()
+    return 16 if not Application::shutdown()
+    result

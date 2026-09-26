@@ -5,6 +5,11 @@ include "./application.elisa"
 module ApplicationCapture:
     public:
         const API_VERSION: i32 = 1
+        const SCREENSHOT_PENDING: i32 = 2
+        const SCREENSHOT_COMPLETE: i32 = 0
+        const SCREENSHOT_CANCELLED: i32 = 3
+        const SCREENSHOT_FAILED: i32 = -1
+        const SCREENSHOT_TICKET_NOT_FOUND: i32 = -11
 
 extend Application:
     private:
@@ -17,6 +22,16 @@ extend Application:
         @callconv(c)
         extern elisa_application_v1_save_screenshot(path: cstr) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_request_screenshot(path: cstr, ticket: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_poll_screenshot(ticket: u64, frame_count: mutable u64&,
+            width: mutable u32&, height: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_cancel_screenshot(ticket: u64) -> i32
+
     public:
         def environment_value(name: cstr) -> cstr:
             elisa_application_v1_environment_value(name)
@@ -26,3 +41,13 @@ extend Application:
 
         def save_screenshot(path: cstr) -> bool:
             elisa_application_v1_save_screenshot(path) == Application::NativeStatus::OK
+
+        def request_screenshot(path: cstr, ticket: mutable u64&) -> bool:
+            elisa_application_v1_request_screenshot(path, ticket) == Application::NativeStatus::OK
+
+        def poll_screenshot(ticket: u64, frame_count: mutable u64&, width: mutable u32&,
+            height: mutable u32&) -> i32:
+            elisa_application_v1_poll_screenshot(ticket, frame_count, width, height)
+
+        def cancel_screenshot(ticket: u64) -> bool:
+            elisa_application_v1_cancel_screenshot(ticket) == Application::NativeStatus::OK

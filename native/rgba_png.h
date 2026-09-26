@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -11,7 +12,7 @@
 
 namespace elisa::capture {
 
-enum class PixelOrder { RGBA, BGRA };
+enum class PixelOrder { RGBA, BGRA, RGB10A2 };
 // Bound scratch storage and the size of PNG's single IDAT chunk.
 inline constexpr size_t MAX_RGBA_BYTES = 256u * 1024u * 1024u;
 
@@ -45,7 +46,7 @@ inline bool save_rgba_png(const uint8_t* raw, size_t size, uint32_t width,
                           uint32_t height, size_t row_pitch, PixelOrder order,
                           const std::string& path) {
     if (raw == nullptr || width == 0 || height == 0 || path.empty() ||
-        (order != PixelOrder::RGBA && order != PixelOrder::BGRA)) return false;
+        (order != PixelOrder::RGBA && order != PixelOrder::BGRA && order != PixelOrder::RGB10A2)) return false;
     if (width > MAX_RGBA_BYTES / 4) return false;
     const size_t row_size = size_t(width) * 4;
     if (height > MAX_RGBA_BYTES / row_size || row_pitch < row_size) return false;
@@ -64,6 +65,15 @@ inline bool save_rgba_png(const uint8_t* raw, size_t size, uint32_t width,
         if (order == PixelOrder::BGRA) {
             for (size_t pixel = start; pixel < start + row_size; pixel += 4) {
                 std::swap(scanlines[pixel], scanlines[pixel + 2]);
+            }
+        } else if (order == PixelOrder::RGB10A2) {
+            for (size_t pixel = 0; pixel < row_size; pixel += 4) {
+                uint32_t packed = 0;
+                std::memcpy(&packed, raw + source_row + pixel, sizeof(packed));
+                scanlines[start + pixel] = uint8_t((packed & 1023u) * 255u / 1023u);
+                scanlines[start + pixel + 1] = uint8_t(((packed >> 10) & 1023u) * 255u / 1023u);
+                scanlines[start + pixel + 2] = uint8_t(((packed >> 20) & 1023u) * 255u / 1023u);
+                scanlines[start + pixel + 3] = uint8_t(((packed >> 30) & 3u) * 85u);
             }
         }
     }

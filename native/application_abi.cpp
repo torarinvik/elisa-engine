@@ -57,6 +57,8 @@ struct OpenGamepad {
     SDL_Gamepad* handle = nullptr;
 };
 
+#include "application_capture_types.inc"
+
 struct ApplicationService {
     std::mutex mutex;
     probe::NativeApplication host;
@@ -69,6 +71,8 @@ struct ApplicationService {
     std::array<QueuedInputEvent, INPUT_EVENT_CAPACITY> input_events{};
     std::array<QueuedPointerEvent, INPUT_EVENT_CAPACITY> pointer_events{};
     std::array<OpenGamepad, GAMEPAD_CAPACITY> gamepads{};
+    std::array<CaptureRequest, APPLICATION_CAPTURE_QUEUE_CAPACITY> captures{};
+    uint64_t next_capture_ticket = 1;
     size_t input_event_count = 0;
     size_t input_event_read = 0;
     size_t pointer_event_count = 0;
@@ -449,6 +453,7 @@ extern "C" int32_t elisa_application_v1_pump(void) {
     }
     if (service.host.simulation_suspended()) return ELISA_APPLICATION_SUSPENDED;
     if (!service.host.run_frame()) return ELISA_APPLICATION_FRAME_FAILED;
+    note_application_capture_submission(service);
     ++service.frame_count;
     return ELISA_APPLICATION_RUNNING;
 }
@@ -527,6 +532,7 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     service.host.wicked().ActivatePath(nullptr);
     elisa_physics_v1_shutdown_from_application();
     elisa_audio_v1_shutdown_from_application();
+    flush_application_capture_requests(service);
     service.host.shutdown();
     service.initialized = false;
     service.backend_profile = {};
