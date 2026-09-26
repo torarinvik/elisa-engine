@@ -25,6 +25,9 @@ constexpr int MAX_POLYS = 32768;
 constexpr int MAX_QUERY_NODES = 2048;
 constexpr int MAX_PATH_POLYS = 256;
 constexpr int MAX_STRAIGHT_POINTS = 256;
+constexpr int MAX_GRID_DIMENSION = 16384;
+constexpr uint64_t MAX_GRID_CELLS = 1024 * 1024;
+constexpr double MAX_CONFIG_SCALE = 16384.0;
 
 struct AgentProfile {
     float height = 2.0f;
@@ -217,11 +220,22 @@ private:
 inline bool valid_input(const BakeInput& input, std::string& error) {
     if (input.vertices == nullptr || input.indices == nullptr || input.vertex_count < 3 ||
         input.triangle_count < 1 || input.vertex_count > MAX_VERTICES ||
-        input.triangle_count > MAX_TRIANGLES || input.cell_size <= 0.0f ||
-        input.cell_height <= 0.0f || !std::isfinite(input.cell_size) ||
-        !std::isfinite(input.cell_height) || input.agent.height <= 0.0f ||
-        input.agent.radius < 0.0f || input.agent.climb < 0.0f || input.agent.slope <= 0.0f) {
+        input.triangle_count > MAX_TRIANGLES || !std::isfinite(input.cell_size) ||
+        !std::isfinite(input.cell_height) || input.cell_size < 0.001f ||
+        input.cell_height < 0.001f || input.cell_size > 1000.0f ||
+        input.cell_height > 1000.0f || !std::isfinite(input.agent.height) ||
+        !std::isfinite(input.agent.radius) || !std::isfinite(input.agent.climb) ||
+        !std::isfinite(input.agent.slope) || input.agent.height <= 0.0f ||
+        input.agent.radius < 0.0f || input.agent.climb < 0.0f ||
+        input.agent.slope <= 0.0f || input.agent.slope > 90.0f) {
         error = "invalid navmesh bake input";
+        return false;
+    }
+    if (static_cast<double>(input.agent.height) / input.cell_height > MAX_CONFIG_SCALE ||
+        static_cast<double>(input.agent.radius) / input.cell_size > MAX_CONFIG_SCALE ||
+        static_cast<double>(input.agent.climb) / input.cell_height > MAX_CONFIG_SCALE ||
+        6.0 / input.cell_size > MAX_CONFIG_SCALE) {
+        error = "navmesh agent or cell scale exceeds bake bounds";
         return false;
     }
     for (int i = 0; i < input.vertex_count * 3; ++i) {
@@ -234,6 +248,14 @@ inline bool valid_input(const BakeInput& input, std::string& error) {
         if (input.indices[i] < 0 || input.indices[i] >= input.vertex_count) {
             error = "navmesh triangle index out of range";
             return false;
+        }
+    }
+    if (input.areas != nullptr) {
+        for (int i = 0; i < input.triangle_count; ++i) {
+            if (input.areas[i] >= DT_MAX_AREAS) {
+                error = "navmesh area id exceeds Detour's area limit";
+                return false;
+            }
         }
     }
     return true;
@@ -262,9 +284,22 @@ inline bool bake(const BakeInput& input, NavMeshArtifact& artifact, std::string&
     rcCalcBounds(input.vertices, input.vertex_count, config.bmin, config.bmax);
     config.bmin[0] -= 1.0f; config.bmin[1] -= 1.0f; config.bmin[2] -= 1.0f;
     config.bmax[0] += 1.0f; config.bmax[1] += input.agent.height; config.bmax[2] += 1.0f;
+    const double grid_width = (static_cast<double>(config.bmax[0]) - config.bmin[0]) / config.cs;
+    const double grid_height = (static_cast<double>(config.bmax[2]) - config.bmin[2]) / config.cs;
+    const double estimated_width = std::floor(grid_width + 0.5);
+    const double estimated_height = std::floor(grid_height + 0.5);
+    if (!std::isfinite(estimated_width) || !std::isfinite(estimated_height) ||
+        estimated_width <= 0.0 || estimated_height <= 0.0 ||
+        estimated_width > MAX_GRID_DIMENSION || estimated_height > MAX_GRID_DIMENSION ||
+        estimated_width * estimated_height > MAX_GRID_CELLS) {
+        error = "navmesh grid exceeds configured bake bounds";
+        return false;
+    }
     rcCalcGridSize(config.bmin, config.bmax, config.cs, &config.width, &config.height);
-    if (config.width <= 0 || config.height <= 0) {
-        error = "empty navmesh grid";
+    if (config.width <= 0 || config.height <= 0 ||
+        config.width > MAX_GRID_DIMENSION || config.height > MAX_GRID_DIMENSION ||
+        static_cast<uint64_t>(config.width) * static_cast<uint64_t>(config.height) > MAX_GRID_CELLS) {
+        error = "navmesh grid exceeds configured bake bounds";
         return false;
     }
     rcHeightfield* heightfield = rcAllocHeightfield();
@@ -314,7 +349,7 @@ inline bool bake(const BakeInput& input, NavMeshArtifact& artifact, std::string&
     }
     for (int i = 0; i < poly_mesh->npolys; ++i) {
         if (poly_mesh->areas[i] == RC_WALKABLE_AREA) poly_mesh->areas[i] = 1;
-        if (poly_mesh->areas[i] == 1) poly_mesh->flags[i] = 1;
+        poly_mesh->flags[i] = poly_mesh->areas[i] == RC_NULL_AREA ? 0 : 1;
     }
     dtNavMeshCreateParams params{};
     params.verts = poly_mesh->verts; params.vertCount = poly_mesh->nverts;
