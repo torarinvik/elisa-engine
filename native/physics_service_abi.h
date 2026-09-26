@@ -202,6 +202,11 @@ int32_t elisa_physics_v1_raycast(uint64_t world_generation,
     uint64_t* entity, float* position_x, float* position_y, float* position_z,
     float* normal_x, float* normal_y, float* normal_z, float* distance,
     int32_t* hit);
+int32_t elisa_physics_v1_raycast_filtered(uint64_t world_generation,
+    float origin_x, float origin_y, float origin_z,
+    float direction_x, float direction_y, float direction_z,
+    float max_distance, uint32_t layer_mask, uint32_t query_targets,
+    ElisaPhysicsRayHit* result, int32_t* hit);
 int32_t elisa_physics_v1_raycast_all(uint64_t world_generation,
     float origin_x, float origin_y, float origin_z,
     float direction_x, float direction_y, float direction_z,

@@ -257,6 +257,36 @@ public:
         return true;
     }
 
+    bool raycast_filtered(PhysicsQueryToken token, const XMFLOAT3& origin,
+        const XMFLOAT3& direction, float max_distance, uint32_t layer_mask,
+        uint32_t scene_filter_mask, bool include_physics_bodies,
+        PhysicsQueryHit& hit) const {
+        if (!valid(token) || !finite_vector(origin) || !finite_vector(direction) ||
+            !std::isfinite(max_distance) || max_distance <= 0.0f ||
+            length_squared(direction) <= 0.000001f) return false;
+        bool found = false;
+        PhysicsQueryHit nearest{};
+        if (scene_filter_mask != 0) {
+            PhysicsQueryHit scene_hit{};
+            if (raycast(token, origin, direction, max_distance, layer_mask,
+                    scene_hit, scene_filter_mask)) {
+                nearest = scene_hit;
+                found = true;
+            }
+        }
+        if (include_physics_bodies) {
+            PhysicsQueryHit physics_hit{};
+            if (raycast_physics(token, origin, direction, max_distance,
+                    layer_mask, physics_hit) &&
+                (!found || physics_hit.distance < nearest.distance)) {
+                nearest = physics_hit;
+                found = true;
+            }
+        }
+        if (found) hit = nearest;
+        return found;
+    }
+
     size_t raycast_all(PhysicsQueryToken token, const XMFLOAT3& origin,
         const XMFLOAT3& direction, float max_distance, uint32_t layer_mask,
         Hits& hits, uint32_t filter_mask = wi::enums::FILTER_COLLIDER |

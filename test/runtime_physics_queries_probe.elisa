@@ -99,6 +99,25 @@ module RuntimePhysicsQueriesProbe:
                 error failure: return 133
             return 134 + filtered_count.i32() if filtered_count != 1
             return 138 if filtered_hits.hits[0].entity == 0
+            filtered_nearest: PhysicsRuntime::RayHit = catch RuntimeServices::physics_raycast_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS, physics_only):
+                value: value
+                error failure: return 141
+            return 142 if not filtered_nearest.hit or filtered_nearest.entity != filtered_hits.hits[0].entity
+            scene_objects_only: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
+                scene_objects: true,
+                scene_colliders: false,
+                physics_bodies: false,
+            }
+            scene_object_nearest: PhysicsRuntime::RayHit = catch RuntimeServices::physics_raycast_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS, scene_objects_only):
+                value: value
+                error failure: return 145
+            return 146 if not scene_object_nearest.hit or scene_object_nearest.entity != filtered_hits.hits[0].entity
             shape_filter_status: i32 = RuntimePhysicsQueriesProbe::verify_filtered_shape_services(
                 session, physics_only, true)
             return 140 + shape_filter_status if shape_filter_status != 0
@@ -115,6 +134,13 @@ module RuntimePhysicsQueriesProbe:
                 value: value
                 error failure: return 135
             return 136 if empty_filtered_count != 0 or empty_filtered_hits.count != 0
+            empty_filtered_nearest: PhysicsRuntime::RayHit = catch RuntimeServices::physics_raycast_filtered(session,
+                Geometry::Vec3{x: 500.0, y: 3.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 5.0,
+                PhysicsRuntime::ALL_LAYERS, no_targets):
+                value: value
+                error failure: return 143
+            return 144 if empty_filtered_nearest.hit or empty_filtered_nearest.entity != 0
             empty_shape_filter_status: i32 = RuntimePhysicsQueriesProbe::verify_filtered_shape_services(
                 session, no_targets, false)
             return 160 + empty_shape_filter_status if empty_shape_filter_status != 0

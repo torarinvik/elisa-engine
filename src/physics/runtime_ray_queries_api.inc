@@ -48,6 +48,25 @@
                 buffer.count <- count.usize()
                 buffer.count
 
+            def raycast_filtered_generation(generation: u64,
+                origin: Geometry::Vec3, direction: Geometry::Vec3,
+                max_distance: f32, layer_mask: u32,
+                filter: PhysicsQueryFilter) -> RayHit error[PhysicsError]:
+                native: mutable NativeRayHit = zeroed
+                found: mutable i32 = 0
+                try check_status(elisa_physics_v1_raycast_filtered(generation,
+                    origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
+                    max_distance, layer_mask, ray_query_targets(filter), &native, &found))
+                RayHit{
+                    hit: found != 0,
+                    entity: native.entity,
+                    position: Geometry::Vec3{x: native.position_x,
+                        y: native.position_y, z: native.position_z},
+                    normal: Geometry::Vec3{x: native.normal_x,
+                        y: native.normal_y, z: native.normal_z},
+                    distance: native.distance,
+                }
+
         public:
             def service_raycast(state: ServiceState&, origin: Geometry::Vec3,
                 direction: Geometry::Vec3, max_distance: f32,
@@ -55,6 +74,14 @@
                 raise PhysicsError.ApplicationUnavailable if not state.live
                 raycast_generation(state.generation, origin, direction,
                     max_distance, layer_mask)
+
+            def service_raycast_filtered(state: ServiceState&,
+                origin: Geometry::Vec3, direction: Geometry::Vec3,
+                max_distance: f32, layer_mask: u32,
+                filter: PhysicsQueryFilter) -> RayHit error[PhysicsError]:
+                raise PhysicsError.ApplicationUnavailable if not state.live
+                raycast_filtered_generation(state.generation, origin, direction,
+                    max_distance, layer_mask, filter)
 
             def service_raycast_all(state: ServiceState&, origin: Geometry::Vec3,
                 direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,
@@ -79,6 +106,13 @@
                 raise PhysicsError.ApplicationUnavailable if not world.live
                 raycast_generation(world.generation, origin, direction,
                     max_distance, layer_mask)
+
+            def raycast_filtered(world: World&, origin: Geometry::Vec3,
+                direction: Geometry::Vec3, max_distance: f32,
+                layer_mask: u32, filter: PhysicsQueryFilter) -> RayHit error[PhysicsError]:
+                raise PhysicsError.ApplicationUnavailable if not world.live
+                raycast_filtered_generation(world.generation, origin, direction,
+                    max_distance, layer_mask, filter)
 
             def raycast_all(world: World&, origin: Geometry::Vec3,
                 direction: Geometry::Vec3, max_distance: f32, layer_mask: u32,

@@ -285,6 +285,7 @@ extern "C" int32_t elisa_physics_v1_raycast(uint64_t world_generation,
 }
 
 #include "physics_raycast_all_abi.inc"
+#include "physics_ray_filtered_abi.inc"
 
 extern "C" int32_t elisa_physics_v1_poll_contacts(uint64_t world_generation,
     ElisaPhysicsContactEvent* events, uint32_t capacity, uint32_t* count,

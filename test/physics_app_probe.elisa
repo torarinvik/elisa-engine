@@ -227,6 +227,21 @@ module PhysicsAppProbe:
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
                 PhysicsRuntime::ALL_LAYERS, physics_only_filter, physics_only_rays)
             raise PhysicsRuntime::PhysicsError.BackendFailure if physics_only_count != 1 or physics_only_rays.hits[0].entity != ray.entity
+            physics_only_nearest: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsRuntime::ALL_LAYERS, physics_only_filter)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if not physics_only_nearest.hit or physics_only_nearest.entity != ray.entity
+            scene_only_filter: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
+                scene_objects: true,
+                scene_colliders: false,
+                physics_bodies: false,
+            }
+            scene_only_nearest: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsRuntime::ALL_LAYERS, scene_only_filter)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if not scene_only_nearest.hit or scene_only_nearest.entity != ray.entity
             no_query_targets: PhysicsRuntime::PhysicsQueryFilter = PhysicsRuntime::PhysicsQueryFilter{
                 scene_objects: false,
                 scene_colliders: false,
@@ -238,6 +253,11 @@ module PhysicsAppProbe:
                 Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
                 PhysicsRuntime::ALL_LAYERS, no_query_targets, no_target_rays)
             raise PhysicsRuntime::PhysicsError.BackendFailure if no_target_count != 0 or no_target_rays.count != 0
+            no_target_nearest: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast_filtered(world,
+                Geometry::Vec3{x: PhysicsAppProbe::QUERY_ANCHOR_X, y: 5.0, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, 10.0,
+                PhysicsRuntime::ALL_LAYERS, no_query_targets)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if no_target_nearest.hit or no_target_nearest.entity != 0
             try PhysicsAppProbe::verify_filtered_shape_queries(world, physics_only_filter, true)
             try PhysicsAppProbe::verify_filtered_shape_queries(world, no_query_targets, false)
             stage <- 71

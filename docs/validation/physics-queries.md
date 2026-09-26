@@ -46,12 +46,14 @@ returns copied `PhysicsQueryHit` values to the host.
   `RuntimeServices::physics_raycast_all` routes this buffer through an affine
   session without exposing native storage.
 - `PhysicsRuntime::PhysicsQueryFilter` lets callers select scene objects, scene
-  colliders, and Jolt physics bodies independently for filtered all-hit rays and
-  all six sphere/capsule query forms. `RuntimeServices` exposes the same filtered
-  routes through an affine session. The default filter and original unfiltered
-  APIs include all three categories; selecting none returns misses and empty
-  buffers. The C ABI uses backend-neutral target bits and keeps Wicked filter
-  constants private.
+  colliders, and Jolt physics bodies independently for nearest and all-hit rays
+  and all six sphere/capsule query forms. The nearest-ray path compares the
+  nearest selected scene result with the nearest Jolt result directly, without
+  deriving it from the bounded all-hit buffer. `RuntimeServices` exposes the
+  same filtered routes through an affine session. The default filter and
+  original unfiltered APIs include all three categories; selecting none returns
+  misses and empty buffers. The C ABI uses backend-neutral target bits and
+  keeps Wicked filter constants private.
 - `PhysicsQueries` exposes bounded sphere and capsule casts plus nearest and
   all-hit sphere and capsule overlaps. `ShapeHit` copies the entity, contact
   position/normal, cast distance, and overlap penetration depth; each all-hit
@@ -93,8 +95,8 @@ the scene or listener object.
 
 The Elisa application smoke creates static and dynamic bodies plus a static
 sensor volume, advances the fixed-step world, verifies public nearest and
-all-hit physics rays, verifies scene-object-only, physics-body-only, and
-empty-target ray queries in direct and session APIs, and runs every sphere and
+all-hit physics rays, verifies filtered nearest and all-hit scene-object-only,
+physics-body-only, and empty-target ray queries in direct and session APIs, and runs every sphere and
 capsule cast/overlap form through direct and session APIs with physics-only and
 empty filters. It checks nearest-hit ordering, exercises the unfiltered shape
 queries, rejects invalid zero directions, and polls
