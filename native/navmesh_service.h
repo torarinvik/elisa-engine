@@ -76,6 +76,7 @@ struct PathResult {
 struct NearestResult {
     QueryStatus status = QueryStatus::InvalidInput;
     dtPolyRef polygon = 0;
+    uint8_t area = 0;
     std::array<float, 3> point{};
 };
 
@@ -125,6 +126,14 @@ public:
             result.status = QueryStatus::NoPath;
             return result;
         }
+        const dtMeshTile* tile = nullptr;
+        const dtPoly* poly = nullptr;
+        if (dtStatusFailed(mesh_->getTileAndPolyByRef(result.polygon, &tile, &poly)) ||
+            tile == nullptr || poly == nullptr) {
+            result.status = QueryStatus::NoPath;
+            return result;
+        }
+        result.area = poly->getArea();
         result.status = QueryStatus::Success;
         return result;
     }

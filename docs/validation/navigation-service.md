@@ -42,7 +42,8 @@ Before allocating Recast heightfields, the adapter now validates finite agent
 and cell settings, bounds derived configuration scales, and caps the grid at
 16,384 cells per axis and 1,048,576 cells total. Triangle area annotations must
 fit Detour's 64-entry area table; custom walkable areas retain their IDs while
-sharing the common walkable polygon flag.
+sharing the common walkable polygon flag. Nearest-point results include the
+retained area ID for backend-neutral movement policy.
 
 The fixture additionally covers custom area IDs, an infinite agent setting,
 and an oversized grid. Run the boundary harness with sanitizers:
