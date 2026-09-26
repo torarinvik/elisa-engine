@@ -28,6 +28,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from macos_deployment_target import METAL_MINIMUM_MACOS, deployment_targets, format_version
+
 
 class PackageError(ValueError):
     """The project or release bundle is not packageable."""
@@ -442,6 +444,18 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(project / relative, destination)
 
+    minimum_os = METAL_MINIMUM_MACOS
+    native_files = [resources / binary_name]
+    frameworks = contents / "Frameworks"
+    if frameworks.exists():
+        native_files.extend(path for path in frameworks.rglob("*") if path.is_file())
+    for native_file in native_files:
+        if is_mach_o(native_file):
+            try:
+                minimum_os = max(minimum_os, *deployment_targets(run_tool("otool", "-l", str(native_file))))
+            except ValueError as error:
+                raise PackageError(f"cannot determine deployment target for {native_file.name}: {error}") from error
+
     info = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleDisplayName": bundle_name,
@@ -452,7 +466,7 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,
-        "LSMinimumSystemVersion": "13.0",
+        "LSMinimumSystemVersion": format_version(minimum_os),
         "NSHighResolutionCapable": True,
     }
     with (contents / "Info.plist").open("wb") as stream:

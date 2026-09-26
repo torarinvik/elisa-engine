@@ -240,3 +240,19 @@ Twenty packaging tests pass. A real optimized maze app rebuilt through this
 path passed two relocated launches with source, Homebrew, and outbound network
 access denied. Publication uses two renames, so concurrent launches during
 the replacement window and crash-atomic replacement are not guaranteed.
+
+## Minimum macOS version
+
+The packager no longer writes a fixed macOS 13 requirement. It reads the
+executable and every bundled Mach-O library's deployment targets, including
+legacy load commands and universal-binary slices, then selects their maximum
+and the pinned renderer's macOS 26 API floor. Missing, malformed, or non-macOS
+load-command targets fail packaging instead of producing misleading metadata.
+
+Wicked creates Metal 4 command queues unconditionally; Apple's SDK marks
+`MTL4CommandQueue` APIs as available from macOS 26. See
+[Apple's API documentation](https://developer.apple.com/documentation/metal/mtl4commandqueue).
+The current optimized maze executable records `minos 27.0`, and its rebuilt
+bundle was verified to contain `LSMinimumSystemVersion = 27.0`. Twenty-two
+packaging/deployment-target tests pass. This metadata expresses a minimum
+requirement, not runtime validation on older hardware or OS releases.
