@@ -311,3 +311,11 @@ dylib mappings now verify against packaged bytes; four collector/audit tests
 pass. The overall catalog is still marked incomplete for additional vendored
 and embedded components and the final notice-completeness review. A verified
 file mapping does not change that overall status.
+
+The verified collection now contains forty-eight texts after adding cgltf's
+jsmn block, Wicked's LodePNG, pugixml, robin-hood, four stb utility notices,
+and Metal C++/converter license files. Embedded blocks retain the exact source
+bytes and are checked against both source and excerpt hashes. The real rebuilt
+app matched all forty-eight snapshots and its provenance catalog byte-for-byte.
+The catalog remains incomplete for additional vendored components and the
+final notice-completeness review.

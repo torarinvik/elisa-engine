@@ -356,10 +356,116 @@
         "offset": 0,
         "bytes": 779
       }
+    },
+    {
+      "name": "cgltf-jsmn",
+      "root": "engine",
+      "path": "dependencies/cgltf/cgltf.h",
+      "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9",
+      "excerpt": {
+        "offset": 195606,
+        "bytes": 1197,
+        "sha256": "5b854ad801c1a9c6ca3e284423c7d46e36b413ade27d2368bb091a12fa544c5d"
+      }
+    },
+    {
+      "name": "wicked-lodepng",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/lodepng.h",
+      "sha256": "1dc9633d9954444d4d588ba710e0002b9d7d341990122a4b5b3e6de6bb322e66",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 912,
+        "sha256": "05507299c7a9b4d73c41ecd3e15d961c0dd55642df88f3439978ea614a9793a7"
+      }
+    },
+    {
+      "name": "wicked-pugixml",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/pugixml.hpp",
+      "sha256": "8c1b9d5092c86a8059459d4204df34c40f6255510376a7b049d29165e9184681",
+      "excerpt": {
+        "offset": 54728,
+        "bytes": 1136,
+        "sha256": "2745c38c1c863556e3e5ccee43fb67283467a8951a8f8f4106dc5220c4002ab9"
+      }
+    },
+    {
+      "name": "wicked-stb_image",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/stb_image.h",
+      "sha256": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3",
+      "excerpt": {
+        "offset": 280336,
+        "bytes": 2673,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      }
+    },
+    {
+      "name": "wicked-stb_image_write",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/stb_image_write.h",
+      "sha256": "cbd5f0ad7a9cf4468affb36354a1d2338034f2c12473cf1a8e32053cb6914a05",
+      "excerpt": {
+        "offset": 68547,
+        "bytes": 2673,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      }
+    },
+    {
+      "name": "wicked-stb_rect_pack",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/stb_rect_pack.h",
+      "sha256": "6388366a30de57c1b4c29b6eed4ed1c7d758fc1443d2dd95cfce943370bb3aa1",
+      "excerpt": {
+        "offset": 17525,
+        "bytes": 2673,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      }
+    },
+    {
+      "name": "wicked-stb_truetype",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/stb_truetype.h",
+      "sha256": "ecd30b05e0dd4fea3a13c26810dd9e1992dc379049482c393d5a19e6b5090aab",
+      "excerpt": {
+        "offset": 196518,
+        "bytes": 2673,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      }
+    },
+    {
+      "name": "wicked-robin-hood",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/robin_hood.h",
+      "sha256": "080352d3553b6f8724c4107a86a7ced96ee0bcff8d2e2de345667080229f4d8d",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1836,
+        "sha256": "da78261f3ea5d1669fa9a085eb9ba3216ad860565c92e1e94aedb61928a18b77"
+      }
+    },
+    {
+      "name": "metal-cpp",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/metal/LICENSE.txt",
+      "sha256": "f4e92c7fe2aa066e294c0da9d08683dc9fb741ee6e6debbfad99a0c96e07c1f2"
+    },
+    {
+      "name": "metal-irconverter-runtime",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/metal/metal_irconverter_runtime/LICENSE.txt",
+      "sha256": "60911e90d17eb7373139890425e6d0f93f43bfe5c81b91eed71841c175436e94"
+    },
+    {
+      "name": "metal-irconverter",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/metal/metal_irconverter/LICENSE.txt",
+      "sha256": "60911e90d17eb7373139890425e6d0f93f43bfe5c81b91eed71841c175436e94"
     }
   ],
   "remaining": [
-    "Additional embedded subcomponent notices (including cgltf/jsmn and Wicked utility headers)",
+    "Additional embedded subcomponent notices and copyright blocks beyond the collected utility headers",
     "Wicked vendored dependency closure",
     "Completeness review of library-specific copyright notices and distribution obligations"
   ],
