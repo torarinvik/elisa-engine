@@ -35,6 +35,12 @@ scalar C ABI accessors; malformed native environment values fall back to the
 same engine defaults. Games can still construct and pass their own `Config`.
 The ABI exposes no JSON or platform window types to Elisa.
 
+The runner includes `src/runtime/public.elisa` by default so its modules are
+available to project entry files. A project that includes its runtime modules
+explicitly can pass `--no-public-runtime`; the generated entry then compiles
+only the modules reachable from that source. This is useful for focused native
+clients and for projects that want an explicit compile surface.
+
 Validation covers manifest path resolution, command-line precedence, spaces in
 paths, UTF-8 titles, invalid values, process environment delivery, and native
 window startup with dimensions read from a temporary project manifest:

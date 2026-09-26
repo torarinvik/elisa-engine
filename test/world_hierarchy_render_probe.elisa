@@ -1,0 +1,114 @@
+# Submit an extracted hierarchy pose to a live Wicked frame and verify picking.
+include "../src/runtime/render_scene_selection.elisa"
+include "../src/world/world.elisa"
+
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+@callconv(c)
+extern elisa_application_v1_environment_value(name: cstr) -> cstr
+@callconv(c)
+extern elisa_application_v1_save_screenshot(path: cstr) -> i32
+
+module WorldHierarchyRenderProbe:
+    private:
+        const module Tune:
+            ALL_LAYERS: u32 = 4294967295
+
+        def prepare(previous: Geometry::Transform, sample: Geometry::Transform,
+            gameplay: World::EntityRef,
+            instance: mutable RenderScene::InstanceHandle&) -> i32:
+            camera_status: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: sample.position.x,
+                    y: sample.position.y + 5.0, z: sample.position.z + 12.0},
+                sample.position,
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            return 1 if camera_status != 0
+
+            created: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box, previous,
+                RenderScene::Color{red: 0.12, green: 0.78, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 2
+            instance <- created
+            identity_status: i32 = catch RenderScene::set_pick_identity(created,
+                gameplay.world_epoch, gameplay.id):
+                ok: 0
+                error failure: 1
+            return 3 if identity_status != 0
+            0
+
+        def pump_frames(frame_count: i32) -> i32:
+            for _ in 0..<frame_count:
+                return 4 if elisa_application_v1_pump() != 1
+            0
+
+        def capture_motion(instance: RenderScene::InstanceHandle,
+            sample: Geometry::Transform) -> i32:
+            initial_frames: i32 = pump_frames(3)
+            return initial_frames if initial_frames != 0
+            pipeline_status: i32 = catch RenderScene::wait_for_pipelines(30000):
+                ok: 0
+                error failure: 1
+            return 5 if pipeline_status != 0
+            ready_frames: i32 = pump_frames(3)
+            return ready_frames if ready_frames != 0
+
+            before_path: cstr = elisa_application_v1_environment_value(
+                "ELISA_HIERARCHY_BEFORE_CAPTURE_PATH")
+            return 6 if before_path == ""
+            return 7 if elisa_application_v1_save_screenshot(before_path) != 0
+
+            update_status: i32 = catch RenderScene::update_transform(instance, sample):
+                ok: 0
+                error failure: 1
+            return 8 if update_status != 0
+            moved_frames: i32 = pump_frames(3)
+            return moved_frames if moved_frames != 0
+
+            after_path: cstr = elisa_application_v1_environment_value(
+                "ELISA_HIERARCHY_AFTER_CAPTURE_PATH")
+            return 9 if after_path == ""
+            return 10 if elisa_application_v1_save_screenshot(after_path) != 0
+            0
+
+        def verify_pick(sample: Geometry::Transform,
+            gameplay: World::EntityRef) -> i32:
+            ray: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: sample.position.x,
+                    y: sample.position.y, z: sample.position.z + 12.0},
+                direction: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0},
+            }
+            hit: RenderScene::PickResult = catch RenderScene::pick(
+                ray, Tune::ALL_LAYERS):
+                value: value
+                error failure: return 11
+            return 12 if hit.gameplay_epoch != gameplay.world_epoch or hit.gameplay_id != gameplay.id
+            0
+
+    public:
+        def render(previous: Geometry::Transform, sample: Geometry::Transform,
+            gameplay: World::EntityRef) -> i32:
+            init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            return 13 if init_status != 0
+
+            instance: mutable RenderScene::InstanceHandle =
+                RenderScene::empty_instance_handle()
+            prepare_status: i32 = prepare(previous, sample, gameplay, &instance)
+            capture_status: mutable i32 = 0
+            if prepare_status == 0:
+                capture_status <- capture_motion(instance, sample)
+            pick_status: mutable i32 = 0
+            if prepare_status == 0 and capture_status == 0:
+                pick_status <- verify_pick(sample, gameplay)
+
+            shutdown_status: i32 = catch RenderScene::shutdown():
+                ok: 0
+                error failure: 1
+            return 14 if shutdown_status != 0
+            return prepare_status if prepare_status != 0
+            return capture_status if capture_status != 0
+            pick_status

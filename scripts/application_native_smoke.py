@@ -26,6 +26,7 @@ PNG_RGBA8_HEADER = bytes((8, 6, 0, 0, 0))
 PNG_FILTER_NONE = 0
 MIN_VISIBLE_CAPTURE_PIXELS = 1000
 MIN_VISIBLE_CHANNEL_VALUE = 16
+MIN_HIERARCHY_CAPTURE_PIXELS = 100
 
 
 def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
@@ -144,6 +145,7 @@ def main() -> int:
             ("physics-pose-inertia-smoke", ROOT / "test/physics_inertia_native_main.elisa"),
             ("physics-material-smoke", ROOT / "test/physics_material_native_main.elisa"),
             ("world-physics-pose-smoke", ROOT / "test/world_physics_pose_native_main.elisa"),
+            ("world-hierarchy-render-smoke", ROOT / "test/world_hierarchy_render_native_main.elisa"),
             ("world-audio-physics-smoke", ROOT / "test/world_audio_physics_native_main.elisa"),
             ("quality-settings-native-smoke", ROOT / "test/quality_settings_native_main.elisa"),
             ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),
@@ -156,11 +158,19 @@ def main() -> int:
             ("application-error-message-smoke", ROOT / "test/application_error_message_native.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
         ]
+        only_name = os.environ.get("ELISA_NATIVE_SMOKE_ONLY", "")
+        if only_name:
+            selected = [project_row for project_row in projects if project_row[0] == only_name]
+            if not selected:
+                print(f"Unknown native smoke project: {only_name}", file=sys.stderr)
+                return 2
+            projects = selected
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
         for capture_name in (
                 "physics-30hz.png", "physics-120hz.png",
-                "physics-30hz-mid.png", "physics-120hz-mid.png"):
+                "physics-30hz-mid.png", "physics-120hz-mid.png",
+                "hierarchy-before.png", "hierarchy-after.png"):
             (physics_captures / capture_name).unlink(missing_ok=True)
         native_test = project / "user-data-native-test"
         native_command = [
@@ -190,6 +200,8 @@ def main() -> int:
             (project / "elisa.project.json").write_text(json.dumps(manifest), encoding="utf-8")
             command = [sys.executable, str(runner), "run", "--project", str(project),
                 "--native-test-probes"]
+            if name == "world-hierarchy-render-smoke":
+                command.append("--no-public-runtime")
             environment = dict(os.environ)
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
             environment["ELISA_PROJECT_ROOT"] = str(project)
@@ -201,6 +213,8 @@ def main() -> int:
             environment["ELISA_PHYSICS_120HZ_CAPTURE_PATH"] = str(physics_captures / "physics-120hz.png")
             environment["ELISA_PHYSICS_30HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-30hz-mid.png")
             environment["ELISA_PHYSICS_120HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-120hz-mid.png")
+            environment["ELISA_HIERARCHY_BEFORE_CAPTURE_PATH"] = str(physics_captures / "hierarchy-before.png")
+            environment["ELISA_HIERARCHY_AFTER_CAPTURE_PATH"] = str(physics_captures / "hierarchy-after.png")
             status = subprocess.run(command, env=environment, check=False).returncode
             if status == 0 and name == "application-native-smoke":
                 header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
@@ -255,6 +269,31 @@ def main() -> int:
                         print(f"30 Hz and 120 Hz physics-to-Wicked {label} pixels differ.", file=sys.stderr)
                         return 1
                     print(f"Physics-to-Wicked {label} captures match pixel-for-pixel at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
+            if status == 0 and name in (
+                    "world-physics-pose-smoke", "world-hierarchy-render-smoke"):
+                before_path = physics_captures / "hierarchy-before.png"
+                after_path = physics_captures / "hierarchy-after.png"
+                before = decode_capture_png(before_path.read_bytes()) if before_path.exists() else None
+                after = decode_capture_png(after_path.read_bytes()) if after_path.exists() else None
+                if before is None or after is None:
+                    print("Hierarchy-to-Wicked smoke did not write two valid RGBA PNGs.", file=sys.stderr)
+                    return 1
+                if before[0] <= 0 or before[1] <= 0 or after[:2] != before[:2]:
+                    print("Hierarchy-to-Wicked captures have unexpected dimensions.", file=sys.stderr)
+                    return 1
+                for label, pixels in (("before", before[2]), ("after", after[2])):
+                    colored_pixels = sum(1 for index in range(0, len(pixels), 4)
+                        if max(pixels[index:index + 3]) > MIN_VISIBLE_CHANNEL_VALUE)
+                    if colored_pixels < MIN_HIERARCHY_CAPTURE_PIXELS:
+                        print(f"Hierarchy {label} capture is visually empty.", file=sys.stderr)
+                        return 1
+                changed_pixels = sum(1 for index in range(0, len(before[2]), 4)
+                    if any(abs(before[2][index + channel] - after[2][index + channel]) > 8
+                        for channel in range(3)))
+                if changed_pixels < 128:
+                    print(f"Hierarchy sample changed only {changed_pixels} visible Wicked pixels.", file=sys.stderr)
+                    return 1
+                print(f"Hierarchy-to-Wicked sample moved across {changed_pixels} pixels at {before[0]}x{before[1]}.")
             if status != 0:
                 print(f"Native application smoke {name} failed with status {status}.", file=sys.stderr)
                 return status

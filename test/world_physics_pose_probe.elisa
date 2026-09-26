@@ -1,4 +1,6 @@
 # Verifies pose sync, kinematic targets, and stale-error preservation.
+include "./world_hierarchy_render_probe.elisa"
+
 module WorldPhysicsPoseProbe:
     private:
         const module Tune:
@@ -47,6 +49,25 @@ module WorldPhysicsPoseProbe:
         def rotations_match(left: Geometry::Quat, right: Geometry::Quat) -> bool:
             dot: f32 = left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w
             ElisaMath::fabsf(dot) >= Tune::ROTATION_DOT_MINIMUM
+
+        def validate_live_hierarchy_pose(session: mutable RuntimeServices::Session&,
+            hierarchy: WorldHierarchy::Hierarchy&,
+            bindings: WorldPhysics::Bindings&, gameplay: World::EntityRef,
+            previous: Geometry::Transform, sample: Geometry::Transform,
+            committed: Geometry::Transform) -> i32:
+            render_status: i32 = WorldHierarchyRenderProbe::render(
+                previous, sample, gameplay)
+            return 75 if render_status != 0
+            body_pose: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(
+                session, bindings, gameplay):
+                value: value
+                error failure: return 73
+            current_hierarchy_pose: Geometry::Transform =
+                WorldHierarchy::hierarchy_world(hierarchy, gameplay.id)
+            return 76 if ElisaMath::fabsf(body_pose.position.x - committed.position.x) > Tune::KINEMATIC_TARGET_TOLERANCE
+            return 77 if ElisaMath::fabsf(body_pose.position.y - committed.position.y) > Tune::KINEMATIC_TARGET_TOLERANCE
+            return 78 if current_hierarchy_pose.position.x != committed.position.x or current_hierarchy_pose.position.y != committed.position.y
+            0
 
     public:
         def run(session: mutable RuntimeServices::Session&,
@@ -262,6 +283,11 @@ module WorldPhysicsPoseProbe:
                 render_snapshot, 0)
             return 55 if ElisaMath::fabsf(rendered_pose.transform.position.x - expected_sample_x) > Tune::KINEMATIC_TARGET_TOLERANCE
             return 56 if WorldHierarchy::hierarchy_world(hierarchy, entity.id).position.x != hierarchy_kinematic_pose.position.x
+
+            live_pose_status: i32 = validate_live_hierarchy_pose(session,
+                &hierarchy, hierarchy_kinematic_bindings, entity,
+                prior_hierarchy_pose, rendered_pose.transform, hierarchy_kinematic_pose)
+            return live_pose_status if live_pose_status != 0
             return 57 if not WorldRendering::unbind(&render_bindings, entity, Tune::RENDER_ID)
             hierarchy_kinematic_cleanup: i32 = catch WorldPhysics::unbind(session,
                 &hierarchy_kinematic_bindings, entity):

@@ -229,6 +229,8 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         command.add_argument("--compiler", help="Elisa compiler (or ELISA_COMPILER_BIN)")
         command.add_argument("--runtime-object", help="Elisa runtime object (or ELISA_RUNTIME_OBJ)")
         command.add_argument("--cxx", help="native C++ compiler (or CXX)")
+        command.add_argument("--no-public-runtime", action="store_true",
+            help="compile only modules included by the entry source")
         command.add_argument("--native-test-probes", action="store_true",
             help="compile test-only native adapter fault-injection probes")
         command.add_argument("--optimize", action="store_true",
@@ -329,16 +331,15 @@ def resolve_project_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     return project, main_source, output
 
 
-def write_entry_wrapper(destination: Path, main_source: Path) -> None:
+def write_entry_wrapper(destination: Path, main_source: Path,
+    include_public_runtime: bool = True) -> None:
     runtime_bundle = ENGINE_ROOT / "src/runtime/public.elisa"
-    includes = (runtime_bundle, main_source)
+    includes = ((runtime_bundle, main_source) if include_public_runtime else (main_source,))
     for path in includes:
         if any(character in str(path) for character in ('"', "\n", "\r")):
             raise BuildConfigurationError(f"Elisa include path contains an unsupported quote or newline: {path}")
-    destination.write_text(
-        f'include "{runtime_bundle}"\ninclude "{main_source}"\n',
-        encoding="utf-8",
-    )
+    destination.write_text("".join(f'include "{path}"\n' for path in includes),
+        encoding="utf-8")
 
 
 def compile_archive(compiler: str, wrapper: Path, archive: Path) -> int:
@@ -438,7 +439,8 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
         wrapper = build_dir / "application_entry.elisa"
         archive = build_dir / "application_entry.a"
         staged_output = build_dir / "application"
-        write_entry_wrapper(wrapper, main_source)
+        write_entry_wrapper(wrapper, main_source,
+            include_public_runtime=not args.no_public_runtime)
         status = compile_archive(compiler, wrapper, archive)
         if status != 0:
             return status, None, None

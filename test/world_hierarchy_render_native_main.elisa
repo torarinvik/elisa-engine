@@ -1,0 +1,80 @@
+# Focused hierarchy interpolation to SDL3/Metal Wicked frame smoke.
+include "../src/runtime/world_rendering.elisa"
+include "../src/world/world.elisa"
+include "../src/world/hierarchy.elisa"
+include "../src/math/geometry.elisa"
+include "../src/assets/descriptor.elisa"
+include "./world_hierarchy_render_probe.elisa"
+
+@callconv(c)
+extern elisa_application_v1_initialize(title: cstr, width: i32,
+    height: i32, hidden: i32) -> i32
+@callconv(c)
+extern elisa_application_v1_shutdown() -> i32
+
+def render_visual() -> Assets::VisualAsset:
+    Assets::VisualAsset{
+        mesh: Assets::AssetId{high: 7, low: 1},
+        material: Assets::AssetId{high: 7, low: 2},
+        local_bounds: Geometry::Bounds3{
+            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+        },
+    }
+
+def main() -> i32:
+    return 1 if elisa_application_v1_initialize(
+        "Elisa Hierarchy Render Smoke", 320, 200, 1) != 0
+
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 2
+    gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+        value: value
+        error failure: return 3
+    previous: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 0.0, y: 4.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: Geometry::Vec3{x: 1.5, y: 1.0, z: 0.75},
+    }
+    world_status: i32 = catch World::world_set_transform(&world, gameplay, previous):
+        ok: 0
+        error failure: 1
+    return 4 if world_status != 0
+
+    hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+    return 5 if not WorldHierarchy::hierarchy_spawn(&hierarchy, gameplay.id, previous)
+    WorldHierarchy::hierarchy_update(&hierarchy)
+    target: Geometry::Transform = Geometry::Transform{
+        position: Geometry::Vec3{x: 4.0, y: 4.0, z: 0.0},
+        rotation: Geometry::quat_identity(),
+        scale: previous.scale,
+    }
+    return 6 if not WorldHierarchy::hierarchy_set_local(
+        &hierarchy, gameplay.id, target, false)
+    WorldHierarchy::hierarchy_update(&hierarchy)
+
+    bindings: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+    bind_status: i32 = catch WorldRendering::bind(&bindings, &world, gameplay,
+        301, render_visual(), Geometry::transform_identity()):
+        ok: 0
+        error failure: 1
+    return 7 if bind_status != 0
+    snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+    extract_status: i32 = catch WorldRendering::extract_hierarchy(&world,
+        &hierarchy, &bindings, 0.5, &snapshot):
+        ok: 0
+        error failure: 1
+    return 8 if extract_status != 0 or RenderSnapshot::snapshot_count(snapshot) != 1
+    entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(snapshot, 0)
+    return 9 if ElisaMath::fabsf(entry.transform.position.x - 2.0) > 0.01
+
+    render_status: i32 = WorldHierarchyRenderProbe::render(
+        previous, entry.transform, gameplay)
+    return 10 if render_status != 0
+    authoritative: Geometry::Transform = WorldHierarchy::hierarchy_world(
+        hierarchy, gameplay.id)
+    return 11 if authoritative.position.x != target.position.x
+    return 12 if not WorldRendering::unbind(&bindings, gameplay, 301)
+    return 13 if elisa_application_v1_shutdown() != 0
+    0

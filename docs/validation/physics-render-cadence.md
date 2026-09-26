@@ -51,6 +51,32 @@ then checks the half-alpha `WorldRendering` snapshot is between the old and
 new physics poses while the authoritative hierarchy remains at the new pose.
 The focused SDL3/Metal client built and ran successfully on macOS 27.
 
+`test/world_hierarchy_render_native_main.elisa` separately takes that kind of
+half-alpha hierarchy snapshot through `WorldRendering::extract_hierarchy` and
+submits it to a live Wicked instance. It checks that the committed hierarchy
+pose stays authoritative, that picking at the sampled pose resolves to the
+same gameplay entity, and that the object visibly moves between two backbuffer
+captures. The pipeline wait is followed by warm-up frames so the first image
+contains the object. On the validated macOS host, the 320x200 hidden window
+produces 640x400 backing-store PNGs; the smoke checks the two captures have
+matching dimensions, contain visible pixels, and differ by at least 128 pixels.
+Run only this client with:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_NATIVE_SMOKE_ONLY=world-hierarchy-render-smoke \
+python3 scripts/application_native_smoke.py
+```
+
+This focused client uses `elisa_build_run.py --no-public-runtime` because its
+entry file includes each needed module explicitly. The default project runner
+still compiles `src/runtime/public.elisa`. That full bundle currently reaches
+four unrelated Stage1 C-archive declines in capability/provider-report
+functions, so the session-clock version of the hierarchy-to-Wicked smoke is
+blocked until that compiler backend gap is fixed. The focused render smoke
+validates hierarchy extraction, live rendering, and picking independently of
+that full runtime bundle.
+
 The portable interpolation test also covers quaternion sign equivalence and
 shortest-path blending across the ±180° boundary. Physics poses may use either
 sign for the same quaternion, so the interpolation endpoint is sign-corrected
