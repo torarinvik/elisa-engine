@@ -23,3 +23,9 @@ probes also sample identical committed histories at both cadences. The adjacent
 real-Jolt body gate verifies kinematic target publication plus dynamic sleep and
 wake stability. Integrated native scene capture and competing-simulation
 rejection remain broader P04 gates.
+
+`Runtime::StepClock` can also be paused independently of the application host. While paused,
+advancing ignores wall time and leaves the tick and interpolation remainder untouched. Resume
+continues from that remainder without simulating the time spent in a menu. The public
+`RuntimeServices` session reports this state in `SimulationFrame` and exposes a checked pause
+setter; `test/clock.elisa` covers freeze and resume behavior.

@@ -341,4 +341,13 @@ module WorldPhysicsPoseProbe:
                 error failure: 3
             return 30 if hierarchy_stale_status != 1
 
+            # The stale-handle probes each consume one frame before sync finds
+            # the old generation. Reopen once to leave following tests at tick 0.
+            reset_session_closed: bool = RuntimeServices::shutdown(session)
+            return 30 if not reset_session_closed
+            reset_session_opened: RuntimeServices::OpenStatus = RuntimeServices::open(session,
+                config, requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, report)
+            return 31 if reset_session_opened != RuntimeServices::OpenStatus.FallbackRequired
+
             0

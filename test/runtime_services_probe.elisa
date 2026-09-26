@@ -388,6 +388,35 @@ module RuntimeServicesProbe:
             return second_status if second_status != 0
             0
 
+        def check_simulation_pause(session: mutable RuntimeServices::Session&) -> i32:
+            before_pause: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
+                session, 0):
+                value: value
+                error failure: return 86
+            pause_set: bool = catch RuntimeServices::set_simulation_paused(session, true):
+                ok: true
+                RuntimeServices::RuntimeServicesError.SessionStopped: false
+                error failure: false
+            return 87 if not pause_set or not RuntimeServices::simulation_paused(session)
+            paused_frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
+                session, Runtime::fixed_step_micros() * 100):
+                value: value
+                error failure: return 88
+            return 89 if paused_frame.steps != 0 or paused_frame.tick_count != before_pause.tick_count
+            return 90 if paused_frame.interpolation != before_pause.interpolation or not paused_frame.paused
+            resumed_set: bool = catch RuntimeServices::set_simulation_paused(session, false):
+                ok: true
+                RuntimeServices::RuntimeServicesError.SessionStopped: false
+                error failure: false
+            return 91 if not resumed_set or RuntimeServices::simulation_paused(session)
+            resumed_frame: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
+                session, 1):
+                value: value
+                error failure: return 92
+            return 93 if resumed_frame.steps != 0 or resumed_frame.tick_count != before_pause.tick_count
+            return 94 if resumed_frame.paused or resumed_frame.interpolation <= paused_frame.interpolation
+            0
+
         def world_scheduler_probe(session: mutable RuntimeServices::Session&) -> i32:
             physics_world: mutable World::World = catch World::World():
                 value: value
@@ -465,7 +494,10 @@ module RuntimeServicesProbe:
             return 118 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
             motion_status: i32 = RuntimeServicesMotionProbe::run(&session)
             return motion_status if motion_status != 0
-            world_pose_status: i32 = WorldPhysicsPoseProbe::run(&session)
+            pause_status: i32 = check_simulation_pause(&session)
+            return pause_status if pause_status != 0
+            world_pose_status: i32 = WorldPhysicsPoseProbe::run(&session, config(),
+                &requirements, &report)
             return world_pose_status if world_pose_status != 0
             occupied_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             occupied: RuntimeServices::OpenStatus = RuntimeServices::open(&session,

@@ -19,9 +19,10 @@ module Runtime:
         struct StepClock:
             accumulated_micros: mutable i64
             tick_count: mutable i64
+            paused: mutable bool
 
         def StepClock() -> StepClock:
-            StepClock{accumulated_micros: 0, tick_count: 0}
+            StepClock{accumulated_micros: 0, tick_count: 0, paused: false}
 
         def fixed_step_micros() -> i64:
             Timing::STEP_MICROS
@@ -32,9 +33,18 @@ module Runtime:
         def max_catch_up_steps() -> usize:
             Timing::MAX_STEPS
 
+        def set_paused(clock: mutable StepClock&, paused: bool) -> void:
+            clock.paused <- paused
+
+        def is_paused(clock: StepClock&) -> bool:
+            clock.paused
+
         def advance(clock: mutable StepClock&, elapsed_micros: i64) -> usize error[ClockError]:
             raise ClockError.NegativeElapsed if elapsed_micros < 0
             raise ClockError.InvalidState if clock.tick_count < 0 or clock.accumulated_micros < 0 or clock.accumulated_micros >= Timing::STEP_MICROS
+            # Freeze the interpolation remainder and ignore wall time while paused so resuming
+            # does not replay the time spent in a menu as a simulation hitch.
+            return 0 if clock.paused
             candidate_accumulated: i64 =
                 capped_elapsed: i64 = Timing::MAX_ACCUMULATED if elapsed_micros >= Timing::MAX_ACCUMULATED else elapsed_micros
                 Timing::MAX_ACCUMULATED if clock.accumulated_micros >= Timing::MAX_ACCUMULATED - capped_elapsed else clock.accumulated_micros + capped_elapsed

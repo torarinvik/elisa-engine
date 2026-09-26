@@ -40,6 +40,7 @@ module RuntimeServices:
             steps: usize
             tick_count: i64
             interpolation: f32
+            paused: bool
 
         # Provider and host ownership stay inside this affine public value.
         affine struct Session:
@@ -267,7 +268,17 @@ module RuntimeServices:
                 steps: steps,
                 tick_count: session.simulation_clock.tick_count,
                 interpolation: Runtime::interpolation_fraction(session.simulation_clock),
+                paused: Runtime::is_paused(session.simulation_clock),
             }
+
+        # Pause gameplay simulation while leaving the application host free to present menus
+        # or overlays. Wall time passed to advance_simulation is ignored until resume.
+        def set_simulation_paused(session: mutable Session&, paused: bool) -> void error[RuntimeServicesError]:
+            raise RuntimeServicesError.SessionStopped if not session.application_live
+            Runtime::set_paused(&session.simulation_clock, paused)
+
+        def simulation_paused(session: Session&) -> bool:
+            Runtime::is_paused(session.simulation_clock)
 
         # Route game audio operations through the owner that selected and
         # activated the startup provider. Handles remain opaque values;

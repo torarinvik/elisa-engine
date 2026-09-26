@@ -49,7 +49,7 @@ module HeadlessGame:
             PlayerState{player: player, transform: transform}
 
         def advance_player(player: mutable PlayerState&, clock: mutable Runtime::StepClock&, recorder: mutable Backend::SceneRecorder&, action: Input::Action, elapsed_micros: i64) -> usize error[GameError]:
-            preview: mutable Runtime::StepClock = Runtime::StepClock{accumulated_micros: clock.accumulated_micros, tick_count: clock.tick_count}
+            preview: mutable Runtime::StepClock = Runtime::StepClock{accumulated_micros: clock.accumulated_micros, tick_count: clock.tick_count, paused: clock.paused}
             steps: usize = catch Runtime::advance(&preview, elapsed_micros):
                 value: value
                 error failure: Runtime::max_catch_up_steps() + 1
