@@ -87,9 +87,9 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("Entity identity runtime tests passed.")
-    world_test_binary: sview = str(root.joinpath("build/world-test"))
+    world_test_binary: sview = str(root.joinpath("build/world-test")) # -O0 keeps this large fixture inside the 120-second process limit.
     _ =
-        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", world_test_binary, str(root.joinpath("test/world.elisa"))])
+        status: i64 = run_visible(compiler, ["-emit", "exe", "-O0", "-o", world_test_binary, str(root.joinpath("test/world.elisa"))])
         if status != 0:
             return status
         status

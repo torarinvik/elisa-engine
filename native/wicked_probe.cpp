@@ -22,6 +22,7 @@
 #include <vector>
 #include "live_game_probe.h"
 #include "probe_support.h"
+#include "frame_completion_probe.h"
 #include "asset_import.h"
 #include "package_load.h"
 #include "library_probes.h"
@@ -536,10 +537,8 @@ int main(int argc, char** argv) {
     if (!check(physics_start_y - physics_end_y >= 0.2f, "physics box fell under gravity")) {
         return 1;
     }
-    wi::graphics::GetDevice()->WaitForGPU();
-    if (!check(render_path.GetRenderResult3D().IsValid(), "render target")) {
-        return 1;
-    }
+    if (!check(probe::frame_completion_is_sound(wi::graphics::GetDevice()), "nonblocking frame completion")) return 1;
+    if (!check(render_path.GetRenderResult3D().IsValid(), "render target")) return 1;
     std::fprintf(stdout, "scene create/update/render passed\n");
     const char* screenshot_path = argc >= 4 ? argv[3] : "wicked-frame.png";
     print_scene_diagnostics(scene, render_path, mesh, camera_component, object);

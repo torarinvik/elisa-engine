@@ -1,0 +1,533 @@
+{
+  "bundled_libraries": {
+    "libSDL3.0.dylib": {
+      "notices": [
+        "SDL3"
+      ]
+    },
+    "libfreetype.6.dylib": {
+      "notices": [
+        "freetype-overview",
+        "freetype-FTL",
+        "freetype-GPLv2",
+        "freetype-bdf",
+        "freetype-pcf",
+        "freetype-hash",
+        "freetype-zlib",
+        "freetype-harfbuzz-ft",
+        "freetype-harfbuzz-decls",
+        "freetype-harfbuzz-types",
+        "freetype-harfbuzz-scripts"
+      ]
+    },
+    "libglib-2.0.0.dylib": {
+      "notices": [
+        "glib"
+      ]
+    },
+    "libgraphite2.3.dylib": {
+      "notices": [
+        "graphite2",
+        "graphite2-copyright"
+      ]
+    },
+    "libharfbuzz.0.dylib": {
+      "notices": [
+        "harfbuzz"
+      ]
+    },
+    "libintl.8.dylib": {
+      "notices": [
+        "libintl-overview",
+        "libintl-LGPL",
+        "libintl-copyright"
+      ]
+    },
+    "libpcre2-8.0.dylib": {
+      "notices": [
+        "pcre2"
+      ]
+    },
+    "libpng16.16.dylib": {
+      "notices": [
+        "libpng"
+      ]
+    },
+    "libzstd.1.dylib": {
+      "notices": [
+        "zstd",
+        "zstd-gpl-alternative"
+      ]
+    }
+  },
+  "complete": false,
+  "remaining": [
+    "Additional embedded subcomponent notices and copyright blocks beyond the collected utility headers",
+    "Wicked vendored dependency closure",
+    "Completeness review of library-specific copyright notices and distribution obligations"
+  ],
+  "schema": 1,
+  "sources": [
+    {
+      "name": "WickedEngine",
+      "path": "LICENSE.txt",
+      "root": "wicked",
+      "sha256": "5c48360ddec789b6333413d2e52a1f3b45174dfd9f8d8575c78dc64a6d877f9f"
+    },
+    {
+      "name": "SDL3",
+      "path": "opt/sdl3/LICENSE.txt",
+      "root": "brew",
+      "sha256": "1c040b8271b37e5076359f8fd54240e371114112924d2df81ef87c7d6a1dfdfd"
+    },
+    {
+      "name": "ufbx",
+      "path": "dependencies/ufbx/LICENSE",
+      "root": "engine",
+      "sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391"
+    },
+    {
+      "name": "basisu",
+      "path": "dependencies/basisu/LICENSE",
+      "root": "engine",
+      "sha256": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c"
+    },
+    {
+      "name": "ozz-animation",
+      "path": "dependencies/ozz/LICENSE.md",
+      "root": "engine",
+      "sha256": "3ddd93e9888fe70b9d61675ceb1c4278a579dc67171678f015de114efe815852"
+    },
+    {
+      "name": "recastnavigation",
+      "path": "dependencies/recast/License.txt",
+      "root": "engine",
+      "sha256": "ffad87821cce7cfd3be00b63ffadd01b04e83a4c6a0bcc68f06362ffd42d705e"
+    },
+    {
+      "name": "GameNetworkingSockets",
+      "path": "dependencies/gns/LICENSE",
+      "root": "engine",
+      "sha256": "6fedd796d51d7f996e0b3dc7c1c9f6a67603bec7a2cfb9f418e0c6607a1ca647"
+    },
+    {
+      "name": "tracy",
+      "path": "dependencies/tracy/LICENSE",
+      "root": "engine",
+      "sha256": "27ab6b51e57f7e263a6e953d9c8984cd26e69d2f7606bde81e4b3048acf30732"
+    },
+    {
+      "name": "harfbuzz",
+      "path": "opt/harfbuzz/COPYING",
+      "root": "brew",
+      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+    },
+    {
+      "name": "zstd",
+      "path": "opt/zstd/LICENSE",
+      "root": "brew",
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+    },
+    {
+      "name": "zstd-gpl-alternative",
+      "path": "opt/zstd/COPYING",
+      "root": "brew",
+      "sha256": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505"
+    },
+    {
+      "excerpt": {
+        "bytes": 1164,
+        "offset": 204590,
+        "sha256": "657c0513f9a2f17033bac1c552a2a21d64b8e412f3bdf9fc0c94d95e15e17257"
+      },
+      "name": "cgltf",
+      "path": "dependencies/cgltf/cgltf.h",
+      "root": "engine",
+      "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9"
+    },
+    {
+      "excerpt": {
+        "bytes": 1137,
+        "offset": 103665,
+        "sha256": "29a5ba6b6988bc9d151d7b7af15276562562e4860de81a33314a93e0eec4456f"
+      },
+      "name": "meshoptimizer",
+      "path": "dependencies/meshoptimizer/meshoptimizer.h",
+      "root": "engine",
+      "sha256": "21a72040a75bacf6ddefb7e74f1cf566af1e68ea5e4dc0db598278f4681e0b87"
+    },
+    {
+      "excerpt": {
+        "bytes": 932,
+        "offset": 62,
+        "sha256": "cc78dcb9901d1f0cb893e099ad183fe8c4305d53e15bdce08e2cf5f57fb1e359"
+      },
+      "name": "MikkTSpace",
+      "path": "dependencies/mikktspace/mikktspace.h",
+      "root": "engine",
+      "sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0"
+    },
+    {
+      "excerpt": {
+        "bytes": 2604,
+        "offset": 4023176,
+        "sha256": "c6aba4ade0407b7cc952ef1253bcac50991bb6eed7b5b8a83c9f5b9d5627d8d6"
+      },
+      "name": "miniaudio",
+      "path": "dependencies/miniaudio/miniaudio.h",
+      "root": "engine",
+      "sha256": "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410"
+    },
+    {
+      "excerpt": {
+        "bytes": 1258,
+        "offset": 0,
+        "sha256": "3647c97f08c8a52ba8a5bef00d929bfdc328fc7476dd30288a5c460fc200b25e"
+      },
+      "name": "xatlas",
+      "path": "dependencies/xatlas/xatlas.h",
+      "root": "engine",
+      "sha256": "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd"
+    },
+    {
+      "excerpt": {
+        "bytes": 1054,
+        "offset": 0,
+        "sha256": "18325126e220d6898c4a8d1e3896a7b8c0e10e15b9d08bc6630f403bf4981215"
+      },
+      "name": "FAudio",
+      "path": "WickedEngine/Utility/FAudio/include/FAudio.h",
+      "root": "wicked",
+      "sha256": "932d8f7fa0b5eef1953ab6e5d92ad1d7599d32999eb89fa365ae18401675df70"
+    },
+    {
+      "excerpt": {
+        "bytes": 1264,
+        "offset": 14677,
+        "sha256": "b4c1d8aa86e7b7329d3aeb3e7674f6248973f35040a0d6906991927c7145b73e"
+      },
+      "name": "Lua",
+      "path": "WickedEngine/LUA/lua.h",
+      "root": "wicked",
+      "sha256": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930"
+    },
+    {
+      "name": "glib",
+      "path": "opt/glib/LGPL-2.1-or-later.txt",
+      "root": "brew",
+      "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb"
+    },
+    {
+      "name": "graphite2",
+      "path": "opt/graphite2/LICENSE",
+      "root": "brew",
+      "sha256": "cab46cd45adbfea4b1d0f14b033c70062c73074fa0b56532c2f351576ddf455e"
+    },
+    {
+      "name": "graphite2-copyright",
+      "path": "opt/graphite2/COPYING",
+      "root": "brew",
+      "sha256": "2c272829ff23f182c8bf7ea12fedea69b0ae148663123ed5240c117cb129c9c1"
+    },
+    {
+      "name": "libpng",
+      "path": "opt/libpng/LICENSE",
+      "root": "brew",
+      "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526"
+    },
+    {
+      "name": "pcre2",
+      "path": "opt/pcre2/LICENCE.md",
+      "root": "brew",
+      "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811"
+    },
+    {
+      "name": "freetype-overview",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/LICENSE.TXT",
+        "member_sha256": "bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-overview.txt",
+      "root": "engine",
+      "sha256": "bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b"
+    },
+    {
+      "name": "freetype-FTL",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/docs/FTL.TXT",
+        "member_sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-FTL.txt",
+      "root": "engine",
+      "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+    },
+    {
+      "name": "freetype-GPLv2",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/docs/GPLv2.TXT",
+        "member_sha256": "c4120c6752c910c299e3bd9cb3a46ff262c268303ca2069b61f92f10a5656c18",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-GPLv2.txt",
+      "root": "engine",
+      "sha256": "c4120c6752c910c299e3bd9cb3a46ff262c268303ca2069b61f92f10a5656c18"
+    },
+    {
+      "name": "freetype-bdf",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/src/bdf/README",
+        "member_sha256": "7984455e7e5a9faba3797c8bf095fbe10cc846316b7320aff8c58402e22b82fe",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-bdf.txt",
+      "root": "engine",
+      "sha256": "7984455e7e5a9faba3797c8bf095fbe10cc846316b7320aff8c58402e22b82fe"
+    },
+    {
+      "name": "freetype-pcf",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "member": "freetype-2.14.3/src/pcf/README",
+        "member_sha256": "18d9782898d9eac04476e2f744678137b2a889689ed3e923e052fc396a86f86b",
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-pcf.txt",
+      "root": "engine",
+      "sha256": "18d9782898d9eac04476e2f744678137b2a889689ed3e923e052fc396a86f86b"
+    },
+    {
+      "name": "freetype-hash",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1231,
+        "member": "freetype-2.14.3/src/base/fthash.c",
+        "member_sha256": "693e5a54b3ce30140975a94a3369dbe706eb1f280c69e80da426d39cc45b94ef",
+        "offset": 135,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-hash.txt",
+      "root": "engine",
+      "sha256": "fa04727dc6e4a77fd2e7cf3980ac6a3690103a1712679b28664c15ec491bcbc3"
+    },
+    {
+      "name": "freetype-zlib",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1327,
+        "member": "freetype-2.14.3/src/gzip/zlib.h",
+        "member_sha256": "c86a25c27f74cb97b8fa07b175f479f063d5064ace9995b4684063643c81cf1b",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-zlib.txt",
+      "root": "engine",
+      "sha256": "fbab901f75feb30106921191b00a52ed14fb439e49ad0e42bc7b329438c34d24"
+    },
+    {
+      "name": "freetype-harfbuzz-ft",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1147,
+        "member": "freetype-2.14.3/src/autofit/ft-hb-ft.c",
+        "member_sha256": "84dd5ddff1cec222e1755b4962faf45836238dfa3a46854dabd969eb4e50f8be",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-ft.txt",
+      "root": "engine",
+      "sha256": "02538fb019fe962c58be4863a2fc6d21e5b072f4681ca3ea96bf813f31487e43"
+    },
+    {
+      "name": "freetype-harfbuzz-decls",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1147,
+        "member": "freetype-2.14.3/src/autofit/ft-hb-decls.h",
+        "member_sha256": "ed05eec3b5657f98a0c106fa4aa2e5a4bc7f0864e5d34bd5989eee6d8b718bcf",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-decls.txt",
+      "root": "engine",
+      "sha256": "02538fb019fe962c58be4863a2fc6d21e5b072f4681ca3ea96bf813f31487e43"
+    },
+    {
+      "name": "freetype-harfbuzz-types",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1147,
+        "member": "freetype-2.14.3/src/autofit/ft-hb-types.h",
+        "member_sha256": "f106bf7cc41f52cd70907266a74a293c57bc5f71285b01c36bf198ad8b1c6234",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-types.txt",
+      "root": "engine",
+      "sha256": "02538fb019fe962c58be4863a2fc6d21e5b072f4681ca3ea96bf813f31487e43"
+    },
+    {
+      "name": "freetype-harfbuzz-scripts",
+      "origin": {
+        "archive_sha256": "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f",
+        "bytes": 1196,
+        "member": "freetype-2.14.3/src/autofit/hb-script-list.h",
+        "member_sha256": "0627d9f6a59a8b09e562e8aeaf414300899308725350beeb50b62b8657399576",
+        "offset": 0,
+        "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz"
+      },
+      "path": "native/notices/upstream/freetype-harfbuzz-scripts.txt",
+      "root": "engine",
+      "sha256": "e5a971e2d0bc82700ab3c71aa42b25343fbfedefa7409aee43f46fb8edb24afe"
+    },
+    {
+      "name": "libintl-overview",
+      "origin": {
+        "archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+        "member": "gettext-1.0/gettext-runtime/COPYING",
+        "member_sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0",
+        "url": "https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.gz"
+      },
+      "path": "native/notices/upstream/libintl-overview.txt",
+      "root": "engine",
+      "sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0"
+    },
+    {
+      "name": "libintl-LGPL",
+      "origin": {
+        "archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+        "member": "gettext-1.0/gettext-runtime/intl/COPYING.LIB",
+        "member_sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+        "url": "https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.gz"
+      },
+      "path": "native/notices/upstream/libintl-LGPL.txt",
+      "root": "engine",
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+    },
+    {
+      "name": "libintl-copyright",
+      "origin": {
+        "archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+        "bytes": 779,
+        "member": "gettext-1.0/gettext-runtime/intl/gettextP.h",
+        "member_sha256": "5cdf6c864943ef72114c47fc1eedbe51300fd1979ffe1998ef0ed5636fa77d1b",
+        "offset": 0,
+        "url": "https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.gz"
+      },
+      "path": "native/notices/upstream/libintl-copyright.txt",
+      "root": "engine",
+      "sha256": "c40793eaf9fc98ca98ae85678e5b5cc12e6cefa93a6b5b0750dfd247be062a5d"
+    },
+    {
+      "excerpt": {
+        "bytes": 1197,
+        "offset": 195606,
+        "sha256": "5b854ad801c1a9c6ca3e284423c7d46e36b413ade27d2368bb091a12fa544c5d"
+      },
+      "name": "cgltf-jsmn",
+      "path": "dependencies/cgltf/cgltf.h",
+      "root": "engine",
+      "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9"
+    },
+    {
+      "excerpt": {
+        "bytes": 912,
+        "offset": 0,
+        "sha256": "05507299c7a9b4d73c41ecd3e15d961c0dd55642df88f3439978ea614a9793a7"
+      },
+      "name": "wicked-lodepng",
+      "path": "WickedEngine/Utility/lodepng.h",
+      "root": "wicked",
+      "sha256": "1dc9633d9954444d4d588ba710e0002b9d7d341990122a4b5b3e6de6bb322e66"
+    },
+    {
+      "excerpt": {
+        "bytes": 1136,
+        "offset": 54728,
+        "sha256": "2745c38c1c863556e3e5ccee43fb67283467a8951a8f8f4106dc5220c4002ab9"
+      },
+      "name": "wicked-pugixml",
+      "path": "WickedEngine/Utility/pugixml.hpp",
+      "root": "wicked",
+      "sha256": "8c1b9d5092c86a8059459d4204df34c40f6255510376a7b049d29165e9184681"
+    },
+    {
+      "excerpt": {
+        "bytes": 2673,
+        "offset": 280336,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      },
+      "name": "wicked-stb_image",
+      "path": "WickedEngine/Utility/stb_image.h",
+      "root": "wicked",
+      "sha256": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3"
+    },
+    {
+      "excerpt": {
+        "bytes": 2673,
+        "offset": 68547,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      },
+      "name": "wicked-stb_image_write",
+      "path": "WickedEngine/Utility/stb_image_write.h",
+      "root": "wicked",
+      "sha256": "cbd5f0ad7a9cf4468affb36354a1d2338034f2c12473cf1a8e32053cb6914a05"
+    },
+    {
+      "excerpt": {
+        "bytes": 2673,
+        "offset": 17525,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      },
+      "name": "wicked-stb_rect_pack",
+      "path": "WickedEngine/Utility/stb_rect_pack.h",
+      "root": "wicked",
+      "sha256": "6388366a30de57c1b4c29b6eed4ed1c7d758fc1443d2dd95cfce943370bb3aa1"
+    },
+    {
+      "excerpt": {
+        "bytes": 2673,
+        "offset": 196518,
+        "sha256": "10ed5a55912965c9846c947486fc42a537c6e7f92dbabd68bf26963da320e46d"
+      },
+      "name": "wicked-stb_truetype",
+      "path": "WickedEngine/Utility/stb_truetype.h",
+      "root": "wicked",
+      "sha256": "ecd30b05e0dd4fea3a13c26810dd9e1992dc379049482c393d5a19e6b5090aab"
+    },
+    {
+      "excerpt": {
+        "bytes": 1836,
+        "offset": 0,
+        "sha256": "da78261f3ea5d1669fa9a085eb9ba3216ad860565c92e1e94aedb61928a18b77"
+      },
+      "name": "wicked-robin-hood",
+      "path": "WickedEngine/Utility/robin_hood.h",
+      "root": "wicked",
+      "sha256": "080352d3553b6f8724c4107a86a7ced96ee0bcff8d2e2de345667080229f4d8d"
+    },
+    {
+      "name": "metal-cpp",
+      "path": "WickedEngine/Utility/metal/LICENSE.txt",
+      "root": "wicked",
+      "sha256": "f4e92c7fe2aa066e294c0da9d08683dc9fb741ee6e6debbfad99a0c96e07c1f2"
+    },
+    {
+      "name": "metal-irconverter-runtime",
+      "path": "WickedEngine/Utility/metal/metal_irconverter_runtime/LICENSE.txt",
+      "root": "wicked",
+      "sha256": "60911e90d17eb7373139890425e6d0f93f43bfe5c81b91eed71841c175436e94"
+    },
+    {
+      "name": "metal-irconverter",
+      "path": "WickedEngine/Utility/metal/metal_irconverter/LICENSE.txt",
+      "root": "wicked",
+      "sha256": "60911e90d17eb7373139890425e6d0f93f43bfe5c81b91eed71841c175436e94"
+    }
+  ]
+}

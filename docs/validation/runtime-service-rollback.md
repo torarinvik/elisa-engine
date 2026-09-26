@@ -164,11 +164,14 @@ Validation of the World-to-Physics bridge on 2026-09-21:
 
 Validation on 2026-09-25:
 
-- `test/world_physics_pose_native_main.elisa` passes on SDL3/Metal. The focused
-  application probe checks that a rotated World entity
+- The focused SDL3/Metal application probe checks that a rotated World entity
   initializes its direct and hierarchy-bound physics bodies with the same pose,
   then compares synchronized entity rotations with the live body poses. Entity
   scale remains unchanged in the flat World path.
+- The complete twelve-fixture `scripts/application_native_smoke.py` suite passes
+  against the pinned isolated Wicked checkout with this probe enabled. The 30 Hz
+  and 120 Hz midpoint and final physics render captures remain pixel-identical
+  at 640x480.
 
 ## Generic executor dispatch with affine runtime contexts
 

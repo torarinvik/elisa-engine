@@ -11,6 +11,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import package_macos_app as packager
@@ -39,6 +40,7 @@ class PackageMacosAppTests(unittest.TestCase):
         touch(self.project / "assets" / ".DS_Store")
         touch(self.project / "shaders" / "metal" / "basic.cso")
         touch(self.project / "shaders" / "metal" / "basic.wishadermeta")
+        touch(self.project / "shaders" / packager.SHADER_GENERATED_INVENTORY_NAME)
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -56,7 +58,8 @@ class PackageMacosAppTests(unittest.TestCase):
         return packager.package_app(self.project, self.project / "build" / "game",
             self.output, "Game", "org.elisa.game", "1.2.3", None,
             packager.manifest_resources(manifest, self.project),
-            packager.manifest_window(manifest, self.project))
+            packager.manifest_window(manifest, self.project),
+            notice_paths=packager.manifest_notices(manifest, self.project))
 
     def staged(self, app: Path) -> set[str]:
         resources = app / "Contents" / "Resources"
@@ -102,6 +105,85 @@ class PackageMacosAppTests(unittest.TestCase):
             capture_output=True, text=True, check=True, cwd=self.tempdir.name,
             env={**os.environ, "ELISA_PROJECT_WIDTH": "640"})
         self.assertEqual(override.stdout.splitlines()[-1], "Game 640 820")
+
+    def test_external_shader_library_and_asset_local_cooks(self) -> None:
+        shutil.rmtree(self.project / "build/cooked")
+        external = Path(self.tempdir.name) / "prepared shaders"
+        touch(external / "metal/selected.cso", b"selected")
+        app = packager.package_app(self.project, self.project / "build/game",
+            self.output, "Game", "org.elisa.game", "1.0", shader_root=external)
+        resources = app / "Contents/Resources"
+        self.assertFalse((resources / "build/cooked").exists())
+        self.assertEqual((resources / "shaders/metal/selected.cso").read_bytes(), b"selected")
+        self.assertFalse((resources / "shaders/metal/basic.cso").exists())
+
+    def test_output_cannot_erase_external_shader_input(self) -> None:
+        shaders = self.output / "prepared"
+        touch(shaders / "metal/keep.cso", b"keep")
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game", self.output,
+                "Game", "org.elisa.game", "1.0", shader_root=shaders)
+        self.assertEqual((shaders / "metal/keep.cso").read_bytes(), b"keep")
+
+    def test_notices_are_staged_with_original_bytes(self) -> None:
+        touch(self.project / "third_party/SDL/LICENSE.txt", b"SDL notice\n")
+        touch(self.project / "third_party/Jolt/LICENSE.txt", b"Jolt notice\n")
+        app = self.package(self.write_manifest({"package": {"notices": [
+            "third_party/SDL/LICENSE.txt", "third_party/Jolt/LICENSE.txt"]}}))
+        root = app / "Contents/Resources/Notices/third_party"
+        self.assertEqual((root / "SDL/LICENSE.txt").read_bytes(), b"SDL notice\n")
+        self.assertEqual((root / "Jolt/LICENSE.txt").read_bytes(), b"Jolt notice\n")
+
+    def test_missing_or_escaping_notices_are_rejected(self) -> None:
+        for entry in ("missing.txt", "../outside.txt", "/absolute.txt"):
+            with self.subTest(entry=entry), self.assertRaises(packager.PackageError):
+                packager.manifest_notices({"package": {"notices": [entry]}}, self.project)
+
+    def test_duplicate_and_empty_notices_are_rejected(self) -> None:
+        touch(self.project / "notice.txt", b"notice")
+        touch(self.project / "empty.txt", b"")
+        for entries in (["notice.txt", "notice.txt"], ["empty.txt"]):
+            with self.subTest(entries=entries), self.assertRaises(packager.PackageError):
+                packager.manifest_notices({"package": {"notices": entries}}, self.project)
+
+    def test_failed_rebuild_keeps_previous_app(self) -> None:
+        manifest = self.write_manifest({})
+        app = self.package(manifest)
+        original = (app / "Contents/Info.plist").read_bytes()
+        (self.project / "shaders/metal/basic.cso").unlink()
+        with self.assertRaises(packager.PackageError):
+            self.package(manifest)
+        self.assertEqual((app / "Contents/Info.plist").read_bytes(), original)
+        self.assertTrue((app / "Contents/Resources/shaders/metal/basic.cso").exists())
+
+    def test_failed_publication_restores_previous_app(self) -> None:
+        manifest = self.write_manifest({})
+        app = self.package(manifest)
+        marker = app / "previous-version"
+        marker.write_bytes(b"previous")
+        replace = os.replace
+        def fail_stage(source, destination):
+            if Path(source).parent.name.startswith(".elisa-app-stage-"):
+                raise OSError("publication failure")
+            return replace(source, destination)
+        with mock.patch.object(packager.os, "replace", side_effect=fail_stage):
+            with self.assertRaises(OSError):
+                self.package(manifest)
+        self.assertEqual(marker.read_bytes(), b"previous")
+        self.assertEqual(list(app.parent.glob(".elisa-app-backup-*")), [])
+
+    def test_bundle_cannot_be_created_inside_resource_source(self) -> None:
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game",
+                self.project / "assets/Recursive.app", "Game", "org.elisa.game", "1.0")
+        self.assertFalse((self.project / "assets/Recursive.app").exists())
+
+    def test_missing_cooked_directory_cannot_become_output_parent(self) -> None:
+        shutil.rmtree(self.project / "build/cooked")
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game",
+                self.project / "build/cooked/Recursive.app", "Game", "org.elisa.game", "1.0")
+        self.assertFalse((self.project / "build/cooked").exists())
 
     def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
         manifest = packager.shader_manifest(self.project / "shaders")

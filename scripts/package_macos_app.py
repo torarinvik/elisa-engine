@@ -18,13 +18,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import plistlib
 import re
 import shlex
 import shutil
 import stat
 import subprocess
+import tempfile
 from pathlib import Path
+
+from macos_deployment_target import METAL_MINIMUM_MACOS, deployment_targets, format_version
 
 
 class PackageError(ValueError):
@@ -99,6 +103,7 @@ MAX_RESOURCE_ENTRIES = 256
 
 SHADER_METADATA_SUFFIX = ".wishadermeta"
 SHADER_MANIFEST_NAME = "elisa.shader-manifest.json"
+SHADER_GENERATED_INVENTORY_NAME = "elisa.metal-generated.json"
 SHADER_MANIFEST_SCHEMA = 2
 SHADER_BINARY_SUFFIXES = frozenset({".cso", ".spv"})
 SHADER_BACKENDS = frozenset({"hlsl6", "metal", "spirv"})
@@ -113,7 +118,8 @@ def ignore_shader_metadata(directory: str, names: list[str]) -> set[str]:
     # machine. Wicked treats a compiled shader without metadata as up to date,
     # which is exactly what a relocated bundle without the source tree needs.
     return ignore_litter(directory, names) | {
-        name for name in names if name.endswith(SHADER_METADATA_SUFFIX)}
+        name for name in names if name.endswith(SHADER_METADATA_SUFFIX)
+        or name == SHADER_GENERATED_INVENTORY_NAME}
 
 
 def shader_manifest(shader_root: Path) -> dict[str, object]:
@@ -177,6 +183,29 @@ def manifest_resources(manifest: dict[str, object], project: Path) -> list[Path]
         if relative not in resources:
             resources.append(relative)
     return resources
+
+
+def manifest_notices(manifest: dict[str, object], project: Path) -> list[Path]:
+    package = manifest.get("package", {})
+    if not isinstance(package, dict):
+        raise PackageError("manifest 'package' must be an object")
+    entries = package.get("notices", [])
+    if not isinstance(entries, list) or len(entries) > MAX_RESOURCE_ENTRIES:
+        raise PackageError("package.notices must be a bounded list of project-relative files")
+    paths = []
+    for entry in entries:
+        if not isinstance(entry, str) or not entry or "\0" in entry:
+            raise PackageError("package.notices entries must be non-empty file paths")
+        relative = Path(entry)
+        if relative.is_absolute() or ".." in relative.parts or relative in paths:
+            raise PackageError(f"invalid or duplicate notice path: {entry}")
+        source = project / relative
+        resolved = source.resolve()
+        if (not resolved.is_relative_to(project.resolve()) or source.is_symlink()
+                or not source.is_file() or source.stat().st_size == 0):
+            raise PackageError(f"notice must be a nonempty file inside the project: {entry}")
+        paths.append(relative)
+    return paths
 
 
 def stage_resource(project: Path, resources: Path, relative: Path) -> None:
@@ -302,14 +331,65 @@ exec \"$resources/{binary_name}\" \"$@\"
 def package_app(project: Path, executable: Path, output: Path, name: str,
     bundle_id: str, version: str, icon: Path | None = None,
     resource_paths: list[Path] | None = None,
-    window: tuple[str, int, int] | None = None) -> Path:
+    window: tuple[str, int, int] | None = None,
+    shader_root: Path | None = None,
+    notice_paths: list[Path] | None = None) -> Path:
+    project = project.expanduser().resolve()
+    output = output.expanduser().resolve()
+    app = output if output.suffix == ".app" else output.with_suffix(".app")
+    if app == project or app in project.parents:
+        raise PackageError("bundle output must not replace or contain the source project")
+    inputs = [executable, shader_root or project / "shaders", project / "build/cooked"]
+    inputs.extend(project / path for path in (resource_paths if resource_paths is not None else [Path("assets")]))
+    inputs.extend(project / path for path in notice_paths or [])
+    if icon is not None:
+        inputs.append(icon)
+    for source in inputs:
+        source = source.expanduser().resolve()
+        if (app == source or app in source.parents or
+                source in app.parents):
+            raise PackageError(f"bundle output overlaps a required packaging input: {source}")
+    app.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".elisa-app-stage-", dir=app.parent) as folder:
+        staged = _assemble_app(project, executable, Path(folder) / app.name, name,
+            bundle_id, version, icon, resource_paths, window, shader_root, notice_paths)
+        backup = Path(tempfile.mkdtemp(prefix=".elisa-app-backup-", dir=app.parent))
+        backup.rmdir()
+        previous = app.exists()
+        if previous:
+            os.replace(app, backup)
+        try:
+            os.replace(staged, app)
+        except OSError:
+            if previous:
+                try:
+                    os.replace(backup, app)
+                except OSError as error:
+                    raise PackageError(f"app publication and rollback failed; previous bundle retained at {backup}") from error
+            raise
+        if previous:
+            shutil.rmtree(backup)
+    return app
+
+
+def _assemble_app(project: Path, executable: Path, output: Path, name: str,
+    bundle_id: str, version: str, icon: Path | None = None,
+    resource_paths: list[Path] | None = None,
+    window: tuple[str, int, int] | None = None,
+    shader_root: Path | None = None,
+    notice_paths: list[Path] | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
     if not project.is_dir():
         raise PackageError(f"project directory does not exist: {project}")
+    notices = manifest_notices({"package": {"notices": [str(path) for path in notice_paths or []]}}, project)
     if not executable.is_file():
         raise PackageError(f"built executable does not exist: {executable}")
+    if shader_root is not None:
+        shader_root = shader_root.expanduser().resolve()
+        if not shader_root.is_dir():
+            raise PackageError(f"prepared shader directory does not exist: {shader_root}")
     if icon is not None:
         icon = icon.expanduser().resolve()
         if not icon.is_file() or icon.suffix.lower() != ".icns":
@@ -320,6 +400,9 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     app = output if output.suffix == ".app" else output.with_suffix(".app")
     if app == project or app in project.parents:
         raise PackageError("bundle output must not replace or contain the source project")
+    for source in (executable, shader_root, icon, *(project / relative for relative in notices)):
+        if source is not None and (source == app or app in source.parents):
+            raise PackageError(f"bundle output contains a required packaging input: {source}")
     if app.exists():
         shutil.rmtree(app)
 
@@ -344,13 +427,34 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     else:
         for relative in resource_paths:
             stage_resource(project, resources, relative)
-    copy_directory(project / "build" / "cooked", resources / "build" / "cooked")
-    shaders = project / "shaders"
+    cooked = project / "build" / "cooked"
+    if cooked.exists():
+        copy_directory(cooked, resources / "build" / "cooked")
+    shaders = shader_root if shader_root is not None else project / "shaders"
     if shaders.is_dir():
         copy_directory(shaders, resources / "shaders", ignore_shader_metadata)
-        manifest = shader_manifest(shaders)
+        manifest = shader_manifest(resources / "shaders")
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    for relative in notices:
+        destination = resources / "Notices" / relative
+        if destination.exists():
+            raise PackageError(f"notice destination conflicts with a staged resource: {relative}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(project / relative, destination)
+
+    minimum_os = METAL_MINIMUM_MACOS
+    native_files = [resources / binary_name]
+    frameworks = contents / "Frameworks"
+    if frameworks.exists():
+        native_files.extend(path for path in frameworks.rglob("*") if path.is_file())
+    for native_file in native_files:
+        if is_mach_o(native_file):
+            try:
+                minimum_os = max(minimum_os, *deployment_targets(run_tool("otool", "-l", str(native_file))))
+            except ValueError as error:
+                raise PackageError(f"cannot determine deployment target for {native_file.name}: {error}") from error
 
     info = {
         "CFBundleDevelopmentRegion": "en",
@@ -362,7 +466,7 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,
-        "LSMinimumSystemVersion": "13.0",
+        "LSMinimumSystemVersion": format_version(minimum_os),
         "NSHighResolutionCapable": True,
     }
     with (contents / "Info.plist").open("wb") as stream:
@@ -387,6 +491,8 @@ def parse_arguments() -> argparse.Namespace:
         help="CFBundleShortVersionString and CFBundleVersion")
     parser.add_argument("--icon", type=Path,
         help="optional .icns file copied into the bundle")
+    parser.add_argument("--shader-root", type=Path,
+        help="prepared shader library to stage (default: project/shaders)")
     return parser.parse_args()
 
 
@@ -407,7 +513,7 @@ def main() -> int:
             icon = candidate if candidate.is_file() else None
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
-            manifest_window(manifest, project))
+            manifest_window(manifest, project), options.shader_root, manifest_notices(manifest, project))
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1

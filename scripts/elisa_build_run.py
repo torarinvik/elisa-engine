@@ -141,6 +141,28 @@ def default_native_compiler() -> str:
     return "/usr/bin/clang++" if sys.platform == "darwin" else "clang++"
 
 
+def installed_compiler_root(compiler: Path) -> Path | None:
+    """Read the installer's literal launcher target without executing shell code."""
+    if compiler.stat().st_size > 4096:
+        return None
+    try:
+        lines = compiler.read_text(encoding="utf-8").splitlines()
+        commands = [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+        if len(commands) != 1:
+            return None
+        command = shlex.split(commands[0])
+    except (UnicodeError, ValueError):
+        return None
+    if len(command) != 4 or command[:2] != ["exec", "bash"] or command[3] != "$@":
+        return None
+    launcher = Path(command[2])
+    if (not launcher.is_absolute() or "$" in command[2] or "`" in command[2]
+            or launcher.name != "elisac_stage1.sh" or launcher.parent.name != "scripts"
+            or not launcher.is_file()):
+        return None
+    return launcher.parent.parent.resolve()
+
+
 def resolve_runtime_object(argument: str | None, compiler: str) -> Path:
     configured = configured_path(argument, "ELISA_RUNTIME_OBJ")
     if configured is not None:
@@ -158,7 +180,10 @@ def resolve_runtime_object(argument: str | None, compiler: str) -> Path:
             )
         compiler_file = Path(located)
     compiler_file = compiler_file.resolve()
-    for compiler_root in (compiler_file.parent.parent, compiler_file.parent):
+    installed_root = installed_compiler_root(compiler_file)
+    roots = ([installed_root] if installed_root is not None else
+        [compiler_file.parent.parent, compiler_file.parent])
+    for compiler_root in roots:
         candidate = compiler_root / "build/runtime/elisacore_runtime.o"
         if candidate.is_file():
             return candidate
@@ -343,8 +368,9 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
     sdl_library = paths["sdl_library"]
     brew_include = paths["brew_include"]
     brew_library = paths["brew_library"]
+    # Engine bridges use no RTTI and must also link against RTTI-disabled Wicked.
     command = [
-        cxx, "-std=c++17", "-O2" if optimize else "-O0", "-include", "filesystem",
+        cxx, "-std=c++17", "-O2" if optimize else "-O0", "-fno-rtti", "-include", "filesystem",
         "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(build_dir), "-I", str(ENGINE_ROOT / "native"),

@@ -3,13 +3,21 @@
   "platform": "macOS-native",
   "driver": "scripts/wicked_probe.elisascript",
   "build": {
-    "required_flags": ["-DSDL3=1"],
-    "forbidden_link_names": ["SDL2", "sdl2"],
+    "required_flags": [
+      "-DSDL3=1"
+    ],
+    "forbidden_link_names": [
+      "SDL2",
+      "sdl2"
+    ],
     "wicked_build_default": "build-elisa-sdl3",
     "sdk_environment": "DEVELOPER_DIR",
     "wicked_cache": {
       "path": "build-elisa-sdl3/CMakeCache.txt",
-      "values": {"WICKED_USE_SDL3": "ON", "BUILD_SDL3": "ON"}
+      "values": {
+        "WICKED_USE_SDL3": "ON",
+        "BUILD_SDL3": "ON"
+      }
     }
   },
   "libraries": [
@@ -18,7 +26,7 @@
       "kind": "git",
       "path_environment": "WICKED_ROOT",
       "path_default": "../amazing-labyrinth-wickedengine",
-      "revision": "7ed3901564b308a457411560466581672fc8fd66",
+      "revision": "d6717a9f2b99836ab1bc7133a86a90389d401fdc",
       "artifacts": [
         "build-elisa-sdl3/WickedEngine/libWickedEngine.a",
         "build-elisa-sdl3/WickedEngine/libJolt.a"
@@ -29,16 +37,25 @@
       "kind": "system",
       "path_environment": "WICKED_SDL3_LIB_DIR",
       "path_default": "/opt/homebrew/lib",
-      "artifacts": ["libSDL3.dylib"],
+      "artifacts": [
+        "libSDL3.dylib"
+      ],
       "include_environment": "WICKED_SDL3_INCLUDE_DIR",
       "include_default": "/opt/homebrew/include/SDL3",
-      "include_artifacts": ["SDL.h"]
+      "include_artifacts": [
+        "SDL.h"
+      ]
     },
     {
       "name": "cgltf",
       "kind": "file",
       "path_default": "dependencies/cgltf",
-      "artifacts": [{"path": "cgltf.h", "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9"}]
+      "artifacts": [
+        {
+          "path": "cgltf.h",
+          "sha256": "efb169dee911696b5d35fc8e3f7ea0c56d679debc529eba9ca6aa6443ba9d5e9"
+        }
+      ]
     },
     {
       "name": "ufbx",
@@ -46,31 +63,72 @@
       "path_default": "dependencies/ufbx",
       "revision": "v0.23.0-fcc5d6ba444cfd3eb80677dba5e37e493941abe5",
       "artifacts": [
-        {"path": "ufbx.c", "sha256": "7d8d6ae4373f71692f295ff49ee0826466306ebcaa80b0e587c13ed047b98cea"},
-        {"path": "ufbx.h", "sha256": "942481725372d2ac4da5e77a062b47c20054a3440e7ee09a6043f99fe1f130ed"},
-        {"path": "LICENSE", "sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391"}
+        {
+          "path": "ufbx.c",
+          "sha256": "7d8d6ae4373f71692f295ff49ee0826466306ebcaa80b0e587c13ed047b98cea"
+        },
+        {
+          "path": "ufbx.h",
+          "sha256": "942481725372d2ac4da5e77a062b47c20054a3440e7ee09a6043f99fe1f130ed"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391"
+        }
       ]
     },
     {
       "name": "miniaudio",
       "kind": "file",
       "path_default": "dependencies/miniaudio",
-      "artifacts": [{"path": "miniaudio.h", "sha256": "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410"}]
+      "artifacts": [
+        {
+          "path": "miniaudio.h",
+          "sha256": "9019743287e443c55e5737a7297f38e5e358561701d6db2d905afb114390c410"
+        }
+      ]
     },
     {
       "name": "meshoptimizer",
       "kind": "file",
       "path_default": "dependencies/meshoptimizer",
       "artifacts": [
-        {"path": "meshoptimizer.h", "sha256": "21a72040a75bacf6ddefb7e74f1cf566af1e68ea5e4dc0db598278f4681e0b87"},
-        {"path": "allocator.cpp", "sha256": "d2cc48691fe2f4c6d097bf7a766389cfb7f83ca14a5f747e3944332656d02254"},
-        {"path": "vcacheoptimizer.cpp", "sha256": "618429ef4db8ab9b16fde4e73dcf425d89452acbf103085478bc8b1761fa6689"},
-        {"path": "indexanalyzer.cpp", "sha256": "bff37aecb10cefa33f3f6a217413c6ac98899c23e6de5282420c60e6baf786ec"},
-        {"path": "simplifier.cpp", "sha256": "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc"},
-        {"path": "vfetchoptimizer.cpp", "sha256": "aa534bb8150ca27ae229c58a0dc51f85f9acccbc5d4214f4c82edd91fc08e478"},
-        {"path": "indexgenerator.cpp", "sha256": "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e"},
-        {"path": "indexcodec.cpp", "sha256": "8648e71f044e0a23622c199f250818a62d68fd05673e2e692167f257de27565f"},
-        {"path": "vertexcodec.cpp", "sha256": "a3c51e91602c607a82ad0fdc32b089e890e3a3caf7934d82b7a993d64cd683ed"}
+        {
+          "path": "meshoptimizer.h",
+          "sha256": "21a72040a75bacf6ddefb7e74f1cf566af1e68ea5e4dc0db598278f4681e0b87"
+        },
+        {
+          "path": "allocator.cpp",
+          "sha256": "d2cc48691fe2f4c6d097bf7a766389cfb7f83ca14a5f747e3944332656d02254"
+        },
+        {
+          "path": "vcacheoptimizer.cpp",
+          "sha256": "618429ef4db8ab9b16fde4e73dcf425d89452acbf103085478bc8b1761fa6689"
+        },
+        {
+          "path": "indexanalyzer.cpp",
+          "sha256": "bff37aecb10cefa33f3f6a217413c6ac98899c23e6de5282420c60e6baf786ec"
+        },
+        {
+          "path": "simplifier.cpp",
+          "sha256": "dc40aadb307577ed3f7adb5102a506263de8b9fea1d5582a24c04bff2874a2cc"
+        },
+        {
+          "path": "vfetchoptimizer.cpp",
+          "sha256": "aa534bb8150ca27ae229c58a0dc51f85f9acccbc5d4214f4c82edd91fc08e478"
+        },
+        {
+          "path": "indexgenerator.cpp",
+          "sha256": "0e971dd8cc2ced68cd0374163461fc6c3e846267aee7b47203837164991a015e"
+        },
+        {
+          "path": "indexcodec.cpp",
+          "sha256": "8648e71f044e0a23622c199f250818a62d68fd05673e2e692167f257de27565f"
+        },
+        {
+          "path": "vertexcodec.cpp",
+          "sha256": "a3c51e91602c607a82ad0fdc32b089e890e3a3caf7934d82b7a993d64cd683ed"
+        }
       ]
     },
     {
@@ -78,8 +136,14 @@
       "kind": "file",
       "path_default": "dependencies/mikktspace",
       "artifacts": [
-        {"path": "mikktspace.c", "sha256": "de87e74107df766ce68108801262bd8d53899414236b59810509a8fc2a51e288"},
-        {"path": "mikktspace.h", "sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0"}
+        {
+          "path": "mikktspace.c",
+          "sha256": "de87e74107df766ce68108801262bd8d53899414236b59810509a8fc2a51e288"
+        },
+        {
+          "path": "mikktspace.h",
+          "sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0"
+        }
       ]
     },
     {
@@ -87,8 +151,14 @@
       "kind": "file",
       "path_default": "dependencies/xatlas",
       "artifacts": [
-        {"path": "xatlas.cpp", "sha256": "0ed0283aad005c94738cb0cc4612dba264379d29dea5b3c9b242f2d4752d5df4"},
-        {"path": "xatlas.h", "sha256": "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd"}
+        {
+          "path": "xatlas.cpp",
+          "sha256": "0ed0283aad005c94738cb0cc4612dba264379d29dea5b3c9b242f2d4752d5df4"
+        },
+        {
+          "path": "xatlas.h",
+          "sha256": "e7675335ad8ab1c1cc9060ad153cf6b8ba2ee914282044eb5f02c49590218fbd"
+        }
       ]
     },
     {
@@ -96,7 +166,9 @@
       "kind": "git",
       "path_default": "dependencies/basisu",
       "revision": "99f52d63aa6799cbdaecfe977111dc5ec3b31d47",
-      "artifacts": ["bin/basisu"]
+      "artifacts": [
+        "bin/basisu"
+      ]
     },
     {
       "name": "ozz-animation",
@@ -114,21 +186,28 @@
       "kind": "git",
       "path_default": "dependencies/recast",
       "revision": "6dc1667f580357e8a2154c28b7867bea7e8ad3a7",
-      "artifacts": ["build/Recast/libRecast.a", "build/Detour/libDetour.a"]
+      "artifacts": [
+        "build/Recast/libRecast.a",
+        "build/Detour/libDetour.a"
+      ]
     },
     {
       "name": "GameNetworkingSockets",
       "kind": "git",
       "path_default": "dependencies/gns",
       "revision": "a424b7db649438acafb60c99cae6667587c42732",
-      "artifacts": ["build/src/libGameNetworkingSockets_s.a"]
+      "artifacts": [
+        "build/src/libGameNetworkingSockets_s.a"
+      ]
     },
     {
       "name": "tracy",
       "kind": "git",
       "path_default": "dependencies/tracy",
       "revision": "30997d5ca6bb632cc10807a1da8a6d3de0aeeb3c",
-      "artifacts": ["public/TracyClient.cpp"]
+      "artifacts": [
+        "public/TracyClient.cpp"
+      ]
     }
   ]
 }

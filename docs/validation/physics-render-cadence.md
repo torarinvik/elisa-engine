@@ -30,9 +30,19 @@ Validation command from the engine root:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py
 ```
 
-The latest aggregate smoke passed all four native entries: primitive bodies,
-this two-cadence Jolt/Wicked client, application lifecycle, and failure cleanup.
-It validates the midpoint and final captures as PNGs and compares their decoded
-RGBA pixels. This is native SDL3/Metal evidence for macOS. It does not compare
-every intermediate frame or exercise the full game-session clock-to-hierarchy
-path.
+The cadence client validates its midpoint and final captures as PNGs and
+compares their decoded RGBA pixels. This is native SDL3/Metal evidence for
+macOS. It does not compare every intermediate frame or exercise the full
+game-session clock-to-hierarchy path.
+
+`test/world_physics_pose_native_main.elisa` also checks error preservation in
+`WorldPhysics`: it binds a dynamic body, shuts down and reopens the owning
+session, then advances and synchronizes through both flat and hierarchy
+bindings. Each stale body must surface as
+`PhysicsRuntime::PhysicsError.StaleWorld`; the former generic
+`WorldPhysicsError.SynchronizationFailure` result fails either check. Both
+frame-advance routes now propagate their underlying physics errors. The
+same client binds a dynamic body followed by a kinematic body, removes the
+dynamic row, then checks that the kinematic target still reaches Jolt through
+the session clock. It repeats target delivery through hierarchy bindings.
+The focused SDL3/Metal client built and ran successfully on macOS 27.

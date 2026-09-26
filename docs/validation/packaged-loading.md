@@ -208,3 +208,114 @@ After the Elisa compiler runtime archive was rebuilt, the application native
 smoke passed all 12 SDL3/Metal scenarios, including the two application
 lifecycle probes and pixel-identical midpoint and final physics captures. The
 earlier linker failure above records the state before that rebuild.
+
+## Packaged notice files
+
+A project's `elisa.project.json` can declare `package.notices` as a list of
+project-relative notice files. For example:
+
+```json
+{"package": {"notices": ["third_party/SDL/LICENSE.txt", "third_party/Jolt/LICENSE.txt"]}}
+```
+
+The macOS packager preserves those files byte-for-byte beneath
+`Contents/Resources/Notices`, retaining their relative directories. It rejects
+missing, empty, duplicate, escaping, or symlinked notice files and output paths
+that would erase a required input. Notice staging works independently of the
+runtime resource allowlist. Sixteen packaging tests pass, including identical
+license basenames in different dependency directories and invalid notice lists.
+This provides distribution plumbing; the complete notice inventory for the
+linked dependency closure is still outstanding in Q02.
+
+## Preserving an existing app during rebuild
+
+The macOS packager now assembles and signs a replacement in a sibling temporary
+directory before publishing it. Failed assembly leaves the previous bundle
+intact. Publication renames the previous bundle to a backup and restores it if
+the replacement rename fails; if restoration also fails, the error names the
+retained backup. Output paths overlapping packaging inputs are rejected,
+including outputs inside an input directory that does not yet exist.
+
+Twenty packaging tests pass. A real optimized maze app rebuilt through this
+path passed two relocated launches with source, Homebrew, and outbound network
+access denied. Publication uses two renames, so concurrent launches during
+the replacement window and crash-atomic replacement are not guaranteed.
+
+## Minimum macOS version
+
+The packager no longer writes a fixed macOS 13 requirement. It reads the
+executable and every bundled Mach-O library's deployment targets, including
+legacy load commands and universal-binary slices, then selects their maximum
+and the pinned renderer's macOS 26 API floor. Missing, malformed, or non-macOS
+load-command targets fail packaging instead of producing misleading metadata.
+
+Wicked creates Metal 4 command queues unconditionally; Apple's SDK marks
+`MTL4CommandQueue` APIs as available from macOS 26. See
+[Apple's API documentation](https://developer.apple.com/documentation/metal/mtl4commandqueue).
+The current optimized maze executable records `minos 27.0`, and its rebuilt
+bundle was verified to contain `LSMinimumSystemVersion = 27.0`. Twenty-two
+packaging/deployment-target tests pass. This metadata expresses a minimum
+requirement, not runtime validation on older hardware or OS releases.
+
+## Notice source catalog
+
+`native/notice-sources.json` records relative source locations and SHA-256
+hashes for eleven standalone notice texts. Run
+`python3 scripts/collect_dependency_notices.py --output NEW_DIRECTORY` to
+collect their original bytes plus the catalog. Collection rejects changed
+source hashes, escaping paths, and an existing destination. The current
+machine successfully collected all eleven files; focused tests verify exact
+bytes, source-drift rejection, and path bounds.
+
+The catalog deliberately records `complete: false` and its remaining work:
+embedded header notices, Wicked's vendored closure, FreeType's referenced
+license alternatives, and transitive shared-library coverage. Collected files
+can be placed inside a project and declared through `package.notices`; this
+initial collection is not yet the complete distribution notice set.
+
+The catalog now includes seven hash-verified source excerpts: cgltf,
+meshoptimizer, MikkTSpace, miniaudio, xatlas, FAudio, and Lua. Each excerpt has
+an explicit byte range and its own hash, in addition to the full source hash;
+collection preserves comments and original bytes rather than rewriting terms.
+Three collector tests pass, including excerpt bounds and altered-range checks.
+
+The maze declares eighteen collected notice texts plus their provenance catalog
+in `package.notices`, with snapshots under `examples/maze/third_party/notices`.
+A rebuilt real app was checked byte-for-byte against every snapshot. The
+shipped catalog still marks coverage incomplete and names the outstanding
+embedded subcomponents, Wicked utilities, FreeType, and transitive libraries.
+
+The collection now contains twenty-three texts, adding GLib, Graphite2's
+license and copyright files, libpng, and PCRE2 from the installed packages.
+`bundled_libraries` maps the nine dylib names in the current optimized app to
+catalog entries. Run `scripts/check_bundled_notices.py --app APP --output REPORT`
+to compare packaged notice bytes with their catalog hashes and identify new,
+missing, ambiguous, or changed notices. It returns failure until both the
+catalog and mapped file coverage are complete.
+
+The actual rebuilt app verified seven of nine shared-library mappings; FreeType
+and libintl remain explicitly unresolved. A focused test covers missing,
+modified, and unmapped notices. The overall catalog remains incomplete for
+Wicked's vendored and embedded dependency closure as well.
+
+FreeType 2.14.3 and gettext 1.0 source archives were retrieved from the URLs in
+Homebrew's installed recipes and verified against those recipes' SHA-256
+values. The catalog now includes FreeType's overview, FTL/GPL alternatives,
+BDF/PCF notices, and referenced source copyright blocks, plus libintl's own
+runtime overview, LGPL text, and copyright block. These snapshots record the
+upstream archive hash, member path/hash, and excerpt byte range where used.
+They are kept under `native/notices/upstream` so collection remains offline.
+
+The expanded maze package contains thirty-seven notice texts. All nine bundled
+dylib mappings now verify against packaged bytes; four collector/audit tests
+pass. The overall catalog is still marked incomplete for additional vendored
+and embedded components and the final notice-completeness review. A verified
+file mapping does not change that overall status.
+
+The verified collection now contains forty-eight texts after adding cgltf's
+jsmn block, Wicked's LodePNG, pugixml, robin-hood, four stb utility notices,
+and Metal C++/converter license files. Embedded blocks retain the exact source
+bytes and are checked against both source and excerpt hashes. The real rebuilt
+app matched all forty-eight snapshots and its provenance catalog byte-for-byte.
+The catalog remains incomplete for additional vendored components and the
+final notice-completeness review.

@@ -309,8 +309,10 @@ def main() -> int:
         print("render scene smoke must not declare game-owned C exports", file=sys.stderr)
         return 1
 
+    # The bridge uses no RTTI; avoid requiring RenderPath3D typeinfo from
+    # Wicked builds configured with WICKED_ENABLE_RTTI=OFF.
     command = [
-        cxx, "-std=c++17", "-O0", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
+        cxx, "-std=c++17", "-O0", "-fno-rtti", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-DELISA_RENDER_SCENE_TEST_PROBE=1",
         "-I", str(build), "-I", str(ROOT / "native"), "-I", str(ROOT / "dependencies/meshoptimizer"),

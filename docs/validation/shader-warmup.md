@@ -1,19 +1,23 @@
 # Wicked shader warm-up measurement
 
-`scripts/shader_warmup_benchmark.py` measures two process launches against one
-temporary Metal shader-output directory. The first launch starts with an empty
-cache (plus a marker file needed by Wicked's path preflight); it records the
-shader binaries Wicked compiles and measures its first rendered frame. A second
-launch uses the same directory and must produce no additional `.cso` files.
-Both launches render nine frames and report the first frame separately from
-the median and p95 of the later eight frames. The executable must already be
-built by `scripts/wicked_probe.elisascript texture`.
+`scripts/shader_warmup_benchmark.py` measures three process launches against
+one temporary Metal shader directory: cold shaders with pipeline capture,
+cached shaders alone, and cached shaders with the captured Metal archive.
+Each launch renders nine frames and reports the first frame separately from
+the median and p95 of the later eight frames. The gate requires a nonempty
+archive, successful load, and no additional `.cso` files in either cached run.
+Build the executable first with `scripts/wicked_probe.elisascript texture`.
 
 Run it on a macOS machine with the repository's configured Wicked SDL3/Metal
 build:
 
 ```sh
-python3 scripts/shader_warmup_benchmark.py
+WICKED_BUILD="../WickedEngine/build-elisa-sdl3-homebrew" \
+CXX=/opt/homebrew/opt/llvm/bin/clang++ \
+PYTHON_BIN=/opt/homebrew/bin/python3 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+elisascript scripts/wicked_probe.elisascript texture
+/opt/homebrew/bin/python3 scripts/shader_warmup_benchmark.py
 ```
 
 The script accepts `--wicked-root` and `--probe` for non-default checkouts and
@@ -43,9 +47,111 @@ performance threshold. The 392 runtime-requested binaries are also not the
 same set as the 398 permutations emitted by the offline compiler: the latter
 prepares additional engine variants.
 
-Wicked's Metal pipeline-state objects still live only in process memory in this
-path. Reusing `.cso` files avoids repeating shader compilation, but each process
-still creates its pipeline states. A persistent Metal binary archive and a
-project-specific permutation inventory remain future R13 work; the runtime
-shader manifest currently verifies file identity and backend coverage, not
-pipeline-cache keys.
+## Persistent Metal archive (2026-09-26)
+
+The Wicked backend accepts `WICKED_METAL_PIPELINE_ARCHIVE_CAPTURE` for an
+opt-in development capture, or `WICKED_METAL_PIPELINE_ARCHIVE` for read-only
+loading. Capture records compute, ordinary render, and mesh pipeline
+descriptors, then serializes on device shutdown and atomically publishes the
+result from a unique temporary file. The destination parent must already
+exist. Normal launches leave both variables unset. Configuring both disables
+the archive. Missing or invalid archives fall back to ordinary pipeline creation.
+The geometry-emulation helper path is not captured. Native fallback checks
+for missing/corrupt load files, a missing capture parent, and conflicting
+settings each completed nine rendered frames. Dangling symlink and FIFO
+capture destinations were rejected without modifying them; both fallbacks
+also rendered nine frames.
+
+A consistent Homebrew Clang 23.1.1 optimized build on macOS 27 / Apple M5
+produced this trial:
+
+| Measurement | Cold + capture | Shader cache | Shader cache + archive |
+| --- | ---: | ---: | ---: |
+| Process launch | 20,940 ms | 1,057 ms | 1,052 ms |
+| New shader binaries | 392 | 0 | 0 |
+| First frame | 527.2 ms | 7.1 ms | 6.8 ms |
+| Later median / p95 | 8.0 / 9.1 ms | 8.0 / 8.8 ms | 8.1 / 9.1 ms |
+
+The archive was 60,258,432 bytes. This proves capture and subsequent loading;
+it does not establish a meaningful speedup over the driver's existing cache.
+A repeat after the final path checks passed with 392/0/0 new shaders, a
+60,258,528-byte archive, and launch times of 11,534/792/872 ms.
+Cold capture includes the cost of recording pipeline functions and is not
+directly comparable to the earlier uncaptured cold trials above.
+
+Project-specific permutation selection, archive identity/invalidation keys,
+and packaged archive distribution remain R13 work. Metal can compile cache
+misses normally; a load message alone does not prove every pipeline was a hit.
+See [the optimized-build validation](wicked-abi-consistency.md) for the
+compiler setting required by this Metal wrapper on the current toolchain.
+
+## Offline publication failure handling
+
+Shader preparation now stages the complete replacement library and its
+content manifest before changing the project tree. Existing custom shaders
+and other backends are preserved. Copy or manifest errors leave the original
+tree untouched; a failed publication rename restores it. If restoration also
+fails, the error reports the retained backup location. Symbolic links anywhere
+in the source or existing shader tree are rejected.
+
+Publication uses two same-filesystem renames, with a brief missing-directory
+window. Do not launch readers or run concurrent preparation against that project
+during publication. This is rollback protection, not a crash-atomic exchange.
+Eight preparation/publication tests pass, including injected copy, manifest,
+publication, and rollback failures. A separate real-library check published
+398 Metal binaries and recomputed the identical content manifest.
+
+## Generated permutation ownership
+
+Preparation writes a bounded `elisa.metal-generated.json` inventory containing
+the paths and SHA-256 digests of compiler-owned outputs. The next preparation
+removes outputs absent from the new compiler set and updates the content
+manifest. Existing shaders without inventory ownership remain custom files;
+legacy libraries gain ownership only for outputs regenerated by preparation.
+Modified owned files cause a conflict instead of being overwritten or deleted.
+The inventory is build metadata and is excluded from packaged applications.
+
+Eleven shader preparation/publication tests and eleven packaging tests pass.
+A real-library rebuild from 398 to 397 binaries removed the omitted output
+and changed the shader manifest fingerprint. This addresses stale generated
+files; per-project permutation selection and pipeline archive identity keys
+remain open.
+
+## Project permutation selection
+
+`prepare_wicked_shaders.py --project PROJECT --permutations selection.json`
+accepts a nonempty JSON array of paths relative to the Metal output directory,
+for example `["objectVS.cso", "nested/variant.cso"]`. Names must match actual
+compiler outputs; the example is illustrative, not a complete game shader set.
+Malformed, duplicate, escaping, and unknown names fail without publication.
+Omitting the option publishes the complete compiler set. Custom files remain
+preserved, and formerly generated outputs outside the selection are removed.
+
+The pinned offline compiler still compiles all permutations before selection.
+This feature controls publication and package size, not compilation cost. A
+project must validate its selection against every supported rendering feature;
+the content manifest proves file identity, not workload coverage. Fourteen
+shader tests pass, and selected publication of three real Metal binaries
+produced the matching manifest. The native-probe workload now has reduced-set runtime coverage below;
+broader game-specific workload coverage and compile-time filtering remain open.
+
+## Exporting and verifying an observed selection
+
+```sh
+/opt/homebrew/bin/python3 scripts/shader_warmup_benchmark.py \
+  --selection-output build/native-probe-permutations.json \
+  --offline-shaders ../WickedEngine/build-elisa-sdl3/WickedEngine/shaders/metal
+```
+
+After the cold/cache/archive runs, the benchmark selects the observed names
+from the supplied offline Metal directory and runs a fourth process using only
+that reduced set. It compares the full content manifest before and after
+rendering, rejecting added or changed shader binaries. The exported JSON is
+compatible with preparation's `--permutations` option and excludes the preflight
+marker. Export occurs only after all requested runtime checks succeed.
+
+On 2026-09-26 this gate observed 392 permutations, found all of them in the
+398-file offline library, and rendered nine frames with the 392-file subset
+unchanged. The fourth launch took 862 ms; an independent run took 908 ms.
+This is coverage for the native probe's exercised scene and features, not
+evidence that an arbitrary game can omit every unobserved permutation.

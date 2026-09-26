@@ -163,6 +163,7 @@ class BuildRunCliTests(unittest.TestCase):
         self.assertIn(str(SCRIPT.parent.parent / "dependencies/basisu/transcoder/basisu_transcoder.cpp"), linker_args)
         self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
         self.assertIn(str(runtime_object.resolve()), linker_args)
+        self.assertIn("-fno-rtti", linker_args)
 
     def test_runtime_object_is_discovered_beside_compiler(self) -> None:
         runner = __import__("elisa_build_run")
