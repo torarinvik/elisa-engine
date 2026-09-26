@@ -32,10 +32,10 @@ public:
 
     bool begin_frame() {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (active_) return false;
+        if (active_ || (owner_thread_ != std::thread::id{} && owner_thread_ != std::this_thread::get_id())) return false;
+        owner_thread_ = std::this_thread::get_id();
         events_.fill({});
         delivered_flags_.fill(false);
-        listeners_.fill({});
         event_count_ = 0;
         delivered_ = 0;
         phase_ = NativeEventPhase::Input;
@@ -47,7 +47,7 @@ public:
     bool subscribe(uint32_t listener, NativeEventPhase phase) {
         if (listener == 0) return false;
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!active_ || find_listener(listener) != MAX_LISTENERS) return false;
+        if (!active_ || !on_owner_thread() || find_listener(listener) != MAX_LISTENERS) return false;
         for (auto& slot : listeners_) {
             if (!slot.live) {
                 slot = {listener, phase, true};
@@ -59,6 +59,7 @@ public:
 
     bool unsubscribe(uint32_t listener) {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!active_ || !on_owner_thread()) return false;
         const size_t slot = find_listener(listener);
         if (slot == MAX_LISTENERS) return false;
         listeners_[slot].live = false;
@@ -77,7 +78,8 @@ public:
 
     bool advance(NativeEventPhase next) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!active_ || dispatching_ || phase_value(next) != phase_value(phase_) + 1) return false;
+        if (!active_ || !on_owner_thread() || dispatching_ ||
+            phase_value(next) != phase_value(phase_) + 1) return false;
         phase_ = next;
         return true;
     }
@@ -89,7 +91,7 @@ public:
         size_t ready_count = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (!active_ || dispatching_ || phase != phase_) return 0;
+            if (!active_ || !on_owner_thread() || dispatching_ || phase != phase_) return 0;
             dispatching_ = true;
             for (size_t index = 0; index < event_count_ && ready_count < MAX_EVENTS; ++index) {
                 NativeWorldEvent& event = events_[index];
@@ -137,6 +139,7 @@ public:
 
     size_t end_frame() {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!active_ || !on_owner_thread()) return delivered_;
         if (dispatching_) return delivered_;
         active_ = false;
         return delivered_;
@@ -163,6 +166,10 @@ private:
         return static_cast<uint8_t>(phase);
     }
 
+    bool on_owner_thread() const {
+        return owner_thread_ == std::this_thread::get_id();
+    }
+
     size_t find_listener(uint32_t listener) const {
         for (size_t index = 0; index < MAX_LISTENERS; ++index) {
             if (listeners_[index].live && listeners_[index].id == listener) return index;
@@ -175,6 +182,7 @@ private:
     std::array<bool, MAX_EVENTS> delivered_flags_{};
     std::array<Listener, MAX_LISTENERS> listeners_{};
     NativeEventPhase phase_ = NativeEventPhase::Input;
+    std::thread::id owner_thread_{};
     uint64_t next_sequence_ = 1;
     size_t event_count_ = 0;
     size_t delivered_ = 0;
@@ -191,6 +199,22 @@ inline bool probe_world_event_bridge() {
         bridge.emit({NativeEventPhase::Simulation, NativeEventKind::Damage, 7, 0, 42, 3});
     });
     worker.join();
+    bool foreign_advance_blocked = false;
+    bool foreign_dispatch_blocked = false;
+    bool foreign_subscription_blocked = false;
+    size_t foreign_end_result = 0;
+    std::thread wrong_owner([&] {
+        foreign_advance_blocked = !bridge.advance(NativeEventPhase::Simulation);
+        foreign_dispatch_blocked = bridge.dispatch(NativeEventPhase::Input,
+            [](const NativeWorldEvent&) {}) == 0;
+        foreign_subscription_blocked = !bridge.subscribe(9, NativeEventPhase::Simulation) &&
+            !bridge.unsubscribe(7);
+        foreign_end_result = bridge.end_frame();
+    });
+    wrong_owner.join();
+    if (!check(foreign_advance_blocked && foreign_dispatch_blocked &&
+        foreign_subscription_blocked && foreign_end_result == 0,
+        "native event phases and delivery stay on frame owner thread")) return false;
     if (!check(bridge.emit({NativeEventPhase::Simulation, NativeEventKind::Damage, 8, 0, 43, 4}),
         "native event pending listener")) return false;
     if (!check(bridge.event_count() == 2 && !bridge.advance(NativeEventPhase::Physics),
@@ -209,10 +233,22 @@ inline bool probe_world_event_bridge() {
     if (!check(dispatched == 1 && delivered == 1 && reentrant_blocked && phase_advance_blocked &&
         bridge.dispatch(NativeEventPhase::Simulation, [](const NativeWorldEvent&) {}) == 0,
         "native event main-thread delivery and reentrant guard")) return false;
+    if (!check(bridge.subscribe(9, NativeEventPhase::Simulation),
+        "native event listener registration")) return false;
     if (!check(bridge.unsubscribe(7) && !bridge.emit({NativeEventPhase::Physics, NativeEventKind::Damage,
         7, 0, 42, 4}), "native event unsubscribe")) return false;
     if (!check(!bridge.advance(NativeEventPhase::Audio) && bridge.end_frame() == 1,
         "native event phase order and close")) return false;
+    if (!check(bridge.begin_frame() && bridge.event_count() == 0 &&
+        !bridge.subscribe(9, NativeEventPhase::Simulation) &&
+        bridge.emit({NativeEventPhase::Simulation, NativeEventKind::Damage, 9, 0, 44, 6}) &&
+        bridge.advance(NativeEventPhase::Simulation),
+        "native event subscriptions persist across owned frames")) return false;
+    size_t next_frame_entity = 0;
+    if (!check(bridge.dispatch(NativeEventPhase::Simulation, [&](const NativeWorldEvent& event) {
+        next_frame_entity = static_cast<size_t>(event.entity);
+    }) == 1 && next_frame_entity == 44 && bridge.end_frame() == 1,
+        "native event bridge delivers retained subscription next frame")) return false;
     return true;
 }
 
