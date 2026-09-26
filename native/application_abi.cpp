@@ -40,6 +40,7 @@ struct QueuedInputEvent {
     int32_t pressed = 0;
     int32_t released = 0;
     int32_t chord_down = 0;
+    int32_t device_slot = 0;
 };
 
 struct QueuedPointerEvent {
@@ -102,14 +103,23 @@ bool has_gamepad(const ApplicationService& service, SDL_JoystickID id) {
     return false;
 }
 
+int32_t gamepad_device_slot(const ApplicationService& service, SDL_JoystickID id) {
+    for (size_t index = 0; index < service.gamepads.size(); ++index) {
+        if (service.gamepads[index].handle != nullptr && service.gamepads[index].id == id) {
+            return int32_t(index + 1);
+        }
+    }
+    return 0;
+}
+
 void queue_input_event(ApplicationService& service, int32_t kind, int32_t device,
-    int64_t code, float value, bool pressed, bool released) {
+    int64_t code, float value, bool pressed, bool released, int32_t device_slot = 0) {
     if (service.input_event_count == INPUT_EVENT_CAPACITY) {
         service.input_overflow = true;
         return;
     }
     service.input_events[service.input_event_count++] = QueuedInputEvent{
-        kind, device, code, value, pressed ? 1 : 0, released ? 1 : 0, 0};
+        kind, device, code, value, pressed ? 1 : 0, released ? 1 : 0, 0, device_slot};
 }
 
 void queue_pointer_event(ApplicationService& service, int32_t kind,
@@ -125,16 +135,14 @@ void queue_pointer_event(ApplicationService& service, int32_t kind,
 
 void open_gamepad(ApplicationService& service, SDL_JoystickID id) {
     if (has_gamepad(service, id)) return;
-    const size_t count_before = open_gamepad_count(service);
     for (OpenGamepad& slot : service.gamepads) {
         if (slot.handle != nullptr) continue;
         SDL_Gamepad* handle = SDL_OpenGamepad(id);
         if (handle == nullptr) return;
         slot = OpenGamepad{id, handle};
-        if (count_before == 0) {
-            queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, probe::INPUT_DEVICE_GAMEPAD,
-                0, 1.0f, true, false);
-        }
+        const int32_t device_slot = gamepad_device_slot(service, id);
+        queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, probe::INPUT_DEVICE_GAMEPAD,
+            0, 1.0f, true, false, device_slot);
         return;
     }
 }
@@ -142,11 +150,12 @@ void open_gamepad(ApplicationService& service, SDL_JoystickID id) {
 void close_gamepad(ApplicationService& service, SDL_JoystickID id) {
     for (OpenGamepad& slot : service.gamepads) {
         if (slot.handle == nullptr || slot.id != id) continue;
+        const int32_t device_slot = int32_t(&slot - service.gamepads.data()) + 1;
         SDL_CloseGamepad(slot.handle);
         slot = OpenGamepad{};
         const size_t remaining = open_gamepad_count(service);
         queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_DISCONNECTED, probe::INPUT_DEVICE_GAMEPAD,
-            0, 0.0f, remaining != 0, true);
+            0, 0.0f, remaining != 0, true, device_slot);
         return;
     }
 }
@@ -416,7 +425,8 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             if (code == 0) break;
             const bool pressed = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
             queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_BUTTON, probe::INPUT_DEVICE_GAMEPAD,
-                code, pressed ? 1.0f : 0.0f, pressed, !pressed);
+                code, pressed ? 1.0f : 0.0f, pressed, !pressed,
+                gamepad_device_slot(service, event.gbutton.which));
             break;
         }
         case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
@@ -426,12 +436,12 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             if (axis.negative_code != 0) {
                 queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, probe::INPUT_DEVICE_GAMEPAD,
                     axis.negative_code, axis.negative_value, axis.negative_value > 0.0f,
-                    axis.negative_value == 0.0f);
+                    axis.negative_value == 0.0f, gamepad_device_slot(service, event.gaxis.which));
             }
             if (axis.positive_code != 0) {
                 queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_AXIS, probe::INPUT_DEVICE_GAMEPAD,
                     axis.positive_code, axis.positive_value, axis.positive_value > 0.0f,
-                    axis.positive_value == 0.0f);
+                    axis.positive_value == 0.0f, gamepad_device_slot(service, event.gaxis.which));
             }
             break;
         }

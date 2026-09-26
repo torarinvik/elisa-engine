@@ -33,6 +33,11 @@
         extern elisa_render_scene_v1_update_camera(handle: i64, projection: i32,
             width: i32, height: i32, projection_value: f32, near_clip: f32, far_clip: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_camera_handle_look_at(handle: i64,
+            eye_x: f32, eye_y: f32, eye_z: f32,
+            target_x: f32, target_y: f32, target_z: f32,
+            up_x: f32, up_y: f32, up_z: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_activate_camera(handle: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_activate_default_camera() -> i32
@@ -129,6 +134,8 @@
             middle_end: f32, far_end: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_color(handle: i64, red: f32, green: f32, blue: f32, alpha: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_dithered_opacity(handle: i64, opacity: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_alpha_mode(handle: i64, mode: i32, cutoff: f32, double_sided: i32) -> i32
         @callconv(c)

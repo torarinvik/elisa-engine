@@ -15,6 +15,33 @@ extern "C" int32_t elisa_render_scene_v1_set_color(
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_dithered_opacity(
+    int64_t handle, float opacity) {
+    if (!finite(opacity) || opacity < 0.0f || opacity > 1.0f)
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    const InstanceSlot& instance = state.instances[slot];
+    wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(instance.entity);
+    wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(instance.entity);
+    if (material == nullptr && instance.shared_source != wi::ecs::INVALID_ENTITY)
+        material = state.scene->materials.GetComponent(instance.shared_source);
+    if (material == nullptr || object == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+
+    // Wicked interprets object color alpha as inverse dither coverage in its
+    // opaque pass. Keeping material opacity at one prevents the ordinary
+    // transparent pass from taking over, while alphaRef still cuts out the
+    // authored texture mask.
+    material->SetOpacity(1.0f);
+    material->userBlendMode = wi::enums::BLENDMODE_OPAQUE;
+    object->color.w = opacity;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_alpha_mode(
     int64_t handle, int32_t mode, float cutoff, int32_t double_sided) {
     if (mode < 0 || mode > 2 || !finite(cutoff) || cutoff < 0.0f || cutoff > 1.0f ||

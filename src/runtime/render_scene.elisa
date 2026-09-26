@@ -116,8 +116,7 @@ module RenderScene:
         struct LightHandle:
             id: i64
         struct CameraHandle:
-            private:
-                native_value: i64
+            id: i64
         struct ElectricArcHandle:
             private:
                 native_value: i64
@@ -226,27 +225,35 @@ module RenderScene:
             if native_value <= 0:
                 try check_status(native_value.i32())
                 raise RenderSceneError.BackendFailure
-            CameraHandle{native_value: native_value}
+            CameraHandle{id: native_value}
         def update_camera(handle: CameraHandle, projection: CameraProjection,
             width: i32, height: i32, projection_value: f32, near_clip: f32,
             far_clip: f32) -> void error[RenderSceneError]:
             projection_code: i32 = 0 if projection == CameraProjection.Orthographic else 1
-            try check_status(elisa_render_scene_v1_update_camera(handle.native_value, projection_code,
+            try check_status(elisa_render_scene_v1_update_camera(handle.id, projection_code,
                 width, height, projection_value, near_clip, far_clip))
+        # Update any owned camera directly, including one already composing a
+        # viewport. Games can therefore drive split-screen cameras every frame
+        # without activating them or disturbing the primary camera.
+        def set_owned_camera_look_at(handle: CameraHandle, eye: Geometry::Vec3,
+            target: Geometry::Vec3, up: Geometry::Vec3) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_camera_handle_look_at(
+                handle.id, eye.x, eye.y, eye.z,
+                target.x, target.y, target.z, up.x, up.y, up.z))
         def activate_camera(handle: CameraHandle) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_activate_camera(handle.native_value))
+            try check_status(elisa_render_scene_v1_activate_camera(handle.id))
         def activate_default_camera() -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_activate_default_camera())
         def destroy_camera(handle: CameraHandle) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_destroy_camera(handle.native_value))
+            try check_status(elisa_render_scene_v1_destroy_camera(handle.id))
         # Render a camera through its own RenderPath3D into a framebuffer-pixel
         # rectangle over the primary view. Its post-process profile is separate.
         def set_camera_viewport(handle: CameraHandle, x: i32, y: i32,
             width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_viewport(
-                handle.native_value, x, y, width, height, update_interval))
+                handle.id, x, y, width, height, update_interval))
         def clear_camera_viewport(handle: CameraHandle) -> void error[RenderSceneError]:
-            try check_status(elisa_render_scene_v1_clear_camera_viewport(handle.native_value))
+            try check_status(elisa_render_scene_v1_clear_camera_viewport(handle.id))
         # Screen coordinates are framebuffer pixels; points outside this
         # camera's viewport are rejected instead of producing a misleading ray.
         def camera_viewport_ray(handle: CameraHandle, screen_x: f32,
@@ -257,7 +264,7 @@ module RenderScene:
             direction_x: mutable f32 = 0.0
             direction_y: mutable f32 = 0.0
             direction_z: mutable f32 = 0.0
-            try check_status(elisa_render_scene_v1_camera_viewport_ray(handle.native_value,
+            try check_status(elisa_render_scene_v1_camera_viewport_ray(handle.id,
                 screen_x, screen_y, &origin_x, &origin_y, &origin_z,
                 &direction_x, &direction_y, &direction_z))
             Geometry::Ray3{
@@ -408,6 +415,15 @@ module RenderScene:
         def set_color(handle: InstanceHandle, color: Color) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_color(handle.native_value,
                 color.red, color.green, color.blue, color.alpha))
+        # Changes opaque-pass coverage per instance. Unlike blended opacity,
+        # this continues to write depth, so AO and indirect lighting follow
+        # the same transition. Any alpha mask configured on the material is
+        # retained.
+        def set_dithered_opacity(handle: InstanceHandle,
+            opacity: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if opacity != opacity or opacity < 0.0 or opacity > 1.0
+            try check_status(elisa_render_scene_v1_set_dithered_opacity(
+                handle.native_value, opacity))
         def set_alpha_mode(handle: InstanceHandle, mode: AlphaMode, cutoff: f32,
             double_sided: bool) -> void error[RenderSceneError]:
             mode_code: i32 =

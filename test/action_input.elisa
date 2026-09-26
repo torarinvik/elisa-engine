@@ -13,6 +13,7 @@ def application_event(kind: Application::InputEventKind, code: i64, value: f32,
         released: released,
         chord_down: false,
         connected: connected,
+        device_slot: 0,
     }
 
 def application_input_tests() -> i32:

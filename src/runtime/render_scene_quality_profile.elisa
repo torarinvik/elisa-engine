@@ -82,7 +82,7 @@ extend RenderScene:
                     Quality::ShadowQuality.High: 2
             apply_outcome: mutable i32 = NativeQualityOutcome::APPLIED
             try check_status(elisa_render_scene_v1_apply_camera_quality_profile_result(
-                handle.native_value, &native, shadow_quality,
+                handle.id, &native, shadow_quality,
                 profile.sun_shadow_receiver_bias, &apply_outcome))
             raise RenderSceneError.BackendFailure if apply_outcome != NativeQualityOutcome::APPLIED and apply_outcome != NativeQualityOutcome::UPSCALER_FALLBACK
             return Quality::ApplyOutcome.UpscalerFallback if apply_outcome == NativeQualityOutcome::UPSCALER_FALLBACK

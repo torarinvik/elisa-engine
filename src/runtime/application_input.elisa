@@ -20,6 +20,8 @@ extend Application:
             DIGITAL_CODE_MASK: i64 = 4294967295
             PRESSED_SHIFT: i64 = 38
             RELEASED_SHIFT: i64 = 39
+            DEVICE_SLOT_SHIFT: i64 = 40
+            DEVICE_SLOT_MASK: i64 = 15
 
         const module InputTokenKind:
             KEY: i32 = 1
@@ -194,6 +196,9 @@ extend Application:
             released: mutable bool
             chord_down: mutable bool
             connected: mutable bool
+            # Zero for unassigned devices; gamepads use stable one-based
+            # connection slots so local players can route controllers.
+            device_slot: mutable i32
 
         struct PointerEvent:
             kind: mutable PointerEventKind
@@ -283,6 +288,7 @@ extend Application:
             event.device <- ((encoded >> InputTokenLayout::DEVICE_SHIFT) & InputTokenLayout::DEVICE_MASK).i32()
             event.pressed <- ((encoded >> InputTokenLayout::PRESSED_SHIFT) & 1) != 0
             event.released <- ((encoded >> InputTokenLayout::RELEASED_SHIFT) & 1) != 0
+            event.device_slot <- ((encoded >> InputTokenLayout::DEVICE_SLOT_SHIFT) & InputTokenLayout::DEVICE_SLOT_MASK).i32()
             event.connected <- true if kind == Application::InputTokenKind::GAMEPAD_CONNECTED else (event.pressed if kind == Application::InputTokenKind::GAMEPAD_DISCONNECTED else false)
             if kind == Application::InputTokenKind::GAMEPAD_AXIS:
                 event.code <- (encoded >> InputTokenLayout::AXIS_CODE_SHIFT) & InputTokenLayout::AXIS_CODE_MASK
