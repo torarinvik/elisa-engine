@@ -104,3 +104,26 @@ tests pass, including external shader staging, asset-local cook output, and
 input preservation. This is a same-machine relocation check using the finite
 maze smoke, not a clean-machine, distribution-signing, or optimized-bridge
 Release qualification.
+
+## Optimized bridge and offline relocation
+
+On 2026-09-26 the finite maze was rebuilt with the repository Stage1 compiler
+and `elisa_build_run.py --optimize`, producing an `-O2 -fno-rtti` native bridge
+linked to the consistently optimized Homebrew Wicked archives. Its packaged
+`MazeReleaseValidation.app` passed two independent relocated launches with
+source projects, Homebrew, and outbound networking denied. The finite entry
+runs the maze twice per process, exercising initialization and teardown.
+
+The repeatable check is:
+
+```sh
+/opt/homebrew/bin/python3 scripts/validate_standalone_macos_app.py \
+  --app build/MazeReleaseValidation.app
+```
+
+The checker copies the app to a temporary path with spaces, verifies denied
+reads against actual source/Homebrew control files, clears inherited engine and
+dynamic-loader overrides, and bounds each launch to 120 seconds. It requires
+a finite entry point. This qualifies the tested optimized workload on the
+current machine; clean-machine behavior, release signing/notarization, and
+broader game workloads remain separate requirements.
