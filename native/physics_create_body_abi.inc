@@ -186,9 +186,9 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         } else {
             rigidbody.shape = wi::scene::RigidBodyPhysicsComponent::CAPSULE;
             rigidbody.capsule.radius = UNIT_SHAPE_RADIUS;
-            // Wicked interprets capsule.height as the full cylinder length;
-            // Elisa's dimensions.y is its half-height.
-            rigidbody.capsule.height = 2.0f * dimension_y / dimension_x;
+            // Jolt's capsule setting takes the cylindrical half-height.
+            // Entity scale supplies radius, so store the authored ratio here.
+            rigidbody.capsule.height = dimension_y / dimension_x;
         }
         rigidbody.SetKinematic(kind == ELISA_PHYSICS_BODY_KINEMATIC);
         rigidbody.SetSensor(sensor == SENSOR_ENABLED);
@@ -201,6 +201,7 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         body_slot.entity = entity;
         ++body_slot.generation;
         body_slot.live = true;
+        body_slot.character = false;
     } catch (...) {
         if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
         return ELISA_PHYSICS_BACKEND_FAILURE;

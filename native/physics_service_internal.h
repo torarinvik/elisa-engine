@@ -33,6 +33,7 @@ struct BodySlot {
     uint32_t shape_slot = INVALID_SHAPE_SLOT;
     size_t mesh_proxy_geometry_bytes = 0;
     bool live = false;
+    bool character = false;
 };
 
 struct ShapeReference {

@@ -1,5 +1,6 @@
 # Verifies pose sync, kinematic targets, and stale-error preservation.
 include "./world_hierarchy_render_probe.elisa"
+include "./physics_character_probe.elisa"
 
 module WorldPhysicsPoseProbe:
     private:
@@ -100,6 +101,8 @@ module WorldPhysicsPoseProbe:
                 error failure: return 92
             return 93 if resumed_frame.steps != 0 or resumed_frame.tick_count != before_pause.tick_count
             return 94 if resumed_frame.paused or resumed_frame.interpolation <= paused_frame.interpolation
+            character_status: i32 = PhysicsCharacterProbe::run(session)
+            return character_status if character_status != 0
 
             world: mutable World::World = catch World::World():
                 value: value

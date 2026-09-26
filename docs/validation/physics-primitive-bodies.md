@@ -22,6 +22,8 @@ uses the authored orientation.
 The ABI keeps Wicked and Jolt types private. Zero-cylinder capsules map to
 spheres because Jolt rejects zero-height capsules. Direct bodies scale unit
 shapes and keep scene-query proxy geometry aligned with their physics shape.
+The primitive native probe also compares direct and reusable capsule ray hits
+against the documented cylindrical half-height and radius.
 
 For shared primitives, create a world-scoped `ShapeHandle` with
 `PhysicsRuntime::shape_create`, then create bodies using

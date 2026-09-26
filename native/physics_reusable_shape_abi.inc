@@ -77,7 +77,7 @@ void configure_precomputed_shape(ShapeSlot& shape) {
     } else {
         component.shape = wi::scene::RigidBodyPhysicsComponent::CAPSULE;
         component.capsule.radius = shape.dimension_x;
-        component.capsule.height = 2.0f * shape.dimension_y;
+        component.capsule.height = shape.dimension_y;
     }
     wi::physics::CreateRigidBodyShape(component, XMFLOAT3(1.0f, 1.0f, 1.0f), nullptr);
 }

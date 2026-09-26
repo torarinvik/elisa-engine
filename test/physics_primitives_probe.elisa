@@ -1,5 +1,6 @@
 include "../src/physics/runtime.elisa"
 include "../src/math/geometry.elisa"
+include "./physics_capsule_dimensions_probe.elisa"
 
 module PhysicsPrimitiveProbe:
     private:
@@ -263,6 +264,7 @@ module PhysicsPrimitiveProbe:
                 error failure: 2
             raise PhysicsRuntime::PhysicsError.BackendFailure if stale_shape_status != 0
             try exercise_compound_shapes(world, stage)
+            try CapsuleDimensionsProbe::exercise(world)
 
         def exercise_compound_shapes(world: mutable PhysicsRuntime::World&,
             stage: mutable i32&) -> void error[PhysicsRuntime::PhysicsError]:

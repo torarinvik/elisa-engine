@@ -583,5 +583,7 @@ module RuntimeServices:
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)
             try PhysicsRuntime::service_body_destroy(session.physics, body)
 
+        include "./services_character_api.inc"
+
         def shutdown(session: mutable Session&) -> bool:
             close_state(session)

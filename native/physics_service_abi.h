@@ -133,6 +133,24 @@ int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32_t kind,
     float dimension_x, float dimension_y, float dimension_z, float mass,
     int32_t sensor, uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation);
+int32_t elisa_physics_v1_create_character(uint64_t world_generation,
+    float position_x, float position_y, float position_z,
+    float rotation_x, float rotation_y, float rotation_z, float rotation_w,
+    float radius, float cylinder_half_height, float mass,
+    float max_slope_angle, float gravity_factor, uint32_t collision_layer,
+    uint32_t* slot, uint64_t* body_generation);
+int32_t elisa_physics_v1_character_move(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation,
+    float direction_x, float direction_y, float direction_z,
+    float movement_speed, float jump_speed, int32_t control_in_air);
+int32_t elisa_physics_v1_character_info(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, int32_t* ground_state,
+    float* ground_x, float* ground_y, float* ground_z,
+    float* normal_x, float* normal_y, float* normal_z,
+    float* velocity_x, float* velocity_y, float* velocity_z);
+int32_t elisa_physics_v1_character_set_capsule(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, float radius,
+    float cylinder_half_height, int32_t* changed);
 int32_t elisa_physics_v1_create_shape(uint64_t world_generation, int32_t kind,
     float dimension_x, float dimension_y, float dimension_z,
     uint32_t* slot, uint64_t* shape_generation);

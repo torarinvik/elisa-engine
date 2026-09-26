@@ -1,0 +1,79 @@
+module CapsuleDimensionsProbe:
+    private:
+        const module Fixture:
+            FLOOR_CENTER_Y: f32 = -0.5
+            FLOOR_HALF_EXTENT_X: f32 = 6.0
+            FLOOR_HALF_EXTENT_Y: f32 = 0.5
+            FLOOR_HALF_EXTENT_Z: f32 = 6.0
+            DIRECT_X: f32 = -2.0
+            SHARED_X: f32 = 2.0
+            BODY_Y: f32 = 4.0
+            RADIUS: f32 = 0.3
+            CYLINDER_HALF_HEIGHT: f32 = 0.4
+            RAY_START_Y: f32 = 8.0
+            RAY_DISTANCE: f32 = 7.0
+            STEP_SECONDS: f32 = 1.0 / 60.0
+            TOP_TOLERANCE: f32 = 0.03
+
+        def verify_top(world: PhysicsRuntime::World&, body: PhysicsRuntime::BodyHandle,
+            x: f32) -> void error[PhysicsRuntime::PhysicsError]:
+            pose: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
+            hit: PhysicsRuntime::RayHit = try PhysicsRuntime::raycast(world,
+                Geometry::Vec3{x: x, y: Fixture::RAY_START_Y, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0}, Fixture::RAY_DISTANCE,
+                PhysicsRuntime::ALL_LAYERS)
+            expected_top: f32 = pose.y + Fixture::RADIUS + Fixture::CYLINDER_HALF_HEIGHT
+            difference: f32 = hit.position.y - expected_top
+            raise PhysicsRuntime::PhysicsError.BackendFailure if (not hit.hit or
+                difference < 0.0 - Fixture::TOP_TOLERANCE or
+                difference > Fixture::TOP_TOLERANCE)
+
+    public:
+        def exercise(world: mutable PhysicsRuntime::World&) -> void error[PhysicsRuntime::PhysicsError]:
+            floor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 0.0, y: Fixture::FLOOR_CENTER_Y, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    dimensions: Geometry::Vec3{x: Fixture::FLOOR_HALF_EXTENT_X,
+                        y: Fixture::FLOOR_HALF_EXTENT_Y, z: Fixture::FLOOR_HALF_EXTENT_Z},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                })
+            direct: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(world,
+                PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    shape: PhysicsRuntime::BodyShape.Capsule,
+                    position: Geometry::Vec3{x: Fixture::DIRECT_X, y: Fixture::BODY_Y, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    dimensions: Geometry::Vec3{x: Fixture::RADIUS,
+                        y: Fixture::CYLINDER_HALF_HEIGHT, z: 0.0},
+                    mass: 1.0,
+                    sensor: false,
+                    collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                })
+            shape: PhysicsRuntime::ShapeHandle = try PhysicsRuntime::shape_create(world,
+                PhysicsRuntime::BodyShape.Capsule, Geometry::Vec3{x: Fixture::RADIUS,
+                    y: Fixture::CYLINDER_HALF_HEIGHT, z: 0.0})
+            shared: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create_with_shape(world,
+                PhysicsRuntime::BodyInstanceDesc{
+                    kind: PhysicsRuntime::BodyKind.Dynamic,
+                    position: Geometry::Vec3{x: Fixture::SHARED_X, y: Fixture::BODY_Y, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    mass: 1.0,
+                    sensor: false,
+                    collision_layer: 0,
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                }, shape)
+            step: u64 = try PhysicsRuntime::fixed_step(world, Fixture::STEP_SECONDS)
+            raise PhysicsRuntime::PhysicsError.BackendFailure if step == 0
+            try verify_top(world, direct, Fixture::DIRECT_X)
+            try verify_top(world, shared, Fixture::SHARED_X)
+            try PhysicsRuntime::body_destroy(world, direct)
+            try PhysicsRuntime::body_destroy(world, shared)
+            try PhysicsRuntime::shape_destroy(world, shape)
+            try PhysicsRuntime::body_destroy(world, floor)

@@ -1,0 +1,249 @@
+# Exercises the Wicked/Jolt character wrapper through the public runtime session.
+module PhysicsCharacterProbe:
+    private:
+        const module Fixture:
+            START_X: f32 = -20.0
+            COVER_X: f32 = 20.0
+            FLOOR_TOP: f32 = 0.0
+            FLOOR_HALF_WIDTH: f32 = 60.0
+            CAPSULE_RADIUS: f32 = 0.25
+            STANDING_HALF_HEIGHT: f32 = 0.45
+            CROUCHED_HALF_HEIGHT: f32 = 0.1
+            CEILING_BOTTOM: f32 = 1.0
+            WALK_SPEED: f32 = 2.0
+            JUMP_SPEED: f32 = 5.0
+            MOVEMENT_STEPS: usize = 30
+            SETTLE_STEPS: usize = 20
+
+        def advance(session: mutable RuntimeServices::Session&,
+            count: usize) -> i32:
+            for _ in 0..<count |session|:
+                tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: value
+                    error failure: return 1
+            0
+
+        def walk(session: mutable RuntimeServices::Session&,
+            character: PhysicsRuntime::CharacterHandle) -> i32:
+            for _ in 0..<Fixture::MOVEMENT_STEPS |session, character|:
+                drive_status: i32 = catch RuntimeServices::physics_character_move(session,
+                    character, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
+                    Fixture::WALK_SPEED, 0.0, false):
+                    value: 0
+                    error failure: return 1
+                return 2 if drive_status != 0
+                tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: value
+                    error failure: return 3
+            0
+
+        def cadence_run(session: mutable RuntimeServices::Session&,
+            render_frames: usize, elapsed_micros: i64,
+            final_x: mutable f32&) -> i32:
+            character: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description(-40.0,
+                    Fixture::STANDING_HALF_HEIGHT)):
+                value: value
+                error failure: return 1
+            settle: i32 = advance(session, Fixture::SETTLE_STEPS)
+            return 2 if settle != 0
+            clock: mutable Runtime::StepClock = Runtime::StepClock()
+            for _ in 0..<render_frames |session, character, clock, elapsed_micros|:
+                due_steps: usize = catch Runtime::advance(&clock, elapsed_micros):
+                    value: value
+                    error failure: return 3
+                for _ in 0..<due_steps |session, character|:
+                    driven: bool = catch RuntimeServices::physics_character_move(session,
+                        character, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0},
+                        Fixture::WALK_SPEED, 0.0, false):
+                        ok: true
+                        error failure: false
+                    return 4 if not driven
+                    tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                        Runtime::fixed_step_seconds()):
+                        value: value
+                        error failure: return 5
+            pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 6
+            final_x <- pose.position.x
+            destroyed: bool = catch RuntimeServices::physics_character_destroy(session,
+                character):
+                ok: true
+                error failure: false
+            return 7 if not destroyed
+            0
+
+        def floor_description() -> PhysicsRuntime::BodyDesc:
+            PhysicsRuntime::BodyDesc{
+                kind: PhysicsRuntime::BodyKind.Static,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: Geometry::Vec3{x: 0.0, y: Fixture::FLOOR_TOP - 0.25, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                center_of_mass_offset: Geometry::vec3_zero(),
+                dimensions: Geometry::Vec3{x: Fixture::FLOOR_HALF_WIDTH,
+                    y: 0.25, z: 5.0},
+                mass: 0.0,
+                sensor: false,
+                collision_layer: 0,
+            }
+
+        def character_description(x: f32, cylinder_half_height: f32) -> PhysicsRuntime::CharacterDesc:
+            PhysicsRuntime::CharacterDesc(
+                Geometry::Vec3{x: x, y: Fixture::FLOOR_TOP, z: 0.0},
+                Geometry::quat_identity(), Fixture::CAPSULE_RADIUS,
+                cylinder_half_height, 70.0, 0.7853982, 1.0, 0)
+
+    public:
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, floor_description()):
+                value: value
+                error failure: return 200
+            cover: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::COVER_X,
+                        y: Fixture::CEILING_BOTTOM + 0.2, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: 1.0, y: 0.2, z: 1.0},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: 0,
+                }):
+                value: value
+                error failure: return 201
+
+            walker: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description(Fixture::START_X,
+                    Fixture::STANDING_HALF_HEIGHT)):
+                value: value
+                error failure: return 202
+            croucher: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description(Fixture::COVER_X,
+                    Fixture::CROUCHED_HALF_HEIGHT)):
+                value: value
+                error failure: return 203
+            settle_status: i32 = advance(session, Fixture::SETTLE_STEPS)
+            return 204 if settle_status != 0
+            walker_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, walker):
+                value: value
+                error failure: return 205
+            croucher_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, croucher):
+                value: value
+                error failure: return 206
+            return 207 if walker_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            return 208 if croucher_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+
+            crouch_resize: bool = catch RuntimeServices::physics_character_set_capsule(
+                session, croucher, Fixture::CAPSULE_RADIUS, 0.05):
+                value: value
+                error failure: return 209
+            return 210 if not crouch_resize
+            blocked_stand: bool = catch RuntimeServices::physics_character_set_capsule(
+                session, croucher, Fixture::CAPSULE_RADIUS,
+                Fixture::STANDING_HALF_HEIGHT):
+                value: value
+                error failure: return 211
+            return 212 if blocked_stand
+
+            movement_status: i32 = walk(session, walker)
+            return 213 if movement_status != 0
+            moved_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, walker):
+                value: value
+                error failure: return 214
+            return 215 if moved_pose.position.x < Fixture::START_X + 0.25
+
+            jump_status: i32 = catch RuntimeServices::physics_character_move(session,
+                walker, Geometry::vec3_zero(), 0.0, Fixture::JUMP_SPEED, false):
+                value: 0
+                error failure: 1
+            return 216 if jump_status != 0
+            hop_status: i32 = advance(session, 2)
+            return 217 if hop_status != 0
+            hopped_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, walker):
+                value: value
+                error failure: return 218
+            return 219 if hopped_pose.position.y < moved_pose.position.y + 0.03
+
+            platform: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Kinematic,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: 70.0, y: -0.25, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: 3.0, y: 0.25, z: 3.0},
+                    mass: 1.0,
+                    sensor: false,
+                    collision_layer: 0,
+                }):
+                value: value
+                error failure: return 220
+            rider: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description(70.0, Fixture::STANDING_HALF_HEIGHT)):
+                value: value
+                error failure: return 221
+            platform_settle: i32 = advance(session, Fixture::SETTLE_STEPS)
+            return 222 if platform_settle != 0
+            platform_target: i32 = catch RuntimeServices::physics_body_set_kinematic_target(
+                session, platform, Geometry::Transform{
+                    position: Geometry::Vec3{x: 70.1, y: -0.25, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    scale: Geometry::vec3_one(),
+                }):
+                value: 0
+                error failure: 1
+            return 223 if platform_target != 0
+            ride_tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                value: value
+                error failure: return 224
+            rider_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, rider):
+                value: value
+                error failure: return 225
+            return 226 if rider_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            return 227 if rider_ground.velocity.x < 0.5
+
+            frame_30_x: mutable f32 = 0.0
+            frame_120_x: mutable f32 = 0.0
+            cadence_30: i32 = cadence_run(session, 30, 33333, &frame_30_x)
+            return 228 if cadence_30 != 0
+            cadence_120: i32 = cadence_run(session, 120, 8333, &frame_120_x)
+            return 229 if cadence_120 != 0
+            return 230 if ElisaMath::fabsf(frame_30_x - frame_120_x) > 0.02
+
+            destroy_walker: i32 = catch RuntimeServices::physics_character_destroy(
+                session, walker):
+                value: 0
+                error failure: 1
+            destroy_croucher: i32 = catch RuntimeServices::physics_character_destroy(
+                session, croucher):
+                value: 0
+                error failure: 1
+            destroy_rider: i32 = catch RuntimeServices::physics_character_destroy(
+                session, rider):
+                value: 0
+                error failure: 1
+            destroy_platform: i32 = catch RuntimeServices::physics_body_destroy(
+                session, platform):
+                value: 0
+                error failure: 1
+            destroy_cover: i32 = catch RuntimeServices::physics_body_destroy(session, cover):
+                value: 0
+                error failure: 1
+            destroy_floor: i32 = catch RuntimeServices::physics_body_destroy(session, floor):
+                value: 0
+                error failure: 1
+            return 231 if destroy_walker != 0 or destroy_croucher != 0 or destroy_rider != 0 or destroy_platform != 0 or destroy_cover != 0 or destroy_floor != 0
+            0

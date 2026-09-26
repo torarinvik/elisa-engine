@@ -55,6 +55,7 @@ void shutdown_world() {
         body.shape_generation = 0;
         body.mesh_proxy_geometry_bytes = 0;
         body.live = false;
+        body.character = false;
     }
     for (ShapeSlot& shape : state.shapes) {
         shape.backend_shape = wi::scene::RigidBodyPhysicsComponent{};
@@ -172,6 +173,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 #include "physics_shape_cache_test_abi.inc"
 
 #include "physics_create_body_abi.inc"
+#include "physics_character_abi.inc"
 #include "physics_reusable_shape_abi.inc"
 #include "physics_create_body_with_shape_abi.inc"
 #include "physics_compound_shape_abi.inc"
@@ -453,8 +455,14 @@ extern "C" int32_t elisa_physics_v1_set_kinematic_target(uint64_t world_generati
     const ElisaCoordinateProfile profile = elisa_coordinate_profile();
     const ElisaTransformPayload authored{{position_x, position_y, position_z},
         {rotation_x, rotation_y, rotation_z, rotation_w}, {1.0f, 1.0f, 1.0f}};
-    return probe::submit_elisa_transform(&profile, &authored, transform)
-        ? ELISA_PHYSICS_OK : ELISA_PHYSICS_BACKEND_FAILURE;
+    if (!probe::submit_elisa_transform(&profile, &authored, transform)) {
+        return ELISA_PHYSICS_BACKEND_FAILURE;
+    }
+    // The managed physics service advances a private Scene directly. Prime the
+    // transform here so its next physics update sees the kinematic target even
+    // when no renderer has run Wicked's normal transform propagation pass.
+    transform->UpdateTransform();
+    return ELISA_PHYSICS_OK;
 }
 
 extern "C" int32_t elisa_physics_v1_set_sleeping(uint64_t world_generation,
@@ -510,6 +518,7 @@ extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
         body->shape_generation = 0;
     }
     body->live = false;
+    body->character = false;
     return ELISA_PHYSICS_OK;
 }
 

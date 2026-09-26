@@ -106,6 +106,7 @@ module PhysicsRuntime:
         extern elisa_physics_v1_set_kinematic_target(world_generation: u64, slot: u32,
             body_generation: u64, position_x: f32, position_y: f32, position_z: f32,
             rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32) -> i32
+        include "./runtime_character_abi.inc"
 
         @callconv(c)
         extern elisa_physics_v1_destroy_body(world_generation: u64,
@@ -518,3 +519,4 @@ module PhysicsRuntime:
         include "./runtime_body_pose_api.inc"
         include "./runtime_body_material_api.inc"
         include "./runtime_body_inertia_api.inc"
+        include "./runtime_character_api.inc"
