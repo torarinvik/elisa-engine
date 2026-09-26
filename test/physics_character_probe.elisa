@@ -13,6 +13,7 @@ module PhysicsCharacterProbe:
             DEFAULT_COLLISION_LAYER: u32 = 0
             FLOOR_TOP: f32 = 0.0
             FLOOR_HALF_WIDTH: f32 = 60.0
+            FLOOR_HALF_DEPTH: f32 = 5.0
             LAYER_FLOOR_HALF_WIDTH: f32 = 180.0
             FLOOR_HALF_HEIGHT: f32 = 0.25
             CAPSULE_RADIUS: f32 = 0.25
@@ -23,6 +24,7 @@ module PhysicsCharacterProbe:
             JUMP_SPEED: f32 = 5.0
             CHARACTER_MASS: f32 = 70.0
             CHARACTER_MAX_SLOPE_ANGLE: f32 = 0.7853982
+            CHARACTER_STEP_HEIGHT: f32 = 0.35
             CHARACTER_GRAVITY_FACTOR: f32 = 1.0
             LAYER_WALL_HALF_WIDTH: f32 = 0.1
             LAYER_WALL_HALF_HEIGHT: f32 = 0.75
@@ -39,6 +41,18 @@ module PhysicsCharacterProbe:
             RAMP_MIN_ASCENT_X: f32 = 0.8
             RAMP_MIN_ASCENT_Y: f32 = 0.3
             RAMP_MOVEMENT_STEPS: usize = 100
+            STEP_START_X: f32 = 112.0
+            STEP_START_HEIGHT: f32 = 1.5
+            STEP_FLOOR_CENTER_X: f32 = 114.0
+            STEP_FLOOR_HALF_WIDTH: f32 = 8.0
+            STEP_FLOOR_HALF_DEPTH: f32 = 1.5
+            STEP_CENTER_X: f32 = 115.0
+            STEP_HEIGHT: f32 = 0.2
+            STEP_HALF_WIDTH: f32 = 0.5
+            STEP_HALF_DEPTH: f32 = 1.0
+            STEP_MIN_PROGRESS_X: f32 = 2.6
+            STEP_MIN_ASCENT_Y: f32 = 0.12
+            STEP_MOVEMENT_STEPS: usize = 150
             MOVEMENT_STEPS: usize = 30
             SETTLE_STEPS: usize = 20
             LAYER_MOVEMENT_STEPS: usize = 180
@@ -65,6 +79,35 @@ module PhysicsCharacterProbe:
                     Runtime::fixed_step_seconds()):
                     value: value
                     error failure: return 3
+            0
+
+        def walk_to_x(session: mutable RuntimeServices::Session&,
+            character: PhysicsRuntime::CharacterHandle,
+            target_x: f32, max_steps: usize) -> i32:
+            reached: mutable bool = false
+            for _ in 0..<max_steps |session, character, reached|:
+                direction: mutable Geometry::Vec3 = Geometry::vec3_zero()
+                speed: mutable f32 = 0.0
+                control_in_air: mutable bool = true
+                if not reached:
+                    direction <- Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+                    speed <- Fixture::WALK_SPEED
+                    control_in_air <- false
+                driven: bool = catch RuntimeServices::physics_character_move(session,
+                    character, direction, speed, 0.0, control_in_air):
+                    ok: true
+                    error failure: return 1
+                return 2 if not driven
+                tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: value
+                    error failure: return 3
+                pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                    session, character):
+                    value: value
+                    error failure: return 4
+                reached <- true if pose.position.x >= target_x
+            return 5 if not reached
             0
 
         def cadence_run(session: mutable RuntimeServices::Session&,
@@ -114,7 +157,7 @@ module PhysicsCharacterProbe:
                 rotation: Geometry::quat_identity(),
                 center_of_mass_offset: Geometry::vec3_zero(),
                 dimensions: Geometry::Vec3{x: half_width,
-                    y: Fixture::FLOOR_HALF_HEIGHT, z: 5.0},
+                    y: Fixture::FLOOR_HALF_HEIGHT, z: Fixture::FLOOR_HALF_DEPTH},
                 mass: 0.0,
                 sensor: false,
                 collision_layer: collision_layer,
@@ -126,7 +169,7 @@ module PhysicsCharacterProbe:
                 Geometry::Vec3{x: x, y: y, z: 0.0},
                 Geometry::quat_identity(), Fixture::CAPSULE_RADIUS,
                 cylinder_half_height, Fixture::CHARACTER_MASS,
-                Fixture::CHARACTER_MAX_SLOPE_ANGLE,
+                Fixture::CHARACTER_MAX_SLOPE_ANGLE, Fixture::CHARACTER_STEP_HEIGHT,
                 Fixture::CHARACTER_GRAVITY_FACTOR,
                 collision_layer)
 
@@ -248,6 +291,84 @@ module PhysicsCharacterProbe:
                 value: 0
                 error failure: 1
             return 262 if not character_destroyed or ramp_destroyed != 0
+            0
+
+        def step_scenario(session: mutable RuntimeServices::Session&) -> i32:
+            floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::STEP_FLOOR_CENTER_X,
+                        y: Fixture::FLOOR_TOP - Fixture::FLOOR_HALF_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: Fixture::STEP_FLOOR_HALF_WIDTH,
+                        y: Fixture::FLOOR_HALF_HEIGHT, z: Fixture::STEP_FLOOR_HALF_DEPTH},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Fixture::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 270
+            step: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::STEP_CENTER_X,
+                        y: Fixture::STEP_HEIGHT * 0.5, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: Fixture::STEP_HALF_WIDTH,
+                        y: Fixture::STEP_HEIGHT * 0.5, z: Fixture::STEP_HALF_DEPTH},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Fixture::DEFAULT_COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 271
+            character: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, character_description_at(Fixture::STEP_START_X,
+                    Fixture::STEP_START_HEIGHT, Fixture::STANDING_HALF_HEIGHT,
+                    Fixture::DEFAULT_COLLISION_LAYER)):
+                value: value
+                error failure: return 272
+            settled: i32 = advance(session, Fixture::SETTLE_STEPS * 2)
+            return 273 if settled != 0
+            start_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, character):
+                value: value
+                error failure: return 274
+            return 275 if start_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            start_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 276
+            walked: i32 = walk_to_x(session, character,
+                start_pose.position.x + Fixture::STEP_MIN_PROGRESS_X,
+                Fixture::STEP_MOVEMENT_STEPS)
+            return walked if walked != 0
+            end_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 278
+            end_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, character):
+                value: value
+                error failure: return 279
+            return 280 if end_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            return 281 if end_pose.position.x < start_pose.position.x + Fixture::STEP_MIN_PROGRESS_X
+            return 282 if end_pose.position.y < start_pose.position.y + Fixture::STEP_MIN_ASCENT_Y
+            character_destroyed: bool = catch RuntimeServices::physics_character_destroy(
+                session, character):
+                value: true
+                error failure: false
+            step_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, step):
+                value: 0
+                error failure: 1
+            floor_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, floor):
+                value: 0
+                error failure: 1
+            return 283 if not character_destroyed or step_destroyed != 0 or floor_destroyed != 0
             0
 
     public:
@@ -419,4 +540,6 @@ module PhysicsCharacterProbe:
             return filtered_layers if filtered_layers != 0
             slope: i32 = slope_scenario(session)
             return slope if slope != 0
+            step: i32 = step_scenario(session)
+            return step if step != 0
             0

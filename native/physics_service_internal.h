@@ -32,6 +32,7 @@ struct BodySlot {
     uint64_t shape_generation = 0;
     uint32_t shape_slot = INVALID_SHAPE_SLOT;
     size_t mesh_proxy_geometry_bytes = 0;
+    float character_step_height = 0.0f;
     bool live = false;
     bool character = false;
 };

@@ -3,7 +3,8 @@
             position_x: f32, position_y: f32, position_z: f32,
             rotation_x: f32, rotation_y: f32, rotation_z: f32, rotation_w: f32,
             radius: f32, cylinder_half_height: f32, mass: f32,
-            max_slope_angle: f32, gravity_factor: f32, collision_layer: u32,
+            max_slope_angle: f32, step_height: f32,
+            gravity_factor: f32, collision_layer: u32,
             slot: mutable u32&, body_generation: mutable u64&) -> i32
 
         @callconv(c)

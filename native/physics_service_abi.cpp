@@ -54,6 +54,7 @@ void shutdown_world() {
         body.shape_slot = INVALID_SHAPE_SLOT;
         body.shape_generation = 0;
         body.mesh_proxy_geometry_bytes = 0;
+        body.character_step_height = 0.0f;
         body.live = false;
         body.character = false;
     }
@@ -519,6 +520,7 @@ extern "C" int32_t elisa_physics_v1_destroy_body(uint64_t world_generation,
     }
     body->live = false;
     body->character = false;
+    body->character_step_height = 0.0f;
     return ELISA_PHYSICS_OK;
 }
 

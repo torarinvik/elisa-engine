@@ -202,6 +202,7 @@ extern "C" int32_t elisa_physics_v1_create_body(uint64_t world_generation, int32
         ++body_slot.generation;
         body_slot.live = true;
         body_slot.character = false;
+        body_slot.character_step_height = 0.0f;
     } catch (...) {
         if (entity != wi::ecs::INVALID_ENTITY) state.scene->Entity_Remove(entity);
         return ELISA_PHYSICS_BACKEND_FAILURE;

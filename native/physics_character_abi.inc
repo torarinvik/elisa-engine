@@ -5,6 +5,7 @@ constexpr float CHARACTER_MAX_HALF_HEIGHT = 100.0f;
 constexpr float CHARACTER_MAX_SPEED = 1000.0f;
 constexpr float CHARACTER_MAX_GRAVITY_FACTOR = 8.0f;
 constexpr float CHARACTER_MAX_SLOPE_ANGLE = 1.57079632679f;
+constexpr float CHARACTER_MAX_STEP_HEIGHT = 2.0f;
 constexpr float CHARACTER_HORIZONTAL_EPSILON = 1.0e-5f;
 
 int32_t resolve_character(PhysicsService& state, uint32_t slot,
@@ -28,7 +29,8 @@ extern "C" int32_t elisa_physics_v1_create_character(uint64_t world_generation,
     float position_x, float position_y, float position_z,
     float rotation_x, float rotation_y, float rotation_z, float rotation_w,
     float radius, float cylinder_half_height, float mass,
-    float max_slope_angle, float gravity_factor, uint32_t collision_layer,
+    float max_slope_angle, float step_height, float gravity_factor,
+    uint32_t collision_layer,
     uint32_t* slot, uint64_t* body_generation) {
     if (slot == nullptr || body_generation == nullptr ||
         !std::isfinite(radius) || radius <= 0.0f || radius > CHARACTER_MAX_RADIUS ||
@@ -36,6 +38,7 @@ extern "C" int32_t elisa_physics_v1_create_character(uint64_t world_generation,
         !std::isfinite(mass) || mass <= 0.0f || mass > MAX_MASS ||
         !std::isfinite(max_slope_angle) || max_slope_angle < 0.0f ||
         max_slope_angle >= CHARACTER_MAX_SLOPE_ANGLE ||
+        !valid_character_scalar(step_height, CHARACTER_MAX_STEP_HEIGHT) ||
         !valid_character_scalar(gravity_factor, CHARACTER_MAX_GRAVITY_FACTOR)) {
         return ELISA_PHYSICS_INVALID_ARGUMENT;
     }
@@ -62,6 +65,7 @@ extern "C" int32_t elisa_physics_v1_create_character(uint64_t world_generation,
     rigidbody->character.maxSlopeAngle = max_slope_angle;
     rigidbody->character.gravityFactor = gravity_factor;
     body->character = true;
+    body->character_step_height = step_height;
     *slot = body_slot;
     *body_generation = generation;
     return ELISA_PHYSICS_OK;
@@ -85,6 +89,8 @@ extern "C" int32_t elisa_physics_v1_character_move(uint64_t world_generation,
     const int32_t character_status = resolve_character(state, slot,
         body_generation, rigidbody);
     if (character_status != ELISA_PHYSICS_OK) return character_status;
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
     const ElisaCoordinateProfile profile = elisa_coordinate_profile();
     XMFLOAT3 backend_direction{};
     float backend_speed = 0.0f;
@@ -106,7 +112,8 @@ extern "C" int32_t elisa_physics_v1_character_move(uint64_t world_generation,
     }
     try {
         wi::physics::MoveCharacter(*rigidbody, backend_direction, backend_speed,
-            backend_jump_speed, control_in_air != 0);
+            backend_jump_speed, control_in_air != 0,
+            body->character_step_height);
     } catch (...) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }

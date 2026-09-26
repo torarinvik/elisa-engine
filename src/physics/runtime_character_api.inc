@@ -17,12 +17,13 @@
             cylinder_half_height: f32
             mass: f32
             max_slope_angle: f32
+            step_height: f32
             gravity_factor: f32
             collision_layer: u32
 
         def CharacterDesc(position: Geometry::Vec3, rotation: Geometry::Quat,
             radius: f32, cylinder_half_height: f32, mass: f32,
-            max_slope_angle: f32, gravity_factor: f32,
+            max_slope_angle: f32, step_height: f32, gravity_factor: f32,
             collision_layer: u32) -> CharacterDesc:
             CharacterDesc{
                 position: position,
@@ -31,6 +32,7 @@
                 cylinder_half_height: cylinder_half_height,
                 mass: mass,
                 max_slope_angle: max_slope_angle,
+                step_height: step_height,
                 gravity_factor: gravity_factor,
                 collision_layer: collision_layer,
             }
@@ -53,7 +55,8 @@
                 description.rotation.x, description.rotation.y,
                 description.rotation.z, description.rotation.w,
                 description.radius, description.cylinder_half_height, description.mass,
-                description.max_slope_angle, description.gravity_factor,
+                description.max_slope_angle, description.step_height,
+                description.gravity_factor,
                 description.collision_layer, &slot, &generation)
             try check_status(status)
             CharacterHandle{body: BodyHandle{
