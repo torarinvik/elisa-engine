@@ -33,6 +33,11 @@
         extern elisa_render_scene_v1_update_camera(handle: i64, projection: i32,
             width: i32, height: i32, projection_value: f32, near_clip: f32, far_clip: f32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_camera_handle_look_at(handle: i64,
+            eye_x: f32, eye_y: f32, eye_z: f32,
+            target_x: f32, target_y: f32, target_z: f32,
+            up_x: f32, up_y: f32, up_z: f32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_activate_camera(handle: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_activate_default_camera() -> i32

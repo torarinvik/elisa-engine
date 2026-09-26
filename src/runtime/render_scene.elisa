@@ -233,6 +233,14 @@ module RenderScene:
             projection_code: i32 = 0 if projection == CameraProjection.Orthographic else 1
             try check_status(elisa_render_scene_v1_update_camera(handle.native_value, projection_code,
                 width, height, projection_value, near_clip, far_clip))
+        # Update any owned camera directly, including one already composing a
+        # viewport. Games can therefore drive split-screen cameras every frame
+        # without activating them or disturbing the primary camera.
+        def set_camera_look_at(handle: CameraHandle, eye: Geometry::Vec3,
+            target: Geometry::Vec3, up: Geometry::Vec3) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_camera_handle_look_at(
+                handle.native_value, eye.x, eye.y, eye.z,
+                target.x, target.y, target.z, up.x, up.y, up.z))
         def activate_camera(handle: CameraHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_activate_camera(handle.native_value))
         def activate_default_camera() -> void error[RenderSceneError]:

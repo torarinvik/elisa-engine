@@ -136,6 +136,42 @@ extern "C" int32_t elisa_render_scene_v1_update_camera(
     return ELISA_RENDER_SCENE_OK;
 }
 
+extern "C" int32_t elisa_render_scene_v1_set_camera_handle_look_at(
+    int64_t handle, float eye_x, float eye_y, float eye_z,
+    float target_x, float target_y, float target_z,
+    float up_x, float up_y, float up_z) {
+    if (!valid_look_at(eye_x, eye_y, eye_z, target_x, target_y, target_z,
+        up_x, up_y, up_z)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    const wi::ecs::Entity entity = state.cameras[slot].entity;
+    wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(entity);
+    wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(entity);
+    if (transform == nullptr || camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    const XMFLOAT3 wicked_eye = probe::coordinates::to_wicked(eye_x, eye_y, eye_z);
+    const XMFLOAT3 wicked_target = probe::coordinates::to_wicked(target_x, target_y, target_z);
+    const XMFLOAT3 wicked_up = probe::coordinates::to_wicked_direction(
+        XMFLOAT3(up_x, up_y, up_z));
+    const XMVECTOR eye = XMVectorSet(wicked_eye.x, wicked_eye.y, wicked_eye.z, 1.0f);
+    const XMVECTOR target = XMVectorSet(wicked_target.x, wicked_target.y, wicked_target.z, 1.0f);
+    const XMVECTOR up = XMVectorSet(wicked_up.x, wicked_up.y, wicked_up.z, 0.0f);
+    const XMMATRIX world = XMMatrixInverse(nullptr, XMMatrixLookAtLH(eye, target, up));
+    XMVECTOR scale;
+    XMVECTOR rotation;
+    XMVECTOR translation;
+    XMMatrixDecompose(&scale, &rotation, &translation, world);
+    XMStoreFloat3(&transform->translation_local, translation);
+    XMStoreFloat4(&transform->rotation_local, rotation);
+    transform->SetDirty();
+    transform->UpdateTransform();
+    camera->TransformCamera(*transform);
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_activate_camera(int64_t handle) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

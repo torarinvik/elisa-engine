@@ -85,6 +85,10 @@ int64_t elisa_render_scene_v1_create_camera(
 int32_t elisa_render_scene_v1_update_camera(
     int64_t handle, int32_t projection, int32_t width, int32_t height,
     float projection_value, float near_clip, float far_clip);
+int32_t elisa_render_scene_v1_set_camera_handle_look_at(
+    int64_t handle, float eye_x, float eye_y, float eye_z,
+    float target_x, float target_y, float target_z,
+    float up_x, float up_y, float up_z);
 int32_t elisa_render_scene_v1_activate_camera(int64_t handle);
 int32_t elisa_render_scene_v1_activate_default_camera(void);
 int32_t elisa_render_scene_v1_destroy_camera(int64_t handle);
