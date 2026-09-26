@@ -42,4 +42,7 @@ bindings. Each stale body must surface as
 `PhysicsRuntime::PhysicsError.StaleWorld`; the former generic
 `WorldPhysicsError.SynchronizationFailure` result fails either check. Both
 frame-advance routes now propagate their underlying physics errors. The
-focused SDL3/Metal client built and ran successfully on macOS 27.
+same client binds a dynamic body followed by a kinematic body, removes the
+dynamic row, then checks that the kinematic target still reaches Jolt through
+the session clock. It repeats target delivery through hierarchy bindings.
+The focused SDL3/Metal client built and ran successfully on macOS 27.

@@ -24,6 +24,7 @@ module WorldPhysics:
             private:
                 entities: mutable World::EntityRef[WorldPhysics::MAX_BINDINGS]
                 bodies: mutable PhysicsRuntime::ServiceBodyHandles::Pool
+                kinds: mutable PhysicsRuntime::BodyKind[WorldPhysics::MAX_BINDINGS]
                 count: mutable usize
 
     private:
@@ -65,13 +66,37 @@ module WorldPhysics:
                 raise WorldPhysicsError.BindingRollbackFailed if not cleanup_ok
                 raise WorldPhysicsError.Capacity
             bindings.entities[bindings.count] <- entity
+            bindings.kinds[bindings.count] <- kind
             bindings.count <- bindings.count + 1
+
+        def stage_world_kinematic_targets(session: RuntimeServices::Session&,
+            world: World::World&, bindings: Bindings&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            for index in 0..<bindings.count |session, world, bindings|:
+                if bindings.kinds[index] == PhysicsRuntime::BodyKind.Kinematic:
+                    target: mutable Geometry::Transform = Geometry::transform_identity()
+                    raise WorldPhysicsError.EntityUnavailable if not World::world_try_transform(
+                        world, bindings.entities[index], &target)
+                    body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(
+                        &bindings.bodies, index)
+                    try RuntimeServices::physics_body_set_kinematic_target(session, body, target)
+
+        def stage_hierarchy_kinematic_targets(session: RuntimeServices::Session&,
+            hierarchy: WorldHierarchy::Hierarchy&, bindings: Bindings&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            for index in 0..<bindings.count |session, hierarchy, bindings|:
+                if bindings.kinds[index] == PhysicsRuntime::BodyKind.Kinematic:
+                    target: mutable Geometry::Transform = Geometry::transform_identity()
+                    raise WorldPhysicsError.EntityUnavailable if not WorldHierarchy::hierarchy_try_world(
+                        hierarchy, bindings.entities[index].id, &target)
+                    body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(
+                        &bindings.bodies, index)
+                    try RuntimeServices::physics_body_set_kinematic_target(session, body, target)
 
     public:
         def Bindings() -> Bindings:
             Bindings{
                 entities: zeroed,
                 bodies: PhysicsRuntime::ServiceBodyHandles::Pool(),
+                kinds: zeroed,
                 count: 0,
             }
 
@@ -114,7 +139,9 @@ module WorldPhysics:
                     shift + 1, shift)
                 raise WorldPhysicsError.BindingTableCorrupt if not moved
                 bindings.entities[shift] <- bindings.entities[shift + 1]
+                bindings.kinds[shift] <- bindings.kinds[shift + 1]
             PhysicsRuntime::ServiceBodyHandles::clear(&bindings.bodies, bindings.count - 1)
+            bindings.kinds[bindings.count - 1] <- PhysicsRuntime::BodyKind.Static
             bindings.count <- bindings.count - 1
 
         # Read a bound body's latest simulated pose without exposing its native
@@ -185,27 +212,29 @@ module WorldPhysics:
                     hierarchy, bindings.entities[index].id, poses[index], false)
                 raise WorldPhysicsError.SynchronizationFailure if not applied
 
-        # One session frame advances the fixed clock, steps Jolt for each due
-        # tick, and publishes the resulting entity poses after each tick.
+        # One session frame advances the fixed clock, stages World-owned
+        # kinematic targets, steps Jolt for each due tick, then publishes poses.
         def advance_and_sync(session: mutable RuntimeServices::Session&,
             world: mutable World::World&, bindings: Bindings&,
             elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, PhysicsRuntime::PhysicsError, World::WorldError, WorldPhysicsError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(session, elapsed_micros)
             if bindings.count > 0:
                 for _ in 0..<frame.steps |session, world, bindings|:
+                    try stage_world_kinematic_targets(session, world, bindings)
                     fixed_tick: u64 = try RuntimeServices::physics_fixed_step(session,
                         Runtime::fixed_step_seconds())
                     try sync_world(session, world, bindings)
             frame
 
-        # Hierarchy callers share the session clock and publish every due pose
-        # through the same parent-first, staged synchronization path.
+        # Hierarchy callers stage composed kinematic targets and publish every
+        # due pose through the same parent-first synchronization path.
         def advance_and_sync_hierarchy(session: mutable RuntimeServices::Session&,
             hierarchy: mutable WorldHierarchy::Hierarchy&, bindings: Bindings&,
             elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(session, elapsed_micros)
             if bindings.count > 0:
                 for _ in 0..<frame.steps |session, hierarchy, bindings|:
+                    try stage_hierarchy_kinematic_targets(session, hierarchy, bindings)
                     fixed_tick: u64 = try RuntimeServices::physics_fixed_step(session,
                         Runtime::fixed_step_seconds())
                     try sync_hierarchy(session, hierarchy, bindings)

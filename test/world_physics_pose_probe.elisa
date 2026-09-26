@@ -1,4 +1,4 @@
-# Verifies world bindings preserve body orientation on creation and sync.
+# Verifies pose sync, kinematic targets, and stale-error preservation.
 module WorldPhysicsPoseProbe:
     private:
         const module Tune:
@@ -6,6 +6,13 @@ module WorldPhysicsPoseProbe:
             BODY_HALF_EXTENT: f32 = 0.5
             ROTATION_COMPONENT: f32 = 0.70710677
             ROTATION_DOT_MINIMUM: f32 = 0.999
+            KINEMATIC_START_X: f32 = 6.0
+            KINEMATIC_START_Y: f32 = 9.0
+            KINEMATIC_TARGET_X: f32 = 4.0
+            KINEMATIC_TARGET_Y: f32 = 6.0
+            HIERARCHY_KINEMATIC_TARGET_X: f32 = 8.0
+            HIERARCHY_KINEMATIC_TARGET_Y: f32 = 7.0
+            KINEMATIC_TARGET_TOLERANCE: f32 = 0.01
 
         def authored_pose() -> Geometry::Transform:
             Geometry::Transform{
@@ -116,6 +123,101 @@ module WorldPhysicsPoseProbe:
                 ok: 0
                 error failure: 1
             return 22 if hierarchy_cleanup != 0 or WorldPhysics::binding_count(hierarchy_bindings) != 0
+
+            kinematic_entity: World::EntityRef = catch World::world_spawn(
+                &world, World::Enemy.Guard):
+                value: value
+                error failure: return 31
+            kinematic_start: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: Tune::KINEMATIC_START_X,
+                    y: Tune::KINEMATIC_START_Y, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }
+            kinematic_start_status: i32 = catch World::world_set_transform(&world,
+                kinematic_entity, kinematic_start):
+                ok: 0
+                error failure: 1
+            return 32 if kinematic_start_status != 0
+            kinematic_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            dynamic_bind: i32 = catch WorldPhysics::bind(session, &world,
+                &kinematic_bindings, entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 1.0):
+                ok: 0
+                error failure: 1
+            kinematic_bind: i32 = catch WorldPhysics::bind(session, &world,
+                &kinematic_bindings, kinematic_entity,
+                PhysicsRuntime::BodyKind.Kinematic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 0.0):
+                ok: 0
+                error failure: 1
+            return 33 if dynamic_bind != 0 or kinematic_bind != 0
+            kinematic_target: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: Tune::KINEMATIC_TARGET_X,
+                    y: Tune::KINEMATIC_TARGET_Y, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: kinematic_start.scale,
+            }
+            target_status: i32 = catch World::world_set_transform(&world,
+                kinematic_entity, kinematic_target):
+                ok: 0
+                error failure: 1
+            return 34 if target_status != 0
+            dynamic_cleanup: i32 = catch WorldPhysics::unbind(session,
+                &kinematic_bindings, entity):
+                ok: 0
+                error failure: 1
+            return 35 if dynamic_cleanup != 0 or WorldPhysics::binding_count(kinematic_bindings) != 1
+            kinematic_frame: RuntimeServices::SimulationFrame = catch WorldPhysics::advance_and_sync(
+                session, &world, kinematic_bindings, Runtime::fixed_step_micros()):
+                value: value
+                error failure: return 36
+            return 37 if kinematic_frame.steps != 1 or kinematic_frame.tick_count != 1
+            kinematic_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            return 38 if not World::world_try_transform(world, kinematic_entity, &kinematic_pose)
+            return 39 if ElisaMath::fabsf(kinematic_pose.position.x - Tune::KINEMATIC_TARGET_X) > Tune::KINEMATIC_TARGET_TOLERANCE
+            return 40 if ElisaMath::fabsf(kinematic_pose.position.y - Tune::KINEMATIC_TARGET_Y) > Tune::KINEMATIC_TARGET_TOLERANCE
+            kinematic_cleanup: i32 = catch WorldPhysics::unbind(session,
+                &kinematic_bindings, kinematic_entity):
+                ok: 0
+                error failure: 1
+            return 41 if kinematic_cleanup != 0
+
+            hierarchy_kinematic_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            hierarchy_kinematic_bind: i32 = catch WorldPhysics::bind_hierarchy(session,
+                world, hierarchy, &hierarchy_kinematic_bindings, entity,
+                PhysicsRuntime::BodyKind.Kinematic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 0.0):
+                ok: 0
+                error failure: 1
+            return 42 if hierarchy_kinematic_bind != 0
+            hierarchy_target: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: Tune::HIERARCHY_KINEMATIC_TARGET_X,
+                    y: Tune::HIERARCHY_KINEMATIC_TARGET_Y, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: initial.scale,
+            }
+            return 43 if not WorldHierarchy::hierarchy_set_local(
+                &hierarchy, entity.id, hierarchy_target, false)
+            WorldHierarchy::hierarchy_update(&hierarchy)
+            hierarchy_kinematic_frame: RuntimeServices::SimulationFrame = catch WorldPhysics::advance_and_sync_hierarchy(
+                session, &hierarchy, hierarchy_kinematic_bindings,
+                Runtime::fixed_step_micros()):
+                value: value
+                error failure: return 44
+            return 45 if hierarchy_kinematic_frame.steps != 1 or hierarchy_kinematic_frame.tick_count != 2
+            hierarchy_kinematic_pose: Geometry::Transform = WorldHierarchy::hierarchy_world(
+                hierarchy, entity.id)
+            return 46 if ElisaMath::fabsf(hierarchy_kinematic_pose.position.x - Tune::HIERARCHY_KINEMATIC_TARGET_X) > Tune::KINEMATIC_TARGET_TOLERANCE
+            return 47 if ElisaMath::fabsf(hierarchy_kinematic_pose.position.y - Tune::HIERARCHY_KINEMATIC_TARGET_Y) > Tune::KINEMATIC_TARGET_TOLERANCE
+            hierarchy_kinematic_cleanup: i32 = catch WorldPhysics::unbind(session,
+                &hierarchy_kinematic_bindings, entity):
+                ok: 0
+                error failure: 1
+            return 48 if hierarchy_kinematic_cleanup != 0
 
             stale_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
             stale_bind: i32 = catch WorldPhysics::bind(session, &world,
