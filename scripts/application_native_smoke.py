@@ -213,6 +213,10 @@ def main() -> int:
                 if async_image is None or async_image[0] <= 0 or async_image[1] <= 0:
                     print("Asynchronous capture smoke did not write a valid RGBA PNG.", file=sys.stderr)
                     return 1
+                expected_black_pixels = async_image[0] * async_image[1]
+                if async_image[2].count(b"\x00\x00\x00\xff") != expected_black_pixels:
+                    print("Asynchronous capture differs from the empty-frame RGBA reference.", file=sys.stderr)
+                    return 1
                 print(f"Resize-safe asynchronous capture decoded at {async_image[0]}x{async_image[1]} pixels.")
             if status == 0 and name == "physics-render-capture-smoke":
                 capture_pairs = (
