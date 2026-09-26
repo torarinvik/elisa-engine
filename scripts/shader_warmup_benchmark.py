@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -11,6 +12,10 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+from package_macos_app import PackageError, shader_manifest
+from shader_library_publish import publish
+from shader_permutation_selection import select_binaries
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +33,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--probe", type=Path,
         default=ENGINE_ROOT / "build" / "wicked-native-probe",
         help="already-built native Wicked probe")
+    parser.add_argument("--selection-output", type=Path,
+        help="write observed Metal permutation names after all runtime checks pass")
+    parser.add_argument("--offline-shaders", type=Path,
+        help="Metal binary directory to verify against the observed runtime selection")
     return parser.parse_args(argv)
 
 
@@ -119,6 +128,37 @@ def main(argv: list[str] | None = None) -> int:
             if archive_new != 0:
                 raise RuntimeError(f"archive-backed launch compiled {archive_new} additional shader binaries")
 
+            selection = sorted(path.relative_to(shader_root / "metal").as_posix()
+                for path in (shader_root / "metal").rglob("*.cso")
+                if path.name != "elisa-warmup-anchor.cso")
+            if args.offline_shaders is not None:
+                offline = args.offline_shaders.expanduser().resolve()
+                reduced_root = Path(temporary) / "reduced-shaders"
+                binaries = select_binaries(offline, list(offline.rglob("*.cso")), set(selection))
+                publish(reduced_root, offline, binaries)
+                before = shader_manifest(reduced_root)
+                reduced_ms, reduced_output, reduced_count = run_probe(
+                    probe, wicked_source, manifest, reduced_root)
+                if WARMUP_RESULT.search(reduced_output) is None:
+                    raise RuntimeError("reduced offline run did not report frame timings")
+                if shader_manifest(reduced_root) != before:
+                    raise RuntimeError("reduced offline run added or changed shader binaries")
+                print(f"Reduced offline set: {reduced_count} unchanged binaries; launch {reduced_ms} ms")
+
+            if args.selection_output is not None:
+                destination = args.selection_output.expanduser().resolve()
+                temporary_output = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                            dir=destination.parent, prefix=".elisa-selection-", delete=False) as stream:
+                        temporary_output = Path(stream.name)
+                        stream.write(json.dumps(selection, indent=2) + "\n")
+                    os.replace(temporary_output, destination)
+                finally:
+                    if temporary_output is not None:
+                        temporary_output.unlink(missing_ok=True)
+                print(f"Observed {len(selection)} Metal permutations: {destination}")
+
             print(f"Cold launch: {cold_ms} ms; compiled {cold_compiled} shader binaries")
             print(f"  first frame: {cold_result[2]} us; later median/p95: "
                 f"{cold_result[3]}/{cold_result[4]} us")
@@ -129,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  first frame: {archive_result[2]} us; later median/p95: "
                 f"{archive_result[3]}/{archive_result[4]} us")
             print(f"  Metal archive size: {pipeline_archive.stat().st_size} bytes")
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, PackageError) as error:
         print(f"shader warm-up benchmark: {error}", file=sys.stderr)
         return 1
     return 0

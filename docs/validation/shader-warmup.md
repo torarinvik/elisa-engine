@@ -132,5 +132,26 @@ This feature controls publication and package size, not compilation cost. A
 project must validate its selection against every supported rendering feature;
 the content manifest proves file identity, not workload coverage. Fourteen
 shader tests pass, and selected publication of three real Metal binaries
-produced the matching manifest. Runtime coverage of a reduced game-specific
-selection and compile-time filtering remain open.
+produced the matching manifest. The native-probe workload now has reduced-set runtime coverage below;
+broader game-specific workload coverage and compile-time filtering remain open.
+
+## Exporting and verifying an observed selection
+
+```sh
+/opt/homebrew/bin/python3 scripts/shader_warmup_benchmark.py \
+  --selection-output build/native-probe-permutations.json \
+  --offline-shaders ../WickedEngine/build-elisa-sdl3/WickedEngine/shaders/metal
+```
+
+After the cold/cache/archive runs, the benchmark selects the observed names
+from the supplied offline Metal directory and runs a fourth process using only
+that reduced set. It compares the full content manifest before and after
+rendering, rejecting added or changed shader binaries. The exported JSON is
+compatible with preparation's `--permutations` option and excludes the preflight
+marker. Export occurs only after all requested runtime checks succeed.
+
+On 2026-09-26 this gate observed 392 permutations, found all of them in the
+398-file offline library, and rendered nine frames with the 392-file subset
+unchanged. The fourth launch took 862 ms; an independent run took 908 ms.
+This is coverage for the native probe's exercised scene and features, not
+evidence that an arbitrary game can omit every unobserved permutation.
