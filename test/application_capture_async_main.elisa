@@ -1,6 +1,10 @@
-# Bounded Metal readback queue smoke. The harness supplies a temporary PNG
+# Bounded asynchronous readback queue smoke. The harness supplies a temporary PNG
 # path and checks the decoded image after this Elisa-owned entry returns.
 include "../src/runtime/public.elisa"
+
+module ApplicationCaptureResizeTest:
+    @callconv(c)
+    extern elisa_application_v1_test_set_window_size(width: i32, height: i32) -> i32
 
 def run_capture_smoke() -> i32:
     config: Application::Config = Application::default_config()
@@ -8,6 +12,8 @@ def run_capture_smoke() -> i32:
     return 2 if Application::pump() != Application::PumpStatus.Running
 
     path: cstr = Application::environment_value("ELISA_ASYNC_SMOKE_SCREENSHOT_PATH")
+    original: mutable Application::FrameInfo = zeroed
+    return 3 if not Application::frame_info(&original)
     first_ticket: mutable u64 = 0
     second_ticket: mutable u64 = 0
     third_ticket: mutable u64 = 0
@@ -20,24 +26,29 @@ def run_capture_smoke() -> i32:
     return 7 if Application::request_screenshot(path, &overflow_ticket)
     return 8 if overflow_ticket != 0
     return 9 if not Application::cancel_screenshot(first_ticket)
+    return 10 if ApplicationCaptureResizeTest::elisa_application_v1_test_set_window_size(400, 260) != 0
 
     return 11 if Application::pump() != Application::PumpStatus.Running
+    resized: mutable Application::FrameInfo = zeroed
+    return 12 if not Application::frame_info(&resized)
+    return 13 if resized.resize_serial <= original.resize_serial
+    return 14 if resized.pixel_width == original.pixel_width or resized.pixel_height == original.pixel_height
     return 11 if Application::pump() != Application::PumpStatus.Running
     return 11 if Application::pump() != Application::PumpStatus.Running
 
     ignored_frame: mutable u64 = 0
     ignored_width: mutable u32 = 0
     ignored_height: mutable u32 = 0
-    return 10 if Application::poll_screenshot(first_ticket, &ignored_frame, &ignored_width, &ignored_height) != ApplicationCapture::SCREENSHOT_CANCELLED
+    return 15 if Application::poll_screenshot(first_ticket, &ignored_frame, &ignored_width, &ignored_height) != ApplicationCapture::SCREENSHOT_CANCELLED
 
     frame_count: mutable u64 = 0
     width: mutable u32 = 0
     height: mutable u32 = 0
     status: i32 = Application::poll_screenshot(second_ticket, &frame_count, &width, &height)
-    return 12 if status != ApplicationCapture::SCREENSHOT_COMPLETE
-    return 13 if frame_count != 1 or width == 0 or height == 0
-    return 14 if not Application::cancel_screenshot(third_ticket)
-    return 15 if not Application::cancel_screenshot(fourth_ticket)
+    return 16 if status != ApplicationCapture::SCREENSHOT_COMPLETE
+    return 17 if frame_count != original.frame_count or width != original.pixel_width.u32() or height != original.pixel_height.u32()
+    return 18 if not Application::cancel_screenshot(third_ticket)
+    return 19 if not Application::cancel_screenshot(fourth_ticket)
     0
 
 def main() -> i32:

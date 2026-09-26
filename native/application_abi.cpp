@@ -458,21 +458,6 @@ extern "C" int32_t elisa_application_v1_pump(void) {
     return ELISA_APPLICATION_RUNNING;
 }
 
-#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-extern "C" int32_t elisa_application_v1_test_set_minimized(int32_t minimized) {
-    if (minimized != 0 && minimized != 1) return ELISA_APPLICATION_INVALID_ARGUMENT;
-    ApplicationService& service = application_service();
-    std::lock_guard<std::mutex> guard(service.mutex);
-    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
-    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
-    SDL_Event event{};
-    event.type = minimized != 0 ? SDL_EVENT_WINDOW_MINIMIZED : SDL_EVENT_WINDOW_RESTORED;
-    event.window.windowID = SDL_GetWindowID(service.host.window());
-    return SDL_PushEvent(&event) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_FRAME_FAILED;
-}
-
-#endif
-
 extern "C" int32_t elisa_application_v1_frame_info(
     uint64_t* frame_count, uint64_t* elapsed_nanos, uint64_t* resize_serial,
     int32_t* logical_width, int32_t* logical_height, int32_t* pixel_width, int32_t* pixel_height,
@@ -576,6 +561,7 @@ extern "C" int32_t elisa_application_v1_validate_owner_thread(void) {
 }
 
 #include "application_capture_impl.h"
+#include "application_window_test_hooks.h"
 #include "application_render_probe.inc"
 #include "application_input_events.inc"
 

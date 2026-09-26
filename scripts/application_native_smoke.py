@@ -213,12 +213,7 @@ def main() -> int:
                 if async_image is None or async_image[0] <= 0 or async_image[1] <= 0:
                     print("Asynchronous capture smoke did not write a valid RGBA PNG.", file=sys.stderr)
                     return 1
-                print(f"Asynchronous application capture decoded at {async_image[0]}x{async_image[1]} pixels.")
-                async_image = decode_capture_png(async_screenshot.read_bytes()) if async_screenshot.exists() else None
-                if async_image is None or async_image[0] <= 0 or async_image[1] <= 0:
-                    print("Native application smoke did not write a valid asynchronous PNG capture.", file=sys.stderr)
-                    return 1
-                print(f"Asynchronous capture decoded at {async_image[0]}x{async_image[1]} pixels.")
+                print(f"Resize-safe asynchronous capture decoded at {async_image[0]}x{async_image[1]} pixels.")
             if status == 0 and name == "physics-render-capture-smoke":
                 capture_pairs = (
                     ("midpoint", physics_captures / "physics-30hz-mid.png",
