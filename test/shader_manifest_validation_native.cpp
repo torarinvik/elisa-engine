@@ -1,6 +1,7 @@
 #include "shader_path_validation.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -64,6 +65,27 @@ int main() {
         !elisa::shader::root_is_valid(root.string().c_str(), manifest.string().c_str())) return 2;
     if (!write_file(manifest, schema_two) ||
         !elisa::shader::root_is_valid(root.string().c_str(), manifest.string().c_str())) return 3;
+    std::string manifest_digest;
+    elisa::assets::Sha256 expected_hash;
+    expected_hash.update(reinterpret_cast<const uint8_t*>(schema_two.data()), schema_two.size());
+    const std::string expected_manifest_digest = expected_hash.finish();
+    if (!elisa::shader::manifest_content_digest(root.string().c_str(), manifest.string().c_str(), manifest_digest) ||
+        manifest_digest != expected_manifest_digest) return 7;
+#if defined(__APPLE__)
+    const char* prior_key_value = std::getenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
+    const bool had_prior_key = prior_key_value != nullptr;
+    const std::string prior_key = had_prior_key ? prior_key_value : std::string();
+    elisa::shader::configure_metal_pipeline_archive_shader_key(root.string().c_str(), manifest.string().c_str());
+    const char* configured_key = std::getenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
+    if (configured_key == nullptr || configured_key != expected_manifest_digest) return 9;
+    elisa::shader::configure_metal_pipeline_archive_shader_key(root.string().c_str(), nullptr);
+    if (std::getenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY") != nullptr) return 10;
+    if (had_prior_key) setenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY", prior_key.c_str(), 1);
+    else unsetenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
+#endif
+    if (!write_file(manifest, schema_one) ||
+        !elisa::shader::manifest_content_digest(root.string().c_str(), manifest.string().c_str(), manifest_digest) ||
+        manifest_digest == expected_manifest_digest) return 8;
     if (!write_file(manifest, wrong_backend) ||
         elisa::shader::root_is_valid(root.string().c_str(), manifest.string().c_str()) ||
         elisa::shader::verify_shader_manifest(root, wrong_backend, other_backend)) return 4;

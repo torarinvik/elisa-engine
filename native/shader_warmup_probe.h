@@ -94,4 +94,14 @@ inline int run_shader_warmup_probe(NativeApplication& host, wi::Application& app
     return 0;
 }
 
+inline int run_shader_warmup_isolated_probe(NativeApplication& host, wi::Application& application,
+    const std::map<std::string, std::string>& manifest, float width, float height) {
+    wi::scene::Scene scene;
+    const auto object = scene.Entity_CreateCube("elisa_shader_warmup_object");
+    const auto camera = scene.Entity_CreateCamera("elisa_shader_warmup_camera", width, height);
+    if (!check(object != wi::ecs::INVALID_ENTITY && camera != wi::ecs::INVALID_ENTITY,
+            "shader warm-up scene entities")) return 1;
+    return run_shader_warmup_probe(host, application, scene, object, camera, manifest);
+}
+
 } // namespace probe

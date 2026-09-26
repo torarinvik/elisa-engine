@@ -114,8 +114,8 @@ The inventory is build metadata and is excluded from packaged applications.
 Eleven shader preparation/publication tests and eleven packaging tests pass.
 A real-library rebuild from 398 to 397 binaries removed the omitted output
 and changed the shader manifest fingerprint. This addresses stale generated
-files; per-project permutation selection and pipeline archive identity keys
-remain open.
+files; per-project permutation selection and packaged pipeline archives remain
+open.
 
 ## Project permutation selection
 
@@ -155,3 +155,26 @@ On 2026-09-26 this gate observed 392 permutations, found all of them in the
 unchanged. The fourth launch took 862 ms; an independent run took 908 ms.
 This is coverage for the native probe's exercised scene and features, not
 evidence that an arbitrary game can omit every unobserved permutation.
+
+## Archive identity keys (2026-09-27)
+
+When an Elisa application supplies a verified shader manifest, the native
+application host hashes its exact bytes and sets
+`WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY` before Wicked initializes. Metal
+archive capture writes a companion `.elisa-identity` file containing that key,
+the Metal device name, macOS major/minor/patch version, and exact OS build
+string. Loading requires an exact match; a missing, stale, or malformed
+identity disables only the archive and falls back to normal pipeline creation.
+Capturing publishes the identity atomically after the archive. A shader root
+without a validated manifest cannot opt into archive capture or loading.
+
+The native warm-up benchmark uses a deterministic digest of Wicked's sorted
+shader-source tree as its test key. It captures 5,376 pipeline functions, then
+rejects both a changed key and a tampered OS-build identity before loading the
+matching archive. The run compiled 392 shader binaries cold, zero on the
+shader-cache launch, and zero on the archive launch. Cold/cache/archive
+launches took 13,257/737/744 ms; their first frames took 4,076/9/9 ms. The
+archive was 60,258,320 bytes. As before, this validates persistence and
+invalidation, not a startup speedup over Metal's own cache. The native manifest
+test also verifies that the application host derives the key from the
+validated manifest bytes.

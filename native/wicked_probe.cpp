@@ -111,10 +111,10 @@ int main(int argc, char** argv) {
     }
     if (wi::arguments::HasArgument("ktx2only")) return run_ktx2_upload_smoke(argv[2]);
     if (std::getenv("ELISA_LIFECYCLE_ONLY") != nullptr) return run_lifecycle_only(application_host);
-    if (std::getenv("ELISA_SCENE_RESTART_ONLY") != nullptr) {
-        return run_scene_restart_diagnostic(application_host);
-    }
+    if (std::getenv("ELISA_SCENE_RESTART_ONLY") != nullptr) return run_scene_restart_diagnostic(application_host);
     wi::Application& application = application_host.wicked();
+    if (std::getenv("ELISA_SHADER_WARMUP_PROBE") != nullptr)
+        return run_shader_warmup_isolated_probe(application_host, application, manifest, width, height);
     if (!probe_graphics_capabilities()) {
         return 1;
     }
@@ -148,7 +148,6 @@ int main(int argc, char** argv) {
         !check(lamp != wi::ecs::INVALID_ENTITY, "lamp entity")) {
         return 1;
     }
-    if (std::getenv("ELISA_SHADER_WARMUP_PROBE") != nullptr) return run_shader_warmup_probe(application_host, application, scene, object, camera, manifest);
     int fog_radius = 0;
     int fog_player_x = 0;
     int fog_player_y = 0;

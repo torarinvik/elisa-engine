@@ -178,7 +178,6 @@ void configure_shader_root() {
     wi::renderer::SetShaderPath(path);
     wi::renderer::SetShaderSourcePath(path);
 }
-
 } // namespace
 
 extern "C" uint32_t elisa_application_abi_version(void) {
@@ -252,6 +251,7 @@ extern "C" int32_t elisa_application_v1_initialize(
     config.height = height;
     config.hidden = hidden != 0;
     configure_shader_root();
+    elisa::shader::configure_metal_pipeline_archive_shader_key(shader_path, shader_manifest);
     if (!service.host.initialize(config)) return ELISA_APPLICATION_INITIALIZATION_FAILED;
 
     service.backend_profile_valid = probe::query_live_backend_profile(service.backend_profile);

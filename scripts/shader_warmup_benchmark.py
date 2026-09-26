@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -42,10 +43,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 def run_probe(probe: Path, wicked_source: Path, manifest: Path,
     shader_root: Path, pipeline_archive: Path | None = None,
-    capture_pipeline_archive: bool = False) -> tuple[int, str, int]:
+    capture_pipeline_archive: bool = False, shader_key: str = "") -> tuple[int, str, int]:
     environment = dict(os.environ)
     environment["ELISA_PROBE_SHADER_ROOT"] = str(shader_root)
     environment["ELISA_SHADER_WARMUP_PROBE"] = "1"
+    environment["WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY"] = shader_key
     environment.pop("WICKED_METAL_PIPELINE_ARCHIVE", None)
     environment.pop("WICKED_METAL_PIPELINE_ARCHIVE_CAPTURE", None)
     if pipeline_archive is not None:
@@ -66,6 +68,21 @@ def run_probe(probe: Path, wicked_source: Path, manifest: Path,
     return elapsed_ms, output, len(list(shader_root.rglob("*.cso")))
 
 
+def shader_source_key(shader_root: Path) -> str:
+    sources = sorted(path for path in shader_root.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".hlsl", ".hlsli", ".metal"})
+    if not sources:
+        raise RuntimeError(f"no Metal archive key sources found under {shader_root}")
+    digest = hashlib.sha256(b"elisa-wicked-shader-source-key-v1\0")
+    for path in sources:
+        digest.update(path.relative_to(shader_root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
     if sys.platform != "darwin":
@@ -84,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        archive_shader_key = shader_source_key(wicked_source / "shaders")
         with tempfile.TemporaryDirectory(prefix="elisa-shader-warmup-") as temporary:
             shader_root = Path(temporary) / "shaders"
             (shader_root / "metal").mkdir(parents=True)
@@ -95,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
 
             cold_ms, cold_output, cold_count = run_probe(
                 probe, wicked_source, manifest, shader_root, pipeline_archive,
-                capture_pipeline_archive=True)
+                capture_pipeline_archive=True, shader_key=archive_shader_key)
             cold_result = WARMUP_RESULT.search(cold_output)
             if cold_result is None:
                 raise RuntimeError("cold run did not report its first and warmed frame timings")
@@ -104,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError("cold run did not create any compiled shader binaries")
 
             warm_ms, warm_output, warm_count = run_probe(
-                probe, wicked_source, manifest, shader_root)
+                probe, wicked_source, manifest, shader_root, shader_key=archive_shader_key)
             warm_result = WARMUP_RESULT.search(warm_output)
             if warm_result is None:
                 raise RuntimeError("second run did not report its first and warmed frame timings")
@@ -116,9 +134,40 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError("cold run did not publish its Metal pipeline archive")
             if not pipeline_archive.is_file() or pipeline_archive.stat().st_size == 0:
                 raise RuntimeError("cold run did not produce a readable Metal pipeline archive")
+            identity_file = pipeline_archive.with_name(pipeline_archive.name + ".elisa-identity")
+            if not identity_file.is_file():
+                archive_logs = "\n".join(line for line in cold_output.splitlines()
+                    if "Metal pipeline archive" in line)
+                raise RuntimeError("cold run did not publish the pipeline archive identity; " + archive_logs)
+            identity_bytes = identity_file.read_bytes()
+
+            mismatched_key = hashlib.sha256((archive_shader_key + "mismatch").encode("ascii")).hexdigest()
+            mismatch_ms, mismatch_output, mismatch_count = run_probe(
+                probe, wicked_source, manifest, shader_root, pipeline_archive,
+                shader_key=mismatched_key)
+            if "shader, GPU, or OS identity does not match" not in mismatch_output:
+                raise RuntimeError("pipeline archive did not reject a mismatched shader key")
+            if "Metal pipeline archive loaded:" in mismatch_output:
+                raise RuntimeError("pipeline archive loaded despite a mismatched shader key")
+            if mismatch_count != warm_count:
+                raise RuntimeError("mismatched pipeline key changed the runtime shader cache")
+
+            stale_identity = identity_bytes.replace(b"os_build=", b"os_build=stale-", 1)
+            if stale_identity == identity_bytes:
+                raise RuntimeError("pipeline archive identity omitted its operating-system build")
+            identity_file.write_bytes(stale_identity)
+            _, stale_output, stale_count = run_probe(
+                probe, wicked_source, manifest, shader_root, pipeline_archive,
+                shader_key=archive_shader_key)
+            if "shader, GPU, or OS identity does not match" not in stale_output:
+                raise RuntimeError("pipeline archive did not reject a stale device/OS identity")
+            if "Metal pipeline archive loaded:" in stale_output or stale_count != warm_count:
+                raise RuntimeError("pipeline archive loaded with a stale device/OS identity")
+            identity_file.write_bytes(identity_bytes)
 
             archive_ms, archive_output, archive_count = run_probe(
-                probe, wicked_source, manifest, shader_root, pipeline_archive)
+                probe, wicked_source, manifest, shader_root, pipeline_archive,
+                shader_key=archive_shader_key)
             archive_result = WARMUP_RESULT.search(archive_output)
             if archive_result is None:
                 raise RuntimeError("archive-backed run did not report its first and warmed frame timings")
@@ -169,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  first frame: {archive_result[2]} us; later median/p95: "
                 f"{archive_result[3]}/{archive_result[4]} us")
             print(f"  Metal archive size: {pipeline_archive.stat().st_size} bytes")
+            print(f"Mismatched-key fallback: {mismatch_ms} ms; identity rejected")
+            print("Stale device/OS identity fallback: identity rejected")
     except (OSError, RuntimeError, PackageError) as error:
         print(f"shader warm-up benchmark: {error}", file=sys.stderr)
         return 1

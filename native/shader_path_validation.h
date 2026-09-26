@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -40,6 +41,45 @@ inline bool manifest_is_valid(const std::filesystem::path& root, const char* con
     if (!content.empty()) stream.read(content.data(), static_cast<std::streamsize>(content.size()));
     if (!stream || stream.gcount() != static_cast<std::streamsize>(content.size())) return false;
     return verify_shader_manifest(canonical_root, content, current_backend());
+}
+
+inline bool manifest_content_digest(const char* configured_root, const char* configured_manifest,
+        std::string& digest) {
+    if (configured_root == nullptr || configured_root[0] == '\0' ||
+        configured_manifest == nullptr || configured_manifest[0] == '\0') return false;
+    std::error_code error;
+    const std::filesystem::path root = std::filesystem::weakly_canonical(configured_root, error);
+    if (error) return false;
+    const std::filesystem::path configured_path(configured_manifest);
+    const std::filesystem::path path = std::filesystem::weakly_canonical(
+        configured_path.is_absolute() ? configured_path : root / configured_path, error);
+    if (error || path.parent_path() != root ||
+        !std::filesystem::is_regular_file(path, error) || error) return false;
+    const uintmax_t size = std::filesystem::file_size(path, error);
+    if (error || size > MAX_MANIFEST_BYTES) return false;
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) return false;
+    std::string content(static_cast<size_t>(size), '\0');
+    if (!content.empty()) stream.read(content.data(), static_cast<std::streamsize>(content.size()));
+    if (!stream || stream.gcount() != static_cast<std::streamsize>(content.size())) return false;
+    elisa::assets::Sha256 hash;
+    hash.update(reinterpret_cast<const uint8_t*>(content.data()), content.size());
+    digest = hash.finish();
+    return true;
+}
+
+inline void configure_metal_pipeline_archive_shader_key(const char* shader_root, const char* manifest_path) {
+#if defined(__APPLE__)
+    std::string digest;
+    if (manifest_content_digest(shader_root, manifest_path, digest)) {
+        setenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY", digest.c_str(), 1);
+    } else {
+        unsetenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
+    }
+#else
+    (void)shader_root;
+    (void)manifest_path;
+#endif
 }
 
 inline int root_status(const char* configured, const char* manifest) {
