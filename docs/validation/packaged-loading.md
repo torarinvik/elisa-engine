@@ -208,3 +208,21 @@ After the Elisa compiler runtime archive was rebuilt, the application native
 smoke passed all 12 SDL3/Metal scenarios, including the two application
 lifecycle probes and pixel-identical midpoint and final physics captures. The
 earlier linker failure above records the state before that rebuild.
+
+## Packaged notice files
+
+A project's `elisa.project.json` can declare `package.notices` as a list of
+project-relative notice files. For example:
+
+```json
+{"package": {"notices": ["third_party/SDL/LICENSE.txt", "third_party/Jolt/LICENSE.txt"]}}
+```
+
+The macOS packager preserves those files byte-for-byte beneath
+`Contents/Resources/Notices`, retaining their relative directories. It rejects
+missing, empty, duplicate, escaping, or symlinked notice files and output paths
+that would erase a required input. Notice staging works independently of the
+runtime resource allowlist. Sixteen packaging tests pass, including identical
+license basenames in different dependency directories and invalid notice lists.
+This provides distribution plumbing; the complete notice inventory for the
+linked dependency closure is still outstanding in Q02.

@@ -57,7 +57,8 @@ class PackageMacosAppTests(unittest.TestCase):
         return packager.package_app(self.project, self.project / "build" / "game",
             self.output, "Game", "org.elisa.game", "1.2.3", None,
             packager.manifest_resources(manifest, self.project),
-            packager.manifest_window(manifest, self.project))
+            packager.manifest_window(manifest, self.project),
+            notice_paths=packager.manifest_notices(manifest, self.project))
 
     def staged(self, app: Path) -> set[str]:
         resources = app / "Contents" / "Resources"
@@ -122,6 +123,27 @@ class PackageMacosAppTests(unittest.TestCase):
             packager.package_app(self.project, self.project / "build/game", self.output,
                 "Game", "org.elisa.game", "1.0", shader_root=shaders)
         self.assertEqual((shaders / "metal/keep.cso").read_bytes(), b"keep")
+
+    def test_notices_are_staged_with_original_bytes(self) -> None:
+        touch(self.project / "third_party/SDL/LICENSE.txt", b"SDL notice\n")
+        touch(self.project / "third_party/Jolt/LICENSE.txt", b"Jolt notice\n")
+        app = self.package(self.write_manifest({"package": {"notices": [
+            "third_party/SDL/LICENSE.txt", "third_party/Jolt/LICENSE.txt"]}}))
+        root = app / "Contents/Resources/Notices/third_party"
+        self.assertEqual((root / "SDL/LICENSE.txt").read_bytes(), b"SDL notice\n")
+        self.assertEqual((root / "Jolt/LICENSE.txt").read_bytes(), b"Jolt notice\n")
+
+    def test_missing_or_escaping_notices_are_rejected(self) -> None:
+        for entry in ("missing.txt", "../outside.txt", "/absolute.txt"):
+            with self.subTest(entry=entry), self.assertRaises(packager.PackageError):
+                packager.manifest_notices({"package": {"notices": [entry]}}, self.project)
+
+    def test_duplicate_and_empty_notices_are_rejected(self) -> None:
+        touch(self.project / "notice.txt", b"notice")
+        touch(self.project / "empty.txt", b"")
+        for entries in (["notice.txt", "notice.txt"], ["empty.txt"]):
+            with self.subTest(entries=entries), self.assertRaises(packager.PackageError):
+                packager.manifest_notices({"package": {"notices": entries}}, self.project)
 
     def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
         manifest = packager.shader_manifest(self.project / "shaders")

@@ -181,6 +181,29 @@ def manifest_resources(manifest: dict[str, object], project: Path) -> list[Path]
     return resources
 
 
+def manifest_notices(manifest: dict[str, object], project: Path) -> list[Path]:
+    package = manifest.get("package", {})
+    if not isinstance(package, dict):
+        raise PackageError("manifest 'package' must be an object")
+    entries = package.get("notices", [])
+    if not isinstance(entries, list) or len(entries) > MAX_RESOURCE_ENTRIES:
+        raise PackageError("package.notices must be a bounded list of project-relative files")
+    paths = []
+    for entry in entries:
+        if not isinstance(entry, str) or not entry or "\0" in entry:
+            raise PackageError("package.notices entries must be non-empty file paths")
+        relative = Path(entry)
+        if relative.is_absolute() or ".." in relative.parts or relative in paths:
+            raise PackageError(f"invalid or duplicate notice path: {entry}")
+        source = project / relative
+        resolved = source.resolve()
+        if (not resolved.is_relative_to(project.resolve()) or source.is_symlink()
+                or not source.is_file() or source.stat().st_size == 0):
+            raise PackageError(f"notice must be a nonempty file inside the project: {entry}")
+        paths.append(relative)
+    return paths
+
+
 def stage_resource(project: Path, resources: Path, relative: Path) -> None:
     source = project / relative
     destination = resources / relative
@@ -305,12 +328,14 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     bundle_id: str, version: str, icon: Path | None = None,
     resource_paths: list[Path] | None = None,
     window: tuple[str, int, int] | None = None,
-    shader_root: Path | None = None) -> Path:
+    shader_root: Path | None = None,
+    notice_paths: list[Path] | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
     if not project.is_dir():
         raise PackageError(f"project directory does not exist: {project}")
+    notices = manifest_notices({"package": {"notices": [str(path) for path in notice_paths or []]}}, project)
     if not executable.is_file():
         raise PackageError(f"built executable does not exist: {executable}")
     if shader_root is not None:
@@ -327,7 +352,7 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     app = output if output.suffix == ".app" else output.with_suffix(".app")
     if app == project or app in project.parents:
         raise PackageError("bundle output must not replace or contain the source project")
-    for source in (executable, shader_root, icon):
+    for source in (executable, shader_root, icon, *(project / relative for relative in notices)):
         if source is not None and (source == app or app in source.parents):
             raise PackageError(f"bundle output contains a required packaging input: {source}")
     if app.exists():
@@ -363,6 +388,13 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
         manifest = shader_manifest(resources / "shaders")
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    for relative in notices:
+        destination = resources / "Notices" / relative
+        if destination.exists():
+            raise PackageError(f"notice destination conflicts with a staged resource: {relative}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(project / relative, destination)
 
     info = {
         "CFBundleDevelopmentRegion": "en",
@@ -421,7 +453,7 @@ def main() -> int:
             icon = candidate if candidate.is_file() else None
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
-            manifest_window(manifest, project), options.shader_root)
+            manifest_window(manifest, project), options.shader_root, manifest_notices(manifest, project))
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
