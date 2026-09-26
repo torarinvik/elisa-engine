@@ -1,4 +1,6 @@
 # Exercises the Wicked/Jolt character wrapper through the public runtime session.
+include "./physics_character_corners_probe.elisa"
+
 module PhysicsCharacterProbe:
     private:
         const module Fixture:
@@ -542,4 +544,6 @@ module PhysicsCharacterProbe:
             return slope if slope != 0
             step: i32 = step_scenario(session)
             return step if step != 0
+            corners: i32 = PhysicsCharacterCornersProbe::run(session)
+            return corners if corners != 0
             0

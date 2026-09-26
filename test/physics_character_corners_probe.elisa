@@ -1,0 +1,138 @@
+# Checks grounded character sliding around a right-angle wall end.
+module PhysicsCharacterCornersProbe:
+    private:
+        const module Fixture:
+            FLOOR_CENTER_X: f32 = 44.0
+            FLOOR_HALF_WIDTH: f32 = 8.0
+            FLOOR_HALF_DEPTH: f32 = 4.5
+            FLOOR_HALF_HEIGHT: f32 = 0.25
+            FLOOR_TOP: f32 = 0.0
+            WALL_CENTER_X: f32 = 44.0
+            WALL_HALF_WIDTH: f32 = 0.2
+            WALL_HALF_HEIGHT: f32 = 1.5
+            WALL_CENTER_Z: f32 = -1.5
+            WALL_HALF_DEPTH: f32 = 1.5
+            WALL_CLEARANCE_Z: f32 = 0.45
+            MAX_X_BEFORE_CLEARANCE: f32 = 44.65
+            START_X: f32 = 41.0
+            START_Z: f32 = -2.0
+            CAPSULE_RADIUS: f32 = 0.25
+            CYLINDER_HALF_HEIGHT: f32 = 0.45
+            CHARACTER_MASS: f32 = 70.0
+            CHARACTER_MAX_SLOPE_ANGLE: f32 = 0.7853982
+            CHARACTER_STEP_HEIGHT: f32 = 0.35
+            CHARACTER_GRAVITY_FACTOR: f32 = 1.0
+            WALK_SPEED: f32 = 2.0
+            COLLISION_LAYER: u32 = 0
+            SETTLE_STEPS: usize = 40
+            CORNER_MOVEMENT_STEPS: usize = 240
+            MIN_X_PROGRESS_AFTER_CORNER: f32 = 3.5
+            MIN_Z_PROGRESS_AFTER_CORNER: f32 = 2.5
+
+        def advance(session: mutable RuntimeServices::Session&,
+            count: usize) -> i32:
+            for _ in 0..<count |session|:
+                tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: value
+                    error failure: return 1
+            0
+
+    public:
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::FLOOR_CENTER_X,
+                        y: Fixture::FLOOR_TOP - Fixture::FLOOR_HALF_HEIGHT, z: 0.0},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: Fixture::FLOOR_HALF_WIDTH,
+                        y: Fixture::FLOOR_HALF_HEIGHT, z: Fixture::FLOOR_HALF_DEPTH},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Fixture::COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 1
+            wall: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
+                session, PhysicsRuntime::BodyDesc{
+                    kind: PhysicsRuntime::BodyKind.Static,
+                    shape: PhysicsRuntime::BodyShape.Box,
+                    position: Geometry::Vec3{x: Fixture::WALL_CENTER_X,
+                        y: Fixture::WALL_HALF_HEIGHT, z: Fixture::WALL_CENTER_Z},
+                    rotation: Geometry::quat_identity(),
+                    center_of_mass_offset: Geometry::vec3_zero(),
+                    dimensions: Geometry::Vec3{x: Fixture::WALL_HALF_WIDTH,
+                        y: Fixture::WALL_HALF_HEIGHT, z: Fixture::WALL_HALF_DEPTH},
+                    mass: 0.0,
+                    sensor: false,
+                    collision_layer: Fixture::COLLISION_LAYER,
+                }):
+                value: value
+                error failure: return 2
+            character: PhysicsRuntime::CharacterHandle = catch RuntimeServices::physics_character_create(
+                session, PhysicsRuntime::CharacterDesc(
+                    Geometry::Vec3{x: Fixture::START_X, y: 0.0, z: Fixture::START_Z},
+                    Geometry::quat_identity(), Fixture::CAPSULE_RADIUS,
+                    Fixture::CYLINDER_HALF_HEIGHT, Fixture::CHARACTER_MASS,
+                    Fixture::CHARACTER_MAX_SLOPE_ANGLE, Fixture::CHARACTER_STEP_HEIGHT,
+                    Fixture::CHARACTER_GRAVITY_FACTOR, Fixture::COLLISION_LAYER)):
+                value: value
+                error failure: return 3
+            settled: i32 = advance(session, Fixture::SETTLE_STEPS)
+            return 4 if settled != 0
+            start_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, character):
+                value: value
+                error failure: return 5
+            return 6 if start_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            start_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 7
+            cleared_corner: mutable bool = false
+            crossed_wall: mutable bool = false
+            for _ in 0..<Fixture::CORNER_MOVEMENT_STEPS |session, character, cleared_corner, crossed_wall|:
+                driven: bool = catch RuntimeServices::physics_character_move(session,
+                    character, Geometry::Vec3{x: 1.0, y: 0.0, z: 1.0},
+                    Fixture::WALK_SPEED, 0.0, false):
+                    ok: true
+                    error failure: false
+                return 8 if not driven
+                tick: u64 = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: value
+                    error failure: return 9
+                pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                    session, character):
+                    value: value
+                    error failure: return 10
+                crossed_wall <- true if not cleared_corner and pose.position.x > Fixture::MAX_X_BEFORE_CLEARANCE
+                cleared_corner <- true if pose.position.z >= Fixture::WALL_CLEARANCE_Z
+            end_pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(
+                session, character):
+                value: value
+                error failure: return 11
+            end_ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(
+                session, character):
+                value: value
+                error failure: return 12
+            return 13 if crossed_wall
+            return 14 if not cleared_corner
+            return 15 if end_pose.position.x < start_pose.position.x + Fixture::MIN_X_PROGRESS_AFTER_CORNER
+            return 16 if end_pose.position.z < start_pose.position.z + Fixture::MIN_Z_PROGRESS_AFTER_CORNER
+            return 17 if end_ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+            character_destroyed: bool = catch RuntimeServices::physics_character_destroy(
+                session, character):
+                value: true
+                error failure: false
+            wall_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, wall):
+                value: 0
+                error failure: 1
+            floor_destroyed: i32 = catch RuntimeServices::physics_body_destroy(session, floor):
+                value: 0
+                error failure: 1
+            return 18 if not character_destroyed or wall_destroyed != 0 or floor_destroyed != 0
+            0

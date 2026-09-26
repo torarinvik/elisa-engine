@@ -17,6 +17,13 @@ that the character has advanced across the obstacle, gained height, and landed
 grounded. `walk_to_x` carries only its completion flag across scoped loop
 iterations; the per-tick movement values stay local to each iteration.
 
+`test/physics_character_corners_probe.elisa` drives the character diagonally
+into a right-angle wall end. It checks the character stays on the blocked side
+until its capsule clears the end, slides along the wall, then moves around the
+corner and remains grounded. Only the two cross-iteration validation flags are
+carried by the scoped loop; each requested move, fixed tick, and sampled pose
+stays local to the iteration.
+
 Run the integrated Jolt/Wicked case on macOS with:
 
 ```sh
@@ -32,8 +39,9 @@ Validation on 2026-09-26:
 
 - The focused SDL3/Metal smoke passed after rebuilding
   `WickedEngine_common` and `WickedEngine_ext_shaders` against the current
-  Wicked/Jolt archive. The smoke ran the shared `PhysicsCharacterProbe` through
-  `WorldPhysics` and completed the step ascent fixture.
+  Wicked/Jolt archive. The `world-physics-pose-smoke` ran the shared
+  `PhysicsCharacterProbe` through `WorldPhysics` and completed both bounded step
+  ascent and corner sliding fixtures.
 - `scripts/check_module_hygiene.py`, `scripts/check_source_length.py`, and
   `git diff --check` passed.
 
