@@ -66,3 +66,22 @@ POSIX namespace, and include `<filesystem>` explicitly in `wiAppleHelper.mm`.
 Apple Clang 21 still crashes compiling `wiPrimitive.cpp` and `wiTerrain.cpp`
 in the separate optimized Apple build. That incomplete diagnostic build must
 not be used as an engine dependency.
+
+The ordinary project runner also disables RTTI for the engine-owned native
+bridges, matching the native smoke driver. None of those bridges uses
+`dynamic_cast` or `typeid`; requiring `RenderPath3D` typeinfo prevents linking
+against `WICKED_ENABLE_RTTI=OFF` builds. The runner test checks this flag.
+
+On 2026-09-26 the ordinary maze project built successfully through
+`elisa_build_run.py` with the repository's `bin/elisac-stage1`, automatically
+resolved runtime, Homebrew C++, and `build-elisa-sdl3-homebrew`. The installed
+September 22 compiler snapshot returned status 2 without a diagnostic on the
+same generated entry; the repository compiler compiled it successfully.
+This validates the optimized Wicked library with the runner's default `-O0`
+bridge, not an optimized bridge or the older compiler snapshot.
+
+The finite `native_smoke_main.elisa` entry was built through the same runner
+and passed all nine `packaged_maze_smoke.py` checks: execution with checkout
+access denied, denied checkout assets, missing/escaping/corrupted bundles,
+missing texture/dependency bundles, and successful execution after restoration.
+Use the finite smoke entry for this gate; the ordinary maze waits for input.

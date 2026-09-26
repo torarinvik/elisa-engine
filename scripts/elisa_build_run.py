@@ -368,8 +368,9 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
     sdl_library = paths["sdl_library"]
     brew_include = paths["brew_include"]
     brew_library = paths["brew_library"]
+    # Engine bridges use no RTTI and must also link against RTTI-disabled Wicked.
     command = [
-        cxx, "-std=c++17", "-O2" if optimize else "-O0", "-include", "filesystem",
+        cxx, "-std=c++17", "-O2" if optimize else "-O0", "-fno-rtti", "-include", "filesystem",
         "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-I", str(build_dir), "-I", str(ENGINE_ROOT / "native"),
