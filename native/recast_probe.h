@@ -102,6 +102,12 @@ inline bool probe_recast_navigation() {
         "detour preserves custom area annotations as traversable polygons")) {
         return false;
     }
+    const auto annotated_nearest = annotated_artifact.nearest_point(start, extents, 1);
+    if (!check(annotated_nearest.status == probe::nav::QueryStatus::Success &&
+        annotated_nearest.area == 7,
+        "detour nearest-point query reports the preserved custom area id")) {
+        return false;
+    }
     std::vector<unsigned char> invalid_areas(input.triangle_count, DT_MAX_AREAS);
     probe::nav::NavMeshArtifact rejected;
     probe::nav::BakeInput invalid_area_input = input;
