@@ -85,3 +85,22 @@ and passed all nine `packaged_maze_smoke.py` checks: execution with checkout
 access denied, denied checkout assets, missing/escaping/corrupted bundles,
 missing texture/dependency bundles, and successful execution after restoration.
 Use the finite smoke entry for this gate; the ordinary maze waits for input.
+
+## Relocated app with external prepared shaders
+
+On 2026-09-26 `package_macos_app.py` packaged `build/maze-native-smoke`
+with `--project examples/maze --name MazeValidation` and
+`--shader-root ../WickedEngine/build-elisa-sdl3/WickedEngine/shaders`.
+The packager stages this explicit library and derives the manifest from the
+staged bytes. `build/cooked` is optional for projects whose cook declarations
+put bundles in their runtime asset directory. Missing explicitly declared
+resources still fail packaging. Output/input overlap is rejected before any
+existing bundle is removed.
+
+The generated `.app` was copied to a temporary path containing spaces and its
+launcher completed with exit 0 under `sandbox-exec`, denying reads and writes
+to the entire Elisa Projects directory and `/opt/homebrew`. Thirteen packaging
+tests pass, including external shader staging, asset-local cook output, and
+input preservation. This is a same-machine relocation check using the finite
+maze smoke, not a clean-machine, distribution-signing, or optimized-bridge
+Release qualification.

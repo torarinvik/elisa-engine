@@ -104,6 +104,25 @@ class PackageMacosAppTests(unittest.TestCase):
             env={**os.environ, "ELISA_PROJECT_WIDTH": "640"})
         self.assertEqual(override.stdout.splitlines()[-1], "Game 640 820")
 
+    def test_external_shader_library_and_asset_local_cooks(self) -> None:
+        shutil.rmtree(self.project / "build/cooked")
+        external = Path(self.tempdir.name) / "prepared shaders"
+        touch(external / "metal/selected.cso", b"selected")
+        app = packager.package_app(self.project, self.project / "build/game",
+            self.output, "Game", "org.elisa.game", "1.0", shader_root=external)
+        resources = app / "Contents/Resources"
+        self.assertFalse((resources / "build/cooked").exists())
+        self.assertEqual((resources / "shaders/metal/selected.cso").read_bytes(), b"selected")
+        self.assertFalse((resources / "shaders/metal/basic.cso").exists())
+
+    def test_output_cannot_erase_external_shader_input(self) -> None:
+        shaders = self.output / "prepared"
+        touch(shaders / "metal/keep.cso", b"keep")
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game", self.output,
+                "Game", "org.elisa.game", "1.0", shader_root=shaders)
+        self.assertEqual((shaders / "metal/keep.cso").read_bytes(), b"keep")
+
     def test_shader_manifest_is_deterministic_and_content_sensitive(self) -> None:
         manifest = packager.shader_manifest(self.project / "shaders")
         self.assertEqual(manifest["schema"], 2)

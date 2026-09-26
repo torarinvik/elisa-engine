@@ -304,7 +304,8 @@ exec \"$resources/{binary_name}\" \"$@\"
 def package_app(project: Path, executable: Path, output: Path, name: str,
     bundle_id: str, version: str, icon: Path | None = None,
     resource_paths: list[Path] | None = None,
-    window: tuple[str, int, int] | None = None) -> Path:
+    window: tuple[str, int, int] | None = None,
+    shader_root: Path | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -312,6 +313,10 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
         raise PackageError(f"project directory does not exist: {project}")
     if not executable.is_file():
         raise PackageError(f"built executable does not exist: {executable}")
+    if shader_root is not None:
+        shader_root = shader_root.expanduser().resolve()
+        if not shader_root.is_dir():
+            raise PackageError(f"prepared shader directory does not exist: {shader_root}")
     if icon is not None:
         icon = icon.expanduser().resolve()
         if not icon.is_file() or icon.suffix.lower() != ".icns":
@@ -322,6 +327,9 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     app = output if output.suffix == ".app" else output.with_suffix(".app")
     if app == project or app in project.parents:
         raise PackageError("bundle output must not replace or contain the source project")
+    for source in (executable, shader_root, icon):
+        if source is not None and (source == app or app in source.parents):
+            raise PackageError(f"bundle output contains a required packaging input: {source}")
     if app.exists():
         shutil.rmtree(app)
 
@@ -346,11 +354,13 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     else:
         for relative in resource_paths:
             stage_resource(project, resources, relative)
-    copy_directory(project / "build" / "cooked", resources / "build" / "cooked")
-    shaders = project / "shaders"
+    cooked = project / "build" / "cooked"
+    if cooked.exists():
+        copy_directory(cooked, resources / "build" / "cooked")
+    shaders = shader_root if shader_root is not None else project / "shaders"
     if shaders.is_dir():
         copy_directory(shaders, resources / "shaders", ignore_shader_metadata)
-        manifest = shader_manifest(shaders)
+        manifest = shader_manifest(resources / "shaders")
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -389,6 +399,8 @@ def parse_arguments() -> argparse.Namespace:
         help="CFBundleShortVersionString and CFBundleVersion")
     parser.add_argument("--icon", type=Path,
         help="optional .icns file copied into the bundle")
+    parser.add_argument("--shader-root", type=Path,
+        help="prepared shader library to stage (default: project/shaders)")
     return parser.parse_args()
 
 
@@ -409,7 +421,7 @@ def main() -> int:
             icon = candidate if candidate.is_file() else None
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
-            manifest_window(manifest, project))
+            manifest_window(manifest, project), options.shader_root)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
