@@ -22,7 +22,10 @@ module WorldPhysicsPoseProbe:
             ElisaMath::fabsf(dot) >= Tune::ROTATION_DOT_MINIMUM
 
     public:
-        def run(session: mutable RuntimeServices::Session&) -> i32:
+        def run(session: mutable RuntimeServices::Session&,
+            config: Application::Config,
+            requirements: BackendRequirements::BackendStartupRequirements&,
+            report: mutable BackendRequirements::BackendRequirementsReport&) -> i32:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1
@@ -113,4 +116,51 @@ module WorldPhysicsPoseProbe:
                 ok: 0
                 error failure: 1
             return 22 if hierarchy_cleanup != 0 or WorldPhysics::binding_count(hierarchy_bindings) != 0
+
+            stale_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            stale_bind: i32 = catch WorldPhysics::bind(session, &world,
+                &stale_bindings, entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 1.0):
+                ok: 0
+                error failure: 1
+            return 23 if stale_bind != 0
+            stale_session_closed: bool = RuntimeServices::shutdown(session)
+            return 24 if not stale_session_closed
+            stale_reopened: RuntimeServices::OpenStatus = RuntimeServices::open(session,
+                config, requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, report)
+            return 25 if stale_reopened != RuntimeServices::OpenStatus.FallbackRequired
+            stale_sync_status: i32 = catch WorldPhysics::advance_and_sync(session,
+                &world, stale_bindings, Runtime::fixed_step_micros()):
+                value: 0
+                PhysicsRuntime::PhysicsError.StaleWorld: 1
+                WorldPhysics::WorldPhysicsError.SynchronizationFailure: 2
+                error failure: 3
+            return 26 if stale_sync_status != 1
+
+            hierarchy_stale_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            hierarchy_stale_bind: i32 = catch WorldPhysics::bind_hierarchy(session,
+                world, hierarchy, &hierarchy_stale_bindings, entity,
+                PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::BODY_HALF_EXTENT, y: Tune::BODY_HALF_EXTENT,
+                    z: Tune::BODY_HALF_EXTENT}, 1.0):
+                ok: 0
+                error failure: 1
+            return 27 if hierarchy_stale_bind != 0
+            hierarchy_session_closed: bool = RuntimeServices::shutdown(session)
+            return 28 if not hierarchy_session_closed
+            hierarchy_reopened: RuntimeServices::OpenStatus = RuntimeServices::open(session,
+                config, requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, report)
+            return 29 if hierarchy_reopened != RuntimeServices::OpenStatus.FallbackRequired
+            hierarchy_stale_status: i32 = catch WorldPhysics::advance_and_sync_hierarchy(
+                session, &hierarchy, hierarchy_stale_bindings,
+                Runtime::fixed_step_micros()):
+                value: 0
+                PhysicsRuntime::PhysicsError.StaleWorld: 1
+                WorldPhysics::WorldPhysicsError.SynchronizationFailure: 2
+                error failure: 3
+            return 30 if hierarchy_stale_status != 1
+
             0

@@ -189,36 +189,24 @@ module WorldPhysics:
         # tick, and publishes the resulting entity poses after each tick.
         def advance_and_sync(session: mutable RuntimeServices::Session&,
             world: mutable World::World&, bindings: Bindings&,
-            elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, WorldPhysicsError]:
+            elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, PhysicsRuntime::PhysicsError, World::WorldError, WorldPhysicsError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(session, elapsed_micros)
             if bindings.count > 0:
                 for _ in 0..<frame.steps |session, world, bindings|:
-                    step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
-                        Runtime::fixed_step_seconds()):
-                        value: 0
-                        error failure: 1
-                    raise WorldPhysicsError.PhysicsFailure if step_status != 0
-                    sync_status: i32 = catch sync_world(session, world, bindings):
-                        ok: 0
-                        error failure: 1
-                    raise WorldPhysicsError.SynchronizationFailure if sync_status != 0
+                    fixed_tick: u64 = try RuntimeServices::physics_fixed_step(session,
+                        Runtime::fixed_step_seconds())
+                    try sync_world(session, world, bindings)
             frame
 
         # Hierarchy callers share the session clock and publish every due pose
         # through the same parent-first, staged synchronization path.
         def advance_and_sync_hierarchy(session: mutable RuntimeServices::Session&,
             hierarchy: mutable WorldHierarchy::Hierarchy&, bindings: Bindings&,
-            elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, WorldPhysicsError]:
+            elapsed_micros: i64) -> RuntimeServices::SimulationFrame error[RuntimeServices::RuntimeServicesError, Runtime::ClockError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
             frame: RuntimeServices::SimulationFrame = try RuntimeServices::advance_simulation(session, elapsed_micros)
             if bindings.count > 0:
                 for _ in 0..<frame.steps |session, hierarchy, bindings|:
-                    step_status: i32 = catch RuntimeServices::physics_fixed_step(session,
-                        Runtime::fixed_step_seconds()):
-                        value: 0
-                        error failure: 1
-                    raise WorldPhysicsError.PhysicsFailure if step_status != 0
-                    sync_status: i32 = catch sync_hierarchy(session, hierarchy, bindings):
-                        ok: 0
-                        error failure: 1
-                    raise WorldPhysicsError.SynchronizationFailure if sync_status != 0
+                    fixed_tick: u64 = try RuntimeServices::physics_fixed_step(session,
+                        Runtime::fixed_step_seconds())
+                    try sync_hierarchy(session, hierarchy, bindings)
             frame
