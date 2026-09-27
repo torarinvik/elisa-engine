@@ -121,6 +121,23 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_set_pass_with_tint(
     return state.render_graph.set_pass(index, pass);
 }
 
+extern "C" int32_t elisa_render_scene_v1_render_graph_set_pass_with_sharpen(
+    uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
+    uint32_t destination_id, float amount) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    elisa::render_graph::Pass pass{
+        id,
+        static_cast<elisa::render_graph::Operation>(operation),
+        source_id,
+        destination_id,
+    };
+    pass.sharpen_amount = amount;
+    return state.render_graph.set_pass(index, pass);
+}
+
 extern "C" int32_t elisa_render_scene_v1_render_graph_commit(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

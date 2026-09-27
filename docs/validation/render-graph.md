@@ -137,6 +137,14 @@ executes FXAA from imported scene color into RGBA16F, checks the GPU frame hash
 changes, and restores the usual scene output. The full pinned SDL3/Metal smoke
 passes on macOS 27 / Apple M5.
 
+`Sharpen` uses Wicked's `wi::renderer::Postprocess_Sharpen` compute pass with a
+validated amount from 0 through 1. It uses the same single-sample source and
+RGBA8/RGBA16F UAV destination rules as FXAA. Elisa and native checks reject
+amounts above 1 and unsupported R11G11B10 outputs. The render-only fixture
+verifies rejection, runs the pass at 0.5, checks that the GPU frame hash
+changes, and restores the normal scene graph; the full pinned SDL3/Metal smoke
+passes on macOS 27 / Apple M5.
+
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.
 The graph checks run in the ordinary Elisa application entry, not a standalone

@@ -81,14 +81,16 @@ public:
                 pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
                 pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor &&
                 pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor &&
-                pass.operation != Operation::TintColor && pass.operation != Operation::Fxaa) ||
+                pass.operation != Operation::TintColor && pass.operation != Operation::Fxaa &&
+                pass.operation != Operation::Sharpen) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
             ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
                 pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor ||
                 pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor ||
-                pass.operation == Operation::TintColor || pass.operation == Operation::Fxaa) &&
+                pass.operation == Operation::TintColor || pass.operation == Operation::Fxaa ||
+                pass.operation == Operation::Sharpen) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -114,6 +116,11 @@ public:
             (pass.operation != Operation::TintColor &&
                 (pass.tint_red != DEFAULT_TINT_CHANNEL || pass.tint_green != DEFAULT_TINT_CHANNEL ||
                  pass.tint_blue != DEFAULT_TINT_CHANNEL || pass.tint_alpha != DEFAULT_TINT_ALPHA))) {
+            return INVALID_ARGUMENT;
+        }
+        if (!std::isfinite(pass.sharpen_amount) || pass.sharpen_amount < MIN_SHARPEN_AMOUNT ||
+            pass.sharpen_amount > MAX_SHARPEN_AMOUNT ||
+            (pass.operation != Operation::Sharpen && pass.sharpen_amount != DEFAULT_SHARPEN_AMOUNT)) {
             return INVALID_ARGUMENT;
         }
         for (uint32_t previous = 0; previous < staging_.pass_count; ++previous) {
@@ -375,6 +382,20 @@ public:
                         return;
                     }
                     wi::renderer::Postprocess_FXAA(*source, *destination, command_list);
+                } else if (pass.operation == Operation::Sharpen) {
+                    if ((source->GetDesc().format != native_format(Format::Rgba8) &&
+                            source->GetDesc().format != native_format(Format::Rgba16Float) &&
+                            source->GetDesc().format != native_format(Format::R11G11B10Float)) ||
+                        (destination->GetDesc().format != native_format(Format::Rgba8) &&
+                            destination->GetDesc().format != native_format(Format::Rgba16Float)) ||
+                        source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1 ||
+                        (static_cast<uint8_t>(destination->GetDesc().bind_flags) &
+                            static_cast<uint8_t>(wi::graphics::BindFlag::UNORDERED_ACCESS)) == 0) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    wi::renderer::Postprocess_Sharpen(*source, *destination, command_list,
+                        pass.sharpen_amount);
                 } else if (source->GetDesc().format == native_format(Format::Depth32) ||
                     destination->GetDesc().format == native_format(Format::Depth32) ||
                     source->GetDesc().format != destination->GetDesc().format) {
@@ -536,7 +557,7 @@ private:
     bool target_requires_uav(uint32_t target) const {
         for (uint32_t index = 0; index < active_.pass_count; ++index) {
             const Pass& pass = active_.passes[index];
-            if (pass.operation != Operation::Fxaa) continue;
+            if (pass.operation != Operation::Fxaa && pass.operation != Operation::Sharpen) continue;
             const uint32_t destination = resource_index(active_, pass.destination_id);
             if (destination != NO_TARGET && active_.resources[destination].target == target) return true;
         }

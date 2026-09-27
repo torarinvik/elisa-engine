@@ -7,6 +7,7 @@ include "render_graph_saturation_native.elisa"
 include "render_graph_scale_color_native.elisa"
 include "render_graph_tint_native.elisa"
 include "render_graph_fxaa_native.elisa"
+include "render_graph_sharpen_native.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
@@ -544,6 +545,22 @@ module RenderGraphNativeTests:
         return 277 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
         0
 
+    def exercise_sharpen() -> i32:
+        frame_before_sharpen: u64 = elisa_render_scene_v1_last_frame_hash()
+        return 278 if frame_before_sharpen == 0
+        return 279 if RenderGraphSharpenTests::configure(RenderGraph::Format.R11G11B10Float, 0.5) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        return 280 if RenderGraphSharpenTests::configure(RenderGraph::Format.Rgba16Float, 1.1) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        return 281 if not RenderGraphSharpenTests::native_rejects_bad_amount()
+        return 282 if not RenderGraphSharpenTests::native_rejects_unsupported_output()
+        return 283 if RenderGraphSharpenTests::configure(RenderGraph::Format.Rgba16Float, 0.5) != SUCCESS
+        return 284 if Application::pump() != Application::PumpStatus.Running
+        return 285 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+        return 286 if frame_before_sharpen == elisa_render_scene_v1_last_frame_hash()
+        return 287 if configure_clear_copy_graph(3) != SUCCESS
+        return 288 if Application::pump() != Application::PumpStatus.Running
+        return 289 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+        0
+
     public:
         def exercise() -> i32:
             return 1 if configure_clear_copy_graph(3) != SUCCESS
@@ -673,4 +690,6 @@ module RenderGraphNativeTests:
             return tint_status if tint_status != 0
             fxaa_status: i32 = exercise_fxaa()
             return fxaa_status if fxaa_status != 0
+            sharpen_status: i32 = exercise_sharpen()
+            return sharpen_status if sharpen_status != 0
             0

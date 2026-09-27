@@ -411,6 +411,9 @@ int32_t elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
 int32_t elisa_render_scene_v1_render_graph_set_pass_with_tint(
     uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
     uint32_t destination_id, float red, float green, float blue, float alpha);
+int32_t elisa_render_scene_v1_render_graph_set_pass_with_sharpen(
+    uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
+    uint32_t destination_id, float amount);
 int32_t elisa_render_scene_v1_render_graph_commit(void);
 int32_t elisa_render_scene_v1_render_graph_abort(void);
 int32_t elisa_render_scene_v1_render_graph_status(void);

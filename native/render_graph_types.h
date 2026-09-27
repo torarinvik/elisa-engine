@@ -25,6 +25,9 @@ constexpr float DEFAULT_TINT_CHANNEL = 1.0f;
 constexpr float MIN_TINT_ALPHA = 0.0f;
 constexpr float MAX_TINT_ALPHA = 1.0f;
 constexpr float DEFAULT_TINT_ALPHA = 1.0f;
+constexpr float MIN_SHARPEN_AMOUNT = 0.0f;
+constexpr float MAX_SHARPEN_AMOUNT = 1.0f;
+constexpr float DEFAULT_SHARPEN_AMOUNT = 0.0f;
 
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
@@ -33,7 +36,7 @@ enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
 enum class Operation : int32_t {
     ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3,
     VisualizeLinearDepth = 4, BlendColor = 5, AdjustSaturation = 6, ScaleColor = 7,
-    TintColor = 8, Fxaa = 9
+    TintColor = 8, Fxaa = 9, Sharpen = 10
 };
 
 struct Resource {
@@ -61,6 +64,7 @@ struct Pass {
     float tint_green = DEFAULT_TINT_CHANNEL;
     float tint_blue = DEFAULT_TINT_CHANNEL;
     float tint_alpha = DEFAULT_TINT_ALPHA;
+    float sharpen_amount = DEFAULT_SHARPEN_AMOUNT;
 };
 
 struct Configuration {
