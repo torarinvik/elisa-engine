@@ -171,6 +171,13 @@ def main() -> int:
             projects = selected
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
+        frame_capture_dirs = {
+            "30hz": physics_captures / "physics-30hz-frames",
+            "120hz": physics_captures / "physics-120hz-frames",
+        }
+        for frame_capture_dir in frame_capture_dirs.values():
+            shutil.rmtree(frame_capture_dir, ignore_errors=True)
+            frame_capture_dir.mkdir(parents=True, exist_ok=True)
         for capture_name in (
                 "physics-30hz.png", "physics-120hz.png",
                 "physics-30hz-mid.png", "physics-120hz-mid.png",
@@ -217,6 +224,8 @@ def main() -> int:
             environment["ELISA_PHYSICS_120HZ_CAPTURE_PATH"] = str(physics_captures / "physics-120hz.png")
             environment["ELISA_PHYSICS_30HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-30hz-mid.png")
             environment["ELISA_PHYSICS_120HZ_MID_CAPTURE_PATH"] = str(physics_captures / "physics-120hz-mid.png")
+            environment["ELISA_PHYSICS_30HZ_FRAME_CAPTURE_DIR"] = str(frame_capture_dirs["30hz"])
+            environment["ELISA_PHYSICS_120HZ_FRAME_CAPTURE_DIR"] = str(frame_capture_dirs["120hz"])
             environment["ELISA_HIERARCHY_BEFORE_CAPTURE_PATH"] = str(physics_captures / "hierarchy-before.png")
             environment["ELISA_HIERARCHY_AFTER_CAPTURE_PATH"] = str(physics_captures / "hierarchy-after.png")
             status = subprocess.run(command, env=environment, check=False).returncode
@@ -273,6 +282,24 @@ def main() -> int:
                         print(f"30 Hz and 120 Hz physics-to-Wicked {label} pixels differ.", file=sys.stderr)
                         return 1
                     print(f"Physics-to-Wicked {label} captures match pixel-for-pixel at {image_sizes[0][0]}x{image_sizes[0][1]} pixels.")
+                expected_frames = {f"frame-{index}.png" for index in range(30)}
+                for cadence, frame_capture_dir in frame_capture_dirs.items():
+                    actual_frames = {capture.name for capture in frame_capture_dir.glob("*.png")}
+                    if actual_frames != expected_frames:
+                        print(f"Physics {cadence} run captured {len(actual_frames)} of 30 matching frames.", file=sys.stderr)
+                        return 1
+                for frame_index in range(30):
+                    thirty_path = frame_capture_dirs["30hz"] / f"frame-{frame_index}.png"
+                    one_twenty_path = frame_capture_dirs["120hz"] / f"frame-{frame_index}.png"
+                    thirty = decode_capture_png(thirty_path.read_bytes())
+                    one_twenty = decode_capture_png(one_twenty_path.read_bytes())
+                    if (thirty is None or one_twenty is None or thirty[:2] != one_twenty[:2]):
+                        print(f"Physics cadence frame {frame_index} has invalid or mismatched captures.", file=sys.stderr)
+                        return 1
+                    if thirty[2] != one_twenty[2]:
+                        print(f"30 Hz and 120 Hz frame {frame_index} pixels differ.", file=sys.stderr)
+                        return 1
+                print("All 30 shared-time 30 Hz and 120 Hz physics-to-Wicked frames match pixel-for-pixel.")
             if status == 0 and name in (
                     "world-physics-pose-smoke", "world-hierarchy-render-smoke"):
                 before_path = physics_captures / "hierarchy-before.png"

@@ -5,7 +5,10 @@ include "../src/physics/runtime.elisa"
 include "../src/physics/interpolation.elisa"
 
 module PhysicsRenderCapture:
-    public:
+    private:
+        extern elisa_application_v1_test_save_screenshot_indexed(
+            directory: cstr, index: i32) -> i32
+
         const FIXED_STEP_SECONDS: f32 = 1.0 / 60.0
         const THIRTY_HZ_FRAMES: i32 = 30
         const ONE_TWENTY_HZ_FRAMES: i32 = 120
@@ -18,8 +21,12 @@ module PhysicsRenderCapture:
             difference: f32 = left - right
             difference >= -0.01 and difference <= 0.01
 
+        def save_matching_frame(directory: cstr, index: i32) -> bool:
+            elisa_application_v1_test_save_screenshot_indexed(directory, index) == 1
+
         def capture_rate(body_visual: RenderScene::InstanceHandle, render_hz: i32,
-            frame_count: i32, capture_path: cstr, mid_capture_path: cstr) -> Result error[PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            frame_count: i32, capture_path: cstr, mid_capture_path: cstr,
+            frame_capture_directory: cstr) -> Result error[PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
             world: mutable PhysicsRuntime::World = try PhysicsRuntime::World()
             floor: PhysicsRuntime::BodyHandle = try PhysicsRuntime::body_create(&world,
                 PhysicsRuntime::BodyDesc{
@@ -81,6 +88,16 @@ module PhysicsRenderCapture:
                 pose_after_present: Geometry::Vec3 = try PhysicsRuntime::body_position(world, body)
                 raise PhysicsRuntime::PhysicsError.BackendFailure if PhysicsRuntime::committed_tick(world) != tick_before_present
                 raise PhysicsRuntime::PhysicsError.BackendFailure if pose_before_present.x != pose_after_present.x or pose_before_present.y != pose_after_present.y or pose_before_present.z != pose_after_present.z
+                if render_hz == 30:
+                    raise RenderScene::RenderSceneError.InvalidValue if frame_capture_directory == ""
+                    raise RenderScene::RenderSceneError.BackendFailure if not save_matching_frame(
+                        frame_capture_directory, frame)
+                else:
+                    if frame % 4 == 3:
+                        raise RenderScene::RenderSceneError.InvalidValue if frame_capture_directory == ""
+                        matching_frame: i32 = frame / 4
+                        raise RenderScene::RenderSceneError.BackendFailure if not save_matching_frame(
+                            frame_capture_directory, matching_frame)
                 if not mid_capture_saved and tick_before_present == 30:
                     raise RenderScene::RenderSceneError.InvalidValue if mid_capture_path == ""
                     raise RenderScene::RenderSceneError.BackendFailure if not Application::save_screenshot(mid_capture_path)
@@ -97,6 +114,7 @@ module PhysicsRenderCapture:
             try PhysicsRuntime::shutdown(&world)
             completed
 
+    public:
         def run() -> i32:
             config: Application::Config = Application::Config{
                 title: "Elisa Physics Render Cadence",
@@ -154,12 +172,18 @@ module PhysicsRenderCapture:
             one_twenty_path: cstr = Application::environment_value("ELISA_PHYSICS_120HZ_CAPTURE_PATH")
             thirty_mid_path: cstr = Application::environment_value("ELISA_PHYSICS_30HZ_MID_CAPTURE_PATH")
             one_twenty_mid_path: cstr = Application::environment_value("ELISA_PHYSICS_120HZ_MID_CAPTURE_PATH")
+            thirty_frame_directory: cstr = Application::environment_value(
+                "ELISA_PHYSICS_30HZ_FRAME_CAPTURE_DIR")
+            one_twenty_frame_directory: cstr = Application::environment_value(
+                "ELISA_PHYSICS_120HZ_FRAME_CAPTURE_DIR")
             thirty: Result = catch capture_rate(body_visual, 30,
-                PhysicsRenderCapture::THIRTY_HZ_FRAMES, thirty_path, thirty_mid_path):
+                PhysicsRenderCapture::THIRTY_HZ_FRAMES, thirty_path, thirty_mid_path,
+                thirty_frame_directory):
                 value: value
                 error failure: return 6
             one_twenty: Result = catch capture_rate(body_visual, 120,
-                PhysicsRenderCapture::ONE_TWENTY_HZ_FRAMES, one_twenty_path, one_twenty_mid_path):
+                PhysicsRenderCapture::ONE_TWENTY_HZ_FRAMES, one_twenty_path,
+                one_twenty_mid_path, one_twenty_frame_directory):
                 value: value
                 error failure: return 7
 

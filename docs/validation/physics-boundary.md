@@ -23,5 +23,6 @@ verifies that render pumps do not step the body, and compares the final Wicked
 backbuffer captures. See [`physics-render-cadence.md`](physics-render-cadence.md).
 The full session-clock-to-hierarchy path now reaches a live Wicked render and
 pick, and a separate native client compares equal-time 30 Hz and 120 Hz public
-session runs against real Jolt poses. Per-frame image equivalence remains P04
-work.
+session runs against real Jolt poses. The SDL3/Metal regression also checks
+pixel equality for every shared-time frame in the one-second schedules; P04
+acceptance is covered.

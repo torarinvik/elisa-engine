@@ -23,6 +23,8 @@ The smoke stores them at:
 - `build/validation/physics-render-cadence/physics-120hz-mid.png`
 - `build/validation/physics-render-cadence/physics-30hz.png`
 - `build/validation/physics-render-cadence/physics-120hz.png`
+- `build/validation/physics-render-cadence/physics-30hz-frames/frame-0.png` through `frame-29.png`
+- `build/validation/physics-render-cadence/physics-120hz-frames/frame-0.png` through `frame-29.png`
 
 Validation command from the engine root:
 
@@ -30,10 +32,12 @@ Validation command from the engine root:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/application_native_smoke.py
 ```
 
-The cadence client validates its midpoint and final captures as PNGs and
-compares their decoded RGBA pixels. This is native SDL3/Metal evidence for
-macOS. It does not compare every intermediate frame. The full session-clock
-to-hierarchy path is exercised by the client below.
+The cadence client validates midpoint and final PNG captures plus all 30 frames
+at shared timestamps in the one-second 30 Hz and 120 Hz schedules. The native
+SDL3/Metal harness decodes the PNGs, requires all 30 frames from both runs, and
+compares the RGBA pixels at every shared time. These checks passed on the
+validated macOS host. The full session-clock to hierarchy path is exercised by
+the client below.
 
 `test/world_physics_pose_native_main.elisa` also checks error preservation in
 `WorldPhysics`: it binds a dynamic body, shuts down and reopens the owning

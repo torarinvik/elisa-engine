@@ -115,4 +115,13 @@ extern "C" int32_t elisa_application_v1_test_shader_manifest_verifies_contents(v
     return write_file(manifest, stale_fingerprint) &&
         !elisa::shader::root_is_valid(root.string().c_str(), manifest.string().c_str()) ? 1 : 0;
 }
+
+extern "C" int32_t elisa_application_v1_test_save_screenshot_indexed(
+    const char* directory, int32_t index) {
+    if (directory == nullptr || directory[0] == '\0' || index < 0) return 0;
+    const std::string path = (std::filesystem::path(directory) /
+        ("frame-" + std::to_string(index) + ".png")).string();
+    if (path.size() > 4096) return 0;
+    return elisa_application_v1_save_screenshot(path.c_str()) == ELISA_APPLICATION_OK ? 1 : 0;
+}
 #endif

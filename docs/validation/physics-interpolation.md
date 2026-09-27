@@ -28,8 +28,10 @@ The same native session client verifies pause freezes a bound Jolt body,
 teleports bypass interpolation after the Jolt commit, and a 100-tick elapsed
 hitch is limited to four physics steps. `test/world_physics_session_cadence_native_main.elisa`
 also drives a Jolt body through public `RuntimeServices` at 30 Hz and 120 Hz,
-checks each frame's fixed-tick count, and verifies equal final poses. Per-frame
-pixel equivalence remains the open P04 gate.
+checks each frame's fixed-tick count, and verifies equal final poses. The
+SDL3/Metal renderer captures every shared-time frame (30 images per schedule),
+and the native gate confirms that all 640x480 RGBA pixels match. Together these
+checks close P04's fixed-step acceptance criteria.
 
 `Runtime::StepClock` can also be paused independently of the application host. While paused,
 advancing ignores wall time and leaves the tick and interpolation remainder untouched. Resume
