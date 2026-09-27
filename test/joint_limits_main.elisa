@@ -1,0 +1,102 @@
+include "../src/animation/joint_limits.elisa"
+
+def near(a: f32, b: f32) -> bool:
+    a-b > -0.0001 and a-b < 0.0001
+
+def same(a: Geometry::Quat, b: Geometry::Quat) -> bool:
+    dot: f32 = a.x*b.x+a.y*b.y+a.z*b.z+a.w*b.w
+    dot > 0.99999 or dot < -0.99999
+
+@callconv(c)
+extern sinf(value: f32) -> f32
+@callconv(c)
+extern cosf(value: f32) -> f32
+@callconv(c)
+extern sqrtf(value: f32) -> f32
+
+def exercise() -> i32 error[JointLimits::LimitError]:
+    limit: mutable JointLimits::SwingTwist = JointLimits::SwingTwist{reference: Geometry::quat_identity(), axis: Geometry::Vec3{x: 0.0, y: 0.0, z: 2.0}, maximum_swing: 0.0, minimum_twist: -0.5, maximum_twist: 1.0}
+    turn: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678}
+    positive: JointLimits::Projection = try JointLimits::project(turn, limit)
+    return 1 if not positive.limited or not near(positive.twist, 1.0) or not near(positive.swing, 0.0)
+    negative_turn: Geometry::Quat = Geometry::quat_conjugate(turn)
+    negative: JointLimits::Projection = try JointLimits::project(negative_turn, limit)
+    return 2 if not negative.limited or not near(negative.twist, -0.5)
+    inside: JointLimits::Projection = try JointLimits::project(Geometry::quat_identity(), limit)
+    return 3 if inside.limited or not same(inside.rotation, Geometry::quat_identity())
+    swing: Geometry::Quat = Geometry::Quat{x: 0.70710678, y: 0.0, z: 0.0, w: 0.70710678}
+    combined: Geometry::Quat = Geometry::quat_mul(swing, turn)
+    limit.maximum_swing <- 0.7
+    projected: JointLimits::Projection = try JointLimits::project(combined, limit)
+    checked: JointLimits::Projection = try JointLimits::project(projected.rotation, limit)
+    return 4 if not near(projected.swing, 0.7) or not near(projected.twist, 1.0)
+    return 5 if not near(checked.source_swing, 0.7) or not near(checked.source_twist, 1.0)
+    return 6 if not same(projected.rotation, checked.rotation)
+    expected_swing: Geometry::Quat = Geometry::Quat{x: sinf(0.35),y: 0.0,z: 0.0,w: cosf(0.35)}
+    expected_twist: Geometry::Quat = Geometry::Quat{x: 0.0,y: 0.0,z: sinf(0.5),w: cosf(0.5)}
+    return 16 if not same(projected.rotation,Geometry::quat_mul(expected_swing,expected_twist))
+    opposite: Geometry::Quat = Geometry::Quat{x: -combined.x, y: -combined.y, z: -combined.z, w: -combined.w}
+    equivalent: JointLimits::Projection = try JointLimits::project(opposite, limit)
+    return 7 if not same(projected.rotation, equivalent.rotation)
+    # Constraint reference rotates the complete authored frame, not world axes.
+    limit.reference <- swing
+    framed: JointLimits::Projection = try JointLimits::project(Geometry::quat_mul(swing, combined), limit)
+    return 8 if not same(framed.rotation, Geometry::quat_mul(swing, projected.rotation))
+    limit.reference <- Geometry::quat_identity()
+    limit.maximum_swing <- 0.0
+    singular: JointLimits::Projection = try JointLimits::project(Geometry::Quat{x: 1.0, y: 0.0, z: 0.0, w: 0.0}, limit)
+    return 9 if not same(singular.rotation, Geometry::quat_identity())
+    antipodal: JointLimits::Projection = try JointLimits::project(Geometry::Quat{x: -1.0, y: 0.0, z: 0.0, w: 0.0}, limit)
+    return 10 if not same(singular.rotation, antipodal.rotation)
+    limit.maximum_swing <- 3.141592653589793
+    limit.minimum_twist <- -3.141592653589793
+    limit.maximum_twist <- 3.141592653589793
+    free: JointLimits::Projection = try JointLimits::project(combined, limit)
+    return 11 if free.limited or not same(free.rotation, combined)
+    limit.axis <- Geometry::vec3_zero()
+    invalid: bool = catch JointLimits::project(turn, limit):
+        value: false
+        error failure: failure == JointLimits::LimitError.InvalidLimit
+    return 12 if not invalid
+    limit.axis <- Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}
+    zero: bool = catch JointLimits::project(Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0}, limit):
+        value: false
+        error failure: failure == JointLimits::LimitError.InvalidRotation
+    return 13 if not zero
+    # Dense authored hinge sweep, including both sides of zero and close to pi.
+    limit.maximum_swing <- 0.0
+    limit.minimum_twist <- -0.5
+    limit.maximum_twist <- 1.0
+    for sample in 0..<601:
+        angle: f32 = sample.f32()*0.01 - 3.0
+        input: Geometry::Quat = Geometry::Quat{x: 0.0,y: 0.0,z: sinf(angle*0.5),w: cosf(angle*0.5)}
+        result: JointLimits::Projection = try JointLimits::project(input,limit)
+        expected: f32 = -0.5 if angle < -0.5 else (1.0 if angle > 1.0 else angle)
+        expected_rotation: Geometry::Quat = Geometry::Quat{x: 0.0,y: 0.0,z: sinf(expected*0.5),w: cosf(expected*0.5)}
+        return 14 if not near(result.twist,expected) or not same(result.rotation,expected_rotation)
+    limit.minimum_twist <- 2.0
+    reversed: bool = catch JointLimits::project(turn,limit):
+        value: false
+        error failure: failure == JointLimits::LimitError.InvalidLimit
+    return 15 if not reversed
+    limit.minimum_twist <- -0.5
+    half_turn: JointLimits::Projection = try JointLimits::project(Geometry::Quat{x: 0.0,y: 0.0,z: 1.0,w: 0.0},limit)
+    half_turn_opposite: JointLimits::Projection = try JointLimits::project(Geometry::Quat{x: 0.0,y: 0.0,z: -1.0,w: 0.0},limit)
+    return 17 if not same(half_turn.rotation,half_turn_opposite.rotation) or not near(half_turn.twist,1.0)
+    not_number: f32 = sqrtf(-1.0)
+    limit.maximum_swing <- not_number
+    nan_limit: bool = catch JointLimits::project(turn,limit):
+        value: false
+        error failure: failure == JointLimits::LimitError.InvalidLimit
+    return 18 if not nan_limit
+    limit.maximum_swing <- 0.0
+    nan_rotation: bool = catch JointLimits::project(Geometry::Quat{x: not_number,y: 0.0,z: 0.0,w: 1.0},limit):
+        value: false
+        error failure: failure == JointLimits::LimitError.InvalidRotation
+    return 19 if not nan_rotation
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 20
