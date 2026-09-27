@@ -22,6 +22,7 @@ MAX_NODES = 64
 MAX_LINKS = 8
 MAX_OVERRIDES = 64
 TRANSFORM_VALUES = 10
+ASSET_ID_MAX = (1 << 64) - 1
 
 
 class SceneError(ValueError):
@@ -44,6 +45,32 @@ def _transform(value: object, label: str) -> list[float | int]:
     if any(isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) for item in value):
         _fail(f"{label} contains a non-finite value")
     return value
+
+
+def _asset_id(value: object, label: str) -> None:
+    if not isinstance(value, dict) or set(value) != {"high", "low"}:
+        _fail(f"{label} must contain exactly high and low fields")
+    parts = (value["high"], value["low"])
+    if any(isinstance(part, bool) or not isinstance(part, int) or not 0 <= part <= ASSET_ID_MAX for part in parts):
+        _fail(f"{label} parts must be unsigned 64-bit integers")
+    if parts == (0, 0):
+        _fail(f"{label} must not be zero")
+
+
+def _visual(value: object, label: str) -> None:
+    if not isinstance(value, dict) or set(value) != {"mesh", "material", "local_bounds"}:
+        _fail(f"{label} must contain mesh, material, and local_bounds")
+    _asset_id(value["mesh"], f"{label}.mesh")
+    _asset_id(value["material"], f"{label}.material")
+    if value["mesh"] == value["material"]:
+        _fail(f"{label} mesh and material IDs must differ")
+    bounds = value["local_bounds"]
+    if not isinstance(bounds, list) or len(bounds) != 6:
+        _fail(f"{label}.local_bounds must contain min xyz and max xyz")
+    if any(isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) for item in bounds):
+        _fail(f"{label}.local_bounds contains a non-finite value")
+    if any(bounds[index] > bounds[index + 3] for index in range(3)):
+        _fail(f"{label}.local_bounds minimum exceeds maximum")
 
 
 def _reject_native(value: object, path: str = "scene") -> None:
@@ -83,6 +110,8 @@ def _definition_map(document: dict) -> dict[int, dict]:
             if isinstance(parent_id, bool) or not isinstance(parent_id, int) or parent_id < 0:
                 _fail("parent_id must be zero or a positive integer")
             _transform(node.get("local"), f"node {authoring_id}.local")
+            if "visual" in node:
+                _visual(node["visual"], f"node {authoring_id}.visual")
             ids.add(authoring_id)
             rows[authoring_id] = node
         for authoring_id, node in rows.items():
@@ -177,6 +206,8 @@ def validate(document: dict) -> dict:
             if authoring_id in record_ids or authoring_id not in valid_ids:
                 _fail("override authoring_id is unknown or duplicated")
             _transform(record.get("local"), f"override {authoring_id}.local")
+            if "visual" in record:
+                _visual(record["visual"], f"override {authoring_id}.visual")
             record_ids.add(authoring_id)
         seen_instances.add(instance_id)
     return document
@@ -215,14 +246,19 @@ def _sample() -> dict:
     return {
         "version": 1,
         "definitions": [{"prefab_id": 7, "nodes": [
-            {"authoring_id": 10, "parent_id": 0, "local": identity},
+            {"authoring_id": 10, "parent_id": 0, "local": identity,
+             "visual": {"mesh": {"high": 30, "low": 1}, "material": {"high": 30, "low": 2},
+                        "local_bounds": [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]}},
             {"authoring_id": 20, "parent_id": 10, "local": moved},
         ]}],
         "links": [{"link_id": 100, "prefab_id": 7, "instance_id": 1000,
                    "root_authoring_id": 10, "parent_link_id": -1,
                    "parent_authoring_id": 0, "local": identity}],
         "overrides": [{"prefab_id": 7, "instance_id": 1000,
-                       "records": [{"authoring_id": 20, "local": moved}]}],
+                       "records": [{"authoring_id": 20, "local": moved,
+                                    "visual": {"mesh": {"high": 31, "low": 1},
+                                               "material": {"high": 31, "low": 2},
+                                               "local_bounds": [-2.0, -2.0, -2.0, 2.0, 2.0, 2.0]}}]}],
     }
 
 
@@ -260,7 +296,23 @@ def self_test() -> None:
             assert "non-finite" in str(failure)
         else:
             raise AssertionError("non-finite transform was accepted")
-        print("scene file: canonical save, migration, topology, override, and native-boundary checks passed")
+        invalid_asset_id = copy.deepcopy(document)
+        invalid_asset_id["definitions"][0]["nodes"][0]["visual"]["mesh"] = {"high": 0, "low": 0}
+        try:
+            validate(invalid_asset_id)
+        except SceneError as failure:
+            assert "must not be zero" in str(failure)
+        else:
+            raise AssertionError("zero stable asset ID was accepted")
+        invalid_bounds = copy.deepcopy(document)
+        invalid_bounds["overrides"][0]["records"][0]["visual"]["local_bounds"][0] = 3.0
+        try:
+            validate(invalid_bounds)
+        except SceneError as failure:
+            assert "minimum exceeds maximum" in str(failure)
+        else:
+            raise AssertionError("reversed visual bounds were accepted")
+        print("scene file: canonical save, migration, topology, asset identity, override, and native-boundary checks passed")
 
 
 def main() -> int:

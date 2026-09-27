@@ -13,6 +13,8 @@ module PrefabWorld:
             parent_authoring_id: i64
             reference: World::EntityRef
             local: Geometry::Transform
+            has_visual: bool
+            visual: Assets::VisualAsset
 
         affine struct Instance:
             private:
@@ -100,6 +102,24 @@ module PrefabWorld:
                 return Geometry::transform_identity() if index >= instance.binding_count
                 instance.bindings[index].local
 
+            def instance_has_visual_at(instance: Instance&, index: usize) -> bool:
+                return false if index >= instance.binding_count
+                instance.bindings[index].has_visual
+
+            def instance_visual_at(instance: Instance&, index: usize) -> Assets::VisualAsset:
+                return zeroed if index >= instance.binding_count
+                instance.bindings[index].visual
+
+            def instance_has_visual(instance: Instance&, authoring_id: i64) -> bool:
+                slot: usize = binding_slot(instance, authoring_id)
+                return false if slot == PrefabWorld::MAX_NODES
+                instance.bindings[slot].has_visual
+
+            def instance_visual(instance: Instance&, authoring_id: i64) -> Assets::VisualAsset:
+                slot: usize = binding_slot(instance, authoring_id)
+                return zeroed if slot == PrefabWorld::MAX_NODES
+                instance.bindings[slot].visual
+
             def instance_reference(instance: Instance&, authoring_id: i64) -> World::EntityRef:
                 slot: usize = binding_slot(instance, authoring_id)
                 return invalid_reference() if slot == PrefabWorld::MAX_NODES
@@ -129,6 +149,8 @@ module PrefabWorld:
                         parent_authoring_id: definition.nodes[index].parent_id,
                         reference: reference,
                         local: definition.nodes[index].local,
+                        has_visual: definition.nodes[index].has_visual,
+                        visual: definition.nodes[index].visual,
                     }
                     instance.binding_count <- instance.binding_count + 1
                 for index in 0..<instance.binding_count |instance|:
@@ -175,12 +197,24 @@ module PrefabWorld:
                 instance.bindings[slot].local <- local
                 true
 
+            def override_visual(instance: mutable Instance&, world: World::World&,
+                authoring_id: i64,
+                has_visual: bool, visual: Assets::VisualAsset) -> bool:
+                return false if has_visual and not Assets::visual_asset_valid(visual)
+                return false if not all_live(instance, world)
+                slot: usize = binding_slot(instance, authoring_id)
+                return false if slot == PrefabWorld::MAX_NODES
+                instance.bindings[slot].has_visual <- has_visual
+                instance.bindings[slot].visual <- visual if has_visual else zeroed
+                true
+
             def valid(instance: Instance&, world: World::World&) -> bool:
                 return false if instance.prefab_id <= 0 or instance.instance_id <= 0 or instance.binding_count == 0 or instance.binding_count > PrefabWorld::MAX_NODES
                 return false if not all_live(instance, world)
                 for index in 0..<instance.binding_count |valid: bool = true| -> valid:
                     row: Binding = instance.bindings[index]
                     valid <- false if row.authoring_id <= 0 or row.reference.id <= 0 or not Geometry::transform_is_valid(row.local)
+                    valid <- false if row.has_visual and not Assets::visual_asset_valid(row.visual)
                     unique: bool =
                         for earlier in 0..<index |inner: bool = true| -> inner:
                             inner <- false if instance.bindings[earlier].authoring_id == row.authoring_id or instance.bindings[earlier].reference.id == row.reference.id

@@ -1,4 +1,5 @@
 include "../math/geometry.elisa"
+include "../assets/descriptor.elisa"
 
 # Versioned authoring nodes are separate from runtime identities. Instances
 # remap every node into their own runtime range and retain local overrides.
@@ -11,6 +12,8 @@ module Prefab:
             authoring_id: i64
             parent_id: i64
             local: Geometry::Transform
+            has_visual: bool
+            visual: Assets::VisualAsset
 
         struct Definition:
             version: i64
@@ -21,6 +24,8 @@ module Prefab:
             authoring_id: i64
             runtime_id: i64
             local: Geometry::Transform
+            has_visual: bool
+            visual: Assets::VisualAsset
 
         affine struct Instance:
             private:
@@ -57,6 +62,7 @@ module Prefab:
             for index in 0..<definition.node_count:
                 node: Node = definition.nodes[index]
                 return false if node.authoring_id <= 0 or node.parent_id < 0 or not parent_exists(definition, node.parent_id)
+                return false if node.has_visual and not Assets::visual_asset_valid(node.visual)
                 for earlier in 0..<index:
                     return false if definition.nodes[earlier].authoring_id == node.authoring_id
                 return false if would_cycle(definition, node.authoring_id, node.parent_id)
@@ -80,6 +86,8 @@ module Prefab:
                     authoring_id: definition.nodes[index].authoring_id,
                     runtime_id: runtime_base + index.i64() + 1,
                     local: definition.nodes[index].local,
+                    has_visual: definition.nodes[index].has_visual,
+                    visual: definition.nodes[index].visual,
                 }
             true
 
@@ -100,11 +108,24 @@ module Prefab:
                     return instance.bindings[index].runtime_id
             0
 
+        def instance_has_visual(instance: Instance&, authoring_id: i64) -> bool:
+            for index in 0..<instance.binding_count:
+                if instance.bindings[index].authoring_id == authoring_id:
+                    return instance.bindings[index].has_visual
+            false
+
+        def instance_visual(instance: Instance&, authoring_id: i64) -> Assets::VisualAsset:
+            for index in 0..<instance.binding_count:
+                if instance.bindings[index].authoring_id == authoring_id:
+                    return instance.bindings[index].visual
+            zeroed
+
         def instance_valid(instance: Instance&) -> bool:
             return false if instance.prefab_id <= 0 or instance.instance_id <= 0 or instance.binding_count > Prefab::MAX_NODES
             for index in 0..<instance.binding_count |valid: bool = true| -> valid:
                 row: Binding = instance.bindings[index]
                 valid <- false if row.authoring_id <= 0 or row.runtime_id <= 0
+                valid <- false if row.has_visual and not Assets::visual_asset_valid(row.visual)
                 unique: bool =
                     for earlier in 0..<index |inner: bool = true| -> inner:
                         inner <- false if instance.bindings[earlier].runtime_id == row.runtime_id

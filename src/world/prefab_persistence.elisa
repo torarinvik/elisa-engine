@@ -1,6 +1,7 @@
-# Stable prefab persistence carries authoring IDs and plain transforms only.
-# Runtime World references never cross this boundary; a reloaded instance binds
-# the records back to freshly spawned entities.
+# Stable prefab persistence carries authoring IDs, plain transforms, and stable
+# asset IDs only. Runtime World references and backend handles never cross this
+# boundary; a reloaded instance binds records to fresh entities while keeping
+# stable asset references available for runtime catalogue resolution.
 include "./prefab_world.elisa"
 
 module PrefabPersistence:
@@ -13,10 +14,13 @@ module PrefabPersistence:
             DuplicateAuthoringId
             MissingAuthoringId
             InvalidTransform
+            InvalidVisual
 
         struct OverrideRecord:
             authoring_id: i64
             local: Geometry::Transform
+            has_visual: bool
+            visual: Assets::VisualAsset
 
         struct Snapshot:
             prefab_id: mutable i64
@@ -32,6 +36,7 @@ module PrefabPersistence:
             for index in 0..<snapshot.count |valid: bool = true| -> valid:
                 row: OverrideRecord = snapshot.records[index]
                 valid <- false if row.authoring_id <= 0 or not Geometry::transform_is_valid(row.local)
+                valid <- false if row.has_visual and not Assets::visual_asset_valid(row.visual)
                 unique: bool =
                     for earlier in 0..<index |inner: bool = true| -> inner:
                         inner <- false if snapshot.records[earlier].authoring_id == row.authoring_id
@@ -48,8 +53,16 @@ module PrefabPersistence:
                 for index in 0..<count |snapshot|:
                     authoring_id: i64 = PrefabWorld::instance_authoring_id_at(instance, index)
                     local: Geometry::Transform = PrefabWorld::instance_local_at(instance, index)
+                    has_visual: bool = PrefabWorld::instance_has_visual_at(instance, index)
+                    visual: Assets::VisualAsset = PrefabWorld::instance_visual_at(instance, index)
                     return Snapshot() if authoring_id <= 0 or not Geometry::transform_is_valid(local)
-                    snapshot.records[index] <- OverrideRecord{authoring_id: authoring_id, local: local}
+                    return Snapshot() if has_visual and not Assets::visual_asset_valid(visual)
+                    snapshot.records[index] <- OverrideRecord{
+                        authoring_id: authoring_id,
+                        local: local,
+                        has_visual: has_visual,
+                        visual: visual,
+                    }
                 snapshot
 
             def restore(instance: mutable PrefabWorld::Instance&, world: mutable World::World&,
@@ -62,4 +75,6 @@ module PrefabPersistence:
                     return false if PrefabWorld::instance_authoring_slot(instance, authoring_id) == PrefabWorld::MAX_NODES
                     applied: bool = PrefabWorld::override_local(instance, world, authoring_id, snapshot.records[index].local)
                     return false if not applied
+                    return false if not PrefabWorld::override_visual(instance, world, authoring_id,
+                        snapshot.records[index].has_visual, snapshot.records[index].visual)
                 true
