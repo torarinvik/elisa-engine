@@ -30,8 +30,13 @@ namespace {
 constexpr uint32_t ABI_VERSION = 1;
 constexpr uint32_t FILE_MAGIC = 0x44554C45; // ELUD, encoded little-endian.
 constexpr uint32_t FILE_VERSION = 1;
+constexpr uint32_t PAYLOAD_MAGIC = 0x54444C45; // ELDT, encoded little-endian.
+constexpr uint32_t PAYLOAD_FILE_VERSION = 1;
 constexpr uint32_t MAX_FIELDS = ELISA_USER_DATA_MAX_FIELDS;
 constexpr size_t MAX_FILE_BYTES = 4 + 4 + 8 + 4 + 4 + MAX_FIELDS * 8 + 8;
+constexpr size_t PAYLOAD_HEADER_BYTES = 4 + 4 + 8 + 4 + 4;
+constexpr size_t MAX_PAYLOAD_FILE_BYTES = PAYLOAD_HEADER_BYTES +
+    ELISA_USER_DATA_MAX_PAYLOAD_BYTES + 8;
 constexpr uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr uint64_t FNV_PRIME = 1099511628211ULL;
 
@@ -144,7 +149,8 @@ bool replace_file(const std::filesystem::path& source, const std::filesystem::pa
 #endif
 }
 
-int32_t read_bytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes) {
+int32_t read_bytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes,
+        size_t maximum, size_t minimum) {
     std::error_code error;
     const auto status = std::filesystem::symlink_status(path, error);
     if (error == std::errc::no_such_file_or_directory) return ELISA_USER_DATA_NOT_FOUND;
@@ -154,7 +160,7 @@ int32_t read_bytes(const std::filesystem::path& path, std::vector<uint8_t>& byte
     }
     const uintmax_t size = std::filesystem::file_size(path, error);
     if (error) return ELISA_USER_DATA_IO_FAILURE;
-    if (size > MAX_FILE_BYTES || size < 40) return ELISA_USER_DATA_CORRUPT;
+    if (size > maximum || size < minimum) return ELISA_USER_DATA_CORRUPT;
     bytes.resize(static_cast<size_t>(size));
     std::ifstream stream(path, std::ios::binary);
     if (!stream || !stream.read(reinterpret_cast<char*>(bytes.data()),
@@ -162,6 +168,46 @@ int32_t read_bytes(const std::filesystem::path& path, std::vector<uint8_t>& byte
         return ELISA_USER_DATA_IO_FAILURE;
     }
     return ELISA_USER_DATA_OK;
+}
+
+int32_t write_atomic_file(ServiceState& state, const char* key,
+        const std::filesystem::path& target, const std::vector<uint8_t>& bytes) {
+    std::error_code filesystem_error;
+    const auto target_status = std::filesystem::symlink_status(target, filesystem_error);
+    if (!filesystem_error && std::filesystem::is_symlink(target_status)) return ELISA_USER_DATA_CORRUPT;
+    if (filesystem_error != std::errc::no_such_file_or_directory && filesystem_error) {
+        return ELISA_USER_DATA_IO_FAILURE;
+    }
+
+    const uint64_t serial = state.temporary_serial.fetch_add(1, std::memory_order_relaxed);
+    const std::string temporary_name = std::string(key) + ".tmp-" +
+        std::to_string(static_cast<long long>(ELISA_USER_DATA_PID())) + "-" +
+        std::to_string(serial);
+    const std::filesystem::path temporary = state.root / temporary_name;
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::out | std::ios::trunc);
+        if (!stream) return ELISA_USER_DATA_IO_FAILURE;
+        stream.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+        stream.flush();
+        if (!stream) {
+            stream.close();
+            std::filesystem::remove(temporary, filesystem_error);
+            return ELISA_USER_DATA_IO_FAILURE;
+        }
+    }
+    if (!replace_file(temporary, target)) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return ELISA_USER_DATA_IO_FAILURE;
+    }
+    return ELISA_USER_DATA_OK;
+}
+
+int32_t remove_file(const std::filesystem::path& path) {
+    std::error_code error;
+    const bool removed = std::filesystem::remove(path, error);
+    if (error) return ELISA_USER_DATA_IO_FAILURE;
+    return removed ? ELISA_USER_DATA_OK : ELISA_USER_DATA_NOT_FOUND;
 }
 
 } // namespace
@@ -219,35 +265,7 @@ extern "C" int32_t elisa_user_data_v1_write_blob(const char* key, int64_t versio
     append_u64(bytes, checksum(bytes.data(), bytes.size()));
 
     const std::filesystem::path target = state.root / (std::string(key) + ".save");
-    std::error_code filesystem_error;
-    const auto target_status = std::filesystem::symlink_status(target, filesystem_error);
-    if (!filesystem_error && std::filesystem::is_symlink(target_status)) return ELISA_USER_DATA_CORRUPT;
-    if (filesystem_error != std::errc::no_such_file_or_directory && filesystem_error) {
-        return ELISA_USER_DATA_IO_FAILURE;
-    }
-
-    const uint64_t serial = state.temporary_serial.fetch_add(1, std::memory_order_relaxed);
-    const std::string temporary_name = std::string(key) + ".tmp-" +
-        std::to_string(static_cast<long long>(ELISA_USER_DATA_PID())) + "-" +
-        std::to_string(serial);
-    const std::filesystem::path temporary = state.root / temporary_name;
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::out | std::ios::trunc);
-        if (!stream) return ELISA_USER_DATA_IO_FAILURE;
-        stream.write(reinterpret_cast<const char*>(bytes.data()),
-            static_cast<std::streamsize>(bytes.size()));
-        stream.flush();
-        if (!stream) {
-            stream.close();
-            std::filesystem::remove(temporary, filesystem_error);
-            return ELISA_USER_DATA_IO_FAILURE;
-        }
-    }
-    if (!replace_file(temporary, target)) {
-        std::filesystem::remove(temporary, filesystem_error);
-        return ELISA_USER_DATA_IO_FAILURE;
-    }
-    return ELISA_USER_DATA_OK;
+    return write_atomic_file(state, key, target, bytes);
 }
 
 extern "C" int32_t elisa_user_data_v1_read_blob(const char* key, int64_t* version,
@@ -262,7 +280,7 @@ extern "C" int32_t elisa_user_data_v1_read_blob(const char* key, int64_t* versio
 
     std::vector<uint8_t> bytes;
     const std::filesystem::path target = state.root / (std::string(key) + ".save");
-    const int32_t loaded = read_bytes(target, bytes);
+    const int32_t loaded = read_bytes(target, bytes, MAX_FILE_BYTES, 40);
     if (loaded != ELISA_USER_DATA_OK) return loaded;
 
     size_t offset = 0;
@@ -308,9 +326,84 @@ extern "C" int32_t elisa_user_data_v1_remove_blob(const char* key) {
     std::lock_guard<std::mutex> lock(state.mutex);
     if (!state.initialized) return ELISA_USER_DATA_NOT_INITIALIZED;
     if (!valid_component(key, 48, false)) return ELISA_USER_DATA_INVALID_KEY;
-    const std::filesystem::path target = state.root / (std::string(key) + ".save");
-    std::error_code error;
-    const bool removed = std::filesystem::remove(target, error);
-    if (error) return ELISA_USER_DATA_IO_FAILURE;
-    return removed ? ELISA_USER_DATA_OK : ELISA_USER_DATA_NOT_FOUND;
+    return remove_file(state.root / (std::string(key) + ".save"));
+}
+
+extern "C" int32_t elisa_user_data_v1_write_payload(const char* key, int64_t version,
+        const uint8_t* payload, uint32_t length) {
+    if (version <= 0 || payload == nullptr || length == 0 ||
+        length > ELISA_USER_DATA_MAX_PAYLOAD_BYTES) return ELISA_USER_DATA_INVALID_ARGUMENT;
+    ServiceState& state = service();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) return ELISA_USER_DATA_NOT_INITIALIZED;
+    if (!valid_component(key, 48, false)) return ELISA_USER_DATA_INVALID_KEY;
+
+    std::vector<uint8_t> bytes;
+    bytes.reserve(PAYLOAD_HEADER_BYTES + length + 8);
+    append_u32(bytes, PAYLOAD_MAGIC);
+    append_u32(bytes, PAYLOAD_FILE_VERSION);
+    append_u64(bytes, static_cast<uint64_t>(version));
+    append_u32(bytes, length);
+    append_u32(bytes, 0);
+    bytes.insert(bytes.end(), payload, payload + length);
+    append_u64(bytes, checksum(bytes.data(), bytes.size()));
+    const std::filesystem::path target = state.root / (std::string(key) + ".data");
+    return write_atomic_file(state, key, target, bytes);
+}
+
+extern "C" int32_t elisa_user_data_v1_read_payload(const char* key, int64_t* version,
+        uint8_t* payload, uint32_t capacity, uint32_t* length) {
+    if (version == nullptr || payload == nullptr || length == nullptr || capacity == 0) {
+        return ELISA_USER_DATA_INVALID_ARGUMENT;
+    }
+    ServiceState& state = service();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) return ELISA_USER_DATA_NOT_INITIALIZED;
+    if (!valid_component(key, 48, false)) return ELISA_USER_DATA_INVALID_KEY;
+
+    std::vector<uint8_t> bytes;
+    const std::filesystem::path target = state.root / (std::string(key) + ".data");
+    const int32_t loaded = read_bytes(target, bytes, MAX_PAYLOAD_FILE_BYTES,
+        PAYLOAD_HEADER_BYTES + 1 + 8);
+    if (loaded != ELISA_USER_DATA_OK) return loaded;
+
+    size_t offset = 0;
+    uint32_t magic = 0;
+    uint32_t file_version = 0;
+    uint64_t record_version = 0;
+    uint32_t payload_length = 0;
+    uint32_t reserved = 0;
+    if (!read_u32(bytes, offset, magic) || !read_u32(bytes, offset, file_version) ||
+        !read_u64(bytes, offset, record_version) || !read_u32(bytes, offset, payload_length) ||
+        !read_u32(bytes, offset, reserved)) return ELISA_USER_DATA_CORRUPT;
+    if (magic != PAYLOAD_MAGIC) return ELISA_USER_DATA_CORRUPT;
+    if (file_version != PAYLOAD_FILE_VERSION) return ELISA_USER_DATA_WRONG_VERSION;
+    if (record_version == 0 || record_version > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
+        payload_length == 0 || payload_length > ELISA_USER_DATA_MAX_PAYLOAD_BYTES || reserved != 0) {
+        return ELISA_USER_DATA_CORRUPT;
+    }
+    if (payload_length > capacity) return ELISA_USER_DATA_CAPACITY;
+    if (bytes.size() != PAYLOAD_HEADER_BYTES + static_cast<size_t>(payload_length) + 8) {
+        return ELISA_USER_DATA_CORRUPT;
+    }
+    uint64_t stored_checksum = 0;
+    const size_t checksum_offset = bytes.size() - 8;
+    size_t checksum_reader = checksum_offset;
+    if (!read_u64(bytes, checksum_reader, stored_checksum) ||
+        checksum(bytes.data(), checksum_offset) != stored_checksum) return ELISA_USER_DATA_CORRUPT;
+
+    const uint8_t* staged = bytes.data() + offset;
+    std::memcpy(version, &record_version, sizeof(record_version));
+    *length = payload_length;
+    std::memset(payload, 0, capacity);
+    std::memcpy(payload, staged, payload_length);
+    return ELISA_USER_DATA_OK;
+}
+
+extern "C" int32_t elisa_user_data_v1_remove_payload(const char* key) {
+    ServiceState& state = service();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) return ELISA_USER_DATA_NOT_INITIALIZED;
+    if (!valid_component(key, 48, false)) return ELISA_USER_DATA_INVALID_KEY;
+    return remove_file(state.root / (std::string(key) + ".data"));
 }

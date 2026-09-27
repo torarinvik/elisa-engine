@@ -40,6 +40,32 @@ def exercise_user_data() -> i32:
         error failure: 4
     return 5 if initialized != 0
 
+    payload_source: u8[6] = [0, 1, 2, 127, 128, 255]
+    _ = catch UserData::write_payload("scene-snapshot", 7, &payload_source[0], 6):
+        ok: 0
+        error failure: return 34
+    payload_version: mutable i64 = 99
+    payload_length: mutable usize = 99
+    short_payload: mutable u8[4] = [9, 9, 9, 9]
+    short_status: i32 = catch UserData::read_payload("scene-snapshot", &payload_version,
+            &short_payload[0], 4, &payload_length):
+        ok: 0
+        UserData::UserDataError.Capacity: 1
+        error failure: 2
+    return 35 if short_status != 1 or payload_version != 99 or payload_length != 99 or short_payload[0] != 9
+    payload_result: mutable u8[8] = zeroed
+    _ = catch UserData::read_payload("scene-snapshot", &payload_version,
+            &payload_result[0], 8, &payload_length):
+        ok: 0
+        error failure: return 36
+    return 37 if payload_version != 7 or payload_length != 6
+    return 38 if payload_result[0] != 0 or payload_result[1] != 1 or payload_result[2] != 2
+    return 39 if payload_result[3] != 127 or payload_result[4] != 128 or payload_result[5] != 255
+    return 40 if payload_result[6] != 0 or payload_result[7] != 0
+    _ = catch UserData::remove_payload("scene-snapshot"):
+        ok: 0
+        error failure: return 41
+
     invalid_key: i32 = catch UserData::write_blob("../outside", &blob):
         value: 0
         UserData::UserDataError.InvalidKey: 1

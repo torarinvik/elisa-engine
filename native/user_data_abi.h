@@ -18,6 +18,8 @@ enum : uint32_t {
     // Maximum number of signed 64-bit fields in one bounded user-data blob.
     // Existing files with fewer fields remain valid when this capacity grows.
     ELISA_USER_DATA_MAX_FIELDS = 16,
+    // Maximum payload size for one versioned user-data byte record.
+    ELISA_USER_DATA_MAX_PAYLOAD_BYTES = 1024 * 1024,
 };
 
 extern "C" {
@@ -30,5 +32,10 @@ int32_t elisa_user_data_v1_write_blob(const char* key, int64_t version,
 int32_t elisa_user_data_v1_read_blob(const char* key, int64_t* version,
     int64_t* fields, uint32_t capacity, uint32_t* count);
 int32_t elisa_user_data_v1_remove_blob(const char* key);
+int32_t elisa_user_data_v1_write_payload(const char* key, int64_t version,
+    const uint8_t* payload, uint32_t length);
+int32_t elisa_user_data_v1_read_payload(const char* key, int64_t* version,
+    uint8_t* payload, uint32_t capacity, uint32_t* length);
+int32_t elisa_user_data_v1_remove_payload(const char* key);
 
 }
