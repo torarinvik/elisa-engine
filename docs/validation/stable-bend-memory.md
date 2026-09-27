@@ -18,3 +18,16 @@ fighter integration or a visual claim. Opposite target directions remain
 ambiguous, and deliberate pole changes near the hemisphere boundary can still
 need temporal rate limits. Joint limits, contact policy and gameplay integration
 remain separate work.
+
+## Pose and native integration
+
+`Pose::pose_correct_limb_stable` wraps the rotational solve. It stages bend
+memory and commits it only after a successful correction. Shape/index errors and
+unreachable targets leave memory unchanged. Pure pose tests cover 100 repeated
+near-full-extension frames, length preservation and rejected-target atomicity.
+
+`test/render_scene_ik_fk_main.elisa` uses the stateful path on both cooked boxing
+rigs. Each passes five IK/FK weights and 20 near-full-extension frames with noisy
+singular hints. Actual Wicked scene joints match overridden poses within 0.2 mm.
+Default audio was used. These are leg integration tests; arm motion, dynamic
+contact policy and visually reviewed gameplay constraints remain outstanding.

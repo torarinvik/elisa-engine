@@ -49,6 +49,25 @@ def exercise() -> i32 error[IkFk::BlendError, Pose::PoseError]:
     upper_length: f32 = Geometry::vec3_length(Geometry::vec3_sub(partial.models[2].position, partial.models[0].position))
     lower_length: f32 = Geometry::vec3_length(Geometry::vec3_sub(partial.models[4].position, partial.models[2].position))
     return 15 if not near(upper_length, 1.0) or not near(lower_length, 1.0)
+    memory: mutable Ik::BendMemory = Ik::bend_memory()
+    seeded: bool = try Pose::pose_correct_limb_stable(&corrected, skeleton, 0, 2, 4, target, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &memory)
+    return 21 if not seeded
+    index: mutable i32 = 0
+    while index < 100:
+        straight_target: Geometry::Vec3 = Geometry::Vec3{x: 1.999, y: 0.0, z: 0.0}
+        noise: f32 = 0.000001 if index % 2 == 0 else -0.000001
+        frame: mutable Pose::Pose = fk
+        success: bool = try Pose::pose_correct_limb_stable(&frame, skeleton, 0, 2, 4, straight_target, Geometry::Vec3{x: 1.0, y: noise, z: 0.0}, &memory)
+        return 22 if not success or frame.models[2].position.y <= 0.0
+        first: f32 = Geometry::vec3_length(Geometry::vec3_sub(frame.models[2].position, frame.models[0].position))
+        second: f32 = Geometry::vec3_length(Geometry::vec3_sub(frame.models[4].position, frame.models[2].position))
+        return 23 if not near(first, 1.0) or not near(second, 1.0)
+        index <- index + 1
+    before_memory: Ik::BendMemory = memory
+    before_pose: Pose::Pose = corrected
+    impossible: bool = try Pose::pose_correct_limb_stable(&corrected, skeleton, 0, 2, 4, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}, &memory)
+    return 24 if impossible or Geometry::vec3_dot(before_memory.bend, memory.bend) < 0.9999
+    return 25 if not near(before_pose.models[4].position.x, corrected.models[4].position.x)
     weights[1] <- 1.1
     rejected: bool = catch IkFk::blend_rotations(skeleton, fk, ik, weights):
         value pose: false

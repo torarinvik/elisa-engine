@@ -192,6 +192,20 @@ module Pose:
             pose.models[end] <- new_end
             true
 
+        # Stateful variant: memory advances only when the pose solve succeeds.
+        # Seed a limb with its mocap bend; reset on a coordinate-space change.
+        def pose_correct_limb_stable(pose: mutable Pose&, skeleton: Skeleton&, upper: usize, lower: usize, end: usize, target: Geometry::Vec3, bend_hint: Geometry::Vec3, memory: mutable Ik::BendMemory&) -> bool error[PoseError]:
+            raise PoseError.ShapeMismatch if pose.count != skeleton.count
+            raise PoseError.InvalidSkeleton if not skeleton_valid(skeleton) or not pose_valid(pose)
+            raise PoseError.JointOutOfBounds if upper >= pose.count or lower >= pose.count or end >= pose.count
+            return false if not Geometry::vec3_is_finite(target) or not Geometry::vec3_is_finite(bend_hint)
+            candidate: mutable Ik::BendMemory = memory
+            direction: Geometry::Vec3 = Geometry::vec3_sub(target, pose.models[upper].position)
+            bend: Geometry::Vec3 = Ik::stable_bend(&candidate, direction, bend_hint)
+            solved: bool = try pose_correct_limb(pose, skeleton, upper, lower, end, target, bend)
+            memory <- candidate if solved
+            solved
+
         # Apply after blending. The caller supplies a skinned sole point in the
         # same model space as the pose; this helper does not infer a floor from
         # ankle height or remove intentional positive flight clearance.

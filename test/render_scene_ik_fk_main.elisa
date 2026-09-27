@@ -30,7 +30,8 @@ def exercise() -> i32 error[RenderScene::RenderSceneError, Pose::PoseError, IkFk
     target: Geometry::Vec3 = Geometry::vec3_add(fk.models[end].position, Geometry::Vec3{x: 0.0, y: 0.015, z: 0.0})
     pole: Geometry::Vec3 = Geometry::vec3_sub(fk.models[lower].position, fk.models[upper].position)
     corrected: mutable Pose::Pose = fk
-    solved: bool = try Pose::pose_correct_limb(&corrected, snapshot.skeleton, upper, lower, end, target, pole)
+    memory: mutable Ik::BendMemory = Ik::bend_memory()
+    solved: bool = try Pose::pose_correct_limb_stable(&corrected, snapshot.skeleton, upper, lower, end, target, pole, &memory)
     return 2 if not solved
     for step in 0..<5 |snapshot|:
         weight: f32 = step.f32() * 0.25
@@ -51,6 +52,26 @@ def exercise() -> i32 error[RenderScene::RenderSceneError, Pose::PoseError, IkFk
             point: Geometry::Vec3 = blended.models[index].position
             return 5 if elisa_render_scene_v1_test_animation_joint_position(
                 RenderScene::ik_fk_test_handle(rig), index.u32(), point.x, point.y, point.z) != 1
+    # Reconstruct near-full extension from source FK every frame; a singular
+    # pole must not alternate the knee plane, even after a failed solve.
+    direction: Geometry::Vec3 = Geometry::vec3_normalize(Geometry::vec3_sub(fk.models[end].position, fk.models[upper].position))
+    extended_target: Geometry::Vec3 = Geometry::vec3_add(fk.models[upper].position, Geometry::vec3_scale(direction, (a + b) * 0.995))
+    previous_bend: mutable Geometry::Vec3 = memory.bend
+    for frame_index in 0..<20 |snapshot, memory, previous_bend|:
+        noise: f32 = 0.000001 if frame_index % 2 == 0 else -0.000001
+        hint: Geometry::Vec3 = Geometry::vec3_add(direction, Geometry::Vec3{x: noise, y: 0.0, z: 0.0})
+        frame: mutable Pose::Pose = fk
+        success: bool = try Pose::pose_correct_limb_stable(&frame, snapshot.skeleton, upper, lower, end, extended_target, hint, &memory)
+        return 7 if not success or Geometry::vec3_dot(previous_bend, memory.bend) < 0.99
+        previous_bend <- memory.bend
+        first: f32 = Geometry::vec3_length(Geometry::vec3_sub(frame.models[lower].position, frame.models[upper].position))
+        second: f32 = Geometry::vec3_length(Geometry::vec3_sub(frame.models[end].position, frame.models[lower].position))
+        return 8 if not near(first, a) or not near(second, b)
+        snapshot.pose <- frame
+        try RenderScene::override_animation_pose(rig, snapshot)
+        for index in 0..<frame.count:
+            point: Geometry::Vec3 = frame.models[index].position
+            return 10 if elisa_render_scene_v1_test_animation_joint_position(RenderScene::ik_fk_test_handle(rig), index.u32(), point.x, point.y, point.z) != 1
     try RenderScene::destroy(rig)
     0
 
