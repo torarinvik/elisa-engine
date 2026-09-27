@@ -31,5 +31,18 @@ godot --headless --path backends/godot --script res://quality_probe.gd
 ```
 
 It is also part of `scripts/check.elisascript`. This is adapter contract
-coverage; Godot visual references and per-profile GPU/memory measurements
-remain open.
+coverage. A display-backed Low/High smoke renders the same emissive material
+scene under both profiles, checks that at least 1,024 pixels and 0.02 mean RGB
+change, and compares each frame to its checked-in reference with peak/mean
+limits of 0.12/0.01. Run it on the tested host with:
+
+```sh
+GODOT_BIN=godot python3 scripts/godot_quality_visual_smoke.py
+```
+
+On Godot 4.7.2 / macOS 27 / Apple M5 using Compatibility, the profiles changed
+all 64,000 pixels at 320×200, with 0.4522 mean RGB difference. Both captures
+matched their references exactly in repeated runs. The Low and High images are
+[`low.png`](references/godot-quality/low.png) and
+[`high.png`](references/godot-quality/high.png). Per-profile GPU/memory
+measurements and Forward+/Mobile runtime captures remain open.
