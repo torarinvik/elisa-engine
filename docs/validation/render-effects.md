@@ -34,20 +34,24 @@ behind their owning modules; callers only hold the checked public descriptor
 and handle types.
 
 `WorldEffectAssets::Catalog` stores up to 32 validated authored emitter/decal
-profiles under positive IDs. A dispatched `Spawn` event uses its payload as the
-profile ID. `WorldEvents::emit_world` snapshots the entity position into the
-event, so effect creation does not need to borrow the World while consuming a
-queue phase. `WorldEffects::spawn_dispatched_events` attaches the native handle
-to the event owner, applies emitter time scale, and leaves transform following
-and despawn cleanup to the existing bounded service.
+profiles under positive IDs. Profiles can be persistent or carry a finite
+duration in scaled simulation seconds. A dispatched `Spawn` event uses its
+payload as the profile ID; retrigger policy either rejects an active duplicate
+or replaces it. `WorldEvents::emit_world` snapshots the entity position into
+the event, so effect creation does not need to borrow the World while consuming
+a queue phase. `WorldEffects::spawn_dispatched_events` attaches the native
+handle to the event owner, applies emitter time scale, and leaves transform
+following, timed expiry, and despawn cleanup to the existing bounded service.
 
 The focused event smoke verifies emitter and decal profiles, duplicate IDs,
 phase dispatch and per-owner position capture, the real Wicked emitter and
 decal fields, fills the native effect slots and verifies capacity rejection,
 releases and reuses a slot while rejecting its stale handle, and checks cleanup
 after both owners despawn. It also checks native component counts after cleanup
-and after a full RenderScene shutdown/reinitialize cycle. Run it with the
-SDL3/Metal toolchain:
+and after a full RenderScene shutdown/reinitialize cycle. Repeated transient
+Spawn events verify the replace policy; a scaled update expires both a decal
+and an emitter and returns their native component counts to baseline. Run it
+with the SDL3/Metal toolchain:
 
 ```text
 ELISA_RENDER_SCENE_NATIVE_ONLY=1 \
@@ -59,6 +63,6 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 python3 scripts/render_scene_native_smoke.py
 ```
 
-Native fixed-slot pooling and owner cleanup are covered. The remaining R09 work
-is time-based effect expiry and retrigger policy, a rendered combat or
-environmental example, and checking heap-memory baselines across restarts.
+Native fixed-slot pooling, timed expiry, replace/reject retrigger policies, and
+owner cleanup are covered. The remaining R09 work is a rendered combat or
+environmental example and checking heap-memory baselines across restarts.

@@ -16,6 +16,9 @@ module WorldEffectAssets:
         def time_scale_valid(value: f32) -> bool:
             finite(value) and value >= 0.0 and value <= Limits::MAX_TIME_SCALE
 
+        def duration_valid(value: f32) -> bool:
+            finite(value) and value >= 0.0
+
         def emitter_valid(effect: RenderScene::Emitter) -> bool:
             return false if effect.max_particles == 0 or effect.max_particles > RenderSceneEffects::MAX_PARTICLES
             return false if not finite(effect.count) or effect.count < 0.0 or effect.count > effect.max_particles.f32()
@@ -48,6 +51,10 @@ module WorldEffectAssets:
             Emitter
             Decal
 
+        enum RetriggerPolicy:
+            Reject
+            Replace
+
         error CatalogError:
             InvalidId
             DuplicateId
@@ -61,6 +68,8 @@ module WorldEffectAssets:
             emitter: RenderScene::Emitter
             decal: RenderScene::Decal
             time_scale: f32
+            duration_seconds: f32
+            retrigger: RetriggerPolicy
 
         affine struct Catalog:
             private:
@@ -68,23 +77,29 @@ module WorldEffectAssets:
                 count: mutable usize
 
         def emitter_definition(id: i64, descriptor: RenderScene::Emitter,
-            time_scale: f32) -> EffectDefinition:
+            time_scale: f32, duration_seconds: f32,
+            retrigger: RetriggerPolicy) -> EffectDefinition:
             EffectDefinition{
                 id: id,
                 kind: DefinitionKind.Emitter,
                 emitter: descriptor,
                 decal: zeroed,
                 time_scale: time_scale,
+                duration_seconds: duration_seconds,
+                retrigger: retrigger,
             }
 
         def decal_definition(id: i64, descriptor: RenderScene::Decal,
-            time_scale: f32) -> EffectDefinition:
+            time_scale: f32, duration_seconds: f32,
+            retrigger: RetriggerPolicy) -> EffectDefinition:
             EffectDefinition{
                 id: id,
                 kind: DefinitionKind.Decal,
                 emitter: zeroed,
                 decal: descriptor,
                 time_scale: time_scale,
+                duration_seconds: duration_seconds,
+                retrigger: retrigger,
             }
 
         def Catalog() -> Catalog:
@@ -98,7 +113,7 @@ module WorldEffectAssets:
             raise CatalogError.InvalidId if profile.id <= 0
             raise CatalogError.DuplicateId if profile_index(catalog, profile.id) < Limits::MAX_PROFILES
             raise CatalogError.Capacity if catalog.count >= Limits::MAX_PROFILES
-            raise CatalogError.InvalidDefinition if not time_scale_valid(profile.time_scale)
+            raise CatalogError.InvalidDefinition if not time_scale_valid(profile.time_scale) or not duration_valid(profile.duration_seconds)
             raise CatalogError.InvalidDefinition if profile.kind == DefinitionKind.Emitter and not emitter_valid(profile.emitter)
             raise CatalogError.InvalidDefinition if profile.kind == DefinitionKind.Decal and not decal_valid(profile.decal)
             catalog.profiles[catalog.count] <- profile

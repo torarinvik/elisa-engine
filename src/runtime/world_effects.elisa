@@ -23,6 +23,7 @@ module WorldEffects:
         struct UpdateReport:
             updated: usize
             detached_despawned: usize
+            expired: usize
 
         struct EventSpawnReport:
             scanned: usize
@@ -36,6 +37,10 @@ module WorldEffects:
                 has_emitter: mutable bool[WorldEffects::MAX_BINDINGS]
                 has_decal: mutable bool[WorldEffects::MAX_BINDINGS]
                 time_scales: mutable f32[WorldEffects::MAX_BINDINGS]
+                emitter_durations: mutable f32[WorldEffects::MAX_BINDINGS]
+                emitter_elapsed: mutable f32[WorldEffects::MAX_BINDINGS]
+                decal_durations: mutable f32[WorldEffects::MAX_BINDINGS]
+                decal_elapsed: mutable f32[WorldEffects::MAX_BINDINGS]
                 count: mutable usize
 
     private:
@@ -66,11 +71,19 @@ module WorldEffects:
                 effects.has_emitter[shift] <- effects.has_emitter[shift + 1]
                 effects.has_decal[shift] <- effects.has_decal[shift + 1]
                 effects.time_scales[shift] <- effects.time_scales[shift + 1]
+                effects.emitter_durations[shift] <- effects.emitter_durations[shift + 1]
+                effects.emitter_elapsed[shift] <- effects.emitter_elapsed[shift + 1]
+                effects.decal_durations[shift] <- effects.decal_durations[shift + 1]
+                effects.decal_elapsed[shift] <- effects.decal_elapsed[shift + 1]
             effects.has_emitter[effects.count - 1] <- false
             effects.has_decal[effects.count - 1] <- false
             RenderScene::EmitterHandles::clear(&effects.emitters, effects.count - 1)
             RenderScene::DecalHandles::clear(&effects.decals, effects.count - 1)
             effects.time_scales[effects.count - 1] <- 0.0
+            effects.emitter_durations[effects.count - 1] <- 0.0
+            effects.emitter_elapsed[effects.count - 1] <- 0.0
+            effects.decal_durations[effects.count - 1] <- 0.0
+            effects.decal_elapsed[effects.count - 1] <- 0.0
             effects.count <- effects.count - 1
 
         def destroy_handles(effects: Effects&, index: usize) -> void error[
@@ -104,6 +117,8 @@ module WorldEffects:
             raise WorldEffectsError.BindingTableCorrupt if not stored
             effects.has_emitter[index] <- true
             effects.time_scales[index] <- 1.0 if effects.time_scales[index] == 0.0
+            effects.emitter_durations[index] <- 0.0
+            effects.emitter_elapsed[index] <- 0.0
             effects.count <- effects.count + 1 if index == effects.count
 
         def spawn_decal_at(effects: mutable Effects&, entity: World::EntityRef,
@@ -122,6 +137,8 @@ module WorldEffects:
             raise WorldEffectsError.BindingTableCorrupt if not stored
             effects.has_decal[index] <- true
             effects.time_scales[index] <- 1.0 if effects.time_scales[index] == 0.0
+            effects.decal_durations[index] <- 0.0
+            effects.decal_elapsed[index] <- 0.0
             effects.count <- effects.count + 1 if index == effects.count
 
     public:
@@ -133,6 +150,10 @@ module WorldEffects:
                 has_emitter: zeroed,
                 has_decal: zeroed,
                 time_scales: zeroed,
+                emitter_durations: zeroed,
+                emitter_elapsed: zeroed,
+                decal_durations: zeroed,
+                decal_elapsed: zeroed,
                 count: 0,
             }
 
@@ -193,7 +214,12 @@ module WorldEffects:
                             index <- slot
                             existing <- true
                     raise WorldEffectsError.Capacity if not existing and effects.count >= WorldEffects::MAX_BINDINGS
-                    raise WorldEffectsError.EntityAlreadyAttached if existing and effects.has_emitter[index]
+                    if existing and effects.has_emitter[index]:
+                        raise WorldEffectsError.EntityAlreadyAttached if profile.retrigger == WorldEffectAssets::RetriggerPolicy.Reject
+                        old: RenderScene::EmitterHandle = try RenderScene::EmitterHandles::get(&effects.emitters, index)
+                        try RenderScene::destroy_emitter(old)
+                        RenderScene::EmitterHandles::clear(&effects.emitters, index)
+                        effects.has_emitter[index] <- false
                     descriptor.position <- position
                     handle: RenderScene::EmitterHandle = try RenderScene::create_emitter(descriptor)
                     effects.entities[index] <- entity
@@ -201,6 +227,8 @@ module WorldEffects:
                     raise WorldEffectsError.BindingTableCorrupt if not stored
                     effects.has_emitter[index] <- true
                     effects.time_scales[index] <- profile.time_scale
+                    effects.emitter_durations[index] <- profile.duration_seconds
+                    effects.emitter_elapsed[index] <- 0.0
                     effects.count <- effects.count + 1 if not existing
                 else:
                     descriptor: mutable RenderScene::Decal = profile.decal
@@ -212,14 +240,21 @@ module WorldEffects:
                             index <- slot
                             existing <- true
                     raise WorldEffectsError.Capacity if not existing and effects.count >= WorldEffects::MAX_BINDINGS
-                    raise WorldEffectsError.EntityAlreadyAttached if existing and effects.has_decal[index]
+                    if existing and effects.has_decal[index]:
+                        raise WorldEffectsError.EntityAlreadyAttached if profile.retrigger == WorldEffectAssets::RetriggerPolicy.Reject
+                        old: RenderScene::DecalHandle = try RenderScene::DecalHandles::get(&effects.decals, index)
+                        try RenderScene::destroy_decal(old)
+                        RenderScene::DecalHandles::clear(&effects.decals, index)
+                        effects.has_decal[index] <- false
                     descriptor.position <- position
                     handle: RenderScene::DecalHandle = try RenderScene::create_decal(descriptor)
                     effects.entities[index] <- entity
                     stored: bool = RenderScene::DecalHandles::store(&effects.decals, index, handle)
                     raise WorldEffectsError.BindingTableCorrupt if not stored
                     effects.has_decal[index] <- true
-                    effects.time_scales[index] <- profile.time_scale if not existing
+                    effects.time_scales[index] <- profile.time_scale
+                    effects.decal_durations[index] <- profile.duration_seconds
+                    effects.decal_elapsed[index] <- 0.0
                     effects.count <- effects.count + 1 if not existing
                 spawned <- spawned + 1
             EventSpawnReport{scanned: dispatched_count, spawned: spawned}
@@ -237,8 +272,9 @@ module WorldEffects:
             raise WorldEffectsError.InvalidTimeStep if not (delta_seconds > 0.0 and delta_seconds - delta_seconds == 0.0)
             updated: mutable usize = 0
             despawned: mutable usize = 0
+            expired: mutable usize = 0
             removed: mutable bool[WorldEffects::MAX_BINDINGS] = zeroed
-            for index in 0..<effects.count |world, effects, delta_seconds, updated, despawned, removed|:
+            for index in 0..<effects.count |world, effects, delta_seconds, updated, despawned, expired, removed|:
                 pose: mutable Geometry::Transform = Geometry::transform_identity()
                 if not World::world_try_transform(world, effects.entities[index], &pose):
                     try destroy_handles(effects, index)
@@ -246,13 +282,40 @@ module WorldEffects:
                     despawned <- despawned + 1
                 else:
                     if effects.has_emitter[index]:
-                        emitter: RenderScene::EmitterHandle = try RenderScene::EmitterHandles::get(&effects.emitters, index)
-                        try RenderScene::move_emitter(emitter, pose.position)
-                        try RenderScene::tick_emitter(emitter, delta_seconds * effects.time_scales[index])
+                        if effects.emitter_durations[index] > 0.0:
+                            elapsed: f32 = effects.emitter_elapsed[index] + delta_seconds * effects.time_scales[index]
+                            effects.emitter_elapsed[index] <- elapsed
+                            if elapsed >= effects.emitter_durations[index]:
+                                emitter: RenderScene::EmitterHandle = try RenderScene::EmitterHandles::get(&effects.emitters, index)
+                                try RenderScene::destroy_emitter(emitter)
+                                RenderScene::EmitterHandles::clear(&effects.emitters, index)
+                                effects.has_emitter[index] <- false
+                                effects.emitter_durations[index] <- 0.0
+                                effects.emitter_elapsed[index] <- 0.0
+                                expired <- expired + 1
+                        if effects.has_emitter[index]:
+                            emitter: RenderScene::EmitterHandle = try RenderScene::EmitterHandles::get(&effects.emitters, index)
+                            try RenderScene::move_emitter(emitter, pose.position)
+                            try RenderScene::tick_emitter(emitter, delta_seconds * effects.time_scales[index])
                     if effects.has_decal[index]:
-                        decal: RenderScene::DecalHandle = try RenderScene::DecalHandles::get(&effects.decals, index)
-                        try RenderScene::move_decal(decal, pose.position)
-                    updated <- updated + 1
+                        if effects.decal_durations[index] > 0.0:
+                            elapsed: f32 = effects.decal_elapsed[index] + delta_seconds * effects.time_scales[index]
+                            effects.decal_elapsed[index] <- elapsed
+                            if elapsed >= effects.decal_durations[index]:
+                                decal: RenderScene::DecalHandle = try RenderScene::DecalHandles::get(&effects.decals, index)
+                                try RenderScene::destroy_decal(decal)
+                                RenderScene::DecalHandles::clear(&effects.decals, index)
+                                effects.has_decal[index] <- false
+                                effects.decal_durations[index] <- 0.0
+                                effects.decal_elapsed[index] <- 0.0
+                                expired <- expired + 1
+                        if effects.has_decal[index]:
+                            decal: RenderScene::DecalHandle = try RenderScene::DecalHandles::get(&effects.decals, index)
+                            try RenderScene::move_decal(decal, pose.position)
+                    if effects.has_emitter[index] or effects.has_decal[index]:
+                        updated <- updated + 1
+                    else:
+                        removed[index] <- true
             # Despawn removal shifts later rows, so remove from the back.
             original_count: usize = effects.count
             for offset in 0..<original_count |effects, removed|:
@@ -261,7 +324,7 @@ module WorldEffects:
                     # Reuse the common compactor so retired handle slots and
                     # per-row flags are cleared before this slot can be reused.
                     remove_at(effects, index)
-            UpdateReport{updated: updated, detached_despawned: despawned}
+            UpdateReport{updated: updated, detached_despawned: despawned, expired: expired}
 
         def clear(effects: mutable Effects&) -> void error[
             WorldEffectsError, RenderScene::RenderSceneError]:
