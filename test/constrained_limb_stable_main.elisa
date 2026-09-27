@@ -19,7 +19,7 @@ def exercise() -> i32 error[Pose::PoseError,ConstrainedLimb::SolveError,PoseJoin
         return 2 if not result.converged
         return 3 if pose.models[1].position.y < 0.0 or memory.bend.y < 0.9
         return 4 if Geometry::vec3_distance(pose.models[2].position,target)>0.0001
-    # A negative hinge forces a conflicting bend: reject without changing state.
+    # A positive lower-joint hinge forces the opposite elbow bend: reject without changing state.
     saved: Ik::BendMemory = memory
     settings.enabled[1] <- true
     settings.limits[1] <- JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: 0.785398163,maximum_twist: 1.570796327}
@@ -43,6 +43,16 @@ def exercise() -> i32 error[Pose::PoseError,ConstrainedLimb::SolveError,PoseJoin
         ConstrainedLimb::SolveError.InvalidInput: true
         error failure: false
     return 8 if not late_invalid or Geometry::vec3_distance(memory.bend,saved.bend)>0.0 or Geometry::vec3_distance(memory.direction,saved.direction)>0.0 or Geometry::vec3_distance(blocked.models[1].position,source.models[1].position)>0.0
+    # Match the native nested array-state lifetime across independent actions.
+    memories: mutable Ik::BendMemory[4] = zeroed
+    for phase in 0..<16 |memories|:
+        for sample in 0..<2 |memories|:
+            for limb in 0..<4:
+                return 9 if phase > 0 and not memories[limb].initialized
+                current: mutable Pose::Pose = source
+                pole: Geometry::Vec3 = Geometry::Vec3{x: 0.0,y: 1.0 if phase % 2 == 0 else -1.0,z: 0.0}
+                retained: ConstrainedLimb::Result = try ConstrainedLimb::solve_stable(&current,skeleton,0,1,2,Geometry::Vec3{x: 1.99,y: 0.0,z: 0.0},pole,&memories[limb],settings,0.0001,32)
+                return 10 if not retained.converged or memories[limb].bend.y < 0.9 or current.models[1].position.y < 0.0
     0
 
 def main() -> i32:
