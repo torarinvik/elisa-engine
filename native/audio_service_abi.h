@@ -34,6 +34,12 @@ enum {
 };
 
 enum {
+    ELISA_AUDIO_STREAM_PLAYING = 1,
+    ELISA_AUDIO_STREAM_FINISHED = 2,
+    ELISA_AUDIO_MAX_STREAMS = 2,
+};
+
+enum {
     ELISA_AUDIO_MIN_SAMPLE_RATE_HZ = 8000,
     ELISA_AUDIO_MAX_SAMPLE_RATE_HZ = 192000,
     ELISA_AUDIO_MIN_CHANNEL_COUNT = 1,
@@ -56,6 +62,23 @@ int32_t elisa_audio_v1_set_voice_spatial(uint32_t slot, uint32_t generation,
     float gain, float pitch_ratio);
 int32_t elisa_audio_v1_set_bus_gain(int32_t bus, float gain);
 int32_t elisa_audio_v1_active_voice_count(void);
+int32_t elisa_audio_v1_set_voice_budget(int32_t bus, uint32_t budget);
+// A paused bus keeps its voices and streams in place without advancing them.
+int32_t elisa_audio_v1_set_bus_paused(int32_t bus, int32_t paused);
+// Streams decode on the owner thread into fixed rings; pump once per frame.
+int32_t elisa_audio_v1_open_stream(const char* path, int32_t looped, int32_t bus, float gain,
+    uint32_t* slot, uint32_t* generation);
+int32_t elisa_audio_v1_stop_stream(uint32_t slot, uint32_t generation);
+int32_t elisa_audio_v1_pump_streams(void);
+int32_t elisa_audio_v1_stream_status(uint32_t slot, uint32_t generation, int32_t* state,
+    uint64_t* frames_played, uint64_t* underrun_frames);
+int32_t elisa_audio_v1_set_stream_gain(uint32_t slot, uint32_t generation, float gain);
+int32_t elisa_audio_v1_active_stream_count(void);
+// Callbacks that emitted silence instead of waiting for the owner's lock.
+int32_t elisa_audio_v1_contended_callbacks(uint64_t* count);
+// Reopen after device loss. With prefer_default, try the system default
+// output before the null device; returns the provider code that opened.
+int32_t elisa_audio_v1_recover_device(int32_t prefer_default);
 int32_t elisa_audio_v1_shutdown(void);
 
 #if defined(ELISA_AUDIO_TEST_PROBE)

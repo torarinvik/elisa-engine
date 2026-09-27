@@ -1,0 +1,141 @@
+# Gameplay sound events: bounded definitions, once-per-tick firing,
+# concurrency groups and scene-scoped ownership. This is pure policy; the
+# caller owns the native voices and keeps them in an
+# AudioRuntime::VoiceHandles pool indexed by the instance slot returned here.
+module AudioEvents:
+    public:
+        const MAX_DEFINITIONS: usize = 16
+        const MAX_INSTANCES: usize = 32
+        const MAX_GROUPS: u32 = 8
+
+        # Not `EventError`: stage1 declines functions that use WorldEvents::EventError
+        # when another module declares an error with the same bare name.
+        error SoundEventError:
+            Capacity
+            DuplicateEvent
+            UnknownEvent
+            InvalidDefinition
+            UnknownInstance
+
+        # `group_limit` live instances may share `group`; a further trigger
+        # replaces the group's oldest instance. Variants rotate in order.
+        # An event fires at most once per simulation tick and then waits
+        # `cooldown_ticks` more ticks.
+        struct Definition:
+            id: u32
+            group: u32
+            group_limit: u32
+            variants: u32
+            cooldown_ticks: u64
+
+        enum Outcome:
+            Play
+            Replace
+            Duplicate
+            Cooling
+
+        # Play: start a voice into `slot`. Replace: stop the voice already in
+        # `slot` first. Duplicate and Cooling start nothing.
+        struct Trigger:
+            outcome: Outcome
+            slot: usize
+            variant: u32
+
+        affine struct Board:
+            private:
+                definitions: mutable Definition[AudioEvents::MAX_DEFINITIONS]
+                definition_count: mutable usize
+                fired: mutable bool[AudioEvents::MAX_DEFINITIONS]
+                last_tick: mutable u64[AudioEvents::MAX_DEFINITIONS]
+                next_variant: mutable u32[AudioEvents::MAX_DEFINITIONS]
+                instance_live: mutable bool[AudioEvents::MAX_INSTANCES]
+                instance_event: mutable usize[AudioEvents::MAX_INSTANCES]
+                instance_started: mutable u64[AudioEvents::MAX_INSTANCES]
+                sequence: mutable u64
+
+        def Board() -> Board:
+            Board{
+                definitions: zeroed,
+                definition_count: 0,
+                fired: zeroed,
+                last_tick: zeroed,
+                next_variant: zeroed,
+                instance_live: zeroed,
+                instance_event: zeroed,
+                instance_started: zeroed,
+                sequence: 1,
+            }
+
+        def define(board: mutable Board&, definition: Definition) -> void error[SoundEventError]:
+            raise SoundEventError.InvalidDefinition if definition.group >= MAX_GROUPS or definition.group_limit == 0 or definition.variants == 0
+            raise SoundEventError.DuplicateEvent if event_index(board, definition.id) < board.definition_count
+            raise SoundEventError.Capacity if board.definition_count >= MAX_DEFINITIONS
+            board.definitions[board.definition_count] <- definition
+            board.definition_count <- board.definition_count + 1
+
+        # A tick at or before the event's last firing is a duplicate, so a
+        # replayed or re-run tick cannot fire the same sound twice.
+        def trigger(board: mutable Board&, id: u32, tick: u64) -> Trigger error[SoundEventError]:
+            index: usize = event_index(board, id)
+            raise SoundEventError.UnknownEvent if index >= board.definition_count
+            definition: Definition = board.definitions[index]
+            fired: bool = board.fired[index]
+            return Trigger{outcome: Outcome.Duplicate, slot: MAX_INSTANCES, variant: 0} if fired and tick <= board.last_tick[index]
+            return Trigger{outcome: Outcome.Cooling, slot: MAX_INSTANCES, variant: 0} if fired and tick <= board.last_tick[index] + definition.cooldown_ticks
+            replace: bool = group_live(board, definition.group) >= definition.group_limit.usize()
+            slot: usize = oldest_in_group(board, definition.group) if replace else free_slot(board)
+            raise SoundEventError.Capacity if slot >= MAX_INSTANCES
+            variant: u32 = board.next_variant[index]
+            board.next_variant[index] <- (variant + 1) % definition.variants
+            board.fired[index] <- true
+            board.last_tick[index] <- tick
+            board.instance_live[slot] <- true
+            board.instance_event[slot] <- index
+            board.instance_started[slot] <- board.sequence
+            board.sequence <- board.sequence + 1
+            Trigger{outcome: Outcome.Replace if replace else Outcome.Play, slot: slot, variant: variant}
+
+        # The caller stopped the voice in `slot`, or saw it end.
+        def finish(board: mutable Board&, slot: usize) -> void error[SoundEventError]:
+            raise SoundEventError.UnknownInstance if slot >= MAX_INSTANCES or not board.instance_live[slot]
+            board.instance_live[slot] <- false
+
+        def live(board: Board&, slot: usize) -> bool:
+            slot < MAX_INSTANCES and board.instance_live[slot]
+
+        def live_count(board: Board&) -> usize:
+            for slot in 0..<MAX_INSTANCES |count: usize = 0| -> count:
+                count <- count + 1 if board.instance_live[slot]
+
+        def group_live(board: Board&, group: u32) -> usize:
+            for slot in 0..<MAX_INSTANCES |count: usize = 0| -> count:
+                count <- count + 1 if in_group(board, slot, group)
+
+        # Scene replacement or a loaded checkpoint: stop every live voice
+        # first, then forget instances and firing history so the new
+        # timeline's ticks can fire again.
+        def reset(board: mutable Board&) -> void:
+            for slot in 0..<MAX_INSTANCES |board|:
+                board.instance_live[slot] <- false
+            for index in 0..<MAX_DEFINITIONS |board|:
+                board.fired[index] <- false
+
+    private:
+        def event_index(board: Board&, id: u32) -> usize:
+            for index in 0..<board.definition_count |found: usize = MAX_DEFINITIONS| -> found:
+                found <- index if found == MAX_DEFINITIONS and board.definitions[index].id == id
+
+        def in_group(board: Board&, slot: usize, group: u32) -> bool:
+            board.instance_live[slot] and board.definitions[board.instance_event[slot]].group == group
+
+        def free_slot(board: Board&) -> usize:
+            for slot in 0..<MAX_INSTANCES |found: usize = MAX_INSTANCES| -> found:
+                found <- slot if found == MAX_INSTANCES and not board.instance_live[slot]
+
+        # Sequences are unique, so the smallest one names exactly one slot.
+        def oldest_in_group(board: Board&, group: u32) -> usize:
+            oldest: u64 =
+                for slot in 0..<MAX_INSTANCES |smallest: u64 = board.sequence| -> smallest:
+                    smallest <- board.instance_started[slot] if in_group(board, slot, group) and board.instance_started[slot] < smallest
+            for slot in 0..<MAX_INSTANCES |found: usize = MAX_INSTANCES| -> found:
+                found <- slot if board.instance_live[slot] and board.instance_started[slot] == oldest

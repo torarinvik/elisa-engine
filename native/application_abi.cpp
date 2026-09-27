@@ -236,9 +236,13 @@ extern "C" int32_t elisa_application_v1_initialize(
     const char* shader_path = std::getenv("ELISA_ENGINE_SHADER_PATH");
     const char* shader_manifest = std::getenv("ELISA_ENGINE_SHADER_MANIFEST");
     if (elisa::shader::manifest_status_is_invalid(shader_path, shader_manifest)) {
+        std::fprintf(stderr, "Elisa shader manifest rejected: %s\n",
+            elisa::shader::manifest_failure(shader_path, shader_manifest).c_str());
         return ELISA_APPLICATION_SHADER_MANIFEST_INVALID;
     }
     if (!elisa::shader::root_is_valid(shader_path, shader_manifest)) {
+        std::fprintf(stderr, "Elisa shader root rejected: %s has no compiled %s shaders\n",
+            shader_path == nullptr ? "(unset)" : shader_path, elisa::shader::current_backend());
         return ELISA_APPLICATION_SHADER_PATH_INVALID;
     }
     ApplicationService& service = application_service();

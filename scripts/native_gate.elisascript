@@ -2,16 +2,24 @@
 # Modes: quick (policy checks), headless (quick + sanitizer boundary), native
 # (headless + the SDL3/Wicked gate). Godot is intentionally not a prerequisite.
 
-def run_visible(program: sview, arguments: darray[sview]) -> i64:
+def run_visible(stage: sview, program: sview, arguments: darray[sview]) -> i64:
     result: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(program), arguments, empty_input)
     _ = write_stdout(result.stdout)
     _ = write_stderr(result.stderr)
+    # Name the failing sub-stage so a nonzero gate never ends in silence.
+    if result.exit_status != 0:
+        eprint("native gate: stage failed:")
+        eprint(stage)
     result.exit_status
 
-def run_native_stage(program: sview, arguments: darray[sview]) -> i64:
-    try run_process(executable(program), arguments) else 1
+def run_native_stage(stage: sview, program: sview, arguments: darray[sview]) -> i64:
+    exit_status: i64 = try run_process(executable(program), arguments) else 1
+    if exit_status != 0:
+        eprint("native gate: stage failed:")
+        eprint(stage)
+    exit_status
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 1:
@@ -56,14 +64,38 @@ def main(arguments: darray[sview]) -> i64:
         _ = write_stderr(headless_result.stderr)
         headless_status <- headless_result.exit_status
     if mode == "native":
-        application_status <- run_native_stage(python, [str(root.joinpath("scripts/application_native_smoke.py"))])
-        native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "build"])
+        native_status <- run_native_stage("build-gate", launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "build-gate"])
+        smoke_cases: darray[sview] = [
+            "physics-pose-inertia-smoke", "physics-material-smoke",
+            "world-physics-pose-smoke", "world-physics-cadence-smoke",
+            "world-hierarchy-render-smoke", "world-audio-physics-smoke",
+            "quality-settings-native-smoke", "physics-primitives-smoke",
+            "physics-runtime-query-smoke", "physics-constraints-smoke",
+            "physics-interactables-smoke", "character-course-smoke",
+            "physics-collision-layers-smoke",
+            "physics-mesh-shapes-smoke", "physics-render-capture-smoke",
+            "application-native-smoke", "application-async-capture-smoke",
+            "application-error-message-smoke", "application-failure-cleanup-smoke",
+        ]
+        application_script: sview = str(root.joinpath("scripts/application_native_smoke.py"))
         if native_status == 0:
-            native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "frame"])
+            application_status <- 0i64
+            for smoke_case in smoke_cases:
+                if application_status == 0:
+                    application_status <- run_visible(smoke_case, python, [application_script, "--only", smoke_case])
+        native_status <- -1i64 if native_status == 0 and application_status > 0
+        if native_status == 0 and application_status == 0:
+            render_script: sview = str(root.joinpath("scripts/render_scene_native_smoke.py"))
+            render_modes: darray[sview] = ["native", "controls", "debug", "render"]
+            for render_mode in render_modes:
+                if native_status == 0:
+                    native_status <- run_visible(render_mode, python, [render_script, "--only", render_mode])
         if native_status == 0:
-            native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "rerun"])
+            native_status <- run_native_stage("frame", launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "frame"])
         if native_status == 0:
-            native_status <- run_native_stage(launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "verify"])
+            native_status <- run_native_stage("rerun", launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "rerun"])
+        if native_status == 0:
+            native_status <- run_native_stage("verify", launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "verify"])
     report_result: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(python), [str(root.joinpath("scripts/write_native_gate_report.py")), str(report_path), mode, str(dependency_status), str(source_status), str(hygiene_status), str(headless_status), str(application_status), str(native_status)], empty_input)

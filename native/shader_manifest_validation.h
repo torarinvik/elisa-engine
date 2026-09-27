@@ -381,7 +381,9 @@ inline bool shader_file_backend(const std::string& path, std::string& backend) {
         ((backend == "metal" || backend == "hlsl6") && extension == ".cso");
 }
 
-inline bool verify_shader_manifest(const std::filesystem::path& root, const std::string& content,
+// Returns an empty string for a valid manifest, otherwise a short diagnostic
+// naming the rejected shader file when one is responsible.
+inline std::string shader_manifest_failure(const std::filesystem::path& root, const std::string& content,
     const std::string& expected_backend) {
     uint64_t schema = 0;
     std::vector<std::string> backends;
@@ -389,15 +391,17 @@ inline bool verify_shader_manifest(const std::filesystem::path& root, const std:
     std::string fingerprint;
     ManifestJsonReader reader(content);
     if (!reader.read(schema, backends, files, fingerprint) || (schema != 1 && schema != 2) || files.empty() ||
-        files.size() > MAX_MANIFEST_FILES || !valid_digest(fingerprint)) return false;
+        files.size() > MAX_MANIFEST_FILES || !valid_digest(fingerprint)) return "malformed manifest";
 
-    if (!valid_shader_backend(expected_backend)) return false;
+    if (!valid_shader_backend(expected_backend)) return "unsupported backend " + expected_backend;
     if (schema == 2) {
         if (backends.empty() || backends.size() > 3 ||
             !std::is_sorted(backends.begin(), backends.end()) ||
-            std::adjacent_find(backends.begin(), backends.end()) != backends.end()) return false;
-        for (const std::string& backend : backends) if (!valid_shader_backend(backend)) return false;
-        if (!std::binary_search(backends.begin(), backends.end(), expected_backend)) return false;
+            std::adjacent_find(backends.begin(), backends.end()) != backends.end()) return "malformed backend list";
+        for (const std::string& backend : backends) if (!valid_shader_backend(backend)) return "malformed backend list";
+        if (!std::binary_search(backends.begin(), backends.end(), expected_backend)) {
+            return "manifest has no " + expected_backend + " shaders";
+        }
     }
 
     uint64_t total_bytes = 0;
@@ -406,14 +410,14 @@ inline bool verify_shader_manifest(const std::filesystem::path& root, const std:
     std::set<std::string> observed_backends;
     std::error_code error;
     const std::filesystem::path canonical_root = std::filesystem::weakly_canonical(root, error);
-    if (error) return false;
+    if (error) return "shader root is unreadable";
     for (const ManifestFile& file : files) {
         std::string backend;
         if (!safe_shader_path(file.path) || !shader_file_backend(file.path, backend) ||
             !valid_digest(file.sha256) || file.bytes == 0 ||
             file.bytes > MAX_SHADER_FILE_BYTES || (!previous_path.empty() && file.path <= previous_path) ||
             file.bytes > MAX_SHADER_TOTAL_BYTES - total_bytes || !expected_paths.insert(file.path).second) {
-            return false;
+            return "invalid manifest entry " + file.path;
         }
         previous_path = file.path;
         observed_backends.insert(backend);
@@ -421,39 +425,47 @@ inline bool verify_shader_manifest(const std::filesystem::path& root, const std:
         const std::filesystem::path candidate = canonical_root / std::filesystem::path(file.path);
         const std::filesystem::path canonical_file = std::filesystem::weakly_canonical(candidate, error);
         if (error || !path_is_within(canonical_root, canonical_file) ||
-            !std::filesystem::is_regular_file(canonical_file, error) || error) return false;
+            !std::filesystem::is_regular_file(canonical_file, error) || error) return "missing shader " + file.path;
         std::string digest;
         std::string hash_error;
         if (!elisa::assets::sha256_file(canonical_file, file.bytes, digest, hash_error) || digest != file.sha256) {
-            return false;
+            return "size or sha256 mismatch for " + file.path;
         }
     }
     if (schema == 1) {
-        if (observed_backends.find(expected_backend) == observed_backends.end()) return false;
+        if (observed_backends.find(expected_backend) == observed_backends.end()) {
+            return "manifest has no " + expected_backend + " shaders";
+        }
     } else if (std::vector<std::string>(observed_backends.begin(), observed_backends.end()) != backends) {
-        return false;
+        return "backend list does not match listed files";
     }
 
     const std::string canonical = canonical_fingerprint_payload(schema, backends, files);
     elisa::assets::Sha256 hash;
     hash.update(reinterpret_cast<const uint8_t*>(canonical.data()), canonical.size());
-    if (hash.finish() != fingerprint) return false;
+    if (hash.finish() != fingerprint) return "manifest fingerprint mismatch";
 
     for (std::filesystem::recursive_directory_iterator iterator(canonical_root,
         std::filesystem::directory_options::skip_permission_denied, error), end;
         iterator != end; iterator.increment(error)) {
-        if (error) return false;
+        if (error) return "shader root is unreadable";
         if (iterator->is_regular_file(error) && !error) {
             std::string extension = iterator->path().extension().string();
             std::transform(extension.begin(), extension.end(), extension.begin(),
                 [](unsigned char character) { return char(std::tolower(character)); });
             if (extension == ".cso" || extension == ".spv") {
                 const std::string relative = iterator->path().lexically_relative(canonical_root).generic_string();
-                if (expected_paths.erase(relative) != 1) return false;
+                if (expected_paths.erase(relative) != 1) return "unlisted shader " + relative;
             }
         }
     }
-    return !error && expected_paths.empty();
+    if (error) return "shader root is unreadable";
+    return expected_paths.empty() ? std::string() : "missing shader " + *expected_paths.begin();
+}
+
+inline bool verify_shader_manifest(const std::filesystem::path& root, const std::string& content,
+    const std::string& expected_backend) {
+    return shader_manifest_failure(root, content, expected_backend).empty();
 }
 
 } // namespace elisa::shader

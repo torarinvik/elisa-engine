@@ -7,8 +7,9 @@ libraries (ozz sampling, Recast/Detour navigation, miniaudio decode,
 FreeType/HarfBuzz shaping) without a renderer, so AddressSanitizer and
 UndefinedBehaviorSanitizer can run on that boundary anywhere. It then runs the
 asset worker harness, the thread behind asynchronous snapshot asset requests,
-under ThreadSanitizer. A nonzero exit status is a sanitizer finding or a
-failing check.
+under ThreadSanitizer, and the streamed-audio harness under both, where a
+live null device drains the music ring while the main thread refills it. A
+nonzero exit status is a sanitizer finding or a failing check.
 
 Requires `python3 scripts/fetch_ozz.py` and `python3 scripts/fetch_recast.py`,
 plus Homebrew freetype and harfbuzz.
@@ -52,6 +53,33 @@ def run_asset_worker_tsan() -> int:
         return run_result.returncode
     print("asset worker harness passed: no ThreadSanitizer finding")
     return 0
+
+
+def run_stream_harness(sanitizer: str) -> int:
+    name = sanitizer.split(",")[0]
+    output = ENGINE_ROOT / f"build/stream-harness-{name}"
+    arguments = [
+        "c++", "-std=c++17", "-O1", "-g", f"-fsanitize={sanitizer}",
+        "-I", str(ENGINE_ROOT / "native"), "-I", str(DEPENDENCIES / "miniaudio"),
+        str(ENGINE_ROOT / "native/miniaudio_stream_harness.cpp"),
+        str(ENGINE_ROOT / "native/miniaudio_implementation.cpp"),
+        "-framework", "CoreFoundation", "-framework", "CoreAudio", "-framework", "AudioToolbox",
+        "-o", str(output),
+    ]
+    compile_result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    if compile_result.returncode != 0:
+        sys.stderr.write(compile_result.stderr)
+        return compile_result.returncode
+    environment = dict(os.environ)
+    environment["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
+    environment["UBSAN_OPTIONS"] = "halt_on_error=1"
+    environment["TSAN_OPTIONS"] = "halt_on_error=1"
+    run_result = subprocess.run([str(output)], capture_output=True, text=True, check=False, env=environment)
+    sys.stdout.write(run_result.stdout)
+    sys.stderr.write(run_result.stderr)
+    if run_result.returncode == 0:
+        print(f"stream harness passed under -fsanitize={sanitizer}")
+    return run_result.returncode
 
 
 def main() -> int:
@@ -104,6 +132,10 @@ def main() -> int:
     if run_result.returncode != 0:
         return run_result.returncode
     print("sanitized boundary harness passed: no AddressSanitizer or UBSan finding")
+    for sanitizer in ("address,undefined", "thread"):
+        status = run_stream_harness(sanitizer)
+        if status != 0:
+            return status
     return run_asset_worker_tsan()
 
 

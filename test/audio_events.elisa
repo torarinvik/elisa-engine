@@ -1,0 +1,91 @@
+include "../src/audio/events.elisa"
+
+def definition(id: u32, group: u32, limit: u32, variants: u32, cooldown: u64) -> AudioEvents::Definition:
+    AudioEvents::Definition{id: id, group: group, group_limit: limit, variants: variants, cooldown_ticks: cooldown}
+
+def define_status(board: mutable AudioEvents::Board&, value: AudioEvents::Definition) -> i32:
+    catch AudioEvents::define(board, value):
+        ok: 0
+        AudioEvents::SoundEventError.InvalidDefinition: 1
+        AudioEvents::SoundEventError.DuplicateEvent: 2
+        AudioEvents::SoundEventError.Capacity: 3
+        error failure: 4
+
+# Outcome code: 0 Play, 1 Replace, 2 Duplicate, 3 Cooling, 4 UnknownEvent,
+# 5 Capacity, 6 other. The slot and variant are folded in by `trigger_code`.
+def outcome_code(trigger: AudioEvents::Trigger) -> i32:
+    match trigger.outcome:
+        AudioEvents::Outcome.Play:
+            0
+        AudioEvents::Outcome.Replace:
+            1
+        AudioEvents::Outcome.Duplicate:
+            2
+        AudioEvents::Outcome.Cooling:
+            3
+
+def fire(board: mutable AudioEvents::Board&, id: u32, tick: u64) -> AudioEvents::Trigger:
+    catch AudioEvents::trigger(board, id, tick):
+        value: value
+        error failure: AudioEvents::Trigger{outcome: AudioEvents::Outcome.Cooling, slot: 99, variant: 99}
+
+def fire_error(board: mutable AudioEvents::Board&, id: u32, tick: u64) -> i32:
+    catch AudioEvents::trigger(board, id, tick):
+        value: 0
+        AudioEvents::SoundEventError.UnknownEvent: 4
+        AudioEvents::SoundEventError.Capacity: 5
+        error failure: 6
+
+def main() -> i32:
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    # jump: one voice, two variants. impact: group of two. ambience: cooldown.
+    return 1 if define_status(&board, definition(1, 0, 1, 2, 0)) != 0
+    return 2 if define_status(&board, definition(2, 1, 2, 1, 0)) != 0
+    return 3 if define_status(&board, definition(3, 2, 4, 1, 3)) != 0
+    return 4 if define_status(&board, definition(1, 3, 1, 1, 0)) != 2
+    return 5 if define_status(&board, definition(9, 8, 1, 1, 0)) != 1
+    return 6 if define_status(&board, definition(9, 0, 0, 1, 0)) != 1
+    return 7 if define_status(&board, definition(9, 0, 1, 0, 0)) != 1
+
+    first: AudioEvents::Trigger = fire(&board, 1, 10)
+    return 10 if outcome_code(first) != 0 or first.variant != 0
+    return 11 if outcome_code(fire(&board, 1, 10)) != 2
+    return 12 if outcome_code(fire(&board, 1, 9)) != 2
+    second: AudioEvents::Trigger = fire(&board, 1, 11)
+    return 13 if outcome_code(second) != 1 or second.slot != first.slot or second.variant != 1
+    return 14 if outcome_code(fire(&board, 1, 12)) != 1 or AudioEvents::live_count(&board) != 1
+    return 15 if fire_error(&board, 7, 12) != 4
+
+    impact_a: AudioEvents::Trigger = fire(&board, 2, 20)
+    impact_b: AudioEvents::Trigger = fire(&board, 2, 21)
+    return 20 if outcome_code(impact_a) != 0 or outcome_code(impact_b) != 0 or impact_a.slot == impact_b.slot
+    return 21 if AudioEvents::group_live(&board, 1) != 2
+    impact_c: AudioEvents::Trigger = fire(&board, 2, 22)
+    return 22 if outcome_code(impact_c) != 1 or impact_c.slot != impact_a.slot
+    finished: i32 = catch AudioEvents::finish(&board, impact_b.slot):
+        ok: 0
+        error failure: 1
+    return 23 if finished != 0 or AudioEvents::live(&board, impact_b.slot)
+    stale: i32 = catch AudioEvents::finish(&board, impact_b.slot):
+        ok: 0
+        error failure: 1
+    return 24 if stale != 1
+    return 25 if outcome_code(fire(&board, 2, 23)) != 0 or AudioEvents::group_live(&board, 2 - 1) != 2
+
+    return 30 if outcome_code(fire(&board, 3, 30)) != 0
+    return 31 if outcome_code(fire(&board, 3, 33)) != 3
+    return 32 if outcome_code(fire(&board, 3, 34)) != 0
+
+    AudioEvents::reset(&board)
+    return 40 if AudioEvents::live_count(&board) != 0
+    return 41 if outcome_code(fire(&board, 1, 5)) != 0
+
+    # Instances are bounded: 32 distinct slots, then Capacity.
+    wide: mutable AudioEvents::Board = AudioEvents::Board()
+    return 50 if define_status(&wide, definition(5, 0, 64, 1, 0)) != 0
+    opened: usize =
+        for tick in 0..<32 |count: usize = 0, wide| -> count:
+            count <- count + 1 if outcome_code(fire(&wide, 5, tick.u64() + 1)) == 0
+    return 51 if opened != AudioEvents::MAX_INSTANCES
+    return 52 if fire_error(&wide, 5, 100) != 5
+    0

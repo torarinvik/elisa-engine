@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import plistlib
@@ -79,6 +80,13 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual(info["CFBundleExecutable"], "Game")
         self.assertEqual(info["CFBundleShortVersionString"], "1.2.3")
 
+    def test_empty_resource_declaration_stages_no_project_files(self) -> None:
+        shutil.rmtree(self.project / "assets")
+        shutil.rmtree(self.project / "build" / "cooked")
+        app = self.package(self.write_manifest({"package": {"resources": []}}))
+        self.assertEqual(self.staged(app), {
+            "Game.bin", "shaders/metal/basic.cso", "shaders/elisa.shader-manifest.json"})
+
     def test_undeclared_resources_stage_assets_without_litter(self) -> None:
         app = self.package(self.write_manifest({}))
         self.assertEqual(self.staged(app), {
@@ -101,6 +109,9 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual(result.stdout.splitlines(),
             [str(resources), "found", str(resources / "shaders"),
              str(resources / "shaders" / "elisa.shader-manifest.json"), "Game 1100 820"])
+        executable_hash = hashlib.sha256((self.project / "build" / "game").read_bytes()).hexdigest()
+        self.assertEqual(result.stderr.splitlines(), [
+            f"Elisa package: Game 1.2.3 (org.elisa.game) executable-sha256={executable_hash} source=unknown"])
         override = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
             capture_output=True, text=True, check=True, cwd=self.tempdir.name,
             env={**os.environ, "ELISA_PROJECT_WIDTH": "640"})
@@ -225,7 +236,7 @@ class PackageMacosAppTests(unittest.TestCase):
                 packager.manifest_window(manifest, self.project)
 
     def test_invalid_resource_declarations_are_rejected(self) -> None:
-        for resources in ([], ["../escape"], ["/abs"], ["assets/.git"], [""], [3]):
+        for resources in (["../escape"], ["/abs"], ["assets/.git"], [""], [3]):
             with self.subTest(resources=resources):
                 with self.assertRaises(packager.PackageError):
                     packager.manifest_resources({"package": {"resources": resources}}, self.project)

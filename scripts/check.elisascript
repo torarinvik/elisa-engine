@@ -536,11 +536,10 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    spatial_audio_test_binary: sview = str(root.joinpath("build/audio-spatial-test"))
-    spatial_audio_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", spatial_audio_test_binary, str(root.joinpath("test/audio_spatial.elisa"))])
-    return spatial_audio_status if spatial_audio_status != 0
-    spatial_audio_status <- run_visible(spatial_audio_test_binary, [])
-    return spatial_audio_status if spatial_audio_status != 0
+    for audio_test in ["audio_spatial", "audio_events"]:
+        # A typed local built from an f-string inside this loop traps elisascript --check; keep the paths inline.
+        if run_visible(compiler, ["-emit", "exe", "-o", str(root.joinpath(f"build/{audio_test}-test")), str(root.joinpath(f"test/{audio_test}.elisa"))]) != 0 or run_visible(str(root.joinpath(f"build/{audio_test}-test")), []) != 0:
+            return 1
     codec_test_binary: sview = str(root.joinpath("build/anim-codec-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", codec_test_binary, str(root.joinpath("test/anim_codec.elisa"))])

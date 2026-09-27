@@ -123,11 +123,22 @@ def write_physics_mesh_fixture(project: Path) -> None:
 
 
 def main() -> int:
+    only_names = [name for name in os.environ.get("ELISA_NATIVE_SMOKE_ONLY", "").split(",") if name]
+    if len(sys.argv) == 3 and sys.argv[1] == "--only":
+        only_names = sys.argv[2].split(",")
+        if any(not name for name in only_names):
+            print("--only requires one or more comma-separated project names", file=sys.stderr)
+            return 2
+    elif len(sys.argv) != 1:
+        print("usage: application_native_smoke.py [--only NAME[,NAME...]]", file=sys.stderr)
+        return 2
     with tempfile.TemporaryDirectory(prefix="Elisa application smoke ") as temporary_directory:
         project = Path(temporary_directory)
         fixture = project / "test/fixtures/audio-smoke.wav"
         fixture.parent.mkdir(parents=True, exist_ok=True)
         write_physics_mesh_fixture(project)
+        # The course self-test decodes its shipped clips from `sounds/`.
+        shutil.copytree(ROOT / "examples/character_course/sounds", project / "sounds")
         samples = [int(6000 * math.sin(2.0 * math.pi * 440.0 * frame / 8000)) for frame in range(400)]
         with wave.open(str(fixture), "wb") as output:
             output.setnchannels(1)
@@ -154,6 +165,7 @@ def main() -> int:
             ("physics-runtime-query-smoke", ROOT / "test/physics_app_native.elisa"),
             ("physics-constraints-smoke", ROOT / "test/physics_constraints_native.elisa"),
             ("physics-interactables-smoke", ROOT / "examples/physics_interactables/self_test_main.elisa"),
+            ("character-course-smoke", ROOT / "examples/character_course/self_test_main.elisa"),
             ("physics-collision-layers-smoke", ROOT / "test/physics_collision_layers_native.elisa"),
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
@@ -162,13 +174,13 @@ def main() -> int:
             ("application-error-message-smoke", ROOT / "test/application_error_message_native.elisa"),
             ("application-failure-cleanup-smoke", ROOT / "test/application_failure_native_main.elisa"),
         ]
-        only_name = os.environ.get("ELISA_NATIVE_SMOKE_ONLY", "")
-        if only_name:
-            selected = [project_row for project_row in projects if project_row[0] == only_name]
-            if not selected:
-                print(f"Unknown native smoke project: {only_name}", file=sys.stderr)
+        if only_names:
+            known_names = [project_row[0] for project_row in projects]
+            unknown_names = [name for name in only_names if name not in known_names]
+            if unknown_names:
+                print("Unknown native smoke project: " + ", ".join(unknown_names), file=sys.stderr)
                 return 2
-            projects = selected
+            projects = [project_row for project_row in projects if project_row[0] in only_names]
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
         frame_capture_dirs = {

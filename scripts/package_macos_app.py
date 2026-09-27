@@ -7,9 +7,9 @@ project-relative asset paths while a user launches the app from Finder.
 
 The manifest's optional ``package.resources`` list names the project-relative
 files and directories the built game reads at runtime. When it is present only
-those paths, the cooked packages and the shader directory are staged, so source
-art, authoring files and the assets repository's own history stay out of the
-bundle. Without the list the whole ``assets`` directory is staged, minus version
+those paths (none, for an empty list), the cooked packages and the shader
+directory are staged, so source art, authoring files and the assets
+repository's own history stay out of the bundle. Without the list the whole ``assets`` directory is staged, minus version
 control and editor litter.
 """
 
@@ -167,8 +167,11 @@ def manifest_resources(manifest: dict[str, object], project: Path) -> list[Path]
     raw = package.get("resources")
     if raw is None:
         return None
-    if not isinstance(raw, list) or not raw:
-        raise PackageError("manifest 'package.resources' must be a non-empty list")
+    # An empty list declares a game with no runtime resource files (for
+    # example procedural content); only the executable, shaders and notices
+    # are staged.
+    if not isinstance(raw, list):
+        raise PackageError("manifest 'package.resources' must be a list")
     if len(raw) > MAX_RESOURCE_ENTRIES:
         raise PackageError(f"manifest 'package.resources' lists more than {MAX_RESOURCE_ENTRIES} entries")
     resources: list[Path] = []
@@ -299,13 +302,27 @@ def bundle_dynamic_libraries(binary: Path, frameworks: Path) -> list[str]:
     return sorted(staged)
 
 
+def source_revision(project: Path) -> str:
+    """Return the packaged project's git revision, marking uncommitted changes."""
+    try:
+        revision = subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(project), "status", "--porcelain", "--", "."],
+            capture_output=True, text=True, check=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return f"{revision}-dirty" if dirty else revision
+
+
 def write_launcher(path: Path, binary_name: str,
-    window: tuple[str, int, int] = ("Elisa Engine", 1280, 720)) -> None:
+    window: tuple[str, int, int] = ("Elisa Engine", 1280, 720), identity: str = "") -> None:
     # The runtime reads its window settings from the environment, which the
     # build runner sets from elisa.project.json. A double-clicked bundle has
     # no runner, so the launcher supplies the same defaults while still
-    # letting an explicitly exported value win.
+    # letting an explicitly exported value win. The identity line goes to
+    # stderr first so every log names the build that produced it.
     title, width, height = window
+    announce = f"echo {shlex.quote(identity)} >&2\n" if identity else ""
     script = f"""#!/bin/sh
 set -eu
 resources=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")/../Resources\" && pwd)\"
@@ -322,7 +339,7 @@ if [ -d \"$resources/shaders\" ]; then
         export ELISA_ENGINE_SHADER_MANIFEST
     fi
 fi
-exec \"$resources/{binary_name}\" \"$@\"
+{announce}exec \"$resources/{binary_name}\" \"$@\"
 """
     path.write_text(script, encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -413,10 +430,15 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     resources.mkdir()
 
     binary_name = f"{bundle_name}.bin"
+    # Hash the built executable before load-command edits and re-signing so
+    # the identity matches the build runner's output.
+    identity = (f"Elisa package: {bundle_name} {version} ({bundle_id}) "
+        f"executable-sha256={hashlib.sha256(executable.read_bytes()).hexdigest()} "
+        f"source={source_revision(project)}")
     shutil.copy2(executable, resources / binary_name)
     if is_mach_o(resources / binary_name):
         bundle_dynamic_libraries(resources / binary_name, contents / "Frameworks")
-    write_launcher(macos / bundle_name, binary_name, window or (name, 1280, 720))
+    write_launcher(macos / bundle_name, binary_name, window or (name, 1280, 720), identity)
 
     # Runtime paths in the game are deliberately project-relative. Stage the
     # declared runtime resources (or, without a declaration, the whole assets

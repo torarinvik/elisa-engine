@@ -234,32 +234,34 @@ module RuntimeServices:
         def audio_active(session: Session&) -> bool:
             session.application_live and session.audio_live
 
-        # The provider may change after a default output device is lost. Keep
-        # the active route observable instead of leaving the startup report as
-        # the only description of audio ownership.
+        # The route may change after device loss; the startup report may be stale.
         def audio_provider(session: Session&) -> Capabilities::BackendFallbackProvider:
             session.audio_provider
 
+        # Once per frame: refill streams (a failed decoder only ends its own
+        # stream), then reopen a lost device. A default route retries default.
         def recover_audio_if_needed(session: mutable Session&) -> bool:
             return true if not session.audio_live
+            streamed: bool = catch AudioRuntime::pump_streams():
+                ok: true
+                error failure: false
             requested: bool = catch AudioRuntime::take_device_recovery_request():
                 value: value
                 error failure: false
-            return true if not requested
-            recovered: bool = catch AudioRuntime::recover_with_silent_device():
-                ok: true
-                error failure: false
-            if recovered:
-                session.audio_provider <- Capabilities::BackendFallbackProvider.MiniaudioSilent
+            return streamed or true if not requested
+            prefer_default: bool = session.audio_provider == Capabilities::BackendFallbackProvider.MiniaudioDefault
+            route: i32 = catch AudioRuntime::recover_device(prefer_default):
+                value: 2 if value else 1
+                error failure: 0
+            if route > 0:
+                session.audio_provider <- Capabilities::BackendFallbackProvider.MiniaudioDefault if route == 2 else Capabilities::BackendFallbackProvider.MiniaudioSilent
                 return true
             session.audio_live <- false
             session.audio_provider <- Capabilities::BackendFallbackProvider.None
             false
 
-        # Advance the fixed-step clock once per rendered frame. The returned
-        # batch is the contract between frame pacing and the game's validated
-        # Executor plan: run that plan once for each due tick, then present
-        # using the fractional remainder.
+        # Advance the fixed-step clock once per frame; run the validated plan
+        # once per due tick, then present using the fractional remainder.
         def advance_simulation(session: mutable Session&,
             elapsed_micros: i64) -> SimulationFrame error[RuntimeServicesError, Runtime::ClockError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
@@ -319,9 +321,8 @@ module RuntimeServices:
             raise RuntimeServicesError.AudioUnavailable if session_status != 0
             AudioRuntime::active_voice_count()
 
-        # Keep the native host lifecycle behind the same owner as its
-        # provider fallbacks. These wrappers intentionally preserve the
-        # Application statuses while rejecting use after session shutdown.
+        # Host lifecycle wrappers keep Application statuses but reject use
+        # after session shutdown.
         def pump(session: mutable Session&) -> Application::PumpStatus error[RuntimeServicesError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             status: Application::PumpStatus = Application::pump()

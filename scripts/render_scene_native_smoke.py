@@ -47,11 +47,20 @@ def run(command: list[str], *, cwd: Path | None = None, env: dict[str, str] | No
 
 
 def main() -> int:
+    only_mode = ""
+    if len(sys.argv) == 3 and sys.argv[1] == "--only":
+        only_mode = sys.argv[2]
+        if only_mode not in ("native", "controls", "debug", "render"):
+            print("unknown render scene mode: " + only_mode, file=sys.stderr)
+            return 2
+    elif len(sys.argv) != 1:
+        print("usage: render_scene_native_smoke.py [--only native|controls|debug|render]", file=sys.stderr)
+        return 2
     if sys.platform != "darwin":
         print("render scene smoke requires the SDL3/Metal macOS native gate", file=sys.stderr)
         return 2
 
-    wicked_root = Path(os.environ.get("WICKED_ROOT", ROOT.parent / "WickedEngine")).resolve()
+    wicked_root = Path(os.environ.get("WICKED_ROOT", ROOT.parent / "amazing-labyrinth-wickedengine")).resolve()
     wicked_source = wicked_root / "WickedEngine"
     wicked_build = Path(os.environ.get("WICKED_BUILD", wicked_root / "build-elisa-sdl3")).resolve()
     libraries = wicked_build / "WickedEngine"
@@ -88,10 +97,10 @@ def main() -> int:
 
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
-    controls_only = os.environ.get("ELISA_RENDER_SCENE_CONTROLS_ONLY") == "1"
-    debug_only = os.environ.get("ELISA_RENDER_SCENE_DEBUG_ONLY") == "1"
-    native_only = os.environ.get("ELISA_RENDER_SCENE_NATIVE_ONLY") == "1"
-    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only or debug_only or native_only
+    controls_only = os.environ.get("ELISA_RENDER_SCENE_CONTROLS_ONLY") == "1" or only_mode == "controls"
+    debug_only = os.environ.get("ELISA_RENDER_SCENE_DEBUG_ONLY") == "1" or only_mode == "debug"
+    native_only = os.environ.get("ELISA_RENDER_SCENE_NATIVE_ONLY") == "1" or only_mode == "native"
+    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only or debug_only or native_only or only_mode == "render"
     profile_cost_only = os.environ.get("ELISA_RENDER_SCENE_PROFILE_COST_ONLY") == "1"
     if profile_cost_only and not render_only:
         print("profile-cost-only mode requires ELISA_RENDER_SCENE_RENDER_ONLY=1", file=sys.stderr)
