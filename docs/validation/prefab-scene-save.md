@@ -6,4 +6,22 @@
 
 `test/prefab_scene.elisa` covers a nested placement override, a visual override, capture, rejection of an unknown authoring ID without allocating entities, and restore into a separately constructed world. It verifies that old references are invalid in the new world, the world-space placement and stable visual IDs survive, and all entities are released after teardown.
 
-This is the in-memory Elisa reconstruction boundary. `scripts/scene_file.py` and `scripts/save_journal.py` already validate and durably store stable scene definitions, links, and overrides, but no runtime JSON decoder currently converts a loaded file into `PrefabScene::Scene` and `SceneSnapshot`. Native mesh/material resources also still need to be registered or restored from their stable IDs.
+`PrefabSceneCodec` adds a bounded binary format for persisting this snapshot through
+`UserData::write_payload` and `read_payload`. Version 1 uses a fixed little-endian
+header, link rows, and override records; transforms retain their exact f32 bits,
+and visual references contain stable asset IDs and bounds. The decoder rejects
+unsupported versions, invalid IDs, malformed counts/flags, invalid transforms or
+assets, truncation, and trailing bytes before returning a snapshot. Its payload
+limit is 65,536 bytes, below the native byte-record limit. The UserData envelope
+adds its own checksum and atomic replacement; runtime byte records still do not
+use the fsynced journal and crash-recovery protocol from `scripts/save_journal.py`.
+
+`test/prefab_scene_codec.elisa` covers a binary round-trip, float fidelity,
+capacity preservation, truncation, wrong format versions, invalid flags, and
+trailing data. The native application smoke saves and reloads a snapshot through
+the public codec and native user-data service.
+
+This persists one nested-scene snapshot; it does not yet encode a whole `World`,
+reconstruct runtime scene definitions from `scripts/scene_file.py` JSON, or
+rehydrate native mesh/material resources from stable IDs. Atomic snapshot writes
+therefore do not yet amount to crash-recoverable whole-world saves.

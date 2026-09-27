@@ -1,0 +1,103 @@
+include "../src/world/prefab_scene_codec.elisa"
+
+module PrefabSceneCodecTest:
+    private:
+        def sample_snapshot() -> PrefabScene::SceneSnapshot:
+            local: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 17.125, y: -3.5, z: 0.0001},
+                rotation: Geometry::Quat{x: 0.125, y: -0.25, z: 0.375, w: 0.875},
+                scale: Geometry::Vec3{x: 1.5, y: 0.75, z: -2.0},
+            }
+            visual: Assets::VisualAsset = Assets::VisualAsset{
+                mesh: Assets::AssetId{high: 17, low: 29},
+                material: Assets::AssetId{high: 31, low: 43},
+                local_bounds: Geometry::Bounds3{
+                    minimum: Geometry::Vec3{x: -1.0, y: -2.0, z: -3.0},
+                    maximum: Geometry::Vec3{x: 1.0, y: 2.0, z: 3.0},
+                },
+            }
+            overrides: mutable PrefabPersistence::Snapshot = PrefabPersistence::Snapshot()
+            overrides.prefab_id <- 7
+            overrides.instance_id <- 1001
+            overrides.count <- 2
+            overrides.records[0] <- PrefabPersistence::OverrideRecord{
+                authoring_id: 10,
+                local: local,
+                has_visual: true,
+                visual: visual,
+            }
+            overrides.records[1] <- PrefabPersistence::OverrideRecord{
+                authoring_id: 20,
+                local: Geometry::transform_identity(),
+                has_visual: false,
+                visual: zeroed,
+            }
+            snapshot: mutable PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+            snapshot.scene_id <- 55
+            snapshot.link_count <- 1
+            snapshot.links[0] <- PrefabScene::LinkSnapshot{link_id: 2001, overrides: overrides}
+            snapshot
+
+    public:
+        def run() -> i32:
+            source: PrefabScene::SceneSnapshot = sample_snapshot()
+            return 1 if not PrefabSceneCodec::snapshot_valid(&source)
+            bytes: mutable u8[PrefabSceneCodec::MAX_BYTES] = zeroed
+            length: mutable usize = 0
+            _ = catch PrefabSceneCodec::encode(&source, &bytes[0], PrefabSceneCodec::MAX_BYTES, &length):
+                ok: 0
+                error failure: return 2
+            decoded: PrefabScene::SceneSnapshot = catch PrefabSceneCodec::decode(&bytes[0], length):
+                value: value
+                error failure: return 3
+            return 4 if decoded.scene_id != source.scene_id or decoded.link_count != source.link_count
+            return 5 if decoded.links[0].link_id != source.links[0].link_id
+            original: PrefabPersistence::Snapshot = source.links[0].overrides
+            restored: PrefabPersistence::Snapshot = decoded.links[0].overrides
+            return 6 if restored.prefab_id != original.prefab_id or restored.instance_id != original.instance_id or restored.count != original.count
+            return 7 if restored.records[0].local.position.x != original.records[0].local.position.x
+            return 8 if restored.records[0].local.rotation.z != original.records[0].local.rotation.z
+            return 9 if restored.records[0].local.scale.y != original.records[0].local.scale.y
+            return 10 if not restored.records[0].has_visual
+            return 11 if not Assets::same_asset_id(restored.records[0].visual.mesh, original.records[0].visual.mesh)
+            return 12 if restored.records[0].visual.local_bounds.maximum.z != 3.0
+            return 13 if restored.records[1].has_visual or restored.records[1].visual.mesh.high != 0
+
+            short: mutable u8[8] = zeroed
+            unchanged_length: mutable usize = 91
+            short_capacity: i32 = catch PrefabSceneCodec::encode(&source, &short[0], 8, &unchanged_length):
+                ok: 0
+                PrefabSceneCodec::SnapshotCodecError.Capacity: 1
+                error failure: 2
+            return 14 if short_capacity != 1 or unchanged_length != 91
+            short_decode: i32 = catch PrefabSceneCodec::decode(&bytes[0], length - 1):
+                value: 0
+                PrefabSceneCodec::SnapshotCodecError.Corrupt: 1
+                error failure: 2
+            return 15 if short_decode != 1
+            overlarge_decode: i32 = catch PrefabSceneCodec::decode(&bytes[0], PrefabSceneCodec::MAX_BYTES + 1):
+                value: 0
+                PrefabSceneCodec::SnapshotCodecError.InvalidBuffer: 1
+                error failure: 2
+            return 19 if overlarge_decode != 1
+
+            bad_version: mutable u8[PrefabSceneCodec::MAX_BYTES] = bytes
+            bad_version[4] <- 2
+            wrong_version: i32 = catch PrefabSceneCodec::decode(&bad_version[0], length):
+                value: 0
+                PrefabSceneCodec::SnapshotCodecError.WrongVersion: 1
+                error failure: 2
+            return 16 if wrong_version != 1
+            bad_flag: mutable u8[PrefabSceneCodec::MAX_BYTES] = bytes
+            bad_flag[104] <- 2
+            invalid_flag: i32 = catch PrefabSceneCodec::decode(&bad_flag[0], length):
+                value: 0
+                PrefabSceneCodec::SnapshotCodecError.Corrupt: 1
+                error failure: 2
+            return 17 if invalid_flag != 1
+            trailing: i32 = catch PrefabSceneCodec::decode(&bytes[0], length + 1):
+                value: 0
+                PrefabSceneCodec::SnapshotCodecError.Corrupt: 1
+                error failure: 2
+            return 18 if trailing != 1
+            0

@@ -1,5 +1,6 @@
 # Exercises the public, Elisa-owned user-data API from the native app smoke.
 include "../src/runtime/quality_settings.elisa"
+include "../src/world/prefab_scene_codec.elisa"
 
 const module QualityPersistenceTest:
     PROFILE_VERSION: i64 = 1
@@ -13,6 +14,33 @@ const module QualityPersistenceTest:
     FSR1_WIRE_CODE: i64 = 1
     BOOL_TRUE_WIRE_CODE: i64 = 1
     FLOAT_TOLERANCE: f32 = 0.000002
+
+const module PrefabSceneProbe:
+    SCENE_ID: i64 = 55
+    LINK_ID: i64 = 2001
+    PREFAB_ID: i64 = 7
+    INSTANCE_ID: i64 = 1001
+    AUTHORING_ID: i64 = 10
+
+def prefab_scene_snapshot() -> PrefabScene::SceneSnapshot:
+    overrides: mutable PrefabPersistence::Snapshot = PrefabPersistence::Snapshot()
+    overrides.prefab_id <- PrefabSceneProbe::PREFAB_ID
+    overrides.instance_id <- PrefabSceneProbe::INSTANCE_ID
+    overrides.count <- 1
+    overrides.records[0] <- PrefabPersistence::OverrideRecord{
+        authoring_id: PrefabSceneProbe::AUTHORING_ID,
+        local: Geometry::transform_identity(),
+        has_visual: false,
+        visual: zeroed,
+    }
+    snapshot: mutable PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+    snapshot.scene_id <- PrefabSceneProbe::SCENE_ID
+    snapshot.link_count <- 1
+    snapshot.links[0] <- PrefabScene::LinkSnapshot{
+        link_id: PrefabSceneProbe::LINK_ID,
+        overrides: overrides,
+    }
+    snapshot
 
 def quality_profiles_match(left: Quality::Profile, right: Quality::Profile) -> bool:
     return false if left.level != right.level or left.tonemap != right.tonemap or left.upscaler != right.upscaler
@@ -65,6 +93,22 @@ def exercise_user_data() -> i32:
     _ = catch UserData::remove_payload("scene-snapshot"):
         ok: 0
         error failure: return 41
+
+    scene_snapshot: PrefabScene::SceneSnapshot = prefab_scene_snapshot()
+    _ = catch PrefabSceneCodec::write_user_data("nested-scene", &scene_snapshot):
+        ok: 0
+        error failure: return 42
+    restored_scene: PrefabScene::SceneSnapshot = catch PrefabSceneCodec::read_user_data("nested-scene"):
+        value: value
+        error failure: return 43
+    return 44 if restored_scene.scene_id != PrefabSceneProbe::SCENE_ID
+    return 45 if restored_scene.link_count != 1 or restored_scene.links[0].link_id != PrefabSceneProbe::LINK_ID
+    restored_overrides: PrefabPersistence::Snapshot = restored_scene.links[0].overrides
+    return 46 if restored_overrides.prefab_id != PrefabSceneProbe::PREFAB_ID or restored_overrides.instance_id != PrefabSceneProbe::INSTANCE_ID
+    return 47 if restored_overrides.count != 1 or restored_overrides.records[0].authoring_id != PrefabSceneProbe::AUTHORING_ID
+    _ = catch UserData::remove_payload("nested-scene"):
+        ok: 0
+        error failure: return 48
 
     invalid_key: i32 = catch UserData::write_blob("../outside", &blob):
         value: 0

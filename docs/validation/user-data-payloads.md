@@ -26,8 +26,9 @@ corruption, and removal. The Elisa application smoke exercises the same
 round-trip and verifies that a rejected short-buffer read leaves caller state
 unchanged.
 
-This is a storage primitive, not the runtime world-save codec. `Save::Blob`
-remains the small structured format, and no `PrefabScene::SceneSnapshot` or
-whole-world record is encoded through this byte channel yet. Snapshot format,
-migrations, loading rollback, and native resource rehydration remain open W06
+This is a storage primitive, not a complete runtime world-save system.
+`PrefabSceneCodec` now stores a version-1 `PrefabScene::SceneSnapshot` through
+this byte channel (see [`prefab-scene-save.md`](prefab-scene-save.md)). The
+whole-world format, migration chain, load rollback across the complete world,
+runtime journal/crash recovery, and native resource rehydration remain open W06
 work.

@@ -1,0 +1,301 @@
+# Stable binary save codec for nested prefab-scene snapshots. Runtime and
+# backend identities stay out of the payload; definitions are resolved by the
+# scene supplied by the game when it restores the snapshot.
+include "./prefab_scene.elisa"
+include "../runtime/user_data.elisa"
+
+module PrefabSceneCodec:
+    private:
+        const module Format:
+            MAGIC: u32 = 1347314501
+            VERSION: i64 = 1
+            HEADER_BYTES: usize = 24
+            LINK_BYTES: usize = 32
+            RECORD_BYTES: usize = 108
+            MAX_STABLE_ID: u64 = 9223372036854775807
+            BYTE_MASK: u64 = 255
+            MAX_U32: u64 = 4294967295
+
+        def read_u32_reference(value: u32&) -> u32:
+            value
+
+        def read_f32_reference(value: f32&) -> f32:
+            value
+
+        def float_bits(value: f32) -> u32:
+            read_u32_reference((&value).cast[u32&] can Unsafe.PointerCast)
+
+        def bits_float(value: u32) -> f32:
+            read_f32_reference((&value).cast[f32&] can Unsafe.PointerCast)
+
+        def stable_id_valid(value: i64) -> bool:
+            value > 0
+
+        def snapshot_structure_valid(snapshot: PrefabScene::SceneSnapshot&) -> bool:
+            return false if snapshot.scene_id <= 0 or snapshot.link_count == 0 or snapshot.link_count > PrefabScene::MAX_LINKS
+            for index in 0..<snapshot.link_count:
+                row: PrefabScene::LinkSnapshot = snapshot.links[index]
+                return false if not stable_id_valid(row.link_id) or not PrefabPersistence::snapshot_valid(&row.overrides)
+                for earlier in 0..<index:
+                    return false if snapshot.links[earlier].link_id == row.link_id
+                    return false if snapshot.links[earlier].overrides.instance_id == row.overrides.instance_id
+            true
+
+        def encoded_size(snapshot: PrefabScene::SceneSnapshot&) -> usize:
+            size: mutable usize = Format::HEADER_BYTES
+            for index in 0..<snapshot.link_count |size, snapshot|:
+                size <- size + Format::LINK_BYTES + snapshot.links[index].overrides.count * Format::RECORD_BYTES
+            size
+
+        def write_u32(bytes: mutable u8&, capacity: usize, offset: mutable usize&,
+                value: u32) -> void error[SnapshotCodecError]:
+            raise SnapshotCodecError.Capacity if offset > capacity or capacity - offset < 4
+            bytes[offset] <- (value.u64() & Format::BYTE_MASK).u8()
+            bytes[offset + 1] <- ((value.u64() >> 8) & Format::BYTE_MASK).u8()
+            bytes[offset + 2] <- ((value.u64() >> 16) & Format::BYTE_MASK).u8()
+            bytes[offset + 3] <- ((value.u64() >> 24) & Format::BYTE_MASK).u8()
+            offset <- offset + 4
+
+        def write_u64(bytes: mutable u8&, capacity: usize, offset: mutable usize&,
+                value: u64) -> void error[SnapshotCodecError]:
+            try write_u32(bytes, capacity, offset, (value & Format::MAX_U32).u32())
+            try write_u32(bytes, capacity, offset, (value >> 32).u32())
+
+        def read_u32(bytes: u8&, length: usize, offset: mutable usize&) -> u32 error[SnapshotCodecError]:
+            raise SnapshotCodecError.Corrupt if offset > length or length - offset < 4
+            value: u32 = bytes[offset].u32() | (bytes[offset + 1].u32() << 8) | (bytes[offset + 2].u32() << 16) | (bytes[offset + 3].u32() << 24)
+            offset <- offset + 4
+            value
+
+        def read_u64(bytes: u8&, offset: mutable usize&) -> u64:
+            low_word: u32 = bytes[offset].u32() | (bytes[offset + 1].u32() << 8) | (bytes[offset + 2].u32() << 16) | (bytes[offset + 3].u32() << 24)
+            offset <- offset + 4
+            high_word: u32 = bytes[offset].u32() | (bytes[offset + 1].u32() << 8) | (bytes[offset + 2].u32() << 16) | (bytes[offset + 3].u32() << 24)
+            offset <- offset + 4
+            low: u64 = low_word.u64()
+            high: u64 = high_word.u64()
+            low | (high << 32)
+
+        def write_f32(bytes: mutable u8&, capacity: usize, offset: mutable usize&,
+                value: f32) -> void error[SnapshotCodecError]:
+            try write_u32(bytes, capacity, offset, float_bits(value))
+
+        def read_f32(bytes: u8&, length: usize, offset: mutable usize&) -> f32 error[SnapshotCodecError]:
+            bits: u32 = try read_u32(bytes, length, offset)
+            bits_float(bits)
+
+        def write_transform(bytes: mutable u8&, capacity: usize, offset: mutable usize&,
+                value: Geometry::Transform) -> void error[SnapshotCodecError]:
+            try write_f32(bytes, capacity, offset, value.position.x)
+            try write_f32(bytes, capacity, offset, value.position.y)
+            try write_f32(bytes, capacity, offset, value.position.z)
+            try write_f32(bytes, capacity, offset, value.rotation.x)
+            try write_f32(bytes, capacity, offset, value.rotation.y)
+            try write_f32(bytes, capacity, offset, value.rotation.z)
+            try write_f32(bytes, capacity, offset, value.rotation.w)
+            try write_f32(bytes, capacity, offset, value.scale.x)
+            try write_f32(bytes, capacity, offset, value.scale.y)
+            try write_f32(bytes, capacity, offset, value.scale.z)
+
+        def read_transform(bytes: u8&, length: usize, offset: mutable usize&,
+                value: mutable Geometry::Transform&) -> void error[SnapshotCodecError]:
+            position_x: f32 = try read_f32(bytes, length, offset)
+            position_y: f32 = try read_f32(bytes, length, offset)
+            position_z: f32 = try read_f32(bytes, length, offset)
+            rotation_x: f32 = try read_f32(bytes, length, offset)
+            rotation_y: f32 = try read_f32(bytes, length, offset)
+            rotation_z: f32 = try read_f32(bytes, length, offset)
+            rotation_w: f32 = try read_f32(bytes, length, offset)
+            scale_x: f32 = try read_f32(bytes, length, offset)
+            scale_y: f32 = try read_f32(bytes, length, offset)
+            scale_z: f32 = try read_f32(bytes, length, offset)
+            position: Geometry::Vec3 = Geometry::Vec3{x: position_x, y: position_y, z: position_z}
+            rotation: Geometry::Quat = Geometry::Quat{x: rotation_x, y: rotation_y, z: rotation_z, w: rotation_w}
+            scale: Geometry::Vec3 = Geometry::Vec3{x: scale_x, y: scale_y, z: scale_z}
+            value <- Geometry::Transform{position: position, rotation: rotation, scale: scale}
+
+        def write_visual(bytes: mutable u8&, capacity: usize, offset: mutable usize&,
+                has_visual: bool, visual: Assets::VisualAsset) -> void error[SnapshotCodecError]:
+            value: Assets::VisualAsset = visual if has_visual else zeroed
+            try write_u64(bytes, capacity, offset, value.mesh.high)
+            try write_u64(bytes, capacity, offset, value.mesh.low)
+            try write_u64(bytes, capacity, offset, value.material.high)
+            try write_u64(bytes, capacity, offset, value.material.low)
+            try write_f32(bytes, capacity, offset, value.local_bounds.minimum.x)
+            try write_f32(bytes, capacity, offset, value.local_bounds.minimum.y)
+            try write_f32(bytes, capacity, offset, value.local_bounds.minimum.z)
+            try write_f32(bytes, capacity, offset, value.local_bounds.maximum.x)
+            try write_f32(bytes, capacity, offset, value.local_bounds.maximum.y)
+            try write_f32(bytes, capacity, offset, value.local_bounds.maximum.z)
+
+        def read_visual(bytes: u8&, length: usize, offset: mutable usize&,
+                value: mutable Assets::VisualAsset&) -> void error[SnapshotCodecError]:
+            raise SnapshotCodecError.Corrupt if offset > length or length - offset < 32
+            mesh_high: u64 = read_u64(bytes, offset)
+            mesh_low: u64 = read_u64(bytes, offset)
+            material_high: u64 = read_u64(bytes, offset)
+            material_low: u64 = read_u64(bytes, offset)
+            minimum_x: f32 = try read_f32(bytes, length, offset)
+            minimum_y: f32 = try read_f32(bytes, length, offset)
+            minimum_z: f32 = try read_f32(bytes, length, offset)
+            maximum_x: f32 = try read_f32(bytes, length, offset)
+            maximum_y: f32 = try read_f32(bytes, length, offset)
+            maximum_z: f32 = try read_f32(bytes, length, offset)
+            minimum: Geometry::Vec3 = Geometry::Vec3{x: minimum_x, y: minimum_y, z: minimum_z}
+            maximum: Geometry::Vec3 = Geometry::Vec3{x: maximum_x, y: maximum_y, z: maximum_z}
+            value <- Assets::VisualAsset{
+                mesh: Assets::AssetId{high: mesh_high, low: mesh_low},
+                material: Assets::AssetId{high: material_high, low: material_low},
+                local_bounds: Geometry::Bounds3{minimum: minimum, maximum: maximum},
+            }
+
+        def read_stable_id(bytes: u8&, length: usize,
+                offset: mutable usize&) -> i64 error[SnapshotCodecError]:
+            raise SnapshotCodecError.Corrupt if offset > length or length - offset < 8
+            raw: u64 = read_u64(bytes, offset)
+            raise SnapshotCodecError.Corrupt if raw == 0 or raw > Format::MAX_STABLE_ID
+            raw.i64()
+
+        def write_record(bytes: mutable u8&, capacity: usize, offset: mutable usize&,
+                record: PrefabPersistence::OverrideRecord) -> void error[SnapshotCodecError]:
+            try write_u64(bytes, capacity, offset, record.authoring_id.u64())
+            try write_transform(bytes, capacity, offset, record.local)
+            try write_u32(bytes, capacity, offset, 1 if record.has_visual else 0)
+            try write_visual(bytes, capacity, offset, record.has_visual, record.visual)
+
+        def read_record(bytes: u8&, length: usize, offset: mutable usize&,
+                value: mutable PrefabPersistence::OverrideRecord&) -> void error[SnapshotCodecError]:
+            authoring_id: i64 = try read_stable_id(bytes, length, offset)
+            local: mutable Geometry::Transform = zeroed
+            try read_transform(bytes, length, offset, &local)
+            raise SnapshotCodecError.Corrupt if not Geometry::transform_is_valid(local)
+            visual_flag: u32 = try read_u32(bytes, length, offset)
+            raise SnapshotCodecError.Corrupt if visual_flag > 1
+            visual: mutable Assets::VisualAsset = zeroed
+            try read_visual(bytes, length, offset, &visual)
+            has_visual: bool = visual_flag == 1
+            if has_visual:
+                raise SnapshotCodecError.Corrupt if not Assets::visual_asset_valid(visual)
+            else:
+                ids_nonzero: bool = visual.mesh.high != 0 or visual.mesh.low != 0 or visual.material.high != 0 or visual.material.low != 0
+                bounds_nonzero: bool = visual.local_bounds.minimum.x != 0.0 or visual.local_bounds.minimum.y != 0.0 or visual.local_bounds.minimum.z != 0.0 or visual.local_bounds.maximum.x != 0.0 or visual.local_bounds.maximum.y != 0.0 or visual.local_bounds.maximum.z != 0.0
+                raise SnapshotCodecError.Corrupt if ids_nonzero or bounds_nonzero
+            value <- PrefabPersistence::OverrideRecord{
+                authoring_id: authoring_id,
+                local: local,
+                has_visual: has_visual,
+                visual: visual,
+            }
+
+    public:
+        const MAX_BYTES: usize = 65536
+        const VERSION: i64 = Format::VERSION
+
+        error SnapshotCodecError:
+            InvalidSnapshot
+            InvalidBuffer
+            Capacity
+            Corrupt
+            WrongVersion
+            NotFound
+            StorageFailure
+
+        def snapshot_valid(snapshot: PrefabScene::SceneSnapshot&) -> bool:
+            snapshot_structure_valid(snapshot)
+
+        def encode(snapshot: PrefabScene::SceneSnapshot&, bytes: mutable u8&,
+                capacity: usize, length: mutable usize&) -> void error[SnapshotCodecError]:
+            raise SnapshotCodecError.InvalidSnapshot if not snapshot_structure_valid(snapshot)
+            expected: usize = encoded_size(snapshot)
+            raise SnapshotCodecError.InvalidBuffer if capacity == 0 or capacity > MAX_BYTES
+            raise SnapshotCodecError.Capacity if expected > capacity
+            offset: mutable usize = 0
+            try write_u32(bytes, capacity, &offset, Format::MAGIC)
+            try write_u32(bytes, capacity, &offset, Format::VERSION.u32())
+            try write_u64(bytes, capacity, &offset, snapshot.scene_id.u64())
+            try write_u32(bytes, capacity, &offset, snapshot.link_count.u32())
+            try write_u32(bytes, capacity, &offset, 0)
+            for index in 0..<snapshot.link_count |bytes, capacity, offset, snapshot|:
+                link: PrefabScene::LinkSnapshot = snapshot.links[index]
+                try write_u64(bytes, capacity, &offset, link.link_id.u64())
+                try write_u64(bytes, capacity, &offset, link.overrides.prefab_id.u64())
+                try write_u64(bytes, capacity, &offset, link.overrides.instance_id.u64())
+                try write_u32(bytes, capacity, &offset, link.overrides.count.u32())
+                try write_u32(bytes, capacity, &offset, 0)
+                for record_index in 0..<link.overrides.count |bytes, capacity, offset, link|:
+                    try write_record(bytes, capacity, &offset, link.overrides.records[record_index])
+            raise SnapshotCodecError.Corrupt if offset != expected
+            length <- offset
+
+        def decode(bytes: u8&, length: usize) -> PrefabScene::SceneSnapshot error[SnapshotCodecError]:
+            raise SnapshotCodecError.InvalidBuffer if length == 0 or length > MAX_BYTES
+            offset: mutable usize = 0
+            magic: u32 = try read_u32(bytes, length, &offset)
+            raise SnapshotCodecError.Corrupt if magic != Format::MAGIC
+            version: u32 = try read_u32(bytes, length, &offset)
+            raise SnapshotCodecError.WrongVersion if version != Format::VERSION.u32()
+            scene_id: i64 = try read_stable_id(bytes, length, &offset)
+            link_count: u32 = try read_u32(bytes, length, &offset)
+            reserved: u32 = try read_u32(bytes, length, &offset)
+            raise SnapshotCodecError.Corrupt if reserved != 0 or link_count == 0 or link_count.usize() > PrefabScene::MAX_LINKS
+            snapshot: mutable PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+            snapshot.scene_id <- scene_id
+            snapshot.link_count <- link_count.usize()
+            for index in 0..<snapshot.link_count |snapshot, bytes, length, offset|:
+                link_id: i64 = try read_stable_id(bytes, length, &offset)
+                prefab_id: i64 = try read_stable_id(bytes, length, &offset)
+                instance_id: i64 = try read_stable_id(bytes, length, &offset)
+                record_count: u32 = try read_u32(bytes, length, &offset)
+                link_reserved: u32 = try read_u32(bytes, length, &offset)
+                raise SnapshotCodecError.Corrupt if link_reserved != 0 or record_count == 0 or record_count.usize() > PrefabPersistence::MAX_OVERRIDES
+                overrides: mutable PrefabPersistence::Snapshot = PrefabPersistence::Snapshot()
+                overrides.prefab_id <- prefab_id
+                overrides.instance_id <- instance_id
+                overrides.count <- record_count.usize()
+                for record_index in 0..<overrides.count |overrides, bytes, length, offset|:
+                    record: mutable PrefabPersistence::OverrideRecord = zeroed
+                    try read_record(bytes, length, &offset, &record)
+                    overrides.records[record_index] <- record
+                snapshot.links[index] <- PrefabScene::LinkSnapshot{link_id: link_id, overrides: overrides}
+            raise SnapshotCodecError.Corrupt if offset != length or not snapshot_structure_valid(&snapshot)
+            snapshot
+
+        def write_user_data(key: cstr, snapshot: PrefabScene::SceneSnapshot&) -> void error[SnapshotCodecError]:
+            bytes: mutable u8[MAX_BYTES] = zeroed
+            length: mutable usize = 0
+            try encode(snapshot, &bytes[0], MAX_BYTES, &length)
+            status: i32 = catch UserData::write_payload(key, VERSION, &bytes[0], length):
+                ok: 0
+                UserData::UserDataError.InvalidKey: 1
+                UserData::UserDataError.InvalidPayload: 2
+                error failure: 3
+            raise SnapshotCodecError.InvalidBuffer if status == 1 or status == 2
+            raise SnapshotCodecError.StorageFailure if status != 0
+
+        def read_user_data(key: cstr) -> PrefabScene::SceneSnapshot error[SnapshotCodecError]:
+            bytes: mutable u8[MAX_BYTES] = zeroed
+            version: mutable i64 = 0
+            length: mutable usize = 0
+            status: i32 = catch UserData::read_payload(key, &version, &bytes[0], MAX_BYTES, &length):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                UserData::UserDataError.WrongVersion: 2
+                UserData::UserDataError.Corrupt: 3
+                UserData::UserDataError.InvalidKey: 4
+                UserData::UserDataError.InvalidPayload: 5
+                UserData::UserDataError.Capacity: 6
+                error failure: 7
+            raise SnapshotCodecError.NotFound if status == 1
+            raise SnapshotCodecError.WrongVersion if status == 2
+            raise SnapshotCodecError.Corrupt if status == 3
+            raise SnapshotCodecError.Capacity if status == 6
+            raise SnapshotCodecError.InvalidBuffer if status == 4 or status == 5
+            raise SnapshotCodecError.StorageFailure if status != 0
+            raise SnapshotCodecError.WrongVersion if version != VERSION
+            try decode(&bytes[0], length)
+
+        def read_user_data_for_scene(key: cstr, scene: PrefabScene::Scene&,
+                scene_id: i64) -> PrefabScene::SceneSnapshot error[SnapshotCodecError]:
+            snapshot: PrefabScene::SceneSnapshot = try read_user_data(key)
+            raise SnapshotCodecError.InvalidSnapshot if not PrefabScene::snapshot_valid(&snapshot, scene, scene_id)
+            snapshot
