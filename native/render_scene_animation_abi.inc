@@ -162,8 +162,9 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
     }
     float current_loop_crossings = 0.0f;
     float previous_loop_crossings = 0.0f;
-    const bool had_interrupted_pose = instance.interrupted_joint_pose.size() ==
-        instance.joint_entities.size() * 10;
+    // Moving corrected snapshots still need outgoing root-loop accounting.
+    const bool had_interrupted_pose = !instance.interrupted_pose_follows_source &&
+        instance.interrupted_joint_pose.size() == instance.joint_entities.size() * 10;
     if (instance.animation_clip >= 0) {
         if (instance.root_motion_mode == 1 && instance.animation_loop) {
             const auto& clip = instance.animation_clips[size_t(instance.animation_clip)];
@@ -248,6 +249,7 @@ extern "C" int32_t elisa_render_scene_v1_set_animation_root_motion(
             instance.interrupted_joint_pose = instance.displayed_joint_pose;
             instance.interrupted_morph_pose = instance.displayed_morph_pose;
             instance.root_motion_exit_pending = true;
+            instance.interrupted_pose_follows_source = false;
         }
         instance.root_motion_mode = 0;
         instance.root_motion_joint = -1;

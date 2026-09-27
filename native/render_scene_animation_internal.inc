@@ -3,6 +3,8 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.displayed_joint_pose.clear();
     instance.animation_pose_overridden = false;
     instance.interrupted_joint_pose.clear();
+    instance.interrupted_pose_follows_source = false;
+    instance.interrupted_source_time = 0.0f;
     instance.displayed_morph_pose.clear();
     instance.interrupted_morph_pose.clear();
     instance.animation_clip = -1;
@@ -36,7 +38,18 @@ void clear_animation_state(InstanceSlot& instance) {
 // an unfinished recovery just because the next destination has a short fade.
 float preserve_interrupted_pose(InstanceSlot& instance, float requested_seconds) {
     const float remaining = instance.blend_duration - instance.blend_elapsed;
+    instance.interrupted_pose_follows_source = false;
     if (requested_seconds > 0.f && instance.animation_pose_overridden) {
+        // A completed source clip can keep moving under its captured correction.
+        // Freeze genuinely interrupted mixtures/root exits as before: they do
+        // not have a single outgoing FK trajectory to follow safely.
+        instance.interrupted_pose_follows_source = remaining <= 0.f && !instance.root_motion_exit_pending &&
+            instance.animation_clip >= 0 && instance.animation_clip < int32_t(instance.animation_clips.size());
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+        const char* freeze_corrected = std::getenv("ELISA_TEST_FREEZE_CORRECTED_BLEND");
+        if (freeze_corrected && freeze_corrected[0] == '1') instance.interrupted_pose_follows_source = false;
+#endif
+        instance.interrupted_source_time = instance.animation_time;
         instance.root_motion_exit_pending = false;
         instance.interrupted_joint_pose = instance.displayed_joint_pose;
         instance.interrupted_morph_pose = instance.displayed_morph_pose;
@@ -233,6 +246,14 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
         if (blend < 1.0f) {
             if (instance.interrupted_joint_pose.size() == instance.joint_entities.size() * 10) {
                 std::copy_n(instance.interrupted_joint_pose.data() + joint_index * 10, 10, previous);
+                if (instance.interrupted_pose_follows_source) {
+                    float reference[10], moving[10];
+                    sample_animation_pose(instance, instance.previous_animation_clip, instance.interrupted_source_time,
+                        instance.previous_animation_loop, joint_index, reference);
+                    sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
+                        instance.previous_animation_loop, joint_index, moving);
+                    if (!elisa::animation::rebase_local_correction(previous, reference, moving, previous)) return false;
+                }
             } else {
                 sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
                     instance.previous_animation_loop, joint_index, previous);
@@ -314,7 +335,7 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
                     instance.animation_time, instance.animation_loop, placement, target, placement_count, morph_count);
                 float weight = current;
                 if (blend < 1.0f) {
-                    const float previous = instance.interrupted_morph_pose.size() == placement_count * morph_count
+                    const float previous = !instance.interrupted_pose_follows_source && instance.interrupted_morph_pose.size() == placement_count * morph_count
                         ? instance.interrupted_morph_pose[placement * morph_count + target]
                         : sample_animation_morph_weight(instance, instance.previous_animation_clip,
                         instance.previous_animation_time, instance.previous_animation_loop, placement, target,

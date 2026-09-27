@@ -41,6 +41,8 @@ struct InstanceSlot {
     std::vector<float> displayed_joint_pose;
     bool animation_pose_overridden = false;
     std::vector<float> interrupted_joint_pose;
+    bool interrupted_pose_follows_source = false;
+    float interrupted_source_time = 0.0f;
     std::vector<float> displayed_morph_pose;
     std::vector<float> interrupted_morph_pose;
     float blend_elapsed = 0.0f;
