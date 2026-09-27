@@ -1,0 +1,435 @@
+# Rebindable, saved character-course controls. Six movement slots take keys
+# from a fixed pool; menu, save/load and arrow keys stay reserved so a rebind
+# can never lock the player out of pausing, quitting or reopening this menu.
+module CourseControls:
+    private:
+        const module Limits:
+            KEY: cstr = "course-controls"
+            VERSION: i64 = 1
+            FIELD_COUNT: usize = 7
+            POOL_SIZE: i64 = 19
+            STICK_DEADZONE: f32 = 0.35
+
+        def key(code: Application::KeyboardKeyCode) -> i64:
+            Application::keyboard_key_code(code)
+
+        def pad(button: Application::GamepadButtonCode) -> i64:
+            Application::gamepad_button_code(button)
+
+        def axis(code: Application::GamepadAxisCode) -> i64:
+            Application::gamepad_axis_code(code)
+
+        # Position of a code in the rebindable pool, or -1 when it is reserved
+        # or unknown.
+        def pool_index(code: i64) -> i64:
+            if code == key(Application::KeyboardKeyCode.W):
+                0
+            elif code == key(Application::KeyboardKeyCode.A):
+                1
+            elif code == key(Application::KeyboardKeyCode.S):
+                2
+            elif code == key(Application::KeyboardKeyCode.D):
+                3
+            elif code == key(Application::KeyboardKeyCode.E):
+                4
+            elif code == key(Application::KeyboardKeyCode.V):
+                5
+            elif code == key(Application::KeyboardKeyCode.C):
+                6
+            elif code == key(Application::KeyboardKeyCode.X):
+                7
+            elif code == key(Application::KeyboardKeyCode.Z):
+                8
+            elif code == key(Application::KeyboardKeyCode.H):
+                9
+            elif code == key(Application::KeyboardKeyCode.J):
+                10
+            elif code == key(Application::KeyboardKeyCode.Digit1):
+                11
+            elif code == key(Application::KeyboardKeyCode.Digit2):
+                12
+            elif code == key(Application::KeyboardKeyCode.Digit3):
+                13
+            elif code == key(Application::KeyboardKeyCode.Space):
+                14
+            elif code == key(Application::KeyboardKeyCode.LeftShift):
+                15
+            elif code == key(Application::KeyboardKeyCode.RightShift):
+                16
+            elif code == key(Application::KeyboardKeyCode.LeftControl):
+                17
+            elif code == key(Application::KeyboardKeyCode.RightControl):
+                18
+            else:
+                -1
+
+        def pool_name(index: i64) -> cstr:
+            if index == 0:
+                "W"
+            elif index == 1:
+                "A"
+            elif index == 2:
+                "S"
+            elif index == 3:
+                "D"
+            elif index == 4:
+                "E"
+            elif index == 5:
+                "V"
+            elif index == 6:
+                "C"
+            elif index == 7:
+                "X"
+            elif index == 8:
+                "Z"
+            elif index == 9:
+                "H"
+            elif index == 10:
+                "J"
+            elif index == 11:
+                "1"
+            elif index == 12:
+                "2"
+            elif index == 13:
+                "3"
+            elif index == 14:
+                "Space"
+            elif index == 15:
+                "Left Shift"
+            elif index == 16:
+                "Right Shift"
+            elif index == 17:
+                "Left Ctrl"
+            elif index == 18:
+                "Right Ctrl"
+            else:
+                "?"
+
+        def with_slot(keymap: Keymap, slot: i64, code: i64) -> Keymap:
+            Keymap{
+                forward: code if slot == SLOT_FORWARD else keymap.forward,
+                backward: code if slot == SLOT_BACKWARD else keymap.backward,
+                left: code if slot == SLOT_LEFT else keymap.left,
+                right: code if slot == SLOT_RIGHT else keymap.right,
+                jump: code if slot == SLOT_JUMP else keymap.jump,
+                crouch: code if slot == SLOT_CROUCH else keymap.crouch,
+            }
+
+        def bind_one(input: mutable ActionInput::Input&, action: i64,
+            device: ActionInput::Device, code: i64, deadzone: f32) -> bool:
+            ActionInput::bind_checked(input, ActionInput::Binding{
+                action: action,
+                device: device,
+                code: code,
+                chord_code: 0,
+                deadzone: deadzone,
+                context: ActionInput::Context.Gameplay,
+                live: true,
+            }) == ActionInput::BindResult.Bound
+
+        def bind_key(input: mutable ActionInput::Input&, action: i64,
+            code: i64) -> bool:
+            bind_one(input, action, ActionInput::Device.Keyboard, code, 0.0)
+
+        def bind_pad(input: mutable ActionInput::Input&, action: i64,
+            code: i64) -> bool:
+            bind_one(input, action, ActionInput::Device.Gamepad, code, 0.0)
+
+        def bind_stick(input: mutable ActionInput::Input&, action: i64,
+            code: i64) -> bool:
+            bind_one(input, action, ActionInput::Device.Gamepad, code,
+                Limits::STICK_DEADZONE)
+
+        def rejected_load(status: LoadStatus) -> LoadResult:
+            LoadResult{status: status, keymap: defaults()}
+
+    public:
+        const ACTION_FORWARD: i64 = 1
+        const ACTION_BACKWARD: i64 = 2
+        const ACTION_LEFT: i64 = 3
+        const ACTION_RIGHT: i64 = 4
+        const ACTION_JUMP: i64 = 5
+        const ACTION_CROUCH: i64 = 6
+        const ACTION_QUIT: i64 = 7
+        const ACTION_PAUSE: i64 = 8
+        const ACTION_RESTART: i64 = 9
+        const ACTION_SAVE: i64 = 10
+        const ACTION_LOAD: i64 = 11
+        const ACTION_CONTROLS: i64 = 12
+
+        const SLOT_FORWARD: i64 = 0
+        const SLOT_BACKWARD: i64 = 1
+        const SLOT_LEFT: i64 = 2
+        const SLOT_RIGHT: i64 = 3
+        const SLOT_JUMP: i64 = 4
+        const SLOT_CROUCH: i64 = 5
+        const SLOT_COUNT: i64 = 6
+
+        struct Keymap:
+            forward: i64
+            backward: i64
+            left: i64
+            right: i64
+            jump: i64
+            crouch: i64
+
+        enum AssignResult:
+            Assigned
+            Swapped
+            Unchanged
+            Reserved
+            InvalidSlot
+
+        struct AssignOutcome:
+            result: AssignResult
+            keymap: Keymap
+
+        enum LoadStatus:
+            Loaded
+            Missing
+            Unreadable
+            Rejected
+
+        struct LoadResult:
+            status: LoadStatus
+            keymap: Keymap
+
+        enum MenuResult:
+            Ignored
+            Moved
+            Assigned
+            Reserved
+            Closed
+
+        struct Menu:
+            keymap: Keymap
+            selected: i64
+
+        struct MenuStep:
+            menu: Menu
+            result: MenuResult
+
+        def defaults() -> Keymap:
+            Keymap{
+                forward: key(Application::KeyboardKeyCode.W),
+                backward: key(Application::KeyboardKeyCode.S),
+                left: key(Application::KeyboardKeyCode.A),
+                right: key(Application::KeyboardKeyCode.D),
+                jump: key(Application::KeyboardKeyCode.Space),
+                crouch: key(Application::KeyboardKeyCode.C),
+            }
+
+        def storage_key() -> cstr:
+            Limits::KEY
+
+        def rebindable(code: i64) -> bool:
+            pool_index(code) >= 0
+
+        def key_name(code: i64) -> cstr:
+            pool_name(pool_index(code))
+
+        def slot_name(slot: i64) -> cstr:
+            if slot == SLOT_FORWARD:
+                "Forward"
+            elif slot == SLOT_BACKWARD:
+                "Back"
+            elif slot == SLOT_LEFT:
+                "Left"
+            elif slot == SLOT_RIGHT:
+                "Right"
+            elif slot == SLOT_JUMP:
+                "Jump"
+            elif slot == SLOT_CROUCH:
+                "Crouch (hold)"
+            else:
+                "?"
+
+        def slot_code(keymap: Keymap&, slot: i64) -> i64:
+            if slot == SLOT_FORWARD:
+                keymap.forward
+            elif slot == SLOT_BACKWARD:
+                keymap.backward
+            elif slot == SLOT_LEFT:
+                keymap.left
+            elif slot == SLOT_RIGHT:
+                keymap.right
+            elif slot == SLOT_JUMP:
+                keymap.jump
+            elif slot == SLOT_CROUCH:
+                keymap.crouch
+            else:
+                0
+
+        # Every slot holds a distinct key from the rebindable pool.
+        def valid(keymap: Keymap&) -> bool:
+            ok: mutable bool = true
+            for slot in 0..<SLOT_COUNT |ok, keymap|:
+                code: i64 = slot_code(keymap, slot)
+                ok <- false if not rebindable(code)
+                for other in 0..<SLOT_COUNT |ok, keymap, code, slot|:
+                    ok <- false if other != slot and slot_code(keymap, other) == code
+            ok
+
+        # A key already used by another slot moves to the slot's old key, so
+        # the map stays complete and duplicate-free after every assignment.
+        def assign(keymap: Keymap, slot: i64, code: i64) -> AssignOutcome:
+            return AssignOutcome{result: AssignResult.InvalidSlot, keymap: keymap} if slot < 0 or slot >= SLOT_COUNT
+            return AssignOutcome{result: AssignResult.Reserved, keymap: keymap} if not rebindable(code)
+            previous: i64 = slot_code(&keymap, slot)
+            return AssignOutcome{result: AssignResult.Unchanged, keymap: keymap} if previous == code
+            holder: mutable i64 = -1
+            for other in 0..<SLOT_COUNT |holder, keymap, code|:
+                holder <- other if slot_code(&keymap, other) == code
+            updated: Keymap = with_slot(keymap, slot, code)
+            if holder >= 0:
+                AssignOutcome{result: AssignResult.Swapped,
+                    keymap: with_slot(updated, holder, previous)}
+            else:
+                AssignOutcome{result: AssignResult.Assigned, keymap: updated}
+
+        # Arrow keys stay fixed movement aliases, and the gamepad mapping is
+        # fixed; only the keyboard slots come from the keymap.
+        def bind(input: mutable ActionInput::Input&, keymap: Keymap&) -> bool:
+            return false if not valid(keymap)
+            return false if not bind_key(input, ACTION_FORWARD, keymap.forward)
+            return false if not bind_key(input, ACTION_BACKWARD, keymap.backward)
+            return false if not bind_key(input, ACTION_LEFT, keymap.left)
+            return false if not bind_key(input, ACTION_RIGHT, keymap.right)
+            return false if not bind_key(input, ACTION_JUMP, keymap.jump)
+            return false if not bind_key(input, ACTION_CROUCH, keymap.crouch)
+            return false if not bind_key(input, ACTION_FORWARD, key(Application::KeyboardKeyCode.ArrowUp))
+            return false if not bind_key(input, ACTION_BACKWARD, key(Application::KeyboardKeyCode.ArrowDown))
+            return false if not bind_key(input, ACTION_LEFT, key(Application::KeyboardKeyCode.ArrowLeft))
+            return false if not bind_key(input, ACTION_RIGHT, key(Application::KeyboardKeyCode.ArrowRight))
+            return false if not bind_key(input, ACTION_QUIT, key(Application::KeyboardKeyCode.Escape))
+            return false if not bind_key(input, ACTION_PAUSE, key(Application::KeyboardKeyCode.P))
+            return false if not bind_key(input, ACTION_RESTART, key(Application::KeyboardKeyCode.R))
+            return false if not bind_key(input, ACTION_SAVE, key(Application::KeyboardKeyCode.Q))
+            return false if not bind_key(input, ACTION_LOAD, key(Application::KeyboardKeyCode.L))
+            return false if not bind_key(input, ACTION_CONTROLS, key(Application::KeyboardKeyCode.Tab))
+            return false if not bind_stick(input, ACTION_FORWARD, axis(Application::GamepadAxisCode.LeftYNegative))
+            return false if not bind_stick(input, ACTION_BACKWARD, axis(Application::GamepadAxisCode.LeftYPositive))
+            return false if not bind_stick(input, ACTION_LEFT, axis(Application::GamepadAxisCode.LeftXNegative))
+            return false if not bind_stick(input, ACTION_RIGHT, axis(Application::GamepadAxisCode.LeftXPositive))
+            return false if not bind_pad(input, ACTION_FORWARD, pad(Application::GamepadButtonCode.DpadUp))
+            return false if not bind_pad(input, ACTION_BACKWARD, pad(Application::GamepadButtonCode.DpadDown))
+            return false if not bind_pad(input, ACTION_LEFT, pad(Application::GamepadButtonCode.DpadLeft))
+            return false if not bind_pad(input, ACTION_RIGHT, pad(Application::GamepadButtonCode.DpadRight))
+            return false if not bind_pad(input, ACTION_JUMP, pad(Application::GamepadButtonCode.South))
+            return false if not bind_pad(input, ACTION_CROUCH, pad(Application::GamepadButtonCode.East))
+            return false if not bind_pad(input, ACTION_PAUSE, pad(Application::GamepadButtonCode.Start))
+            return false if not bind_pad(input, ACTION_RESTART, pad(Application::GamepadButtonCode.West))
+            bind_pad(input, ACTION_CONTROLS, pad(Application::GamepadButtonCode.Back))
+
+        def encode(keymap: Keymap&) -> Save::Blob error[Save::SaveError]:
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[0] <- Limits::VERSION
+            for slot in 0..<SLOT_COUNT |values, keymap|:
+                values[(slot + 1).usize()] <- slot_code(keymap, slot)
+            try Save::save_write(values, Limits::FIELD_COUNT)
+
+        # Accepts only this version's exact shape with a complete,
+        # duplicate-free map; anything else falls back to the defaults.
+        def decode(blob: Save::Blob&) -> LoadResult:
+            readable: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
+                value: value
+                error failure: false
+            return rejected_load(LoadStatus.Rejected) if not readable
+            return rejected_load(LoadStatus.Rejected) if Save::save_value_or(blob, 0, 0) != Limits::VERSION
+            keymap: Keymap = Keymap{
+                forward: Save::save_value_or(blob, 1, 0),
+                backward: Save::save_value_or(blob, 2, 0),
+                left: Save::save_value_or(blob, 3, 0),
+                right: Save::save_value_or(blob, 4, 0),
+                jump: Save::save_value_or(blob, 5, 0),
+                crouch: Save::save_value_or(blob, 6, 0),
+            }
+            return rejected_load(LoadStatus.Rejected) if not valid(&keymap)
+            LoadResult{status: LoadStatus.Loaded, keymap: keymap}
+
+        # UserData::initialize remains application-owned.
+        def save(keymap: Keymap&) -> void error[Save::SaveError, UserData::UserDataError]:
+            blob: Save::Blob = try encode(keymap)
+            try UserData::write_blob(Limits::KEY, &blob)
+
+        def load() -> LoadResult:
+            blob: mutable Save::Blob = Save::Blob(0)
+            read_status: i32 = catch UserData::read_blob(Limits::KEY, &blob):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                error failure: 2
+            if read_status == 1:
+                rejected_load(LoadStatus.Missing)
+            elif read_status == 2:
+                rejected_load(LoadStatus.Unreadable)
+            else:
+                decode(&blob)
+
+        def Menu(keymap: Keymap) -> Menu:
+            Menu{keymap: keymap, selected: SLOT_FORWARD}
+
+        # One pressed key in the rebind menu: arrows select a slot, Tab or
+        # Escape closes, and any other key is offered to the selected slot.
+        def menu_key(menu: Menu, code: i64) -> MenuStep:
+            if code == key(Application::KeyboardKeyCode.ArrowUp):
+                MenuStep{menu: Menu{keymap: menu.keymap,
+                    selected: SLOT_COUNT - 1 if menu.selected == 0 else menu.selected - 1},
+                    result: MenuResult.Moved}
+            elif code == key(Application::KeyboardKeyCode.ArrowDown):
+                MenuStep{menu: Menu{keymap: menu.keymap,
+                    selected: 0 if menu.selected == SLOT_COUNT - 1 else menu.selected + 1},
+                    result: MenuResult.Moved}
+            elif code == key(Application::KeyboardKeyCode.Tab) or code == key(Application::KeyboardKeyCode.Escape):
+                MenuStep{menu: menu, result: MenuResult.Closed}
+            else:
+                outcome: AssignOutcome = assign(menu.keymap, menu.selected, code)
+                if outcome.result == AssignResult.Reserved or outcome.result == AssignResult.InvalidSlot:
+                    MenuStep{menu: menu, result: MenuResult.Reserved}
+                else:
+                    MenuStep{menu: Menu{keymap: outcome.keymap, selected: menu.selected},
+                        result: MenuResult.Assigned}
+
+        # Controllers navigate the same menu; they cannot assign keyboard keys.
+        def menu_button(menu: Menu, code: i64) -> MenuStep:
+            if code == pad(Application::GamepadButtonCode.DpadUp):
+                menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
+            elif code == pad(Application::GamepadButtonCode.DpadDown):
+                menu_key(menu, key(Application::KeyboardKeyCode.ArrowDown))
+            elif code == pad(Application::GamepadButtonCode.East) or code == pad(Application::GamepadButtonCode.Back) or code == pad(Application::GamepadButtonCode.Start):
+                MenuStep{menu: menu, result: MenuResult.Closed}
+            else:
+                MenuStep{menu: menu, result: MenuResult.Ignored}
+
+        def menu_event(menu: Menu, event: Application::InputEvent) -> MenuStep:
+            if not event.pressed or event.released:
+                MenuStep{menu: menu, result: MenuResult.Ignored}
+            elif event.kind == Application::InputEventKind.Key:
+                menu_key(menu, event.code)
+            elif event.kind == Application::InputEventKind.GamepadButton:
+                menu_button(menu, event.code)
+            else:
+                MenuStep{menu: menu, result: MenuResult.Ignored}
+
+        # Drains the frame's events into the menu and stops at Closed, leaving
+        # later events for the gameplay input rebuilt after the menu.
+        def drain_menu(menu: Menu) -> MenuStep:
+            step: mutable MenuStep = MenuStep{menu: menu, result: MenuResult.Ignored}
+            open: mutable bool = true
+            event: mutable Application::InputEvent = zeroed
+            while open and Application::next_input_event(&event) |step, open, event|:
+                next: MenuStep = menu_event(step.menu, event)
+                if next.result != MenuResult.Ignored:
+                    step <- next
+                open <- false if next.result == MenuResult.Closed
+            step
+
+        # Drains the frame's events into gameplay input and reports focus loss
+        # so the game can pause; focus loss also clears every held action.
+        def drain_gameplay(input: mutable ActionInput::Input&) -> bool:
+            ActionInput::begin_frame(input)
+            focus_lost: mutable bool = false
+            event: mutable Application::InputEvent = zeroed
+            while Application::next_input_event(&event) |focus_lost, event, input|:
+                ActionInputRuntime::apply_application_event(input, event)
+                focus_lost <- true if event.kind == Application::InputEventKind.FocusLost
+            focus_lost
