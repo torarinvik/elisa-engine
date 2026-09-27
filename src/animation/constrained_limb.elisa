@@ -1,0 +1,100 @@
+# Bounded projected CCD refinement. Limits participate in every candidate step;
+# residuals distinguish convergence from iteration exhaustion, not feasibility.
+include "./pose_joint_limits.elisa"
+
+module ConstrainedLimb:
+    private:
+        def rotate_branch(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&, joint: usize, delta: Geometry::Quat):
+            origin: Geometry::Vec3 = pose.models[joint].position
+            for index in 0..<pose.count |pose|:
+                ancestor: mutable i64 = index.i64()
+                for _ in 0..<pose.count |ancestor|:
+                    if ancestor >= 0 and ancestor != joint.i64():
+                        ancestor <- skeleton.joints[ancestor.usize()].parent
+                if ancestor == joint.i64():
+                    before: Geometry::Transform = pose.models[index]
+                    pose.models[index] <- Geometry::Transform{position: Geometry::vec3_add(origin, Geometry::quat_rotate(delta, Geometry::vec3_sub(before.position, origin))), rotation: Geometry::quat_normalize(Geometry::quat_mul(delta, before.rotation)), scale: before.scale}
+
+        def restore_end(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&, end: usize, orientation: Geometry::Quat):
+            delta: Geometry::Quat = Geometry::quat_normalize(Geometry::quat_mul(orientation, Geometry::quat_conjugate(pose.models[end].rotation)))
+            rotate_branch(pose, skeleton, end, delta)
+            pose.models[end].rotation <- orientation
+
+    public:
+        error SolveError:
+            InvalidInput
+            InvalidChain
+            InvalidConstraints
+
+        struct Result:
+            converged: bool
+            iterations: usize
+            residual: f32
+            geometric_reach: bool
+            limits_encountered: bool
+            stalled: bool
+
+        # Explicit parent-child chain indices may be non-contiguous. Constraints
+        # are restricted to upper/lower joints; end orientation stays captured.
+        # End orientation constraints require a separate coordinated policy.
+        # A valid solve publishes the best limited pose even when it has residual
+        # error. Invalid input/projection fails before any caller pose mutation.
+        # No per-call dynamic allocation. Budget <=32, <=8 candidates per sweep.
+        def solve(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&, upper: usize, lower: usize, end: usize, target: Geometry::Vec3, settings: PoseJointLimits::Constraints&, tolerance: f32, budget: usize) -> Result error[SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError, Pose::PoseError]:
+            raise SolveError.InvalidInput if pose.count == 0 or pose.count != skeleton.count or settings.count != pose.count or not Pose::skeleton_valid(skeleton) or not Pose::pose_valid(pose)
+            raise SolveError.InvalidInput if not Geometry::vec3_is_finite(target) or tolerance - tolerance != 0.0 or tolerance <= 0.0 or budget == 0 or budget > 32
+            raise SolveError.InvalidChain if upper >= pose.count or lower >= pose.count or end >= pose.count
+            raise SolveError.InvalidChain if skeleton.joints[lower].parent != upper.i64() or skeleton.joints[end].parent != lower.i64()
+            for index in 0..<pose.count:
+                raise SolveError.InvalidConstraints if settings.enabled[index] and index != upper and index != lower
+            a: f32 = Geometry::vec3_distance(pose.models[upper].position,pose.models[lower].position)
+            b: f32 = Geometry::vec3_distance(pose.models[lower].position,pose.models[end].position)
+            raise SolveError.InvalidChain if a <= 0.0001 or b <= 0.0001 or a-a != 0.0 or b-b != 0.0
+            distance: f32 = Geometry::vec3_distance(pose.models[upper].position,target)
+            raise SolveError.InvalidInput if distance-distance != 0.0
+            span: f32 = a-b if a >= b else b-a
+            orientation: Geometry::Quat = pose.models[end].rotation
+            best: mutable Pose::Pose = pose
+            limited: mutable bool = try PoseJointLimits::project(&best,skeleton,settings)
+            restore_end(&best,skeleton,end,orientation)
+            residual: mutable f32 = Geometry::vec3_distance(best.models[end].position,target)
+            # Seed CCD with the analytic bend to escape straight collinear
+            # targets. Existing FK bend is the hint; a singular hint uses the
+            # analytic solver's deterministic perpendicular. Temporal bend
+            # memory/pole control remains caller policy for this first API.
+            seed: mutable Pose::Pose = best
+            hint: Geometry::Vec3 = Geometry::vec3_sub(best.models[lower].position,best.models[upper].position)
+            seeded: bool = try Pose::pose_correct_limb(&seed,skeleton,upper,lower,end,target,hint)
+            if seeded:
+                seed_limited: bool = try PoseJointLimits::project(&seed,skeleton,settings)
+                restore_end(&seed,skeleton,end,orientation)
+                seed_residual: f32 = Geometry::vec3_distance(seed.models[end].position,target)
+                limited <- limited or seed_limited
+                if seed_residual < residual:
+                    best <- seed
+                    residual <- seed_residual
+            iterations: mutable usize = 0
+            stalled: mutable bool = false
+            for sweep in 0..<budget |best,residual,limited,iterations,stalled|:
+                if residual > tolerance and not stalled:
+                    previous: f32 = residual
+                    for step in 0..<2 |best,residual,limited|:
+                        joint: usize = lower if step == 0 else upper
+                        direction: Geometry::Quat = Ik::direction_rotation(Geometry::vec3_sub(best.models[end].position,best.models[joint].position),Geometry::vec3_sub(target,best.models[joint].position))
+                        start: Pose::Pose = best
+                        for trial in 0..<4 |best,residual,limited|:
+                            fraction: f32 = 1.0 if trial == 0 else (0.5 if trial == 1 else (0.25 if trial == 2 else 0.125))
+                            candidate: mutable Pose::Pose = start
+                            delta: Geometry::Quat = Rotation::slerp(Geometry::quat_identity(),direction,fraction)
+                            rotate_branch(&candidate,skeleton,joint,delta)
+                            projected: bool = try PoseJointLimits::project(&candidate,skeleton,settings)
+                            restore_end(&candidate,skeleton,end,orientation)
+                            candidate_residual: f32 = Geometry::vec3_distance(candidate.models[end].position,target)
+                            limited <- limited or projected
+                            if candidate_residual < residual:
+                                best <- candidate
+                                residual <- candidate_residual
+                    iterations <- sweep+1
+                    stalled <- previous-residual <= 0.0000001
+            pose <- best
+            Result{converged: residual <= tolerance, iterations: iterations, residual: residual, geometric_reach: distance >= span and distance <= a+b, limits_encountered: limited, stalled: stalled}
