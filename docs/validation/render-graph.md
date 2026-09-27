@@ -145,6 +145,13 @@ verifies rejection, runs the pass at 0.5, checks that the GPU frame hash
 changes, and restores the normal scene graph; the full pinned SDL3/Metal smoke
 passes on macOS 27 / Apple M5.
 
+`ChromaticAberration` uses Wicked's `wi::renderer::Postprocess_Chromatic_Aberration`
+compute pass with an amount bounded from 0 through 8. It shares the single-sample
+source and RGBA8/RGBA16F UAV destination requirements used by FXAA and Sharpen.
+The SDL3/Metal fixture rejects an invalid amount and an unsupported output format,
+runs the pass at 2.0, confirms the GPU frame hash changes, and restores the normal
+scene graph. The complete pinned render-only smoke passes on macOS 27 / Apple M5.
+
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.
 The graph checks run in the ordinary Elisa application entry, not a standalone

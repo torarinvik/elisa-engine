@@ -1,0 +1,105 @@
+include "../src/backend/render_graph.elisa"
+include "../src/runtime/render_graph_runtime.elisa"
+
+module RenderGraphChromaticAberrationTests:
+    private:
+        const module Native:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = -1
+            CHROMATIC_ABERRATION: i32 = 11
+            PRIMARY_INTERNAL: i32 = 1
+            RGBA16_FLOAT: i32 = 1
+            R11G11B10_FLOAT: i32 = 3
+            SINGLE_SAMPLE: u32 = 1
+            IMPORTED: i32 = 0
+            TRANSIENT: i32 = 2
+            SCENE_COLOR: i32 = 1
+            NO_TARGET: u32 = 4294967295
+            INVALID_AMOUNT: f32 = 8.1
+
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_begin(
+            resource_count: u32, pass_count: u32, output_id: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_resource(
+            index: u32, id: u32, size_mode: i32, width: u32, height: u32,
+            format: i32, samples: u32, lifetime: i32, initialized: i32,
+            target_slot: u32, import_source: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass_with_chromatic_aberration(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32, amount: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_commit() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_abort() -> i32
+
+        def color_resource(id: u32, lifetime: RenderGraph::Lifetime,
+                initialized: bool, format: RenderGraph::Format) -> RenderGraph::ResourceDescriptor:
+            RenderGraph::ResourceDescriptor{
+                id: id,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: format,
+                samples: 1,
+                lifetime: lifetime,
+                initialized: initialized,
+                import_source: RenderGraph::ImportSource.SceneColor if lifetime == RenderGraph::Lifetime.Imported else RenderGraph::ImportSource.None,
+            }
+
+    public:
+        def native_rejects_bad_amount() -> bool:
+            begin_status: i32 = elisa_render_scene_v1_render_graph_begin(1, 1, 2)
+            return false if begin_status != Native::OK
+            rejected_status: i32 = elisa_render_scene_v1_render_graph_set_pass_with_chromatic_aberration(
+                0, 10, Native::CHROMATIC_ABERRATION, 1, 2, Native::INVALID_AMOUNT)
+            abort_status: i32 = elisa_render_scene_v1_render_graph_abort()
+            rejected_status == Native::INVALID_ARGUMENT and abort_status == Native::OK
+
+        def native_rejects_unsupported_output() -> bool:
+            begin_status: i32 = elisa_render_scene_v1_render_graph_begin(2, 1, 2)
+            return false if begin_status != Native::OK
+            source_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                0, 1, Native::PRIMARY_INTERNAL, 0, 0, Native::R11G11B10_FLOAT,
+                Native::SINGLE_SAMPLE, Native::IMPORTED, 1, Native::NO_TARGET,
+                Native::SCENE_COLOR)
+            destination_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                1, 2, Native::PRIMARY_INTERNAL, 0, 0, Native::R11G11B10_FLOAT,
+                Native::SINGLE_SAMPLE, Native::TRANSIENT, 0, 0, 0)
+            pass_status: i32 = elisa_render_scene_v1_render_graph_set_pass_with_chromatic_aberration(
+                0, 10, Native::CHROMATIC_ABERRATION, 1, 2, 0.5)
+            commit_status: i32 = elisa_render_scene_v1_render_graph_commit()
+            abort_status: i32 = elisa_render_scene_v1_render_graph_abort()
+            all_statuses_valid: bool = source_status == Native::OK and destination_status == Native::OK and pass_status == Native::OK and commit_status == Native::INVALID_ARGUMENT and abort_status == Native::OK
+            all_statuses_valid
+
+        def configure(format: RenderGraph::Format, amount: f32) -> i32:
+            graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+            _ = catch RenderGraph::add_resource(&graph, color_resource(1,
+                    RenderGraph::Lifetime.Imported, true,
+                    RenderGraph::Format.R11G11B10Float)):
+                ok: 0
+                error failure: return 1
+            _ = catch RenderGraph::add_resource(&graph, color_resource(2,
+                    RenderGraph::Lifetime.Transient, false, format)):
+                ok: 0
+                error failure: return 2
+            _ = catch RenderGraph::add_pass(&graph, 10):
+                ok: 0
+                error failure: return 3
+            _ = catch RenderGraph::read(&graph, 10, 1):
+                ok: 0
+                error failure: return 4
+            _ = catch RenderGraph::write(&graph, 10, 2):
+                ok: 0
+                error failure: return 5
+            plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+                value: value
+                error failure: return 6
+            configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+            configuration.output_resource_id <- 2
+            configuration.operation_count <- 1
+            configuration.operations[0] <- RenderGraphRuntime::chromatic_aberration_operation(
+                10, 1, 2, amount)
+            RenderGraphRuntime::configure(graph, plan, configuration)

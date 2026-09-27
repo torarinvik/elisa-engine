@@ -21,6 +21,8 @@ module RenderGraphRuntime:
             DEFAULT_TINT_ALPHA: f32 = 1.0
             MIN_SHARPEN_AMOUNT: f32 = 0.0
             MAX_SHARPEN_AMOUNT: f32 = 1.0
+            MIN_CHROMATIC_ABERRATION: f32 = 0.0
+            MAX_CHROMATIC_ABERRATION: f32 = 8.0
             DEFAULT_PASS_VALUE: f32 = 1.0
         const INVALID_PLAN: i32 = -100
         const NATIVE_REJECTED: i32 = -101
@@ -51,6 +53,10 @@ module RenderGraphRuntime:
             alpha: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_render_graph_set_pass_with_sharpen(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32, amount: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass_with_chromatic_aberration(
             index: u32, id: u32, operation: i32, source_id: u32,
             destination_id: u32, amount: f32) -> i32
         @callconv(c)
@@ -92,7 +98,8 @@ module RenderGraphRuntime:
             return 7 if kind == OperationKind.ScaleColor
             return 8 if kind == OperationKind.TintColor
             return 9 if kind == OperationKind.Fxaa
-            10
+            return 10 if kind == OperationKind.Sharpen
+            11
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             return false if operation.value != operation.value
@@ -101,10 +108,11 @@ module RenderGraphRuntime:
             return false if operation.kind == OperationKind.AdjustSaturation and (operation.value < Limits::MIN_SATURATION or operation.value > Limits::MAX_SATURATION)
             return false if operation.kind == OperationKind.ScaleColor and (operation.value < Limits::MIN_COLOR_SCALE or operation.value > Limits::MAX_COLOR_SCALE)
             return false if operation.kind == OperationKind.Sharpen and (operation.value < Limits::MIN_SHARPEN_AMOUNT or operation.value > Limits::MAX_SHARPEN_AMOUNT)
+            return false if operation.kind == OperationKind.ChromaticAberration and (operation.value < Limits::MIN_CHROMATIC_ABERRATION or operation.value > Limits::MAX_CHROMATIC_ABERRATION)
             return false if operation.kind == OperationKind.TintColor and (operation.tint_red < Limits::MIN_TINT_CHANNEL or operation.tint_red > Limits::MAX_TINT_CHANNEL or operation.tint_green < Limits::MIN_TINT_CHANNEL or operation.tint_green > Limits::MAX_TINT_CHANNEL or operation.tint_blue < Limits::MIN_TINT_CHANNEL or operation.tint_blue > Limits::MAX_TINT_CHANNEL or operation.tint_alpha < Limits::MIN_TINT_ALPHA or operation.tint_alpha > Limits::MAX_TINT_ALPHA)
-            return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.kind != OperationKind.ScaleColor and operation.kind != OperationKind.Sharpen and operation.value != Limits::DEFAULT_PASS_VALUE
+            return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.kind != OperationKind.ScaleColor and operation.kind != OperationKind.Sharpen and operation.kind != OperationKind.ChromaticAberration and operation.value != Limits::DEFAULT_PASS_VALUE
             return false if operation.kind != OperationKind.TintColor and (operation.tint_red != Limits::DEFAULT_TINT_CHANNEL or operation.tint_green != Limits::DEFAULT_TINT_CHANNEL or operation.tint_blue != Limits::DEFAULT_TINT_CHANNEL or operation.tint_alpha != Limits::DEFAULT_TINT_ALPHA)
-            if operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen:
+            if operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen or operation.kind == OperationKind.ChromaticAberration:
                 source: mutable RenderGraph::ResourceDescriptor = zeroed
                 destination: mutable RenderGraph::ResourceDescriptor = zeroed
                 source_found: mutable bool = false
@@ -137,7 +145,7 @@ module RenderGraphRuntime:
                         expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
                     else:
                         expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth or operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen:
+                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth or operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen or operation.kind == OperationKind.ChromaticAberration:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 else:
@@ -199,6 +207,7 @@ module RenderGraphRuntime:
             TintColor
             Fxaa
             Sharpen
+            ChromaticAberration
         struct PassOperation:
             pass_id: u32
             kind: OperationKind
@@ -288,6 +297,20 @@ module RenderGraphRuntime:
                 tint_blue: Limits::DEFAULT_TINT_CHANNEL,
                 tint_alpha: Limits::DEFAULT_TINT_ALPHA,
             }
+        def chromatic_aberration_operation(pass_id: u32,
+                source_resource_id: u32, destination_resource_id: u32,
+                amount: f32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.ChromaticAberration,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: amount,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
+            }
         struct Configuration:
             output_resource_id: u32
             operations: PassOperation[RenderGraph::MAX_PASSES]
@@ -363,6 +386,11 @@ module RenderGraphRuntime:
                         operation.tint_alpha)
                 elif operation.kind == OperationKind.Sharpen:
                     status <- elisa_render_scene_v1_render_graph_set_pass_with_sharpen(
+                        index.u32(), operation.pass_id, native_operation(operation.kind),
+                        operation.source_resource_id, operation.destination_resource_id,
+                        operation.value)
+                elif operation.kind == OperationKind.ChromaticAberration:
+                    status <- elisa_render_scene_v1_render_graph_set_pass_with_chromatic_aberration(
                         index.u32(), operation.pass_id, native_operation(operation.kind),
                         operation.source_resource_id, operation.destination_resource_id,
                         operation.value)

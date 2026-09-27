@@ -8,6 +8,7 @@ include "render_graph_scale_color_native.elisa"
 include "render_graph_tint_native.elisa"
 include "render_graph_fxaa_native.elisa"
 include "render_graph_sharpen_native.elisa"
+include "render_graph_chromatic_aberration_native.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
@@ -561,6 +562,22 @@ module RenderGraphNativeTests:
         return 289 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
         0
 
+    def exercise_chromatic_aberration() -> i32:
+        frame_before_aberration: u64 = elisa_render_scene_v1_last_frame_hash()
+        return 290 if frame_before_aberration == 0
+        return 291 if RenderGraphChromaticAberrationTests::configure(RenderGraph::Format.R11G11B10Float, 0.5) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        return 292 if RenderGraphChromaticAberrationTests::configure(RenderGraph::Format.Rgba16Float, 8.1) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        return 293 if not RenderGraphChromaticAberrationTests::native_rejects_bad_amount()
+        return 294 if not RenderGraphChromaticAberrationTests::native_rejects_unsupported_output()
+        return 295 if RenderGraphChromaticAberrationTests::configure(RenderGraph::Format.Rgba16Float, 2.0) != SUCCESS
+        return 296 if Application::pump() != Application::PumpStatus.Running
+        return 297 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+        return 298 if frame_before_aberration == elisa_render_scene_v1_last_frame_hash()
+        return 299 if configure_clear_copy_graph(3) != SUCCESS
+        return 300 if Application::pump() != Application::PumpStatus.Running
+        return 301 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+        0
+
     public:
         def exercise() -> i32:
             return 1 if configure_clear_copy_graph(3) != SUCCESS
@@ -692,4 +709,6 @@ module RenderGraphNativeTests:
             return fxaa_status if fxaa_status != 0
             sharpen_status: i32 = exercise_sharpen()
             return sharpen_status if sharpen_status != 0
+            aberration_status: i32 = exercise_chromatic_aberration()
+            return aberration_status if aberration_status != 0
             0
