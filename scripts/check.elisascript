@@ -196,11 +196,11 @@ def main(arguments: darray[sview]) -> i64:
     godot_project: sview = str(root.joinpath("backends/godot"))
     godot_probe: sview = str(root.joinpath("backends/godot/probe.gd"))
     scene_manifest: sview = str(root.joinpath("backends/scene_manifest.txt"))
-    _ =
-        status: i64 = run_visible(godot_binary, ["--headless", "--path", godot_project, "--script", godot_probe, "--", scene_manifest])
+    godot_probes: darray[sview] = [godot_probe, str(root.joinpath("backends/godot/lighting_probe.gd"))]
+    for probe in godot_probes:
+        status: i64 = run_visible(godot_binary, ["--headless", "--path", godot_project, "--script", probe, "--", scene_manifest] if probe == godot_probe else ["--headless", "--path", godot_project, "--script", probe])
         if status != 0:
             return status
-        status
     contracts_test_binary: sview = str(root.joinpath("build/contracts-test"))
     _ =
         status: i64 = run_visible(compiler, ["-emit", "exe", "-o", contracts_test_binary, str(root.joinpath("test/contracts.elisa"))])
