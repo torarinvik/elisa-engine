@@ -3,6 +3,7 @@
 # parent relationship and placement between instances.
 include "./prefab.elisa"
 include "./prefab_world.elisa"
+include "./prefab_persistence.elisa"
 
 module PrefabScene:
     public:
@@ -22,6 +23,18 @@ module PrefabScene:
             parent_link_id: i64
             parent_authoring_id: i64
             local: Geometry::Transform
+
+        struct LinkSnapshot:
+            link_id: i64
+            overrides: PrefabPersistence::Snapshot
+
+        struct SceneSnapshot:
+            scene_id: mutable i64
+            link_count: mutable usize
+            links: mutable LinkSnapshot[PrefabScene::MAX_LINKS]
+
+        def SceneSnapshot() -> SceneSnapshot:
+            SceneSnapshot{scene_id: 0, link_count: 0, links: zeroed}
 
         affine struct Scene:
             private:
@@ -50,6 +63,10 @@ module PrefabScene:
                 for index in 0..<scene.link_count |slot: usize = PrefabScene::MAX_LINKS| -> slot:
                     break index if scene.links[index].link_id == link_id
 
+            def snapshot_link_slot(snapshot: SceneSnapshot&, link_id: i64) -> usize:
+                for index in 0..<snapshot.link_count |slot: usize = PrefabScene::MAX_LINKS| -> slot:
+                    break index if snapshot.links[index].link_id == link_id
+
             def link_would_cycle(scene: Scene&, link_id: i64, parent_link_id: i64) -> bool:
                 cursor: mutable i64 = parent_link_id
                 for _ in 0..<PrefabScene::MAX_LINKS:
@@ -67,6 +84,25 @@ module PrefabScene:
             def destroy_spawned(instance: mutable Instance&, world: mutable World::World&) -> void:
                 _ = PrefabWorld::group_destroy(instance.group, world)
                 instance.scene_id <- 0
+
+            def scene_snapshot_valid(snapshot: SceneSnapshot&, scene: Scene&, scene_id: i64) -> bool:
+                return false if scene_id <= 0 or not scene_valid(scene)
+                return false if snapshot.scene_id != scene_id or snapshot.link_count != scene.link_count
+                for index in 0..<snapshot.link_count:
+                    row: LinkSnapshot = snapshot.links[index]
+                    return false if row.link_id <= 0 or not PrefabPersistence::snapshot_valid(&row.overrides)
+                    scene_slot: usize = link_slot(scene, row.link_id)
+                    return false if scene_slot == PrefabScene::MAX_LINKS
+                    link: Link = scene.links[scene_slot]
+                    return false if row.overrides.prefab_id != link.prefab_id or row.overrides.instance_id != link.instance_id
+                    definition: Prefab::Definition = scene.definitions[definition_slot(scene, link.prefab_id)].definition
+                    return false if row.overrides.count != definition.node_count
+                    for record_index in 0..<row.overrides.count:
+                        return false if Prefab::node_slot(definition,
+                            row.overrides.records[record_index].authoring_id) == Prefab::MAX_NODES
+                    for earlier in 0..<index:
+                        return false if snapshot.links[earlier].link_id == row.link_id
+                true
 
         public:
             def definition_count(scene: Scene&) -> usize:
@@ -117,6 +153,105 @@ module PrefabScene:
 
             def instance_link_count(instance: Instance&) -> usize:
                 PrefabWorld::group_count(instance.group)
+
+            def instance_has_visual(instance: Instance&, scene: Scene&, link_id: i64,
+                authoring_id: i64) -> bool:
+                slot: usize = link_slot(scene, link_id)
+                return false if slot == PrefabScene::MAX_LINKS or slot >= PrefabWorld::group_count(instance.group)
+                PrefabWorld::group_has_visual(instance.group, slot, authoring_id)
+
+            def instance_visual(instance: Instance&, scene: Scene&, link_id: i64,
+                authoring_id: i64) -> Assets::VisualAsset:
+                slot: usize = link_slot(scene, link_id)
+                return zeroed if slot == PrefabScene::MAX_LINKS or slot >= PrefabWorld::group_count(instance.group)
+                PrefabWorld::group_visual(instance.group, slot, authoring_id)
+
+            def override_local(instance: mutable Instance&, world: mutable World::World&,
+                scene: Scene&, link_id: i64, authoring_id: i64,
+                local: Geometry::Transform) -> bool:
+                return false if not Geometry::transform_is_valid(local) or not valid(instance, world)
+                slot: usize = link_slot(scene, link_id)
+                return false if slot == PrefabScene::MAX_LINKS or slot >= PrefabWorld::group_count(instance.group)
+                binding_count: usize = PrefabWorld::group_binding_count(instance.group, slot)
+                binding_slot: usize =
+                    for index in 0..<binding_count |found: usize = PrefabWorld::MAX_NODES, instance| -> found:
+                        found <- index if PrefabWorld::group_authoring_id_at(instance.group, slot, index) == authoring_id
+                return false if binding_slot == PrefabWorld::MAX_NODES
+                link: Link = scene.links[slot]
+                if authoring_id == link.root_authoring_id and link.parent_link_id != PrefabScene::ROOT:
+                    parent_slot: usize = link_slot(scene, link.parent_link_id)
+                    return false if parent_slot == PrefabScene::MAX_LINKS
+                    parent: World::EntityRef = PrefabWorld::group_reference(instance.group,
+                        parent_slot, link.parent_authoring_id)
+                    parent_world: mutable Geometry::Transform = Geometry::transform_identity()
+                    return false if not World::world_try_transform(world, parent, &parent_world)
+                    world_pose: Geometry::Transform = Geometry::transform_compose(parent_world, local)
+                    return PrefabWorld::group_override_local_with_world_pose(instance.group,
+                        slot, world, authoring_id, local, world_pose)
+                return false if not PrefabWorld::group_override_local(instance.group, slot, world, authoring_id, local)
+                true
+
+            def override_visual(instance: mutable Instance&, world: mutable World::World&,
+                scene: Scene&, link_id: i64, authoring_id: i64,
+                has_visual: bool, visual: Assets::VisualAsset) -> bool:
+                slot: usize = link_slot(scene, link_id)
+                return false if slot == PrefabScene::MAX_LINKS or slot >= PrefabWorld::group_count(instance.group)
+                PrefabWorld::group_override_visual(instance.group, slot, world, authoring_id, has_visual, visual)
+
+            def capture(instance: Instance&, world: World::World&, scene: Scene&) -> SceneSnapshot:
+                return SceneSnapshot() if not valid(instance, world)
+                return SceneSnapshot() if not scene_valid(scene) or instance.scene_id <= 0
+                snapshot: mutable SceneSnapshot = SceneSnapshot()
+                snapshot.scene_id <- instance.scene_id
+                snapshot.link_count <- scene.link_count
+                for index in 0..<scene.link_count |snapshot, instance, scene|:
+                    overrides: mutable PrefabPersistence::Snapshot = PrefabPersistence::Snapshot()
+                    overrides.prefab_id <- PrefabWorld::group_prefab_id(instance.group, index)
+                    overrides.instance_id <- PrefabWorld::group_instance_id(instance.group, index)
+                    overrides.count <- PrefabWorld::group_binding_count(instance.group, index)
+                    for binding_index in 0..<overrides.count |overrides, instance|:
+                        authoring_id: i64 = PrefabWorld::group_authoring_id_at(instance.group, index, binding_index)
+                        local: Geometry::Transform = PrefabWorld::group_local_at(instance.group, index, binding_index)
+                        has_visual: bool = PrefabWorld::group_has_visual_at(instance.group, index, binding_index)
+                        visual: Assets::VisualAsset = PrefabWorld::group_visual_at(instance.group, index, binding_index)
+                        return SceneSnapshot() if authoring_id <= 0 or not Geometry::transform_is_valid(local)
+                        return SceneSnapshot() if has_visual and not Assets::visual_asset_valid(visual)
+                        overrides.records[binding_index] <- PrefabPersistence::OverrideRecord{
+                            authoring_id: authoring_id,
+                            local: local,
+                            has_visual: has_visual,
+                            visual: visual,
+                        }
+                    return SceneSnapshot() if not PrefabPersistence::snapshot_valid(&overrides)
+                    snapshot.links[index] <- LinkSnapshot{link_id: scene.links[index].link_id, overrides: overrides}
+                return SceneSnapshot() if not scene_snapshot_valid(&snapshot, scene, instance.scene_id)
+                snapshot
+
+            def snapshot_valid(snapshot: SceneSnapshot&, scene: Scene&, scene_id: i64) -> bool:
+                scene_snapshot_valid(snapshot, scene, scene_id)
+
+            def spawn_restored(instance: mutable Instance&, world: mutable World::World&,
+                scene: Scene&, scene_id: i64, snapshot: SceneSnapshot) -> bool:
+                return false if not scene_snapshot_valid(&snapshot, scene, scene_id)
+                return false if not spawn(instance, world, scene, scene_id)
+                for scene_index in 0..<scene.link_count |instance, world, scene, snapshot|:
+                    link_id: i64 = scene.links[scene_index].link_id
+                    saved_index: usize = snapshot_link_slot(snapshot, link_id)
+                    if saved_index == PrefabScene::MAX_LINKS:
+                        destroy_spawned(instance, world)
+                        return false
+                    saved: LinkSnapshot = snapshot.links[saved_index]
+                    for record_index in 0..<saved.overrides.count |instance, world, scene, saved, scene_index|:
+                        record: PrefabPersistence::OverrideRecord = saved.overrides.records[record_index]
+                        if not override_local(instance, world, scene, saved.link_id,
+                            record.authoring_id, record.local):
+                            destroy_spawned(instance, world)
+                            return false
+                        if not PrefabWorld::group_override_visual(instance.group, scene_index, world,
+                            record.authoring_id, record.has_visual, record.visual):
+                            destroy_spawned(instance, world)
+                            return false
+                true
 
             def instance_reference(instance: Instance&, scene: Scene&, link_id: i64, authoring_id: i64) -> World::EntityRef:
                 return World::EntityRef{world_epoch: -1, id: -1} if link_id <= 0

@@ -94,6 +94,21 @@ module PrefabWorld:
                     return false if not World::world_is_live(world, instance.bindings[index].reference)
                 true
 
+            def override_local_with_world_pose(instance: mutable Instance&,
+                world: mutable World::World&, authoring_id: i64,
+                local: Geometry::Transform, world_pose: Geometry::Transform) -> bool:
+                return false if not Geometry::transform_is_valid(local) or not Geometry::transform_is_valid(world_pose)
+                return false if not all_live(instance, world)
+                slot: usize = binding_slot(instance, authoring_id)
+                return false if slot == PrefabWorld::MAX_NODES
+                applied: bool = catch World::world_set_transform(world,
+                    instance.bindings[slot].reference, world_pose):
+                    ok: true
+                    error failure: false
+                return false if not applied
+                instance.bindings[slot].local <- local
+                true
+
         public:
             def instance_binding_count(instance: Instance&) -> usize:
                 instance.binding_count
@@ -241,6 +256,42 @@ module PrefabWorld:
             def group_count(group: Group&) -> usize:
                 group.count
 
+            def group_prefab_id(group: Group&, index: usize) -> i64:
+                return 0 if index >= group.count
+                instance_prefab_id(group.instances[index])
+
+            def group_instance_id(group: Group&, index: usize) -> i64:
+                return 0 if index >= group.count
+                instance_id(group.instances[index])
+
+            def group_binding_count(group: Group&, index: usize) -> usize:
+                return 0 if index >= group.count
+                instance_binding_count(group.instances[index])
+
+            def group_authoring_id_at(group: Group&, index: usize, binding_index: usize) -> i64:
+                return 0 if index >= group.count
+                instance_authoring_id_at(group.instances[index], binding_index)
+
+            def group_local_at(group: Group&, index: usize, binding_index: usize) -> Geometry::Transform:
+                return Geometry::transform_identity() if index >= group.count
+                instance_local_at(group.instances[index], binding_index)
+
+            def group_has_visual_at(group: Group&, index: usize, binding_index: usize) -> bool:
+                return false if index >= group.count
+                instance_has_visual_at(group.instances[index], binding_index)
+
+            def group_has_visual(group: Group&, index: usize, authoring_id: i64) -> bool:
+                return false if index >= group.count
+                instance_has_visual(group.instances[index], authoring_id)
+
+            def group_visual_at(group: Group&, index: usize, binding_index: usize) -> Assets::VisualAsset:
+                return zeroed if index >= group.count
+                instance_visual_at(group.instances[index], binding_index)
+
+            def group_visual(group: Group&, index: usize, authoring_id: i64) -> Assets::VisualAsset:
+                return zeroed if index >= group.count
+                instance_visual(group.instances[index], authoring_id)
+
             def group_spawn_at(group: mutable Group&, index: usize, world: mutable World::World&,
                 definition: Prefab::Definition&, prefab_id: i64, instance_id: i64) -> bool:
                 return false if index != group.count or index >= PrefabWorld::MAX_GROUP_INSTANCES
@@ -256,6 +307,18 @@ module PrefabWorld:
                 authoring_id: i64, local: Geometry::Transform) -> bool:
                 return false if index >= group.count
                 override_local(group.instances[index], world, authoring_id, local)
+
+            def group_override_local_with_world_pose(group: mutable Group&, index: usize,
+                world: mutable World::World&, authoring_id: i64, local: Geometry::Transform,
+                world_pose: Geometry::Transform) -> bool:
+                return false if index >= group.count
+                override_local_with_world_pose(group.instances[index], world,
+                    authoring_id, local, world_pose)
+
+            def group_override_visual(group: mutable Group&, index: usize, world: World::World&,
+                authoring_id: i64, has_visual: bool, visual: Assets::VisualAsset) -> bool:
+                return false if index >= group.count
+                override_visual(group.instances[index], world, authoring_id, has_visual, visual)
 
             def group_valid(group: Group&, world: World::World&) -> bool:
                 return false if group.count == 0 or group.count > PrefabWorld::MAX_GROUP_INSTANCES

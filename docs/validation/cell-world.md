@@ -13,4 +13,4 @@ ELISA_RUNTIME_OBJ="$PWD/../Elisa-compiler/build/runtime/elisacore_runtime.o" \
 build/cell-world-test
 ```
 
-This is a synchronous activation boundary. Native asynchronous asset decode/upload scheduling and recreation of native mesh/material resources from stable catalogue IDs are still open work; the cell payload currently preserves prefab data and stable visual references only.
+This is a synchronous world-activation boundary. A04 already provides native asynchronous decode/upload scheduling and renderer residency budgets, but cell-owned requests/releases are not yet wired to that loader. Recreation of native mesh/material resources from stable catalogue IDs also remains open; the cell payload currently preserves prefab data and stable visual references only.

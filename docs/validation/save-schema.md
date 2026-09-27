@@ -21,4 +21,8 @@ instead of leaking a decoder exception. Its self-test runs in the shared gate.
 The complete runtime rollback snapshot also exposes an atomic `replace` boundary;
 an invalid replacement is rejected after the original world has been staged and
 the live world remains unchanged. Cross-epoch durable reconstruction and native
-resource rehydration remain separate work.
+resource rehydration remain separate work. Nested prefab scenes now have an
+in-memory stable snapshot/rebuild path across fresh world epochs, including
+transform and visual overrides; converting loaded durable scene JSON into that
+runtime reconstruction call remains open work. See
+[`prefab-scene-save.md`](prefab-scene-save.md).

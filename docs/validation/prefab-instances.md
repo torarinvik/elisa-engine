@@ -25,7 +25,10 @@ epoch, checks that the old `EntityRef` is invalid there, and verifies that both
 the base visual and overridden visual references survive by authoring ID.
 `src/world/prefab_scene.elisa` composes up to eight links, validates missing
 definitions and parent cycles, spawns nested instances in topological order,
-and destroys them in reverse order.
+and destroys them in reverse order. Its `SceneSnapshot` stores stable link and
+instance IDs plus each node's local transform and optional visual IDs. A
+validated snapshot can rebuild the nested instance in a fresh `World` epoch;
+see [`prefab-scene-save.md`](prefab-scene-save.md).
 
 `WorldRendering::sync_prefab_instance` turns the private visual bindings of a
 live prefab instance into checked world-render bindings. The caller reserves a
