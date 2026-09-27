@@ -17,7 +17,10 @@ instances, an override, a missing parent, and a two-node cycle.
 local overrides, and destroys the complete mapping through the deferred world
 command boundary. `src/world/prefab_persistence.elisa` snapshots only stable
 authoring IDs and plain transforms; restoring into a newly spawned instance
-reproduces the override without serializing a world epoch or native handle.
+reproduces the override without serializing a world epoch or native handle. The
+primary-world test now reloads into a separate `World` with a fresh epoch,
+checks that the old `EntityRef` is invalid there, and verifies the restored
+stable-ID binding uses the new world's live reference.
 `src/world/prefab_scene.elisa` composes up to eight links, validates missing
 definitions and parent cycles, spawns nested instances in topological order,
 and destroys them in reverse order.
@@ -47,5 +50,7 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 test/prefab_scene.elisa && build/prefab-scene-test
 ```
 
-Native world epochs and runtime handles remain outside the scene file; a load
-still requires the Elisa prefab modules to spawn fresh runtime bindings.
+The primary-world epoch/rebinding regression passed on 2026-09-27. Native world
+epochs and runtime handles remain outside the scene file; a load still requires
+the Elisa prefab modules to spawn fresh runtime bindings. Rehydrating referenced
+runtime assets remains W04 follow-up work.

@@ -35,12 +35,17 @@ def main() -> i32:
     return 13 if not PrefabWorld::destroy(&first, &world)
     return 14 if World::world_live_count(&world) != 2 or PrefabWorld::instance_binding_count(&first) != 0
     return 15 if not PrefabWorld::valid(&second, &world)
+    reloaded_world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 22
     reloaded: mutable PrefabWorld::Instance = PrefabWorld::Instance()
-    return 16 if not PrefabWorld::spawn(&reloaded, &world, &definition, 7, 1)
-    return 17 if not PrefabPersistence::restore(&reloaded, &world, snapshot)
+    return 16 if not PrefabWorld::spawn(&reloaded, &reloaded_world, &definition, 7, 1)
     reloaded_child: World::EntityRef = PrefabWorld::instance_reference(&reloaded, 20)
-    return 18 if not World::world_try_transform(&world, reloaded_child, &child_world) or child_world.position.x != 8.0
+    return 23 if reloaded_child.world_epoch == child_reference.world_epoch
+    return 24 if World::world_is_live(&reloaded_world, child_reference)
+    return 17 if not PrefabPersistence::restore(&reloaded, &reloaded_world, snapshot)
+    return 18 if not World::world_try_transform(&reloaded_world, reloaded_child, &child_world) or child_world.position.x != 8.0
     return 19 if not PrefabWorld::destroy(&second, &world)
-    return 20 if not PrefabWorld::destroy(&reloaded, &world)
-    return 21 if World::world_live_count(&world) != 0
+    return 20 if not PrefabWorld::destroy(&reloaded, &reloaded_world)
+    return 21 if World::world_live_count(&world) != 0 or World::world_live_count(&reloaded_world) != 0
     0
