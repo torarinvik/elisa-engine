@@ -137,8 +137,10 @@ def main() -> int:
         fixture = project / "test/fixtures/audio-smoke.wav"
         fixture.parent.mkdir(parents=True, exist_ok=True)
         write_physics_mesh_fixture(project)
-        # The course self-test decodes its shipped clips from `sounds/`.
-        shutil.copytree(ROOT / "examples/character_course/sounds", project / "sounds")
+        # The course self-test decodes its shipped clips from `sounds/` and
+        # animates two instances of `rigs/guide_rig.pkg`.
+        for resource in ("sounds", "rigs"):
+            shutil.copytree(ROOT / "examples/character_course" / resource, project / resource)
         samples = [int(6000 * math.sin(2.0 * math.pi * 440.0 * frame / 8000)) for frame in range(400)]
         with wave.open(str(fixture), "wb") as output:
             output.setnchannels(1)

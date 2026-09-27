@@ -2,6 +2,8 @@
 include "./progress.elisa"
 include "./controls.elisa"
 include "./sounds.elisa"
+include "../../src/nav/navmesh.elisa"
+include "../../src/nav/agent.elisa"
 
 module CharacterCourse:
     private:
@@ -152,10 +154,10 @@ module CharacterCourse:
         def box_color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
             RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0}
 
-        def add_static_box(session: RuntimeServices::Session&,
+        def create_static_body(session: RuntimeServices::Session&,
             center: Geometry::Vec3, half_extents: Geometry::Vec3,
-            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
-            _ = try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
+            rotation: Geometry::Quat) -> PhysicsRuntime::BodyHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
                 kind: PhysicsRuntime::BodyKind.Static,
                 shape: PhysicsRuntime::BodyShape.Box,
                 position: center,
@@ -166,13 +168,22 @@ module CharacterCourse:
                 sensor: false,
                 collision_layer: Tune::CHARACTER_LAYER,
             })
-            half_scale: Geometry::Vec3 = Geometry::Vec3{
-                x: half_extents.x, y: half_extents.y, z: half_extents.z}
-            _ = try RenderScene::create(RenderScene::Primitive.Box,
-                Geometry::Transform{position: center, rotation: rotation,
-                    scale: half_scale}, color)
 
-        def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+        def create_box_render(center: Geometry::Vec3, half_extents: Geometry::Vec3,
+            rotation: Geometry::Quat, color: RenderScene::Color) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+            try RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::Transform{position: center, rotation: rotation,
+                    scale: half_extents}, color)
+
+        # A static course box: physics body, render box and navmesh geometry.
+        def add_static_box(session: RuntimeServices::Session&,
+            center: Geometry::Vec3, half_extents: Geometry::Vec3,
+            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            _ = try create_static_body(session, center, half_extents, rotation)
+            _ = try create_box_render(center, half_extents, rotation, color)
+            try NavMesh::add_oriented_box(center, half_extents, rotation)
+
+        def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
             _ = try add_static_box(session,
                 Geometry::Vec3{x: 0.0, y: -Tune::FLOOR_HALF_HEIGHT, z: 0.0},
                 Geometry::Vec3{x: Tune::FLOOR_HALF_WIDTH,
@@ -297,19 +308,28 @@ module CharacterCourse:
             try RuntimeServices::physics_character_destroy(session, character)
             restored
 
+        include "./guide.inc"
+
         include "./self_test.inc"
+
+        include "./guide_test.inc"
+
+        include "./links_test.inc"
 
         include "./play.inc"
 
         def run_after_open(session: mutable RuntimeServices::Session&,
-            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError]:
+            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError]:
             frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
             width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
             height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
             try RenderScene::initialize(width, height, 12.0)
             try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
                 Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
+            try NavMesh::begin()
             _ = try create_course(session)
+            _ = try create_guide_yard(session)
+            guide: mutable Guide = try create_guide(session)
             character: mutable PhysicsRuntime::CharacterHandle = try create_character(session)
             avatar_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                 session, character)
@@ -343,13 +363,23 @@ module CharacterCourse:
                 return progress.status if progress.status != 0
                 controls_status: i32 = try controls_test()
                 return controls_status if controls_status != 0
-                sound_test(session)
+                sound_status: i32 = sound_test(session)
+                return sound_status if sound_status != 0
+                guide_status: i32 = try guide_test(session, &guide)
+                return guide_status if guide_status != 0
+                links_status: i32 = try links_test(session, &guide)
+                return links_status if links_status != 0
+                rig_status: i32 = try rig_test()
+                return rig_status if rig_status != 0
+                try NavMesh::unload(guide.mesh)
+                return 119 if NavMesh::live_count() != 0
+                0
             else:
                 # Without a user-data directory saves report failure in-game.
                 _ = catch UserData::initialize("org.elisa.elisa-character-course"):
                     ok: true
                     error failure: false
-                interactive_loop(session, character, avatar, instruction)
+                interactive_loop(session, character, avatar, instruction, guide)
 
     public:
         def run(self_test: bool) -> i32:

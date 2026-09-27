@@ -1,0 +1,63 @@
+# A bounded navigation corridor: the straight-line waypoints an agent walks
+# and the outcome of the query that produced them. Pure data; `NavMesh` fills
+# routes from Detour and `NavAgent` follows them.
+include "../math/geometry.elisa"
+
+module NavRoute:
+    public:
+        const MAX_POINTS: usize = 64
+
+        enum Status:
+            # The last point is the requested goal.
+            Found
+            # The goal is not connected to the start; the last point is the
+            # closest reachable one.
+            Unreachable
+            # The start or goal is not near any walkable surface; no points.
+            OffMesh
+            # The corridor was longer than the bound; walk it, then ask again.
+            Truncated
+
+        struct Route:
+            status: mutable Status
+            count: mutable usize
+            points: mutable Geometry::Vec3[MAX_POINTS]
+            # True where the point starts an off-mesh link (a jump or drop).
+            links: mutable bool[MAX_POINTS]
+
+        def Route(status: Status) -> Route:
+            Route{status: status, count: 0, points: zeroed, links: zeroed}
+
+        # Returns false, dropping the point, once the route is full.
+        def push(route: mutable Route&, point: Geometry::Vec3) -> bool:
+            return false if route.count >= MAX_POINTS
+            route.points[route.count] <- point
+            route.count <- route.count + 1
+            true
+
+        # Marks the most recent point as the start of an off-mesh link.
+        def mark_link(route: mutable Route&) -> void:
+            if route.count > 0:
+                route.links[route.count - 1] <- true
+
+        def starts_link(route: Route&, index: usize) -> bool:
+            index < route.count and route.links[index]
+
+        def status(route: Route&) -> Status:
+            route.status
+
+        def count(route: Route&) -> usize:
+            route.count
+
+        def point(route: Route&, index: usize) -> Geometry::Vec3:
+            return Geometry::vec3_zero() if index >= route.count
+            route.points[index]
+
+        # Horizontal length of the corridor from its first point.
+        def length(route: Route&) -> f32:
+            for index in 1..<MAX_POINTS |total: f32 = 0.0| -> total:
+                break if index >= route.count
+                total <- total + horizontal_distance(route.points[index - 1], route.points[index])
+
+        def horizontal_distance(origin: Geometry::Vec3, target: Geometry::Vec3) -> f32:
+            Geometry::vec3_length(Geometry::Vec3{x: target.x - origin.x, y: 0.0, z: target.z - origin.z})

@@ -1,0 +1,107 @@
+include "../src/nav/agent.elisa"
+
+def at(x: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: 0.0, z: z}
+
+def state_code(state: NavAgent::State) -> i32:
+    match state:
+        NavAgent::State.Idle:
+            0
+        NavAgent::State.Moving:
+            1
+        NavAgent::State.Arrived:
+            2
+        NavAgent::State.Stranded:
+            3
+        NavAgent::State.Blocked:
+            4
+        NavAgent::State.Stuck:
+            5
+
+# The corridor a Detour query returns around a wall: start, two corners, goal.
+def corner_route(status: NavRoute::Status) -> NavRoute::Route:
+    route: mutable NavRoute::Route = NavRoute::Route(status)
+    _ = NavRoute::push(&route, at(-5.0, 0.0))
+    _ = NavRoute::push(&route, at(-0.4, 4.4))
+    _ = NavRoute::push(&route, at(0.4, 4.4))
+    _ = NavRoute::push(&route, at(5.0, 0.0))
+    route
+
+# Walk at `speed` metres per tick for up to `ticks`, scaled by `blocked`
+# (0 holds the body in place, as a wall would). Returns the final state code
+# times 1000 plus the tick it stopped on.
+def walk(agent: mutable NavAgent::Agent&, start: Geometry::Vec3, speed: f32, ticks: u32, blocked: f32) -> i64:
+    for tick in 0..<ticks |position: Geometry::Vec3 = start, result: i64 = -1| -> result:
+        steering: NavAgent::Steering = NavAgent::steer(agent, position)
+        if steering.state != NavAgent::State.Moving:
+            result <- state_code(steering.state).i64() * 1000 + tick.i64()
+            break
+        position <- Geometry::vec3_add(position, Geometry::vec3_scale(steering.direction, speed * blocked))
+
+def main() -> i32:
+    tuning: NavAgent::Tuning = NavAgent::default_tuning()
+
+    # A new agent is idle and never steers.
+    idle: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    return 1 if state_code(NavAgent::steer(&idle, at(0.0, 0.0)).state) != 0
+
+    # It follows the corners in order and arrives at the goal.
+    walker: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    return 2 if state_code(NavAgent::assign(&walker, corner_route(NavRoute::Status.Found))) != 1
+    first: NavAgent::Steering = NavAgent::steer(&walker, at(-5.0, 0.0))
+    return 3 if first.state != NavAgent::State.Moving or first.direction.z <= 0.0 or NavAgent::next_index(&walker) != 1
+    arrived: i64 = walk(&walker, at(-5.0, 0.0), 0.05, 1000, 1.0)
+    return 4 if arrived / 1000 != 2
+    route: NavRoute::Route = corner_route(NavRoute::Status.Found)
+    length: f32 = NavRoute::length(&route)
+    # About length / speed ticks, less the final arrival radius.
+    return 5 if (arrived % 1000).f32() < (length - 0.5) / 0.05 or (arrived % 1000).f32() > length / 0.05 + 2.0
+    return 6 if state_code(NavAgent::steer(&walker, at(5.0, 0.0)).state) != 2
+
+    # A route that stops short of an unreachable goal ends Stranded.
+    stranded: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    _ = NavAgent::assign(&stranded, corner_route(NavRoute::Status.Unreachable))
+    return 7 if walk(&stranded, at(-5.0, 0.0), 0.05, 1000, 1.0) / 1000 != 3
+
+    # A truncated route asks for a new one when it runs out.
+    truncated: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    _ = NavAgent::assign(&truncated, corner_route(NavRoute::Status.Truncated))
+    return 8 if walk(&truncated, at(-5.0, 0.0), 0.05, 1000, 1.0) / 1000 != 5
+
+    # No corridor: blocked at once, with no steering.
+    blocked: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    return 9 if state_code(NavAgent::assign(&blocked, NavRoute::Route(NavRoute::Status.OffMesh))) != 4
+    return 10 if Geometry::vec3_length(NavAgent::steer(&blocked, at(0.0, 0.0)).direction) != 0.0
+
+    # Held in place, the agent reports Stuck after the configured ticks.
+    held: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    _ = NavAgent::assign(&held, corner_route(NavRoute::Status.Found))
+    stuck: i64 = walk(&held, at(-5.0, 0.0), 0.05, 1000, 0.0)
+    return 11 if stuck / 1000 != 5 or stuck % 1000 != tuning.stuck_ticks.i64()
+
+    # Crawling 0.225 m per 45 ticks, short of the 0.25 m minimum, is stuck too.
+    crawl: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    _ = NavAgent::assign(&crawl, corner_route(NavRoute::Status.Found))
+    return 12 if walk(&crawl, at(-5.0, 0.0), 0.005, 1000, 1.0) / 1000 != 5
+
+    # Replanning resets progress tracking and resumes.
+    return 13 if state_code(NavAgent::assign(&held, corner_route(NavRoute::Status.Found))) != 1
+    return 14 if walk(&held, at(-5.0, 0.0), 0.05, 1000, 1.0) / 1000 != 2
+
+    # Routes are bounded: the 65th point is refused.
+    full: mutable NavRoute::Route = NavRoute::Route(NavRoute::Status.Found)
+    pushed: usize =
+        for index in 0..<70 |count: usize = 0, full| -> count:
+            count <- count + 1 if NavRoute::push(&full, at(index.f32(), 0.0))
+    return 15 if pushed != NavRoute::MAX_POINTS or NavRoute::count(&full) != NavRoute::MAX_POINTS
+    return 16 if NavRoute::point(&full, NavRoute::MAX_POINTS).x != 0.0
+
+    # Link marks land on the latest point only, and never past the end.
+    linked: mutable NavRoute::Route = NavRoute::Route(NavRoute::Status.Found)
+    NavRoute::mark_link(&linked)
+    _ = NavRoute::push(&linked, at(0.0, 0.0))
+    _ = NavRoute::push(&linked, at(1.0, 0.0))
+    NavRoute::mark_link(&linked)
+    return 17 if NavRoute::starts_link(&linked, 0) or not NavRoute::starts_link(&linked, 1)
+    return 18 if NavRoute::starts_link(&linked, 2)
+    0

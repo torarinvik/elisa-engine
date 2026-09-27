@@ -52,10 +52,23 @@ The WAV files in `sounds/` were synthesized for this project by
 included. `python3 make_sounds.py --check` fails if a committed file no longer
 matches the script.
 
+A purple guide patrols the yard west of the entrance, walking around the
+guide wall between two posts on a Recast/Detour route (`guide.inc`). The
+course's axis-aligned boxes are staged for the navmesh as they are created and
+baked once at start; the tilted ramp is not staged. When the guide arrives it
+turns around, and when it is pushed off its route or gets stuck it plans again
+from where it stands. You can shove it with the character. Two skinned rigs
+beside the posts play the same looping `lift` clip at different speeds from
+one package. `rigs/guide_rig.pkg` is the engine's synthetic two-joint test
+panel cooked by `make_rigs.py`; `python3 make_rigs.py --check` fails if the
+committed package drifted. Play continues without the rigs if the package is
+missing.
+
 Build and run the hidden check without waiting for input. It covers state
 transitions, step traversal, restart, save/restart/load (including rejected
-records), control rebinding and persistence, and sound events, streaming and
-cleanup:
+records), control rebinding and persistence, sound events, streaming and
+cleanup, the guide's routes (around the wall, toward the closed pen, off the
+mesh, unload and rebake) and independent rig playback:
 
 ```sh
 python3 scripts/elisa_build_run.py build \
